@@ -52,7 +52,7 @@ public class StdioServerTransportTests
     {
         await using var transport = new StdioServerTransport(_serverOptions);
 
-        await transport.StartListeningAsync();
+        await transport.StartListeningAsync(TestContext.Current.CancellationToken);
 
         Assert.True(transport.IsConnected);
     }
@@ -70,12 +70,12 @@ public class StdioServerTransportTests
             Console.SetOut(output);
 
             await using var transport = new StdioServerTransport(_serverOptions, NullLoggerFactory.Instance);
-            await transport.StartListeningAsync();
+            await transport.StartListeningAsync(TestContext.Current.CancellationToken);
 
             var message = new JsonRpcRequest { Method = "test", Id = RequestId.FromNumber(44) };
 
 
-            await transport.SendMessageAsync(message);
+            await transport.SendMessageAsync(message, TestContext.Current.CancellationToken);
 
             var result = output.ToString()?.Trim();
             var expected = JsonSerializer.Serialize(message, JsonSerializerOptionsExtensions.DefaultOptions);
@@ -96,7 +96,7 @@ public class StdioServerTransportTests
 
         var message = new JsonRpcRequest { Method = "test" };
 
-        await Assert.ThrowsAsync<McpTransportException>(() => transport.SendMessageAsync(message));
+        await Assert.ThrowsAsync<McpTransportException>(() => transport.SendMessageAsync(message, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -123,9 +123,9 @@ public class StdioServerTransportTests
             Console.SetOut(new StringWriter());
 
             await using var transport = new StdioServerTransport(_serverOptions);
-            await transport.StartListeningAsync();
+            await transport.StartListeningAsync(TestContext.Current.CancellationToken);
 
-            var canRead = await transport.MessageReader.WaitToReadAsync();
+            var canRead = await transport.MessageReader.WaitToReadAsync(TestContext.Current.CancellationToken);
 
             Assert.True(canRead, "Nothing to read here from transport message reader");
             Assert.True(transport.MessageReader.TryPeek(out var readMessage));
@@ -144,7 +144,7 @@ public class StdioServerTransportTests
     public async Task CleanupAsync_Should_Cleanup_Resources()
     {
         var transport = new StdioServerTransport(_serverOptions);
-        await transport.StartListeningAsync();
+        await transport.StartListeningAsync(TestContext.Current.CancellationToken);
 
         await transport.DisposeAsync();
 

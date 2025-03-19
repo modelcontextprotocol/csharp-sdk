@@ -95,7 +95,7 @@ public class SseClientTransportTests
             };
         };
 
-        await transport.ConnectAsync();
+        await transport.ConnectAsync(TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -174,7 +174,7 @@ public class SseClientTransportTests
             }
         };
 
-        await transport.ConnectAsync();
+        await transport.ConnectAsync(TestContext.Current.CancellationToken);
 
         await transport.SendMessageAsync(new JsonRpcRequest() { Method = "initialize", Id = RequestId.FromNumber(44) }, CancellationToken.None);
         Assert.True(true);
@@ -213,7 +213,7 @@ public class SseClientTransportTests
             }
         };
 
-        await transport.ConnectAsync();
+        await transport.ConnectAsync(TestContext.Current.CancellationToken);
 
         await transport.SendMessageAsync(new JsonRpcRequest() { Method = "initialize", Id = RequestId.FromNumber(44) }, CancellationToken.None);
         Assert.True(true);
@@ -251,7 +251,7 @@ public class SseClientTransportTests
             throw new IOException("Abort");
         };
 
-        await transport.ConnectAsync();
+        await transport.ConnectAsync(TestContext.Current.CancellationToken);
         Assert.True(transport.MessageReader.TryRead(out var message));
         Assert.NotNull(message);
         Assert.IsType<JsonRpcRequest>(message);

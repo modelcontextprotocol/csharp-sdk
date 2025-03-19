@@ -7,7 +7,6 @@ using ModelContextProtocol.Tests.Utils;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Moq;
-using System.Diagnostics;
 
 namespace ModelContextProtocol.Tests.Server;
 
@@ -100,7 +99,7 @@ public class McpServerTests
         server.GetType().GetField("_isInitializing", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.SetValue(server, true);
 
         // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(() => server.StartAsync());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => server.StartAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -110,7 +109,7 @@ public class McpServerTests
         await using var server = new McpServer(_serverTransport.Object, _options, _loggerFactory.Object, _serviceProvider);
         server.IsInitialized = true;
 
-        await server.StartAsync();
+        await server.StartAsync(TestContext.Current.CancellationToken);
 
         // Assert
         _serverTransport.Verify(t => t.StartListeningAsync(It.IsAny<CancellationToken>()), Times.Never);
@@ -123,7 +122,7 @@ public class McpServerTests
         await using var server = new McpServer(_serverTransport.Object, _options, _loggerFactory.Object, _serviceProvider);
 
         // Act
-        await server.StartAsync();
+        await server.StartAsync(TestContext.Current.CancellationToken);
 
         // Assert
         _serverTransport.Verify(t => t.StartListeningAsync(It.IsAny<CancellationToken>()), Times.Once);
@@ -135,17 +134,16 @@ public class McpServerTests
         await using var transport = new TestServerTransport();
         await using var server = new McpServer(transport, _options, _loggerFactory.Object, _serviceProvider);
 
-        await server.StartAsync();
+        await server.StartAsync(TestContext.Current.CancellationToken);
 
         // Send initialized notification
-        await transport.SendMessageAsync(
-            new JsonRpcNotification
+        await transport.SendMessageAsync(new JsonRpcNotification
             {
                 Method = "notifications/initialized"
             }
-        );
+, TestContext.Current.CancellationToken);
 
-        await Task.Delay(50);
+        await Task.Delay(50, TestContext.Current.CancellationToken);
 
         Assert.True(server.IsInitialized);
     }
@@ -171,7 +169,7 @@ public class McpServerTests
         await using var server = new McpServer(transport, _options, _loggerFactory.Object, _serviceProvider);
         server.ClientCapabilities = new ClientCapabilities { Sampling = new SamplingCapability() };
 
-        await server.StartAsync();
+        await server.StartAsync(TestContext.Current.CancellationToken);
 
         // Act
         var result = await server.RequestSamplingAsync(new CreateMessageRequestParams { Messages = [] }, CancellationToken.None);
@@ -200,7 +198,7 @@ public class McpServerTests
         await using var transport = new TestServerTransport();
         await using var server = new McpServer(transport, _options, _loggerFactory.Object, _serviceProvider);
         server.ClientCapabilities = new ClientCapabilities { Roots = new RootsCapability() };
-        await server.StartAsync();
+        await server.StartAsync(TestContext.Current.CancellationToken);
 
         // Act
         var result = await server.RequestRootsAsync(new ListRootsRequestParams(), CancellationToken.None);
@@ -588,7 +586,7 @@ public class McpServerTests
             Temperature = 0.75f,
             MaxOutputTokens = 42,
             StopSequences = ["."],
-        });
+        }, TestContext.Current.CancellationToken);
 
         Assert.Equal("amazingmodel", response.ModelId);
         Assert.Equal(ChatFinishReason.Stop, response.FinishReason);

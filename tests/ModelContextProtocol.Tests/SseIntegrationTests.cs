@@ -37,13 +37,17 @@ public class SseIntegrationTests
         };
 
         // Act
-        await using var client = await McpClientFactory.CreateAsync(defaultConfig, defaultOptions, loggerFactory: loggerFactory);
+        await using var client = await McpClientFactory.CreateAsync(
+            defaultConfig, 
+            defaultOptions,
+            loggerFactory: loggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         // Wait for SSE connection to be established
         await server.WaitForConnectionAsync(TimeSpan.FromSeconds(10));
 
         // Send a test message through POST endpoint
-        await client.SendNotificationAsync("test/message", new { message = "Hello, SSE!" });
+        await client.SendNotificationAsync("test/message", new { message = "Hello, SSE!" }, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(true);
@@ -82,8 +86,12 @@ public class SseIntegrationTests
         };
 
         // Create client and run tests
-        await using var client = await McpClientFactory.CreateAsync(defaultConfig, defaultOptions, loggerFactory: loggerFactory);
-        var tools = await client.ListToolsAsync().ToListAsync();
+        await using var client = await McpClientFactory.CreateAsync(
+            defaultConfig, 
+            defaultOptions, 
+            loggerFactory: loggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken);
+        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotEmpty(tools);
@@ -147,17 +155,19 @@ public class SseIntegrationTests
             },
         };
 
-        await using var client = await McpClientFactory.CreateAsync(defaultConfig, defaultOptions, loggerFactory: loggerFactory);
+        await using var client = await McpClientFactory.CreateAsync(
+            defaultConfig, 
+            defaultOptions,
+            loggerFactory: loggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         // Call the server's sampleLLM tool which should trigger our sampling handler
-        var result = await client.CallToolAsync(
-            "sampleLLM",
-            new Dictionary<string, object>
+        var result = await client.CallToolAsync("sampleLLM", new Dictionary<string, object>
             {
                 ["prompt"] = "Test prompt",
                 ["maxTokens"] = 100
             }
-        );
+, TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(result);
@@ -194,13 +204,17 @@ public class SseIntegrationTests
         };
 
         // Act
-        await using var client = await McpClientFactory.CreateAsync(defaultConfig, defaultOptions, loggerFactory: loggerFactory);
+        await using var client = await McpClientFactory.CreateAsync(
+            defaultConfig,
+            defaultOptions,
+            loggerFactory: loggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         // Wait for SSE connection to be established
         await server.WaitForConnectionAsync(TimeSpan.FromSeconds(10));
 
         // Send a test message through POST endpoint
-        await client.SendNotificationAsync("test/message", new { message = "Hello, SSE!" });
+        await client.SendNotificationAsync("test/message", new { message = "Hello, SSE!" }, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(true);
@@ -233,7 +247,11 @@ public class SseIntegrationTests
         };
 
         // Act
-        await using var client = await McpClientFactory.CreateAsync(defaultConfig, defaultOptions, loggerFactory: loggerFactory);
+        await using var client = await McpClientFactory.CreateAsync(
+            defaultConfig, 
+            defaultOptions, 
+            loggerFactory: loggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         // Wait for SSE connection to be established
         await server.WaitForConnectionAsync(TimeSpan.FromSeconds(10));
@@ -251,7 +269,7 @@ public class SseIntegrationTests
         await server.SendTestNotificationAsync("Hello from server!");
 
         // Assert
-        var message = await receivedNotification.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var message = await receivedNotification.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         Assert.Equal("Hello from server!", message);
     }
 
@@ -282,7 +300,11 @@ public class SseIntegrationTests
         };
 
         // Act
-        await using var client = await McpClientFactory.CreateAsync(defaultConfig, defaultOptions, loggerFactory: loggerFactory);
+        await using var client = await McpClientFactory.CreateAsync(
+            defaultConfig, 
+            defaultOptions, 
+            loggerFactory: loggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken);
         var mcpClient = (McpClient)client;
         var transport = (SseClientTransport)mcpClient.Transport;
 
@@ -290,6 +312,6 @@ public class SseIntegrationTests
         await server.WaitForConnectionAsync(TimeSpan.FromSeconds(10));
 
         // Assert
-        await Assert.ThrowsAsync<McpTransportException>(async () => await transport.ConnectAsync());
+        await Assert.ThrowsAsync<McpTransportException>(async () => await transport.ConnectAsync(TestContext.Current.CancellationToken));
     }
 }
