@@ -42,7 +42,7 @@ public sealed class HttpListenerSseServerTransport : TransportBase, IServerTrans
     {
         _serverName = serverName;
         _logger = loggerFactory.CreateLogger<HttpListenerSseServerTransport>();
-        _jsonOptions = JsonSerializerOptionsExtensions.DefaultOptions;
+        _jsonOptions = McpJsonUtilities.DefaultOptions;
         _httpServerProvider = new HttpListenerServerProvider(port);
     }
 

@@ -139,8 +139,8 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
 
             // Store server information
             _logger.ServerCapabilitiesReceived(EndpointName, 
-                capabilities: JsonSerializer.Serialize(initializeResponse.Capabilities, JsonSerializerOptionsExtensions.JsonContext.Default.ServerCapabilities),
-                serverInfo: JsonSerializer.Serialize(initializeResponse.ServerInfo, JsonSerializerOptionsExtensions.JsonContext.Default.Implementation));
+                capabilities: JsonSerializer.Serialize(initializeResponse.Capabilities, McpJsonUtilities.JsonContext.Default.ServerCapabilities),
+                serverInfo: JsonSerializer.Serialize(initializeResponse.ServerInfo, McpJsonUtilities.JsonContext.Default.Implementation));
 
             ServerCapabilities = initializeResponse.Capabilities;
             ServerInfo = initializeResponse.ServerInfo;

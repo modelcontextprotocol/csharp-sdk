@@ -65,7 +65,7 @@ public sealed class SseClientTransport : TransportBase, IClientTransport
         _httpClient = httpClient;
         _connectionCts = new CancellationTokenSource();
         _logger = (ILogger?)loggerFactory?.CreateLogger<SseClientTransport>() ?? NullLogger.Instance;
-        _jsonOptions = JsonSerializerOptionsExtensions.DefaultOptions;
+        _jsonOptions = McpJsonUtilities.DefaultOptions;
         _connectionEstablished = new TaskCompletionSource<bool>();
         _ownsHttpClient = ownsHttpClient;
     }

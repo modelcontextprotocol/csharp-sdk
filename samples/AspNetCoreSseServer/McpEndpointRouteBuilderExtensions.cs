@@ -45,7 +45,7 @@ public static class McpEndpointRouteBuilderExtensions
                 return;
             }
 
-            var message = await context.Request.ReadFromJsonAsync<IJsonRpcMessage>(JsonSerializerOptionsExtensions.DefaultOptions, context.RequestAborted);
+            var message = await context.Request.ReadFromJsonAsync<IJsonRpcMessage>(McpJsonUtilities.DefaultOptions, context.RequestAborted);
             if (message is null)
             {
                 await Results.BadRequest("No message in request body.").ExecuteAsync(context);

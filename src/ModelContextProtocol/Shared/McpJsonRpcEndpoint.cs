@@ -46,7 +46,7 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
         _pendingRequests = new();
         _notificationHandlers = new();
         _nextRequestId = 1;
-        _jsonOptions = JsonSerializerOptionsExtensions.DefaultOptions;
+        _jsonOptions = McpJsonUtilities.DefaultOptions;
         _logger = (ILogger?)loggerFactory?.CreateLogger<McpClient>() ?? NullLogger.Instance;
     }
 

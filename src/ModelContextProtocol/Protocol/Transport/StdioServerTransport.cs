@@ -21,7 +21,7 @@ public sealed class StdioServerTransport : TransportBase, IServerTransport
     private readonly string _serverName;
     private readonly ILogger _logger;
 
-    private readonly JsonSerializerOptions _jsonOptions = JsonSerializerOptionsExtensions.DefaultOptions;
+    private readonly JsonSerializerOptions _jsonOptions = McpJsonUtilities.DefaultOptions;
     private readonly TextReader _stdin = Console.In;
     private readonly TextWriter _stdout = Console.Out;
 

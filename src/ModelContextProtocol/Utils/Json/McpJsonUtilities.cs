@@ -1,6 +1,7 @@
 ﻿using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Types;
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -8,11 +9,31 @@ using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Utils.Json;
 
-/// <summary>
-/// Extensions for configuring System.Text.Json serialization options for MCP.
-/// </summary>
-internal static partial class JsonSerializerOptionsExtensions
+/// <summary>Provides a collection of utility methods for working with JSON data in the context of MCP.</summary>
+public static partial class McpJsonUtilities
 {
+    /// <summary>
+    /// Gets the <see cref="JsonSerializerOptions"/> singleton used as the default in JSON serialization operations.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// For Native AOT or applications disabling <see cref="JsonSerializer.IsReflectionEnabledByDefault"/>, this instance 
+    /// includes source generated contracts for all common exchange types contained in the ModelContextProtocol library.
+    /// </para>
+    /// <para>
+    /// It additionally turns on the following settings:
+    /// <list type="number">
+    /// <item>Enables string-based enum serialization as implemented by <see cref="JsonStringEnumConverter"/>.</item>
+    /// <item>Enables <see cref="JsonIgnoreCondition.WhenWritingNull"/> as the default ignore condition for properties.</item>
+    /// <item>Enables <see cref="JsonNumberHandling.AllowReadingFromString"/> as the default number handling for number types.</item>
+    /// <item>
+    /// Enables <see cref="JavaScriptEncoder.UnsafeRelaxedJsonEscaping"/> when escaping JSON strings.
+    /// Consuming applications must ensure that JSON outputs are adequately escaped before embedding in other document formats,
+    /// such as HTML and XML.
+    /// </item>
+    /// </list>
+    /// </para>
+    /// </remarks>
     public static JsonSerializerOptions DefaultOptions { get; } = CreateDefaultOptions();
 
     /// <summary>
@@ -26,23 +47,31 @@ internal static partial class JsonSerializerOptionsExtensions
         // If reflection-based serialization is enabled by default, use it, as it's the most permissive in terms of what it can serialize,
         // and we want to be flexible in terms of what can be put into the various collections in the object model.
         // Otherwise, use the source-generated options to enable trimming and Native AOT.
+        JsonSerializerOptions options;
 
         if (JsonSerializer.IsReflectionEnabledByDefault)
         {
             // Keep in sync with the JsonSourceGenerationOptions attribute on JsonContext below.
-            JsonSerializerOptions options = new(JsonSerializerDefaults.Web)
+            options = new(JsonSerializerDefaults.Web)
             {
                 TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
                 Converters = { new JsonStringEnumConverter() },
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-                NumberHandling = JsonNumberHandling.AllowReadingFromString
+                NumberHandling = JsonNumberHandling.AllowReadingFromString,
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
             };
-
-            options.MakeReadOnly();
-            return options;
+        }
+        else
+        {
+            options = new(JsonContext.Default.Options)
+            {
+                // Compile-time encoder setting not yet available
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            };
         }
 
-        return JsonContext.Default.Options;
+        options.MakeReadOnly();
+        return options;
     }
 
     internal static JsonTypeInfo<T> GetTypeInfo<T>(this JsonSerializerOptions options) =>
@@ -62,6 +91,7 @@ internal static partial class JsonSerializerOptionsExtensions
     [JsonSerializable(typeof(JsonRpcResponse))]
     [JsonSerializable(typeof(JsonRpcError))]
     [JsonSerializable(typeof(ServerCapabilities))]
+    [JsonSerializable(typeof(ClientCapabilities))]
     [JsonSerializable(typeof(Implementation))]
     [JsonSerializable(typeof(CreateMessageResult))]
     [JsonSerializable(typeof(ListRootsResult))]

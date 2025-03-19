@@ -78,7 +78,7 @@ public class StdioServerTransportTests
             await transport.SendMessageAsync(message);
 
             var result = output.ToString()?.Trim();
-            var expected = JsonSerializer.Serialize(message, JsonSerializerOptionsExtensions.DefaultOptions);
+            var expected = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions);
 
             Assert.Equal(expected, result);
         }
@@ -113,7 +113,7 @@ public class StdioServerTransportTests
     public async Task ReadMessagesAsync_Should_Read_Messages()
     {
         var message = new JsonRpcRequest { Method = "test", Id = RequestId.FromNumber(44) };
-        var json = JsonSerializer.Serialize(message, JsonSerializerOptionsExtensions.DefaultOptions);
+        var json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions);
 
         TextReader oldIn = Console.In;
         TextWriter oldOut = Console.Out;

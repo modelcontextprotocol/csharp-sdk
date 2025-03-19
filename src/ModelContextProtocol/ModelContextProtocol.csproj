@@ -12,12 +12,11 @@
   <PropertyGroup Condition="'$(TargetFramework)' != 'netstandard2.0'">
     <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
-
+  
   <ItemGroup>
     <InternalsVisibleTo Include="ModelContextProtocol.Tests" />
-    <InternalsVisibleTo Include="AspNetCoreSseServer" />
   </ItemGroup>
-  
+
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions"/>
     <PackageReference Include="Microsoft.Extensions.AI" />

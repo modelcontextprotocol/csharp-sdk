@@ -96,7 +96,7 @@ public static partial class McpServerBuilderExtensions
             {
                 Name = function.Name,
                 Description = function.Description,
-                InputSchema = JsonSerializer.Deserialize(function.JsonSchema, JsonSerializerOptionsExtensions.JsonContext.Default.JsonSchema),
+                InputSchema = JsonSerializer.Deserialize(function.JsonSchema, McpJsonUtilities.JsonContext.Default.JsonSchema),
             });
 
             callbacks.Add(function.Name, async (request, cancellationToken) =>

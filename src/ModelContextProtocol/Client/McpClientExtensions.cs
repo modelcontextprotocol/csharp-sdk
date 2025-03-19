@@ -483,7 +483,7 @@ public static class McpClientExtensions
                 ["description"] = tool.Description ?? string.Empty,
                 ["properties"] = tool.InputSchema?.Properties ?? [],
                 ["required"] = tool.InputSchema?.Required ?? []
-            }, JsonSerializerOptionsExtensions.JsonContext.Default.DictionaryStringObject);
+            }, McpJsonUtilities.JsonContext.Default.DictionaryStringObject);
 
         /// <inheritdoc/>
         protected async override Task<object?> InvokeCoreAsync(
@@ -501,7 +501,7 @@ public static class McpClientExtensions
             }
 
             CallToolResponse result = await client.CallToolAsync(tool.Name, argDict, cancellationToken).ConfigureAwait(false);
-            return JsonSerializer.SerializeToElement(result, JsonSerializerOptionsExtensions.JsonContext.Default.CallToolResponse);
+            return JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.CallToolResponse);
         }
     }
 }
