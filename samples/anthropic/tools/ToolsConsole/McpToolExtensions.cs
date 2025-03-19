@@ -16,9 +16,7 @@ public static class McpToolExtensions
         List<Anthropic.SDK.Common.Tool> result = [];
         foreach (var tool in tools)
         {
-            var function = tool.InputSchema == null
-                ? new Function(tool.Name, tool.Description)
-                : new Function(tool.Name, tool.Description, JsonSerializer.Serialize(tool.InputSchema));
+            var function = new Function(tool.Name, tool.Description, JsonSerializer.SerializeToNode(tool.InputSchema));
             result.Add(function);
         }
         return result;

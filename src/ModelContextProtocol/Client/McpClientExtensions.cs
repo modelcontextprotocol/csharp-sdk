@@ -466,7 +466,7 @@ public static class McpClientExtensions
     /// <summary>Provides an AI function that calls a tool through <see cref="IMcpClient"/>.</summary>
     private sealed class McpAIFunction(IMcpClient client, Tool tool) : AIFunction
     {
-        private JsonElement? _jsonSchema;
+        private JsonElement? _jsonSchema = tool.InputSchema;
 
         /// <inheritdoc/>
         public override string Name => tool.Name;
@@ -481,8 +481,8 @@ public static class McpClientExtensions
                 ["type"] = "object",
                 ["title"] = tool.Name,
                 ["description"] = tool.Description ?? string.Empty,
-                ["properties"] = tool.InputSchema?.Properties ?? [],
-                ["required"] = tool.InputSchema?.Required ?? []
+                ["properties"] = new Dictionary<string, object?>(),
+                ["required"] = Array.Empty<object>(),
             }, McpJsonUtilities.JsonContext.Default.DictionaryStringObject);
 
         /// <inheritdoc/>

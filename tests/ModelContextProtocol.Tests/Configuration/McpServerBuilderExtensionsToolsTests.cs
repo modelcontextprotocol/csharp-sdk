@@ -48,16 +48,10 @@ public class McpServerBuilderExtensionsToolsTests
         var tool = result.Tools[0];
         Assert.Equal("Echo", tool.Name);
         Assert.Equal("Echoes the input back to the client.", tool.Description);
-        Assert.NotNull(tool.InputSchema);
-        Assert.Equal("object", tool.InputSchema.Type);
-        Assert.NotNull(tool.InputSchema.Properties);
-        Assert.NotEmpty(tool.InputSchema.Properties);
-        Assert.Contains("message", tool.InputSchema.Properties);
-        Assert.Equal("string", tool.InputSchema.Properties["message"].Type);
-        Assert.Equal("the echoes message", tool.InputSchema.Properties["message"].Description);
-        Assert.NotNull(tool.InputSchema.Required);
-        Assert.NotEmpty(tool.InputSchema.Required);
-        Assert.Contains("message", tool.InputSchema.Required);
+        Assert.Equal("object", tool.InputSchema.GetProperty("type").GetString());
+        Assert.Equal(JsonValueKind.Object, tool.InputSchema.GetProperty("properties").GetProperty("message").ValueKind);
+        Assert.Equal("the echoes message", tool.InputSchema.GetProperty("properties").GetProperty("message").GetProperty("description").GetString());
+        Assert.Equal(1, tool.InputSchema.GetProperty("required").GetArrayLength());
 
         tool = result.Tools[1];
         Assert.Equal("double_echo", tool.Name);
@@ -288,31 +282,15 @@ public class McpServerBuilderExtensionsToolsTests
         var tool = result.Tools.First(t => t.Name == "TestTool");
         Assert.Equal("TestTool", tool.Name);
         Assert.Empty(tool.Description!);
-        Assert.NotNull(tool.InputSchema);
-        Assert.Equal("object", tool.InputSchema.Type);
-        Assert.NotNull(tool.InputSchema.Properties);
-        Assert.NotEmpty(tool.InputSchema.Properties);
+        Assert.Equal("object", tool.InputSchema.GetProperty("type").GetString());
 
-        Assert.Contains("number", tool.InputSchema.Properties);
-        Assert.Equal("integer", tool.InputSchema.Properties["number"].Type);
-
-        Assert.Contains("otherNumber", tool.InputSchema.Properties);
-        Assert.Equal("number", tool.InputSchema.Properties["otherNumber"].Type);
-
-        Assert.Contains("someCheck", tool.InputSchema.Properties);
-        Assert.Equal("boolean", tool.InputSchema.Properties["someCheck"].Type);
-
-        Assert.Contains("someDate", tool.InputSchema.Properties);
-        Assert.Equal("string", tool.InputSchema.Properties["someDate"].Type);
-
-        Assert.Contains("someOtherDate", tool.InputSchema.Properties);
-        Assert.Equal("string", tool.InputSchema.Properties["someOtherDate"].Type);
-
-        Assert.Contains("data", tool.InputSchema.Properties);
-        Assert.Equal("array", tool.InputSchema.Properties["data"].Type);
-
-        Assert.Contains("complexObject", tool.InputSchema.Properties);
-        Assert.Equal("object", tool.InputSchema.Properties["complexObject"].Type);
+        Assert.Contains("integer", tool.InputSchema.GetProperty("properties").GetProperty("number").GetProperty("type").GetString());
+        Assert.Contains("number", tool.InputSchema.GetProperty("properties").GetProperty("otherNumber").GetProperty("type").GetString());
+        Assert.Contains("boolean", tool.InputSchema.GetProperty("properties").GetProperty("someCheck").GetProperty("type").GetString());
+        Assert.Contains("string", tool.InputSchema.GetProperty("properties").GetProperty("someDate").GetProperty("type").GetString());
+        Assert.Contains("string", tool.InputSchema.GetProperty("properties").GetProperty("someOtherDate").GetProperty("type").GetString());
+        Assert.Contains("array", tool.InputSchema.GetProperty("properties").GetProperty("data").GetProperty("type").GetString());
+        Assert.Contains("object", tool.InputSchema.GetProperty("properties").GetProperty("complexObject").GetProperty("type").GetString());
     }
 
     [McpToolType]

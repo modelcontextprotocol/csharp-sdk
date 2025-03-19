@@ -1,10 +1,11 @@
-﻿using System.Text;
+﻿using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
-using Microsoft.Extensions.Logging;
 using Serilog;
+using System.Text;
+using System.Text.Json;
 
 namespace ModelContextProtocol.TestServer;
 
@@ -91,28 +92,39 @@ internal static class Program
                         {
                             Name = "echo",
                             Description = "Echoes the input back to the client.",
-                            InputSchema = new JsonSchema()
-                            {
-                                Type = "object",
-                                Properties = new Dictionary<string, JsonSchemaProperty>()
+                            InputSchema = JsonSerializer.SerializeToElement("""
                                 {
-                                    ["message"] = new JsonSchemaProperty() { Type = "string", Description = "The input to echo back." }
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "description": "The input to echo back."
+                                        }
+                                    },
+                                    "required": ["message"]
                                 }
-                            },
+                                """),
                         },
                         new Tool()
                         {
                             Name = "sampleLLM",
                             Description = "Samples from an LLM using MCP's sampling feature.",
-                            InputSchema = new JsonSchema()
-                            {
-                                Type = "object",
-                                Properties = new Dictionary<string, JsonSchemaProperty>()
+                            InputSchema = JsonSerializer.SerializeToElement("""
                                 {
-                                    ["prompt"] = new JsonSchemaProperty() { Type = "string", Description = "The prompt to send to the LLM" },
-                                    ["maxTokens"] = new JsonSchemaProperty() { Type = "number", Description = "Maximum number of tokens to generate" }
+                                    "type": "object",
+                                    "properties": {
+                                        "prompt": {
+                                            "type": "string",
+                                            "description": "The prompt to send to the LLM"
+                                        },
+                                        "maxTokens": {
+                                            "type": "number",
+                                            "description": "Maximum number of tokens to generate"
+                                        }
+                                    },
+                                    "required": ["prompt", "maxTokens"]
                                 }
-                            },
+                                """),
                         }
                     ]
                 });

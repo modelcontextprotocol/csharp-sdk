@@ -1,4 +1,5 @@
-﻿using System.Text.Json.Serialization;
+﻿using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol.Types;
 
@@ -24,5 +25,5 @@ public class Tool
     /// A JSON Schema object defining the expected parameters for the tool.
     /// </summary>
     [JsonPropertyName("inputSchema")]
-    public JsonSchema? InputSchema { get; set; }
+    public JsonElement InputSchema { get; set; }
 }
