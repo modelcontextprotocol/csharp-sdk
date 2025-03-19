@@ -65,7 +65,7 @@ public class McpClientFactoryTests
         };
 
         // Act
-        var client = await McpClientFactory.CreateAsync(
+        await using var client = await McpClientFactory.CreateAsync(
             serverConfig,
             _defaultOptions,
             (_, __) => new NopTransport());
@@ -88,7 +88,7 @@ public class McpClientFactoryTests
         };
 
         // Act
-        var client = await McpClientFactory.CreateAsync(
+        await using var client = await McpClientFactory.CreateAsync(
             serverConfig,
             _defaultOptions,
             (_, __) => new NopTransport());
@@ -111,7 +111,7 @@ public class McpClientFactoryTests
         };
 
         // Act
-        var client = await McpClientFactory.CreateAsync(
+        await using var client = await McpClientFactory.CreateAsync(
             serverConfig,
             _defaultOptions,
             (_, __) => new NopTransport());
@@ -141,7 +141,7 @@ public class McpClientFactoryTests
         };
 
         // Act
-        var client = await McpClientFactory.CreateAsync(
+        await using var client = await McpClientFactory.CreateAsync(
             serverConfig,
             _defaultOptions,
             (_, __) => new NopTransport());

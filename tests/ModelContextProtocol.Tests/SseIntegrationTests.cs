@@ -37,7 +37,7 @@ public class SseIntegrationTests
         };
 
         // Act
-        var client = await McpClientFactory.CreateAsync(defaultConfig, defaultOptions, loggerFactory: loggerFactory);
+        await using var client = await McpClientFactory.CreateAsync(defaultConfig, defaultOptions, loggerFactory: loggerFactory);
 
         // Wait for SSE connection to be established
         await server.WaitForConnectionAsync(TimeSpan.FromSeconds(10));
@@ -82,7 +82,7 @@ public class SseIntegrationTests
         };
 
         // Create client and run tests
-        var client = await McpClientFactory.CreateAsync(defaultConfig, defaultOptions, loggerFactory: loggerFactory);
+        await using var client = await McpClientFactory.CreateAsync(defaultConfig, defaultOptions, loggerFactory: loggerFactory);
         var tools = await client.ListToolsAsync().ToListAsync();
 
         // assert
@@ -147,7 +147,7 @@ public class SseIntegrationTests
             },
         };
 
-        var client = await McpClientFactory.CreateAsync(defaultConfig, defaultOptions, loggerFactory: loggerFactory);
+        await using var client = await McpClientFactory.CreateAsync(defaultConfig, defaultOptions, loggerFactory: loggerFactory);
 
         // Call the server's sampleLLM tool which should trigger our sampling handler
         var result = await client.CallToolAsync(
@@ -194,7 +194,7 @@ public class SseIntegrationTests
         };
 
         // Act
-        var client = await McpClientFactory.CreateAsync(defaultConfig, defaultOptions, loggerFactory: loggerFactory);
+        await using var client = await McpClientFactory.CreateAsync(defaultConfig, defaultOptions, loggerFactory: loggerFactory);
 
         // Wait for SSE connection to be established
         await server.WaitForConnectionAsync(TimeSpan.FromSeconds(10));
@@ -233,7 +233,7 @@ public class SseIntegrationTests
         };
 
         // Act
-        var client = await McpClientFactory.CreateAsync(defaultConfig, defaultOptions, loggerFactory: loggerFactory);
+        await using var client = await McpClientFactory.CreateAsync(defaultConfig, defaultOptions, loggerFactory: loggerFactory);
 
         // Wait for SSE connection to be established
         await server.WaitForConnectionAsync(TimeSpan.FromSeconds(10));
@@ -282,7 +282,7 @@ public class SseIntegrationTests
         };
 
         // Act
-        var client = await McpClientFactory.CreateAsync(defaultConfig, defaultOptions, loggerFactory: loggerFactory);
+        await using var client = await McpClientFactory.CreateAsync(defaultConfig, defaultOptions, loggerFactory: loggerFactory);
         var mcpClient = (McpClient)client;
         var transport = (SseClientTransport)mcpClient.Transport;
 

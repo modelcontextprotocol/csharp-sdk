@@ -63,8 +63,6 @@ public class SseServerIntegrationTestFixture : IDisposable
     {
         try
         {
-            var client = McpClientFactory.CreateAsync(DefaultConfig, DefaultOptions, loggerFactory: LoggerFactory).GetAwaiter().GetResult();
-            client.DisposeAsync().AsTask().Wait();
             LoggerFactory?.Dispose();
         }
         finally
