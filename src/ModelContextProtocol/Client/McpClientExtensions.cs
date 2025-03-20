@@ -466,8 +466,6 @@ public static class McpClientExtensions
     /// <summary>Provides an AI function that calls a tool through <see cref="IMcpClient"/>.</summary>
     private sealed class McpAIFunction(IMcpClient client, Tool tool) : AIFunction
     {
-        private JsonElement? _jsonSchema = tool.InputSchema;
-
         /// <inheritdoc/>
         public override string Name => tool.Name;
 
@@ -475,15 +473,7 @@ public static class McpClientExtensions
         public override string Description => tool.Description ?? string.Empty;
 
         /// <inheritdoc/>
-        public override JsonElement JsonSchema => _jsonSchema ??=
-            JsonSerializer.SerializeToElement(new Dictionary<string, object>
-            {
-                ["type"] = "object",
-                ["title"] = tool.Name,
-                ["description"] = tool.Description ?? string.Empty,
-                ["properties"] = new Dictionary<string, object?>(),
-                ["required"] = Array.Empty<object>(),
-            }, McpJsonUtilities.JsonContext.Default.DictionaryStringObject);
+        public override JsonElement JsonSchema => tool.InputSchema;
 
         /// <inheritdoc/>
         protected async override Task<object?> InvokeCoreAsync(
