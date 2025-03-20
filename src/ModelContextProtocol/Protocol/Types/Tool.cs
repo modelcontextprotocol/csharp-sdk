@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using ModelContextProtocol.Utils.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol.Types;
@@ -24,6 +25,23 @@ public class Tool
     /// <summary>
     /// A JSON Schema object defining the expected parameters for the tool.
     /// </summary>
+    /// <remarks>
+    /// Needs to a valid JSON schema object that additionally is of type object.
+    /// </remarks>
     [JsonPropertyName("inputSchema")]
-    public JsonElement InputSchema { get; set; }
+    public JsonElement InputSchema 
+    { 
+        get => _inputSchema; 
+        set
+        {
+            if (!McpJsonUtilities.IsValidMcpToolSchema(value))
+            {
+                throw new ArgumentException("The specified document is not a valid MPC tool JSON schema.", nameof(InputSchema));
+            }
+
+            _inputSchema = value;
+        }
+    }
+
+    private JsonElement _inputSchema = McpJsonUtilities.DefaultMcpToolSchema;
 }

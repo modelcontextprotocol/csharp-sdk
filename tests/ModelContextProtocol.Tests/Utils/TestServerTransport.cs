@@ -1,6 +1,7 @@
 ﻿using System.Threading.Channels;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
+using ModelContextProtocol.Protocol.Types;
 
 namespace ModelContextProtocol.Tests.Utils;
 
@@ -71,7 +72,7 @@ public class TestServerTransport : IServerTransport
         await WriteMessageAsync(new JsonRpcResponse
         {
             Id = request.Id,
-            Result = new Protocol.Types.CreateMessageResult { Content = new(), Model = "model", Role = "role" }
+            Result = new CreateMessageResult { Content = new(), Model = "model", Role = "role" }
         }, cancellationToken);
     }
 

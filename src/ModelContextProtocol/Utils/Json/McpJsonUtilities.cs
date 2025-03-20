@@ -77,6 +77,31 @@ public static partial class McpJsonUtilities
     internal static JsonTypeInfo<T> GetTypeInfo<T>(this JsonSerializerOptions options) =>
         (JsonTypeInfo<T>)options.GetTypeInfo(typeof(T));
 
+    internal static JsonElement DefaultMcpToolSchema = ParseJsonElement("{\"type\":\"object\"}"u8);
+    internal static bool IsValidMcpToolSchema(JsonElement element)
+    {
+        if (element.ValueKind is not JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        foreach (JsonProperty property in element.EnumerateObject())
+        {
+            if (property.NameEquals("type"))
+            {
+                if (property.Value.ValueKind is not JsonValueKind.String ||
+                    !property.Value.ValueEquals("object"))
+                {
+                    return false;
+                }
+
+                return true; // No need to check other properties
+            }
+        }
+
+        return false; // No type keyword found.
+    }
+
     // Keep in sync with CreateDefaultOptions above.
     [JsonSourceGenerationOptions(JsonSerializerDefaults.Web,
         UseStringEnumConverter = true,
@@ -98,4 +123,11 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(InitializeResult))]
     [JsonSerializable(typeof(CallToolResponse))]
     internal sealed partial class JsonContext : JsonSerializerContext;
+
+    private static JsonElement ParseJsonElement(ReadOnlySpan<byte> utf8Json)
+    {
+        Utf8JsonReader reader = new(utf8Json);
+        return JsonElement.ParseValue(ref reader);
+    }
+
 }

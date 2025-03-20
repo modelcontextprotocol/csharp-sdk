@@ -122,7 +122,7 @@ internal class Program
                             {
                                 Name = "echo",
                                 Description = "Echoes the input back to the client.",
-                                InputSchema = JsonSerializer.SerializeToElement("""
+                                InputSchema = JsonSerializer.Deserialize<JsonElement>("""
                                     {
                                         "type": "object",
                                         "properties": {
@@ -139,7 +139,7 @@ internal class Program
                             {
                                 Name = "sampleLLM",
                                 Description = "Samples from an LLM using MCP's sampling feature.",
-                                InputSchema = JsonSerializer.SerializeToElement("""
+                                InputSchema = JsonSerializer.Deserialize<JsonElement>("""
                                     {
                                         "type": "object",
                                         "properties": {
