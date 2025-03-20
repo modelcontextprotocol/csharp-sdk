@@ -13,7 +13,7 @@
     <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="$(MicrosoftExtensionsAIVersion)" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="$(MicrosoftExtensionsVersion)" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="$(MicrosoftExtensionsVersion)" />
-    <PackageVersion Include="System.Net.ServerSentEvents" Version="$(SystemVersion)" />
+    <PackageVersion Include="System.Net.ServerSentEvents" Version="$(System10Version)" />
     <PackageVersion Include="System.Text.Json" Version="$(SystemVersion)" />
     <PackageVersion Include="System.Threading.Channels" Version="$(SystemVersion)" />
 

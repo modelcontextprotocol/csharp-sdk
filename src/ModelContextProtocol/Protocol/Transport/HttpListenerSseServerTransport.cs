@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using System.Net;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Utils.Json;
@@ -9,7 +10,7 @@ using ModelContextProtocol.Utils;
 namespace ModelContextProtocol.Protocol.Transport;
 
 /// <summary>
-/// Implements the MCP transport protocol over standard input/output streams.
+/// Implements the MCP transport protocol using <see cref="HttpListener"/>.
 /// </summary>
 public sealed class HttpListenerSseServerTransport : TransportBase, IServerTransport
 {
