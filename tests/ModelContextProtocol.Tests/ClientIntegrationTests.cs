@@ -537,9 +537,6 @@ public class ClientIntegrationTests : IClassFixture<ClientIntegrationTestFixture
 
     private static void SkipTestIfNoOpenAIKey()
     {
-        if (string.IsNullOrEmpty(s_openAIKey))
-        {
-            throw SkipException.ForSkip("No OpenAI key provided. Skipping test.");
-        }
+        Assert.SkipWhen(s_openAIKey is null, "No OpenAI key provided. Skipping test.");
     }
 }

@@ -57,10 +57,7 @@ public class SseIntegrationTests
     [Trait("Execution", "Manual")]
     public async Task ConnectAndReceiveMessage_EverythingServerWithSse()
     {
-        if (!EverythingSseServerFixture.IsDockerAvailable)
-        {
-            return;
-        }
+        Assert.SkipWhen(!EverythingSseServerFixture.IsDockerAvailable, "docker is not available");
 
         using var loggerFactory = LoggerFactory.Create(builder =>
             builder.AddConsole()
@@ -101,10 +98,7 @@ public class SseIntegrationTests
     [Trait("Execution", "Manual")]
     public async Task Sampling_Sse_EverythingServer()
     {
-        if (!EverythingSseServerFixture.IsDockerAvailable)
-        {
-            return;
-        }
+        Assert.SkipWhen(!EverythingSseServerFixture.IsDockerAvailable, "docker is not available");
 
         // arrange
         using var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
