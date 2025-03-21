@@ -4,7 +4,6 @@ using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using Serilog;
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 
