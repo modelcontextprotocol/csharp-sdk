@@ -1,5 +1,5 @@
 {
-    "$schema": "https://raw.githubusercontent.com/dotnet/Nerdbank.GitVersioning/main/src/NerdBank.GitVersioning/version.schema.json",
+    "$schema": "https://raw.githubusercontent.com/dotnet/Nerdbank.GitVersioning/refs/heads/main/src/NerdBank.GitVersioning/version.schema.json",
     "version": "0.1.0-preview",
     "publicReleaseRefSpec": [
       "^refs/heads/main$",
