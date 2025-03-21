@@ -1,5 +1,4 @@
 ﻿using ModelContextProtocol.Server;
-using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Text;
 
@@ -8,7 +7,6 @@ namespace ModelContextProtocol.Protocol.Transport;
 /// <summary>
 /// HTTP server provider using HttpListener.
 /// </summary>
-[ExcludeFromCodeCoverage]
 internal class HttpListenerServerProvider : IDisposable
 {
     private static readonly byte[] s_accepted = "Accepted"u8.ToArray();
@@ -30,11 +28,6 @@ internal class HttpListenerServerProvider : IDisposable
     public HttpListenerServerProvider(int port)
     {
         _port = port;
-    }
-
-    public Task<string> GetSseEndpointUri()
-    {
-        return Task.FromResult($"http://localhost:{_port}{SseEndpoint}");
     }
 
     public Task InitializeMessageHandler(Func<string, CancellationToken, bool> messageHandler)
