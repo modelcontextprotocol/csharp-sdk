@@ -1,0 +1,76 @@
+# This workflow is triggered by new releases
+# It builds, tests, and publishes to the GitHub NuGet package registry
+name: Release package
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v2
+      with:
+        dotnet-version: |
+          9.0.x
+          8.0.x
+
+    # Netfx testing on non-Windows requires mono
+    - name: Setup Mono
+      run: sudo apt-get install -y mono-devel
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '20'
+
+    - name: Install dependencies for tests
+      run: npm install @modelcontextprotocol/server-everything
+
+    - name: Install dependencies for tests
+      run: npm install @modelcontextprotocol/server-memory
+
+    - name: Build and Pack
+      run: dotnet pack --configuration Release --output "${{ github.workspace }}/artifacts/packages"
+
+    - name: Test
+      run: dotnet test --filter '(Execution!=Manual)' --no-build --configuration Release
+
+  publish:
+    name: Publish Package
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Upload release asset
+        if: github.event_name == 'release'
+        run: gh release upload ${{ github.event.release.tag_name }}
+          ${{ github.workspace }}/build-artifacts/packages/*.*nupkg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: NuGet authentication for GitHub
+        run: dotnet nuget add source
+          "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
+          --name "github"
+          --username ${{ github.actor }}
+          --password ${{ secrets.GITHUB_TOKEN }}
+          --store-password-in-clear-text
+
+      - name: Publish to GitHub NuGet package registry
+        run: dotnet nuget push
+            ${{github.workspace}}/build-artifacts/packages/*.nupkg
+            --source "github"
+            --api-key ${{ secrets.GITHUB_TOKEN }}
+            --skip-duplicate
