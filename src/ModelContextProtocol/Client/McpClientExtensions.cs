@@ -144,7 +144,7 @@ public static class McpClientExtensions
     /// </summary>
     /// <param name="client">The client.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>An asynchronous sequence of resource information.</returns>
+    /// <returns>An asynchronous sequence of resource template information.</returns>
     public static async IAsyncEnumerable<ResourceTemplate> ListResourceTemplatesAsync(
         this IMcpClient client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
