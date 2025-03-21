@@ -38,12 +38,6 @@
     <Content Condition="$([MSBuild]::IsOSPlatform('Linux'))" Include="..\ModelContextProtocol.TestServer\bin\$(Configuration)\net8.0\TestServer.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Condition="$([MSBuild]::IsOSPlatform('Windows'))" Include="..\ModelContextProtocol.TestSseServer\bin\$(Configuration)\net8.0\TestSseServer.exe">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Condition="$([MSBuild]::IsOSPlatform('Linux'))" Include="..\ModelContextProtocol.TestSseServer\bin\$(Configuration)\net8.0\TestSseServer.dll">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
   </ItemGroup>
 
 </Project>
