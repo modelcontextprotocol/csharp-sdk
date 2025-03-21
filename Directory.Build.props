@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <PackageVersion>0.1.0-preview</PackageVersion>
     <RepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)'))</RepoRoot>
     <VSTestLogger>trx%3bLogFileName=$(MSBuildProjectName).$(TargetFramework).$(OS).trx</VSTestLogger>
     <VSTestResultsDirectory>$(RepoRoot)/artifacts/TestResults</VSTestResultsDirectory>

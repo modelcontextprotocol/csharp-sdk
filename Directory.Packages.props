@@ -19,7 +19,6 @@
 
     <!-- Build Infra & Packaging -->
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
-    <PackageVersion Include="Nerdbank.GitVersioning" Version="3.7.115" />
 
     <!-- Testing dependencies -->
     <PackageVersion Include="Anthropic.SDK" Version="4.7.1" />
