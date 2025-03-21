@@ -185,15 +185,7 @@ public class ClientIntegrationTests : IClassFixture<ClientIntegrationTestFixture
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
 
-        List<ResourceTemplate> allResourceTemplates = [];
-        string? cursor = null;
-        do
-        {
-            var resources = await client.ListResourceTemplatesAsync(cursor, CancellationToken.None);
-            allResourceTemplates.AddRange(resources.ResourceTemplates);
-            cursor = resources.NextCursor;
-        }
-        while (cursor != null);
+        List<ResourceTemplate> allResourceTemplates = await client.ListResourceTemplatesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
         // The server provides 2 test resource templates
         Assert.Single(allResourceTemplates);
