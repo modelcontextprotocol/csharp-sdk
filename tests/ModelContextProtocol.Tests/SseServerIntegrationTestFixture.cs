@@ -41,7 +41,13 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
     {
         LoggerFactory.Dispose();
         _stopCts.Cancel();
-        await _serverTask.ConfigureAwait(false);
+        try
+        {
+            await _serverTask.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
         _stopCts.Dispose();
     }
 }

@@ -27,9 +27,9 @@ public class Program
         });
     }
 
-    public static Task Main(string[] args) => MainAsync(args, CancellationToken.None);
+    public static Task Main(string[] args) => MainAsync(args);
 
-    public static async Task MainAsync(string[] args, CancellationToken cancellationToken)
+    public static async Task MainAsync(string[] args, CancellationToken cancellationToken = default)
     {
         Console.WriteLine("Starting server...");
 
@@ -394,8 +394,15 @@ public class Program
 
         Console.WriteLine("Server started.");
 
-        // Run until process is stopped by the client (parent process)
-        await Task.Delay(Timeout.Infinite, cancellationToken);
+        try
+        {
+            // Run until process is stopped by the client (parent process) or test
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+        }
+        finally
+        {
+            await server.DisposeAsync();
+        }
     }
 
     const string MCP_TINY_IMAGE =
