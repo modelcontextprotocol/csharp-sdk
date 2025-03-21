@@ -19,7 +19,7 @@ public sealed class SseResponseStreamTransport(Stream sseResponseStream) : ITran
     private Task? _sseWriteTask;
     private Utf8JsonWriter? _jsonWriter;
 
-    /// <inherityydoc/>
+    /// <inheritdoc/>
     public bool IsConnected => _sseWriteTask?.IsCompleted == false;
 
     /// <summary>
