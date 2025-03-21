@@ -9,38 +9,46 @@ on:
 jobs:
   build:
 
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v2
-      with:
-        dotnet-version: |
-          9.0.x
-          8.0.x
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v2
+        with:
+          dotnet-version: |
+            9.0.x
+            8.0.x
 
-    # Netfx testing on non-Windows requires mono
-    - name: Setup Mono
-      run: sudo apt-get install -y mono-devel
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '20'
+      - name: Install dependencies for tests
+        run: npm install @modelcontextprotocol/server-everything
 
-    - name: Install dependencies for tests
-      run: npm install @modelcontextprotocol/server-everything
+      - name: Install dependencies for tests
+        run: npm install @modelcontextprotocol/server-memory
 
-    - name: Install dependencies for tests
-      run: npm install @modelcontextprotocol/server-memory
+      - name: Build
+        run: dotnet build --configuration Release
 
-    - name: Build and Pack
-      run: dotnet pack --configuration Release --output "${{ github.workspace }}/artifacts/packages"
+      - name: Test
+        run: dotnet test --configuration Release --no-build --filter '(Execution!=Manual)'
 
-    - name: Test
-      run: dotnet test --filter '(Execution!=Manual)' --no-build --configuration Release
+      - name: Pack
+        run: dotnet pack --configuration Release --output "${{ github.workspace }}/artifacts/packages"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: build-artifacts
+          path: ${{ github.workspace }}/artifacts
 
   publish:
     name: Publish Package
@@ -49,6 +57,13 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v2
+        with:
+          dotnet-version: |
+            9.0.x
+            8.0.x
 
       - name: Download build artifacts
         uses: actions/download-artifact@v4
