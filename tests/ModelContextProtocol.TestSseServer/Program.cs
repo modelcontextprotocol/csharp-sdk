@@ -207,10 +207,10 @@ internal class Program
                     {
                         ResourceTemplates = [
                             new ResourceTemplate()
-                        {
-                            UriTemplate = "test://dynamic/resource/{id}",
-                            Name = "Dynamic Resource",
-                        }
+                            {
+                                UriTemplate = "test://dynamic/resource/{id}",
+                                Name = "Dynamic Resource",
+                            }
                         ]
                     });
                 },
