@@ -319,6 +319,13 @@ public class McpServerTests
                             ResourceTemplates = [new() { UriTemplate = "test", Name = "Test Resource" }]
                         });
                     },
+                    ListResourcesHandler = (request, ct) =>
+                    {
+                        return Task.FromResult(new ListResourcesResult
+                        {
+                            Resources = [new() { Uri = "test", Name = "Test Resource" }]
+                        });
+                    },
                     ReadResourceHandler = (request, ct) => throw new NotImplementedException(),
                 }
             },

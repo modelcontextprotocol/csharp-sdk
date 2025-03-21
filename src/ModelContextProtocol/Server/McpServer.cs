@@ -147,13 +147,15 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
         }
 
         if (resourcesCapability.ListResourcesHandler is not { } listResourcesHandler ||
-            resourcesCapability.ReadResourceHandler is not { } readResourceHandler ||
-            resourcesCapability.ListResourceTemplatesHandler is not { } listResourceTemplatesHandler)
+            resourcesCapability.ReadResourceHandler is not { } readResourceHandler)
         {
             throw new McpServerException("Resources capability was enabled, but ListResources and/or ReadResource handlers were not specified.");
         }
 
-        SetRequestHandler<ListResourceTemplatesRequestParams, ListResourceTemplatesResult>("resources/templates/list", (request, ct) => listResourceTemplatesHandler(new(this, request), ct));
+        if (resourcesCapability.ListResourceTemplatesHandler is { } listResourceTemplatesHandler)
+        {
+            SetRequestHandler<ListResourceTemplatesRequestParams, ListResourceTemplatesResult>("resources/templates/list", (request, ct) => listResourceTemplatesHandler(new(this, request), ct));
+        }
         SetRequestHandler<ListResourcesRequestParams, ListResourcesResult>("resources/list", (request, ct) => listResourcesHandler(new(this, request), ct));
         SetRequestHandler<ReadResourceRequestParams, ReadResourceResult>("resources/read", (request, ct) => readResourceHandler(new(this, request), ct));
 
