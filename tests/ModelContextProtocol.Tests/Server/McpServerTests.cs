@@ -305,6 +305,37 @@ public class McpServerTests
     }
 
     [Fact]
+    public async Task Can_Handle_ResourceTemplates_List_Requests()
+    {
+        await Can_Handle_Requests(
+            new ServerCapabilities
+            {
+                Resources = new()
+                {
+                    ListResourceTemplatesHandler = (request, ct) =>
+                    {
+                        return Task.FromResult(new ListResourceTemplatesResult
+                        {
+                            ResourceTemplates = [new() { UriTemplate = "test", Name = "Test Resource" }]
+                        });
+                    },
+                    ReadResourceHandler = (request, ct) => throw new NotImplementedException(),
+                }
+            },
+            "resources/templates/list",
+            configureOptions: null,
+            assertResult: response =>
+            {
+                Assert.IsType<ListResourceTemplatesResult>(response);
+
+                var result = (ListResourceTemplatesResult)response;
+                Assert.NotNull(result.ResourceTemplates);
+                Assert.NotEmpty(result.ResourceTemplates);
+                Assert.Equal("test", result.ResourceTemplates[0].UriTemplate);
+            });
+    }
+
+    [Fact]
     public async Task Can_Handle_Resources_List_Requests()
     {
         await Can_Handle_Requests(
