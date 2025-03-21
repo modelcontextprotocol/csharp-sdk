@@ -73,8 +73,11 @@ public sealed class HttpListenerSseServerTransport : TransportBase, IServerTrans
 
         try
         {
-            var json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions.GetTypeInfo<IJsonRpcMessage>());
-            _logger.TransportSendingMessage(EndpointName, id, json);
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                var json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions.GetTypeInfo<IJsonRpcMessage>());
+                _logger.TransportSendingMessage(EndpointName, id, json);
+            }
 
             await _sseResponseStreamTransport.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
 
@@ -117,13 +120,27 @@ public sealed class HttpListenerSseServerTransport : TransportBase, IServerTrans
     /// Handles HTTP messages received by the HTTP server provider.
     /// </summary>
     /// <returns>true if the message was accepted (return 202), false otherwise (return 400)</returns>
-    private async Task<bool> OnMessageAsync(string request, CancellationToken cancellationToken)
+    private async Task<bool> OnMessageAsync(Stream requestStream, CancellationToken cancellationToken)
     {
-        _logger.TransportReceivedMessage(EndpointName, request);
+        string request;
+        IJsonRpcMessage? message = null;
+
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            using var reader = new StreamReader(requestStream);
+            request = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+            message = JsonSerializer.Deserialize(request, McpJsonUtilities.DefaultOptions.GetTypeInfo<IJsonRpcMessage>());
+
+            _logger.TransportReceivedMessage(EndpointName, request);
+        }
+        else
+        {
+            request = "(Enable information-level logs to see the request)";
+        }
 
         try
         {
-            var message = JsonSerializer.Deserialize(request, McpJsonUtilities.DefaultOptions.GetTypeInfo<IJsonRpcMessage>());
+            message ??= await JsonSerializer.DeserializeAsync(requestStream, McpJsonUtilities.DefaultOptions.GetTypeInfo<IJsonRpcMessage>());
             if (message != null)
             {
                 string messageId = "(no id)";

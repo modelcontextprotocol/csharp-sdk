@@ -28,7 +28,7 @@ internal class HttpListenerServerProvider : IDisposable
     }
 
     public required Func<Stream, CancellationToken, Task> OnSseConnectionAsync { get; set; }
-    public required Func<string, CancellationToken, Task<bool>> OnMessageAsync { get; set; }
+    public required Func<Stream, CancellationToken, Task<bool>> OnMessageAsync { get; set; }
 
     /// <inheritdoc/>
     public Task StartAsync(CancellationToken cancellationToken = default)
@@ -169,15 +169,8 @@ internal class HttpListenerServerProvider : IDisposable
         var request = context.Request;
         var response = context.Response;
 
-        // Read the request body
-        string requestBody;
-        using (var reader = new StreamReader(request.InputStream, request.ContentEncoding))
-        {
-            requestBody = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
-        }
-
         // Process the message asynchronously
-        if (await OnMessageAsync(requestBody, cancellationToken))
+        if (await OnMessageAsync(request.InputStream, cancellationToken))
         {
             // Return 202 Accepted
             response.StatusCode = 202;
