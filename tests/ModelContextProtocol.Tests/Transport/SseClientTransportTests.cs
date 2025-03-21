@@ -5,7 +5,6 @@ using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Tests.Utils;
 using System.Net;
 using System.Reflection;
-using System.Reflection.Metadata;
 
 namespace ModelContextProtocol.Tests.Transport;
 
