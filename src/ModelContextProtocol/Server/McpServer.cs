@@ -159,7 +159,7 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
         var listResourceTemplatesHandler = resourcesCapability.ListResourceTemplatesHandler
             ?? (static (_, _) => Task.FromResult(new ListResourceTemplatesResult()));
 
-		SetRequestHandler<ListResourceTemplatesRequestParams, ListResourceTemplatesResult>("resources/templates/list", (request, ct) => listResourceTemplatesHandler(new(this, request), ct));
+        SetRequestHandler<ListResourceTemplatesRequestParams, ListResourceTemplatesResult>("resources/templates/list", (request, ct) => listResourceTemplatesHandler(new(this, request), ct));
 
         if (resourcesCapability.Subscribe is not true)
         {
