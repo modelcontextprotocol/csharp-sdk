@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using System.Net;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Utils.Json;
@@ -9,16 +10,15 @@ using ModelContextProtocol.Utils;
 namespace ModelContextProtocol.Protocol.Transport;
 
 /// <summary>
-/// Implements the MCP transport protocol over standard input/output streams.
+/// Implements the MCP transport protocol using <see cref="HttpListener"/>.
 /// </summary>
 public sealed class HttpListenerSseServerTransport : TransportBase, IServerTransport
 {
     private readonly string _serverName;
     private readonly HttpListenerServerProvider _httpServerProvider;
     private readonly ILogger<HttpListenerSseServerTransport> _logger;
-    private readonly JsonSerializerOptions _jsonOptions;
-    private CancellationTokenSource? _shutdownCts;
-    
+    private SseResponseStreamTransport? _sseResponseStreamTransport;
+
     private string EndpointName => $"Server (SSE) ({_serverName})";
 
     /// <summary>
@@ -43,28 +43,23 @@ public sealed class HttpListenerSseServerTransport : TransportBase, IServerTrans
     {
         _serverName = serverName;
         _logger = loggerFactory.CreateLogger<HttpListenerSseServerTransport>();
-        _jsonOptions = McpJsonUtilities.DefaultOptions;
-        _httpServerProvider = new HttpListenerServerProvider(port);
+        _httpServerProvider = new HttpListenerServerProvider(port)
+        {
+            OnSseConnectionAsync = OnSseConnectionAsync,
+            OnMessageAsync = OnMessageAsync,
+        };
     }
 
     /// <inheritdoc/>
     public Task StartListeningAsync(CancellationToken cancellationToken = default)
     {
-        _shutdownCts = new CancellationTokenSource();
-
-        _httpServerProvider.InitializeMessageHandler(HttpMessageHandler);
-        _httpServerProvider.StartAsync(cancellationToken);
-
-        SetConnected(true);
-
-        return Task.CompletedTask;
+        return _httpServerProvider.StartAsync(cancellationToken);
     }
-
 
     /// <inheritdoc/>
     public override async Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
     {
-        if (!IsConnected)
+        if (!IsConnected || _sseResponseStreamTransport is null)
         {
             _logger.TransportNotConnected(EndpointName);
             throw new McpTransportException("Transport is not connected");
@@ -78,10 +73,13 @@ public sealed class HttpListenerSseServerTransport : TransportBase, IServerTrans
 
         try
         {
-            var json = JsonSerializer.Serialize(message, _jsonOptions.GetTypeInfo<IJsonRpcMessage>());
-            _logger.TransportSendingMessage(EndpointName, id, json);
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                var json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions.GetTypeInfo<IJsonRpcMessage>());
+                _logger.TransportSendingMessage(EndpointName, id, json);
+            }
 
-            await _httpServerProvider.SendEvent(json, "message").ConfigureAwait(false);
+            await _sseResponseStreamTransport.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
 
             _logger.TransportSentMessage(EndpointName, id);
         }
@@ -99,49 +97,61 @@ public sealed class HttpListenerSseServerTransport : TransportBase, IServerTrans
         GC.SuppressFinalize(this);
     }
 
-    private async Task CleanupAsync(CancellationToken cancellationToken)
+    private Task CleanupAsync(CancellationToken cancellationToken)
     {
         _logger.TransportCleaningUp(EndpointName);
 
-        if (_shutdownCts != null)
-        {
-            await _shutdownCts.CancelAsync().ConfigureAwait(false);
-            _shutdownCts.Dispose();
-            _shutdownCts = null;
-        }
-
         _httpServerProvider.Dispose();
-
         SetConnected(false);
+
         _logger.TransportCleanedUp(EndpointName);
+        return Task.CompletedTask;
+    }
+
+    private async Task OnSseConnectionAsync(Stream responseStream, CancellationToken cancellationToken)
+    {
+        await using var sseResponseStreamTransport = new SseResponseStreamTransport(responseStream);
+        _sseResponseStreamTransport = sseResponseStreamTransport;
+        SetConnected(true);
+        await sseResponseStreamTransport.RunAsync(cancellationToken);
     }
 
     /// <summary>
     /// Handles HTTP messages received by the HTTP server provider.
     /// </summary>
     /// <returns>true if the message was accepted (return 202), false otherwise (return 400)</returns>
-    private bool HttpMessageHandler(string request, CancellationToken cancellationToken)
+    private async Task<bool> OnMessageAsync(Stream requestStream, CancellationToken cancellationToken)
     {
-        _logger.TransportReceivedMessage(EndpointName, request);
+        string request;
+        IJsonRpcMessage? message = null;
+
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            using var reader = new StreamReader(requestStream);
+            request = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+            message = JsonSerializer.Deserialize(request, McpJsonUtilities.DefaultOptions.GetTypeInfo<IJsonRpcMessage>());
+
+            _logger.TransportReceivedMessage(EndpointName, request);
+        }
+        else
+        {
+            request = "(Enable information-level logs to see the request)";
+        }
 
         try
         {
-            var message = JsonSerializer.Deserialize(request, _jsonOptions.GetTypeInfo<IJsonRpcMessage>());
+            message ??= await JsonSerializer.DeserializeAsync(requestStream, McpJsonUtilities.DefaultOptions.GetTypeInfo<IJsonRpcMessage>());
             if (message != null)
             {
-                // Fire-and-forget the message to the message channel
-                Task.Run(async () =>
+                string messageId = "(no id)";
+                if (message is IJsonRpcMessageWithId messageWithId)
                 {
-                    string messageId = "(no id)";
-                    if (message is IJsonRpcMessageWithId messageWithId)
-                    {
-                        messageId = messageWithId.Id.ToString();
-                    }
+                    messageId = messageWithId.Id.ToString();
+                }
 
-                    _logger.TransportReceivedMessageParsed(EndpointName, messageId);
-                    await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
-                    _logger.TransportMessageWritten(EndpointName, messageId);
-                }, cancellationToken);
+                _logger.TransportReceivedMessageParsed(EndpointName, messageId);
+                await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
+                _logger.TransportMessageWritten(EndpointName, messageId);
 
                 return true;
             }
