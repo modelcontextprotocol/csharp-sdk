@@ -263,11 +263,11 @@ internal class Program
                         {
                             Contents = [
                                 new ResourceContents()
-                            {
-                                Uri = request.Params.Uri,
-                                MimeType = "text/plain",
-                                Text = $"Dynamic resource {id}: This is a plaintext resource"
-                            }
+                                {
+                                    Uri = request.Params.Uri,
+                                    MimeType = "text/plain",
+                                    Text = $"Dynamic resource {id}: This is a plaintext resource"
+                                }
                             ]
                         });
                     }
