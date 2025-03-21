@@ -1,6 +1,5 @@
-﻿using ModelContextProtocol.Server;
-using System.Net;
-using System.Text;
+﻿using System.Net;
+using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Protocol.Transport;
 
@@ -17,8 +16,6 @@ internal class HttpListenerServerProvider : IDisposable
     private readonly int _port;
     private HttpListener? _listener;
     private CancellationTokenSource? _cts;
-    private Func<string, CancellationToken, bool>? _messageHandler;
-    private StreamWriter? _streamWriter;
     private bool _isRunning;
 
     /// <summary>
@@ -30,26 +27,8 @@ internal class HttpListenerServerProvider : IDisposable
         _port = port;
     }
 
-    public Task InitializeMessageHandler(Func<string, CancellationToken, bool> messageHandler)
-    {
-        _messageHandler = messageHandler;
-        return Task.CompletedTask;
-    }
-
-    public async Task SendEvent(string data, string eventId)
-    {
-        if (_streamWriter == null)
-        {
-            throw new McpServerException("Stream writer not initialized");
-        }
-        if (eventId != null)
-        {
-            await _streamWriter.WriteLineAsync($"id: {eventId}").ConfigureAwait(false);
-        }
-        await _streamWriter.WriteLineAsync($"data: {data}").ConfigureAwait(false);
-        await _streamWriter.WriteLineAsync().ConfigureAwait(false); // Empty line to finish the event
-        await _streamWriter.FlushAsync().ConfigureAwait(false);
-    }
+    public required Func<Stream, CancellationToken, Task> OnSseConnectionAsync { get; set; }
+    public required Func<string, CancellationToken, Task<bool>> OnMessageAsync { get; set; }
 
     /// <inheritdoc/>
     public Task StartAsync(CancellationToken cancellationToken = default)
@@ -57,7 +36,7 @@ internal class HttpListenerServerProvider : IDisposable
         if (_isRunning)
             return Task.CompletedTask;
 
-        _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _cts = new CancellationTokenSource();
         _listener = new HttpListener();
         _listener.Prefixes.Add($"http://localhost:{_port}/");
         _listener.Start();
@@ -76,8 +55,6 @@ internal class HttpListenerServerProvider : IDisposable
 
         _cts?.Cancel();
         _listener?.Stop();
-
-        _streamWriter?.Close();
 
         _isRunning = false;
         return Task.CompletedTask;
@@ -163,28 +140,10 @@ internal class HttpListenerServerProvider : IDisposable
         response.Headers.Add("Cache-Control", "no-cache");
         response.Headers.Add("Connection", "keep-alive");
 
-        // Get the output stream and create a StreamWriter
-        var outputStream = response.OutputStream;
-        _streamWriter = new StreamWriter(outputStream, Encoding.UTF8) { AutoFlush = true };
-
         // Keep the connection open until cancelled
         try
         {
-            // Immediately send the "endpoint" event with the POST URL
-            await _streamWriter.WriteLineAsync("event: endpoint").ConfigureAwait(false);
-            await _streamWriter.WriteLineAsync($"data: {MessageEndpoint}").ConfigureAwait(false);
-            await _streamWriter.WriteLineAsync().ConfigureAwait(false); // blank line to end an SSE message
-            await _streamWriter.FlushAsync(cancellationToken).ConfigureAwait(false);
-
-            // Keep the connection open by "pinging" or just waiting
-            // until the client disconnects or the server is canceled.
-            while (!cancellationToken.IsCancellationRequested && response.OutputStream.CanWrite)
-            {
-                // Do a periodic no-op to keep connection alive:
-                await _streamWriter.WriteLineAsync(": keep-alive").ConfigureAwait(false);
-                await _streamWriter.FlushAsync(cancellationToken).ConfigureAwait(false);
-                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
-            }
+            await OnSseConnectionAsync(response.OutputStream, cancellationToken).ConfigureAwait(false);
         }
         catch (TaskCanceledException)
         {
@@ -199,7 +158,6 @@ internal class HttpListenerServerProvider : IDisposable
             // Remove client on disconnect
             try
             {
-                _streamWriter.Close();
                 response.Close();
             }
             catch { /* Ignore errors during cleanup */ }
@@ -219,7 +177,7 @@ internal class HttpListenerServerProvider : IDisposable
         }
 
         // Process the message asynchronously
-        if (_messageHandler != null && _messageHandler(requestBody, cancellationToken))
+        if (await OnMessageAsync(requestBody, cancellationToken))
         {
             // Return 202 Accepted
             response.StatusCode = 202;
