@@ -61,14 +61,14 @@ public sealed class SseResponseStreamTransport(Stream sseResponseStream) : ITran
     }
 
     /// <inheritdoc/>
-    public Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
+    public async Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         if (_sseWriteTask is null)
         {
             throw new InvalidOperationException($"Transport is not connected. Make sure to call {nameof(RunAsync)} first.");
         }
 
-        return _outgoingSseChannel.Writer.WriteAsync(new SseItem<IJsonRpcMessage?>(message), cancellationToken).AsTask();
+        await _outgoingSseChannel.Writer.WriteAsync(new SseItem<IJsonRpcMessage?>(message), cancellationToken).AsTask();
     }
 
     /// <summary>
@@ -78,14 +78,14 @@ public sealed class SseResponseStreamTransport(Stream sseResponseStream) : ITran
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task representing the potentially asynchronous operation to buffer or process the JSON-RPC message.</returns>
     /// <exception cref="InvalidOperationException">Thrown when there is an attempt to process a message before calling <see cref="RunAsync(CancellationToken)"/>.</exception>
-    public Task OnMessageReceivedAsync(IJsonRpcMessage message, CancellationToken cancellationToken)
+    public async Task OnMessageReceivedAsync(IJsonRpcMessage message, CancellationToken cancellationToken)
     {
         if (_sseWriteTask is null)
         {
             throw new InvalidOperationException($"Transport is not connected. Make sure to call {nameof(RunAsync)} first.");
         }
 
-        return _incomingChannel.Writer.WriteAsync(message, cancellationToken).AsTask();
+        await _incomingChannel.Writer.WriteAsync(message, cancellationToken).AsTask();
     }
 
     private static Channel<T> CreateSingleItemChannel<T>() =>
