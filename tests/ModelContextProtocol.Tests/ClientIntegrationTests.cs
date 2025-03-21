@@ -187,7 +187,7 @@ public class ClientIntegrationTests : IClassFixture<ClientIntegrationTestFixture
 
         List<ResourceTemplate> allResourceTemplates = await client.ListResourceTemplatesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
-        // The server provides 2 test resource templates
+        // The server provides a single test resource template
         Assert.Single(allResourceTemplates);
     }
 
