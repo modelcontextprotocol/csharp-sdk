@@ -141,17 +141,4 @@ public sealed class McpServerHandlers
 
         options.GetCompletionHandler = GetCompletionHandler ?? options.GetCompletionHandler;
     }
-
-    /// <summary>
-    /// Default handlers for capabilities.
-    /// </summary>
-    internal static class Defaults
-    {
-        /// <summary>
-        /// Gets or sets the handler for list resource templates requests.
-        /// </summary>
-        public static Func<RequestContext<ListResourceTemplatesRequestParams>, CancellationToken, Task<ListResourceTemplatesResult>> ListResourceTemplatesHandler
-            => static (context, token) => Task.FromResult(new ListResourceTemplatesResult());
-
-    }
 }
