@@ -145,7 +145,7 @@ public sealed class McpServerHandlers
     /// <summary>
     /// Default handlers for capabilities.
     /// </summary>
-    public static class Defaults
+    internal static class Defaults
     {
         /// <summary>
         /// Gets or sets the handler for list resource templates requests.
