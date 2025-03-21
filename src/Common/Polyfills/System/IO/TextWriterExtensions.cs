@@ -1,3 +1,4 @@
+using ModelContextProtocol.Utils;
 using System.Runtime.InteropServices;
 
 namespace System.IO;
@@ -6,10 +7,7 @@ internal static class TextWriterExtensions
 {
     public static async Task WriteLineAsync(this TextWriter writer, ReadOnlyMemory<char> value, CancellationToken cancellationToken)
     {
-        if (writer is null)
-        {
-            throw new ArgumentNullException(nameof(writer));
-        }
+        Throw.IfNull(writer);
 
         if (value.IsEmpty)
         {

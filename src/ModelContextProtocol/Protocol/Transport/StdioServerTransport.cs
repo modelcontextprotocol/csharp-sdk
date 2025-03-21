@@ -8,9 +8,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
-#pragma warning disable CA2208 // Instantiate argument exceptions correctly
-#pragma warning disable CA2213 // Disposable fields should be disposed
-
 namespace ModelContextProtocol.Protocol.Transport;
 
 /// <summary>

@@ -11,9 +11,12 @@ namespace ModelContextProtocol.Protocol.Transport;
 [ExcludeFromCodeCoverage]
 internal class HttpListenerServerProvider : IDisposable
 {
+    private static readonly byte[] s_accepted = "Accepted"u8.ToArray();
+
+    private const string SseEndpoint = "/sse";
+    private const string MessageEndpoint = "/message";
+
     private readonly int _port;
-    private readonly string _sseEndpoint = "/sse";
-    private readonly string _messageEndpoint = "/message";
     private HttpListener? _listener;
     private CancellationTokenSource? _cts;
     private Func<string, CancellationToken, bool>? _messageHandler;
@@ -31,7 +34,7 @@ internal class HttpListenerServerProvider : IDisposable
 
     public Task<string> GetSseEndpointUri()
     {
-        return Task.FromResult($"http://localhost:{_port}{_sseEndpoint}");
+        return Task.FromResult($"http://localhost:{_port}{SseEndpoint}");
     }
 
     public Task InitializeMessageHandler(Func<string, CancellationToken, bool> messageHandler)
@@ -131,12 +134,12 @@ internal class HttpListenerServerProvider : IDisposable
                 throw new McpServerException("Request is null");
 
             // Handle SSE connection
-            if (request.HttpMethod == "GET" && request.Url?.LocalPath == _sseEndpoint)
+            if (request.HttpMethod == "GET" && request.Url?.LocalPath == SseEndpoint)
             {
                 await HandleSseConnectionAsync(context, cancellationToken).ConfigureAwait(false);
             }
             // Handle message POST
-            else if (request.HttpMethod == "POST" && request.Url?.LocalPath == _messageEndpoint)
+            else if (request.HttpMethod == "POST" && request.Url?.LocalPath == MessageEndpoint)
             {
                 await HandleMessageAsync(context, cancellationToken).ConfigureAwait(false);
             }
@@ -167,9 +170,6 @@ internal class HttpListenerServerProvider : IDisposable
         response.Headers.Add("Cache-Control", "no-cache");
         response.Headers.Add("Connection", "keep-alive");
 
-        // Create a unique ID for this client
-        var clientId = Guid.NewGuid().ToString();
-
         // Get the output stream and create a StreamWriter
         var outputStream = response.OutputStream;
         _streamWriter = new StreamWriter(outputStream, Encoding.UTF8) { AutoFlush = true };
@@ -179,7 +179,7 @@ internal class HttpListenerServerProvider : IDisposable
         {
             // Immediately send the "endpoint" event with the POST URL
             await _streamWriter.WriteLineAsync("event: endpoint").ConfigureAwait(false);
-            await _streamWriter.WriteLineAsync($"data: {_messageEndpoint}").ConfigureAwait(false);
+            await _streamWriter.WriteLineAsync($"data: {MessageEndpoint}").ConfigureAwait(false);
             await _streamWriter.WriteLineAsync().ConfigureAwait(false); // blank line to end an SSE message
             await _streamWriter.FlushAsync(cancellationToken).ConfigureAwait(false);
 
@@ -222,10 +222,7 @@ internal class HttpListenerServerProvider : IDisposable
         string requestBody;
         using (var reader = new StreamReader(request.InputStream, request.ContentEncoding))
         {
-            // TODO: Add cancellation token and netstandard2.0 support (polyfill?)
-#pragma warning disable CA2016 // Forward the 'CancellationToken' parameter to methods
-            requestBody = await reader.ReadToEndAsync().ConfigureAwait(false);
-#pragma warning restore CA2016 // Forward the 'CancellationToken' parameter to methods
+            requestBody = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
         }
 
         // Process the message asynchronously
@@ -233,12 +230,9 @@ internal class HttpListenerServerProvider : IDisposable
         {
             // Return 202 Accepted
             response.StatusCode = 202;
+
             // Write "accepted" response
-            // TODO: Use WriteAsync, add cancellation token and netstandard2.0 support (polyfill?)
-            byte[] buffer = Encoding.UTF8.GetBytes("Accepted");
-#pragma warning disable CA1835 // Prefer the 'Memory'-based overloads for 'ReadAsync' and 'WriteAsync'
-            await response.OutputStream.WriteAsync(buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false);
-#pragma warning restore CA1835 // Prefer the 'Memory'-based overloads for 'ReadAsync' and 'WriteAsync'
+            await response.OutputStream.WriteAsync(s_accepted, cancellationToken).ConfigureAwait(false);
         }
         else
         {

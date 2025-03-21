@@ -4,6 +4,7 @@ using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Utils.Json;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Utils;
 
 namespace ModelContextProtocol.Protocol.Transport;
 
@@ -160,15 +161,8 @@ public sealed class HttpListenerSseServerTransport : TransportBase, IServerTrans
     /// <summary>Validates the <paramref name="serverOptions"/> and extracts from it the server name to use.</summary>
     private static string GetServerName(McpServerOptions serverOptions)
     {
-        if (serverOptions is null)
-        {
-            throw new ArgumentNullException(nameof(serverOptions));
-        }
-
-        if (serverOptions.ServerInfo is null)
-        {
-            throw new ArgumentNullException($"{nameof(serverOptions)}.{nameof(serverOptions.ServerInfo)}");
-        }
+        Throw.IfNull(serverOptions);
+        Throw.IfNull(serverOptions.ServerInfo);
 
         return serverOptions.ServerInfo.Name;
     }

@@ -44,9 +44,11 @@ public static class ProtocolTypeTests
     public static void ToolInputSchema_AcceptsValidSchemaDocuments(string validSchema)
     {
         using var document = JsonDocument.Parse(validSchema);
-        var tool = new Tool();
+        Tool tool = new()
+        {
+            InputSchema = document.RootElement
+        };
 
-        tool.InputSchema = document.RootElement;
         Assert.True(JsonElement.DeepEquals(document.RootElement, tool.InputSchema));
     }
 }

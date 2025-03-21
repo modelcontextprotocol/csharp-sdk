@@ -45,7 +45,7 @@ internal static class Program
             GetCompletionHandler = ConfigureCompletion(),
         };
 
-        var loggerFactory = CreateLoggerFactory();
+        using var loggerFactory = CreateLoggerFactory();
         await using IMcpServer server = McpServerFactory.Create(new StdioServerTransport("TestServer", loggerFactory), options, loggerFactory);
 
         Log.Logger.Information("Server initialized.");
@@ -266,7 +266,7 @@ internal static class Program
         };
     }
 
-    private static HashSet<string> _subscribedResources = new();
+    private static readonly HashSet<string> _subscribedResources = new();
     private static readonly object _subscribedResourcesLock = new();
 
     private static ResourcesCapability ConfigureResources()

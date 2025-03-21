@@ -64,7 +64,7 @@ public class StdioServerTransportTests
         TextWriter oldOut = Console.Out;
         try
         {
-            var output = new StringWriter();
+            using var output = new StringWriter();
 
             Console.SetIn(new StringReader(""));
             Console.SetOut(output);

@@ -8,14 +8,12 @@ public class MockHttpHandler : HttpMessageHandler
     {
         if (RequestHandler == null)
             throw new InvalidOperationException($"No {nameof(RequestHandler)} was set! Please set handler first and make request afterwards.");
-
-        if (cancellationToken.IsCancellationRequested)
-            throw new OperationCanceledException(cancellationToken);
+        
+        cancellationToken.ThrowIfCancellationRequested();
 
         var result = await RequestHandler.Invoke(request);
-
-        if (cancellationToken.IsCancellationRequested)
-            throw new OperationCanceledException(cancellationToken);
+        
+        cancellationToken.ThrowIfCancellationRequested();
 
         return result;
     }

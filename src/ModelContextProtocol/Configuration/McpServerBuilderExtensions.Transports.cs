@@ -30,10 +30,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     public static IMcpServerBuilder WithHttpListenerSseServerTransport(this IMcpServerBuilder builder)
     {
-        if (builder is null)
-        {
-            throw new ArgumentNullException(nameof(builder));
-        }
+        Throw.IfNull(builder);
 
         builder.Services.AddSingleton<IServerTransport, HttpListenerSseServerTransport>();
         builder.Services.AddHostedService<McpServerHostedService>();

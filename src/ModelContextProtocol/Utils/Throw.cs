@@ -21,7 +21,7 @@ internal static class Throw
     {
         if (arg is null || arg.AsSpan().IsWhiteSpace())
         {
-            ThrowArgumentNullOrWhiteSpaceException(arg);
+            ThrowArgumentNullOrWhiteSpaceException(parameterName);
         }
     }
 

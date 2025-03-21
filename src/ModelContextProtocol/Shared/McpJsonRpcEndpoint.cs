@@ -87,7 +87,7 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
 #if NET
                     await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
 #else
-                    await Task.Yield(); // TODO: Fix this
+                    await default(ForceYielding);
 #endif
                     try
                     {

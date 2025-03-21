@@ -4,8 +4,8 @@ namespace ModelContextProtocol.Tests;
 
 public class EverythingSseServerFixture : IAsyncDisposable
 {
-    private int _port;
-    private string _containerName;
+    private readonly int _port;
+    private readonly string _containerName;
 
     public static bool IsDockerAvailable => _isDockerAvailable ??= CheckIsDockerAvailable();
     private static bool? _isDockerAvailable;

@@ -29,7 +29,7 @@ internal class Program
     {
         Console.WriteLine("Starting server...");
 
-        McpServerOptions options = new McpServerOptions()
+        McpServerOptions options = new()
         {
             ServerInfo = new Implementation() { Name = "TestServer", Version = "1.0.0" },
             Capabilities = new ServerCapabilities()
@@ -236,11 +236,10 @@ internal class Program
                     {
                         throw new McpServerException("Missing required argument 'uri'");
                     }
-                    ResourceContents? contents = resourceContents.FirstOrDefault(r => r.Uri == request.Params.Uri);
-                    if (contents is null)
-                    {
+                    
+                    ResourceContents? contents = resourceContents.FirstOrDefault(r => r.Uri == request.Params.Uri) ?? 
                         throw new McpServerException("Resource not found");
-                    }
+                    
                     return Task.FromResult(new ReadResourceResult()
                     {
                         Contents = [contents]
@@ -347,7 +346,7 @@ internal class Program
             },
         };
 
-        var loggerFactory = CreateLoggerFactory();
+        using var loggerFactory = CreateLoggerFactory();
         server = McpServerFactory.Create(new HttpListenerSseServerTransport("TestServer", 3001, loggerFactory), options, loggerFactory);
 
         Console.WriteLine("Server initialized.");
@@ -357,10 +356,7 @@ internal class Program
         Console.WriteLine("Server started.");
 
         // Run until process is stopped by the client (parent process)
-        while (true)
-        {
-            await Task.Delay(1000);
-        }
+        await Task.Delay(Timeout.Infinite);
     }
 
     const string MCP_TINY_IMAGE =

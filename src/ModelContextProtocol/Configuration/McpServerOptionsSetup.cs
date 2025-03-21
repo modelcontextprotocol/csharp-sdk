@@ -2,6 +2,7 @@
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using Microsoft.Extensions.Options;
+using ModelContextProtocol.Utils;
 
 namespace ModelContextProtocol.Configuration;
 
@@ -9,10 +10,7 @@ internal sealed class McpServerOptionsSetup(IOptions<McpServerHandlers> serverHa
 {
     public void Configure(McpServerOptions options)
     {
-        if (options is null)
-        {
-            throw new ArgumentNullException(nameof(options));
-        }
+        Throw.IfNull(options);
 
         var assemblyName = Assembly.GetEntryAssembly()?.GetName();
         options.ServerInfo = new Implementation

@@ -1,13 +1,12 @@
+using ModelContextProtocol.Utils;
+
 namespace System.Net.Http;
 
 internal static class HttpClientExtensions
 {
     public static async Task<Stream> ReadAsStreamAsync(this HttpContent content, CancellationToken cancellationToken)
     {
-        if (content is null)
-        {
-            throw new ArgumentNullException(nameof(content));
-        }
+        Throw.IfNull(content);
 
         cancellationToken.ThrowIfCancellationRequested();
         return await content.ReadAsStreamAsync();
@@ -15,10 +14,7 @@ internal static class HttpClientExtensions
 
     public static async Task<string> ReadAsStringAsync(this HttpContent content, CancellationToken cancellationToken)
     {
-        if (content is null)
-        {
-            throw new ArgumentNullException(nameof(content));
-        }
+        Throw.IfNull(content);
 
         cancellationToken.ThrowIfCancellationRequested();
         return await content.ReadAsStringAsync();

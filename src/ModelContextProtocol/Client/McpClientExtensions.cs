@@ -6,8 +6,6 @@ using Microsoft.Extensions.AI;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 
-#pragma warning disable CA1508 // Avoid dead conditional code
-
 namespace ModelContextProtocol.Client;
 
 /// <summary>
@@ -439,7 +437,7 @@ public static class McpClientExtensions
     }
 
     private static JsonRpcRequest CreateRequest(string method, Dictionary<string, object?>? parameters) =>
-        new JsonRpcRequest
+        new()
         {
             Method = method,
             Params = parameters

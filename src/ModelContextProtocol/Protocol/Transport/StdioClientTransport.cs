@@ -8,8 +8,6 @@ using ModelContextProtocol.Utils.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-#pragma warning disable CA2213 // Disposable fields should be disposed
-
 namespace ModelContextProtocol.Protocol.Transport;
 
 /// <summary>

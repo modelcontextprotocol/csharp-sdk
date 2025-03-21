@@ -220,18 +220,17 @@ public class McpServerBuilderExtensionsToolsTests
         Assert.Contains("'NotRegisteredTool'", exception.Message);
     }
 
-    // TODO: https://github.com/dotnet/extensions/issues/6124
-    //[Fact]
-    //public async Task Throws_Exception_Missing_Parameter()
-    //{
-    //    _builder.Object.WithTools(typeof(EchoTool));
+    [Fact(Skip = "https://github.com/dotnet/extensions/issues/6124")]
+    public async Task Throws_Exception_Missing_Parameter()
+    {
+        _builder.Object.WithTools(typeof(EchoTool));
 
-    //    var serviceProvider = _services.BuildServiceProvider();
-    //    var options = serviceProvider.GetRequiredService<IOptions<McpServerHandlers>>().Value;
+        var serviceProvider = _services.BuildServiceProvider();
+        var options = serviceProvider.GetRequiredService<IOptions<McpServerHandlers>>().Value;
 
-    //    var exception = await Assert.ThrowsAsync<McpServerException>(async () => await options.CallToolHandler!(new(Mock.Of<IMcpServer>(), new() { Name = "Echo" }), CancellationToken.None));
-    //    Assert.Equal("Missing required argument 'message'.", exception.Message);
-    //}
+        var exception = await Assert.ThrowsAsync<McpServerException>(async () => await options.CallToolHandler!(new(Mock.Of<IMcpServer>(), new() { Name = "Echo" }), CancellationToken.None));
+        Assert.Equal("Missing required argument 'message'.", exception.Message);
+    }
 
     [Fact]
     public void Throws_Exception_For_Null_Types()
@@ -354,26 +353,6 @@ public class McpServerBuilderExtensionsToolsTests
         public static string EchoComplex(ComplexObject complex)
         {
             return complex.Name!;
-        }
-    }
-
-    public interface IDependendService
-    {
-    }
-
-    private class EchoToolWithDi
-    {
-        public EchoToolWithDi(IDependendService service)
-        {
-
-        }
-
-        [McpTool, Description("Echoes the input back to the client.")]
-#pragma warning disable CA1822 // Mark members as static
-        public Task<string> Echo(string message)
-#pragma warning restore CA1822 // Mark members as static
-        {
-            return Task.FromResult("hello " + message);
         }
     }
 

@@ -1,3 +1,5 @@
+using ModelContextProtocol.Utils;
+
 namespace System.Threading.Tasks;
 
 internal static class TaskExtensions
@@ -15,10 +17,7 @@ internal static class TaskExtensions
 
     public static async Task WaitAsync(this Task task, TimeSpan timeout, CancellationToken cancellationToken)
     {
-        if (task is null)
-        {
-            throw new ArgumentNullException(nameof(task));
-        }
+        Throw.IfNull(task);
 
         if (timeout < TimeSpan.Zero && timeout != Timeout.InfiniteTimeSpan)
         {
