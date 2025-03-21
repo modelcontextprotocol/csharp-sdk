@@ -315,7 +315,6 @@ internal static class Program
         {
             ListResourceTemplatesHandler = (request, cancellationToken) =>
             {
-
                 return Task.FromResult(new ListResourceTemplatesResult()
                 {
                     ResourceTemplates = [
