@@ -178,6 +178,29 @@ public class ClientIntegrationTests : IClassFixture<ClientIntegrationTestFixture
 
     [Theory]
     [MemberData(nameof(GetClients))]
+    public async Task ListResourceTemplates_Stdio(string clientId)
+    {
+        // arrange
+
+        // act
+        await using var client = await _fixture.CreateClientAsync(clientId);
+
+        List<ResourceTemplate> allResourceTemplates = [];
+        string? cursor = null;
+        do
+        {
+            var resources = await client.ListResourceTemplatesAsync(cursor, CancellationToken.None);
+            allResourceTemplates.AddRange(resources.ResourceTemplates);
+            cursor = resources.NextCursor;
+        }
+        while (cursor != null);
+
+        // The server provides 2 test resource templates
+        Assert.Single(allResourceTemplates);
+    }
+
+    [Theory]
+    [MemberData(nameof(GetClients))]
     public async Task ListResources_Stdio(string clientId)
     {
         // arrange
