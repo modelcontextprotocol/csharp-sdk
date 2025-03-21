@@ -1,9 +1,10 @@
-﻿using System.Net;
+﻿using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Configuration;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Tests.Utils;
-using Microsoft.Extensions.Logging.Abstractions;
+using System.Net;
+using System.Reflection;
 
 namespace ModelContextProtocol.Tests.Transport;
 
@@ -42,11 +43,16 @@ public class SseClientTransportTests
 
         // Assert
         Assert.NotNull(transport);
-        Assert.Equal(TimeSpan.FromSeconds(2), transport.Options.ConnectionTimeout);
-        Assert.Equal(3, transport.Options.MaxReconnectAttempts);
-        Assert.Equal(TimeSpan.FromMilliseconds(50), transport.Options.ReconnectDelay);
-        Assert.NotNull(transport.Options.AdditionalHeaders);
-        Assert.Equal("header", transport.Options.AdditionalHeaders["test"]);
+
+        PropertyInfo? getOptions = transport.GetType().GetProperty("Options", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(getOptions);
+        var options = (SseClientTransportOptions)getOptions.GetValue(transport)!;
+
+        Assert.Equal(TimeSpan.FromSeconds(2), options.ConnectionTimeout);
+        Assert.Equal(3, options.MaxReconnectAttempts);
+        Assert.Equal(TimeSpan.FromMilliseconds(50), options.ReconnectDelay);
+        Assert.NotNull(options.AdditionalHeaders);
+        Assert.Equal("header", options.AdditionalHeaders["test"]);
     }
 
     [Fact]
@@ -137,7 +143,6 @@ public class SseClientTransportTests
         await using var transport = new SseClientTransport(_transportOptions, _serverConfig, NullLoggerFactory.Instance);
 
         // Assert
-        Assert.True(string.IsNullOrEmpty(transport.MessageEndpoint?.ToString()));
         await Assert.ThrowsAsync<InvalidOperationException>(() => transport.SendMessageAsync(new JsonRpcRequest() { Method = "test" }, CancellationToken.None));
     }
 
