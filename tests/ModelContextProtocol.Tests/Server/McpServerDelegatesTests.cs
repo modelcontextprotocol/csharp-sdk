@@ -14,6 +14,7 @@ public class McpServerHandlerTests
         Assert.Null(handlers.CallToolHandler);
         Assert.Null(handlers.ListPromptsHandler);
         Assert.Null(handlers.GetPromptHandler);
+        Assert.Null(handlers.ListResourceTemplatesHandler);
         Assert.Null(handlers.ListResourcesHandler);
         Assert.Null(handlers.ReadResourceHandler);
         Assert.Null(handlers.GetCompletionHandler);
@@ -24,6 +25,7 @@ public class McpServerHandlerTests
         handlers.CallToolHandler = (p, c) => Task.FromResult(new CallToolResponse());
         handlers.ListPromptsHandler = (p, c) => Task.FromResult(new ListPromptsResult());
         handlers.GetPromptHandler = (p, c) => Task.FromResult(new GetPromptResult());
+        handlers.ListResourceTemplatesHandler = (p, c) => Task.FromResult(new ListResourceTemplatesResult());
         handlers.ListResourcesHandler = (p, c) => Task.FromResult(new ListResourcesResult());
         handlers.ReadResourceHandler = (p, c) => Task.FromResult(new ReadResourceResult());
         handlers.GetCompletionHandler = (p, c) => Task.FromResult(new CompleteResult());
@@ -34,6 +36,7 @@ public class McpServerHandlerTests
         Assert.NotNull(handlers.CallToolHandler);
         Assert.NotNull(handlers.ListPromptsHandler);
         Assert.NotNull(handlers.GetPromptHandler);
+        Assert.NotNull(handlers.ListResourceTemplatesHandler);
         Assert.NotNull(handlers.ListResourcesHandler);
         Assert.NotNull(handlers.ReadResourceHandler);
         Assert.NotNull(handlers.GetCompletionHandler);

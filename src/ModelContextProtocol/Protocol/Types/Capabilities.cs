@@ -118,6 +118,12 @@ public record ResourcesCapability
     public bool? ListChanged { get; init; }
 
     /// <summary>
+    /// Gets or sets the handler for list resource templates requests.
+    /// </summary>
+    [JsonIgnore]
+    public Func<RequestContext<ListResourceTemplatesRequestParams>, CancellationToken, Task<ListResourceTemplatesResult>>? ListResourceTemplatesHandler { get; init; }
+
+    /// <summary>
     /// Gets or sets the handler for list resources requests.
     /// </summary>
     [JsonIgnore]

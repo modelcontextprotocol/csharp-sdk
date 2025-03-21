@@ -72,6 +72,19 @@ public class McpServerBuilderExtensionsHandlerTests
     }
 
     [Fact]
+    public void WithListResourceTemplatesHandler_Sets_Handler()
+    {
+        Func<RequestContext<ListResourceTemplatesRequestParams>, CancellationToken, Task<ListResourceTemplatesResult>> handler = (context, token) => Task.FromResult(new ListResourceTemplatesResult());
+
+        _builder.Object.WithListResourceTemplatesHandler(handler);
+
+        var serviceProvider = _services.BuildServiceProvider();
+        var options = serviceProvider.GetRequiredService<IOptions<McpServerHandlers>>().Value;
+
+        Assert.Equal(handler, options.ListResourceTemplatesHandler);
+    }
+
+    [Fact]
     public void WithListResourcesHandler_Sets_Handler()
     {
         Func<RequestContext<ListResourcesRequestParams>, CancellationToken, Task<ListResourcesResult>> handler = (context, token) => Task.FromResult(new ListResourcesResult());

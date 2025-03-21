@@ -12,6 +12,8 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <PackageOutputPath>$(RepoRoot)artifacts/</PackageOutputPath>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <AssemblyOriginatorKeyFile>$(RepoRoot)\Open.snk</AssemblyOriginatorKeyFile>
+    <SignAssembly>true</SignAssembly>
   </PropertyGroup>
 
   <ItemGroup>

@@ -1,10 +1,11 @@
-﻿using System.Text.Json;
+﻿using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Configuration;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Tests.Utils;
-using Microsoft.Extensions.Logging;
+using System.Reflection;
+using System.Text.Json;
 
 namespace ModelContextProtocol.Tests;
 
@@ -299,8 +300,10 @@ public class SseIntegrationTests
             defaultOptions, 
             loggerFactory: loggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
-        var mcpClient = (McpClient)client;
-        var transport = (SseClientTransport)mcpClient.Transport;
+
+        PropertyInfo? transportProperty = client.GetType().GetProperty("Transport", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(transportProperty);
+        var transport = (SseClientTransport)transportProperty.GetValue(client)!;
 
         // Wait for SSE connection to be established
         await server.WaitForConnectionAsync(TimeSpan.FromSeconds(10));

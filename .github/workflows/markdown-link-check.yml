@@ -1,0 +1,16 @@
+name: Check Markdown links
+
+on:
+    push:
+      branches: [ "main" ]
+    pull_request:
+      branches: [ "main" ]
+
+jobs:
+  markdown-link-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@main
+      - name: Markup Link Checker (mlc)
+        uses: becheran/mlc@v0.15.4
