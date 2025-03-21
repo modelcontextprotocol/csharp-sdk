@@ -10,6 +10,7 @@ The official C# SDK for the [Model Context Protocol](https://modelcontextprotoco
 The Model Context Protocol (MCP) is an open protocol that standardizes how applications provide context to Large Language Models (LLMs). It enables secure integration between LLMs and various data sources and tools.
 
 For more information about MCP:
+
 - [Official Documentation](https://modelcontextprotocol.io/)
 - [Protocol Specification](https://spec.modelcontextprotocol.io/)
 - [GitHub Organization](https://github.com/modelcontextprotocol)
@@ -17,12 +18,13 @@ For more information about MCP:
 ## Getting Started (Client)
 
 Then create a client and start using tools, or other capabilities, from the servers you configure:
+
 ```csharp
 McpClientOptions options = new()
 {
     ClientInfo = new() { Name = "TestClient", Version = "1.0.0" }
 };
-	
+
 McpServerConfig config = new()
 {
     Id = "everything",
@@ -34,7 +36,7 @@ McpServerConfig config = new()
         ["arguments"] = "-y @modelcontextprotocol/server-everything",
     }
 };
-		
+
 var client = await McpClientFactory.CreateAsync(config, options);
 
 // Print the list of tools available from the server.
@@ -57,13 +59,14 @@ Note that you should pass CancellationToken objects suitable for your use case, 
 
 It is also highly recommended that you pass a proper LoggerFactory instance to the factory constructor, to enable logging of MCP client operations.
 
-You can find samples demonstrating how to use ModelContextProtocol with an LLM SDK in the [samples](samples) directory, and also refer to the [IntegrationTests](test/ModelContextProtocol.IntegrationTests) project for more examples.
+You can find samples demonstrating how to use ModelContextProtocol with an LLM SDK in the [samples](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples) directory, and also refer to the [tests](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/tests/ModelContextProtocol.Tests) project for more examples.
 
 Additional examples and documentation will be added as in the near future.
 
 Remember you can connect to any MCP server, not just ones created using ModelContextProtocol. The protocol is designed to be server-agnostic, so you can use this library to connect to any compliant server.
 
 Tools can be exposed easily as `AIFunction` instances so that they are immediately usable with `IChatClient`s.
+
 ```csharp
 // Get available functions.
 IList<AIFunction> tools = await client.GetAIFunctionsAsync();
@@ -107,6 +110,7 @@ public static class EchoTool
 ```
 
 More control is also available, with fine-grained control over configuring the server and how it should handle client requests. For example:
+
 ```csharp
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
@@ -174,4 +178,4 @@ await Task.Delay(Timeout.Infinite);
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [MIT License](https://github.com/modelcontextprotocol/csharp-sdk/blob/main/LICENSE).
