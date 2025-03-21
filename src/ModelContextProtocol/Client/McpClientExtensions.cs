@@ -140,7 +140,7 @@ public static class McpClientExtensions
     }
 
     /// <summary>
-    /// Retrieves a sequence of available resources from the server.
+    /// Retrieves a sequence of available resource templates from the server.
     /// </summary>
     /// <param name="client">The client.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
