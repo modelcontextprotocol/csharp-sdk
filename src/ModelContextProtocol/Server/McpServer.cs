@@ -218,6 +218,7 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
         {
             return;
         }
+
         if (loggingCapability.SetLoggingLevelHandler is not { } setLoggingLevelHandler)
         {
             throw new McpServerException("Logging capability was enabled, but SetLoggingLevelHandler was not specified.");

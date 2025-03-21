@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol.Types;
 
@@ -13,18 +14,18 @@ public class LoggingMessageNotificationParams
     /// <summary>
     /// The severity of this log message.
     /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("level")]
+    [JsonPropertyName("level")]
     public LoggingLevel Level { get; init; }
 
     /// <summary>
     /// An optional name of the logger issuing this message.
     /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("logger")]
+    [JsonPropertyName("logger")]
     public string? Logger { get; init; }
 
     /// <summary>
     /// The data to be logged, such as a string message or an object. Any JSON serializable type is allowed here.
     /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("data")]
+    [JsonPropertyName("data")]
     public JsonElement? Data { get; init; }
 }
