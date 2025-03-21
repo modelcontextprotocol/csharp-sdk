@@ -145,6 +145,44 @@ public static class McpClientExtensions
     /// <param name="client">The client.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>An asynchronous sequence of resource information.</returns>
+    public static async IAsyncEnumerable<ResourceTemplate> ListResourceTemplatesAsync(
+        this IMcpClient client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        string? cursor = null;
+        do
+        {
+            var resources = await ListResourceTemplatesAsync(client, cursor, cancellationToken).ConfigureAwait(false);
+            foreach (var resource in resources.ResourceTemplates)
+            {
+                yield return resource;
+            }
+
+            cursor = resources.NextCursor;
+        }
+        while (cursor is not null);
+    }
+
+    /// <summary>
+    /// Retrieves a list of available resources from the server.
+    /// </summary>
+    /// <param name="client">The client.</param>
+    /// <param name="cursor">A  cursor to paginate the results.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    public static Task<ListResourceTemplatesResult> ListResourceTemplatesAsync(this IMcpClient client, string? cursor, CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(client);
+
+        return client.SendRequestAsync<ListResourceTemplatesResult>(
+            CreateRequest("resources/templates/list", CreateCursorDictionary(cursor)),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Retrieves a sequence of available resources from the server.
+    /// </summary>
+    /// <param name="client">The client.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>An asynchronous sequence of resource information.</returns>
     public static async IAsyncEnumerable<Resource> ListResourcesAsync(
         this IMcpClient client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
