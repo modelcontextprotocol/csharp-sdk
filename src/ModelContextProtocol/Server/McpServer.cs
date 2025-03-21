@@ -51,6 +51,7 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
         SetToolsHandler(options);
         SetPromptsHandler(options);
         SetResourcesHandler(options);
+        SetSetLoggingLevelHandler(options);
     }
 
     public ClientCapabilities? ClientCapabilities { get; set; }
@@ -203,5 +204,19 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
 
         SetRequestHandler<ListToolsRequestParams, ListToolsResult>("tools/list", (request, ct) => listToolsHandler(new(this, request), ct));
         SetRequestHandler<CallToolRequestParams, CallToolResponse>("tools/call", (request, ct) => callToolHandler(new(this, request), ct));
+    }
+
+    private void SetSetLoggingLevelHandler(McpServerOptions options)
+    {
+        if (options.Capabilities?.Logging is not { } loggingCapability)
+        {
+            return;
+        }
+        if (loggingCapability.SetLoggingLevelHandler is not { } setLoggingLevelHandler)
+        {
+            throw new McpServerException("Logging capability was enabled, but SetLoggingLevelHandler was not specified.");
+        }
+
+        SetRequestHandler<SetLevelRequestParams, EmptyResult>("logging/setLevel", (request, ct) => setLoggingLevelHandler(new(this, request), ct));
     }
 }

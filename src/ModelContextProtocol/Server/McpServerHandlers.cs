@@ -53,6 +53,11 @@ public sealed class McpServerHandlers
     public Func<RequestContext<UnsubscribeRequestParams>, CancellationToken, Task<EmptyResult>>? UnsubscribeFromResourcesHandler { get; set; }
 
     /// <summary>
+    /// Get or sets the handler for set logging level requests.
+    /// </summary>
+    public Func<RequestContext<SetLevelRequestParams>, CancellationToken, Task<EmptyResult>>? SetLoggingLevelHandler { get; set; }
+
+    /// <summary>
     /// Overwrite any handlers in McpServerOptions with non-null handlers from this instance.
     /// </summary>
     /// <param name="options"></param>
@@ -115,6 +120,20 @@ public sealed class McpServerHandlers
                 {
                     ListToolsHandler = ListToolsHandler ?? toolsCapability.ListToolsHandler,
                     CallToolHandler = CallToolHandler ?? toolsCapability.CallToolHandler,
+                };
+        }
+
+        LoggingCapability? loggingCapability = options.Capabilities?.Logging;
+        if (SetLoggingLevelHandler is not null)
+        {
+            loggingCapability = loggingCapability is null ?
+                new()
+                {
+                    SetLoggingLevelHandler = SetLoggingLevelHandler,
+                } :
+                loggingCapability with
+                {
+                    SetLoggingLevelHandler = SetLoggingLevelHandler ?? loggingCapability.SetLoggingLevelHandler,
                 };
         }
 

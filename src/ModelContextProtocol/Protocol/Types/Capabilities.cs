@@ -65,6 +65,13 @@ public record SamplingCapability
 public record LoggingCapability
 {
     // Currently empty in the spec, but may be extended in the future
+
+
+    /// <summary>
+    /// Gets or sets the handler for set logging level requests.
+    /// </summary>
+    [JsonIgnore]
+    public Func<RequestContext<SetLevelRequestParams>, CancellationToken, Task<EmptyResult>>? SetLoggingLevelHandler { get; init; }
 }
 
 /// <summary>

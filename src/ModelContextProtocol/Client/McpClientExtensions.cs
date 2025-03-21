@@ -436,6 +436,21 @@ public static class McpClientExtensions
         };
     }
 
+    /// <summary>
+    /// Configures the minimum logging level for the server.
+    /// </summary>
+    /// <param name="client">The client.</param>
+    /// <param name="level">The minimum log level of messages to be generated.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    public static Task SetLoggingLevel(this IMcpClient client, LoggingLevel level, CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(client);
+
+        return client.SendRequestAsync<EmptyResult>(
+            CreateRequest("logging/setLevel", new() { ["level"] = level.ToJsonValue() }),
+            cancellationToken);
+    }
+
     private static JsonRpcRequest CreateRequest(string method, Dictionary<string, object?>? parameters) =>
         new()
         {
@@ -459,6 +474,22 @@ public static class McpClientExtensions
         }
 
         return parameters;
+    }
+
+    private static string ToJsonValue(this LoggingLevel level)
+    {
+        return level switch
+        {
+            LoggingLevel.Debug => "debug",
+            LoggingLevel.Info => "info",
+            LoggingLevel.Notice => "notice",
+            LoggingLevel.Warning => "warning",
+            LoggingLevel.Error => "error",
+            LoggingLevel.Critical => "critical",
+            LoggingLevel.Alert => "alert",
+            LoggingLevel.Emergency => "emergency",
+            _ => throw new ArgumentOutOfRangeException(nameof(level))
+        };
     }
 
     /// <summary>Provides an AI function that calls a tool through <see cref="IMcpClient"/>.</summary>

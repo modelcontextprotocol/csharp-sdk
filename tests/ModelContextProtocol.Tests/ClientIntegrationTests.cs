@@ -7,6 +7,9 @@ using System.Text.Json;
 using ModelContextProtocol.Configuration;
 using ModelContextProtocol.Protocol.Transport;
 using Xunit.Sdk;
+using System.Text.Encodings.Web;
+using System.Text.Json.Serialization.Metadata;
+using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Tests;
 
@@ -533,6 +536,41 @@ public class ClientIntegrationTests : IClassFixture<ClientIntegrationTestFixture
         Assert.Equal("text", result.Content[0].Type);
         Assert.Contains("LLM sampling result:", result.Content[0].Text);
         Assert.Contains("Eiffel", result.Content[0].Text);
+    }
+
+    [Theory]
+    [MemberData(nameof(GetClients))]
+    public async Task SetLoggingLevel_ReceivesLoggingMessages(string clientId)
+    {
+        // arrange
+        JsonSerializerOptions jsonSerializerOptions = new(JsonSerializerDefaults.Web)
+        {
+            TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+            Converters = { new JsonStringEnumConverter() },
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            NumberHandling = JsonNumberHandling.AllowReadingFromString,
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        };
+
+        int logCounter = 0;
+        await using var client = await _fixture.CreateClientAsync(clientId);
+        client.AddNotificationHandler(NotificationMethods.LoggingMessageNotification, (notification) =>
+        {
+            var loggingMessageNotificationParameters = JsonSerializer.Deserialize<LoggingMessageNotificationParams>(notification.Params!.ToString() ?? string.Empty,
+                jsonSerializerOptions);
+            if (loggingMessageNotificationParameters is not null)
+            {
+                ++logCounter;
+            }
+            return Task.CompletedTask;
+        });
+
+        // act
+        await client.SetLoggingLevel(LoggingLevel.Debug, CancellationToken.None);
+        await Task.Delay(16000, TestContext.Current.CancellationToken);
+
+        // assert
+        Assert.True(logCounter > 0);
     }
 
     private static void SkipTestIfNoOpenAIKey()
