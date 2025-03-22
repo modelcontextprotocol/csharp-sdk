@@ -89,10 +89,12 @@ public class McpServerTests
     {
         // Arrange
         await using var server = McpServerFactory.Create(_serverTransport.Object, _options, _loggerFactory.Object, _serviceProvider);
-        server.GetType().GetField("_isInitializing", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.SetValue(server, true);
+        var task = server.StartAsync(TestContext.Current.CancellationToken);
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(() => server.StartAsync(TestContext.Current.CancellationToken));
+
+        await task;
     }
 
     [Fact]
