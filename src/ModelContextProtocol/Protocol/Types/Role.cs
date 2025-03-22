@@ -11,12 +11,12 @@ public enum Role
     /// <summary>
     /// Corresponds to the user in the conversation.
     /// </summary>
-    [JsonPropertyName("user")]
+    [JsonStringEnumMemberName("user")]
     User,
 
     /// <summary>
     /// Corresponds to the AI in the conversation.
     /// </summary>
-    [JsonPropertyName("assistant")]
+    [JsonStringEnumMemberName("assistant")]
     Assistant
 }
