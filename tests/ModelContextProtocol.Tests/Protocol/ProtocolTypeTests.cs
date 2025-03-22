@@ -1,4 +1,5 @@
 ﻿using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Utils.Json;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Tests.Protocol;
@@ -50,5 +51,31 @@ public static class ProtocolTypeTests
         };
 
         Assert.True(JsonElement.DeepEquals(document.RootElement, tool.InputSchema));
+    }
+
+    [Theory]
+    [InlineData(Role.User, "\"user\"")]
+    [InlineData(Role.Assistant, "\"assistant\"")]
+    public static void SerializeRole_Should_Be_Lower_Case(Role role, string expectedValue)
+    {
+        var actualValue = JsonSerializer.Serialize(role, McpJsonUtilities.DefaultOptions);
+
+        Assert.Equal(expectedValue, actualValue);
+    }
+
+    [Theory]
+    [InlineData(LoggingLevel.Debug, "\"debug\"")]
+    [InlineData(LoggingLevel.Info, "\"info\"")]
+    [InlineData(LoggingLevel.Notice, "\"notice\"")]
+    [InlineData(LoggingLevel.Warning, "\"warning\"")]
+    [InlineData(LoggingLevel.Error, "\"error\"")]
+    [InlineData(LoggingLevel.Critical, "\"critical\"")]
+    [InlineData(LoggingLevel.Alert, "\"alert\"")]
+    [InlineData(LoggingLevel.Emergency, "\"emergency\"")]
+    public static void SerializeLoggingLevel_Should_Be_Lower_Case(LoggingLevel level, string expectedValue)
+    {
+        var actualValue = JsonSerializer.Serialize(level, McpJsonUtilities.DefaultOptions);
+
+        Assert.Equal(expectedValue, actualValue);
     }
 }
