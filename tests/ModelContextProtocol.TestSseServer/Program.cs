@@ -6,7 +6,9 @@ using Serilog;
 using System.Text;
 using System.Text.Json;
 
-internal class Program
+namespace ModelContextProtocol.TestSseServer;
+
+public class Program
 {
     private static ILoggerFactory CreateLoggerFactory()
     {
@@ -25,7 +27,9 @@ internal class Program
         });
     }
 
-    private static async Task Main(string[] args)
+    public static Task Main(string[] args) => MainAsync(args);
+
+    public static async Task MainAsync(string[] args, CancellationToken cancellationToken = default)
     {
         Console.WriteLine("Starting server...");
 
@@ -386,12 +390,19 @@ internal class Program
 
         Console.WriteLine("Server initialized.");
 
-        await server.StartAsync();
+        await server.StartAsync(cancellationToken);
 
         Console.WriteLine("Server started.");
 
-        // Run until process is stopped by the client (parent process)
-        await Task.Delay(Timeout.Infinite);
+        try
+        {
+            // Run until process is stopped by the client (parent process) or test
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+        }
+        finally
+        {
+            await server.DisposeAsync();
+        }
     }
 
     const string MCP_TINY_IMAGE =

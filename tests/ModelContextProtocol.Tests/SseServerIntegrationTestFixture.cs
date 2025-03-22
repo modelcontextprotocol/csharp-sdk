@@ -1,15 +1,14 @@
-﻿using ModelContextProtocol.Client;
+﻿using Microsoft.Extensions.Logging;
+using ModelContextProtocol.Client;
 using ModelContextProtocol.Configuration;
 using ModelContextProtocol.Protocol.Transport;
-using Microsoft.Extensions.Logging;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 
 namespace ModelContextProtocol.Tests;
 
-public class SseServerIntegrationTestFixture : IDisposable
+public class SseServerIntegrationTestFixture : IAsyncDisposable
 {
-    private Process _process;
+    private readonly CancellationTokenSource _stopCts = new();
+    private readonly Task _serverTask;
 
     public ILoggerFactory LoggerFactory { get; }
     public McpClientOptions DefaultOptions { get; }
@@ -35,40 +34,20 @@ public class SseServerIntegrationTestFixture : IDisposable
             Location = "http://localhost:3001/sse"
         };
 
-        Start();
+        _serverTask = TestSseServer.Program.MainAsync([], _stopCts.Token);
     }
 
-    [MemberNotNull(nameof(_process))]
-    public void Start()
+    public async ValueTask DisposeAsync()
     {
-        // Start the server (which is at TestSseServer.exe on windows and "dotnet TestSseServer.dll" on linux)
-        var processStartInfo = new ProcessStartInfo
-        {
-            FileName = OperatingSystem.IsWindows() ? "TestSseServer.exe" : "dotnet",
-            Arguments = "TestSseServer.dll",
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-        };
-
-        _process = Process.Start(processStartInfo)
-            ?? throw new InvalidOperationException($"Could not start process for {processStartInfo.FileName} with '{processStartInfo.Arguments}'.");
-
-        // Wait 1 second
-        Thread.Sleep(1000);
-    }
-
-    public void Dispose()
-    {
+        LoggerFactory.Dispose();
+        _stopCts.Cancel();
         try
         {
-            LoggerFactory?.Dispose();
+            await _serverTask.ConfigureAwait(false);
         }
-        finally
+        catch (OperationCanceledException)
         {
-            // Kill the server process
-            _process.Kill();
         }
+        _stopCts.Dispose();
     }
 }
