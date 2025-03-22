@@ -10,34 +10,34 @@ namespace ModelContextProtocol.Protocol.Types;
 public enum LoggingLevel
 {
     /// <summary>Detailed debug information, typically only valuable to developers.</summary>
-    [JsonPropertyName("debug")]
+    [JsonStringEnumMemberName("debug")]
     Debug,
 
     /// <summary>Normal operational messages that require no action.</summary>
-    [JsonPropertyName("info")]
+    [JsonStringEnumMemberName("info")]
     Info,
 
     /// <summary>Normal but significant events that might deserve attention.</summary>
-    [JsonPropertyName("notice")]
+    [JsonStringEnumMemberName("notice")]
     Notice,
 
     /// <summary>Warning conditions that don't represent an error but indicate potential issues.</summary>
-    [JsonPropertyName("warning")]
+    [JsonStringEnumMemberName("warning")]
     Warning,
 
     /// <summary>Error conditions that should be addressed but don't require immediate action.</summary>
-    [JsonPropertyName("error")]
+    [JsonStringEnumMemberName("error")]
     Error,
 
     /// <summary>Critical conditions that require immediate attention.</summary>
-    [JsonPropertyName("critical")]
+    [JsonStringEnumMemberName("critical")]
     Critical,
 
     /// <summary>Action must be taken immediately to address the condition.</summary>
-    [JsonPropertyName("alert")]
+    [JsonStringEnumMemberName("alert")]
     Alert,
 
     /// <summary>System is unusable and requires immediate attention.</summary>
-    [JsonPropertyName("emergency")]
+    [JsonStringEnumMemberName("emergency")]
     Emergency
 }
