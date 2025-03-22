@@ -111,7 +111,7 @@ public class SseClientTransportTests
         using var httpClient = new HttpClient(mockHttpHandler);
         await using var transport = new SseClientTransport(_transportOptions, _serverConfig, httpClient, NullLoggerFactory.Instance);
         var tscConnected = new TaskCompletionSource();
-        var tscDone = new TaskCompletionSource();
+        var tscDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var callIndex = 0;
 
         mockHttpHandler.RequestHandler = async (request) =>
