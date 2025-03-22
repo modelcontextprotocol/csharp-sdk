@@ -110,48 +110,44 @@ public class SseClientTransportTests
         using var mockHttpHandler = new MockHttpHandler();
         using var httpClient = new HttpClient(mockHttpHandler);
         await using var transport = new SseClientTransport(_transportOptions, _serverConfig, httpClient, NullLoggerFactory.Instance);
-        using var mreConnected = new ManualResetEventSlim(false);
-        using var mreDone = new ManualResetEventSlim(false);
+        var tscConnected = new TaskCompletionSource();
+        var tscDone = new TaskCompletionSource();
         var callIndex = 0;
 
-        mockHttpHandler.RequestHandler = (request) =>
+        mockHttpHandler.RequestHandler = async (request) =>
         {
             switch (callIndex++)
             {
                 case 0:
-                    return Task.FromResult(new HttpResponseMessage
+                    return new HttpResponseMessage
                     {
                         StatusCode = HttpStatusCode.OK,
                         Content = new StringContent("event: endpoint\r\ndata: http://localhost\r\n\r\n")
-                    });
+                    };
                 case 1:
-                    mreConnected.Set();
-                    mreDone.Wait();
-                    return Task.FromResult(new HttpResponseMessage
+                    tscConnected.SetResult();
+                    await tscDone.Task;
+                    return new HttpResponseMessage
                     {
                         StatusCode = HttpStatusCode.OK,
                         Content = new StringContent("")
-                    });
+                    };
                 default:
-                    return Task.FromResult(new HttpResponseMessage
+                    return new HttpResponseMessage
                     {
                         StatusCode = HttpStatusCode.OK,
                         Content = new StringContent("")
-                    });
+                    };
             }
         };
 
-        var task = Task.Run(async () =>
-        {
-            await transport.ConnectAsync(TestContext.Current.CancellationToken);
-        }, TestContext.Current.CancellationToken);
-
-        mreConnected.Wait(TestContext.Current.CancellationToken);
+        var task = transport.ConnectAsync(TestContext.Current.CancellationToken);
+        await tscConnected.Task;
         Assert.True(transport.IsConnected);
         var action = async () => await transport.ConnectAsync();
         var exception = await Assert.ThrowsAsync<McpTransportException>(action);
         Assert.Equal("Transport is already connected", exception.Message);
-        mreDone.Set();
+        tscDone.SetResult();
         await transport.CloseAsync();
         await task;
     }
