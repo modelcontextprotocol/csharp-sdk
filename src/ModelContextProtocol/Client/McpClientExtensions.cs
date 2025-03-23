@@ -23,7 +23,7 @@ public static class McpClientExtensions
     public static Task SetLogLevelAsync(this IMcpClient client, LoggingLevel loggingLevel, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
-        return client.SendNotificationAsync("logging/setLevel", new SetLoggingLevelRequestParams { Level = loggingLevel }, cancellationToken);
+        return client.SendNotificationAsync("logging/setLevel", new SetLevelRequestParams { Level = loggingLevel }, cancellationToken);
     }
 
     /// <summary>
