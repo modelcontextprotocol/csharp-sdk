@@ -14,6 +14,19 @@ namespace ModelContextProtocol.Client;
 public static class McpClientExtensions
 {
     /// <summary>
+    /// A request from the client to the server, to enable or adjust logging.
+    /// </summary>
+    /// <param name="client">The client.</param>
+    /// <param name="loggingLevel">The logging level severity to set.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns></returns>
+    public static Task SetLogLevelAsync(this IMcpClient client, LoggingLevel loggingLevel, CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(client);
+        return client.SendNotificationAsync("logging/setLevel", new SetLoggingLevelRequestParams { Level = loggingLevel }, cancellationToken);
+    }
+
+    /// <summary>
     /// Sends a notification to the server with parameters.
     /// </summary>
     /// <param name="client">The client.</param>

@@ -11,6 +11,22 @@ namespace ModelContextProtocol.Server;
 public static class McpServerExtensions
 {
     /// <summary>
+    /// Sends a logging message notification to the client.
+    /// </summary>
+    /// <param name="server">The server instance that will handle the log notification request.</param>
+    /// <param name="loggingMessageNotification">Contains the details of the log message to be sent.</param>
+    /// <param name="cancellationToken">Allows the operation to be canceled if needed.</param>
+    /// <returns>Returns a task representing the asynchronous operation.</returns>
+    public static Task SendLogNotificationAsync(this IMcpServer server, LoggingMessageNotificationParams loggingMessageNotification, CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(server);
+        Throw.IfNull(loggingMessageNotification);
+        return server.SendRequestAsync<EmptyResult>(
+            new JsonRpcRequest { Method = "notifications/message", Params = loggingMessageNotification },
+            cancellationToken);
+    }
+
+    /// <summary>
     /// Requests to sample an LLM via the client.
     /// </summary>
     /// <exception cref="ArgumentNullException"><paramref name="server"/> is <see langword="null"/>.</exception>

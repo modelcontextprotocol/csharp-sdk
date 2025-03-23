@@ -35,6 +35,10 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
 
         _serverTransport = transport as IServerTransport;
         _options = options;
+
+        // Add the MCP Logger provider to send MCP notification messages to the client when logs occur
+        loggerFactory?.AddProvider(new McpLoggerProvider(this));
+
         _logger = (ILogger?)loggerFactory?.CreateLogger<McpServer>() ?? NullLogger.Instance;
         ServerInstructions = options.ServerInstructions;
         ServiceProvider = serviceProvider;
@@ -44,6 +48,7 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
             IsInitialized = true;
             return Task.CompletedTask;
         });
+        AddLoggingLevelNotificationHandler(options);
 
         SetInitializeHandler(options);
         SetCompletionHandler(options);
@@ -64,6 +69,8 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
 
     /// <inheritdoc />
     public IServiceProvider? ServiceProvider { get; }
+
+    public LoggingLevel LoggingLevel { get; private set; }
 
     /// <inheritdoc />
     public override string EndpointName =>
@@ -138,6 +145,18 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
             options.GetCompletionHandler is { } handler ?
                 (request, ct) => handler(new(this, request), ct) :
                 (request, ct) => Task.FromResult(new CompleteResult() { Completion = new() { Values = [], Total = 0, HasMore = false } }));
+    }
+
+    private void AddLoggingLevelNotificationHandler(McpServerOptions options)
+    {
+        AddNotificationHandler("notifications/message", notification =>
+        {
+            if (notification.Params is LoggingMessageNotificationParams loggingMessageNotificationParams)
+            {
+                LoggingLevel = loggingMessageNotificationParams.Level;
+            }
+            return Task.CompletedTask;
+        });
     }
 
     private void SetResourcesHandler(McpServerOptions options)

@@ -29,6 +29,11 @@ public interface IMcpServer : IAsyncDisposable
     IServiceProvider? ServiceProvider { get; }
 
     /// <summary>
+    /// Current Logging level
+    /// </summary>
+    LoggingLevel LoggingLevel { get; }
+
+    /// <summary>
     /// Adds a handler for client notifications of a specific method.
     /// </summary>
     /// <param name="method">The notification method to handle.</param>
