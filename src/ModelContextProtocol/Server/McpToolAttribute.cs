@@ -12,7 +12,7 @@ public sealed class McpToolAttribute : Attribute
     /// <summary>
     /// Attribute to mark a method as an MCP tool.
     /// </summary>
-    /// <param name="name">The name of the tool. If not provided, the class name will be used.</param>
+    /// <param name="name">The name of the tool. If not provided, the method name will be used.</param>
     public McpToolAttribute(string? name = null)
     {
         Name = name;
