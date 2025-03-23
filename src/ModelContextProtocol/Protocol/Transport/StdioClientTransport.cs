@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using ModelContextProtocol.Configuration;
 using ModelContextProtocol.Logging;
@@ -59,7 +60,7 @@ public sealed class StdioClientTransport : TransportBase, IClientTransport
 
             _shutdownCts = new CancellationTokenSource();
 
-            var startInfo = new ProcessStartInfo
+            ProcessStartInfo startInfo = new()
             {
                 FileName = _options.Command,
                 RedirectStandardInput = true,
@@ -68,6 +69,8 @@ public sealed class StdioClientTransport : TransportBase, IClientTransport
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 WorkingDirectory = _options.WorkingDirectory ?? Environment.CurrentDirectory,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
             };
 
             if (!string.IsNullOrWhiteSpace(_options.Arguments))
@@ -92,11 +95,39 @@ public sealed class StdioClientTransport : TransportBase, IClientTransport
             // Set up error logging
             _process.ErrorDataReceived += (sender, args) => _logger.TransportError(EndpointName, args.Data ?? "(no data)");
 
-            if (!_process.Start())
+            bool processStarted;
+#if NET
+            startInfo.StandardInputEncoding = Encoding.UTF8;
+            processStarted = _process.Start();
+#else
+            // netstandard2.0 lacks ProcessStartInfo.StandardInputEncoding. Instead, it always
+            // uses Console.InputEncoding, so we need to temporarily change Console.InputEncoding
+            // if it's not already UTF-8.
+            Encoding oldStdinEncoding = Console.InputEncoding;
+            if (oldStdinEncoding.CodePage == Encoding.UTF8.CodePage)
+            {
+                processStarted = _process.Start();
+            }
+            else
+            {
+                try
+                {
+                    Console.InputEncoding = Encoding.UTF8;
+                    processStarted = _process.Start();
+                }
+                finally
+                {
+                    Console.InputEncoding = oldStdinEncoding;
+                }
+            }
+#endif
+
+            if (!processStarted)
             {
                 _logger.TransportProcessStartFailed(EndpointName);
                 throw new McpTransportException("Failed to start MCP server process");
             }
+
             _logger.TransportProcessStarted(EndpointName, _process.Id);
             _processStarted = true;
             _process.BeginErrorReadLine();

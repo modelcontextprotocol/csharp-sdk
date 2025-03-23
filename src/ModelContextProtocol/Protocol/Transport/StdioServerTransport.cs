@@ -7,6 +7,7 @@ using ModelContextProtocol.Utils.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using System.Text;
 
 namespace ModelContextProtocol.Protocol.Transport;
 
@@ -80,7 +81,17 @@ public sealed class StdioServerTransport : TransportBase, IServerTransport
         : base(loggerFactory)
     {
         Throw.IfNull(serverName);
-        
+
+        if (Console.InputEncoding.CodePage != Encoding.UTF8.CodePage)
+        {
+            Console.InputEncoding = Encoding.UTF8;
+        }
+
+        if (Console.OutputEncoding.CodePage != Encoding.UTF8.CodePage)
+        {
+            Console.OutputEncoding = Encoding.UTF8;
+        }
+
         _serverName = serverName;
         _logger = (ILogger?)loggerFactory?.CreateLogger<StdioClientTransport>() ?? NullLogger.Instance;
     }
