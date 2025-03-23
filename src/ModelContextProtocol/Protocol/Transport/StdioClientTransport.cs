@@ -1,12 +1,13 @@
-﻿using System.Diagnostics;
-using System.Text.Json;
+﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Configuration;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
+using System.Diagnostics;
+using System.Text;
+using System.Text.Json;
 
 namespace ModelContextProtocol.Protocol.Transport;
 
@@ -20,6 +21,8 @@ public sealed class StdioClientTransport : TransportBase, IClientTransport
     private readonly ILogger _logger;
     private readonly JsonSerializerOptions _jsonOptions;
     private Process? _process;
+    private StreamWriter? _stdInWriter;
+    private StreamReader? _stdOutReader;
     private Task? _readTask;
     private CancellationTokenSource? _shutdownCts;
     private bool _processStarted;
@@ -99,6 +102,13 @@ public sealed class StdioClientTransport : TransportBase, IClientTransport
             }
             _logger.TransportProcessStarted(EndpointName, _process.Id);
             _processStarted = true;
+            
+            // Create streams with explicit UTF-8 encoding to ensure proper Unicode character handling
+            // This is especially important for non-ASCII characters like Chinese text and emoji
+            var utf8Encoding = new UTF8Encoding(false); // No BOM
+            _stdInWriter = new StreamWriter(_process.StandardInput.BaseStream, utf8Encoding) { AutoFlush = true };
+            _stdOutReader = new StreamReader(_process.StandardOutput.BaseStream, utf8Encoding);
+            
             _process.BeginErrorReadLine();
 
             // Start reading messages in the background
@@ -118,7 +128,7 @@ public sealed class StdioClientTransport : TransportBase, IClientTransport
     /// <inheritdoc/>
     public override async Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
     {
-        if (!IsConnected || _process?.HasExited == true)
+        if (!IsConnected || _process?.HasExited == true || _stdInWriter == null)
         {
             _logger.TransportNotConnected(EndpointName);
             throw new McpTransportException("Transport is not connected");
@@ -134,10 +144,11 @@ public sealed class StdioClientTransport : TransportBase, IClientTransport
         {
             var json = JsonSerializer.Serialize(message, _jsonOptions.GetTypeInfo<IJsonRpcMessage>());
             _logger.TransportSendingMessage(EndpointName, id, json);
+            _logger.TransportMessageBytesUtf8(EndpointName, json);
 
-            // Write the message followed by a newline
-            await _process!.StandardInput.WriteLineAsync(json.AsMemory(), cancellationToken).ConfigureAwait(false);
-            await _process.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
+            // Write the message followed by a newline using our UTF-8 writer
+            await _stdInWriter.WriteLineAsync(json).ConfigureAwait(false);
+            await _stdInWriter.FlushAsync(cancellationToken).ConfigureAwait(false);
 
             _logger.TransportSentMessage(EndpointName, id);
         }
@@ -161,12 +172,10 @@ public sealed class StdioClientTransport : TransportBase, IClientTransport
         {
             _logger.TransportEnteringReadMessagesLoop(EndpointName);
 
-            using var reader = _process!.StandardOutput;
-
-            while (!cancellationToken.IsCancellationRequested && !_process.HasExited)
+            while (!cancellationToken.IsCancellationRequested && !_process!.HasExited && _stdOutReader != null)
             {
                 _logger.TransportWaitingForMessage(EndpointName);
-                var line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+                var line = await _stdOutReader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
                 if (line == null)
                 {
                     _logger.TransportEndOfStream(EndpointName);
@@ -179,6 +188,7 @@ public sealed class StdioClientTransport : TransportBase, IClientTransport
                 }
 
                 _logger.TransportReceivedMessage(EndpointName, line);
+                _logger.TransportMessageBytesUtf8(EndpointName, line);
 
                 await ProcessMessageAsync(line, cancellationToken).ConfigureAwait(false);
             }
@@ -230,14 +240,28 @@ public sealed class StdioClientTransport : TransportBase, IClientTransport
     private async Task CleanupAsync(CancellationToken cancellationToken)
     {
         _logger.TransportCleaningUp(EndpointName);
+        
+        if (_stdInWriter != null)
+        {
+            try
+            {
+                _logger.TransportClosingStdin(EndpointName);
+                _stdInWriter.Close();
+            }
+            catch (Exception ex)
+            {
+                _logger.TransportShutdownFailed(EndpointName, ex);
+            }
+
+            _stdInWriter = null;
+        }
+        
+        _stdOutReader = null;
+        
         if (_process != null && _processStarted && !_process.HasExited)
         {
             try
             {
-                // Try to close stdin to signal the process to exit
-                _logger.TransportClosingStdin(EndpointName);
-                _process.StandardInput.Close();
-
                 // Wait for the process to exit
                 _logger.TransportWaitingForShutdown(EndpointName);
 

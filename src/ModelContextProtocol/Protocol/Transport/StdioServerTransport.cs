@@ -1,12 +1,13 @@
-﻿using System.Text.Json;
+﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
+using System.Text;
+using System.Text.Json;
 
 namespace ModelContextProtocol.Protocol.Transport;
 
@@ -19,8 +20,8 @@ public sealed class StdioServerTransport : TransportBase, IServerTransport
     private readonly ILogger _logger;
 
     private readonly JsonSerializerOptions _jsonOptions = McpJsonUtilities.DefaultOptions;
-    private readonly TextReader _stdin = Console.In;
-    private readonly TextWriter _stdout = Console.Out;
+    private readonly TextReader _stdInReader;
+    private readonly TextWriter _stdOutWriter;
 
     private Task? _readTask;
     private CancellationTokenSource? _shutdownCts;
@@ -83,16 +84,57 @@ public sealed class StdioServerTransport : TransportBase, IServerTransport
         
         _serverName = serverName;
         _logger = (ILogger?)loggerFactory?.CreateLogger<StdioClientTransport>() ?? NullLogger.Instance;
+        
+        // Create console streams with explicit UTF-8 encoding to ensure proper Unicode character handling
+        // This is especially important for non-ASCII characters like Chinese text and emoji
+        var utf8Encoding = new UTF8Encoding(false); // No BOM
+        
+        // Get raw console streams and wrap them with UTF-8 encoding
+        Stream inputStream = Console.OpenStandardInput();
+        Stream outputStream = Console.OpenStandardOutput();
+        
+        _stdInReader = new StreamReader(inputStream, utf8Encoding);
+        _stdOutWriter = new StreamWriter(outputStream, utf8Encoding) { AutoFlush = true };
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="StdioServerTransport"/> class with explicit input/output streams.
+    /// </summary>
+    /// <param name="serverName">The name of the server.</param>
+    /// <param name="input">The input TextReader to use.</param>
+    /// <param name="output">The output TextWriter to use.</param>
+    /// <param name="loggerFactory">Optional logger factory used for logging employed by the transport.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="serverName"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This constructor is useful for testing scenarios where you want to redirect input/output.
+    /// </para>
+    /// </remarks>
+    public StdioServerTransport(string serverName, TextReader input, TextWriter output, ILoggerFactory? loggerFactory = null)
+        : base(loggerFactory)
+    {
+        Throw.IfNull(serverName);
+        Throw.IfNull(input);
+        Throw.IfNull(output);
+        
+        _serverName = serverName;
+        _logger = (ILogger?)loggerFactory?.CreateLogger<StdioClientTransport>() ?? NullLogger.Instance;
+        
+        _stdInReader = input;
+        _stdOutWriter = output;
     }
 
     /// <inheritdoc/>
     public Task StartListeningAsync(CancellationToken cancellationToken = default)
     {
+        _logger.LogDebug("Starting StdioServerTransport listener for {EndpointName}", EndpointName);
+        
         _shutdownCts = new CancellationTokenSource();
 
         _readTask = Task.Run(async () => await ReadMessagesAsync(_shutdownCts.Token).ConfigureAwait(false), CancellationToken.None);
 
         SetConnected(true);
+        _logger.LogDebug("StdioServerTransport now connected for {EndpointName}", EndpointName);
 
         return Task.CompletedTask;
     }
@@ -116,9 +158,10 @@ public sealed class StdioServerTransport : TransportBase, IServerTransport
         {
             var json = JsonSerializer.Serialize(message, _jsonOptions.GetTypeInfo<IJsonRpcMessage>());
             _logger.TransportSendingMessage(EndpointName, id, json);
+            _logger.TransportMessageBytesUtf8(EndpointName, json);
 
-            await _stdout.WriteLineAsync(json.AsMemory(), cancellationToken).ConfigureAwait(false);
-            await _stdout.FlushAsync(cancellationToken).ConfigureAwait(false);
+            await _stdOutWriter.WriteLineAsync(json).ConfigureAwait(false);
+            await _stdOutWriter.FlushAsync(cancellationToken).ConfigureAwait(false);
 
             _logger.TransportSentMessage(EndpointName, id);
         }
@@ -146,7 +189,7 @@ public sealed class StdioServerTransport : TransportBase, IServerTransport
             {
                 _logger.TransportWaitingForMessage(EndpointName);
 
-                var reader = _stdin;
+                var reader = _stdInReader;
                 var line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
                 if (line == null)
                 {
@@ -160,6 +203,7 @@ public sealed class StdioServerTransport : TransportBase, IServerTransport
                 }
 
                 _logger.TransportReceivedMessage(EndpointName, line);
+                _logger.TransportMessageBytesUtf8(EndpointName, line);
 
                 try
                 {
