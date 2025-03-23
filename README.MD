@@ -20,16 +20,10 @@ For more information about MCP:
 ## Getting Started (Client)
 
 To get started writing a client, the `McpClientFactory.CreateAsync` method is used to instantiate and connect an `IMcpClient`
-to a server, with details about the client and server specified in `McpClientOptions` and `McpServerConfig` objects.
-Once you have an `IMcpClient`, you can interact with it, such as to enumerate all available tools and invoke tools.
+to a server. Once you have an `IMcpClient`, you can interact with it, such as to enumerate all available tools and invoke tools.
 
 ```csharp
-McpClientOptions options = new()
-{
-    ClientInfo = new() { Name = "TestClient", Version = "1.0.0" }
-};
-
-McpServerConfig config = new()
+var client = await McpClientFactory.CreateAsync(new()
 {
     Id = "everything",
     Name = "Everything",
@@ -39,9 +33,7 @@ McpServerConfig config = new()
         ["command"] = "npx",
         ["arguments"] = "-y @modelcontextprotocol/server-everything",
     }
-};
-
-var client = await McpClientFactory.CreateAsync(config, options);
+});
 
 // Print the list of tools available from the server.
 await foreach (var tool in client.ListToolsAsync())
