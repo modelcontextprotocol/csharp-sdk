@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging.Abstractions;
+﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
@@ -193,11 +194,11 @@ public class StdioServerTransportTests
         output.GetStringBuilder().Clear();
         await transport.SendMessageAsync(chineseMessage, TestContext.Current.CancellationToken);
         
-        // Verify Chinese characters preserved
+        // Verify Chinese characters preserved but encoded
         var chineseResult = output.ToString().Trim();
         var expectedChinese = JsonSerializer.Serialize(chineseMessage, McpJsonUtilities.DefaultOptions);
         Assert.Equal(expectedChinese, chineseResult);
-        Assert.Contains(chineseText, chineseResult);
+        Assert.Contains(JsonSerializer.Serialize(chineseText), chineseResult);
         
         // Test 2: Emoji (non-BMP Unicode using surrogate pairs)
         var emojiText = "🔍 🚀 👍"; // Magnifying glass, rocket, thumbs up

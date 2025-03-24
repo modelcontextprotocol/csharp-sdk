@@ -1,7 +1,6 @@
 ﻿using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Types;
 using System.Diagnostics.CodeAnalysis;
-using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -26,11 +25,6 @@ public static partial class McpJsonUtilities
     /// <item>Enables string-based enum serialization as implemented by <see cref="JsonStringEnumConverter"/>.</item>
     /// <item>Enables <see cref="JsonIgnoreCondition.WhenWritingNull"/> as the default ignore condition for properties.</item>
     /// <item>Enables <see cref="JsonNumberHandling.AllowReadingFromString"/> as the default number handling for number types.</item>
-    /// <item>
-    /// Enables <see cref="JavaScriptEncoder.UnsafeRelaxedJsonEscaping"/> when escaping JSON strings.
-    /// Consuming applications must ensure that JSON outputs are adequately escaped before embedding in other document formats,
-    /// such as HTML and XML.
-    /// </item>
     /// </list>
     /// </para>
     /// </remarks>
@@ -58,15 +52,13 @@ public static partial class McpJsonUtilities
                 Converters = { new JsonStringEnumConverter() },
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
                 NumberHandling = JsonNumberHandling.AllowReadingFromString,
-                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
             };
         }
         else
         {
+            // Keep in sync with any additional settings above beyond what's in JsonContext below.
             options = new(JsonContext.Default.Options)
             {
-                // Compile-time encoder setting not yet available
-                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
             };
         }
 
@@ -77,7 +69,8 @@ public static partial class McpJsonUtilities
     internal static JsonTypeInfo<T> GetTypeInfo<T>(this JsonSerializerOptions options) =>
         (JsonTypeInfo<T>)options.GetTypeInfo(typeof(T));
 
-    internal static JsonElement DefaultMcpToolSchema = ParseJsonElement("{\"type\":\"object\"}"u8);
+    internal static JsonElement DefaultMcpToolSchema { get; } = ParseJsonElement("""{"type":"object"}"""u8);
+
     internal static bool IsValidMcpToolSchema(JsonElement element)
     {
         if (element.ValueKind is not JsonValueKind.Object)
@@ -129,5 +122,4 @@ public static partial class McpJsonUtilities
         Utf8JsonReader reader = new(utf8Json);
         return JsonElement.ParseValue(ref reader);
     }
-
 }
