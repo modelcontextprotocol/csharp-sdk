@@ -11,9 +11,9 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
 {
     private readonly Task _serverTask;
     private readonly CancellationTokenSource _stopCts = new();
-    private DelegatingTestOutputHelper _delegatingTestOutputHelper = new();
 
-    private ILoggerFactory _redirectingLoggerFactory;
+    private readonly DelegatingTestOutputHelper _delegatingTestOutputHelper = new();
+    private readonly ILoggerFactory _redirectingLoggerFactory;
 
     public McpClientOptions DefaultOptions { get; }
     public McpServerConfig DefaultConfig { get; }
@@ -50,7 +50,7 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        _redirectingLoggerFactory.Dispose();
+        _delegatingTestOutputHelper.CurrentTestOutputHelper = null;
         _stopCts.Cancel();
         try
         {
@@ -59,6 +59,7 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
         catch (OperationCanceledException)
         {
         }
+        _redirectingLoggerFactory.Dispose();
         _stopCts.Dispose();
     }
 
