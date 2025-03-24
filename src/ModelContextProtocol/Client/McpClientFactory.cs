@@ -19,7 +19,7 @@ public static class McpClientFactory
     /// <summary>Creates default client options to use when no options are supplied.</summary>
     private static McpClientOptions CreateDefaultClientOptions()
     {
-        var asmName = (Assembly.GetEntryAssembly() ?? Assembly.GetCallingAssembly()).GetName();
+        var asmName = (Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly()).GetName();
         return new()
         {
             ClientInfo = new()
