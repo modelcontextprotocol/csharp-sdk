@@ -41,7 +41,7 @@
       "_appTitle": "MCP .NET SDK",
       "_enableSearch": true,
       "pdf": true,
-      "_appLogoPath": "images/logo.png",
+      "_appLogoPath": "images/mcp.svg",
       "_appFaviconPath": "images/favicon.ico"  
     }
   }
