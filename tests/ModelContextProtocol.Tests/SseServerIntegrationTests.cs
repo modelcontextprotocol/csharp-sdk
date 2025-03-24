@@ -56,7 +56,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
 
         // act
         var client = await GetClientAsync();
-        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
+        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(tools);
@@ -71,7 +71,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
         var client = await GetClientAsync();
         var result = await client.CallToolAsync(
             "echo",
-            new Dictionary<string, object>
+            new Dictionary<string, object?>
             {
                 ["message"] = "Hello MCP!"
             },
@@ -93,15 +93,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
         // act
         var client = await GetClientAsync();
 
-        List<Resource> allResources = [];
-        string? cursor = null;
-        do
-        {
-            var resources = await client.ListResourcesAsync(cursor, CancellationToken.None);
-            allResources.AddRange(resources.Resources);
-            cursor = resources.NextCursor;
-        }
-        while (cursor != null);
+        IList<Resource> allResources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
 
         // The everything server provides 100 test resources
         Assert.Equal(100, allResources.Count);
@@ -148,7 +140,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
 
         // act
         var client = await GetClientAsync();
-        var prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
+        var prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(prompts);
@@ -179,7 +171,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
 
         // act
         var client = await GetClientAsync();
-        var arguments = new Dictionary<string, object>
+        var arguments = new Dictionary<string, object?>
         {
             { "temperature", "0.7" },
             { "style", "formal" }
@@ -236,7 +228,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
 #pragma warning restore CS1998 // Async method lacks 'await' operators and will run synchronously
 
         // Call the server's sampleLLM tool which should trigger our sampling handler
-        var result = await client.CallToolAsync("sampleLLM", new Dictionary<string, object>
+        var result = await client.CallToolAsync("sampleLLM", new Dictionary<string, object?>
             {
                 ["prompt"] = "Test prompt",
                 ["maxTokens"] = 100

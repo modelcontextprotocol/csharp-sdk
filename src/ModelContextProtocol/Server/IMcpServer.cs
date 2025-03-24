@@ -23,10 +23,13 @@ public interface IMcpServer : IAsyncDisposable
     /// </summary>
     Implementation? ClientInfo { get; }
 
+    /// <summary>Gets the options used to construct this server.</summary>
+    McpServerOptions ServerOptions { get; }
+
     /// <summary>
     /// Gets the service provider for the server.
     /// </summary>
-    IServiceProvider? ServiceProvider { get; }
+    IServiceProvider? Services { get; }
 
     /// <summary>
     /// Adds a handler for client notifications of a specific method.

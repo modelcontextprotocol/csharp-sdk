@@ -1,12 +1,11 @@
-﻿using ModelContextProtocol.Logging;
+﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using ModelContextProtocol.Logging;
+using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Shared;
 using ModelContextProtocol.Utils;
-
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
-
 using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Server;
@@ -15,9 +14,9 @@ namespace ModelContextProtocol.Server;
 internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
 {
     private readonly IServerTransport? _serverTransport;
-    private readonly McpServerOptions _options;
-    private volatile bool _isInitializing;
     private readonly ILogger _logger;
+    private readonly string _serverDescription;
+    private volatile bool _isInitializing;
 
     /// <summary>
     /// Creates a new instance of <see cref="McpServer"/>.
@@ -34,10 +33,10 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
         Throw.IfNull(options);
 
         _serverTransport = transport as IServerTransport;
-        _options = options;
         _logger = (ILogger?)loggerFactory?.CreateLogger<McpServer>() ?? NullLogger.Instance;
         ServerInstructions = options.ServerInstructions;
-        ServiceProvider = serviceProvider;
+        Services = serviceProvider;
+        _serverDescription = $"{options.ServerInfo.Name} {options.ServerInfo.Version}";
 
         AddNotificationHandler("notifications/initialized", _ =>
         {
@@ -45,13 +44,16 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
             return Task.CompletedTask;
         });
 
+        SetToolsHandler(ref options);
+
         SetInitializeHandler(options);
         SetCompletionHandler(options);
         SetPingHandler();
-        SetToolsHandler(options);
         SetPromptsHandler(options);
         SetResourcesHandler(options);
         SetSetLoggingLevelHandler(options);
+
+        ServerOptions = options;
     }
 
     public ClientCapabilities? ClientCapabilities { get; set; }
@@ -63,11 +65,14 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
     public string? ServerInstructions { get; set; }
 
     /// <inheritdoc />
-    public IServiceProvider? ServiceProvider { get; }
+    public McpServerOptions ServerOptions { get; }
+
+    /// <inheritdoc />
+    public IServiceProvider? Services { get; }
 
     /// <inheritdoc />
     public override string EndpointName =>
-        $"Server ({_options.ServerInfo.Name} {_options.ServerInfo.Version}), Client ({ClientInfo?.Name} {ClientInfo?.Version})";
+        $"Server ({_serverDescription}), Client ({ClientInfo?.Name} {ClientInfo?.Version})";
 
     /// <inheritdoc />
     public async Task StartAsync(CancellationToken cancellationToken = default)
@@ -125,7 +130,7 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
                 {
                     ProtocolVersion = options.ProtocolVersion,
                     Instructions = ServerInstructions,
-                    ServerInfo = _options.ServerInfo,
+                    ServerInfo = options.ServerInfo,
                     Capabilities = options.Capabilities ?? new ServerCapabilities(),
                 });
             });
@@ -195,17 +200,110 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
         SetRequestHandler<GetPromptRequestParams, GetPromptResult>("prompts/get", (request, ct) => getPromptHandler(new(this, request), ct));
     }
 
-    private void SetToolsHandler(McpServerOptions options)
+    private void SetToolsHandler(ref McpServerOptions options)
     {
-        if (options.Capabilities?.Tools is not { } toolsCapability)
+        ToolsCapability? toolsCapability = options.Capabilities?.Tools;
+        var listToolsHandler = toolsCapability?.ListToolsHandler;
+        var callToolHandler = toolsCapability?.CallToolHandler;
+        var tools = toolsCapability?.ToolCollection;
+
+        if (listToolsHandler is null != callToolHandler is null)
         {
-            return;
+            throw new McpServerException("ListTools and CallTool handlers should be specified together.");
         }
 
-        if (toolsCapability.ListToolsHandler is not { } listToolsHandler ||
-            toolsCapability.CallToolHandler is not { } callToolHandler)
+        // Handle tools provided via DI.
+        if (tools is { IsEmpty: false })
         {
-            throw new McpServerException("ListTools and/or CallTool handlers were specified but the Tools capability was not enabled.");
+            var originalListToolsHandler = listToolsHandler;
+            var originalCallToolHandler = callToolHandler;
+
+            // Synthesize the handlers, making sure a ToolsCapability is specified.
+            listToolsHandler = async (request, cancellationToken) =>
+            {
+                ListToolsResult result = new();
+                foreach (McpServerTool tool in tools)
+                {
+                    result.Tools.Add(tool.ProtocolTool);
+                }
+
+                if (originalListToolsHandler is not null)
+                {
+                    string? nextCursor = null;
+                    do
+                    {
+                        ListToolsResult extraResults = await originalListToolsHandler(request, cancellationToken).ConfigureAwait(false);
+                        result.Tools.AddRange(extraResults.Tools);
+
+                        nextCursor = extraResults.NextCursor;
+                        if (nextCursor is not null)
+                        {
+                            request = request with { Params = new() { Cursor = nextCursor } };
+                        }
+                    }
+                    while (nextCursor is not null);
+                }
+
+                return result;
+            };
+
+            callToolHandler = (request, cancellationToken) =>
+            {
+                if (request.Params is null ||
+                    !tools.TryGetTool(request.Params.Name, out var tool))
+                {
+                    if (originalCallToolHandler is not null)
+                    {
+                        return originalCallToolHandler(request, cancellationToken);
+                    }
+
+                    throw new McpServerException($"Unknown tool '{request.Params?.Name}'");
+                }
+
+                return tool.InvokeAsync(request, cancellationToken);
+            };
+
+            toolsCapability = toolsCapability is null ?
+                new()
+                {
+                    CallToolHandler = callToolHandler,
+                    ListToolsHandler = listToolsHandler,
+                    ToolCollection = tools,
+                    ListChanged = true,
+                } :
+                toolsCapability with
+                {
+                    CallToolHandler = callToolHandler,
+                    ListToolsHandler = listToolsHandler,
+                    ToolCollection = tools,
+                    ListChanged = true,
+                };
+
+            options.Capabilities = options.Capabilities is null ?
+                new() { Tools = toolsCapability } :
+                options.Capabilities with { Tools = toolsCapability };
+
+            tools.Changed += delegate
+            {
+                _ = SendMessageAsync(new JsonRpcNotification()
+                {
+                    Method = NotificationMethods.ToolListChangedNotification,
+                });
+            };
+        }
+        else
+        {
+            if (toolsCapability is null)
+            {
+                // No tools, and no tools capability was declared, so nothing to do.
+                return;
+            }
+
+            // Make sure the handlers are provided if the capability is enabled.
+            if (listToolsHandler is null || callToolHandler is null)
+            {
+                throw new McpServerException("ListTools and/or CallTool handlers were not specified but the Tools capability was enabled.");
+            }
         }
 
         SetRequestHandler<ListToolsRequestParams, ListToolsResult>("tools/list", (request, ct) => listToolsHandler(new(this, request), ct));

@@ -16,5 +16,5 @@ public class CallToolRequestParams
     /// Optional arguments to pass to the tool.
     /// </summary>
     [System.Text.Json.Serialization.JsonPropertyName("arguments")]
-    public Dictionary<string,object>? Arguments { get; init; }    
+    public Dictionary<string,object>? Arguments { get; init; }
 }

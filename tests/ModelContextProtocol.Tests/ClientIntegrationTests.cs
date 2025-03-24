@@ -18,6 +18,8 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
 {
     private static readonly string? s_openAIKey = Environment.GetEnvironmentVariable("AI:OpenAI:ApiKey")!;
 
+    public static bool NoOpenAIKeySet => string.IsNullOrWhiteSpace(s_openAIKey);
+
     private readonly ClientIntegrationTestFixture _fixture;
 
     public ClientIntegrationTests(ClientIntegrationTestFixture fixture, ITestOutputHelper testOutputHelper)
@@ -68,13 +70,10 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
 
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
-        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
-        var aiFunctions = await client.GetAIFunctionsAsync(TestContext.Current.CancellationToken);
+        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotEmpty(tools);
-        Assert.NotEmpty(aiFunctions);
-        Assert.Equal(tools.Count, aiFunctions.Count);
     }
 
     [Theory]
@@ -87,7 +86,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         await using var client = await _fixture.CreateClientAsync(clientId);
         var result = await client.CallToolAsync(
             "echo",
-            new Dictionary<string, object>
+            new Dictionary<string, object?>
             {
                 ["message"] = "Hello MCP!"
             },
@@ -109,7 +108,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
 
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
-        var aiFunctions = await client.GetAIFunctionsAsync(TestContext.Current.CancellationToken);
+        var aiFunctions = await client.ListToolsAsync(TestContext.Current.CancellationToken);
         var echo = aiFunctions.Single(t => t.Name == "echo");
         var result = await echo.InvokeAsync([new KeyValuePair<string, object?>("message", "Hello MCP!")], TestContext.Current.CancellationToken);
 
@@ -126,7 +125,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
 
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
-        var prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
+        var prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotEmpty(prompts);
@@ -158,7 +157,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
 
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
-        var arguments = new Dictionary<string, object>
+        var arguments = new Dictionary<string, object?>
         {
             { "temperature", "0.7" },
             { "style", "formal" }
@@ -191,7 +190,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
 
-        List<ResourceTemplate> allResourceTemplates = await client.ListResourceTemplatesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
+        IList<ResourceTemplate> allResourceTemplates = await client.ListResourceTemplatesAsync(TestContext.Current.CancellationToken);
 
         // The server provides a single test resource template
         Assert.Single(allResourceTemplates);
@@ -206,15 +205,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
 
-        List<Resource> allResources = [];
-        string? cursor = null;
-        do
-        {
-            var resources = await client.ListResourcesAsync(cursor, CancellationToken.None);
-            allResources.AddRange(resources.Resources);
-            cursor = resources.NextCursor;
-        }
-        while (cursor != null);
+        IList<Resource> allResources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
 
         // The server provides 100 test resources
         Assert.Equal(100, allResources.Count);
@@ -393,7 +384,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         // Call the server's sampleLLM tool which should trigger our sampling handler
         var result = await client.CallToolAsync(
             "sampleLLM",
-            new Dictionary<string, object>
+            new Dictionary<string, object?>
             {
                 ["prompt"] = "Test prompt",
                 ["maxTokens"] = 100
@@ -483,7 +474,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         // act
         var result = await client.CallToolAsync(
             "read_graph",
-            [],
+            new Dictionary<string, object?>(),
             TestContext.Current.CancellationToken);
 
         // assert
@@ -494,17 +485,15 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         await client.DisposeAsync();
     }
 
-    [Fact]
-    public async Task GetAIFunctionsAsync_UsingEverythingServer_ToolsAreProperlyCalled()
+    [Fact(Skip = "Requires OpenAI API Key", SkipWhen = nameof(NoOpenAIKeySet))]
+    public async Task ListToolsAsync_UsingEverythingServer_ToolsAreProperlyCalled()
     {
-        SkipTestIfNoOpenAIKey();
-
         // Get the MCP client and tools from it.
         await using var client = await McpClientFactory.CreateAsync(
             _fixture.EverythingServerConfig, 
             _fixture.DefaultOptions, 
             cancellationToken: TestContext.Current.CancellationToken);
-        var mappedTools = await client.GetAIFunctionsAsync(TestContext.Current.CancellationToken);
+        var mappedTools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
 
         // Create the chat client.
         using IChatClient chatClient = new OpenAIClient(s_openAIKey).AsChatClient("gpt-4o-mini")
@@ -527,11 +516,9 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         Assert.Contains("Echo: Hello MCP!", response.Text);
     }
 
-    [Fact]
+    [Fact(Skip = "Requires OpenAI API Key", SkipWhen = nameof(NoOpenAIKeySet))]
     public async Task SamplingViaChatClient_RequestResponseProperlyPropagated()
     {
-        SkipTestIfNoOpenAIKey();
-
         await using var client = await McpClientFactory.CreateAsync(_fixture.EverythingServerConfig, new()
         {
             ClientInfo = new() { Name = nameof(SamplingViaChatClient_RequestResponseProperlyPropagated), Version = "1.0.0" },
@@ -544,7 +531,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
             },
         }, cancellationToken: TestContext.Current.CancellationToken);
 
-        var result = await client.CallToolAsync("sampleLLM", new()
+        var result = await client.CallToolAsync("sampleLLM", new Dictionary<string, object?>()
         {
             ["prompt"] = "In just a few words, what is the most famous tower in Paris?",
         }, TestContext.Current.CancellationToken);
@@ -589,10 +576,5 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
 
         // assert
         Assert.True(logCounter > 0);
-    }
-
-    private static void SkipTestIfNoOpenAIKey()
-    {
-        Assert.SkipWhen(s_openAIKey is null, "No OpenAI key provided. Skipping test.");
     }
 }

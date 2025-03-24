@@ -96,12 +96,7 @@ public static class McpServerExtensions
                                 {
                                     Type = "image",
                                     MimeType = dataContent.MediaType,
-                                    Data = Convert.ToBase64String(dataContent.Data.
-#if NET
-                                        Span),
-#else
-                                        ToArray()),
-#endif
+                                    Data = dataContent.GetBase64Data(),
                                 },
                             });
                             break;
@@ -126,33 +121,7 @@ public static class McpServerExtensions
                 ModelPreferences = modelPreferences,
             }, cancellationToken).ConfigureAwait(false);
 
-        ChatMessage responseMessage = new()
-        {
-            Role = result.Role == "user" ? ChatRole.User : ChatRole.Assistant
-        };
-
-        if (result.Content is { Type: "text" })
-        {
-            responseMessage.Contents.Add(new TextContent(result.Content.Text));
-        }
-        else if (result.Content is { Type: "image", MimeType: not null, Data: not null })
-        {
-            responseMessage.Contents.Add(new DataContent(Convert.FromBase64String(result.Content.Data), result.Content.MimeType));
-        }
-        else if (result.Content is { Type: "resource" } && result.Content.Resource is { } resourceContents)
-        {
-            if (resourceContents.Text is not null)
-            {
-                responseMessage.Contents.Add(new TextContent(resourceContents.Text));
-            }
-
-            if (resourceContents.Blob is not null && resourceContents.MimeType is not null)
-            {
-                responseMessage.Contents.Add(new DataContent(Convert.FromBase64String(resourceContents.Blob), resourceContents.MimeType));
-            }
-        }
-
-        return new(responseMessage)
+        return new(new ChatMessage(new(result.Role), [result.Content.ToAIContent()]))
         {
             ModelId = result.Model,
             FinishReason = result.StopReason switch

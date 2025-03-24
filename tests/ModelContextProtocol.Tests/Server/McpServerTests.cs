@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Messages;
@@ -24,7 +25,7 @@ public class McpServerTests : LoggedTest
         _serverTransport = new Mock<IServerTransport>();
         _logger = new Mock<ILogger>();
         _options = CreateOptions();
-        _serviceProvider = new Mock<IServiceProvider>().Object;
+        _serviceProvider = new ServiceCollection().BuildServiceProvider();
     }
 
     private static McpServerOptions CreateOptions(ServerCapabilities? capabilities = null)
@@ -133,8 +134,7 @@ public class McpServerTests : LoggedTest
         await transport.SendMessageAsync(new JsonRpcNotification
             {
                 Method = "notifications/initialized"
-            }
-, TestContext.Current.CancellationToken);
+            }, TestContext.Current.CancellationToken);
 
         await Task.Delay(50, TestContext.Current.CancellationToken);
 
@@ -678,12 +678,15 @@ public class McpServerTests : LoggedTest
         public bool IsInitialized => throw new NotImplementedException();
 
         public Implementation? ClientInfo => throw new NotImplementedException();
-        public IServiceProvider? ServiceProvider => throw new NotImplementedException();
+        public McpServerOptions ServerOptions => throw new NotImplementedException();
+        public IServiceProvider? Services => throw new NotImplementedException();
         public void AddNotificationHandler(string method, Func<JsonRpcNotification, Task> handler) => 
             throw new NotImplementedException();
         public Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
         public Task StartAsync(CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
     }
 }
