@@ -30,9 +30,13 @@ jobs:
       with:
         dotnet-version: 9.x
 
-    - run: dotnet tool update -g docfx
+    - name: Restore .NET tools
+      run: dotnet tool restore
+      working-directory: ./docs
 
-    - run: docfx docs/docfx.json
+    - name: Generate documentation
+      working-directory: ./docs
+      run: dotnet docfx docfx.json
 
     - name: Upload Pages artifact
       uses: actions/upload-pages-artifact@v3
