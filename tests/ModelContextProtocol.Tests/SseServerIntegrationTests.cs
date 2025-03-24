@@ -8,11 +8,11 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
 {
     private readonly SseServerIntegrationTestFixture _fixture;
 
-    public SseServerIntegrationTests(SseServerIntegrationTestFixture fixture, ITestOutputHelper output)
-        : base(output)
+    public SseServerIntegrationTests(SseServerIntegrationTestFixture fixture, ITestOutputHelper testOutputHelper)
+        : base(testOutputHelper)
     {
         _fixture = fixture;
-        _fixture.Initialize(output);
+        _fixture.Initialize(testOutputHelper);
     }
 
     private Task<IMcpClient> GetClientAsync(McpClientOptions? options = null)
