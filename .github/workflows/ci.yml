@@ -60,8 +60,7 @@ jobs:
           --blame-hang-timeout 7m
           --blame-crash
           --results-directory testresults
-          --collect "XPlat Code Coverage"
-          -- RunConfiguration.CollectSourceInformation=true
+          --collect "XPlat Code Coverage" -- RunConfiguration.CollectSourceInformation=true
 
     - name: Upload test results artifact
       if: always()
