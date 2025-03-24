@@ -114,7 +114,7 @@ internal static partial class Log
     internal static partial void TransportNotConnected(this ILogger logger, string endpointName);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Transport sending message for {endpointName} with ID {messageId}, JSON {json}")]
-    internal static partial void TransportSendingMessage(this ILogger logger, string endpointName, string messageId, string json);
+    internal static partial void TransportSendingMessage(this ILogger logger, string endpointName, string messageId, string? json = null);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Transport message sent for {endpointName} with ID {messageId}")]
     internal static partial void TransportSentMessage(this ILogger logger, string endpointName, string messageId);
@@ -347,4 +347,35 @@ internal static partial class Log
         string endpointName,
         string messageId,
         string responseContent);
+
+    /// <summary>
+    /// Logs the byte representation of a message in UTF-8 encoding.
+    /// </summary>
+    /// <param name="logger">The logger to use.</param>
+    /// <param name="endpointName">The name of the endpoint.</param>
+    /// <param name="byteRepresentation">The byte representation as a hex string.</param>
+    [LoggerMessage(EventId = 39000, Level = LogLevel.Trace, Message = "Transport {EndpointName}: Message bytes (UTF-8): {ByteRepresentation}")]
+    private static partial void TransportMessageBytes(this ILogger logger, string endpointName, string byteRepresentation);
+
+    /// <summary>
+    /// Logs the byte representation of a message for diagnostic purposes.
+    /// This is useful for diagnosing encoding issues with non-ASCII characters.
+    /// </summary>
+    /// <param name="logger">The logger to use.</param>
+    /// <param name="endpointName">The name of the endpoint.</param>
+    /// <param name="message">The message to log bytes for.</param>
+    internal static void TransportMessageBytesUtf8(this ILogger logger, string endpointName, string message)
+    {
+        if (logger.IsEnabled(LogLevel.Trace))
+        {
+            var bytes = System.Text.Encoding.UTF8.GetBytes(message);
+            var byteRepresentation =
+#if NET
+                Convert.ToHexString(bytes);
+#else
+                BitConverter.ToString(bytes).Replace("-", " ");
+#endif
+            logger.TransportMessageBytes(endpointName, byteRepresentation);
+        }
+    }
 }

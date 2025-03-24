@@ -1,11 +1,11 @@
-﻿using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Logging.Abstractions;
+﻿using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
-using ModelContextProtocol.Tests.Utils;
 using ModelContextProtocol.Utils.Json;
+using System.IO.Pipelines;
+using System.Text;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Tests.Transport;
@@ -62,13 +62,11 @@ public class StdioServerTransportTests
     [Fact]
     public async Task SendMessageAsync_Should_Send_Message()
     {
-        // Use a reader that won't terminate
-        using var input = new NonEndingTextReader(TestContext.Current.CancellationToken);
-        using var output = new StringWriter();
+        using var output = new MemoryStream();
 
         await using var transport = new StdioServerTransport(
             _serverOptions.ServerInfo.Name,
-            input,
+            new Pipe().Reader.AsStream(),
             output,
             NullLoggerFactory.Instance);
             
@@ -84,7 +82,7 @@ public class StdioServerTransportTests
 
         await transport.SendMessageAsync(message, TestContext.Current.CancellationToken);
 
-        var result = output.ToString()?.Trim();
+        var result = Encoding.UTF8.GetString(output.ToArray()).Trim();
         var expected = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions);
 
         Assert.Equal(expected, result);
@@ -117,13 +115,13 @@ public class StdioServerTransportTests
         var json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions);
 
         // Use a reader that won't terminate
-        using var input = new NonEndingTextReader(TestContext.Current.CancellationToken);
-        using var output = new StringWriter();
+        Pipe pipe = new();
+        using var input = pipe.Reader.AsStream();
 
         await using var transport = new StdioServerTransport(
             _serverOptions.ServerInfo.Name,
             input,
-            output,
+            Stream.Null,
             NullLoggerFactory.Instance);
             
         await transport.StartListeningAsync(TestContext.Current.CancellationToken);
@@ -135,7 +133,7 @@ public class StdioServerTransportTests
         Assert.True(transport.IsConnected, "Transport should be connected after StartListeningAsync");
 
         // Write the message to the reader
-        input.WriteLine(json);
+        await pipe.Writer.WriteAsync(Encoding.UTF8.GetBytes($"{json}\n"), TestContext.Current.CancellationToken);
 
         var canRead = await transport.MessageReader.WaitToReadAsync(TestContext.Current.CancellationToken);
 
@@ -161,12 +159,11 @@ public class StdioServerTransportTests
     public async Task SendMessageAsync_Should_Preserve_Unicode_Characters()
     {
         // Use a reader that won't terminate
-        using var input = new NonEndingTextReader(TestContext.Current.CancellationToken);
-        using var output = new StringWriter();
+        using var output = new MemoryStream();
 
         await using var transport = new StdioServerTransport(
             _serverOptions.ServerInfo.Name, 
-            input,
+            new Pipe().Reader.AsStream(),
             output, 
             NullLoggerFactory.Instance);
             
@@ -191,11 +188,11 @@ public class StdioServerTransportTests
         };
 
         // Clear output and send message
-        output.GetStringBuilder().Clear();
+        output.SetLength(0);
         await transport.SendMessageAsync(chineseMessage, TestContext.Current.CancellationToken);
         
         // Verify Chinese characters preserved but encoded
-        var chineseResult = output.ToString().Trim();
+        var chineseResult = Encoding.UTF8.GetString(output.ToArray()).Trim();
         var expectedChinese = JsonSerializer.Serialize(chineseMessage, McpJsonUtilities.DefaultOptions);
         Assert.Equal(expectedChinese, chineseResult);
         Assert.Contains(JsonSerializer.Serialize(chineseText), chineseResult);
@@ -213,11 +210,11 @@ public class StdioServerTransportTests
         };
 
         // Clear output and send message
-        output.GetStringBuilder().Clear();
+        output.SetLength(0);
         await transport.SendMessageAsync(emojiMessage, TestContext.Current.CancellationToken);
         
         // Verify emoji preserved - might be as either direct characters or escape sequences
-        var emojiResult = output.ToString().Trim();
+        var emojiResult = Encoding.UTF8.GetString(output.ToArray()).Trim();
         var expectedEmoji = JsonSerializer.Serialize(emojiMessage, McpJsonUtilities.DefaultOptions);
         Assert.Equal(expectedEmoji, emojiResult);
         

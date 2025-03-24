@@ -21,8 +21,6 @@ public sealed class StdioClientTransport : TransportBase, IClientTransport
     private readonly ILogger _logger;
     private readonly JsonSerializerOptions _jsonOptions;
     private Process? _process;
-    private StreamWriter? _stdInWriter;
-    private StreamReader? _stdOutReader;
     private Task? _readTask;
     private CancellationTokenSource? _shutdownCts;
     private bool _processStarted;
@@ -62,6 +60,8 @@ public sealed class StdioClientTransport : TransportBase, IClientTransport
 
             _shutdownCts = new CancellationTokenSource();
 
+            UTF8Encoding noBomUTF8 = new(encoderShouldEmitUTF8Identifier: false);
+
             var startInfo = new ProcessStartInfo
             {
                 FileName = _options.Command,
@@ -71,6 +71,11 @@ public sealed class StdioClientTransport : TransportBase, IClientTransport
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 WorkingDirectory = _options.WorkingDirectory ?? Environment.CurrentDirectory,
+                StandardOutputEncoding = noBomUTF8,
+                StandardErrorEncoding = noBomUTF8,
+#if NET
+                StandardInputEncoding = noBomUTF8,
+#endif
             };
 
             if (!string.IsNullOrWhiteSpace(_options.Arguments))
@@ -95,19 +100,34 @@ public sealed class StdioClientTransport : TransportBase, IClientTransport
             // Set up error logging
             _process.ErrorDataReceived += (sender, args) => _logger.TransportError(EndpointName, args.Data ?? "(no data)");
 
-            if (!_process.Start())
+            // We need both stdin and stdout to use a no-BOM UTF-8 encoding. On .NET Core,
+            // we can use ProcessStartInfo.StandardOutputEncoding/StandardInputEncoding, but
+            // StandardInputEncoding doesn't exist on .NET Framework; instead, it always picks
+            // up the encoding from Console.InputEncoding. As such, when not targeting .NET Core,
+            // we temporarily change Console.InputEncoding to no-BOM UTF-8 around the Process.Start
+            // call, to ensure it picks up the correct encoding.
+#if NET
+            _processStarted = _process.Start();
+#else
+            Encoding originalInputEncoding = Console.InputEncoding;
+            try
+            {
+                Console.InputEncoding = noBomUTF8;
+                _processStarted = _process.Start();
+            }
+            finally
+            {
+                Console.InputEncoding = originalInputEncoding;
+            }
+#endif
+
+            if (!_processStarted)
             {
                 _logger.TransportProcessStartFailed(EndpointName);
                 throw new McpTransportException("Failed to start MCP server process");
             }
+
             _logger.TransportProcessStarted(EndpointName, _process.Id);
-            _processStarted = true;
-            
-            // Create streams with explicit UTF-8 encoding to ensure proper Unicode character handling
-            // This is especially important for non-ASCII characters like Chinese text and emoji
-            var utf8Encoding = new UTF8Encoding(false); // No BOM
-            _stdInWriter = new StreamWriter(_process.StandardInput.BaseStream, utf8Encoding) { AutoFlush = true };
-            _stdOutReader = new StreamReader(_process.StandardOutput.BaseStream, utf8Encoding);
             
             _process.BeginErrorReadLine();
 
@@ -128,7 +148,7 @@ public sealed class StdioClientTransport : TransportBase, IClientTransport
     /// <inheritdoc/>
     public override async Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
     {
-        if (!IsConnected || _process?.HasExited == true || _stdInWriter == null)
+        if (!IsConnected || _process?.HasExited == true)
         {
             _logger.TransportNotConnected(EndpointName);
             throw new McpTransportException("Transport is not connected");
@@ -147,8 +167,8 @@ public sealed class StdioClientTransport : TransportBase, IClientTransport
             _logger.TransportMessageBytesUtf8(EndpointName, json);
 
             // Write the message followed by a newline using our UTF-8 writer
-            await _stdInWriter.WriteLineAsync(json).ConfigureAwait(false);
-            await _stdInWriter.FlushAsync(cancellationToken).ConfigureAwait(false);
+            await _process!.StandardInput.WriteLineAsync(json).ConfigureAwait(false);
+            await _process.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
 
             _logger.TransportSentMessage(EndpointName, id);
         }
@@ -172,10 +192,10 @@ public sealed class StdioClientTransport : TransportBase, IClientTransport
         {
             _logger.TransportEnteringReadMessagesLoop(EndpointName);
 
-            while (!cancellationToken.IsCancellationRequested && !_process!.HasExited && _stdOutReader != null)
+            while (!cancellationToken.IsCancellationRequested && !_process!.HasExited)
             {
                 _logger.TransportWaitingForMessage(EndpointName);
-                var line = await _stdOutReader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+                var line = await _process.StandardOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false);
                 if (line == null)
                 {
                     _logger.TransportEndOfStream(EndpointName);
@@ -240,25 +260,8 @@ public sealed class StdioClientTransport : TransportBase, IClientTransport
     private async Task CleanupAsync(CancellationToken cancellationToken)
     {
         _logger.TransportCleaningUp(EndpointName);
-        
-        if (_stdInWriter != null)
-        {
-            try
-            {
-                _logger.TransportClosingStdin(EndpointName);
-                _stdInWriter.Close();
-            }
-            catch (Exception ex)
-            {
-                _logger.TransportShutdownFailed(EndpointName, ex);
-            }
 
-            _stdInWriter = null;
-        }
-        
-        _stdOutReader = null;
-        
-        if (_process != null && _processStarted && !_process.HasExited)
+        if (_process is Process process && _processStarted && !process.HasExited)
         {
             try
             {
@@ -267,15 +270,17 @@ public sealed class StdioClientTransport : TransportBase, IClientTransport
 
                 // Kill the while process tree because the process may spawn child processes
                 // and Node.js does not kill its children when it exits properly
-                _process.KillTree(_options.ShutdownTimeout);
+                process.KillTree(_options.ShutdownTimeout);
             }
             catch (Exception ex)
             {
                 _logger.TransportShutdownFailed(EndpointName, ex);
             }
-
-            _process.Dispose();
-            _process = null;
+            finally
+            {
+                process.Dispose();
+                _process = null;
+            }
         }
 
         if (_shutdownCts is { } shutdownCts)
@@ -285,29 +290,30 @@ public sealed class StdioClientTransport : TransportBase, IClientTransport
             _shutdownCts = null;
         }
 
-        if (_readTask != null)
+        if (_readTask is Task readTask)
         {
             try
             {
                 _logger.TransportWaitingForReadTask(EndpointName);
-                await _readTask.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
+                await readTask.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
             }
             catch (TimeoutException)
             {
                 _logger.TransportCleanupReadTaskTimeout(EndpointName);
-                // Continue with cleanup
             }
             catch (OperationCanceledException)
             {
                 _logger.TransportCleanupReadTaskCancelled(EndpointName);
-                // Ignore cancellation
             }
             catch (Exception ex)
             {
                 _logger.TransportCleanupReadTaskFailed(EndpointName, ex);
             }
-            _readTask = null;
-            _logger.TransportReadTaskCleanedUp(EndpointName);
+            finally
+            {
+                _logger.TransportReadTaskCleanedUp(EndpointName);
+                _readTask = null;
+            }
         }
 
         SetConnected(false);
