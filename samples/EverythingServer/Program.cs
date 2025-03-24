@@ -42,6 +42,17 @@ builder.Services
         {
             Messages = messages
         });
+    })
+    .WithCallToolHandler((request, ct) =>
+    {
+        if (request.Params?.Name == "tiny_image")
+        {
+            return Task.FromResult(new CallToolResponse
+            {
+                Content = [new Content { Type = "image", Data = TinyImageTool.MCP_TINY_IMAGE, MimeType = "image/png" }]
+            });
+        }
+        throw new NotSupportedException($"Unknown tool name: {request.Params?.Name}");
     });
 
 await builder.Build().RunAsync();
