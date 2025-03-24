@@ -50,17 +50,17 @@ jobs:
     - name: Test
       run: >-
         dotnet test
-          --filter '(Execution!=Manual)'
-          --no-build
-          --configuration ${{ matrix.configuration }}
-          --logger "console;verbosity=normal"
-          --logger "trx"
-          --logger "GitHubActions;summary.includePassedTests=true;summary.includeSkippedTests=true"
-          --blame
-          --blame-hang-timeout 7m
-          --blame-crash
-          --results-directory testresults
-          --collect "XPlat Code Coverage" -- RunConfiguration.CollectSourceInformation=true
+        --filter '(Execution!=Manual)'
+        --no-build
+        --configuration ${{ matrix.configuration }}
+        --logger "console;verbosity=normal"
+        --logger "trx"
+        --logger "GitHubActions;summary.includePassedTests=true;summary.includeSkippedTests=true"
+        --blame
+        --blame-hang-timeout 7m
+        --blame-crash
+        --results-directory testresults
+        --collect "XPlat Code Coverage" -- RunConfiguration.CollectSourceInformation=true
 
     - name: Upload test results artifact
       if: always()
