@@ -37,8 +37,8 @@
       "modern"
     ],
     "globalMetadata": {
-      "_appName": "MCP .NET SDK",
-      "_appTitle": "MCP .NET SDK",
+      "_appName": "MCP C# SDK",
+      "_appTitle": "MCP C# SDK",
       "_enableSearch": true,
       "pdf": true,
       "_appLogoPath": "images/mcp.svg",
