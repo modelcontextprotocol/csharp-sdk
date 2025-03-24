@@ -6,6 +6,7 @@ using ModelContextProtocol.Protocol.Messages;
 using System.Text.Json;
 using ModelContextProtocol.Configuration;
 using ModelContextProtocol.Protocol.Transport;
+using ModelContextProtocol.Tests.Utils;
 using Xunit.Sdk;
 using System.Text.Encodings.Web;
 using System.Text.Json.Serialization.Metadata;
@@ -13,15 +14,17 @@ using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Tests;
 
-public class ClientIntegrationTests : IClassFixture<ClientIntegrationTestFixture>
+public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegrationTestFixture>
 {
     private static readonly string? s_openAIKey = Environment.GetEnvironmentVariable("AI:OpenAI:ApiKey")!;
 
     private readonly ClientIntegrationTestFixture _fixture;
 
-    public ClientIntegrationTests(ClientIntegrationTestFixture fixture)
+    public ClientIntegrationTests(ClientIntegrationTestFixture fixture, ITestOutputHelper testOutputHelper)
+        : base(testOutputHelper)
     {
         _fixture = fixture;
+        _fixture.Initialize(LoggerFactory);
     }
 
     public static IEnumerable<object[]> GetClients() =>
@@ -474,7 +477,7 @@ public class ClientIntegrationTests : IClassFixture<ClientIntegrationTestFixture
         await using var client = await McpClientFactory.CreateAsync(
             serverConfig, 
             clientOptions, 
-            loggerFactory: _fixture.LoggerFactory, 
+            loggerFactory: LoggerFactory, 
             cancellationToken: TestContext.Current.CancellationToken);
 
         // act
