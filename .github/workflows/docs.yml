@@ -31,7 +31,6 @@ jobs:
         dotnet-version: 9.x
 
     - name: Generate documentation
-      working-directory: ./docs
       run: make generate-docs
 
     - name: Upload Pages artifact
