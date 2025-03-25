@@ -151,7 +151,7 @@ McpServerOptions options = new()
                         {
                             Name = "echo",
                             Description = "Echoes the input back to the client.",
-                            InputSchema = """
+                            InputSchema = JsonSerializer.Deserialize<JsonElement>("""
                                 {
                                     "type": "object",
                                     "properties": {
@@ -162,7 +162,7 @@ McpServerOptions options = new()
                                     },
                                     "required": ["message"]
                                 }
-                                """,
+                                """),
                         }
                     ]
                 };
