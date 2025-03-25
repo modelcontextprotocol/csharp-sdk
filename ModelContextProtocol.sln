@@ -41,6 +41,7 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "workflows", "workflows", "{20AACB9B-307D-419C-BCC6-1C639C402295}"
 	ProjectSection(SolutionItems) = preProject
 		.github\workflows\ci.yml = .github\workflows\ci.yml
+		.github\workflows\code-coverage.yml = .github\workflows\code-coverage.yml
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ChatWithTools", "samples\ChatWithTools\ChatWithTools.csproj", "{0C6D0512-D26D-63D3-5019-C5F7A657B28C}"

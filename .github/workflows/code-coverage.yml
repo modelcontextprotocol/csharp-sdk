@@ -1,0 +1,71 @@
+name: Code Coverage
+
+on:
+  workflow_call:
+
+jobs:
+  publish-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            9.0.x
+            8.0.x
+
+      - name: Download test results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: testresults-*
+
+      - name: Combine coverage reports
+        uses: danielpalme/ReportGenerator-GitHub-Action@5.4.4
+        with:
+          reports: "**/*.cobertura.xml"
+          targetdir: "${{ github.workspace }}/report"
+          reporttypes: "HtmlSummary;Cobertura;MarkdownSummary;MarkdownSummaryGithub"
+          verbosity: "Info"
+          title: "Code Coverage"
+          tag: "${{ github.run_number }}_${{ github.run_id }}"
+          customSettings: ""
+          toolpath: "reportgeneratortool"
+
+      - name: Upload combined coverage XML
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: ${{ github.workspace }}/report
+          retention-days: 7
+
+      - name: Publish code coverage report
+        uses: irongut/CodeCoverageSummary@v1.3.0
+        with:
+          filename: "report/Cobertura.xml"
+          badge: true
+          fail_below_min: true
+          format: markdown
+          hide_branch_rate: false
+          hide_complexity: false
+          indicators: true
+          output: both
+          thresholds: "60 80"
+
+      - name: Upload combined coverage markdown
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-markdown
+          path: ${{ github.workspace }}/code-coverage-results.md
+          retention-days: 7
+
+      - name: Add Coverage PR Comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        with:
+          recreate: true
+          path: ${{ github.workspace }}/code-coverage-results.md
+
+      - name: Coverage on step summary
+        if: always()
+        run: cat "${{ github.workspace }}/report/SummaryGithub.md" >> $GITHUB_STEP_SUMMARY

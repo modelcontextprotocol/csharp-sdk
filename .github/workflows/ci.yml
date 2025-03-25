@@ -15,6 +15,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         configuration: [Debug, Release]
+      fail-fast: false
 
     steps: 
     - uses: actions/checkout@v4
@@ -22,7 +23,7 @@ jobs:
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
      
     - name: Setup .NET
-      uses: actions/setup-dotnet@v2
+      uses: actions/setup-dotnet@v4
       with:
         dotnet-version: | 
           9.0.x
@@ -48,4 +49,29 @@ jobs:
       run: dotnet build --configuration ${{ matrix.configuration }}
 
     - name: Test
-      run: dotnet test --filter '(Execution!=Manual)' --no-build --configuration ${{ matrix.configuration }}
+      run: >-
+        dotnet test
+        --filter '(Execution!=Manual)'
+        --no-build
+        --configuration ${{ matrix.configuration }}
+        --logger "console;verbosity=normal"
+        --logger "trx"
+        --logger "GitHubActions;summary.includePassedTests=true;summary.includeSkippedTests=true"
+        --blame
+        --blame-hang-timeout 7m
+        --blame-crash
+        --results-directory testresults
+        --collect "XPlat Code Coverage" -- RunConfiguration.CollectSourceInformation=true
+
+    - name: Upload test results artifact
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: testresults-${{ matrix.os }}-${{ matrix.configuration }}
+        path: testresults/**
+
+  publish-coverage:
+    if: github.actor != 'dependabot[bot]'
+    needs: build
+    uses: ./.github/workflows/code-coverage.yml
+    secrets: inherit

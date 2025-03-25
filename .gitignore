@@ -81,3 +81,7 @@ nCrunchTemp_*
 .NCrunch_ModelContextProtocol/
 
 *.ncrunchproject
+
+# Auto-generated documentation
+docs/_site
+docs/api

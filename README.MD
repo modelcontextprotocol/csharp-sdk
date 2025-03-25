@@ -2,9 +2,9 @@
 
 [![NuGet preview version](https://img.shields.io/nuget/vpre/ModelContextProtocol.svg)](https://www.nuget.org/packages/ModelContextProtocol/absoluteLatest)
 
-The official C# SDK for the [Model Context Protocol](https://modelcontextprotocol.io/), enabling .NET applications, services, and libraries to implement and interact with MCP clients and servers.
+The official C# SDK for the [Model Context Protocol](https://modelcontextprotocol.io/), enabling .NET applications, services, and libraries to implement and interact with MCP clients and servers. Please visit our [API documentation](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.html) for more details on available functionality.
 
-> [!NOTE]  
+> [!NOTE]
 > This repo is still in preview, breaking changes can be introduced without prior notice.
 
 ## About MCP
@@ -65,7 +65,7 @@ IList<AIFunction> tools = await client.GetAIFunctionsAsync();
 IChatClient chatClient = ...;
 var response = await chatClient.GetResponseAsync(
     "your prompt here",
-    new() 
+    new()
     {
         Tools = [.. tools],
     });
@@ -110,7 +110,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 McpServerOptions options = new()
 {
     ServerInfo = new() { Name = "MyServer", Version = "1.0.0" },
-    Capabilities = new() 
+    Capabilities = new()
     {
         Tools = new()
         {
@@ -165,6 +165,10 @@ await server.StartAsync();
 // Run until process is stopped by the client (parent process)
 await Task.Delay(Timeout.Infinite);
 ```
+
+## Acknowledgements
+
+The starting point for this library was a project called [mcpdotnet](https://github.com/PederHP/mcpdotnet), initiated by [Peder Holdgaard Pederson](https://github.com/PederHP). We are grateful for the work done by Peder and other contributors to that repository, which created a solid foundation for this library.
 
 ## License
 
