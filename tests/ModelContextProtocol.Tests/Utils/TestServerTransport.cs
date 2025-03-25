@@ -76,15 +76,6 @@ public class TestServerTransport : IServerTransport
         }, cancellationToken);
     }
 
-    private async Task Error(JsonRpcRequest request, CancellationToken cancellationToken)
-    {
-        await WriteMessageAsync(new JsonRpcError
-        {
-            Id = request.Id,
-            Error = new JsonRpcErrorDetail() { Code = -32601, Message = $"Method '{request.Method}' not supported" }
-        }, cancellationToken);
-    }
-
     protected async Task WriteMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         await _messageChannel.Writer.WriteAsync(message, cancellationToken);

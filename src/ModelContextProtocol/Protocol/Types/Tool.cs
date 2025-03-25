@@ -10,6 +10,8 @@ namespace ModelContextProtocol.Protocol.Types;
 /// </summary>
 public class Tool
 {
+    private JsonElement _inputSchema = McpJsonUtilities.DefaultMcpToolSchema;
+
     /// <summary>
     /// The name of the tool.
     /// </summary>
@@ -42,6 +44,4 @@ public class Tool
             _inputSchema = value;
         }
     }
-
-    private JsonElement _inputSchema = McpJsonUtilities.DefaultMcpToolSchema;
 }

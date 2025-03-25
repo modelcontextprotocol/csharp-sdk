@@ -3,8 +3,8 @@ using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
 using Microsoft.Extensions.AI;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Runtime.CompilerServices;
 
 namespace ModelContextProtocol.Client;
 
@@ -23,6 +23,7 @@ public static class McpClientExtensions
     public static Task SendNotificationAsync(this IMcpClient client, string method, object? parameters = null, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
+        Throw.IfNullOrWhiteSpace(method);
 
         return client.SendMessageAsync(
             new JsonRpcNotification { Method = method, Params = parameters },
@@ -45,42 +46,67 @@ public static class McpClientExtensions
     }
 
     /// <summary>
-    /// Retrieves a sequence of available tools from the server.
+    /// Retrieves a list of available tools from the server.
     /// </summary>
     /// <param name="client">The client.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>An asynchronous sequence of tool information.</returns>
-    public static async IAsyncEnumerable<Tool> ListToolsAsync(
-        this IMcpClient client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        string? cursor = null;
-        do
-        {
-            var tools = await ListToolsAsync(client, cursor, cancellationToken).ConfigureAwait(false);
-            foreach (var tool in tools.Tools)
-            {
-                yield return tool;
-            }
-
-            cursor = tools.NextCursor;
-        }
-        while (cursor is not null);
-    }
-
-    /// <summary>
-    /// Retrieves a sequence of available tools from the server.
-    /// </summary>
-    /// <param name="client">The client.</param>
-    /// <param name="cursor">A cursor to paginate the results.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>A task containing the server's response with tool information.</returns>
-    public static Task<ListToolsResult> ListToolsAsync(this IMcpClient client, string? cursor, CancellationToken cancellationToken = default)
+    /// <returns>A list of all available tools.</returns>
+    public static async Task<IList<McpClientTool>> ListToolsAsync(
+        this IMcpClient client, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
 
-        return client.SendRequestAsync<ListToolsResult>(
-            CreateRequest("tools/list", CreateCursorDictionary(cursor)),
-            cancellationToken);
+        List<McpClientTool>? tools = null;
+        string? cursor = null;
+        do
+        {
+            var toolResults = await client.SendRequestAsync<ListToolsResult>(
+                CreateRequest("tools/list", CreateCursorDictionary(cursor)),
+                cancellationToken).ConfigureAwait(false);
+
+            tools ??= new List<McpClientTool>(toolResults.Tools.Count);
+            foreach (var tool in toolResults.Tools)
+            {
+                tools.Add(new McpClientTool(client, tool));
+            }
+
+            cursor = toolResults.NextCursor;
+        }
+        while (cursor is not null);
+
+        return tools;
+    }
+
+    /// <summary>
+    /// Creates an enumerable for asynchronously enumerating all available tools from the server.
+    /// </summary>
+    /// <param name="client">The client.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>An asynchronous sequence of all available tools.</returns>
+    /// <remarks>
+    /// Every iteration through the returned <see cref="IAsyncEnumerable{McpClientTool}"/>
+    /// will result in requerying the server and yielding the sequence of available tools.
+    /// </remarks>
+    public static async IAsyncEnumerable<McpClientTool> EnumerateToolsAsync(
+        this IMcpClient client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(client);
+
+        string? cursor = null;
+        do
+        {
+            var toolResults = await client.SendRequestAsync<ListToolsResult>(
+                CreateRequest("tools/list", CreateCursorDictionary(cursor)),
+                cancellationToken).ConfigureAwait(false);
+
+            foreach (var tool in toolResults.Tools)
+            {
+                yield return new McpClientTool(client, tool);
+            }
+
+            cursor = toolResults.NextCursor;
+        }
+        while (cursor is not null);
     }
 
     /// <summary>
@@ -88,38 +114,67 @@ public static class McpClientExtensions
     /// </summary>
     /// <param name="client">The client.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>An asynchronous sequence of prompt information.</returns>
-    public static async IAsyncEnumerable<Prompt> ListPromptsAsync(
-        this IMcpClient client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    /// <returns>A list of all available prompts.</returns>
+    public static async Task<IList<Prompt>> ListPromptsAsync(
+        this IMcpClient client, CancellationToken cancellationToken = default)
     {
+        Throw.IfNull(client);
+
+        List<Prompt>? prompts = null;
+
         string? cursor = null;
         do
         {
-            var prompts = await ListPromptsAsync(client, cursor, cancellationToken).ConfigureAwait(false);
-            foreach (var prompt in prompts.Prompts)
+            var promptResults = await client.SendRequestAsync<ListPromptsResult>(
+                CreateRequest("prompts/list", CreateCursorDictionary(cursor)),
+                cancellationToken).ConfigureAwait(false);
+
+            if (prompts is null)
+            {
+                prompts = promptResults.Prompts;
+            }
+            else
+            {
+                prompts.AddRange(promptResults.Prompts);
+            }
+
+            cursor = promptResults.NextCursor;
+        }
+        while (cursor is not null);
+
+        return prompts;
+    }
+
+    /// <summary>
+    /// Creates an enumerable for asynchronously enumerating all available prompts from the server.
+    /// </summary>
+    /// <param name="client">The client.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>An asynchronous sequence of all available prompts.</returns>
+    /// <remarks>
+    /// Every iteration through the returned <see cref="IAsyncEnumerable{Prompt}"/>
+    /// will result in requerying the server and yielding the sequence of available prompts.
+    /// </remarks>
+    public static async IAsyncEnumerable<Prompt> EnumeratePromptsAsync(
+        this IMcpClient client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(client);
+
+        string? cursor = null;
+        do
+        {
+            var promptResults = await client.SendRequestAsync<ListPromptsResult>(
+                CreateRequest("prompts/list", CreateCursorDictionary(cursor)),
+                cancellationToken).ConfigureAwait(false);
+
+            foreach (var prompt in promptResults.Prompts)
             {
                 yield return prompt;
             }
 
-            cursor = prompts.NextCursor;
+            cursor = promptResults.NextCursor;
         }
         while (cursor is not null);
-    }
-
-    /// <summary>
-    /// Retrieves a list of available prompts from the server.
-    /// </summary>
-    /// <param name="client">The client.</param>
-    /// <param name="cursor">A  cursor to paginate the results.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>A task containing the server's response with prompt information.</returns>
-    public static Task<ListPromptsResult> ListPromptsAsync(this IMcpClient client, string? cursor, CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(client);
-
-        return client.SendRequestAsync<ListPromptsResult>(
-            CreateRequest("prompts/list", CreateCursorDictionary(cursor)),
-            cancellationToken);
     }
 
     /// <summary>
@@ -130,9 +185,11 @@ public static class McpClientExtensions
     /// <param name="arguments">Optional arguments for the prompt</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task containing the prompt's content and messages.</returns>
-    public static Task<GetPromptResult> GetPromptAsync(this IMcpClient client, string name, Dictionary<string, object>? arguments = null, CancellationToken cancellationToken = default)
+    public static Task<GetPromptResult> GetPromptAsync(
+        this IMcpClient client, string name, Dictionary<string, object?>? arguments = null, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
+        Throw.IfNullOrWhiteSpace(name);
 
         return client.SendRequestAsync<GetPromptResult>(
             CreateRequest("prompts/get", CreateParametersDictionary(name, arguments)),
@@ -140,24 +197,69 @@ public static class McpClientExtensions
     }
 
     /// <summary>
-    /// Retrieves a sequence of available resource templates from the server.
+    /// Retrieves a list of available resource templates from the server.
     /// </summary>
     /// <param name="client">The client.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>An asynchronous sequence of resource template information.</returns>
-    public static async IAsyncEnumerable<ResourceTemplate> ListResourceTemplatesAsync(
-        this IMcpClient client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    /// <returns>A list of all available resource templates.</returns>
+    public static async Task<IList<ResourceTemplate>> ListResourceTemplatesAsync(
+        this IMcpClient client, CancellationToken cancellationToken = default)
     {
+        Throw.IfNull(client);
+
+        List<ResourceTemplate>? templates = null;
+
         string? cursor = null;
         do
         {
-            var resources = await ListResourceTemplatesAsync(client, cursor, cancellationToken).ConfigureAwait(false);
-            foreach (var resource in resources.ResourceTemplates)
+            var templateResults = await client.SendRequestAsync<ListResourceTemplatesResult>(
+                CreateRequest("resources/templates/list", CreateCursorDictionary(cursor)),
+                cancellationToken).ConfigureAwait(false);
+
+            if (templates is null)
             {
-                yield return resource;
+                templates = templateResults.ResourceTemplates;
+            }
+            else
+            {
+                templates.AddRange(templateResults.ResourceTemplates);
             }
 
-            cursor = resources.NextCursor;
+            cursor = templateResults.NextCursor;
+        }
+        while (cursor is not null);
+
+        return templates;
+    }
+
+    /// <summary>
+    /// Creates an enumerable for asynchronously enumerating all available resource templates from the server.
+    /// </summary>
+    /// <param name="client">The client.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>An asynchronous sequence of all available resource templates.</returns>
+    /// <remarks>
+    /// Every iteration through the returned <see cref="IAsyncEnumerable{ResourceTemplate}"/>
+    /// will result in requerying the server and yielding the sequence of available resource templates.
+    /// </remarks>
+    public static async IAsyncEnumerable<ResourceTemplate> EnumerateResourceTemplatesAsync(
+        this IMcpClient client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(client);
+
+        string? cursor = null;
+        do
+        {
+            var templateResults = await client.SendRequestAsync<ListResourceTemplatesResult>(
+                CreateRequest("resources/templates/list", CreateCursorDictionary(cursor)),
+                cancellationToken).ConfigureAwait(false);
+
+            foreach (var template in templateResults.ResourceTemplates)
+            {
+                yield return template;
+            }
+
+            cursor = templateResults.NextCursor;
         }
         while (cursor is not null);
     }
@@ -166,53 +268,68 @@ public static class McpClientExtensions
     /// Retrieves a list of available resources from the server.
     /// </summary>
     /// <param name="client">The client.</param>
-    /// <param name="cursor">A  cursor to paginate the results.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
-    public static Task<ListResourceTemplatesResult> ListResourceTemplatesAsync(this IMcpClient client, string? cursor, CancellationToken cancellationToken = default)
+    /// <returns>A list of all available resources.</returns>
+    public static async Task<IList<Resource>> ListResourcesAsync(
+        this IMcpClient client, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
 
-        return client.SendRequestAsync<ListResourceTemplatesResult>(
-            CreateRequest("resources/templates/list", CreateCursorDictionary(cursor)),
-            cancellationToken);
-    }
+        List<Resource>? resources = null;
 
-    /// <summary>
-    /// Retrieves a sequence of available resources from the server.
-    /// </summary>
-    /// <param name="client">The client.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>An asynchronous sequence of resource information.</returns>
-    public static async IAsyncEnumerable<Resource> ListResourcesAsync(
-        this IMcpClient client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
         string? cursor = null;
         do
         {
-            var resources = await ListResourcesAsync(client, cursor, cancellationToken).ConfigureAwait(false);
-            foreach (var resource in resources.Resources)
+            var resourceResults = await client.SendRequestAsync<ListResourcesResult>(
+                CreateRequest("resources/list", CreateCursorDictionary(cursor)),
+                cancellationToken).ConfigureAwait(false);
+
+            if (resources is null)
+            {
+                resources = resourceResults.Resources;
+            }
+            else
+            {
+                resources.AddRange(resourceResults.Resources);
+            }
+
+            cursor = resourceResults.NextCursor;
+        }
+        while (cursor is not null);
+
+        return resources;
+    }
+
+    /// <summary>
+    /// Creates an enumerable for asynchronously enumerating all available resources from the server.
+    /// </summary>
+    /// <param name="client">The client.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>An asynchronous sequence of all available resources.</returns>
+    /// <remarks>
+    /// Every iteration through the returned <see cref="IAsyncEnumerable{Resource}"/>
+    /// will result in requerying the server and yielding the sequence of available resources.
+    /// </remarks>
+    public static async IAsyncEnumerable<Resource> EnumerateResourcesAsync(
+        this IMcpClient client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(client);
+
+        string? cursor = null;
+        do
+        {
+            var resourceResults = await client.SendRequestAsync<ListResourcesResult>(
+                CreateRequest("resources/list", CreateCursorDictionary(cursor)),
+                cancellationToken).ConfigureAwait(false);
+
+            foreach (var resource in resourceResults.Resources)
             {
                 yield return resource;
             }
 
-            cursor = resources.NextCursor;
+            cursor = resourceResults.NextCursor;
         }
         while (cursor is not null);
-    }
-
-    /// <summary>
-    /// Retrieves a list of available resources from the server.
-    /// </summary>
-    /// <param name="client">The client.</param>
-    /// <param name="cursor">A  cursor to paginate the results.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
-    public static Task<ListResourcesResult> ListResourcesAsync(this IMcpClient client, string? cursor, CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(client);
-
-        return client.SendRequestAsync<ListResourcesResult>(
-            CreateRequest("resources/list", CreateCursorDictionary(cursor)),
-            cancellationToken);
     }
 
     /// <summary>
@@ -221,9 +338,11 @@ public static class McpClientExtensions
     /// <param name="client">The client.</param>
     /// <param name="uri">The uri of the resource.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
-    public static Task<ReadResourceResult> ReadResourceAsync(this IMcpClient client, string uri, CancellationToken cancellationToken = default)
+    public static Task<ReadResourceResult> ReadResourceAsync(
+        this IMcpClient client, string uri, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
+        Throw.IfNullOrWhiteSpace(uri);
 
         return client.SendRequestAsync<ReadResourceResult>(
             CreateRequest("resources/read", new() { ["uri"] = uri }),
@@ -267,6 +386,7 @@ public static class McpClientExtensions
     public static Task SubscribeToResourceAsync(this IMcpClient client, string uri, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
+        Throw.IfNullOrWhiteSpace(uri);
 
         return client.SendRequestAsync<EmptyResult>(
             CreateRequest("resources/subscribe", new() { ["uri"] = uri }),
@@ -282,6 +402,7 @@ public static class McpClientExtensions
     public static Task UnsubscribeFromResourceAsync(this IMcpClient client, string uri, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
+        Throw.IfNullOrWhiteSpace(uri);
 
         return client.SendRequestAsync<EmptyResult>(
             CreateRequest("resources/unsubscribe", new() { ["uri"] = uri }),
@@ -296,46 +417,15 @@ public static class McpClientExtensions
     /// <param name="arguments">Optional arguments for the tool.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task containing the tool's response.</returns>
-    public static Task<CallToolResponse> CallToolAsync(this IMcpClient client, string toolName, Dictionary<string, object> arguments, CancellationToken cancellationToken = default)
+    public static Task<CallToolResponse> CallToolAsync(
+        this IMcpClient client, string toolName, IReadOnlyDictionary<string, object?>? arguments = null, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
+        Throw.IfNull(toolName);
 
         return client.SendRequestAsync<CallToolResponse>(
             CreateRequest("tools/call", CreateParametersDictionary(toolName, arguments)),
             cancellationToken);
-    }
-
-    /// <summary>Gets <see cref="AIFunction"/> instances for all of the tools available through the specified <see cref="IMcpClient"/>.</summary>
-    /// <param name="client">The client for which <see cref="AIFunction"/> instances should be created.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>A task containing a list of the available functions.</returns>
-    public static async Task<IList<AIFunction>> GetAIFunctionsAsync(this IMcpClient client, CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(client);
-
-        List<AIFunction> functions = [];
-        await foreach (var tool in client.ListToolsAsync(cancellationToken).ConfigureAwait(false))
-        {
-            functions.Add(AsAIFunction(client, tool));
-        }
-
-        return functions;
-    }
-
-    /// <summary>Gets an <see cref="AIFunction"/> for invoking <see cref="Tool"/> via this <see cref="IMcpClient"/>.</summary>
-    /// <param name="client">The client with which to perform the invocation.</param>
-    /// <param name="tool">The tool to be invoked.</param>
-    /// <returns>An <see cref="AIFunction"/> for performing the call.</returns>
-    /// <remarks>
-    /// This operation does not validate that <paramref name="tool"/> is valid for the specified <paramref name="client"/>.
-    /// If the tool is not valid for the client, it will fail when invoked.
-    /// </remarks>
-    public static AIFunction AsAIFunction(this IMcpClient client, Tool tool)
-    {
-        Throw.IfNull(client);
-        Throw.IfNull(tool);
-
-        return new McpAIFunction(client, tool);
     }
 
     /// <summary>
@@ -428,12 +518,7 @@ public static class McpClientExtensions
                     {
                         Type = "image",
                         MimeType = dc.MediaType,
-                        Data = Convert.ToBase64String(dc.Data
-#if NET
-                            .Span),
-#else
-                            .ToArray()),
-#endif
+                        Data = dc.GetBase64Data(),
                     };
                 }
             }
@@ -499,7 +584,8 @@ public static class McpClientExtensions
     private static Dictionary<string, object?>? CreateCursorDictionary(string? cursor) =>
         cursor != null ? new() { ["cursor"] = cursor } : null;
 
-    private static Dictionary<string, object?> CreateParametersDictionary(string nameParameter, Dictionary<string, object>? arguments)
+    private static Dictionary<string, object?> CreateParametersDictionary(
+        string nameParameter, IReadOnlyDictionary<string, object?>? arguments)
     {
         Dictionary<string, object?> parameters = new()
         {
@@ -527,19 +613,19 @@ public static class McpClientExtensions
         public override JsonElement JsonSchema => tool.InputSchema;
 
         /// <inheritdoc/>
+        public override JsonSerializerOptions JsonSerializerOptions => McpJsonUtilities.DefaultOptions;
+
+        /// <inheritdoc/>
         protected async override Task<object?> InvokeCoreAsync(
             IEnumerable<KeyValuePair<string, object?>> arguments, CancellationToken cancellationToken)
         {
-            Throw.IfNull(arguments);
-
-            Dictionary<string, object> argDict = [];
-            foreach (var arg in arguments)
-            {
-                if (arg.Value is not null)
-                {
-                    argDict[arg.Key] = arg.Value;
-                }
-            }
+            IReadOnlyDictionary<string, object?> argDict =
+                arguments as IReadOnlyDictionary<string, object?> ??
+#if NET
+                arguments.ToDictionary();
+#else
+                arguments.ToDictionary(kv => kv.Key, kv => kv.Value);   
+#endif
 
             CallToolResponse result = await client.CallToolAsync(tool.Name, argDict, cancellationToken).ConfigureAwait(false);
             return JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.CallToolResponse);

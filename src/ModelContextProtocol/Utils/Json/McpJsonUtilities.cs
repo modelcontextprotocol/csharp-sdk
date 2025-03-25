@@ -1,4 +1,5 @@
-﻿using ModelContextProtocol.Protocol.Messages;
+﻿using Microsoft.Extensions.AI;
+using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Types;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
@@ -61,6 +62,10 @@ public static partial class McpJsonUtilities
             {
             };
         }
+
+        // Include all types from AIJsonUtilities, so that anything default usable as part of an AIFunction
+        // is also usable as part of an McpServerTool.
+        options.TypeInfoResolverChain.Add(AIJsonUtilities.DefaultOptions.TypeInfoResolver!);
 
         options.MakeReadOnly();
         return options;
