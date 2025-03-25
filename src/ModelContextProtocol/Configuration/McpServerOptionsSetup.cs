@@ -23,24 +23,37 @@ internal sealed class McpServerOptionsSetup(
     {
         Throw.IfNull(options);
 
+        // Configure the option's server information based on the current process,
+        // if it otherwise lacks server information.
         var assemblyName = (Assembly.GetEntryAssembly() ?? Assembly.GetCallingAssembly()).GetName();
-        options.ServerInfo = new()
+        if (options.ServerInfo is not { } serverInfo ||
+            serverInfo.Name is null ||
+            serverInfo.Version is null)
         {
-            Name = assemblyName.Name ?? "McpServer",
-            Version = assemblyName.Version?.ToString() ?? "1.0.0",
-        };
+            options.ServerInfo = options.ServerInfo is null ?
+                new()
+                {
+                    Name = assemblyName.Name ?? "McpServer",
+                    Version = assemblyName.Version?.ToString() ?? "1.0.0",
+                } :
+                options.ServerInfo with
+                {
+                    Name = options.ServerInfo.Name ?? assemblyName.Name ?? "McpServer",
+                    Version = options.ServerInfo.Version ?? assemblyName.Version?.ToString() ?? "1.0.0",
+                };
+        }
 
-        McpServerToolCollection toolsCollection = new();
+        // Collect all of the provided tools into a tools collection. If the options already has
+        // a collection, add to it, otherwise create a new one. We want to maintain the identity
+        // of an existing collection in case someone has provided their own derived type, wants
+        // change notifications, etc.
+        McpServerToolCollection toolsCollection = options.Capabilities?.Tools?.ToolCollection ?? [];
         foreach (var tool in serverTools)
         {
-            toolsCollection.Add(tool);
+            toolsCollection.TryAdd(tool);
         }
 
-        if (options.Capabilities?.Tools?.ToolCollection is { } existingToolsCollection)
-        {
-            existingToolsCollection.AddRange(toolsCollection);
-        }
-        else if (!toolsCollection.IsEmpty)
+        if (!toolsCollection.IsEmpty)
         {
             options.Capabilities = options.Capabilities is null ?
                 new() { Tools = new() { ToolCollection = toolsCollection } } :
@@ -52,7 +65,7 @@ internal sealed class McpServerOptionsSetup(
                 };
         }
 
-        // Apply custom server handlers
+        // Apply custom server handlers.
         serverHandlers.Value.OverwriteWithSetHandlers(options);
     }
 }
