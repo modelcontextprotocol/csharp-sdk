@@ -1,10 +1,12 @@
-﻿using System.Text.Json;
+﻿using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils.Json;
-using Microsoft.Extensions.Logging.Abstractions;
+using System.IO.Pipelines;
+using System.Text;
+using System.Text.Json;
 
 namespace ModelContextProtocol.Tests.Transport;
 
@@ -57,36 +59,33 @@ public class StdioServerTransportTests
         Assert.True(transport.IsConnected);
     }
 
-    [Fact(Skip = "https://github.com/modelcontextprotocol/csharp-sdk/issues/1")]
+    [Fact]
     public async Task SendMessageAsync_Should_Send_Message()
     {
-        TextReader oldIn = Console.In;
-        TextWriter oldOut = Console.Out;
-        try
-        {
-            using var output = new StringWriter();
+        using var output = new MemoryStream();
 
-            Console.SetIn(new StringReader(""));
-            Console.SetOut(output);
+        await using var transport = new StdioServerTransport(
+            _serverOptions.ServerInfo.Name,
+            new Pipe().Reader.AsStream(),
+            output,
+            NullLoggerFactory.Instance);
+            
+        await transport.StartListeningAsync(TestContext.Current.CancellationToken);
+        
+        // Ensure transport is fully initialized
+        await Task.Delay(100, TestContext.Current.CancellationToken);
+        
+        // Verify transport is connected
+        Assert.True(transport.IsConnected, "Transport should be connected after StartListeningAsync");
 
-            await using var transport = new StdioServerTransport(_serverOptions, NullLoggerFactory.Instance);
-            await transport.StartListeningAsync(TestContext.Current.CancellationToken);
+        var message = new JsonRpcRequest { Method = "test", Id = RequestId.FromNumber(44) };
 
-            var message = new JsonRpcRequest { Method = "test", Id = RequestId.FromNumber(44) };
+        await transport.SendMessageAsync(message, TestContext.Current.CancellationToken);
 
+        var result = Encoding.UTF8.GetString(output.ToArray()).Trim();
+        var expected = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions);
 
-            await transport.SendMessageAsync(message, TestContext.Current.CancellationToken);
-
-            var result = output.ToString()?.Trim();
-            var expected = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions);
-
-            Assert.Equal(expected, result);
-        }
-        finally
-        {
-            Console.SetOut(oldOut);
-            Console.SetIn(oldIn);
-        }
+        Assert.Equal(expected, result);
     }
 
     [Fact]
@@ -115,29 +114,34 @@ public class StdioServerTransportTests
         var message = new JsonRpcRequest { Method = "test", Id = RequestId.FromNumber(44) };
         var json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions);
 
-        TextReader oldIn = Console.In;
-        TextWriter oldOut = Console.Out;
-        try
-        {
-            Console.SetIn(new StringReader(json));
-            Console.SetOut(new StringWriter());
+        // Use a reader that won't terminate
+        Pipe pipe = new();
+        using var input = pipe.Reader.AsStream();
 
-            await using var transport = new StdioServerTransport(_serverOptions);
-            await transport.StartListeningAsync(TestContext.Current.CancellationToken);
+        await using var transport = new StdioServerTransport(
+            _serverOptions.ServerInfo.Name,
+            input,
+            Stream.Null,
+            NullLoggerFactory.Instance);
+            
+        await transport.StartListeningAsync(TestContext.Current.CancellationToken);
+        
+        // Ensure transport is fully initialized
+        await Task.Delay(100, TestContext.Current.CancellationToken);
+        
+        // Verify transport is connected
+        Assert.True(transport.IsConnected, "Transport should be connected after StartListeningAsync");
 
-            var canRead = await transport.MessageReader.WaitToReadAsync(TestContext.Current.CancellationToken);
+        // Write the message to the reader
+        await pipe.Writer.WriteAsync(Encoding.UTF8.GetBytes($"{json}\n"), TestContext.Current.CancellationToken);
 
-            Assert.True(canRead, "Nothing to read here from transport message reader");
-            Assert.True(transport.MessageReader.TryPeek(out var readMessage));
-            Assert.NotNull(readMessage);
-            Assert.IsType<JsonRpcRequest>(readMessage);
-            Assert.Equal(44, ((JsonRpcRequest)readMessage).Id.AsNumber);
-        }
-        finally
-        {
-            Console.SetOut(oldOut);
-            Console.SetIn(oldIn);
-        }
+        var canRead = await transport.MessageReader.WaitToReadAsync(TestContext.Current.CancellationToken);
+
+        Assert.True(canRead, "Nothing to read here from transport message reader");
+        Assert.True(transport.MessageReader.TryPeek(out var readMessage));
+        Assert.NotNull(readMessage);
+        Assert.IsType<JsonRpcRequest>(readMessage);
+        Assert.Equal(44, ((JsonRpcRequest)readMessage).Id.AsNumber);
     }
 
     [Fact]
@@ -149,5 +153,83 @@ public class StdioServerTransportTests
         await transport.DisposeAsync();
 
         Assert.False(transport.IsConnected);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_Should_Preserve_Unicode_Characters()
+    {
+        // Use a reader that won't terminate
+        using var output = new MemoryStream();
+
+        await using var transport = new StdioServerTransport(
+            _serverOptions.ServerInfo.Name, 
+            new Pipe().Reader.AsStream(),
+            output, 
+            NullLoggerFactory.Instance);
+            
+        await transport.StartListeningAsync(TestContext.Current.CancellationToken);
+        
+        // Ensure transport is fully initialized
+        await Task.Delay(100, TestContext.Current.CancellationToken);
+        
+        // Verify transport is connected
+        Assert.True(transport.IsConnected, "Transport should be connected after StartListeningAsync");
+
+        // Test 1: Chinese characters (BMP Unicode)
+        var chineseText = "上下文伺服器"; // "Context Server" in Chinese
+        var chineseMessage = new JsonRpcRequest 
+        { 
+            Method = "test", 
+            Id = RequestId.FromNumber(44),
+            Params = new Dictionary<string, JsonElement>
+            {
+                ["text"] = JsonSerializer.SerializeToElement(chineseText)
+            }
+        };
+
+        // Clear output and send message
+        output.SetLength(0);
+        await transport.SendMessageAsync(chineseMessage, TestContext.Current.CancellationToken);
+        
+        // Verify Chinese characters preserved but encoded
+        var chineseResult = Encoding.UTF8.GetString(output.ToArray()).Trim();
+        var expectedChinese = JsonSerializer.Serialize(chineseMessage, McpJsonUtilities.DefaultOptions);
+        Assert.Equal(expectedChinese, chineseResult);
+        Assert.Contains(JsonSerializer.Serialize(chineseText), chineseResult);
+        
+        // Test 2: Emoji (non-BMP Unicode using surrogate pairs)
+        var emojiText = "🔍 🚀 👍"; // Magnifying glass, rocket, thumbs up
+        var emojiMessage = new JsonRpcRequest 
+        { 
+            Method = "test", 
+            Id = RequestId.FromNumber(45),
+            Params = new Dictionary<string, JsonElement>
+            {
+                ["text"] = JsonSerializer.SerializeToElement(emojiText)
+            }
+        };
+
+        // Clear output and send message
+        output.SetLength(0);
+        await transport.SendMessageAsync(emojiMessage, TestContext.Current.CancellationToken);
+        
+        // Verify emoji preserved - might be as either direct characters or escape sequences
+        var emojiResult = Encoding.UTF8.GetString(output.ToArray()).Trim();
+        var expectedEmoji = JsonSerializer.Serialize(emojiMessage, McpJsonUtilities.DefaultOptions);
+        Assert.Equal(expectedEmoji, emojiResult);
+        
+        // Verify surrogate pairs in different possible formats
+        // Magnifying glass emoji: 🔍 (U+1F50D)
+        bool magnifyingGlassFound = 
+            emojiResult.Contains("🔍") || 
+            emojiResult.Contains("\\ud83d\\udd0d", StringComparison.OrdinalIgnoreCase);
+            
+        // Rocket emoji: 🚀 (U+1F680)
+        bool rocketFound = 
+            emojiResult.Contains("🚀") || 
+            emojiResult.Contains("\\ud83d\\ude80", StringComparison.OrdinalIgnoreCase);
+        
+        Assert.True(magnifyingGlassFound, "Magnifying glass emoji not found in result");
+        Assert.True(rocketFound, "Rocket emoji not found in result");
     }
 }

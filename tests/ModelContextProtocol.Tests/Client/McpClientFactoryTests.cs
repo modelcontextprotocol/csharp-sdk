@@ -19,13 +19,6 @@ public class McpClientFactoryTests
     {
         await Assert.ThrowsAsync<ArgumentNullException>("serverConfig", () => McpClientFactory.CreateAsync((McpServerConfig)null!, _defaultOptions, cancellationToken: TestContext.Current.CancellationToken));
 
-        await Assert.ThrowsAsync<ArgumentNullException>("clientOptions", () => McpClientFactory.CreateAsync(new McpServerConfig()
-            {
-                Name = "name",
-                Id = "id",
-                TransportType = TransportTypes.StdIo,
-            }, (McpClientOptions)null!, cancellationToken: TestContext.Current.CancellationToken));
-
         await Assert.ThrowsAsync<ArgumentException>("serverConfig", () => McpClientFactory.CreateAsync(new McpServerConfig()
             {
                 Name = "name",
@@ -39,6 +32,28 @@ public class McpClientFactoryTests
                 Id = "id",
                 TransportType = TransportTypes.StdIo,
             }, _defaultOptions, (_, __) => null!, cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task CreateAsync_NullOptions_EntryAssemblyInferred()
+    {
+        // Arrange
+        var serverConfig = new McpServerConfig
+        {
+            Id = "test-server",
+            Name = "Test Server",
+            TransportType = TransportTypes.StdIo,
+            Location = "/path/to/server",
+        };
+
+        // Act
+        await using var client = await McpClientFactory.CreateAsync(
+            serverConfig,
+            null,
+            (_, __) => new NopTransport(),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(client);
     }
 
     [Fact]
