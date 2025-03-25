@@ -6,7 +6,7 @@ namespace ModelContextProtocol.Protocol.Types;
 /// A request from the client to the server, to enable or adjust logging.
 /// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
 /// </summary>
-public class SetLevelRequestParams
+public class SetLevelRequestParams : RequestParams
 {
     /// <summary>
     /// The level of logging that the client wants to receive from the server. 
