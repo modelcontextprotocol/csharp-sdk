@@ -9,6 +9,8 @@ using ModelContextProtocol.Configuration;
 using ModelContextProtocol.Tests.Transport;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.AI;
+using System.Threading.Channels;
+using ModelContextProtocol.Protocol.Messages;
 
 namespace ModelContextProtocol.Tests.Configuration;
 
@@ -81,6 +83,45 @@ public class McpServerBuilderExtensionsToolsTests : IAsyncDisposable
         McpClientTool doubleEchoTool = tools.First(t => t.Name == "double_echo");
         Assert.Equal("double_echo", doubleEchoTool.Name);
         Assert.Equal("Echoes the input back to the client.", doubleEchoTool.Description);
+    }
+
+    [Fact]
+    public async Task Can_Be_Notified_Of_Tool_Changes()
+    {
+        IMcpClient client = await CreateMcpClientForServer();
+
+        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(10, tools.Count);
+
+        Channel<JsonRpcNotification> listChanged = Channel.CreateUnbounded<JsonRpcNotification>();
+        client.AddNotificationHandler("notifications/tools/list_changed", notification =>
+        {
+            listChanged.Writer.TryWrite(notification);
+            return Task.CompletedTask;
+        });
+
+        var notificationRead = listChanged.Reader.ReadAsync(TestContext.Current.CancellationToken);
+        Assert.False(notificationRead.IsCompleted);
+
+        var serverTools = _server.ServerOptions.Capabilities?.Tools?.ToolCollection;
+        Assert.NotNull(serverTools);
+
+        var newTool = McpServerTool.Create([McpServerTool(name: "NewTool")] () => "42");
+        serverTools.Add(newTool);
+        await notificationRead;
+
+        tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(11, tools.Count);
+        Assert.Contains(tools, t => t.Name == "NewTool");
+
+        notificationRead = listChanged.Reader.ReadAsync(TestContext.Current.CancellationToken);
+        Assert.False(notificationRead.IsCompleted);
+        serverTools.Remove(newTool);
+        await notificationRead;
+
+        tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(10, tools.Count);
+        Assert.DoesNotContain(tools, t => t.Name == "NewTool");
     }
 
     [Fact]
