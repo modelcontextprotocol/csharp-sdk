@@ -1,15 +1,18 @@
 ﻿using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Tests.Utils;
 
 namespace ModelContextProtocol.Tests;
 
-public class SseServerIntegrationTests : IClassFixture<SseServerIntegrationTestFixture>
+public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerIntegrationTestFixture>
 {
     private readonly SseServerIntegrationTestFixture _fixture;
 
-    public SseServerIntegrationTests(SseServerIntegrationTestFixture fixture)
+    public SseServerIntegrationTests(SseServerIntegrationTestFixture fixture, ITestOutputHelper testOutputHelper)
+        : base(testOutputHelper)
     {
         _fixture = fixture;
+        _fixture.Initialize(testOutputHelper);
     }
 
     private Task<IMcpClient> GetClientAsync(McpClientOptions? options = null)
@@ -17,7 +20,7 @@ public class SseServerIntegrationTests : IClassFixture<SseServerIntegrationTestF
         return McpClientFactory.CreateAsync(
             _fixture.DefaultConfig,
             options ?? _fixture.DefaultOptions,
-            loggerFactory: _fixture.LoggerFactory);
+            loggerFactory: LoggerFactory);
     }
 
     [Fact]

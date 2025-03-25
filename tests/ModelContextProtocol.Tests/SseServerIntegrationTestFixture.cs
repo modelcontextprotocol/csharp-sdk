@@ -2,23 +2,29 @@
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Configuration;
 using ModelContextProtocol.Protocol.Transport;
+using ModelContextProtocol.Test.Utils;
+using ModelContextProtocol.TestSseServer;
 
 namespace ModelContextProtocol.Tests;
 
 public class SseServerIntegrationTestFixture : IAsyncDisposable
 {
-    private readonly CancellationTokenSource _stopCts = new();
     private readonly Task _serverTask;
+    private readonly CancellationTokenSource _stopCts = new();
 
-    public ILoggerFactory LoggerFactory { get; }
+    private readonly DelegatingTestOutputHelper _delegatingTestOutputHelper = new();
+    private readonly ILoggerFactory _redirectingLoggerFactory;
+
     public McpClientOptions DefaultOptions { get; }
     public McpServerConfig DefaultConfig { get; }
 
     public SseServerIntegrationTestFixture()
     {
-        LoggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
-            builder.AddConsole()
-            .SetMinimumLevel(LogLevel.Debug));
+        _redirectingLoggerFactory = LoggerFactory.Create(builder =>
+        {
+            Program.ConfigureSerilog(builder);
+            builder.AddProvider(new XunitLoggerProvider(_delegatingTestOutputHelper));
+        });
 
         DefaultOptions = new()
         {
@@ -34,12 +40,17 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
             Location = "http://localhost:3001/sse"
         };
 
-        _serverTask = TestSseServer.Program.MainAsync([], _stopCts.Token);
+        _serverTask = Program.MainAsync([], _redirectingLoggerFactory, _stopCts.Token);
+    }
+
+    public void Initialize(ITestOutputHelper output)
+    {
+        _delegatingTestOutputHelper.CurrentTestOutputHelper = output;
     }
 
     public async ValueTask DisposeAsync()
     {
-        LoggerFactory.Dispose();
+        _delegatingTestOutputHelper.CurrentTestOutputHelper = null;
         _stopCts.Cancel();
         try
         {
@@ -48,6 +59,19 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
         catch (OperationCanceledException)
         {
         }
+        _redirectingLoggerFactory.Dispose();
         _stopCts.Dispose();
+    }
+
+    private class DelegatingTestOutputHelper() : ITestOutputHelper
+    {
+        public ITestOutputHelper? CurrentTestOutputHelper { get; set; }
+
+        public string Output => CurrentTestOutputHelper?.Output ?? string.Empty;
+
+        public void Write(string message) => CurrentTestOutputHelper?.Write(message);
+        public void Write(string format, params object[] args) => CurrentTestOutputHelper?.Write(format, args);
+        public void WriteLine(string message) => CurrentTestOutputHelper?.WriteLine(message);
+        public void WriteLine(string format, params object[] args) => CurrentTestOutputHelper?.WriteLine(format, args);
     }
 }

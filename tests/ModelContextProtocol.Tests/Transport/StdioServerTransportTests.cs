@@ -1,8 +1,8 @@
-﻿using Microsoft.Extensions.Logging.Abstractions;
-using ModelContextProtocol.Protocol.Messages;
+﻿using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
 using ModelContextProtocol.Utils.Json;
 using System.IO.Pipelines;
 using System.Text;
@@ -10,11 +10,12 @@ using System.Text.Json;
 
 namespace ModelContextProtocol.Tests.Transport;
 
-public class StdioServerTransportTests
+public class StdioServerTransportTests : LoggedTest
 {
     private readonly McpServerOptions _serverOptions;
 
-    public StdioServerTransportTests()
+    public StdioServerTransportTests(ITestOutputHelper testOutputHelper)
+        : base(testOutputHelper)
     {
         _serverOptions = new McpServerOptions
         {
@@ -68,7 +69,7 @@ public class StdioServerTransportTests
             _serverOptions.ServerInfo.Name,
             new Pipe().Reader.AsStream(),
             output,
-            NullLoggerFactory.Instance);
+            LoggerFactory);
             
         await transport.StartListeningAsync(TestContext.Current.CancellationToken);
         
@@ -122,7 +123,7 @@ public class StdioServerTransportTests
             _serverOptions.ServerInfo.Name,
             input,
             Stream.Null,
-            NullLoggerFactory.Instance);
+            LoggerFactory);
             
         await transport.StartListeningAsync(TestContext.Current.CancellationToken);
         
@@ -165,7 +166,7 @@ public class StdioServerTransportTests
             _serverOptions.ServerInfo.Name, 
             new Pipe().Reader.AsStream(),
             output, 
-            NullLoggerFactory.Instance);
+            LoggerFactory);
             
         await transport.StartListeningAsync(TestContext.Current.CancellationToken);
         
