@@ -79,3 +79,5 @@ nCrunchTemp_*
 *.lutconfig
 
 .NCrunch_ModelContextProtocol/
+
+*.ncrunchproject
