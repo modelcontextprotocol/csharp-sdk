@@ -168,7 +168,7 @@ await Task.Delay(Timeout.Infinite);
 
 ## Acknowledgements
 
-The starting point for this library was a community project called [mcpdotnet](https://github.com/PederHP/mcpdotnet) developed by [Peder Holdgaard Pederson](@PederHP). We are grateful for the work done by Peder to create a solid foundation for this library.
+The starting point for this library was a project called [mcpdotnet](https://github.com/PederHP/mcpdotnet), initiated by [Peder Holdgaard Pederson](https://github.com/PederHP). We are grateful for the work done by Peder and other contributors to that repository, which created a solid foundation for this library.
 
 ## License
 
