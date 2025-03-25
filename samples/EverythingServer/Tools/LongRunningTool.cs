@@ -8,10 +8,10 @@
 
 //namespace EverythingServer.Tools;
 
-//[McpToolType]
+//[McpServerToolType]
 //public static class LongRunningTool
 //{
-//    [McpTool, Description("Demonstrates a long running operation with progress updates")]
+//    [McpServerTool, Description("Demonstrates a long running operation with progress updates")]
 //    public static async Task<string> LongRunningOperation(int duration, int steps)
 //    {
 //        var stepDuration = duration / steps;

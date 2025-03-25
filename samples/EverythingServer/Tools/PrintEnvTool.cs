@@ -5,7 +5,7 @@ using System.Text.Json;
 
 namespace EverythingServer.Tools;
 
-[McpToolType]
+[McpServerToolType]
 public static class PrintEnvTool
 {
     private static readonly JsonSerializerOptions options = new()
@@ -13,7 +13,7 @@ public static class PrintEnvTool
         WriteIndented = true
     };
 
-    [McpTool, Description("Prints all environment variables, helpful for debugging MCP server configuration")]
+    [McpServerTool, Description("Prints all environment variables, helpful for debugging MCP server configuration")]
     public static string PrintEnv()
     {
         Debugger.Launch();

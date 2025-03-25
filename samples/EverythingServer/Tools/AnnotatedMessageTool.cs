@@ -3,7 +3,7 @@ using System.ComponentModel;
 
 namespace EverythingServer.Tools;
 
-[McpToolType]
+[McpServerToolType]
 public static class AnnotatedMessageTool
 {
     public enum MessageType
@@ -13,7 +13,7 @@ public static class AnnotatedMessageTool
         Debug,
     }
 
-    [McpTool, Description("Generates an annotated message")]
+    [McpServerTool, Description("Generates an annotated message")]
     public static IEnumerable<string> AnnotatedMessage(MessageType messageType, bool includeImage = true)
     {
         return ["incomplete"];

@@ -4,10 +4,10 @@ using System.Diagnostics;
 
 namespace EverythingServer.Tools;
 
-[McpToolType]
+[McpServerToolType]
 public static class TinyImageTool
 {
-    [McpTool("getTinyImage"), Description("Get a tiny image from the server")]
+    [McpServerTool("getTinyImage"), Description("Get a tiny image from the server")]
     public static IEnumerable<string> GetTinyImage()
     {
         Debugger.Launch();
