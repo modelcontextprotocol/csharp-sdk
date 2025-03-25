@@ -10,7 +10,7 @@
           ]
         }
       ],
-      "dest": "api"
+      "output": "api"
     }
   ],
   "build": {
@@ -31,7 +31,7 @@
         ]
       }
     ],
-    "output": "_site",
+    "output": "../artifacts/_site",
     "template": [
       "default",
       "modern"
@@ -39,10 +39,10 @@
     "globalMetadata": {
       "_appName": "MCP C# SDK",
       "_appTitle": "MCP C# SDK",
-      "_enableSearch": true,
-      "pdf": true,
       "_appLogoPath": "images/mcp.svg",
-      "_appFaviconPath": "images/favicon.ico"  
+      "_appFaviconPath": "images/favicon.ico",
+      "_enableSearch": true,
+      "pdf": false
     }
   }
 }

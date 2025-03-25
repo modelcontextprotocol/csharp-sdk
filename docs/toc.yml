@@ -1,4 +1,5 @@
-- name: Home
-  href: /index
+items:
 - name: API Docs
-  href: api/
+  href: api/ModelContextProtocol.yml
+- name: Github
+  href: https://github.com/ModelContextProtocol/csharp-sdk
