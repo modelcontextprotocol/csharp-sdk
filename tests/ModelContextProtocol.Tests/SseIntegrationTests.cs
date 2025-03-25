@@ -89,7 +89,7 @@ public class SseIntegrationTests
             defaultOptions, 
             loggerFactory: loggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
-        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
+        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotEmpty(tools);
@@ -157,7 +157,7 @@ public class SseIntegrationTests
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Call the server's sampleLLM tool which should trigger our sampling handler
-        var result = await client.CallToolAsync("sampleLLM", new Dictionary<string, object>
+        var result = await client.CallToolAsync("sampleLLM", new Dictionary<string, object?>
             {
                 ["prompt"] = "Test prompt",
                 ["maxTokens"] = 100

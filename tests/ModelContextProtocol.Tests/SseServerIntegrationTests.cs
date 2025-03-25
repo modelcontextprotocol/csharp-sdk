@@ -1,15 +1,18 @@
 ﻿using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Tests.Utils;
 
 namespace ModelContextProtocol.Tests;
 
-public class SseServerIntegrationTests : IClassFixture<SseServerIntegrationTestFixture>
+public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerIntegrationTestFixture>
 {
     private readonly SseServerIntegrationTestFixture _fixture;
 
-    public SseServerIntegrationTests(SseServerIntegrationTestFixture fixture)
+    public SseServerIntegrationTests(SseServerIntegrationTestFixture fixture, ITestOutputHelper testOutputHelper)
+        : base(testOutputHelper)
     {
         _fixture = fixture;
+        _fixture.Initialize(testOutputHelper);
     }
 
     private Task<IMcpClient> GetClientAsync(McpClientOptions? options = null)
@@ -17,7 +20,7 @@ public class SseServerIntegrationTests : IClassFixture<SseServerIntegrationTestF
         return McpClientFactory.CreateAsync(
             _fixture.DefaultConfig,
             options ?? _fixture.DefaultOptions,
-            loggerFactory: _fixture.LoggerFactory);
+            loggerFactory: LoggerFactory);
     }
 
     [Fact]
@@ -53,7 +56,7 @@ public class SseServerIntegrationTests : IClassFixture<SseServerIntegrationTestF
 
         // act
         var client = await GetClientAsync();
-        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
+        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(tools);
@@ -68,7 +71,7 @@ public class SseServerIntegrationTests : IClassFixture<SseServerIntegrationTestF
         var client = await GetClientAsync();
         var result = await client.CallToolAsync(
             "echo",
-            new Dictionary<string, object>
+            new Dictionary<string, object?>
             {
                 ["message"] = "Hello MCP!"
             },
@@ -90,15 +93,7 @@ public class SseServerIntegrationTests : IClassFixture<SseServerIntegrationTestF
         // act
         var client = await GetClientAsync();
 
-        List<Resource> allResources = [];
-        string? cursor = null;
-        do
-        {
-            var resources = await client.ListResourcesAsync(cursor, CancellationToken.None);
-            allResources.AddRange(resources.Resources);
-            cursor = resources.NextCursor;
-        }
-        while (cursor != null);
+        IList<Resource> allResources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
 
         // The everything server provides 100 test resources
         Assert.Equal(100, allResources.Count);
@@ -145,7 +140,7 @@ public class SseServerIntegrationTests : IClassFixture<SseServerIntegrationTestF
 
         // act
         var client = await GetClientAsync();
-        var prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
+        var prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(prompts);
@@ -176,7 +171,7 @@ public class SseServerIntegrationTests : IClassFixture<SseServerIntegrationTestF
 
         // act
         var client = await GetClientAsync();
-        var arguments = new Dictionary<string, object>
+        var arguments = new Dictionary<string, object?>
         {
             { "temperature", "0.7" },
             { "style", "formal" }
@@ -233,7 +228,7 @@ public class SseServerIntegrationTests : IClassFixture<SseServerIntegrationTestF
 #pragma warning restore CS1998 // Async method lacks 'await' operators and will run synchronously
 
         // Call the server's sampleLLM tool which should trigger our sampling handler
-        var result = await client.CallToolAsync("sampleLLM", new Dictionary<string, object>
+        var result = await client.CallToolAsync("sampleLLM", new Dictionary<string, object?>
             {
                 ["prompt"] = "Test prompt",
                 ["maxTokens"] = 100

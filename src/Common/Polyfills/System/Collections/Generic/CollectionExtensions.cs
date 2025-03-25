@@ -15,4 +15,7 @@ internal static class CollectionExtensions
 
         return dictionary.TryGetValue(key, out TValue? value) ? value : defaultValue;
     }
+
+    public static Dictionary<TKey, TValue> ToDictionary<TKey, TValue>(this IEnumerable<KeyValuePair<TKey, TValue>> source) =>
+        source.ToDictionary(kv => kv.Key, kv => kv.Value);
 }

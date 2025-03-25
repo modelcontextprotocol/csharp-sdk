@@ -10,9 +10,10 @@ namespace ModelContextProtocol.TestSseServer;
 
 public class Program
 {
-    private static ILoggerFactory CreateLoggerFactory()
+    private static ILoggerFactory CreateLoggerFactory() => LoggerFactory.Create(ConfigureSerilog);
+
+    public static void ConfigureSerilog(ILoggingBuilder loggingBuilder)
     {
-        // Use serilog
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Verbose() // Capture all log levels
             .WriteTo.File(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs", "TestServer_.log"),
@@ -21,15 +22,12 @@ public class Program
             .CreateLogger();
 
         var logsPath = Path.Combine(AppContext.BaseDirectory, "testserver.log");
-        return LoggerFactory.Create(builder =>
-        {
-            builder.AddSerilog();
-        });
+        loggingBuilder.AddSerilog();
     }
 
     public static Task Main(string[] args) => MainAsync(args);
 
-    public static async Task MainAsync(string[] args, CancellationToken cancellationToken = default)
+    public static async Task MainAsync(string[] args, ILoggerFactory? loggerFactory = null, CancellationToken cancellationToken = default)
     {
         Console.WriteLine("Starting server...");
 
@@ -385,7 +383,7 @@ public class Program
             },
         };
 
-        using var loggerFactory = CreateLoggerFactory();
+        loggerFactory ??= CreateLoggerFactory();
         server = McpServerFactory.Create(new HttpListenerSseServerTransport("TestServer", 3001, loggerFactory), options, loggerFactory);
 
         Console.WriteLine("Server initialized.");

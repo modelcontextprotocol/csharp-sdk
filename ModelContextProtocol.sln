@@ -41,9 +41,12 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "workflows", "workflows", "{20AACB9B-307D-419C-BCC6-1C639C402295}"
 	ProjectSection(SolutionItems) = preProject
 		.github\workflows\ci.yml = .github\workflows\ci.yml
+		.github\workflows\code-coverage.yml = .github\workflows\code-coverage.yml
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EverythingServer", "samples\EverythingServer\EverythingServer.csproj", "{2EEA6B5B-2AD3-4C7D-A2FF-138A864FA755}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ChatWithTools", "samples\ChatWithTools\ChatWithTools.csproj", "{0C6D0512-D26D-63D3-5019-C5F7A657B28C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -79,6 +82,10 @@ Global
 		{2EEA6B5B-2AD3-4C7D-A2FF-138A864FA755}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2EEA6B5B-2AD3-4C7D-A2FF-138A864FA755}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2EEA6B5B-2AD3-4C7D-A2FF-138A864FA755}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0C6D0512-D26D-63D3-5019-C5F7A657B28C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0C6D0512-D26D-63D3-5019-C5F7A657B28C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0C6D0512-D26D-63D3-5019-C5F7A657B28C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0C6D0512-D26D-63D3-5019-C5F7A657B28C}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -92,6 +99,7 @@ Global
 		{B6F42305-423F-56FF-090F-B7263547F924} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{20AACB9B-307D-419C-BCC6-1C639C402295} = {1288ADA5-1BF1-4A7F-A33E-9EA29097AA40}
 		{2EEA6B5B-2AD3-4C7D-A2FF-138A864FA755} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{0C6D0512-D26D-63D3-5019-C5F7A657B28C} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {384A3888-751F-4D75-9AE5-587330582D89}

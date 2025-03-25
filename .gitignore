@@ -73,3 +73,7 @@ _NCrunch_*
 nCrunchTemp_*
 
 *.orig
+
+# Auto-generated documentation
+docs/_site
+docs/api

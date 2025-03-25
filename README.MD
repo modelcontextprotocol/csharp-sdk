@@ -2,9 +2,9 @@
 
 [![NuGet preview version](https://img.shields.io/nuget/vpre/ModelContextProtocol.svg)](https://www.nuget.org/packages/ModelContextProtocol/absoluteLatest)
 
-The official C# SDK for the [Model Context Protocol](https://modelcontextprotocol.io/), enabling .NET applications, services, and libraries to implement and interact with MCP clients and servers.
+The official C# SDK for the [Model Context Protocol](https://modelcontextprotocol.io/), enabling .NET applications, services, and libraries to implement and interact with MCP clients and servers. Please visit our [API documentation](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.html) for more details on available functionality.
 
-> [!NOTE]  
+> [!NOTE]
 > This repo is still in preview, breaking changes can be introduced without prior notice.
 
 ## About MCP
@@ -44,7 +44,7 @@ await foreach (var tool in client.ListToolsAsync())
 // Execute a tool (this would normally be driven by LLM tool invocations).
 var result = await client.CallToolAsync(
     "echo",
-    new() { ["message"] = "Hello MCP!" },
+    new Dictionary<string, object?>() { ["message"] = "Hello MCP!" },
     CancellationToken.None);
 
 // echo always returns one and only one text content object
@@ -59,16 +59,13 @@ Tools can be exposed easily as `AIFunction` instances so that they are immediate
 
 ```csharp
 // Get available functions.
-IList<AIFunction> tools = await client.GetAIFunctionsAsync();
+IList<McpClientTool> tools = await client.ListToolsAsync();
 
 // Call the chat client using the tools.
 IChatClient chatClient = ...;
 var response = await chatClient.GetResponseAsync(
     "your prompt here",
-    new() 
-    {
-        Tools = [.. tools],
-    });
+    new() { Tools = [.. tools] },
 ```
 
 ## Getting Started (Server)
@@ -88,14 +85,44 @@ var builder = Host.CreateEmptyApplicationBuilder(settings: null);
 builder.Services
     .AddMcpServer()
     .WithStdioServerTransport()
-    .WithTools();
+    .WithToolsFromAssembly();
 await builder.Build().RunAsync();
 
-[McpToolType]
+[McpServerToolType]
 public static class EchoTool
 {
-    [McpTool, Description("Echoes the message back to the client.")]
+    [McpServerTool, Description("Echoes the message back to the client.")]
     public static string Echo(string message) => $"hello {message}";
+}
+```
+
+Tools can have the `IMcpServer` representing the server injected via a parameter to the method, and can use that for interaction with 
+the connected client. Similarly, arguments may be injected via dependency injection. For example, this tool will use the supplied 
+`IMcpServer` to make sampling requests back to the client in order to summarize content it downloads from the specified url via
+an `HttpClient` injected via dependency injection.
+```csharp
+[McpServerTool("SummarizeContentFromUrl"), Description("Summarizes content downloaded from a specific URI")]
+public static async Task<string> SummarizeDownloadedContent(
+    IMcpServer thisServer,
+    HttpClient httpClient,
+    [Description("The url from which to download the content to summarize")] string url,
+    CancellationToken cancellationToken)
+{
+    string content = await httpClient.GetStringAsync(url);
+
+    ChatMessage[] messages =
+    [
+        new(ChatRole.User, "Briefly summarize the following downloaded content:"),
+        new(ChatRole.User, content),
+    ]
+
+    ChatOptions options = new()
+    {
+        MaxOutputTokens = 256,
+        Temperature = 0.3f,
+    };
+
+    return $"Summary: {await thisServer.AsSamplingChatClient().GetResponseAsync(messages, options, cancellationToken)}";
 }
 ```
 
@@ -110,7 +137,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 McpServerOptions options = new()
 {
     ServerInfo = new() { Name = "MyServer", Version = "1.0.0" },
-    Capabilities = new() 
+    Capabilities = new()
     {
         Tools = new()
         {
@@ -124,14 +151,18 @@ McpServerOptions options = new()
                         {
                             Name = "echo",
                             Description = "Echoes the input back to the client.",
-                            InputSchema = new JsonSchema()
-                            {
-                                Type = "object",
-                                Properties = new Dictionary<string, JsonSchemaProperty>()
+                            InputSchema = JsonSerializer.Deserialize<JsonElement>("""
                                 {
-                                    ["message"] = new JsonSchemaProperty() { Type = "string", Description = "The input to echo back." }
+                                    "type": "object",
+                                    "properties": {
+                                      "message": {
+                                        "type": "string",
+                                        "description": "The input to echo back"
+                                      }
+                                    },
+                                    "required": ["message"]
                                 }
-                            },
+                                """),
                         }
                     ]
                 };
@@ -165,6 +196,10 @@ await server.StartAsync();
 // Run until process is stopped by the client (parent process)
 await Task.Delay(Timeout.Infinite);
 ```
+
+## Acknowledgements
+
+The starting point for this library was a project called [mcpdotnet](https://github.com/PederHP/mcpdotnet), initiated by [Peder Holdgaard Pederson](https://github.com/PederHP). We are grateful for the work done by Peder and other contributors to that repository, which created a solid foundation for this library.
 
 ## License
 

@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Messages;
@@ -11,22 +12,20 @@ using System.Reflection;
 
 namespace ModelContextProtocol.Tests.Server;
 
-public class McpServerTests
+public class McpServerTests : LoggedTest
 {
     private readonly Mock<IServerTransport> _serverTransport;
-    private readonly Mock<ILoggerFactory> _loggerFactory;
     private readonly Mock<ILogger> _logger;
     private readonly McpServerOptions _options;
     private readonly IServiceProvider _serviceProvider;
 
-    public McpServerTests()
+    public McpServerTests(ITestOutputHelper testOutputHelper)
+        : base(testOutputHelper)
     {
         _serverTransport = new Mock<IServerTransport>();
-        _loggerFactory = new Mock<ILoggerFactory>();
         _logger = new Mock<ILogger>();
-        _loggerFactory.Setup(f => f.CreateLogger(It.IsAny<string>())).Returns(_logger.Object);
         _options = CreateOptions();
-        _serviceProvider = new Mock<IServiceProvider>().Object;
+        _serviceProvider = new ServiceCollection().BuildServiceProvider();
     }
 
     private static McpServerOptions CreateOptions(ServerCapabilities? capabilities = null)
@@ -44,7 +43,7 @@ public class McpServerTests
     public async Task Constructor_Should_Initialize_With_Valid_Parameters()
     {
         // Arrange & Act
-        await using var server = McpServerFactory.Create(_serverTransport.Object, _options, _loggerFactory.Object, _serviceProvider);
+        await using var server = McpServerFactory.Create(_serverTransport.Object, _options, LoggerFactory, _serviceProvider);
 
         // Assert
         Assert.NotNull(server);
@@ -54,14 +53,14 @@ public class McpServerTests
     public void Constructor_Throws_For_Null_Transport()
     {
         // Arrange, Act & Assert
-        Assert.Throws<ArgumentNullException>(() => McpServerFactory.Create(null!, _options, _loggerFactory.Object, _serviceProvider));
+        Assert.Throws<ArgumentNullException>(() => McpServerFactory.Create(null!, _options, LoggerFactory, _serviceProvider));
     }
 
     [Fact]
     public void Constructor_Throws_For_Null_Options()
     {
         // Arrange, Act & Assert
-        Assert.Throws<ArgumentNullException>(() => McpServerFactory.Create(_serverTransport.Object, null!, _loggerFactory.Object, _serviceProvider));
+        Assert.Throws<ArgumentNullException>(() => McpServerFactory.Create(_serverTransport.Object, null!, LoggerFactory, _serviceProvider));
     }
 
     [Fact]
@@ -78,7 +77,7 @@ public class McpServerTests
     public async Task Constructor_Does_Not_Throw_For_Null_ServiceProvider()
     {
         // Arrange & Act
-        await using var server = McpServerFactory.Create(_serverTransport.Object, _options, _loggerFactory.Object, null);
+        await using var server = McpServerFactory.Create(_serverTransport.Object, _options, LoggerFactory, null);
 
         // Assert
         Assert.NotNull(server);
@@ -88,7 +87,7 @@ public class McpServerTests
     public async Task StartAsync_Should_Throw_InvalidOperationException_If_Already_Initializing()
     {
         // Arrange
-        await using var server = McpServerFactory.Create(_serverTransport.Object, _options, _loggerFactory.Object, _serviceProvider);
+        await using var server = McpServerFactory.Create(_serverTransport.Object, _options, LoggerFactory, _serviceProvider);
         var task = server.StartAsync(TestContext.Current.CancellationToken);
 
         // Act & Assert
@@ -101,7 +100,7 @@ public class McpServerTests
     public async Task StartAsync_Should_Do_Nothing_If_Already_Initialized()
     {
         // Arrange
-        await using var server = McpServerFactory.Create(_serverTransport.Object, _options, _loggerFactory.Object, _serviceProvider);
+        await using var server = McpServerFactory.Create(_serverTransport.Object, _options, LoggerFactory, _serviceProvider);
         SetInitialized(server, true);
 
         await server.StartAsync(TestContext.Current.CancellationToken);
@@ -114,7 +113,7 @@ public class McpServerTests
     public async Task StartAsync_ShouldStartListening()
     {
         // Arrange
-        await using var server = McpServerFactory.Create(_serverTransport.Object, _options, _loggerFactory.Object, _serviceProvider);
+        await using var server = McpServerFactory.Create(_serverTransport.Object, _options, LoggerFactory, _serviceProvider);
 
         // Act
         await server.StartAsync(TestContext.Current.CancellationToken);
@@ -127,7 +126,7 @@ public class McpServerTests
     public async Task StartAsync_Sets_Initialized_After_Transport_Responses_Initialized_Notification()
     {
         await using var transport = new TestServerTransport();
-        await using var server = McpServerFactory.Create(transport, _options, _loggerFactory.Object, _serviceProvider);
+        await using var server = McpServerFactory.Create(transport, _options, LoggerFactory, _serviceProvider);
 
         await server.StartAsync(TestContext.Current.CancellationToken);
 
@@ -135,8 +134,7 @@ public class McpServerTests
         await transport.SendMessageAsync(new JsonRpcNotification
             {
                 Method = "notifications/initialized"
-            }
-, TestContext.Current.CancellationToken);
+            }, TestContext.Current.CancellationToken);
 
         await Task.Delay(50, TestContext.Current.CancellationToken);
 
@@ -147,7 +145,7 @@ public class McpServerTests
     public async Task RequestSamplingAsync_Should_Throw_McpServerException_If_Client_Does_Not_Support_Sampling()
     {
         // Arrange
-        await using var server = McpServerFactory.Create(_serverTransport.Object, _options, _loggerFactory.Object, _serviceProvider);
+        await using var server = McpServerFactory.Create(_serverTransport.Object, _options, LoggerFactory, _serviceProvider);
         SetClientCapabilities(server, new ClientCapabilities());
 
         var action = () => server.RequestSamplingAsync(new CreateMessageRequestParams { Messages = [] }, CancellationToken.None);
@@ -161,7 +159,7 @@ public class McpServerTests
     {
         // Arrange
         await using var transport = new TestServerTransport();
-        await using var server = McpServerFactory.Create(transport, _options, _loggerFactory.Object, _serviceProvider);
+        await using var server = McpServerFactory.Create(transport, _options, LoggerFactory, _serviceProvider);
         SetClientCapabilities(server, new ClientCapabilities { Sampling = new SamplingCapability() });
 
         await server.StartAsync(TestContext.Current.CancellationToken);
@@ -179,7 +177,7 @@ public class McpServerTests
     public async Task RequestRootsAsync_Should_Throw_McpServerException_If_Client_Does_Not_Support_Roots()
     {
         // Arrange
-        await using var server = McpServerFactory.Create(_serverTransport.Object, _options, _loggerFactory.Object, _serviceProvider);
+        await using var server = McpServerFactory.Create(_serverTransport.Object, _options, LoggerFactory, _serviceProvider);
         SetClientCapabilities(server, new ClientCapabilities());
 
         // Act & Assert
@@ -191,7 +189,7 @@ public class McpServerTests
     {
         // Arrange
         await using var transport = new TestServerTransport();
-        await using var server = McpServerFactory.Create(transport, _options, _loggerFactory.Object, _serviceProvider);
+        await using var server = McpServerFactory.Create(transport, _options, LoggerFactory, _serviceProvider);
         SetClientCapabilities(server, new ClientCapabilities { Roots = new RootsCapability() });
         await server.StartAsync(TestContext.Current.CancellationToken);
 
@@ -208,7 +206,7 @@ public class McpServerTests
     [Fact]
     public async Task Throws_Exception_If_Not_Connected()
     {
-        await using var server = McpServerFactory.Create(_serverTransport.Object, _options, _loggerFactory.Object, _serviceProvider);
+        await using var server = McpServerFactory.Create(_serverTransport.Object, _options, LoggerFactory, _serviceProvider);
         SetClientCapabilities(server, new ClientCapabilities { Roots = new RootsCapability() });
         _serverTransport.SetupGet(t => t.IsConnected).Returns(false);
 
@@ -555,7 +553,7 @@ public class McpServerTests
         var options = CreateOptions(serverCapabilities);
         configureOptions?.Invoke(options);
 
-        await using var server = McpServerFactory.Create(transport, options, _loggerFactory.Object, _serviceProvider);
+        await using var server = McpServerFactory.Create(transport, options, LoggerFactory, _serviceProvider);
 
         await server.StartAsync();
 
@@ -587,7 +585,7 @@ public class McpServerTests
         await using var transport = new TestServerTransport();
         var options = CreateOptions(serverCapabilities);
 
-        Assert.Throws<McpServerException>(() => McpServerFactory.Create(transport, options, _loggerFactory.Object, _serviceProvider));
+        Assert.Throws<McpServerException>(() => McpServerFactory.Create(transport, options, LoggerFactory, _serviceProvider));
     }
 
     [Fact]
@@ -680,12 +678,15 @@ public class McpServerTests
         public bool IsInitialized => throw new NotImplementedException();
 
         public Implementation? ClientInfo => throw new NotImplementedException();
-        public IServiceProvider? ServiceProvider => throw new NotImplementedException();
+        public McpServerOptions ServerOptions => throw new NotImplementedException();
+        public IServiceProvider? Services => throw new NotImplementedException();
         public void AddNotificationHandler(string method, Func<JsonRpcNotification, Task> handler) => 
             throw new NotImplementedException();
         public Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
         public Task StartAsync(CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
     }
 }

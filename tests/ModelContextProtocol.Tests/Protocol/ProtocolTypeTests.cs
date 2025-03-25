@@ -1,5 +1,4 @@
 ﻿using ModelContextProtocol.Protocol.Types;
-using ModelContextProtocol.Utils.Json;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Tests.Protocol;

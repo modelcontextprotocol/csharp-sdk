@@ -5,9 +5,10 @@ using Microsoft.Extensions.Logging;
 
 namespace ModelContextProtocol.Tests;
 
-public class ClientIntegrationTestFixture : IDisposable
+public class ClientIntegrationTestFixture
 {
-    public ILoggerFactory LoggerFactory { get; }
+    private ILoggerFactory? _loggerFactory;
+
     public McpClientOptions DefaultOptions { get; }
     public McpServerConfig EverythingServerConfig { get; }
     public McpServerConfig TestServerConfig { get; }
@@ -16,10 +17,6 @@ public class ClientIntegrationTestFixture : IDisposable
 
     public ClientIntegrationTestFixture()
     {
-        LoggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
-            builder.AddConsole()
-            .SetMinimumLevel(LogLevel.Debug));
-
         DefaultOptions = new()
         {
             ClientInfo = new() { Name = "IntegrationTestClient", Version = "1.0.0" },
@@ -56,17 +53,16 @@ public class ClientIntegrationTestFixture : IDisposable
         }
     }
 
+    public void Initialize(ILoggerFactory loggerFactory)
+    {
+        _loggerFactory = loggerFactory;
+    }
+
     public Task<IMcpClient> CreateClientAsync(string clientId, McpClientOptions? clientOptions = null) =>
         McpClientFactory.CreateAsync(clientId switch
         {
             "everything" => EverythingServerConfig,
             "test_server" => TestServerConfig,
             _ => throw new ArgumentException($"Unknown client ID: {clientId}")
-        }, clientOptions ?? DefaultOptions, loggerFactory: LoggerFactory);
-
-    public void Dispose()
-    {
-        LoggerFactory?.Dispose();
-        GC.SuppressFinalize(this);
-    }
+        }, clientOptions ?? DefaultOptions, loggerFactory: _loggerFactory);
 }

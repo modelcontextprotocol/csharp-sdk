@@ -19,7 +19,7 @@ var mcpClient = await McpClientFactory.CreateAsync(
 
 // Get all available tools
 Console.WriteLine("Tools available:");
-var tools = await mcpClient.GetAIFunctionsAsync();
+var tools = await mcpClient.ListToolsAsync();
 foreach (var tool in tools)
 {
     Console.WriteLine($"  {tool}");

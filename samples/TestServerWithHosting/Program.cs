@@ -19,7 +19,7 @@ try
     builder.Services.AddSerilog();
     builder.Services.AddMcpServer()
         .WithStdioServerTransport()
-        .WithTools();
+        .WithToolsFromAssembly();
 
     var app = builder.Build();
 
