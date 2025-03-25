@@ -1,0 +1,64 @@
+# Set default behavior to automatically normalize line endings.
+* text=auto
+
+*.doc diff=astextplain
+*.DOC diff=astextplain
+*.docx diff=astextplain
+*.DOCX diff=astextplain
+*.dot diff=astextplain
+*.DOT diff=astextplain
+*.pdf diff=astextplain
+*.PDF diff=astextplain
+*.rtf diff=astextplain
+*.RTF diff=astextplain
+
+*.jpg binary
+*.png binary
+*.gif binary
+
+*.lss text
+
+# Force bash scripts to always use lf line endings so that if a repo is accessed
+# in Unix via a file share from Windows, the scripts will work.
+*.in text eol=lf
+*.sh text eol=lf
+
+# Likewise, force cmd and batch scripts to always use crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+*.cs text diff=csharp
+*.vb text
+*.resx text
+*.c text
+*.cpp text
+*.cxx text
+*.h text
+*.hxx text
+*.py text
+*.rb text
+*.java text
+*.html text
+*.htm text
+*.css text
+*.scss text
+*.sass text
+*.less text
+*.js text
+*.lisp text
+*.clj text
+*.sql text
+*.php text
+*.lua text
+*.m text
+*.asm text
+*.erl text
+*.fs text
+*.fsx text
+*.hs text
+
+*.csproj text
+*.vbproj text
+*.fsproj text
+*.dbproj text
+*.sln text eol=crlf
