@@ -11,15 +11,14 @@
     <PackageVersion Include="Microsoft.Bcl.Memory" Version="$(SystemVersion)" />
     <PackageVersion Include="Microsoft.Extensions.AI" Version="$(MicrosoftExtensionsAIVersion)" />
     <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="$(MicrosoftExtensionsAIVersion)" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="9.0.3" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="$(MicrosoftExtensionsVersion)" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="$(MicrosoftExtensionsVersion)" />
     <PackageVersion Include="System.Net.ServerSentEvents" Version="$(System10Version)" />
     <PackageVersion Include="System.Text.Json" Version="$(SystemVersion)" />
     <PackageVersion Include="System.Threading.Channels" Version="$(SystemVersion)" />
-
     <!-- Build Infra & Packaging -->
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
-
     <!-- Testing dependencies -->
     <PackageVersion Include="Anthropic.SDK" Version="4.7.1" />
     <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="$(MicrosoftExtensionsAIVersion)" />
