@@ -20,8 +20,10 @@
     <PackageVersion Include="System.Net.ServerSentEvents" Version="$(System10Version)" />
     <PackageVersion Include="System.Text.Json" Version="$(SystemVersion)" />
     <PackageVersion Include="System.Threading.Channels" Version="$(SystemVersion)" />
+
     <!-- Build Infra & Packaging -->
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
+
     <!-- Testing dependencies -->
     <PackageVersion Include="Anthropic.SDK" Version="4.7.1" />
     <PackageVersion Include="GitHubActionsTestLogger" Version="2.4.1" />
