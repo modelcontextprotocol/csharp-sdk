@@ -15,8 +15,7 @@ var mcpClient = await McpClientFactory.CreateAsync(
         {
             ["command"] = "npx", ["arguments"] = "-y @modelcontextprotocol/server-everything",
         }
-    },
-    new() { ClientInfo = new() { Name = "ChatClient", Version = "1.0.0" } });
+    });
 
 // Get all available tools
 Console.WriteLine("Tools available:");
