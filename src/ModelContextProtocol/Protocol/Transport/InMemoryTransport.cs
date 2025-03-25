@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -203,9 +203,9 @@ public sealed class InMemoryTransport : TransportBase, IServerTransport, IClient
             // Configure server options
             var serverOptions = new McpServerOptions
             {
-                ServerInfo = new Protocol.Types.Implementation { Name = "InMemoryServer", Version = "1.0" },
+                ServerInfo = new Types.Implementation { Name = "InMemoryServer", Version = "1.0" },
                 ProtocolVersion = "2024",
-                Capabilities = new Protocol.Types.ServerCapabilities()
+                Capabilities = new Types.ServerCapabilities()
             };
 
             services.AddOptions<McpServerOptions>().Configure(options =>
@@ -319,6 +319,20 @@ public sealed class InMemoryTransport : TransportBase, IServerTransport, IClient
 
             // Complete the shared channel
             _sharedChannel.Writer.Complete();
+
+            // now wait for the server task to complete
+            if (_serverTask != null)
+            {
+                try
+                {
+                    _logger.TransportWaitingForReadTask(_endpointName);
+                    await Task.WhenAny(_serverTask, Task.Delay(500, cancellationToken));
+                }
+                catch (Exception ex)
+                {
+                    _logger.TransportCleanupReadTaskFailed(_endpointName, ex);
+                }
+            }
 
             // Then cancel the server and tasks
             if (_cancellationTokenSource != null)
