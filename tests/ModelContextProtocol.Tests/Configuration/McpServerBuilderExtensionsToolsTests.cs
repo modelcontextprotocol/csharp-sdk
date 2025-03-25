@@ -25,6 +25,7 @@ public class McpServerBuilderExtensionsToolsTests : IAsyncDisposable
     {
         ServiceCollection sc = new();
         sc.AddSingleton<IServerTransport>(new StdioServerTransport("TestServer", _clientToServerPipe.Reader.AsStream(), _serverToClientPipe.Writer.AsStream()));
+        sc.AddSingleton(new ObjectWithId());
         _builder = sc.AddMcpServer().WithTools<EchoTool>();
         _server = sc.BuildServiceProvider().GetRequiredService<IMcpServer>();
     }
@@ -70,7 +71,7 @@ public class McpServerBuilderExtensionsToolsTests : IAsyncDisposable
         IMcpClient client = await CreateMcpClientForServer();
 
         var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(10, tools.Count);
+        Assert.Equal(11, tools.Count);
 
         McpClientTool echoTool = tools.First(t => t.Name == "Echo");
         Assert.Equal("Echo", echoTool.Name);
@@ -91,7 +92,7 @@ public class McpServerBuilderExtensionsToolsTests : IAsyncDisposable
         IMcpClient client = await CreateMcpClientForServer();
 
         var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(10, tools.Count);
+        Assert.Equal(11, tools.Count);
 
         Channel<JsonRpcNotification> listChanged = Channel.CreateUnbounded<JsonRpcNotification>();
         client.AddNotificationHandler("notifications/tools/list_changed", notification =>
@@ -111,7 +112,7 @@ public class McpServerBuilderExtensionsToolsTests : IAsyncDisposable
         await notificationRead;
 
         tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(11, tools.Count);
+        Assert.Equal(12, tools.Count);
         Assert.Contains(tools, t => t.Name == "NewTool");
 
         notificationRead = listChanged.Reader.ReadAsync(TestContext.Current.CancellationToken);
@@ -120,7 +121,7 @@ public class McpServerBuilderExtensionsToolsTests : IAsyncDisposable
         await notificationRead;
 
         tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(10, tools.Count);
+        Assert.Equal(11, tools.Count);
         Assert.DoesNotContain(tools, t => t.Name == "NewTool");
     }
 
@@ -222,6 +223,35 @@ public class McpServerBuilderExtensionsToolsTests : IAsyncDisposable
 
         Assert.Equal("Peter", result.Content[0].Text);
         Assert.Equal("text", result.Content[0].Type);
+    }
+
+    [Fact]
+    public async Task Can_Call_Registered_Tool_With_Instance_Method()
+    {
+        IMcpClient client = await CreateMcpClientForServer();
+
+        string[][] parts = new string[2][];
+        for (int i = 0; i < 2; i++)
+        {
+            var result = await client.CallToolAsync(
+                nameof(EchoTool.GetCtorParameter),
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.NotNull(result);
+            Assert.NotNull(result.Content);
+            Assert.NotEmpty(result.Content);
+
+            parts[i] = result.Content[0].Text?.Split(':') ?? [];
+            Assert.Equal(2, parts[i].Length);
+        }
+
+        string random1 = parts[0][0];
+        string random2 = parts[1][0];
+        Assert.NotEqual(random1, random2);
+        
+        string id1 = parts[0][1];
+        string id2 = parts[1][1];
+        Assert.Equal(id1, id2);
     }
 
     [Fact]
@@ -334,8 +364,10 @@ public class McpServerBuilderExtensionsToolsTests : IAsyncDisposable
     }
 
     [McpServerToolType]
-    public sealed class EchoTool
+    public sealed class EchoTool(ObjectWithId objectFromDI)
     {
+        private string _randomValue = Guid.NewGuid().ToString("N");
+
         [McpServerTool, Description("Echoes the input back to the client.")]
         public static string Echo([Description("the echoes message")] string message)
         {
@@ -395,6 +427,9 @@ public class McpServerBuilderExtensionsToolsTests : IAsyncDisposable
         {
             return complex.Name!;
         }
+
+        [McpServerTool]
+        public string GetCtorParameter() => $"{_randomValue}:{objectFromDI.Id}";
     }
 
     [McpServerToolType]
@@ -420,5 +455,10 @@ public class McpServerBuilderExtensionsToolsTests : IAsyncDisposable
     {
         public string? Name { get; set; }
         public int Age { get; set; }
+    }
+
+    public class ObjectWithId
+    {
+        public string Id { get; set; } = Guid.NewGuid().ToString("N");
     }
 }
