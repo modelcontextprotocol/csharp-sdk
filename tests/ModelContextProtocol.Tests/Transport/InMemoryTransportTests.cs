@@ -1,12 +1,11 @@
-using Microsoft.Extensions.Logging.Abstractions;
-
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
 
 namespace ModelContextProtocol.Tests.Transport;
 
-public class InMemoryTransportTests
+public class InMemoryTransportTests(ITestOutputHelper testOutputHelper) : LoggedTest(testOutputHelper)
 {
     private readonly Type[] _toolTypes = [typeof(TestTool)];
 
@@ -14,7 +13,7 @@ public class InMemoryTransportTests
     public async Task Constructor_Should_Initialize_With_Valid_Parameters()
     {
         // Act
-        await using var transport = InMemoryTransport.Create(NullLoggerFactory.Instance, _toolTypes);
+        await using var transport = InMemoryTransport.Create(LoggerFactory, _toolTypes);
 
         // Assert
         Assert.NotNull(transport);
@@ -24,17 +23,17 @@ public class InMemoryTransportTests
     public void Constructor_Throws_For_Null_Parameters()
     {
         Assert.Throws<ArgumentException>("toolTypes",
-            () => InMemoryTransport.Create(NullLoggerFactory.Instance, Array.Empty<Type>()));
+            () => InMemoryTransport.Create(LoggerFactory, Array.Empty<Type>()));
 
         Assert.Throws<ArgumentNullException>("toolTypes",
-            () => InMemoryTransport.Create(NullLoggerFactory.Instance, null!));
+            () => InMemoryTransport.Create(LoggerFactory, null!));
     }
 
     [Fact]
     public async Task ConnectAsync_Should_Set_Connected_State()
     {
         // Arrange
-        var transport = InMemoryTransport.Create(NullLoggerFactory.Instance, _toolTypes);
+        var transport = InMemoryTransport.Create(LoggerFactory, _toolTypes);
 
         // Act
         var clientTransport = (IClientTransport)transport;
@@ -50,7 +49,7 @@ public class InMemoryTransportTests
     public async Task StartListeningAsync_Should_Set_Connected_State()
     {
         // Arrange
-        await using var transport = InMemoryTransport.Create(NullLoggerFactory.Instance, _toolTypes);
+        await using var transport = InMemoryTransport.Create(LoggerFactory, _toolTypes);
 
         // Act
         var serverTransport = (IServerTransport)transport;
@@ -67,7 +66,7 @@ public class InMemoryTransportTests
     public async Task SendMessageAsync_Should_Preserve_Characters(string messageText)
     {
         // Arrange
-        var transport = InMemoryTransport.Create(NullLoggerFactory.Instance, _toolTypes);
+        var transport = InMemoryTransport.Create(LoggerFactory, _toolTypes);
 
         IServerTransport serverTransport = transport;
         await serverTransport.StartListeningAsync(TestContext.Current.CancellationToken);
@@ -103,7 +102,7 @@ public class InMemoryTransportTests
     public async Task SendMessageAsync_Throws_Exception_If_Not_Connected()
     {
         // Arrange
-        await using var transport = InMemoryTransport.Create(NullLoggerFactory.Instance, _toolTypes);
+        await using var transport = InMemoryTransport.Create(LoggerFactory, _toolTypes);
 
         var message = new JsonRpcRequest { Method = "test" };
 
@@ -116,7 +115,7 @@ public class InMemoryTransportTests
     public async Task DisposeAsync_Should_Dispose_Resources()
     {
         // Arrange
-        var transport = InMemoryTransport.Create(NullLoggerFactory.Instance, _toolTypes);
+        var transport = InMemoryTransport.Create(LoggerFactory, _toolTypes);
         IServerTransport serverTransport = transport;
         await serverTransport.StartListeningAsync(TestContext.Current.CancellationToken);
 
@@ -127,10 +126,10 @@ public class InMemoryTransportTests
         Assert.False(transport.IsConnected);
     }
 
-    [McpToolType]
+    [McpServerToolType]
     private class TestTool
     {
-        [McpTool]
+        [McpServerTool]
         public string Echo(string message) => message;
     }
 }
