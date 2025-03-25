@@ -1,13 +1,12 @@
 ﻿using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol.Types;
-using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
 using System.Reflection;
 using System.Text.Json;
 
-namespace ModelContextProtocol;
+namespace ModelContextProtocol.Server;
 
 /// <summary>Provides an <see cref="McpServerTool"/> that's implemented via an <see cref="AIFunction"/>.</summary>
 internal sealed class AIFunctionMcpServerTool : McpServerTool
@@ -19,17 +18,26 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
     /// <summary>
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
     /// </summary>
-    public static new AIFunctionMcpServerTool Create(Delegate method, IServiceProvider? services = null)
+    public static new AIFunctionMcpServerTool Create(
+        Delegate method,
+        string? name,
+        string? description, 
+        IServiceProvider? services)
     {
         Throw.IfNull(method);
 
-        return Create(method.Method, method.Target, services);
+        return Create(method.Method, method.Target, name, description, services);
     }
 
     /// <summary>
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
     /// </summary>
-    public static new AIFunctionMcpServerTool Create(MethodInfo method, object? target = null, IServiceProvider? services = null)
+    public static new AIFunctionMcpServerTool Create(
+        MethodInfo method, 
+        object? target,
+        string? name,
+        string? description,
+        IServiceProvider? services)
     {
         Throw.IfNull(method);
 
@@ -42,7 +50,8 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
 
         return Create(TemporaryAIFunctionFactory.Create(method, target, new TemporaryAIFunctionFactoryOptions()
         {
-            Name = method.GetCustomAttribute<McpServerToolAttribute>()?.Name,
+            Name = name ?? method.GetCustomAttribute<McpServerToolAttribute>()?.Name,
+            Description = description,
             MarshalResult = static (result, _, cancellationToken) => Task.FromResult(result),
             ConfigureParameterBinding = pi =>
             {

@@ -1,10 +1,9 @@
 ﻿using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol.Types;
-using ModelContextProtocol.Server;
-using System.Diagnostics;
+using System.ComponentModel;
 using System.Reflection;
 
-namespace ModelContextProtocol;
+namespace ModelContextProtocol.Server;
 
 /// <summary>Represents an invocable tool used by Model Context Protocol clients and servers.</summary>
 public abstract class McpServerTool
@@ -30,6 +29,15 @@ public abstract class McpServerTool
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
     /// </summary>
     /// <param name="method">The method to be represented via the created <see cref="McpServerTool"/>.</param>
+    /// <param name="name">
+    /// The name to use for the <see cref="McpServerTool"/>. If <see langword="null"/>, but an <see cref="McpServerToolAttribute"/>
+    /// is applied to <paramref name="method"/>, the name from the attribute will be used. If that's not present, the name based
+    /// on <paramref name="method"/>'s name will be used.
+    /// </param>
+    /// <param name="description">
+    /// The description to use for the <see cref="McpServerTool"/>. If <see langword="null"/>, but a <see cref="DescriptionAttribute"/>
+    /// is applied to <paramref name="method"/>, the description from that attribute will be used.
+    /// </param>
     /// <param name="services">
     /// Optional services used in the construction of the <see cref="McpServerTool"/>. These services will be
     /// used to determine which parameters should be satisifed from dependency injection, and so what services
@@ -37,14 +45,27 @@ public abstract class McpServerTool
     /// </param>
     /// <returns>The created <see cref="McpServerTool"/> for invoking <paramref name="method"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="method"/> is <see langword="null"/>.</exception>
-    public static McpServerTool Create(Delegate method, IServiceProvider? services = null) =>
-        AIFunctionMcpServerTool.Create(method, services);
+    public static McpServerTool Create(
+        Delegate method,
+        string? name = null, 
+        string? description = null, 
+        IServiceProvider? services = null) =>
+        AIFunctionMcpServerTool.Create(method, name, description, services);
 
     /// <summary>
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
     /// </summary>
     /// <param name="method">The method to be represented via the created <see cref="McpServerTool"/>.</param>
     /// <param name="target">The instance if <paramref name="method"/> is an instance method; otherwise, <see langword="null"/>.</param>
+    /// <param name="name">
+    /// The name to use for the <see cref="McpServerTool"/>. If <see langword="null"/>, but an <see cref="McpServerToolAttribute"/>
+    /// is applied to <paramref name="method"/>, the name from the attribute will be used. If that's not present, the name based
+    /// on <paramref name="method"/>'s name will be used.
+    /// </param>
+    /// <param name="description">
+    /// The description to use for the <see cref="McpServerTool"/>. If <see langword="null"/>, but a <see cref="DescriptionAttribute"/>
+    /// is applied to <paramref name="method"/>, the description from that attribute will be used.
+    /// </param>
     /// <param name="services">
     /// Optional services used in the construction of the <see cref="McpServerTool"/>. These services will be
     /// used to determine which parameters should be satisifed from dependency injection, and so what services
@@ -53,8 +74,13 @@ public abstract class McpServerTool
     /// <returns>The created <see cref="McpServerTool"/> for invoking <paramref name="method"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="method"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="method"/> is an instance method but <paramref name="target"/> is <see langword="null"/>.</exception>
-    public static McpServerTool Create(MethodInfo method, object? target = null, IServiceProvider? services = null) =>
-        AIFunctionMcpServerTool.Create(method, target, services);
+    public static McpServerTool Create(
+        MethodInfo method, 
+        object? target = null,
+        string? name = null,
+        string? description = null,
+        IServiceProvider? services = null) =>
+        AIFunctionMcpServerTool.Create(method, target, name, description, services);
 
     /// <summary>Creates an <see cref="McpServerTool"/> that wraps the specified <see cref="AIFunction"/>.</summary>
     /// <param name="function">The function to wrap.</param>

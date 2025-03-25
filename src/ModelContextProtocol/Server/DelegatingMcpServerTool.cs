@@ -1,8 +1,7 @@
 ﻿using ModelContextProtocol.Protocol.Types;
-using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils;
 
-namespace ModelContextProtocol;
+namespace ModelContextProtocol.Server;
 
 /// <summary>Provides an <see cref="McpServerTool"/> that delegates all operations to an inner <see cref="McpServerTool"/>.</summary>
 /// <remarks>

@@ -4,6 +4,7 @@ using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
 using Microsoft.Extensions.AI;
 using System.Text.Json;
+using System.Runtime.CompilerServices;
 
 namespace ModelContextProtocol.Client;
 
@@ -45,18 +46,17 @@ public static class McpClientExtensions
     }
 
     /// <summary>
-    /// Retrieves a sequence of available tools from the server.
+    /// Retrieves a list of available tools from the server.
     /// </summary>
     /// <param name="client">The client.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>An asynchronous sequence of tool information.</returns>
+    /// <returns>A list of all available tools.</returns>
     public static async Task<IList<McpClientTool>> ListToolsAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
 
-        List<McpClientTool> tools = [];
-
+        List<McpClientTool>? tools = null;
         string? cursor = null;
         do
         {
@@ -64,6 +64,7 @@ public static class McpClientExtensions
                 CreateRequest("tools/list", CreateCursorDictionary(cursor)),
                 cancellationToken).ConfigureAwait(false);
 
+            tools ??= new List<McpClientTool>(toolResults.Tools.Count);
             foreach (var tool in toolResults.Tools)
             {
                 tools.Add(new McpClientTool(client, tool));
@@ -77,11 +78,43 @@ public static class McpClientExtensions
     }
 
     /// <summary>
+    /// Creates an enumerable for asynchronously enumerating all available tools from the server.
+    /// </summary>
+    /// <param name="client">The client.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>An asynchronous sequence of all available tools.</returns>
+    /// <remarks>
+    /// Every iteration through the returned <see cref="IAsyncEnumerable{McpClientTool}"/>
+    /// will result in requerying the server and yielding the sequence of available tools.
+    /// </remarks>
+    public static async IAsyncEnumerable<McpClientTool> EnumerateToolsAsync(
+        this IMcpClient client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(client);
+
+        string? cursor = null;
+        do
+        {
+            var toolResults = await client.SendRequestAsync<ListToolsResult>(
+                CreateRequest("tools/list", CreateCursorDictionary(cursor)),
+                cancellationToken).ConfigureAwait(false);
+
+            foreach (var tool in toolResults.Tools)
+            {
+                yield return new McpClientTool(client, tool);
+            }
+
+            cursor = toolResults.NextCursor;
+        }
+        while (cursor is not null);
+    }
+
+    /// <summary>
     /// Retrieves a list of available prompts from the server.
     /// </summary>
     /// <param name="client">The client.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>An asynchronous sequence of prompt information.</returns>
+    /// <returns>A list of all available prompts.</returns>
     public static async Task<IList<Prompt>> ListPromptsAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
     {
@@ -113,6 +146,38 @@ public static class McpClientExtensions
     }
 
     /// <summary>
+    /// Creates an enumerable for asynchronously enumerating all available prompts from the server.
+    /// </summary>
+    /// <param name="client">The client.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>An asynchronous sequence of all available prompts.</returns>
+    /// <remarks>
+    /// Every iteration through the returned <see cref="IAsyncEnumerable{Prompt}"/>
+    /// will result in requerying the server and yielding the sequence of available prompts.
+    /// </remarks>
+    public static async IAsyncEnumerable<Prompt> EnumeratePromptsAsync(
+        this IMcpClient client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(client);
+
+        string? cursor = null;
+        do
+        {
+            var promptResults = await client.SendRequestAsync<ListPromptsResult>(
+                CreateRequest("prompts/list", CreateCursorDictionary(cursor)),
+                cancellationToken).ConfigureAwait(false);
+
+            foreach (var prompt in promptResults.Prompts)
+            {
+                yield return prompt;
+            }
+
+            cursor = promptResults.NextCursor;
+        }
+        while (cursor is not null);
+    }
+
+    /// <summary>
     /// Retrieves a specific prompt with optional arguments.
     /// </summary>
     /// <param name="client">The client.</param>
@@ -132,11 +197,11 @@ public static class McpClientExtensions
     }
 
     /// <summary>
-    /// Retrieves a sequence of available resource templates from the server.
+    /// Retrieves a list of available resource templates from the server.
     /// </summary>
     /// <param name="client">The client.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>An asynchronous sequence of resource template information.</returns>
+    /// <returns>A list of all available resource templates.</returns>
     public static async Task<IList<ResourceTemplate>> ListResourceTemplatesAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
     {
@@ -168,11 +233,43 @@ public static class McpClientExtensions
     }
 
     /// <summary>
-    /// Retrieves a sequence of available resources from the server.
+    /// Creates an enumerable for asynchronously enumerating all available resource templates from the server.
     /// </summary>
     /// <param name="client">The client.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>An asynchronous sequence of resource information.</returns>
+    /// <returns>An asynchronous sequence of all available resource templates.</returns>
+    /// <remarks>
+    /// Every iteration through the returned <see cref="IAsyncEnumerable{ResourceTemplate}"/>
+    /// will result in requerying the server and yielding the sequence of available resource templates.
+    /// </remarks>
+    public static async IAsyncEnumerable<ResourceTemplate> EnumerateResourceTemplatesAsync(
+        this IMcpClient client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(client);
+
+        string? cursor = null;
+        do
+        {
+            var templateResults = await client.SendRequestAsync<ListResourceTemplatesResult>(
+                CreateRequest("resources/templates/list", CreateCursorDictionary(cursor)),
+                cancellationToken).ConfigureAwait(false);
+
+            foreach (var template in templateResults.ResourceTemplates)
+            {
+                yield return template;
+            }
+
+            cursor = templateResults.NextCursor;
+        }
+        while (cursor is not null);
+    }
+
+    /// <summary>
+    /// Retrieves a list of available resources from the server.
+    /// </summary>
+    /// <param name="client">The client.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>A list of all available resources.</returns>
     public static async Task<IList<Resource>> ListResourcesAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
     {
@@ -201,6 +298,38 @@ public static class McpClientExtensions
         while (cursor is not null);
 
         return resources;
+    }
+
+    /// <summary>
+    /// Creates an enumerable for asynchronously enumerating all available resources from the server.
+    /// </summary>
+    /// <param name="client">The client.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>An asynchronous sequence of all available resources.</returns>
+    /// <remarks>
+    /// Every iteration through the returned <see cref="IAsyncEnumerable{Resource}"/>
+    /// will result in requerying the server and yielding the sequence of available resources.
+    /// </remarks>
+    public static async IAsyncEnumerable<Resource> EnumerateResourcesAsync(
+        this IMcpClient client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(client);
+
+        string? cursor = null;
+        do
+        {
+            var resourceResults = await client.SendRequestAsync<ListResourcesResult>(
+                CreateRequest("resources/list", CreateCursorDictionary(cursor)),
+                cancellationToken).ConfigureAwait(false);
+
+            foreach (var resource in resourceResults.Resources)
+            {
+                yield return resource;
+            }
+
+            cursor = resourceResults.NextCursor;
+        }
+        while (cursor is not null);
     }
 
     /// <summary>

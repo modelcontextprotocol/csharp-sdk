@@ -7,7 +7,6 @@ using System.Text.Json;
 using ModelContextProtocol.Configuration;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Tests.Utils;
-using Xunit.Sdk;
 using System.Text.Encodings.Web;
 using System.Text.Json.Serialization.Metadata;
 using System.Text.Json.Serialization;
