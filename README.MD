@@ -96,10 +96,10 @@ builder.Services
     .WithToolsFromAssembly();
 await builder.Build().RunAsync();
 
-[McpServerToolType]
+[McpToolType]
 public static class EchoTool
 {
-    [McpServerTool, Description("Echoes the message back to the client.")]
+    [McpTool, Description("Echoes the message back to the client.")]
     public static string Echo(string message) => $"hello {message}";
 }
 ```
@@ -109,7 +109,7 @@ the connected client. Similarly, arguments may be injected via dependency inject
 `IMcpServer` to make sampling requests back to the client in order to summarize content it downloads from the specified url via
 an `HttpClient` injected via dependency injection.
 ```csharp
-[McpServerTool("SummarizeContentFromUrl"), Description("Summarizes content downloaded from a specific URI")]
+[McpToolType("SummarizeContentFromUrl"), Description("Summarizes content downloaded from a specific URI")]
 public static async Task<string> SummarizeDownloadedContent(
     IMcpServer thisServer,
     HttpClient httpClient,
