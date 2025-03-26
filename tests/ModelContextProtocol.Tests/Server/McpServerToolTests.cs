@@ -4,6 +4,7 @@ using ModelContextProtocol.Server;
 using Moq;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Tests.Server;
 
@@ -89,5 +90,120 @@ public class McpServerToolTests
         Assert.Equal("42", result.Content[0].Text);
     }
 
+    [Fact]
+    public async Task SupportsDisposingInstantiatedDisposableTargets()
+    {
+        McpServerTool tool1 = McpServerTool.Create(
+            typeof(DisposableToolType).GetMethod(nameof(DisposableToolType.InstanceMethod))!,
+            typeof(DisposableToolType));
+
+        var result = await tool1.InvokeAsync(
+            new RequestContext<CallToolRequestParams>(null!, null),
+            TestContext.Current.CancellationToken);
+        Assert.Equal("""{"disposals":1}""", result.Content[0].Text);
+    }
+
+    [Fact]
+    public async Task SupportsAsyncDisposingInstantiatedAsyncDisposableTargets()
+    {
+        McpServerTool tool1 = McpServerTool.Create(
+            typeof(AsyncDisposableToolType).GetMethod(nameof(AsyncDisposableToolType.InstanceMethod))!,
+            typeof(AsyncDisposableToolType));
+
+        var result = await tool1.InvokeAsync(
+            new RequestContext<CallToolRequestParams>(null!, null),
+            TestContext.Current.CancellationToken);
+        Assert.Equal("""{"asyncDisposals":1}""", result.Content[0].Text);
+    }
+
+    [Fact]
+    public async Task SupportsAsyncDisposingInstantiatedAsyncDisposableAndDisposableTargets()
+    {
+        McpServerTool tool1 = McpServerTool.Create(
+            typeof(AsyncDisposableAndDisposableToolType).GetMethod(nameof(AsyncDisposableAndDisposableToolType.InstanceMethod))!,
+            typeof(AsyncDisposableAndDisposableToolType));
+
+        var result = await tool1.InvokeAsync(
+            new RequestContext<CallToolRequestParams>(null!, null),
+            TestContext.Current.CancellationToken);
+        Assert.Equal("""{"asyncDisposals":1,"disposals":0}""", result.Content[0].Text);
+    }
+
     private sealed class MyService;
+
+    private class DisposableToolType : IDisposable
+    {
+        public int Disposals { get; private set; }
+
+        public void Dispose()
+        {
+            Disposals++;
+        }
+
+        public object InstanceMethod()
+        {
+            if (Disposals != 0)
+            {
+                throw new InvalidOperationException("Dispose was called");
+            }
+
+            return this;
+        }
+    }
+
+    private class AsyncDisposableToolType : IAsyncDisposable
+    {
+        public int AsyncDisposals { get; private set; }
+
+        public ValueTask DisposeAsync()
+        {
+            AsyncDisposals++;
+            return default;
+        }
+
+        public object InstanceMethod()
+        {
+            if (AsyncDisposals != 0)
+            {
+                throw new InvalidOperationException("DisposeAsync was called");
+            }
+
+            return this;
+        }
+    }
+
+    private class AsyncDisposableAndDisposableToolType : IAsyncDisposable, IDisposable
+    {
+        [JsonPropertyOrder(0)]
+        public int AsyncDisposals { get; private set; }
+
+        [JsonPropertyOrder(1)]
+        public int Disposals { get; private set; }
+
+        public void Dispose()
+        {
+            Disposals++;
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            AsyncDisposals++;
+            return default;
+        }
+
+        public object InstanceMethod()
+        {
+            if (Disposals != 0)
+            {
+                throw new InvalidOperationException("Dispose was called");
+            }
+
+            if (AsyncDisposals != 0)
+            {
+                throw new InvalidOperationException("DisposeAsync was called");
+            }
+
+            return this;
+        }
+    }
 }
