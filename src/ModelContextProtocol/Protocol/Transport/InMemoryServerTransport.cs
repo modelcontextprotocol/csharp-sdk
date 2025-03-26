@@ -54,8 +54,7 @@ public sealed class InMemoryServerTransport : TransportBase, IServerTransport
 
             if (IsConnected)
             {
-                _logger.TransportAlreadyConnected(EndpointName);
-                throw new McpTransportException("Transport is already connected");
+                return;
             }
 
             _logger.TransportConnecting(EndpointName);
@@ -63,7 +62,7 @@ public sealed class InMemoryServerTransport : TransportBase, IServerTransport
             try
             {
                 _cancellationTokenSource = new CancellationTokenSource();
-                _readTask = Task.Run(() => ReadMessagesAsync(_cancellationTokenSource.Token), _cancellationTokenSource.Token);
+                _readTask = Task.Run(() => ReadMessagesAsync(_cancellationTokenSource.Token).ConfigureAwait(false), CancellationToken.None);
 
                 SetConnected(true);
             }
@@ -123,7 +122,7 @@ public sealed class InMemoryServerTransport : TransportBase, IServerTransport
         {
             _logger.TransportEnteringReadMessagesLoop(EndpointName);
 
-            await foreach (var message in _incomingChannel.ReadAllAsync(cancellationToken))
+            await foreach (var message in _incomingChannel.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
                 string id = "(no id)";
                 if (message is IJsonRpcMessageWithId messageWithId)

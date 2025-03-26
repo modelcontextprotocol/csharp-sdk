@@ -76,7 +76,7 @@ public sealed class InMemoryClientTransport : TransportBase, IClientTransport
                 }
 
                 _cancellationTokenSource = new CancellationTokenSource();
-                _readTask = Task.Run(() => ReadMessagesAsync(_cancellationTokenSource.Token), _cancellationTokenSource.Token);
+                _readTask = Task.Run(() => ReadMessagesAsync(_cancellationTokenSource.Token).ConfigureAwait(false), CancellationToken.None);
 
                 SetConnected(true);
             }
@@ -136,9 +136,9 @@ public sealed class InMemoryClientTransport : TransportBase, IClientTransport
         {
             _logger.TransportEnteringReadMessagesLoop(EndpointName);
 
-            await foreach (var message in _incomingChannel.ReadAllAsync(cancellationToken))
+            await foreach (var message in _incomingChannel.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
-                string id = "(no id)";
+                var id = "(no id)";
                 if (message is IJsonRpcMessageWithId messageWithId)
                 {
                     id = messageWithId.Id.ToString();

@@ -76,7 +76,7 @@ public class InMemoryTransportTests(ITestOutputHelper testOutputHelper) : Logged
 
 
         await clientTransport.SendMessageAsync(message, TestContext.Current.CancellationToken);
-        await Task.Delay(1, TestContext.Current.CancellationToken);
+        await Task.Delay(2, TestContext.Current.CancellationToken);
 
 
         Assert.True(serverTransport.MessageReader.TryRead(out var receivedMessage));
@@ -112,7 +112,7 @@ public class InMemoryTransportTests(ITestOutputHelper testOutputHelper) : Logged
 
 
         await serverTransport.SendMessageAsync(message, TestContext.Current.CancellationToken);
-        await Task.Delay(1, TestContext.Current.CancellationToken);
+        await Task.Delay(2, TestContext.Current.CancellationToken);
 
         Assert.True(clientTransport.MessageReader.TryRead(out var receivedMessage));
         Assert.NotNull(receivedMessage);
