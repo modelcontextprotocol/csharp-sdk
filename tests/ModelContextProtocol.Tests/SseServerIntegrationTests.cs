@@ -19,7 +19,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
     {
         return McpClientFactory.CreateAsync(
             _fixture.DefaultConfig,
-            options ?? _fixture.DefaultOptions,
+            options ?? SseServerIntegrationTestFixture.CreateDefaultClientOptions(),
             loggerFactory: LoggerFactory);
     }
 
@@ -201,28 +201,22 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
         // Set up the sampling handler
         int samplingHandlerCalls = 0;
 #pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
-        var options =  _fixture.DefaultOptions with
+        var options = SseServerIntegrationTestFixture.CreateDefaultClientOptions();
+        options.Capabilities ??= new();
+        options.Capabilities.Sampling ??= new();
+        options.Capabilities.Sampling.SamplingHandler = async (_, _) =>
         {
-            Capabilities = new()
+            samplingHandlerCalls++;
+            return new CreateMessageResult
             {
-                Sampling = new()
+                Model = "test-model",
+                Role = "assistant",
+                Content = new Content
                 {
-                    SamplingHandler = async (_, _) =>
-                    {
-                        samplingHandlerCalls++;
-                        return new CreateMessageResult
-                        {
-                            Model = "test-model",
-                            Role = "assistant",
-                            Content = new Content
-                            {
-                                Type = "text",
-                                Text = "Test response"
-                            }
-                        };
-                    }
+                    Type = "text",
+                    Text = "Test response"
                 }
-            }
+            };
         };
         var client = await GetClientAsync(options);
 #pragma warning restore CS1998 // Async method lacks 'await' operators and will run synchronously

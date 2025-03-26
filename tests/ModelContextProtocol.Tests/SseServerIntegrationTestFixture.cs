@@ -15,7 +15,6 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
     private readonly DelegatingTestOutputHelper _delegatingTestOutputHelper = new();
     private readonly ILoggerFactory _redirectingLoggerFactory;
 
-    public McpClientOptions DefaultOptions { get; }
     public McpServerConfig DefaultConfig { get; }
 
     public SseServerIntegrationTestFixture()
@@ -25,11 +24,6 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
             Program.ConfigureSerilog(builder);
             builder.AddProvider(new XunitLoggerProvider(_delegatingTestOutputHelper));
         });
-
-        DefaultOptions = new()
-        {
-            ClientInfo = new() { Name = "IntegrationTestClient", Version = "1.0.0" },
-        };
 
         DefaultConfig = new McpServerConfig
         {
@@ -42,6 +36,11 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
 
         _serverTask = Program.MainAsync([], _redirectingLoggerFactory, _stopCts.Token);
     }
+
+    public static McpClientOptions CreateDefaultClientOptions() => new()
+    {
+        ClientInfo = new() { Name = "IntegrationTestClient", Version = "1.0.0" },
+    };
 
     public void Initialize(ITestOutputHelper output)
     {

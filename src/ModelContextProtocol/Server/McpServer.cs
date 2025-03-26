@@ -263,25 +263,14 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
                 return tool.InvokeAsync(request, cancellationToken);
             };
 
-            toolsCapability = toolsCapability is null ?
-                new()
-                {
-                    CallToolHandler = callToolHandler,
-                    ListToolsHandler = listToolsHandler,
-                    ToolCollection = tools,
-                    ListChanged = true,
-                } :
-                toolsCapability with
-                {
-                    CallToolHandler = callToolHandler,
-                    ListToolsHandler = listToolsHandler,
-                    ToolCollection = tools,
-                    ListChanged = true,
-                };
+            toolsCapability ??= new();
+            toolsCapability.CallToolHandler = callToolHandler;
+            toolsCapability.ListToolsHandler = listToolsHandler;
+            toolsCapability.ToolCollection = tools;
+            toolsCapability.ListChanged = true;
 
-            options.Capabilities = options.Capabilities is null ?
-                new() { Tools = toolsCapability } :
-                options.Capabilities with { Tools = toolsCapability };
+            options.Capabilities ??= new();
+            options.Capabilities.Tools = toolsCapability;
 
             tools.Changed += delegate
             {
