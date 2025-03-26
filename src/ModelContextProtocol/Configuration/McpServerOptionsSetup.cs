@@ -25,22 +25,14 @@ internal sealed class McpServerOptionsSetup(
 
         // Configure the option's server information based on the current process,
         // if it otherwise lacks server information.
-        var assemblyName = (Assembly.GetEntryAssembly() ?? Assembly.GetCallingAssembly()).GetName();
-        if (options.ServerInfo is not { } serverInfo ||
-            serverInfo.Name is null ||
-            serverInfo.Version is null)
+        if (options.ServerInfo is not { } serverInfo)
         {
-            options.ServerInfo = options.ServerInfo is null ?
-                new()
-                {
-                    Name = assemblyName.Name ?? "McpServer",
-                    Version = assemblyName.Version?.ToString() ?? "1.0.0",
-                } :
-                options.ServerInfo with
-                {
-                    Name = options.ServerInfo.Name ?? assemblyName.Name ?? "McpServer",
-                    Version = options.ServerInfo.Version ?? assemblyName.Version?.ToString() ?? "1.0.0",
-                };
+            var assemblyName = (Assembly.GetEntryAssembly() ?? Assembly.GetCallingAssembly()).GetName();
+            options.ServerInfo = new()
+            {
+                Name = assemblyName.Name ?? "McpServer",
+                Version = assemblyName.Version?.ToString() ?? "1.0.0",
+            };
         }
 
         // Collect all of the provided tools into a tools collection. If the options already has
@@ -55,14 +47,9 @@ internal sealed class McpServerOptionsSetup(
 
         if (!toolsCollection.IsEmpty)
         {
-            options.Capabilities = options.Capabilities is null ?
-                new() { Tools = new() { ToolCollection = toolsCollection } } :
-                options.Capabilities with
-                {
-                    Tools = options.Capabilities.Tools is null ?
-                        new() { ToolCollection = toolsCollection } :
-                        options.Capabilities.Tools with { ToolCollection = toolsCollection },
-                };
+            options.Capabilities ??= new();
+            options.Capabilities.Tools ??= new();
+            options.Capabilities.Tools.ToolCollection = toolsCollection;
         }
 
         // Apply custom server handlers.
