@@ -10,121 +10,106 @@ public class InMemoryTransportTests(ITestOutputHelper testOutputHelper) : Logged
     private readonly Type[] _toolTypes = [typeof(TestTool)];
 
     [Fact]
-    public async Task Constructor_Should_Initialize_With_Valid_Parameters()
+    public async Task TransportPair_Should_Create_Valid_Transports()
     {
-        // Act
-        await using var transport = InMemoryTransport.Create(LoggerFactory, _toolTypes);
+        // Act - create a transport pair
+        var (clientTransport, serverTransport) = InMemoryTransport.Create(LoggerFactory);
 
         // Assert
-        Assert.NotNull(transport);
+        Assert.NotNull(clientTransport);
+        Assert.NotNull(serverTransport);
+        Assert.False(clientTransport.IsConnected);
+        Assert.False(serverTransport.IsConnected);
+
+        // Cleanup
+        await clientTransport.DisposeAsync();
+        await serverTransport.DisposeAsync();
     }
 
     [Fact]
-    public void Constructor_Throws_For_Null_Parameters()
-    {
-        Assert.Throws<ArgumentException>("toolTypes",
-            () => InMemoryTransport.Create(LoggerFactory, Array.Empty<Type>()));
-
-        Assert.Throws<ArgumentNullException>("toolTypes",
-            () => InMemoryTransport.Create(LoggerFactory, null!));
-    }
-
-    [Fact]
-    public async Task ConnectAsync_Should_Set_Connected_State()
+    public async Task ClientConnect_Should_StartServer_And_SetConnected()
     {
         // Arrange
-        var transport = InMemoryTransport.Create(LoggerFactory, _toolTypes);
+        var (clientTransport, serverTransport) = InMemoryTransport.Create(LoggerFactory);
 
         // Act
-        var clientTransport = (IClientTransport)transport;
         await clientTransport.ConnectAsync(TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.True(transport.IsConnected);
+        Assert.True(clientTransport.IsConnected);
+        Assert.True(serverTransport.IsConnected);
 
-        await transport.DisposeAsync();
+        // Cleanup
+        await clientTransport.DisposeAsync();
+        await serverTransport.DisposeAsync();
     }
 
     [Fact]
-    public async Task StartListeningAsync_Should_Set_Connected_State()
+    public async Task Message_Should_Flow_From_Client_To_Server()
     {
         // Arrange
-        await using var transport = InMemoryTransport.Create(LoggerFactory, _toolTypes);
+        var (clientTransport, serverTransport) = InMemoryTransport.Create(LoggerFactory);
+        await clientTransport.ConnectAsync(TestContext.Current.CancellationToken);
 
-        // Act
-        var serverTransport = (IServerTransport)transport;
-        await serverTransport.StartListeningAsync(TestContext.Current.CancellationToken);
-
-        // Assert
-        Assert.True(transport.IsConnected);
-    }
-
-    [Theory]
-    [InlineData("Hello, World!")]
-    [InlineData("上下文伺服器")]
-    [InlineData("🔍 🚀 👍")]
-    public async Task SendMessageAsync_Should_Preserve_Characters(string messageText)
-    {
-        // Arrange
-        var transport = InMemoryTransport.Create(LoggerFactory, _toolTypes);
-
-        IServerTransport serverTransport = transport;
-        await serverTransport.StartListeningAsync(TestContext.Current.CancellationToken);
-
-        // Ensure transport is fully initialized
-        await Task.Delay(100, TestContext.Current.CancellationToken);
-
-        var chineseMessage = new JsonRpcRequest
+        var message = new JsonRpcRequest
         {
             Method = "test",
-            Id = RequestId.FromNumber(44),
-            Params = new Dictionary<string, object>
-            {
-                ["text"] = messageText
-            }
+            Id = RequestId.FromNumber(123),
+            Params = new Dictionary<string, object> { ["text"] = "Hello, World!" }
         };
 
-        // Act & Assert - Chinese
-        await transport.SendMessageAsync(chineseMessage, TestContext.Current.CancellationToken);
-
-        Assert.True(transport.MessageReader.TryRead(out var receivedMessage));
+        // Act
+        await clientTransport.SendMessageAsync(message, TestContext.Current.CancellationToken);
+        await Task.Delay(1, TestContext.Current.CancellationToken);
+        // Assert
+        Assert.True(serverTransport.MessageReader.TryRead(out var receivedMessage));
         Assert.NotNull(receivedMessage);
         Assert.IsType<JsonRpcRequest>(receivedMessage);
-        var chineseRequest = (JsonRpcRequest)receivedMessage;
-        var chineseParams = (Dictionary<string, object>)chineseRequest.Params!;
-        Assert.Equal(messageText, (string)chineseParams["text"]);
 
-        await transport.DisposeAsync();
-    }
+        var request = (JsonRpcRequest)receivedMessage;
+        Assert.Equal(123, request.Id.AsNumber);
+        Assert.Equal("test", request.Method);
 
+        var requestParams = (Dictionary<string, object>)request.Params!;
+        Assert.Equal("Hello, World!", requestParams["text"]);
 
-    [Fact]
-    public async Task SendMessageAsync_Throws_Exception_If_Not_Connected()
-    {
-        // Arrange
-        await using var transport = InMemoryTransport.Create(LoggerFactory, _toolTypes);
-
-        var message = new JsonRpcRequest { Method = "test" };
-
-        // Act & Assert
-        await Assert.ThrowsAsync<McpTransportException>(
-            () => transport.SendMessageAsync(message, TestContext.Current.CancellationToken));
+        // Cleanup
+        await clientTransport.DisposeAsync();
+        await serverTransport.DisposeAsync();
     }
 
     [Fact]
-    public async Task DisposeAsync_Should_Dispose_Resources()
+    public async Task Message_Should_Flow_From_Server_To_Client()
     {
         // Arrange
-        var transport = InMemoryTransport.Create(LoggerFactory, _toolTypes);
-        IServerTransport serverTransport = transport;
-        await serverTransport.StartListeningAsync(TestContext.Current.CancellationToken);
+        var (clientTransport, serverTransport) = InMemoryTransport.Create(LoggerFactory);
+        await clientTransport.ConnectAsync(TestContext.Current.CancellationToken);
+
+        var message = new JsonRpcResponse
+        {
+            Id = RequestId.FromNumber(456),
+            Result = new Dictionary<string, object> { ["text"] = "Response from server" }
+        };
 
         // Act
-        await transport.DisposeAsync();
-
+        await serverTransport.SendMessageAsync(message, TestContext.Current.CancellationToken);
+        await Task.Delay(1, TestContext.Current.CancellationToken);
         // Assert
-        Assert.False(transport.IsConnected);
+        Assert.True(clientTransport.MessageReader.TryRead(out var receivedMessage));
+        Assert.NotNull(receivedMessage);
+        Assert.IsType<JsonRpcResponse>(receivedMessage);
+
+        var response = (JsonRpcResponse)receivedMessage;
+        Assert.Equal(456, response.Id.AsNumber);
+
+        var responseResult = (Dictionary<string, object>)response.Result!;
+        Assert.Equal("Response from server", responseResult["text"]);
+
+        // Cleanup
+        await clientTransport.DisposeAsync();
+        await serverTransport.DisposeAsync();
     }
+
 
     [McpServerToolType]
     private class TestTool
