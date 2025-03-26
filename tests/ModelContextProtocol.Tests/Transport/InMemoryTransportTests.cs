@@ -135,7 +135,10 @@ public class InMemoryTransportTests(ITestOutputHelper testOutputHelper) : Logged
         ServiceCollection sc = new();
         var builder = sc.AddMcpServer().WithTools<McpServerBuilderExtensionsToolsTests.EchoTool>().WithInMemoryServerTransport();
         var server = sc.BuildServiceProvider().GetRequiredService<IMcpServer>();
+        await server.StartAsync(TestContext.Current.CancellationToken);
+
         IMcpClient client = await server.GetInMemoryClientAsync(TestContext.Current.CancellationToken);
+
 
         var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
         Assert.Equal(10, tools.Count);
