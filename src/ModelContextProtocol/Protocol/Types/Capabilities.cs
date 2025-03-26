@@ -7,62 +7,62 @@ namespace ModelContextProtocol.Protocol.Types;
 /// Represents the capabilities that a client may support.
 /// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
 /// </summary>
-public record ClientCapabilities
+public class ClientCapabilities
 {
     /// <summary>
     /// Experimental, non-standard capabilities that the client supports.
     /// </summary>
     [JsonPropertyName("experimental")]
-    public Dictionary<string, object>? Experimental { get; init; }
+    public Dictionary<string, object>? Experimental { get; set; }
 
     /// <summary>
     /// Present if the client supports listing roots.
     /// </summary>
     [JsonPropertyName("roots")]
-    public RootsCapability? Roots { get; init; }
+    public RootsCapability? Roots { get; set; }
 
     /// <summary>
     /// Present if the client supports sampling from an LLM.
     /// </summary>
     [JsonPropertyName("sampling")]
-    public SamplingCapability? Sampling { get; init; }
+    public SamplingCapability? Sampling { get; set; }
 }
 
 /// <summary>
 /// Represents the roots capability configuration.
 /// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
 /// </summary>
-public record RootsCapability
+public class RootsCapability
 {
     /// <summary>
     /// Whether the client supports notifications for changes to the roots list.
     /// </summary>
     [JsonPropertyName("listChanged")]
-    public bool? ListChanged { get; init; }
+    public bool? ListChanged { get; set; }
 
     /// <summary>Gets or sets the handler for sampling requests.</summary>
     [JsonIgnore]
-    public Func<ListRootsRequestParams?, CancellationToken, Task<ListRootsResult>>? RootsHandler { get; init; }
+    public Func<ListRootsRequestParams?, CancellationToken, Task<ListRootsResult>>? RootsHandler { get; set; }
 }
 
 /// <summary>
 /// Represents the sampling capability configuration.
 /// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
 /// </summary>
-public record SamplingCapability
+public class SamplingCapability
 {
     // Currently empty in the spec, but may be extended in the future
 
     /// <summary>Gets or sets the handler for sampling requests.</summary>
     [JsonIgnore]
-    public Func<CreateMessageRequestParams?, CancellationToken, Task<CreateMessageResult>>? SamplingHandler { get; init; }
+    public Func<CreateMessageRequestParams?, CancellationToken, Task<CreateMessageResult>>? SamplingHandler { get; set; }
 }
 
 /// <summary>
 /// Represents the logging capability configuration.
 /// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
 /// </summary>
-public record LoggingCapability
+public class LoggingCapability
 {
     // Currently empty in the spec, but may be extended in the future
 
@@ -71,106 +71,106 @@ public record LoggingCapability
     /// Gets or sets the handler for set logging level requests.
     /// </summary>
     [JsonIgnore]
-    public Func<RequestContext<SetLevelRequestParams>, CancellationToken, Task<EmptyResult>>? SetLoggingLevelHandler { get; init; }
+    public Func<RequestContext<SetLevelRequestParams>, CancellationToken, Task<EmptyResult>>? SetLoggingLevelHandler { get; set; }
 }
 
 /// <summary>
 /// Represents the prompts capability configuration.
 /// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
 /// </summary>
-public record PromptsCapability
+public class PromptsCapability
 {
     /// <summary>
     /// Whether this server supports notifications for changes to the prompt list.
     /// </summary>
     [JsonPropertyName("listChanged")]
-    public bool? ListChanged { get; init; }
+    public bool? ListChanged { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for list prompts requests.
     /// </summary>
     [JsonIgnore]
-    public Func<RequestContext<ListPromptsRequestParams>, CancellationToken, Task<ListPromptsResult>>? ListPromptsHandler { get; init; }
+    public Func<RequestContext<ListPromptsRequestParams>, CancellationToken, Task<ListPromptsResult>>? ListPromptsHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for get prompt requests.
     /// </summary>
     [JsonIgnore]
-    public Func<RequestContext<GetPromptRequestParams>, CancellationToken, Task<GetPromptResult>>? GetPromptHandler { get; init; }
+    public Func<RequestContext<GetPromptRequestParams>, CancellationToken, Task<GetPromptResult>>? GetPromptHandler { get; set; }
 }
 
 /// <summary>
 /// Represents the resources capability configuration.
 /// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
 /// </summary>
-public record ResourcesCapability
+public class ResourcesCapability
 {
     /// <summary>
     /// Whether this server supports subscribing to resource updates.
     /// </summary>
     [JsonPropertyName("subscribe")]
-    public bool? Subscribe { get; init; }
+    public bool? Subscribe { get; set; }
 
     /// <summary>
     /// Whether this server supports notifications for changes to the resource list.
     /// </summary>
     [JsonPropertyName("listChanged")]
-    public bool? ListChanged { get; init; }
+    public bool? ListChanged { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for list resource templates requests.
     /// </summary>
     [JsonIgnore]
-    public Func<RequestContext<ListResourceTemplatesRequestParams>, CancellationToken, Task<ListResourceTemplatesResult>>? ListResourceTemplatesHandler { get; init; }
+    public Func<RequestContext<ListResourceTemplatesRequestParams>, CancellationToken, Task<ListResourceTemplatesResult>>? ListResourceTemplatesHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for list resources requests.
     /// </summary>
     [JsonIgnore]
-    public Func<RequestContext<ListResourcesRequestParams>, CancellationToken, Task<ListResourcesResult>>? ListResourcesHandler { get; init; }
+    public Func<RequestContext<ListResourcesRequestParams>, CancellationToken, Task<ListResourcesResult>>? ListResourcesHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for read resources requests.
     /// </summary>
     [JsonIgnore]
-    public Func<RequestContext<ReadResourceRequestParams>, CancellationToken, Task<ReadResourceResult>>? ReadResourceHandler { get; init; }
+    public Func<RequestContext<ReadResourceRequestParams>, CancellationToken, Task<ReadResourceResult>>? ReadResourceHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for subscribe to resources messages.
     /// </summary>
     [JsonIgnore]
-    public Func<RequestContext<SubscribeRequestParams>, CancellationToken, Task<EmptyResult>>? SubscribeToResourcesHandler { get; init; }
+    public Func<RequestContext<SubscribeRequestParams>, CancellationToken, Task<EmptyResult>>? SubscribeToResourcesHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for unsubscribe from resources messages.
     /// </summary>
     [JsonIgnore]
-    public Func<RequestContext<UnsubscribeRequestParams>, CancellationToken, Task<EmptyResult>>? UnsubscribeFromResourcesHandler { get; init; }
+    public Func<RequestContext<UnsubscribeRequestParams>, CancellationToken, Task<EmptyResult>>? UnsubscribeFromResourcesHandler { get; set; }
 }
 
 /// <summary>
 /// Represents the tools capability configuration.
 /// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
 /// </summary>
-public record ToolsCapability
+public class ToolsCapability
 {
     /// <summary>
     /// Gets or sets whether this server supports notifications for changes to the tool list.
     /// </summary>
     [JsonPropertyName("listChanged")]
-    public bool? ListChanged { get; init; }
+    public bool? ListChanged { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for list tools requests.
     /// </summary>
     [JsonIgnore]
-    public Func<RequestContext<ListToolsRequestParams>, CancellationToken, Task<ListToolsResult>>? ListToolsHandler { get; init; }
+    public Func<RequestContext<ListToolsRequestParams>, CancellationToken, Task<ListToolsResult>>? ListToolsHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for call tool requests.
     /// </summary>
     [JsonIgnore]
-    public Func<RequestContext<CallToolRequestParams>, CancellationToken, Task<CallToolResponse>>? CallToolHandler { get; init; }
+    public Func<RequestContext<CallToolRequestParams>, CancellationToken, Task<CallToolResponse>>? CallToolHandler { get; set; }
 
     /// <summary>Gets or sets a collection of tools served by the server.</summary>
     /// <remarks>
@@ -182,5 +182,5 @@ public record ToolsCapability
     /// will be invoked as a fallback.
     /// </remarks>
     [JsonIgnore]
-    public McpServerToolCollection? ToolCollection { get; init; }
+    public McpServerToolCollection? ToolCollection { get; set; }
 }
