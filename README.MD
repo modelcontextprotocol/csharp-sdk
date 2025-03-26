@@ -17,6 +17,14 @@ For more information about MCP:
 - [Protocol Specification](https://spec.modelcontextprotocol.io/)
 - [GitHub Organization](https://github.com/modelcontextprotocol)
 
+## Installation
+
+To get started, install the package from NuGet
+
+```
+dotnet add package ModelContextProtocol --prerelease
+```
+
 ## Getting Started (Client)
 
 To get started writing a client, the `McpClientFactory.CreateAsync` method is used to instantiate and connect an `IMcpClient`

@@ -4,7 +4,7 @@
 /// Used by the client to invoke a tool provided by the server.
 /// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
 /// </summary>
-public class CallToolRequestParams
+public class CallToolRequestParams : RequestParams
 {
     /// <summary>
     /// Tool name.
