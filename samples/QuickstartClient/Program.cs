@@ -1,4 +1,4 @@
-﻿using Anthropic.SDK;
+using Anthropic.SDK;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -11,17 +11,31 @@ builder.Configuration
     .AddEnvironmentVariables()
     .AddUserSecrets<Program>();
 
+var (command, arguments) = args switch
+{
+    [var script] when script.EndsWith(".py") => ("python", script),
+    [var script] when script.EndsWith(".js") => ("node", script),
+    [var script] when Directory.Exists(script) || (File.Exists(script) && script.EndsWith(".csproj")) => ("dotnet", $"run --project {script} --no-build"),
+    _ => ("dotnet", "run --project ../../../../QuickstartWeatherServer --no-build")
+};
+
 var mcpClient = await McpClientFactory.CreateAsync(new()
 {
-    Id = "weather",
-    Name = "Weather",
+    Id = "demo-client",
+    Name = "Demo Client",
     TransportType = TransportTypes.StdIo,
     TransportOptions = new()
     {
-        ["command"] = "dotnet",
-        ["arguments"] = "run --project ../QuickstartWeatherServer",
+        ["command"] = command,
+        ["arguments"] = arguments,
     }
 });
+
+var tools = await mcpClient.ListToolsAsync();
+foreach (var tool in tools)
+{
+    Console.WriteLine($"Connected to server with tools: {tool.Name}");
+}
 
 var anthropicClient = new AnthropicClient(new APIAuthentication(builder.Configuration["ANTHROPIC_API_KEY"]))
     .Messages
@@ -29,50 +43,36 @@ var anthropicClient = new AnthropicClient(new APIAuthentication(builder.Configur
     .UseFunctionInvocation()
     .Build();
 
-var tools = await mcpClient.ListToolsAsync();
-foreach (var tool in tools)
+var options = new ChatOptions
 {
-    Console.WriteLine($"Tool: {tool.Name}");
-}
+    MaxOutputTokens = 1000,
+    ModelId = "claude-3-5-sonnet-20241022",
+    Tools = [.. tools.Cast<AITool>()]
+};
 
 while (true)
 {
     Console.WriteLine("MCP Client Started!");
-    Console.WriteLine("Enter a command (or 'exit' to quit):");
+    Console.WriteLine("Type your queries or 'quit' to exit.");
 
-    string? command = Console.ReadLine();
+    string? query = Console.ReadLine();
 
-    if (string.IsNullOrWhiteSpace(command))
+    if (string.IsNullOrWhiteSpace(query))
     {
         continue;
     }
-    if (string.Equals(command, "exit", StringComparison.OrdinalIgnoreCase))
+    if (string.Equals(query, "quit", StringComparison.OrdinalIgnoreCase))
     {
         break;
     }
 
-    var response = await ProcessQueryAsync(command);
-
-    if (string.IsNullOrWhiteSpace(response))
-    {
-        Console.WriteLine("No response received.");
-    }
-    else
-    {
-        Console.WriteLine($"Response: {response}");
-    }
-}
-
-async Task<string> ProcessQueryAsync(string query)
-{
-    var options = new ChatOptions
-    {
-        MaxOutputTokens = 1000,
-        ModelId = "claude-3-5-sonnet-20241022",
-        Tools = [.. tools.Cast<AITool>()]
-    };
-
     var response = await anthropicClient.GetResponseAsync(query, options);
 
-    return "";
+    foreach (var message in response.Messages)
+    {
+        Console.WriteLine(message.Text);
+    }
 }
+
+anthropicClient.Dispose();
+await mcpClient.DisposeAsync();
