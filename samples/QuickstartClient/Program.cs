@@ -19,7 +19,7 @@ var (command, arguments) = args switch
     _ => ("dotnet", "run --project ../../../../QuickstartWeatherServer --no-build")
 };
 
-var mcpClient = await McpClientFactory.CreateAsync(new()
+await using var mcpClient = await McpClientFactory.CreateAsync(new()
 {
     Id = "demo-client",
     Name = "Demo Client",
@@ -37,7 +37,7 @@ foreach (var tool in tools)
     Console.WriteLine($"Connected to server with tools: {tool.Name}");
 }
 
-var anthropicClient = new AnthropicClient(new APIAuthentication(builder.Configuration["ANTHROPIC_API_KEY"]))
+using var anthropicClient = new AnthropicClient(new APIAuthentication(builder.Configuration["ANTHROPIC_API_KEY"]))
     .Messages
     .AsBuilder()
     .UseFunctionInvocation()
@@ -47,7 +47,7 @@ var options = new ChatOptions
 {
     MaxOutputTokens = 1000,
     ModelId = "claude-3-5-sonnet-20241022",
-    Tools = [.. tools.Cast<AITool>()]
+    Tools = [.. tools]
 };
 
 while (true)
@@ -66,13 +66,11 @@ while (true)
         break;
     }
 
-    var response = await anthropicClient.GetResponseAsync(query, options);
+    var response = anthropicClient.GetStreamingResponseAsync(query, options);
 
-    foreach (var message in response.Messages)
+    await foreach (var message in response)
     {
-        Console.WriteLine(message.Text);
+        Console.Write(message.Text);
     }
+    Console.WriteLine();
 }
-
-anthropicClient.Dispose();
-await mcpClient.DisposeAsync();
