@@ -1,10 +1,9 @@
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Server;
-using System.Diagnostics.CodeAnalysis;
+
 using System.Threading.Channels;
 
 namespace ModelContextProtocol.Protocol.Transport;
@@ -14,7 +13,7 @@ namespace ModelContextProtocol.Protocol.Transport;
 /// </summary>
 public sealed class InMemoryServerTransport : TransportBase, IServerTransport
 {
-    private readonly string _endpointName = "InMemoryServerTransport";
+    private string EndpointName => $"Server (in memory) for ({_serverName})";
     private readonly ILogger _logger;
     private readonly ChannelReader<IJsonRpcMessage> _incomingChannel;
     private readonly ChannelWriter<IJsonRpcMessage> _outgoingChannel;
@@ -22,23 +21,27 @@ public sealed class InMemoryServerTransport : TransportBase, IServerTransport
     private Task? _readTask;
     private SemaphoreSlim _startLock = new SemaphoreSlim(1, 1);
     private volatile bool _disposed;
+    private readonly string _serverName;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="InMemoryServerTransport"/> class.
     /// </summary>
+    /// <param name="serverName">The name of the server.</param>
     /// <param name="loggerFactory">Optional logger factory for logging transport operations.</param>
     /// <param name="incomingChannel">Channel for receiving messages from the client.</param>
     /// <param name="outgoingChannel">Channel for sending messages to the client.</param>
     internal InMemoryServerTransport(
+        string serverName,
         ILoggerFactory? loggerFactory,
         ChannelReader<IJsonRpcMessage> incomingChannel,
         ChannelWriter<IJsonRpcMessage> outgoingChannel)
         : base(loggerFactory)
     {
-        _logger = loggerFactory?.CreateLogger<InMemoryServerTransport>() 
+        _logger = loggerFactory?.CreateLogger<InMemoryServerTransport>()
                 ?? NullLogger<InMemoryServerTransport>.Instance;
         _incomingChannel = incomingChannel;
         _outgoingChannel = outgoingChannel;
+        _serverName = serverName;
     }
 
     /// <inheritdoc/>
@@ -51,11 +54,11 @@ public sealed class InMemoryServerTransport : TransportBase, IServerTransport
 
             if (IsConnected)
             {
-                _logger.TransportAlreadyConnected(_endpointName);
+                _logger.TransportAlreadyConnected(EndpointName);
                 throw new McpTransportException("Transport is already connected");
             }
 
-            _logger.TransportConnecting(_endpointName);
+            _logger.TransportConnecting(EndpointName);
 
             try
             {
@@ -66,7 +69,7 @@ public sealed class InMemoryServerTransport : TransportBase, IServerTransport
             }
             catch (Exception ex)
             {
-                _logger.TransportConnectFailed(_endpointName, ex);
+                _logger.TransportConnectFailed(EndpointName, ex);
                 await CleanupAsync(cancellationToken).ConfigureAwait(false);
                 throw new McpTransportException("Failed to connect transport", ex);
             }
@@ -84,7 +87,7 @@ public sealed class InMemoryServerTransport : TransportBase, IServerTransport
 
         if (!IsConnected)
         {
-            _logger.TransportNotConnected(_endpointName);
+            _logger.TransportNotConnected(EndpointName);
             throw new McpTransportException("Transport is not connected");
         }
 
@@ -96,13 +99,13 @@ public sealed class InMemoryServerTransport : TransportBase, IServerTransport
 
         try
         {
-            _logger.TransportSendingMessage(_endpointName, id);
+            _logger.TransportSendingMessage(EndpointName, id);
             await _outgoingChannel.WriteAsync(message, cancellationToken).ConfigureAwait(false);
-            _logger.TransportSentMessage(_endpointName, id);
+            _logger.TransportSentMessage(EndpointName, id);
         }
         catch (Exception ex)
         {
-            _logger.TransportSendFailed(_endpointName, id, ex);
+            _logger.TransportSendFailed(EndpointName, id, ex);
             throw new McpTransportException("Failed to send message", ex);
         }
     }
@@ -118,7 +121,7 @@ public sealed class InMemoryServerTransport : TransportBase, IServerTransport
     {
         try
         {
-            _logger.TransportEnteringReadMessagesLoop(_endpointName);
+            _logger.TransportEnteringReadMessagesLoop(EndpointName);
 
             await foreach (var message in _incomingChannel.ReadAllAsync(cancellationToken))
             {
@@ -128,24 +131,24 @@ public sealed class InMemoryServerTransport : TransportBase, IServerTransport
                     id = messageWithId.Id.ToString();
                 }
 
-                _logger.TransportReceivedMessageParsed(_endpointName, id);
-                
+                _logger.TransportReceivedMessageParsed(EndpointName, id);
+
                 // Write to the base class's message channel that's exposed via MessageReader
                 await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
-                
-                _logger.TransportMessageWritten(_endpointName, id);
+
+                _logger.TransportMessageWritten(EndpointName, id);
             }
 
-            _logger.TransportExitingReadMessagesLoop(_endpointName);
+            _logger.TransportExitingReadMessagesLoop(EndpointName);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            _logger.TransportReadMessagesCancelled(_endpointName);
+            _logger.TransportReadMessagesCancelled(EndpointName);
             // Normal shutdown
         }
         catch (Exception ex)
         {
-            _logger.TransportReadMessagesFailed(_endpointName, ex);
+            _logger.TransportReadMessagesFailed(EndpointName, ex);
         }
     }
 
@@ -157,7 +160,7 @@ public sealed class InMemoryServerTransport : TransportBase, IServerTransport
         }
 
         _disposed = true;
-        _logger.TransportCleaningUp(_endpointName);
+        _logger.TransportCleaningUp(EndpointName);
 
         try
         {
@@ -172,20 +175,20 @@ public sealed class InMemoryServerTransport : TransportBase, IServerTransport
             {
                 try
                 {
-                    _logger.TransportWaitingForReadTask(_endpointName);
+                    _logger.TransportWaitingForReadTask(EndpointName);
                     await _readTask.WaitAsync(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
                 }
                 catch (TimeoutException)
                 {
-                    _logger.TransportCleanupReadTaskTimeout(_endpointName);
+                    _logger.TransportCleanupReadTaskTimeout(EndpointName);
                 }
                 catch (OperationCanceledException)
                 {
-                    _logger.TransportCleanupReadTaskCancelled(_endpointName);
+                    _logger.TransportCleanupReadTaskCancelled(EndpointName);
                 }
                 catch (Exception ex)
                 {
-                    _logger.TransportCleanupReadTaskFailed(_endpointName, ex);
+                    _logger.TransportCleanupReadTaskFailed(EndpointName, ex);
                 }
                 finally
                 {
@@ -198,7 +201,7 @@ public sealed class InMemoryServerTransport : TransportBase, IServerTransport
         finally
         {
             SetConnected(false);
-            _logger.TransportCleanedUp(_endpointName);
+            _logger.TransportCleanedUp(EndpointName);
         }
     }
 

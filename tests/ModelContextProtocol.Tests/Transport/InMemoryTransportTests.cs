@@ -10,7 +10,9 @@ public class InMemoryTransportTests(ITestOutputHelper testOutputHelper) : Logged
     [Fact]
     public async Task SendMessageAsync_Throws_Exception_If_Not_Connected()
     {
-        var (clientTransport, serverTransport) = InMemoryTransport.Create(LoggerFactory);
+        var transport = new InMemoryTransport("test", LoggerFactory);
+        var serverTransport = transport.ServerTransport;
+        var clientTransport = transport.ClientTransport;
 
         var message = new JsonRpcRequest { Method = "test" };
 
@@ -21,7 +23,9 @@ public class InMemoryTransportTests(ITestOutputHelper testOutputHelper) : Logged
     [Fact]
     public async Task DisposeAsync_Should_Dispose_Resources()
     {
-        var (clientTransport, serverTransport) = InMemoryTransport.Create(LoggerFactory);
+        var transport = new InMemoryTransport("test", LoggerFactory);
+        var serverTransport = transport.ServerTransport;
+        var clientTransport = transport.ClientTransport;
 
         await serverTransport.DisposeAsync();
         await clientTransport.DisposeAsync();
@@ -33,7 +37,9 @@ public class InMemoryTransportTests(ITestOutputHelper testOutputHelper) : Logged
     [Fact]
     public async Task TransportPair_Should_Create_Valid_Transports()
     {
-        var (clientTransport, serverTransport) = InMemoryTransport.Create(LoggerFactory);
+        var transport = new InMemoryTransport("test", LoggerFactory);
+        var serverTransport = transport.ServerTransport;
+        var clientTransport = transport.ClientTransport;
 
         Assert.NotNull(clientTransport);
         Assert.NotNull(serverTransport);
@@ -48,7 +54,10 @@ public class InMemoryTransportTests(ITestOutputHelper testOutputHelper) : Logged
     [Fact]
     public async Task Message_Should_Flow_From_Client_To_Server()
     {
-        var (clientTransport, serverTransport) = InMemoryTransport.Create(LoggerFactory);
+        var transport = new InMemoryTransport("test", LoggerFactory);
+        var serverTransport = transport.ServerTransport;
+        var clientTransport = transport.ClientTransport;
+
         await clientTransport.ConnectAsync(TestContext.Current.CancellationToken);
 
         var message = new JsonRpcRequest
@@ -82,7 +91,10 @@ public class InMemoryTransportTests(ITestOutputHelper testOutputHelper) : Logged
     [Fact]
     public async Task Message_Should_Flow_From_Server_To_Client()
     {
-        var (clientTransport, serverTransport) = InMemoryTransport.Create(LoggerFactory);
+        var transport = new InMemoryTransport("test", LoggerFactory);
+        var serverTransport = transport.ServerTransport;
+        var clientTransport = transport.ClientTransport;
+
         await clientTransport.ConnectAsync(TestContext.Current.CancellationToken);
 
         var message = new JsonRpcResponse

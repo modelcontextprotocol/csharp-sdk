@@ -19,9 +19,19 @@ public static partial class McpServerBuilderExtensions
     public static IMcpServerBuilder WithInMemoryServerTransport(this IMcpServerBuilder builder)
     {
         Throw.IfNull(builder);
-        var (clientTransport, serverTransport) = InMemoryTransport.Create();
-        builder.Services.AddSingleton<IServerTransport>(serverTransport);
-        builder.Services.AddSingleton<IClientTransport>(clientTransport);
+        builder.Services.AddSingleton<InMemoryTransport>();
+        builder.Services.AddSingleton<IClientTransport>(s =>
+        {
+            var transport = s.GetRequiredService<InMemoryTransport>();
+            return transport.ClientTransport;
+        });
+
+        builder.Services.AddSingleton<IServerTransport>(s =>
+        {
+            var transport = s.GetRequiredService<InMemoryTransport>();
+            return transport.ServerTransport;
+        });
+
         builder.Services.AddHostedService<McpServerHostedService>();
         return builder;
     }
