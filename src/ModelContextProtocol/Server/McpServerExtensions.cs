@@ -1,7 +1,13 @@
-﻿using ModelContextProtocol.Protocol.Messages;
+﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
+
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Configuration;
+using ModelContextProtocol.Protocol.Messages;
+using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Utils;
-using Microsoft.Extensions.AI;
+
 using System.Runtime.CompilerServices;
 using System.Text;
 
@@ -10,6 +16,27 @@ namespace ModelContextProtocol.Server;
 /// <inheritdoc />
 public static class McpServerExtensions
 {
+    /// <summary>
+    /// Gets an in-memory client for the server.
+    /// </summary>
+    /// <param name="server"></param>
+    /// <param name="cancellationToke"></param>
+    /// <returns></returns>
+    /// <exception cref="InvalidOperationException"></exception>
+    public static async Task<IMcpClient> GetInMemoryClientAsync(this IMcpServer server, CancellationToken cancellationToke = default)
+    {
+        var client = await McpClientFactory.CreateAsync(
+            new McpServerConfig
+            {
+                Id = server.ServerOptions.ServerInfo.Name,
+                Name = server.ServerOptions.ServerInfo.Name,
+                TransportType = TransportTypes.InMemory,
+            },
+            createTransportFunc: (_, _) => server.Services?.GetRequiredService<IClientTransport>() ?? throw new InvalidOperationException(),
+            cancellationToken: cancellationToke);
+        return client;
+    }
+
     /// <summary>
     /// Requests to sample an LLM via the client.
     /// </summary>
@@ -42,7 +69,7 @@ public static class McpServerExtensions
     /// <exception cref="ArgumentNullException"><paramref name="messages"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">The client does not support sampling.</exception>
     public static async Task<ChatResponse> RequestSamplingAsync(
-        this IMcpServer server, 
+        this IMcpServer server,
         IEnumerable<ChatMessage> messages, ChatOptions? options = default, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(server);
@@ -112,14 +139,14 @@ public static class McpServerExtensions
         }
 
         var result = await server.RequestSamplingAsync(new()
-            {
-                Messages = samplingMessages,
-                MaxTokens = options?.MaxOutputTokens,
-                StopSequences = options?.StopSequences?.ToArray(),
-                SystemPrompt = systemPrompt?.ToString(),
-                Temperature = options?.Temperature,
-                ModelPreferences = modelPreferences,
-            }, cancellationToken).ConfigureAwait(false);
+        {
+            Messages = samplingMessages,
+            MaxTokens = options?.MaxOutputTokens,
+            StopSequences = options?.StopSequences?.ToArray(),
+            SystemPrompt = systemPrompt?.ToString(),
+            Temperature = options?.Temperature,
+            ModelPreferences = modelPreferences,
+        }, cancellationToken).ConfigureAwait(false);
 
         return new(new ChatMessage(new(result.Role), [result.Content.ToAIContent()]))
         {

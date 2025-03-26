@@ -14,4 +14,9 @@ public static class TransportTypes
     /// The name of the ServerSideEvents transport.
     /// </summary>
     public const string Sse = "sse";
+
+    /// <summary>
+    /// The name of the InMemory transport.
+    /// </summary>
+    public const string InMemory = "inmemory";
 }

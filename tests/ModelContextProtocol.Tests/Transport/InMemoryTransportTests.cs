@@ -1,6 +1,13 @@
+using Microsoft.Extensions.DependencyInjection;
+
+using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
+using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Configuration;
 using ModelContextProtocol.Tests.Utils;
+
+using System.Text.Json;
 
 namespace ModelContextProtocol.Tests.Transport;
 
@@ -120,5 +127,29 @@ public class InMemoryTransportTests(ITestOutputHelper testOutputHelper) : Logged
         // Cleanup
         await clientTransport.DisposeAsync();
         await serverTransport.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Can_List_Registered_Tools()
+    {
+        ServiceCollection sc = new();
+        var builder = sc.AddMcpServer().WithTools<McpServerBuilderExtensionsToolsTests.EchoTool>().WithInMemoryServerTransport();
+        var server = sc.BuildServiceProvider().GetRequiredService<IMcpServer>();
+        IMcpClient client = await server.GetInMemoryClientAsync(TestContext.Current.CancellationToken);
+
+        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(10, tools.Count);
+
+        McpClientTool echoTool = tools.First(t => t.Name == "Echo");
+        Assert.Equal("Echo", echoTool.Name);
+        Assert.Equal("Echoes the input back to the client.", echoTool.Description);
+        Assert.Equal("object", echoTool.JsonSchema.GetProperty("type").GetString());
+        Assert.Equal(JsonValueKind.Object, echoTool.JsonSchema.GetProperty("properties").GetProperty("message").ValueKind);
+        Assert.Equal("the echoes message", echoTool.JsonSchema.GetProperty("properties").GetProperty("message").GetProperty("description").GetString());
+        Assert.Equal(1, echoTool.JsonSchema.GetProperty("required").GetArrayLength());
+
+        McpClientTool doubleEchoTool = tools.First(t => t.Name == "double_echo");
+        Assert.Equal("double_echo", doubleEchoTool.Name);
+        Assert.Equal("Echoes the input back to the client.", doubleEchoTool.Description);
     }
 }
