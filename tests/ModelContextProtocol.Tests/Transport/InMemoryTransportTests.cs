@@ -141,7 +141,7 @@ public class InMemoryTransportTests(ITestOutputHelper testOutputHelper) : Logged
 
 
         var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(10, tools.Count);
+        Assert.Equal(11, tools.Count);
 
         McpClientTool echoTool = tools.First(t => t.Name == "Echo");
         Assert.Equal("Echo", echoTool.Name);
