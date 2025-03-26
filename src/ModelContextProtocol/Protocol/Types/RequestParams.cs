@@ -1,6 +1,8 @@
 ﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.Text.Json.Serialization;
+
 namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
@@ -12,6 +14,6 @@ public abstract class RequestParams
     /// <summary>
     /// Metadata related to the tool invocation.
     /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("_meta")]
+    [JsonPropertyName("_meta")]
     public RequestParamsMetadata? Meta { get; init; }
 }
