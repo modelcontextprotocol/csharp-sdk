@@ -28,26 +28,25 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
     private readonly Dictionary<string, Func<JsonRpcRequest, CancellationToken, Task<object?>>> _requestHandlers = [];
     private int _nextRequestId;
     private readonly JsonSerializerOptions _jsonOptions;
-    private readonly ILogger _logger;
     private bool _isDisposed;
+
+    protected readonly ILogger _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="McpJsonRpcEndpoint"/> class.
     /// </summary>
     /// <param name="transport">An MCP transport implementation.</param>
-    /// <param name="loggerFactory">The logger factory.</param>
-    protected McpJsonRpcEndpoint(ITransport transport, ILoggerFactory? loggerFactory = null)
+    /// <param name="logger">The logger.</param>
+    protected McpJsonRpcEndpoint(ITransport transport, ILogger? logger = null)
     {
         Throw.IfNull(transport);
-
-        loggerFactory ??= NullLoggerFactory.Instance;
 
         _transport = transport;
         _pendingRequests = new();
         _notificationHandlers = new();
         _nextRequestId = 1;
         _jsonOptions = McpJsonUtilities.DefaultOptions;
-        _logger = (ILogger?)loggerFactory?.CreateLogger<McpClient>() ?? NullLogger.Instance;
+        _logger = logger ?? NullLogger.Instance;
     }
 
     /// <summary>
