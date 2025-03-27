@@ -1,20 +1,71 @@
-# This workflow is triggered by new releases
-# It builds, tests, and publishes to the GitHub NuGet package registry
-name: Release package
+# Publish new package versions of ModelContextProtocol
+#
+# Daily and Manual Runs
+# - Triggered automatically at 07:00 UTC daily
+# - Triggered manually using GitHub Actions workflow_dispatch event
+# - Version prefix applied from /src/Directory.Build.props
+# - Version suffix set to `ci.{github.run_number}`
+# - Package published to GitHub package registry
+#
+# Official Releases
+# - Triggered after a GitHub Release is created
+# - Version prefix applied from /src/Directory.Build.props
+# - Version suffix applied from /src/Directory.Build.props
+# - Package published to GitHub package registry
+# - Package published to NuGet.org
+# - Version prefix and/or suffix should be updated after each release
+
+name: Release Publishing
 
 on:
+  schedule:
+    - cron: '0 7 * * *'
+
+  workflow_dispatch:
+    inputs:
+      version_suffix_override:
+        description: Version suffix override
+        type: string
+
   release:
     types: [published]
 
 jobs:
-  build:
+  build-all-configs:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        configuration: [Debug, Release]
+      fail-fast: false
 
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Clone the repo
+      uses: actions/checkout@v4
+      with:
+          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+
+    - name: Set up .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 9.0.x
+
+    - name: Build
+      run: dotnet build --configuration ${{ matrix.configuration }}
+
+    - name: Pack
+      run: dotnet pack --configuration ${{ matrix.configuration }}
+
+  build-package:
     runs-on: windows-latest
+    needs: build-all-configs
+
+    env:
+      version_suffix_args: ${{ github.event_name != 'release' && format('--version-suffix "{0}"', inputs.version_suffix_override || format('ci.{0}', github.run_number)) || '' }}
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v2
@@ -23,25 +74,11 @@ jobs:
             9.0.x
             8.0.x
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '20'
-
-      - name: Install dependencies for tests
-        run: npm install @modelcontextprotocol/server-everything
-
-      - name: Install dependencies for tests
-        run: npm install @modelcontextprotocol/server-memory
-
-      - name: Build
-        run: dotnet build --configuration Release
-
-      - name: Test
-        run: dotnet test --configuration Release --no-build --filter '(Execution!=Manual)'
-
       - name: Pack
-        run: dotnet pack --configuration Release --output "${{ github.workspace }}/artifacts/packages"
+        run: dotnet pack
+          ${{ env.version_suffix_args }}
+          --configuration Release
+          --output "${{ github.workspace }}/artifacts/packages"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -50,20 +87,16 @@ jobs:
           name: build-artifacts
           path: ${{ github.workspace }}/artifacts
 
-  publish:
-    name: Publish Package
-    needs: build
+  publish-package:
+    needs: build-package
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v2
         with:
-          dotnet-version: |
-            9.0.x
-            8.0.x
+          dotnet-version: 9.0.x
 
       - name: Download build artifacts
         uses: actions/download-artifact@v4
@@ -75,7 +108,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: NuGet authentication for GitHub
+      - name: Authenticate to GitHub registry
         run: dotnet nuget add source
           "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
           --name "github"
@@ -88,4 +121,13 @@ jobs:
             ${{github.workspace}}/build-artifacts/packages/*.nupkg
             --source "github"
             --api-key ${{ secrets.GITHUB_TOKEN }}
+            --skip-duplicate
+
+      - name: Publish to NuGet.org (Releases only)
+        # Only publish to NuGet.org from the modelcontextprotocol/csharp-sdk repository
+        if: ${{ github.event_name == 'release' && github.repository == 'modelcontextprotocol/csharp-sdk' }}
+        run: dotnet nuget push
+            ${{github.workspace}}/build-artifacts/packages/*.nupkg
+            --source https://api.nuget.org/v3/index.json
+            --api-key ${{ secrets.NUGET_KEY_MODELCONTEXTPROTOCOL }}
             --skip-duplicate

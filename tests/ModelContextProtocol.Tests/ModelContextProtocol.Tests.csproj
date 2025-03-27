@@ -40,10 +40,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Condition="$([MSBuild]::IsOSPlatform('Windows'))" Include="..\ModelContextProtocol.TestServer\bin\$(Configuration)\net8.0\TestServer.exe">
+    <Content Condition="$([MSBuild]::IsOSPlatform('Windows'))" Include="$([System.IO.Path]::GetFullPath('$(ArtifactsBinDir)ModelContextProtocol.TestServer\$(Configuration)'))\$(TargetFramework)\TestServer.exe">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Condition="$([MSBuild]::IsOSPlatform('Linux'))" Include="..\ModelContextProtocol.TestServer\bin\$(Configuration)\net8.0\TestServer.dll">
+    <Content Condition="$([MSBuild]::IsOSPlatform('Linux'))" Include="$([System.IO.Path]::GetFullPath('$(ArtifactsBinDir)ModelContextProtocol.TestServer\$(Configuration)'))\$(TargetFramework)\TestServer.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

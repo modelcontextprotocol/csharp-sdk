@@ -8,28 +8,28 @@ on:
 
 jobs:
   build:
-
-    runs-on: ${{ matrix.os }}
-
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         configuration: [Debug, Release]
       fail-fast: false
 
-    steps: 
-    - uses: actions/checkout@v4
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Clone the repo
+      uses: actions/checkout@v4
       with:
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
-     
-    - name: Setup .NET
+
+    - name: Set up .NET
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: | 
+        dotnet-version: |
           9.0.x
           8.0.x
 
-    # Netfx testing on non-Windows requires mono
+    # NetFX testing on non-Windows requires mono
     - name: Setup Mono
       if: runner.os == 'Linux'
       run: sudo apt-get install -y mono-devel
@@ -38,7 +38,7 @@ jobs:
       uses: actions/setup-node@v3
       with:
         node-version: '20'
-    
+
     - name: Install dependencies for tests
       run: npm install @modelcontextprotocol/server-everything
 
@@ -47,6 +47,9 @@ jobs:
 
     - name: Build
       run: dotnet build --configuration ${{ matrix.configuration }}
+
+    - name: Pack
+      run: dotnet pack --configuration ${{ matrix.configuration }}
 
     - name: Test
       run: >-
