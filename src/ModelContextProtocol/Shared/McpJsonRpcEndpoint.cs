@@ -359,7 +359,7 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
     /// Cleans up the endpoint and releases resources.
     /// </summary>
     /// <returns></returns>
-    protected async Task CleanupAsync()
+    protected virtual async Task CleanupAsync()
     {
         if (_isDisposed)
             return;

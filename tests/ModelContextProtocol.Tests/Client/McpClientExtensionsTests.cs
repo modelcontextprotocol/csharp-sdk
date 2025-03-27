@@ -38,8 +38,8 @@ public class McpClientExtensionsTests
     {
         await _server.StartAsync(TestContext.Current.CancellationToken);
 
-        var stdin = new StreamReader(_serverToClientPipe.Reader.AsStream());
-        var stdout = new StreamWriter(_clientToServerPipe.Writer.AsStream());
+        var serverStdinWriter = new StreamWriter(_clientToServerPipe.Writer.AsStream());
+        var serverStdoutReader = new StreamReader(_serverToClientPipe.Reader.AsStream());
 
         var serverConfig = new McpServerConfig()
         {
@@ -50,7 +50,7 @@ public class McpClientExtensionsTests
 
         return await McpClientFactory.CreateAsync(
             serverConfig,
-            createTransportFunc: (_, _) => new StreamClientTransport(stdin, stdout),
+            createTransportFunc: (_, _) => new StreamClientTransport(serverStdinWriter, serverStdoutReader),
             cancellationToken: TestContext.Current.CancellationToken);
     }
 
