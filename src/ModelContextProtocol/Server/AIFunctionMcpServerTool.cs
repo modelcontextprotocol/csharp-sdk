@@ -197,6 +197,10 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
 
         return result switch
         {
+            AIContent aiContent => new()
+            {
+                Content = [aiContent.ToContent()]
+            },
             null => new()
             {
                 Content = []
@@ -205,15 +209,11 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             {
                 Content = [new() { Text = text, Type = "text" }]
             },
-            TextContent textContent => new()
+            Content content => new()
             {
-                Content = [textContent.ToContent()]
+                Content = [content]
             },
-            DataContent dataContent => new()
-            {
-                Content = [dataContent.ToContent()]
-            },
-            string[] texts => new()
+            IEnumerable<string> texts => new()
             {
                 Content = [.. texts.Select(x => new Content() { Type = "text", Text = x ?? string.Empty })]
             },
