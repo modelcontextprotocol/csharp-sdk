@@ -197,6 +197,10 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
 
         return result switch
         {
+            AIContent aiContent => new()
+            {
+                Content = [aiContent.ToContent()]
+            },
             null => new()
             {
                 Content = []
@@ -205,38 +209,23 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             {
                 Content = [new() { Text = text, Type = "text" }]
             },
-            TextContent textContent => new()
+            Content content => new()
             {
-                Content = [new() { Text = textContent.Text, Type = "text" }]
+                Content = [content]
             },
-            DataContent dataContent => new()
-            {
-                Content = [new()
-                    {
-                        Data = dataContent.GetBase64Data(),
-                        MimeType = dataContent.MediaType,
-                        Type = dataContent.HasTopLevelMediaType("image") ? "image" : "resource",
-                    }]
-            },
-            string[] texts => new()
+            IEnumerable<string> texts => new()
             {
                 Content = [.. texts.Select(x => new Content() { Type = "text", Text = x ?? string.Empty })]
             },
-
             IEnumerable<AIContent> contentItems => new()
             {
-                Content = [.. contentItems.Select(static item => item switch
-                        {
-                            TextContent textContent => new Content() { Type = "text", Text = textContent.Text },
-                            DataContent dataContent => new Content()
-                            {
-                                Data = dataContent.GetBase64Data(),
-                                MimeType = dataContent.MediaType,
-                                Type = dataContent.HasTopLevelMediaType("image") ? "image" : "resource",
-                            },
-                            _ => new Content() { Type = "text", Text = item.ToString() ?? string.Empty }
-                        })]
+                Content = [.. contentItems.Select(static item => item.ToContent())]
             },
+            IEnumerable<Content> contents => new()
+            {
+                Content = [.. contents]
+            },
+            CallToolResponse callToolResponse => callToolResponse,
 
             // TODO https://github.com/modelcontextprotocol/csharp-sdk/issues/69:
             // Add specialization for annotations.
@@ -250,4 +239,5 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             },
         };
     }
+
 }
