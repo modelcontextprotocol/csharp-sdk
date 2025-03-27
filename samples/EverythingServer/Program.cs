@@ -8,7 +8,7 @@ var builder = Host.CreateEmptyApplicationBuilder(settings: null);
 builder.Services
     .AddMcpServer()
     .WithStdioServerTransport()
-    .WithTools()
+    .WithToolsFromAssembly()
     .WithListPromptsHandler((ctx, ct) =>
     {
         return Task.FromResult(new ListPromptsResult
