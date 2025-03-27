@@ -91,6 +91,8 @@ jobs:
     needs: build-package
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v2
         with:
@@ -122,7 +124,7 @@ jobs:
             --skip-duplicate
 
       - name: Publish to NuGet.org (Releases only)
-        # Only publish from the modelcontextprotocol/csharp-sdk repository
+        # Only publish to NuGet.org from the modelcontextprotocol/csharp-sdk repository
         if: ${{ github.event_name == 'release' && github.repository == 'modelcontextprotocol/csharp-sdk' }}
         run: dotnet nuget push
             ${{github.workspace}}/build-artifacts/packages/*.nupkg
