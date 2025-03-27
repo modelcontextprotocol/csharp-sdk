@@ -4,6 +4,7 @@ using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using Serilog;
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 
@@ -49,59 +50,50 @@ internal static class Program
         using var loggerFactory = CreateLoggerFactory();
         await using IMcpServer server = McpServerFactory.Create(new StdioServerTransport("TestServer", loggerFactory), options, loggerFactory);
 
-        Log.Logger.Information("Server initialized.");
-
-        await server.StartAsync();
-
-        Log.Logger.Information("Server started.");
-
-        // everything server sends random log level messages every 15 seconds
-        int loggingSeconds = 0;
-        Random random = Random.Shared;
-        var loggingLevels = Enum.GetValues<LoggingLevel>().ToList();
-
-        // Run until process is stopped by the client (parent process)
-        while (true)
+        Log.Logger.Information("Server running...");
+        await server.RunAsync(async cancellationToken =>
         {
-            await Task.Delay(5000);
-            if (_minimumLoggingLevel is not null)
-            {
-                loggingSeconds += 5;
+            var loggingLevels = Enum.GetValues<LoggingLevel>();
 
-                // Send random log messages every 15 seconds
-                if (loggingSeconds >= 15)
+            // Run until process is stopped by the client (parent process)
+            while (true)
+            {
+                await Task.Delay(1000, cancellationToken);
+                try
                 {
-                    var logLevelIndex = random.Next(loggingLevels.Count);
-                    var logLevel = loggingLevels[logLevelIndex];
-                    await server.SendMessageAsync(new JsonRpcNotification()
+                    // Send random log messages every few seconds
+                    if (_minimumLoggingLevel is not null)
                     {
-                        Method = NotificationMethods.LoggingMessageNotification,
-                        Params = new LoggingMessageNotificationParams
+                        var logLevel = loggingLevels[Random.Shared.Next(loggingLevels.Length)];
+                        await server.SendMessageAsync(new JsonRpcNotification()
                         {
-                            Level = logLevel,
-                            Data = JsonSerializer.Deserialize<JsonElement>("\"Random log message\"")
-                        }
-                    });
+                            Method = NotificationMethods.LoggingMessageNotification,
+                            Params = new LoggingMessageNotificationParams
+                            {
+                                Level = logLevel,
+                                Data = JsonSerializer.Deserialize<JsonElement>("\"Random log message\"")
+                            }
+                        }, cancellationToken);
+                    }
+
+                    // Snapshot the subscribed resources, rather than locking while sending notifications
+                    foreach (var resource in _subscribedResources)
+                    {
+                        ResourceUpdatedNotificationParams notificationParams = new() { Uri = resource.Key };
+                        await server.SendMessageAsync(new JsonRpcNotification()
+                        {
+                            Method = NotificationMethods.ResourceUpdatedNotification,
+                            Params = notificationParams
+                        }, cancellationToken);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.Logger.Error(ex, "Error sending log message");
+                    break;
                 }
             }
-
-            // Snapshot the subscribed resources, rather than locking while sending notifications
-            List<string> resources;
-            lock (_subscribedResourcesLock)
-            {
-                resources = _subscribedResources.ToList();
-            }
-            
-            foreach (var resource in resources)
-            {
-                ResourceUpdatedNotificationParams notificationParams = new() { Uri = resource };
-                await server.SendMessageAsync(new JsonRpcNotification()
-                {
-                    Method = NotificationMethods.ResourceUpdatedNotification,
-                    Params = notificationParams
-                });
-            }
-        }
+        });
     }
 
     private static ToolsCapability ConfigureTools()
@@ -312,8 +304,7 @@ internal static class Program
         };
     }
 
-    private static readonly HashSet<string> _subscribedResources = new();
-    private static readonly object _subscribedResourcesLock = new();
+    private static readonly ConcurrentDictionary<string, bool> _subscribedResources = new();
 
     private static ResourcesCapability ConfigureResources()
     {
@@ -451,10 +442,7 @@ internal static class Program
                     throw new McpServerException("Invalid resource URI");
                 }
 
-                lock (_subscribedResourcesLock)
-                {
-                    _subscribedResources.Add(request.Params.Uri);
-                }
+                _subscribedResources.TryAdd(request.Params.Uri, true);
 
                 return Task.FromResult(new EmptyResult());
             },
@@ -471,10 +459,7 @@ internal static class Program
                     throw new McpServerException("Invalid resource URI");
                 }
 
-                lock (_subscribedResourcesLock)
-                {
-                    _subscribedResources.Remove(request.Params.Uri);
-                }
+                _subscribedResources.Remove(request.Params.Uri, out _);
 
                 return Task.FromResult(new EmptyResult());
             },

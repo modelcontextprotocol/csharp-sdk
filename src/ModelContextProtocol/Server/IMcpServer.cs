@@ -9,11 +9,6 @@ namespace ModelContextProtocol.Server;
 public interface IMcpServer : IAsyncDisposable
 {
     /// <summary>
-    /// Gets a value indicating whether the server has been initialized.
-    /// </summary>
-    bool IsInitialized { get; }
-
-    /// <summary>
     /// Gets the capabilities supported by the client.
     /// </summary>
     ClientCapabilities? ClientCapabilities { get; }
@@ -48,9 +43,9 @@ public interface IMcpServer : IAsyncDisposable
     void AddNotificationHandler(string method, Func<JsonRpcNotification, Task> handler);
 
     /// <summary>
-    /// Starts the server and begins listening for client requests.
+    /// Runs the server, listening for and handling client requests.
     /// </summary>
-    Task StartAsync(CancellationToken cancellationToken = default);
+    Task RunAsync(Func<CancellationToken, Task>? onInitialized = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Sends a generic JSON-RPC request to the client.

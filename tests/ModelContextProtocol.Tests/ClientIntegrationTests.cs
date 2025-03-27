@@ -252,21 +252,17 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         var clientId = "test_server";
 
         // act
-        int counter = 0;
+        TaskCompletionSource<bool> tcs = new();
         await using var client = await _fixture.CreateClientAsync(clientId);
         client.AddNotificationHandler(NotificationMethods.ResourceUpdatedNotification, (notification) =>
         {
             var notificationParams = JsonSerializer.Deserialize<ResourceUpdatedNotificationParams>(notification.Params!.ToString() ?? string.Empty);
-            ++counter;
+            tcs.TrySetResult(true);
             return Task.CompletedTask;
         });
         await client.SubscribeToResourceAsync("test://static/resource/1", CancellationToken.None);
 
-        // notifications happen every 5 seconds, so we wait for 10 seconds to ensure we get at least one notification
-        await Task.Delay(10000, TestContext.Current.CancellationToken);
-
-        // assert
-        Assert.True(counter > 0);
+        await tcs.Task;
     }
 
     // Not supported by "everything" server version on npx
@@ -277,32 +273,26 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         var clientId = "test_server";
 
         // act
-        int counter = 0;
+        TaskCompletionSource<bool> receivedNotification = new();
         await using var client = await _fixture.CreateClientAsync(clientId);
         client.AddNotificationHandler(NotificationMethods.ResourceUpdatedNotification, (notification) =>
         {
             var notificationParams = JsonSerializer.Deserialize<ResourceUpdatedNotificationParams>(notification.Params!.ToString() ?? string.Empty);
-            ++counter;
+            receivedNotification.TrySetResult(true);
             return Task.CompletedTask;
         });
         await client.SubscribeToResourceAsync("test://static/resource/1", CancellationToken.None);
 
-        // notifications happen every 5 seconds, so we wait for 10 seconds to ensure we get at least one notification
-        await Task.Delay(10000, TestContext.Current.CancellationToken);
-
-        // reset counter
-        int counterAfterSubscribe = counter;
+        // wait until we received a notification
+        await receivedNotification.Task;
 
         // unsubscribe
         await client.UnsubscribeFromResourceAsync("test://static/resource/1", CancellationToken.None);
-        counter = 0;
+        receivedNotification = new();
 
-        // notifications happen every 5 seconds, so we wait for 10 seconds to ensure we would've gotten at least one notification
-        await Task.Delay(10000, TestContext.Current.CancellationToken);
-
-        // assert
-        Assert.True(counterAfterSubscribe > 0);
-        Assert.Equal(0, counter);
+        // wait a bit to validate we don't receive another. this is best effort only;
+        // false negatives are possible.
+        await Assert.ThrowsAsync<TimeoutException>(() => receivedNotification.Task.WaitAsync(TimeSpan.FromSeconds(1), TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -556,7 +546,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
             Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         };
 
-        int logCounter = 0;
+        TaskCompletionSource<bool> receivedNotification = new();
         await using var client = await _fixture.CreateClientAsync(clientId);
         client.AddNotificationHandler(NotificationMethods.LoggingMessageNotification, (notification) =>
         {
@@ -564,16 +554,15 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
                 jsonSerializerOptions);
             if (loggingMessageNotificationParameters is not null)
             {
-                ++logCounter;
+                receivedNotification.TrySetResult(true);
             }
             return Task.CompletedTask;
         });
 
         // act
         await client.SetLoggingLevel(LoggingLevel.Debug, CancellationToken.None);
-        await Task.Delay(16000, TestContext.Current.CancellationToken);
 
         // assert
-        Assert.True(logCounter > 0);
+        await receivedNotification.Task;
     }
 }

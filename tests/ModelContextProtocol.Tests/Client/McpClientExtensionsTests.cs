@@ -13,6 +13,8 @@ public class McpClientExtensionsTests
     private Pipe _clientToServerPipe = new();
     private Pipe _serverToClientPipe = new();
     private readonly IMcpServer _server;
+    private readonly CancellationTokenSource _cts;
+    private readonly Task _serverTask;
 
     public McpClientExtensionsTests()
     {
@@ -25,19 +27,22 @@ public class McpClientExtensionsTests
             sc.AddSingleton(McpServerTool.Create((int i) => $"{name} Result {i}", name));
         }
         _server = sc.BuildServiceProvider().GetRequiredService<IMcpServer>();
+
+        _cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        _serverTask = _server.RunAsync(cancellationToken: _cts.Token);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
+        _cts.Cancel();
         _clientToServerPipe.Writer.Complete();
         _serverToClientPipe.Writer.Complete();
-        return _server.DisposeAsync();
+        await _serverTask;
+        await _server.DisposeAsync();
     }
 
     private async Task<IMcpClient> CreateMcpClientForServer()
     {
-        await _server.StartAsync(TestContext.Current.CancellationToken);
-
         var serverStdinWriter = new StreamWriter(_clientToServerPipe.Writer.AsStream());
         var serverStdoutReader = new StreamReader(_serverToClientPipe.Reader.AsStream());
 

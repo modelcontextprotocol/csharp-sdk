@@ -7,6 +7,8 @@ using ModelContextProtocol.Logging;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils;
 
+#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
+
 namespace ModelContextProtocol.Protocol.Transport;
 
 /// <summary>
@@ -28,7 +30,7 @@ public sealed class HttpListenerSseServerTransport : TransportBase, IServerTrans
     /// <param name="port">The port to listen on.</param>
     /// <param name="loggerFactory">A logger factory for creating loggers.</param>
     public HttpListenerSseServerTransport(McpServerOptions serverOptions, int port, ILoggerFactory loggerFactory)
-        : this(GetServerName(serverOptions), port, loggerFactory)
+        : this(serverOptions?.ServerInfo?.Name!, port, loggerFactory)
     {
     }
 
@@ -41,6 +43,8 @@ public sealed class HttpListenerSseServerTransport : TransportBase, IServerTrans
     public HttpListenerSseServerTransport(string serverName, int port, ILoggerFactory loggerFactory)
         : base(loggerFactory)
     {
+        Throw.IfNull(serverName);
+
         _serverName = serverName;
         _logger = loggerFactory.CreateLogger<HttpListenerSseServerTransport>();
         _httpServerProvider = new HttpListenerServerProvider(port)
@@ -51,10 +55,11 @@ public sealed class HttpListenerSseServerTransport : TransportBase, IServerTrans
     }
 
     /// <inheritdoc/>
-    public Task StartListeningAsync(CancellationToken cancellationToken = default)
-    {
-        return _httpServerProvider.StartAsync(cancellationToken);
-    }
+    public Task StartListeningAsync(CancellationToken cancellationToken = default) =>
+        _httpServerProvider.StartAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public Task Completion => _httpServerProvider.Completed;
 
     /// <inheritdoc/>
     public override async Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
@@ -93,19 +98,12 @@ public sealed class HttpListenerSseServerTransport : TransportBase, IServerTrans
     /// <inheritdoc/>
     public override async ValueTask DisposeAsync()
     {
-        await CleanupAsync(CancellationToken.None).ConfigureAwait(false);
-        GC.SuppressFinalize(this);
-    }
-
-    private Task CleanupAsync(CancellationToken cancellationToken)
-    {
         _logger.TransportCleaningUp(EndpointName);
 
-        _httpServerProvider.Dispose();
         SetConnected(false);
+        await _httpServerProvider.DisposeAsync().ConfigureAwait(false);
 
         _logger.TransportCleanedUp(EndpointName);
-        return Task.CompletedTask;
     }
 
     private async Task OnSseConnectionAsync(Stream responseStream, CancellationToken cancellationToken)
@@ -166,14 +164,5 @@ public sealed class HttpListenerSseServerTransport : TransportBase, IServerTrans
             _logger.TransportMessageParseFailed(EndpointName, request, ex);
             return false;
         }
-    }
-
-    /// <summary>Validates the <paramref name="serverOptions"/> and extracts from it the server name to use.</summary>
-    private static string GetServerName(McpServerOptions serverOptions)
-    {
-        Throw.IfNull(serverOptions);
-        Throw.IfNull(serverOptions.ServerInfo);
-
-        return serverOptions.ServerInfo.Name;
     }
 }

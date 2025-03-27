@@ -198,11 +198,7 @@ McpServerOptions options = new()
 };
 
 await using IMcpServer server = McpServerFactory.Create(new StdioServerTransport("MyServer"), options);
-
-await server.StartAsync();
-
-// Run until process is stopped by the client (parent process)
-await Task.Delay(Timeout.Infinite);
+await server.RunAsync();
 ```
 
 ## Acknowledgements

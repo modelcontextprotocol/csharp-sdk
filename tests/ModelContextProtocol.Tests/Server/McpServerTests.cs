@@ -84,51 +84,38 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
-    public async Task StartAsync_Should_Throw_InvalidOperationException_If_Already_Initializing()
+    public async Task RunAsync_Should_Throw_InvalidOperationException_If_Already_Running()
     {
         // Arrange
         await using var server = McpServerFactory.Create(_serverTransport.Object, _options, LoggerFactory, _serviceProvider);
-        var task = server.StartAsync(TestContext.Current.CancellationToken);
+        var task = server.RunAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(() => server.StartAsync(TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => server.RunAsync(cancellationToken: TestContext.Current.CancellationToken));
 
         await task;
     }
 
     [Fact]
-    public async Task StartAsync_Should_Do_Nothing_If_Already_Initialized()
-    {
-        // Arrange
-        await using var server = McpServerFactory.Create(_serverTransport.Object, _options, LoggerFactory, _serviceProvider);
-        SetInitialized(server, true);
-
-        await server.StartAsync(TestContext.Current.CancellationToken);
-
-        // Assert
-        _serverTransport.Verify(t => t.StartListeningAsync(It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task StartAsync_ShouldStartListening()
+    public async Task RunAsync_ShouldStartListening()
     {
         // Arrange
         await using var server = McpServerFactory.Create(_serverTransport.Object, _options, LoggerFactory, _serviceProvider);
 
         // Act
-        await server.StartAsync(TestContext.Current.CancellationToken);
+        await server.RunAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         _serverTransport.Verify(t => t.StartListeningAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task StartAsync_Sets_Initialized_After_Transport_Responses_Initialized_Notification()
+    public async Task RunAsync_Sets_Initialized_After_Transport_Responses_Initialized_Notification()
     {
         await using var transport = new TestServerTransport();
         await using var server = McpServerFactory.Create(transport, _options, LoggerFactory, _serviceProvider);
 
-        await server.StartAsync(TestContext.Current.CancellationToken);
+        await server.RunAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Send initialized notification
         await transport.SendMessageAsync(new JsonRpcNotification
@@ -137,8 +124,6 @@ public class McpServerTests : LoggedTest
             }, TestContext.Current.CancellationToken);
 
         await Task.Delay(50, TestContext.Current.CancellationToken);
-
-        Assert.True(server.IsInitialized);
     }
 
     [Fact]
@@ -162,7 +147,7 @@ public class McpServerTests : LoggedTest
         await using var server = McpServerFactory.Create(transport, _options, LoggerFactory, _serviceProvider);
         SetClientCapabilities(server, new ClientCapabilities { Sampling = new SamplingCapability() });
 
-        await server.StartAsync(TestContext.Current.CancellationToken);
+        await server.RunAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Act
         var result = await server.RequestSamplingAsync(new CreateMessageRequestParams { Messages = [] }, CancellationToken.None);
@@ -191,7 +176,7 @@ public class McpServerTests : LoggedTest
         await using var transport = new TestServerTransport();
         await using var server = McpServerFactory.Create(transport, _options, LoggerFactory, _serviceProvider);
         SetClientCapabilities(server, new ClientCapabilities { Roots = new RootsCapability() });
-        await server.StartAsync(TestContext.Current.CancellationToken);
+        await server.RunAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Act
         var result = await server.RequestRootsAsync(new ListRootsRequestParams(), CancellationToken.None);
@@ -555,7 +540,7 @@ public class McpServerTests : LoggedTest
 
         await using var server = McpServerFactory.Create(transport, options, LoggerFactory, _serviceProvider);
 
-        await server.StartAsync();
+        await server.RunAsync();
 
         var receivedMessage = new TaskCompletionSource<JsonRpcResponse>();
 
@@ -633,13 +618,6 @@ public class McpServerTests : LoggedTest
         property.SetValue(server, capabilities);
     }
 
-    private static void SetInitialized(IMcpServer server, bool isInitialized)
-    {
-        PropertyInfo? property = server.GetType().GetProperty("IsInitialized", BindingFlags.Public | BindingFlags.Instance);
-        Assert.NotNull(property);
-        property.SetValue(server, isInitialized);
-    }
-
     private sealed class TestServerForIChatClient(bool supportsSampling) : IMcpServer
     {
         public ClientCapabilities? ClientCapabilities =>
@@ -675,8 +653,6 @@ public class McpServerTests : LoggedTest
 
         public ValueTask DisposeAsync() => default;
 
-        public bool IsInitialized => throw new NotImplementedException();
-
         public Implementation? ClientInfo => throw new NotImplementedException();
         public McpServerOptions ServerOptions => throw new NotImplementedException();
         public IServiceProvider? Services => throw new NotImplementedException();
@@ -684,9 +660,7 @@ public class McpServerTests : LoggedTest
             throw new NotImplementedException();
         public Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
-        public Task StartAsync(CancellationToken cancellationToken = default) =>
+        public Task RunAsync(Func<CancellationToken, Task>? onInitialized = null, CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
-
-        public object? GetService(Type serviceType, object? serviceKey = null) => null;
     }
 }

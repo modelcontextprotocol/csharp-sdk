@@ -183,7 +183,6 @@ public sealed class StdioClientTransport : TransportBase, IClientTransport
     public override async ValueTask DisposeAsync()
     {
         await CleanupAsync(CancellationToken.None).ConfigureAwait(false);
-        GC.SuppressFinalize(this);
     }
 
     private async Task ReadMessagesAsync(CancellationToken cancellationToken)

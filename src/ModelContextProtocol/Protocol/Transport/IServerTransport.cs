@@ -10,4 +10,7 @@ public interface IServerTransport : ITransport
     /// </summary>
     /// <param name="cancellationToken">Token to cancel the operation.</param>
     Task StartListeningAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Gets a <see cref="Task"/> that will complete when the server transport has completed all work.</summary>
+    Task Completion { get; }
 }

@@ -90,7 +90,7 @@ public class SseClientTransportTests : LoggedTest
             if (!firstCall)
             {
                 Assert.True(transport.IsConnected);
-                await transport.CloseAsync();
+                await transport.DisposeAsync();
             }
 
             firstCall = false;
@@ -148,7 +148,7 @@ public class SseClientTransportTests : LoggedTest
         var exception = await Assert.ThrowsAsync<McpTransportException>(action);
         Assert.Equal("Transport is already connected", exception.Message);
         tcsDone.SetResult();
-        await transport.CloseAsync();
+        await transport.DisposeAsync();
         await task;
     }
 
@@ -305,7 +305,7 @@ public class SseClientTransportTests : LoggedTest
     {
         await using var transport = new SseClientTransport(_transportOptions, _serverConfig, LoggerFactory);
 
-        await transport.CloseAsync();
+        await transport.DisposeAsync();
 
         Assert.False(transport.IsConnected);
     }

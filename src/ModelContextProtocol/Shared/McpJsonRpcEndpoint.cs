@@ -50,11 +50,6 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
     }
 
     /// <summary>
-    /// Gets whether the endpoint is initialized and ready to process messages.
-    /// </summary>
-    public bool IsInitialized { get; set; }
-
-    /// <summary>
     /// Gets the name of the endpoint for logging and debug purposes.
     /// </summary>
     public abstract string EndpointName { get; }
@@ -320,7 +315,6 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await CleanupAsync().ConfigureAwait(false);
-        GC.SuppressFinalize(this);
     }
 
     /// <summary>
@@ -369,7 +363,9 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
         _logger.CleaningUpEndpoint(EndpointName);
 
         if (CancellationTokenSource != null)
+        {
             await CancellationTokenSource.CancelAsync().ConfigureAwait(false);
+        }
 
         if (MessageProcessingTask != null)
         {
@@ -392,8 +388,6 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
 
         await _transport.DisposeAsync().ConfigureAwait(false);
         CancellationTokenSource?.Dispose();
-
-        IsInitialized = false;
 
         _logger.EndpointCleanedUp(EndpointName);
     }

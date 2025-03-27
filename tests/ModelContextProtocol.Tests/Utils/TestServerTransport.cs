@@ -12,6 +12,8 @@ public class TestServerTransport : IServerTransport
 
     public bool IsConnected => _isStarted;
 
+    public Task Completion => Task.CompletedTask;
+
     public ChannelReader<IJsonRpcMessage> MessageReader => _messageChannel;
 
     public List<IJsonRpcMessage> SentMessages { get; } = [];

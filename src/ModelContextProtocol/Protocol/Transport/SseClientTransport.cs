@@ -21,7 +21,7 @@ public sealed class SseClientTransport : TransportBase, IClientTransport
     private readonly SseClientTransportOptions _options;
     private readonly Uri _sseEndpoint;
     private Uri? _messageEndpoint;
-    private CancellationTokenSource? _connectionCts;
+    private readonly CancellationTokenSource _connectionCts;
     private Task? _receiveTask;
     private readonly ILogger _logger;
     private readonly McpServerConfig _serverConfig;
@@ -82,7 +82,7 @@ public sealed class SseClientTransport : TransportBase, IClientTransport
             }
 
             // Start message receiving loop
-            _receiveTask = ReceiveMessagesAsync(_connectionCts!.Token);
+            _receiveTask = ReceiveMessagesAsync(_connectionCts.Token);
 
             _logger.TransportReadingMessages(EndpointName);
 
@@ -165,19 +165,25 @@ public sealed class SseClientTransport : TransportBase, IClientTransport
         }
     }
 
-    /// <inheritdoc/>
-    public async Task CloseAsync()
+    private async Task CloseAsync()
     {
-        if (_connectionCts != null)
+        try
         {
-            await _connectionCts.CancelAsync().ConfigureAwait(false);
-            _connectionCts.Dispose();
-            _connectionCts = null;
-        }
-        if (_receiveTask != null)
-            await _receiveTask.ConfigureAwait(false);
+            if (!_connectionCts.IsCancellationRequested)
+            {
+                await _connectionCts.CancelAsync().ConfigureAwait(false);
+                _connectionCts.Dispose();
+            }
 
-        SetConnected(false);
+            if (_receiveTask != null)
+            {
+                await _receiveTask.ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            SetConnected(false);
+        }
     }
 
     /// <inheritdoc/>
@@ -185,19 +191,17 @@ public sealed class SseClientTransport : TransportBase, IClientTransport
     {
         try
         {
-            await CloseAsync().ConfigureAwait(false);
+            if (_ownsHttpClient)
+            {
+                _httpClient?.Dispose();
+            }
+
+            await CloseAsync();
         }
         catch (Exception)
         {
             // Ignore exceptions on close
         }
-
-        if (_ownsHttpClient)
-            _httpClient?.Dispose();
-
-        _connectionCts?.Dispose();
-
-        GC.SuppressFinalize(this);
     }
 
     internal Uri? MessageEndpoint => _messageEndpoint;

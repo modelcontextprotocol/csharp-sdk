@@ -1,5 +1,4 @@
 ﻿using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
@@ -13,11 +12,10 @@ namespace ModelContextProtocol.Server;
 /// <inheritdoc />
 internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
 {
-    private readonly IServerTransport? _serverTransport;
     private readonly string _serverDescription;
     private readonly EventHandler? _toolsChangedDelegate;
 
-    private volatile bool _isInitializing;
+    private volatile bool _ran;
 
     /// <summary>
     /// Creates a new instance of <see cref="McpServer"/>.
@@ -33,7 +31,6 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
     {
         Throw.IfNull(options);
 
-        _serverTransport = transport as IServerTransport;
         ServerOptions = options;
         Services = serviceProvider;
         _serverDescription = $"{options.ServerInfo.Name} {options.ServerInfo.Version}";
@@ -52,7 +49,6 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
                 tools.Changed += _toolsChangedDelegate;
             }
 
-            IsInitialized = true;
             return Task.CompletedTask;
         });
 
@@ -68,6 +64,7 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
 
     public ServerCapabilities? ServerCapabilities { get; set; }
 
+    /// <inheritdoc />
     public ClientCapabilities? ClientCapabilities { get; set; }
 
     /// <inheritdoc />
@@ -84,35 +81,40 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
         $"Server ({_serverDescription}), Client ({ClientInfo?.Name} {ClientInfo?.Version})";
 
     /// <inheritdoc />
-    public async Task StartAsync(CancellationToken cancellationToken = default)
+    public async Task RunAsync(Func<CancellationToken, Task>? onInitialized = null, CancellationToken cancellationToken = default)
     {
-        if (_isInitializing)
+        if (_ran)
         {
             _logger.ServerAlreadyInitializing(EndpointName);
-            throw new InvalidOperationException("Server is already initializing");
+            throw new InvalidOperationException("Server is already running.");
         }
-        _isInitializing = true;
-
-        if (IsInitialized)
-        {
-            _logger.ServerAlreadyInitializing(EndpointName);
-            return;
-        }
+        _ran = true;
 
         try
         {
             CancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-            if (_serverTransport is not null)
+            IServerTransport? serverTransport = Transport as IServerTransport;
+            if (serverTransport is not null)
             {
                 // Start listening for messages
-                await _serverTransport.StartListeningAsync(CancellationTokenSource.Token).ConfigureAwait(false);
+                await serverTransport.StartListeningAsync(CancellationTokenSource.Token).ConfigureAwait(false);
             }
 
             // Start processing messages
             MessageProcessingTask = ProcessMessagesAsync(CancellationTokenSource.Token);
 
-            // Unlike McpClient, we're not done initializing until we've received a message from the client, so we don't set IsInitialized here
+            // Invoke any post-initialization logic.
+            if (onInitialized is not null)
+            {
+                await onInitialized(CancellationTokenSource.Token).ConfigureAwait(false);
+            }
+
+            // Wait for transport completion.
+            if (serverTransport is not null)
+            {
+                await serverTransport.Completion;
+            }
         }
         catch (Exception e)
         {

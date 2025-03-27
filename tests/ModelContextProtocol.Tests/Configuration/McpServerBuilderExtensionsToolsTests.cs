@@ -24,6 +24,8 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
     private readonly ServiceProvider _serviceProvider;
     private readonly IMcpServerBuilder _builder;
     private readonly IMcpServer _server;
+    private readonly CancellationTokenSource _cts;
+    private readonly Task _serverTask;
 
     public McpServerBuilderExtensionsToolsTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
@@ -35,19 +37,24 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         _builder = sc.AddMcpServer().WithTools<EchoTool>();
         _serviceProvider = sc.BuildServiceProvider();
         _server = _serviceProvider.GetRequiredService<IMcpServer>();
+
+        _cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        _serverTask = _server.RunAsync(cancellationToken: _cts.Token);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
+        await _cts.CancelAsync();
+        _cts.Dispose();
+
         _clientToServerPipe.Writer.Complete();
         _serverToClientPipe.Writer.Complete();
-        return _serviceProvider.DisposeAsync();
+        
+        await _serviceProvider.DisposeAsync();
     }
 
     private async Task<IMcpClient> CreateMcpClientForServer()
     {
-        await _server.StartAsync(TestContext.Current.CancellationToken);
-
         var serverStdinWriter = new StreamWriter(_clientToServerPipe.Writer.AsStream());
         var serverStdoutReader = new StreamReader(_serverToClientPipe.Reader.AsStream());
 
@@ -105,15 +112,13 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
             var stdinPipe = new Pipe();
             var stdoutPipe = new Pipe();
 
-            try
+            var transport = new StdioServerTransport($"TestServer_{i}", stdinPipe.Reader.AsStream(), stdoutPipe.Writer.AsStream());
+            var server = McpServerFactory.Create(transport, options, loggerFactory, _serviceProvider);
+
+            await server.RunAsync(async cancellationToken =>
             {
-                var transport = new StdioServerTransport($"TestServer_{i}", stdinPipe.Reader.AsStream(), stdoutPipe.Writer.AsStream());
-                var server = McpServerFactory.Create(transport, options, loggerFactory, _serviceProvider);
-
-                await server.StartAsync(TestContext.Current.CancellationToken);
-
-                var serverStdinWriter = new StreamWriter(stdinPipe.Writer.AsStream());
-                var serverStdoutReader = new StreamReader(stdoutPipe.Reader.AsStream());
+                using var serverStdinWriter = new StreamWriter(stdinPipe.Writer.AsStream());
+                using var serverStdoutReader = new StreamReader(stdoutPipe.Reader.AsStream());
 
                 var serverConfig = new McpServerConfig()
                 {
@@ -125,9 +130,9 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
                 var client = await McpClientFactory.CreateAsync(
                     serverConfig,
                     createTransportFunc: (_, _) => new StreamClientTransport(serverStdinWriter, serverStdoutReader),
-                    cancellationToken: TestContext.Current.CancellationToken);
+                    cancellationToken: cancellationToken);
 
-                var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+                var tools = await client.ListToolsAsync(cancellationToken);
                 Assert.Equal(11, tools.Count);
 
                 McpClientTool echoTool = tools.First(t => t.Name == "Echo");
@@ -141,12 +146,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
                 McpClientTool doubleEchoTool = tools.First(t => t.Name == "double_echo");
                 Assert.Equal("double_echo", doubleEchoTool.Name);
                 Assert.Equal("Echoes the input back to the client.", doubleEchoTool.Description);
-            }
-            finally
-            {
-                stdinPipe.Writer.Complete();
-                stdoutPipe.Writer.Complete();
-            }
+            }, TestContext.Current.CancellationToken);
         }
     }
 

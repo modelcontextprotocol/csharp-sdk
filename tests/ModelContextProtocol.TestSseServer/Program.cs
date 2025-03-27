@@ -44,8 +44,6 @@ public class Program
             ServerInstructions = "This is a test server with only stub functionality"
         };
 
-        IMcpServer? server = null;
-
         Console.WriteLine("Registering handlers.");
 
         #region Helped method
@@ -186,7 +184,7 @@ public class Program
                         {
                             throw new McpServerException("Missing required arguments 'prompt' and 'maxTokens'");
                         }
-                        var sampleResult = await server!.RequestSamplingAsync(CreateRequestSamplingParams(prompt?.ToString() ?? "", "sampleLLM", Convert.ToInt32(maxTokens?.ToString())),
+                        var sampleResult = await request.Server.RequestSamplingAsync(CreateRequestSamplingParams(prompt?.ToString() ?? "", "sampleLLM", Convert.ToInt32(maxTokens?.ToString())),
                             cancellationToken);
 
                         return new CallToolResponse()
@@ -384,23 +382,10 @@ public class Program
         };
 
         loggerFactory ??= CreateLoggerFactory();
-        server = McpServerFactory.Create(new HttpListenerSseServerTransport("TestServer", 3001, loggerFactory), options, loggerFactory);
+        await using IMcpServer server = McpServerFactory.Create(new HttpListenerSseServerTransport("TestServer", 3001, loggerFactory), options, loggerFactory);
 
-        Console.WriteLine("Server initialized.");
-
-        await server.StartAsync(cancellationToken);
-
-        Console.WriteLine("Server started.");
-
-        try
-        {
-            // Run until process is stopped by the client (parent process) or test
-            await Task.Delay(Timeout.Infinite, cancellationToken);
-        }
-        finally
-        {
-            await server.DisposeAsync();
-        }
+        Console.WriteLine("Server running...");
+        await server.RunAsync(cancellationToken: cancellationToken);
     }
 
     const string MCP_TINY_IMAGE =
