@@ -1,4 +1,4 @@
-using Anthropic.SDK;
+﻿using Anthropic.SDK;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -11,18 +11,12 @@ builder.Configuration
     .AddEnvironmentVariables()
     .AddUserSecrets<Program>();
 
-var (command, arguments) = args switch
-{
-    [var script] when script.EndsWith(".py") => ("python", script),
-    [var script] when script.EndsWith(".js") => ("node", script),
-    [var script] when Directory.Exists(script) || (File.Exists(script) && script.EndsWith(".csproj")) => ("dotnet", $"run --project {script} --no-build"),
-    _ => ("dotnet", "run --project ../../../../QuickstartWeatherServer --no-build")
-};
+var (command, arguments) = GetCommandAndArguments(args);
 
 await using var mcpClient = await McpClientFactory.CreateAsync(new()
 {
-    Id = "demo-client",
-    Name = "Demo Client",
+    Id = "demo-server",
+    Name = "Demo Server",
     TransportType = TransportTypes.StdIo,
     TransportOptions = new()
     {
@@ -50,27 +44,55 @@ var options = new ChatOptions
     Tools = [.. tools]
 };
 
-while (true)
+Console.ForegroundColor = ConsoleColor.Green;
+Console.WriteLine("MCP Client Started!");
+Console.ResetColor();
+
+PromptForInput();
+while(Console.ReadLine() is string query && !"exit".Equals(query, StringComparison.OrdinalIgnoreCase))
 {
-    Console.WriteLine("MCP Client Started!");
-    Console.WriteLine("Type your queries or 'quit' to exit.");
-
-    string? query = Console.ReadLine();
-
     if (string.IsNullOrWhiteSpace(query))
     {
+        PromptForInput();
         continue;
     }
-    if (string.Equals(query, "quit", StringComparison.OrdinalIgnoreCase))
-    {
-        break;
-    }
 
-    var response = anthropicClient.GetStreamingResponseAsync(query, options);
-
-    await foreach (var message in response)
+    await foreach (var message in anthropicClient.GetStreamingResponseAsync(query, options))
     {
         Console.Write(message.Text);
     }
     Console.WriteLine();
+
+    PromptForInput();
+}
+
+static void PromptForInput()
+{
+    Console.WriteLine("Enter a command (or 'exit' to quit):");
+    Console.ForegroundColor = ConsoleColor.Cyan;
+    Console.Write("> ");
+    Console.ResetColor();
+}
+
+/// <summary>
+/// Determines the command (executable) to run and the script/path to pass to it. This allows different
+/// languages/runtime environments to be used as the MCP server.
+/// </summary>
+/// <remarks>
+/// This method uses the file extension of the first argument to determine the command, if it's py, it'll run python,
+/// if it's js, it'll run node, if it's a directory or a csproj file, it'll run dotnet.
+/// 
+/// If no arguments are provided, it defaults to running the QuickstartWeatherServer project from the current repo.
+/// 
+/// This method would only be required if you're creating a generic client, such as we use for the quickstart.
+/// </remarks>
+static (string command, string arguments) GetCommandAndArguments(string[] args)
+{
+    return args switch
+    {
+        [var script] when script.EndsWith(".py") => ("python", script),
+        [var script] when script.EndsWith(".js") => ("node", script),
+        [var script] when Directory.Exists(script) || (File.Exists(script) && script.EndsWith(".csproj")) => ("dotnet", $"run --project {script} --no-build"),
+        _ => ("dotnet", "run --project ../../../../QuickstartWeatherServer --no-build")
+    };
 }

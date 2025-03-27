@@ -25,7 +25,7 @@
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
 
     <!-- Testing dependencies -->
-    <PackageVersion Include="Anthropic.SDK" Version="4.7.1" />
+    <PackageVersion Include="Anthropic.SDK" Version="5.0.0" />
     <PackageVersion Include="GitHubActionsTestLogger" Version="2.4.1" />
     <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="$(MicrosoftExtensionsAIVersion)" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="$(MicrosoftExtensionsVersion)" />
