@@ -22,7 +22,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
     public static new AIFunctionMcpServerTool Create(
         Delegate method,
         string? name,
-        string? description, 
+        string? description,
         IServiceProvider? services)
     {
         Throw.IfNull(method);
@@ -34,7 +34,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
     /// </summary>
     public static new AIFunctionMcpServerTool Create(
-        MethodInfo method, 
+        MethodInfo method,
         object? target,
         string? name,
         string? description,
@@ -195,57 +195,49 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             };
         }
 
-        switch (result)
+        return result switch
         {
-            case null:
-                return new()
-                {
-                    Content = []
-                };
-
-            case string text:
-                return new()
-                {
-                    Content = [new() { Text = text, Type = "text" }]
-                };
-
-            case TextContent textContent:
-                return new()
-                {
-                    Content = [new() { Text = textContent.Text, Type = "text" }]
-                };
-
-            case DataContent dataContent:
-                return new()
-                {
-                    Content = [new()
-                    {
-                        Data = dataContent.GetBase64Data(),
-                        MimeType = dataContent.MediaType,
-                        Type = dataContent.HasTopLevelMediaType("image") ? "image" : "resource",
-                    }]
-                };
-
-            case string[] texts:
-                return new()
-                {
-                    Content = texts
-                        .Select(x => new Content() { Type = "text", Text = x ?? string.Empty })
-                        .ToList()
-                };
+            AIContent aiContent => new()
+            {
+                Content = [aiContent.ToContent()]
+            },
+            null => new()
+            {
+                Content = []
+            },
+            string text => new()
+            {
+                Content = [new() { Text = text, Type = "text" }]
+            },
+            Content content => new()
+            {
+                Content = [content]
+            },
+            IEnumerable<string> texts => new()
+            {
+                Content = [.. texts.Select(x => new Content() { Type = "text", Text = x ?? string.Empty })]
+            },
+            IEnumerable<AIContent> contentItems => new()
+            {
+                Content = [.. contentItems.Select(static item => item.ToContent())]
+            },
+            IEnumerable<Content> contents => new()
+            {
+                Content = [.. contents]
+            },
+            CallToolResponse callToolResponse => callToolResponse,
 
             // TODO https://github.com/modelcontextprotocol/csharp-sdk/issues/69:
             // Add specialization for annotations.
-
-            default:
-                return new()
-                {
-                    Content = [new()
+            _ => new()
+            {
+                Content = [new()
                     {
                         Text = JsonSerializer.Serialize(result, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(object))),
                         Type = "text"
                     }]
-                };
-        }
+            },
+        };
     }
+
 }

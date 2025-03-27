@@ -15,7 +15,6 @@ namespace ModelContextProtocol.Client;
 internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
 {
     private readonly McpClientOptions _options;
-    private readonly ILogger _logger;
     private readonly IClientTransport _clientTransport;
 
     private volatile bool _isInitializing;
@@ -31,7 +30,6 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
         : base(transport, loggerFactory)
     {
         _options = options;
-        _logger = (ILogger?)loggerFactory?.CreateLogger<McpClient>() ?? NullLogger.Instance;
         _clientTransport = transport;
 
         EndpointName = $"Client ({serverConfig.Id}: {serverConfig.Name})";

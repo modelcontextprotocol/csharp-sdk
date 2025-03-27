@@ -14,7 +14,6 @@ namespace ModelContextProtocol.Server;
 internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
 {
     private readonly IServerTransport? _serverTransport;
-    private readonly ILogger _logger;
     private readonly string _serverDescription;
     private readonly EventHandler? _toolsChangedDelegate;
 
@@ -36,7 +35,6 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
 
         _serverTransport = transport as IServerTransport;
         ServerOptions = options;
-        _logger = (ILogger?)loggerFactory?.CreateLogger<McpServer>() ?? NullLogger.Instance;
         Services = serviceProvider;
         _serverDescription = $"{options.ServerInfo.Name} {options.ServerInfo.Version}";
         _toolsChangedDelegate = delegate
