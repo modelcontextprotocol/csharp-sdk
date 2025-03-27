@@ -6,8 +6,8 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <PackageVersion>0.1.0-preview</PackageVersion>
-    <Authors>Microsoft</Authors>
-    <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
+    <Authors>ModelContextProtocolOfficial</Authors>
+    <Copyright>© Anthropic and Contributors.</Copyright>
     <WarnOnPackingNonPackableProject>false</WarnOnPackingNonPackableProject>
   </PropertyGroup>
 
