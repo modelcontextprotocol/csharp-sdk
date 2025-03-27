@@ -95,7 +95,8 @@ jobs:
             --skip-duplicate
 
       - name: Publish to NuGet.org (Releases only)
-        if: github.event_name == 'release'
+        # Only publish from the modelcontextprotocol/csharp-sdk repository
+        if: ${{ github.event_name == 'release' && github.repository == 'modelcontextprotocol/csharp-sdk' }}
         run: dotnet nuget push
             ${{github.workspace}}/build-artifacts/packages/*.nupkg
             --source https://api.nuget.org/v3/index.json
