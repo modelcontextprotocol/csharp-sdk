@@ -14,8 +14,9 @@ namespace ModelContextProtocol.Server;
 internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
 {
     private readonly IServerTransport? _serverTransport;
-    private readonly ILogger _logger;
     private readonly string _serverDescription;
+    private readonly EventHandler? _toolsChangedDelegate;
+
     private volatile bool _isInitializing;
 
     /// <summary>
@@ -33,18 +34,29 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
         Throw.IfNull(options);
 
         _serverTransport = transport as IServerTransport;
-        _logger = (ILogger?)loggerFactory?.CreateLogger<McpServer>() ?? NullLogger.Instance;
-        ServerInstructions = options.ServerInstructions;
+        ServerOptions = options;
         Services = serviceProvider;
         _serverDescription = $"{options.ServerInfo.Name} {options.ServerInfo.Version}";
+        _toolsChangedDelegate = delegate
+        {
+            _ = SendMessageAsync(new JsonRpcNotification()
+            {
+                Method = NotificationMethods.ToolListChangedNotification,
+            });
+        };
 
         AddNotificationHandler("notifications/initialized", _ =>
         {
+            if (ServerOptions.Capabilities?.Tools?.ToolCollection is { } tools)
+            {
+                tools.Changed += _toolsChangedDelegate;
+            }
+
             IsInitialized = true;
             return Task.CompletedTask;
         });
 
-        SetToolsHandler(ref options);
+        SetToolsHandler(options);
 
         SetInitializeHandler(options);
         SetCompletionHandler(options);
@@ -52,17 +64,14 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
         SetPromptsHandler(options);
         SetResourcesHandler(options);
         SetSetLoggingLevelHandler(options);
-
-        ServerOptions = options;
     }
+
+    public ServerCapabilities? ServerCapabilities { get; set; }
 
     public ClientCapabilities? ClientCapabilities { get; set; }
 
     /// <inheritdoc />
     public Implementation? ClientInfo { get; set; }
-
-    /// <inheritdoc />
-    public string? ServerInstructions { get; set; }
 
     /// <inheritdoc />
     public McpServerOptions ServerOptions { get; }
@@ -113,6 +122,15 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
         }
     }
 
+    protected override Task CleanupAsync()
+    {
+        if (ServerOptions.Capabilities?.Tools?.ToolCollection is { } tools)
+        {
+            tools.Changed -= _toolsChangedDelegate;
+        }
+        return base.CleanupAsync();
+    }
+
     private void SetPingHandler()
     {
         SetRequestHandler<JsonNode, PingResult>("ping",
@@ -129,9 +147,9 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
                 return Task.FromResult(new InitializeResult()
                 {
                     ProtocolVersion = options.ProtocolVersion,
-                    Instructions = ServerInstructions,
+                    Instructions = options.ServerInstructions,
                     ServerInfo = options.ServerInfo,
-                    Capabilities = options.Capabilities ?? new ServerCapabilities(),
+                    Capabilities = ServerCapabilities ?? new(),
                 });
             });
     }
@@ -200,7 +218,7 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
         SetRequestHandler<GetPromptRequestParams, GetPromptResult>("prompts/get", (request, ct) => getPromptHandler(new(this, request), ct));
     }
 
-    private void SetToolsHandler(ref McpServerOptions options)
+    private void SetToolsHandler(McpServerOptions options)
     {
         ToolsCapability? toolsCapability = options.Capabilities?.Tools;
         var listToolsHandler = toolsCapability?.ListToolsHandler;
@@ -263,36 +281,25 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
                 return tool.InvokeAsync(request, cancellationToken);
             };
 
-            toolsCapability = toolsCapability is null ?
-                new()
-                {
-                    CallToolHandler = callToolHandler,
-                    ListToolsHandler = listToolsHandler,
-                    ToolCollection = tools,
-                    ListChanged = true,
-                } :
-                toolsCapability with
-                {
-                    CallToolHandler = callToolHandler,
-                    ListToolsHandler = listToolsHandler,
-                    ToolCollection = tools,
-                    ListChanged = true,
-                };
-
-            options.Capabilities = options.Capabilities is null ?
-                new() { Tools = toolsCapability } :
-                options.Capabilities with { Tools = toolsCapability };
-
-            tools.Changed += delegate
+            ServerCapabilities = new()
             {
-                _ = SendMessageAsync(new JsonRpcNotification()
+                Experimental = options.Capabilities?.Experimental,
+                Logging = options.Capabilities?.Logging,
+                Prompts = options.Capabilities?.Prompts,
+                Resources = options.Capabilities?.Resources,
+                Tools = new()
                 {
-                    Method = NotificationMethods.ToolListChangedNotification,
-                });
+                    ListToolsHandler = listToolsHandler,
+                    CallToolHandler = callToolHandler,
+                    ToolCollection = tools,
+                    ListChanged = true,
+                }
             };
         }
         else
         {
+            ServerCapabilities = options.Capabilities;
+
             if (toolsCapability is null)
             {
                 // No tools, and no tools capability was declared, so nothing to do.

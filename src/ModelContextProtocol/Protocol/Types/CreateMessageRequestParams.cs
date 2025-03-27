@@ -9,7 +9,7 @@
 /// clients have full discretion over model selection and should inform users before sampling.
 /// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
 /// </summary>
-public class CreateMessageRequestParams
+public class CreateMessageRequestParams : RequestParams
 {
     /// <summary>
     /// A request to include context from one or more MCP servers (including the caller), to be attached to the prompt. The client MAY ignore this request.

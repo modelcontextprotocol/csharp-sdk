@@ -1,4 +1,5 @@
-﻿using System.Buffers;
+﻿using System.Text;
+using System.Buffers;
 using System.Net.ServerSentEvents;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -11,7 +12,8 @@ namespace ModelContextProtocol.Protocol.Transport;
 /// Implements the MCP SSE server transport protocol using the SSE response <see cref="Stream"/>.
 /// </summary>
 /// <param name="sseResponseStream">The stream to write the SSE response body to.</param>
-public sealed class SseResponseStreamTransport(Stream sseResponseStream) : ITransport
+/// <param name="messageEndpoint">The endpoint to send JSON-RPC messages to. Defaults to "/message".</param> 
+public sealed class SseResponseStreamTransport(Stream sseResponseStream, string messageEndpoint = "/message") : ITransport
 {
     private readonly Channel<IJsonRpcMessage> _incomingChannel = CreateSingleItemChannel<IJsonRpcMessage>();
     private readonly Channel<SseItem<IJsonRpcMessage?>> _outgoingSseChannel = CreateSingleItemChannel<SseItem<IJsonRpcMessage?>>();
@@ -34,7 +36,7 @@ public sealed class SseResponseStreamTransport(Stream sseResponseStream) : ITran
         {
             if (item.EventType == "endpoint")
             {
-                writer.Write("/message"u8);
+                writer.Write(Encoding.UTF8.GetBytes(messageEndpoint));
                 return;
             }
 

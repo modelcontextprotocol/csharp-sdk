@@ -16,9 +16,11 @@ permissions:
 concurrency:
   group: "pages"
   cancel-in-progress: false
-  
+
 jobs:
   publish-docs:
+    # Only publish from the modelcontextprotocol/csharp-sdk repository
+    if: ${{ github.repository == 'modelcontextprotocol/csharp-sdk' }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

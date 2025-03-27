@@ -5,7 +5,7 @@
 The official C# SDK for the [Model Context Protocol](https://modelcontextprotocol.io/), enabling .NET applications, services, and libraries to implement and interact with MCP clients and servers. Please visit our [API documentation](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.html) for more details on available functionality.
 
 > [!NOTE]
-> This repo is still in preview, breaking changes can be introduced without prior notice.
+> This project is in preview; breaking changes can be introduced without prior notice.
 
 ## About MCP
 
@@ -16,6 +16,14 @@ For more information about MCP:
 - [Official Documentation](https://modelcontextprotocol.io/)
 - [Protocol Specification](https://spec.modelcontextprotocol.io/)
 - [GitHub Organization](https://github.com/modelcontextprotocol)
+
+## Installation
+
+To get started, install the package from NuGet
+
+```
+dotnet add package ModelContextProtocol --prerelease
+```
 
 ## Getting Started (Client)
 
@@ -72,7 +80,7 @@ var response = await chatClient.GetResponseAsync(
 
 Here is an example of how to create an MCP server and register all tools from the current application.
 It includes a simple echo tool as an example (this is included in the same file here for easy of copy and paste, but it needn't be in the same file...
-the employed overload of `WithTools` examines the current assembly for classes with the `McpToolType` attribute, and registers all methods with the
+the employed overload of `WithTools` examines the current assembly for classes with the `McpServerToolType` attribute, and registers all methods with the
 `McpTool` attribute as tools.)
 
 ```csharp

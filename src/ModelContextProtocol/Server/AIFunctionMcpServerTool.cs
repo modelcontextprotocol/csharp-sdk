@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text.Json;
 
@@ -13,7 +14,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
 {
     /// <summary>Key used temporarily for flowing request context into an AIFunction.</summary>
     /// <remarks>This will be replaced with use of AIFunctionArguments.Context.</remarks>
-    private const string RequestContextKey = "__temporary_RequestContext";
+    internal const string RequestContextKey = "__temporary_RequestContext";
 
     /// <summary>
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
@@ -21,7 +22,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
     public static new AIFunctionMcpServerTool Create(
         Delegate method,
         string? name,
-        string? description, 
+        string? description,
         IServiceProvider? services)
     {
         Throw.IfNull(method);
@@ -33,7 +34,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
     /// </summary>
     public static new AIFunctionMcpServerTool Create(
-        MethodInfo method, 
+        MethodInfo method,
         object? target,
         string? name,
         string? description,
@@ -48,7 +49,27 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
         // AIFunctionFactory, delete the TemporaryXx types, and fix-up the mechanism by
         // which the arguments are passed.
 
-        return Create(TemporaryAIFunctionFactory.Create(method, target, new TemporaryAIFunctionFactoryOptions()
+        return Create(TemporaryAIFunctionFactory.Create(method, target, CreateAIFunctionFactoryOptions(method, name, description, services)));
+    }
+
+    /// <summary>
+    /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
+    /// </summary>
+    public static new AIFunctionMcpServerTool Create(
+        MethodInfo method,
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type targetType,
+        string? name = null,
+        string? description = null,
+        IServiceProvider? services = null)
+    {
+        Throw.IfNull(method);
+
+        return Create(TemporaryAIFunctionFactory.Create(method, targetType, CreateAIFunctionFactoryOptions(method, name, description, services)));
+    }
+
+    private static TemporaryAIFunctionFactoryOptions CreateAIFunctionFactoryOptions(
+        MethodInfo method, string? name, string? description, IServiceProvider? services) =>
+        new TemporaryAIFunctionFactoryOptions()
         {
             Name = name ?? method.GetCustomAttribute<McpServerToolAttribute>()?.Name,
             Description = description,
@@ -115,8 +136,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
                     return null;
                 }
             },
-        }));
-    }
+        };
 
     /// <summary>Creates an <see cref="McpServerTool"/> that wraps the specified <see cref="AIFunction"/>.</summary>
     public static new AIFunctionMcpServerTool Create(AIFunction function)
@@ -175,57 +195,49 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             };
         }
 
-        switch (result)
+        return result switch
         {
-            case null:
-                return new()
-                {
-                    Content = []
-                };
-
-            case string text:
-                return new()
-                {
-                    Content = [new() { Text = text, Type = "text" }]
-                };
-
-            case TextContent textContent:
-                return new()
-                {
-                    Content = [new() { Text = textContent.Text, Type = "text" }]
-                };
-
-            case DataContent dataContent:
-                return new()
-                {
-                    Content = [new()
-                    {
-                        Data = dataContent.GetBase64Data(),
-                        MimeType = dataContent.MediaType,
-                        Type = dataContent.HasTopLevelMediaType("image") ? "image" : "resource",
-                    }]
-                };
-
-            case string[] texts:
-                return new()
-                {
-                    Content = texts
-                        .Select(x => new Content() { Type = "text", Text = x ?? string.Empty })
-                        .ToList()
-                };
+            AIContent aiContent => new()
+            {
+                Content = [aiContent.ToContent()]
+            },
+            null => new()
+            {
+                Content = []
+            },
+            string text => new()
+            {
+                Content = [new() { Text = text, Type = "text" }]
+            },
+            Content content => new()
+            {
+                Content = [content]
+            },
+            IEnumerable<string> texts => new()
+            {
+                Content = [.. texts.Select(x => new Content() { Type = "text", Text = x ?? string.Empty })]
+            },
+            IEnumerable<AIContent> contentItems => new()
+            {
+                Content = [.. contentItems.Select(static item => item.ToContent())]
+            },
+            IEnumerable<Content> contents => new()
+            {
+                Content = [.. contents]
+            },
+            CallToolResponse callToolResponse => callToolResponse,
 
             // TODO https://github.com/modelcontextprotocol/csharp-sdk/issues/69:
             // Add specialization for annotations.
-
-            default:
-                return new()
-                {
-                    Content = [new()
+            _ => new()
+            {
+                Content = [new()
                     {
                         Text = JsonSerializer.Serialize(result, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(object))),
                         Type = "text"
                     }]
-                };
-        }
+            },
+        };
     }
+
 }

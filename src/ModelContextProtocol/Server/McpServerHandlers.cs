@@ -72,91 +72,47 @@ public sealed class McpServerHandlers
         PromptsCapability? promptsCapability = options.Capabilities?.Prompts;
         if (ListPromptsHandler is not null || GetPromptHandler is not null)
         {
-            promptsCapability = promptsCapability is null ?
-                new()
-                {
-                    ListPromptsHandler = ListPromptsHandler,
-                    GetPromptHandler = GetPromptHandler,
-                } :
-                promptsCapability with
-                {
-                    ListPromptsHandler = ListPromptsHandler ?? promptsCapability.ListPromptsHandler,
-                    GetPromptHandler = GetPromptHandler ?? promptsCapability.GetPromptHandler,
-                };
+            promptsCapability ??= new();
+            promptsCapability.ListPromptsHandler = ListPromptsHandler ?? promptsCapability.ListPromptsHandler;
+            promptsCapability.GetPromptHandler = GetPromptHandler ?? promptsCapability.GetPromptHandler;
         }
 
         ResourcesCapability? resourcesCapability = options.Capabilities?.Resources;
         if (ListResourcesHandler is not null ||
             ReadResourceHandler is not null)
         {
-            resourcesCapability = resourcesCapability is null ?
-                new()
-                {
-                    ListResourceTemplatesHandler = ListResourceTemplatesHandler,
-                    ListResourcesHandler = ListResourcesHandler,
-                    ReadResourceHandler = ReadResourceHandler
-                } :
-                resourcesCapability with
-                {
-                    ListResourceTemplatesHandler = ListResourceTemplatesHandler ?? resourcesCapability.ListResourceTemplatesHandler,
-                    ListResourcesHandler = ListResourcesHandler ?? resourcesCapability.ListResourcesHandler,
-                    ReadResourceHandler = ReadResourceHandler ?? resourcesCapability.ReadResourceHandler
-                };
+            resourcesCapability ??= new();
+            resourcesCapability.ListResourceTemplatesHandler = ListResourceTemplatesHandler ?? resourcesCapability.ListResourceTemplatesHandler;
+            resourcesCapability.ListResourcesHandler = ListResourcesHandler ?? resourcesCapability.ListResourcesHandler;
+            resourcesCapability.ReadResourceHandler = ReadResourceHandler ?? resourcesCapability.ReadResourceHandler;
 
             if (SubscribeToResourcesHandler is not null || UnsubscribeFromResourcesHandler is not null)
             {
-                resourcesCapability = resourcesCapability with
-                {
-                    SubscribeToResourcesHandler = SubscribeToResourcesHandler ?? resourcesCapability.SubscribeToResourcesHandler,
-                    UnsubscribeFromResourcesHandler = UnsubscribeFromResourcesHandler ?? resourcesCapability.UnsubscribeFromResourcesHandler,
-                    Subscribe = true
-                };
+                resourcesCapability.SubscribeToResourcesHandler = SubscribeToResourcesHandler ?? resourcesCapability.SubscribeToResourcesHandler;
+                resourcesCapability.UnsubscribeFromResourcesHandler = UnsubscribeFromResourcesHandler ?? resourcesCapability.UnsubscribeFromResourcesHandler;
+                resourcesCapability.Subscribe = true;
             }
         }
 
         ToolsCapability? toolsCapability = options.Capabilities?.Tools;
         if (ListToolsHandler is not null || CallToolHandler is not null)
         {
-            toolsCapability = toolsCapability is null ?
-                new()
-                {
-                    ListToolsHandler = ListToolsHandler,
-                    CallToolHandler = CallToolHandler,
-                } :
-                toolsCapability with
-                {
-                    ListToolsHandler = ListToolsHandler ?? toolsCapability.ListToolsHandler,
-                    CallToolHandler = CallToolHandler ?? toolsCapability.CallToolHandler,
-                };
+            toolsCapability ??= new();
+            toolsCapability.ListToolsHandler = ListToolsHandler ?? toolsCapability.ListToolsHandler;
+            toolsCapability.CallToolHandler = CallToolHandler ?? toolsCapability.CallToolHandler;
         }
 
         LoggingCapability? loggingCapability = options.Capabilities?.Logging;
         if (SetLoggingLevelHandler is not null)
         {
-            loggingCapability = loggingCapability is null ?
-                new()
-                {
-                    SetLoggingLevelHandler = SetLoggingLevelHandler,
-                } :
-                loggingCapability with
-                {
-                    SetLoggingLevelHandler = SetLoggingLevelHandler ?? loggingCapability.SetLoggingLevelHandler,
-                };
+            loggingCapability ??= new();
+            loggingCapability.SetLoggingLevelHandler = SetLoggingLevelHandler;
         }
 
-        options.Capabilities = options.Capabilities is null ?
-            new()
-            {
-                Prompts = promptsCapability,
-                Resources = resourcesCapability,
-                Tools = toolsCapability,
-            } :
-            options.Capabilities with
-            {
-                Prompts = promptsCapability,
-                Resources = resourcesCapability,
-                Tools = toolsCapability,
-            };
+        options.Capabilities ??= new();
+        options.Capabilities.Prompts = promptsCapability;
+        options.Capabilities.Resources = resourcesCapability;
+        options.Capabilities.Tools = toolsCapability;
 
         options.GetCompletionHandler = GetCompletionHandler ?? options.GetCompletionHandler;
     }

@@ -11,37 +11,45 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.AI;
 using System.Threading.Channels;
 using ModelContextProtocol.Protocol.Messages;
+using Microsoft.Extensions.Options;
+using ModelContextProtocol.Tests.Utils;
+using Microsoft.Extensions.Logging;
 
 namespace ModelContextProtocol.Tests.Configuration;
 
-public class McpServerBuilderExtensionsToolsTests : IAsyncDisposable
+public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
 {
-    private Pipe _clientToServerPipe = new();
-    private Pipe _serverToClientPipe = new();
+    private readonly Pipe _clientToServerPipe = new();
+    private readonly Pipe _serverToClientPipe = new();
+    private readonly ServiceProvider _serviceProvider;
     private readonly IMcpServerBuilder _builder;
     private readonly IMcpServer _server;
 
-    public McpServerBuilderExtensionsToolsTests()
+    public McpServerBuilderExtensionsToolsTests(ITestOutputHelper testOutputHelper)
+        : base(testOutputHelper)
     {
         ServiceCollection sc = new();
+        sc.AddSingleton(LoggerFactory);
         sc.AddSingleton<IServerTransport>(new StdioServerTransport("TestServer", _clientToServerPipe.Reader.AsStream(), _serverToClientPipe.Writer.AsStream()));
+        sc.AddSingleton(new ObjectWithId());
         _builder = sc.AddMcpServer().WithTools<EchoTool>();
-        _server = sc.BuildServiceProvider().GetRequiredService<IMcpServer>();
+        _serviceProvider = sc.BuildServiceProvider();
+        _server = _serviceProvider.GetRequiredService<IMcpServer>();
     }
 
     public ValueTask DisposeAsync()
     {
         _clientToServerPipe.Writer.Complete();
         _serverToClientPipe.Writer.Complete();
-        return _server.DisposeAsync();
+        return _serviceProvider.DisposeAsync();
     }
 
     private async Task<IMcpClient> CreateMcpClientForServer()
     {
         await _server.StartAsync(TestContext.Current.CancellationToken);
 
-        var stdin = new StreamReader(_serverToClientPipe.Reader.AsStream());
-        var stdout = new StreamWriter(_clientToServerPipe.Writer.AsStream());
+        var serverStdinWriter = new StreamWriter(_clientToServerPipe.Writer.AsStream());
+        var serverStdoutReader = new StreamReader(_serverToClientPipe.Reader.AsStream());
 
         var serverConfig = new McpServerConfig()
         {
@@ -52,7 +60,7 @@ public class McpServerBuilderExtensionsToolsTests : IAsyncDisposable
 
         return await McpClientFactory.CreateAsync(
             serverConfig,
-            createTransportFunc: (_, _) => new StreamClientTransport(stdin, stdout),
+            createTransportFunc: (_, _) => new StreamClientTransport(serverStdinWriter, serverStdoutReader),
             cancellationToken: TestContext.Current.CancellationToken);
     }
 
@@ -70,7 +78,7 @@ public class McpServerBuilderExtensionsToolsTests : IAsyncDisposable
         IMcpClient client = await CreateMcpClientForServer();
 
         var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(10, tools.Count);
+        Assert.Equal(11, tools.Count);
 
         McpClientTool echoTool = tools.First(t => t.Name == "Echo");
         Assert.Equal("Echo", echoTool.Name);
@@ -85,13 +93,70 @@ public class McpServerBuilderExtensionsToolsTests : IAsyncDisposable
         Assert.Equal("Echoes the input back to the client.", doubleEchoTool.Description);
     }
 
+
+    [Fact]
+    public async Task Can_Create_Multiple_Servers_From_Options_And_List_Registered_Tools()
+    {
+        var options = _serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+        var loggerFactory = _serviceProvider.GetRequiredService<ILoggerFactory>();
+
+        for (int i = 0; i < 2; i++)
+        {
+            var stdinPipe = new Pipe();
+            var stdoutPipe = new Pipe();
+
+            try
+            {
+                var transport = new StdioServerTransport($"TestServer_{i}", stdinPipe.Reader.AsStream(), stdoutPipe.Writer.AsStream());
+                var server = McpServerFactory.Create(transport, options, loggerFactory, _serviceProvider);
+
+                await server.StartAsync(TestContext.Current.CancellationToken);
+
+                var serverStdinWriter = new StreamWriter(stdinPipe.Writer.AsStream());
+                var serverStdoutReader = new StreamReader(stdoutPipe.Reader.AsStream());
+
+                var serverConfig = new McpServerConfig()
+                {
+                    Id = $"TestServer_{i}",
+                    Name = $"TestServer_{i}",
+                    TransportType = "ignored",
+                };
+
+                var client = await McpClientFactory.CreateAsync(
+                    serverConfig,
+                    createTransportFunc: (_, _) => new StreamClientTransport(serverStdinWriter, serverStdoutReader),
+                    cancellationToken: TestContext.Current.CancellationToken);
+
+                var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+                Assert.Equal(11, tools.Count);
+
+                McpClientTool echoTool = tools.First(t => t.Name == "Echo");
+                Assert.Equal("Echo", echoTool.Name);
+                Assert.Equal("Echoes the input back to the client.", echoTool.Description);
+                Assert.Equal("object", echoTool.JsonSchema.GetProperty("type").GetString());
+                Assert.Equal(JsonValueKind.Object, echoTool.JsonSchema.GetProperty("properties").GetProperty("message").ValueKind);
+                Assert.Equal("the echoes message", echoTool.JsonSchema.GetProperty("properties").GetProperty("message").GetProperty("description").GetString());
+                Assert.Equal(1, echoTool.JsonSchema.GetProperty("required").GetArrayLength());
+
+                McpClientTool doubleEchoTool = tools.First(t => t.Name == "double_echo");
+                Assert.Equal("double_echo", doubleEchoTool.Name);
+                Assert.Equal("Echoes the input back to the client.", doubleEchoTool.Description);
+            }
+            finally
+            {
+                stdinPipe.Writer.Complete();
+                stdoutPipe.Writer.Complete();
+            }
+        }
+    }
+
     [Fact]
     public async Task Can_Be_Notified_Of_Tool_Changes()
     {
         IMcpClient client = await CreateMcpClientForServer();
 
         var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(10, tools.Count);
+        Assert.Equal(11, tools.Count);
 
         Channel<JsonRpcNotification> listChanged = Channel.CreateUnbounded<JsonRpcNotification>();
         client.AddNotificationHandler("notifications/tools/list_changed", notification =>
@@ -111,7 +176,7 @@ public class McpServerBuilderExtensionsToolsTests : IAsyncDisposable
         await notificationRead;
 
         tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(11, tools.Count);
+        Assert.Equal(12, tools.Count);
         Assert.Contains(tools, t => t.Name == "NewTool");
 
         notificationRead = listChanged.Reader.ReadAsync(TestContext.Current.CancellationToken);
@@ -120,7 +185,7 @@ public class McpServerBuilderExtensionsToolsTests : IAsyncDisposable
         await notificationRead;
 
         tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(10, tools.Count);
+        Assert.Equal(11, tools.Count);
         Assert.DoesNotContain(tools, t => t.Name == "NewTool");
     }
 
@@ -222,6 +287,35 @@ public class McpServerBuilderExtensionsToolsTests : IAsyncDisposable
 
         Assert.Equal("Peter", result.Content[0].Text);
         Assert.Equal("text", result.Content[0].Type);
+    }
+
+    [Fact]
+    public async Task Can_Call_Registered_Tool_With_Instance_Method()
+    {
+        IMcpClient client = await CreateMcpClientForServer();
+
+        string[][] parts = new string[2][];
+        for (int i = 0; i < 2; i++)
+        {
+            var result = await client.CallToolAsync(
+                nameof(EchoTool.GetCtorParameter),
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.NotNull(result);
+            Assert.NotNull(result.Content);
+            Assert.NotEmpty(result.Content);
+
+            parts[i] = result.Content[0].Text?.Split(':') ?? [];
+            Assert.Equal(2, parts[i].Length);
+        }
+
+        string random1 = parts[0][0];
+        string random2 = parts[1][0];
+        Assert.NotEqual(random1, random2);
+        
+        string id1 = parts[0][1];
+        string id2 = parts[1][1];
+        Assert.Equal(id1, id2);
     }
 
     [Fact]
@@ -334,8 +428,10 @@ public class McpServerBuilderExtensionsToolsTests : IAsyncDisposable
     }
 
     [McpServerToolType]
-    public sealed class EchoTool
+    public sealed class EchoTool(ObjectWithId objectFromDI)
     {
+        private string _randomValue = Guid.NewGuid().ToString("N");
+
         [McpServerTool, Description("Echoes the input back to the client.")]
         public static string Echo([Description("the echoes message")] string message)
         {
@@ -395,6 +491,9 @@ public class McpServerBuilderExtensionsToolsTests : IAsyncDisposable
         {
             return complex.Name!;
         }
+
+        [McpServerTool]
+        public string GetCtorParameter() => $"{_randomValue}:{objectFromDI.Id}";
     }
 
     [McpServerToolType]
@@ -420,5 +519,10 @@ public class McpServerBuilderExtensionsToolsTests : IAsyncDisposable
     {
         public string? Name { get; set; }
         public int Age { get; set; }
+    }
+
+    public class ObjectWithId
+    {
+        public string Id { get; set; } = Guid.NewGuid().ToString("N");
     }
 }
