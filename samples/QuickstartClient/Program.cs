@@ -59,7 +59,7 @@ while(Console.ReadLine() is string query && !"exit".Equals(query, StringComparis
 
     await foreach (var message in anthropicClient.GetStreamingResponseAsync(query, options))
     {
-        Console.Write(message.Text);
+        Console.Write(message);
     }
     Console.WriteLine();
 
