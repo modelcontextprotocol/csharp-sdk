@@ -9,16 +9,16 @@ namespace ModelContextProtocol.Tests.Transport;
 internal sealed class StreamClientTransport : TransportBase, IClientTransport
 {
     private readonly JsonSerializerOptions _jsonOptions = McpJsonUtilities.DefaultOptions;
-    private Task? _readTask;
-    private CancellationTokenSource _shutdownCts = new CancellationTokenSource();
-    private readonly TextReader _stdout;
-    private readonly TextWriter _stdin;
+    private readonly Task? _readTask;
+    private readonly CancellationTokenSource _shutdownCts = new CancellationTokenSource();
+    private readonly TextReader _serverStdoutReader;
+    private readonly TextWriter _serverStdinWriter;
 
-    public StreamClientTransport(TextWriter stdin, TextReader stdout)
+    public StreamClientTransport(TextWriter serverStdinReader, TextReader serverStdoutWriter)
         : base(NullLoggerFactory.Instance)
     {
-        _stdout = stdout;
-        _stdin = stdin;
+        _serverStdoutReader = serverStdoutWriter;
+        _serverStdinWriter = serverStdinReader;
         _readTask = Task.Run(() => ReadMessagesAsync(_shutdownCts.Token), CancellationToken.None);
         SetConnected(true);
     }
@@ -31,13 +31,13 @@ internal sealed class StreamClientTransport : TransportBase, IClientTransport
             messageWithId.Id.ToString() :
             "(no id)";
      
-        await _stdin.WriteLineAsync(JsonSerializer.Serialize(message)).ConfigureAwait(false);
-        await _stdin.FlushAsync(cancellationToken).ConfigureAwait(false);
+        await _serverStdinWriter.WriteLineAsync(JsonSerializer.Serialize(message)).ConfigureAwait(false);
+        await _serverStdinWriter.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private async Task ReadMessagesAsync(CancellationToken cancellationToken)
     {
-        while (await _stdout.ReadLineAsync(cancellationToken).ConfigureAwait(false) is string line)
+        while (await _serverStdoutReader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is string line)
         {
             if (!string.IsNullOrWhiteSpace(line))
             {

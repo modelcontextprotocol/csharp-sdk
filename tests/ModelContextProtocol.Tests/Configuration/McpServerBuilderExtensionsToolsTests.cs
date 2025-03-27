@@ -48,8 +48,8 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
     {
         await _server.StartAsync(TestContext.Current.CancellationToken);
 
-        var stdin = new StreamWriter(_clientToServerPipe.Writer.AsStream());
-        var stdout = new StreamReader(_serverToClientPipe.Reader.AsStream());
+        var serverStdinWriter = new StreamWriter(_clientToServerPipe.Writer.AsStream());
+        var serverStdoutReader = new StreamReader(_serverToClientPipe.Reader.AsStream());
 
         var serverConfig = new McpServerConfig()
         {
@@ -60,7 +60,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
 
         return await McpClientFactory.CreateAsync(
             serverConfig,
-            createTransportFunc: (_, _) => new StreamClientTransport(stdin, stdout),
+            createTransportFunc: (_, _) => new StreamClientTransport(serverStdinWriter, serverStdoutReader),
             cancellationToken: TestContext.Current.CancellationToken);
     }
 
@@ -112,8 +112,8 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
 
                 await server.StartAsync(TestContext.Current.CancellationToken);
 
-                var stdin = new StreamWriter(stdinPipe.Writer.AsStream());
-                var stdout = new StreamReader(stdoutPipe.Reader.AsStream());
+                var serverStdinWriter = new StreamWriter(stdinPipe.Writer.AsStream());
+                var serverStdoutReader = new StreamReader(stdoutPipe.Reader.AsStream());
 
                 var serverConfig = new McpServerConfig()
                 {
@@ -124,7 +124,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
 
                 var client = await McpClientFactory.CreateAsync(
                     serverConfig,
-                    createTransportFunc: (_, _) => new StreamClientTransport(stdin, stdout),
+                    createTransportFunc: (_, _) => new StreamClientTransport(serverStdinWriter, serverStdoutReader),
                     cancellationToken: TestContext.Current.CancellationToken);
 
                 var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
