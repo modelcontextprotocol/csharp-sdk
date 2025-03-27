@@ -36,8 +36,8 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
     /// Initializes a new instance of the <see cref="McpJsonRpcEndpoint"/> class.
     /// </summary>
     /// <param name="transport">An MCP transport implementation.</param>
-    /// <param name="logger">The logger.</param>
-    protected McpJsonRpcEndpoint(ITransport transport, ILogger? logger = null)
+    /// <param name="loggerFactory">The logger factory.</param>
+    protected McpJsonRpcEndpoint(ITransport transport, ILoggerFactory? loggerFactory = null)
     {
         Throw.IfNull(transport);
 
@@ -46,7 +46,7 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
         _notificationHandlers = new();
         _nextRequestId = 1;
         _jsonOptions = McpJsonUtilities.DefaultOptions;
-        _logger = logger ?? NullLogger.Instance;
+        _logger = loggerFactory?.CreateLogger(GetType()) ?? NullLogger.Instance;
     }
 
     /// <summary>

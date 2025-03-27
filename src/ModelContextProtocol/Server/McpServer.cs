@@ -27,7 +27,7 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
     /// <param name="serviceProvider">Optional service provider to use for dependency injection</param>
     /// <exception cref="McpServerException"></exception>
     public McpServer(ITransport transport, McpServerOptions options, ILoggerFactory? loggerFactory, IServiceProvider? serviceProvider)
-        : base(transport, loggerFactory?.CreateLogger<McpServer>())
+        : base(transport, loggerFactory)
     {
         Throw.IfNull(options);
 

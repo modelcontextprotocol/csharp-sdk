@@ -27,7 +27,7 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
     /// <param name="serverConfig">The server configuration.</param>
     /// <param name="loggerFactory">The logger factory.</param>
     public McpClient(IClientTransport transport, McpClientOptions options, McpServerConfig serverConfig, ILoggerFactory? loggerFactory)
-        : base(transport, loggerFactory?.CreateLogger<McpClient>())
+        : base(transport, loggerFactory)
     {
         _options = options;
         _clientTransport = transport;
