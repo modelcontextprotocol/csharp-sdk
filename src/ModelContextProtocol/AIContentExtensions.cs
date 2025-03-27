@@ -1,7 +1,9 @@
 ﻿using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Utils;
+using ModelContextProtocol.Utils.Json;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 
 namespace ModelContextProtocol;
 
@@ -101,4 +103,34 @@ public static class AIContentExtensions
             Convert.ToBase64String(dataContent.Data.ToArray());
 #endif
     }
+
+    /// <summary>
+    /// Converts different types of <see cref="AIContent"/> into a standardized <see cref="Content"/> object with specific properties based on the
+    /// content type.
+    /// </summary>
+    /// <param name="content"></param>
+    /// <returns>A <see cref="Content"/> object that encapsulates the relevant properties derived from the input content.</returns>
+    public static Content ToContent(this AIContent content) =>
+        content switch
+        {
+            TextContent textContent => new()
+            {
+                Text = textContent.Text,
+                Type = "text",
+            },
+            DataContent dataContent => new()
+            {
+                Data = dataContent.GetBase64Data(),
+                MimeType = dataContent.MediaType,
+                Type =
+                dataContent.HasTopLevelMediaType("image") ? "image" :
+                dataContent.HasTopLevelMediaType("audio") ? "audio" :
+                "resource",
+            },
+            _ => new()
+            {
+                Text = JsonSerializer.Serialize(content, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(object))),
+                Type = "text",
+            }
+        };
 }

@@ -207,35 +207,23 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             },
             TextContent textContent => new()
             {
-                Content = [new() { Text = textContent.Text, Type = "text" }]
+                Content = [textContent.ToContent()]
             },
             DataContent dataContent => new()
             {
-                Content = [new()
-                    {
-                        Data = dataContent.GetBase64Data(),
-                        MimeType = dataContent.MediaType,
-                        Type = dataContent.HasTopLevelMediaType("image") ? "image" : "resource",
-                    }]
+                Content = [dataContent.ToContent()]
             },
             string[] texts => new()
             {
                 Content = [.. texts.Select(x => new Content() { Type = "text", Text = x ?? string.Empty })]
             },
-
             IEnumerable<AIContent> contentItems => new()
             {
-                Content = [.. contentItems.Select(static item => item switch
-                        {
-                            TextContent textContent => new Content() { Type = "text", Text = textContent.Text },
-                            DataContent dataContent => new Content()
-                            {
-                                Data = dataContent.GetBase64Data(),
-                                MimeType = dataContent.MediaType,
-                                Type = dataContent.HasTopLevelMediaType("image") ? "image" : "resource",
-                            },
-                            _ => new Content() { Type = "text", Text = item.ToString() ?? string.Empty }
-                        })]
+                Content = [.. contentItems.Select(static item => item.ToContent())]
+            },
+            IEnumerable<Content> contents => new()
+            {
+                Content = [.. contents]
             },
 
             // TODO https://github.com/modelcontextprotocol/csharp-sdk/issues/69:
@@ -250,4 +238,5 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             },
         };
     }
+
 }
