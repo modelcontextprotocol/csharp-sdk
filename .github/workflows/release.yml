@@ -31,12 +31,35 @@ on:
     types: [published]
 
 jobs:
-  run-ci:
-    uses: ./.github/workflows/ci.yml
+  build-all-configs:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        configuration: [Debug, Release]
+      fail-fast: false
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Clone the repo
+      uses: actions/checkout@v4
+      with:
+          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+
+    - name: Set up .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 9.0.x
+
+    - name: Build
+      run: dotnet build --configuration ${{ matrix.configuration }}
+
+    - name: Pack
+      run: dotnet pack --configuration ${{ matrix.configuration }}
 
   build-package:
     runs-on: windows-latest
-    needs: run-ci
+    needs: build-all-configs
 
     env:
       version_suffix_args: ${{ github.event_name != 'release' && format('--version-suffix "{0}"', inputs.version_suffix_override || format('ci.{0}', github.run_number)) || '' }}
