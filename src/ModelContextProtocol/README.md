@@ -85,7 +85,7 @@ var response = await chatClient.GetResponseAsync(
 
 Here is an example of how to create an MCP server and register all tools from the current application.
 It includes a simple echo tool as an example (this is included in the same file here for easy of copy and paste, but it needn't be in the same file...
-the employed overload of `WithTools` examines the current assembly for classes with the `McpToolType` attribute, and registers all methods with the
+the employed overload of `WithTools` examines the current assembly for classes with the `McpServerToolType` attribute, and registers all methods with the
 `McpTool` attribute as tools.)
 
 ```csharp
@@ -101,7 +101,7 @@ builder.Services
     .WithTools();
 await builder.Build().RunAsync();
 
-[McpToolType]
+[McpServerToolType]
 public static class EchoTool
 {
     [McpTool, Description("Echoes the message back to the client.")]
