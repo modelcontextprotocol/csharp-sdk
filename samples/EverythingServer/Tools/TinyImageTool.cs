@@ -14,7 +14,7 @@ public static class TinyImageTool
         Debugger.Launch();
         return [
             new TextContent("This is a tiny image:"),
-            new DataContent(MCP_TINY_IMAGE, "image/png"),
+            new DataContent(MCP_TINY_IMAGE),
             new TextContent("The image above is the MCP tiny image.")
         ];
     }

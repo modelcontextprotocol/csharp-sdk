@@ -13,7 +13,7 @@ public static class PrintEnvTool
         WriteIndented = true
     };
 
-    [McpServerTool, Description("Prints all environment variables, helpful for debugging MCP server configuration")]
+    [McpServerTool("printEnv"), Description("Prints all environment variables, helpful for debugging MCP server configuration")]
     public static string PrintEnv()
     {
         Debugger.Launch();

@@ -13,9 +13,9 @@ public static class AnnotatedMessageTool
         Debug,
     }
 
-    [McpServerTool, Description("Generates an annotated message")]
+    [McpServerTool("annotatedMessage"), Description("Generates an annotated message")]
     public static IEnumerable<string> AnnotatedMessage(MessageType messageType, bool includeImage = true)
     {
-        return ["incomplete"];
+        throw new NotSupportedException("Unable to write annotations to the output.");
     }
 }

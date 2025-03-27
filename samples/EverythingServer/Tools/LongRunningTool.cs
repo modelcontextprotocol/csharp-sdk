@@ -1,28 +1,42 @@
-﻿//using ModelContextProtocol.Server;
-//using System;
-//using System.Collections.Generic;
-//using System.ComponentModel;
-//using System.Linq;
-//using System.Text;
-//using System.Threading.Tasks;
+﻿using ModelContextProtocol.Protocol.Messages;
+using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Server;
+using System.ComponentModel;
 
-//namespace EverythingServer.Tools;
+namespace EverythingServer.Tools;
 
-//[McpServerToolType]
-//public static class LongRunningTool
-//{
-//    [McpServerTool, Description("Demonstrates a long running operation with progress updates")]
-//    public static async Task<string> LongRunningOperation(int duration, int steps)
-//    {
-//        var stepDuration = duration / steps;
+[McpServerToolType]
+public static class LongRunningTool
+{
+    [McpServerTool("longRunningOperation"), Description("Demonstrates a long running operation with progress updates")]
+    public static async Task<string> LongRunningOperation(
+        IMcpServer server,
+        RequestContext<CallToolRequestParams> context,
+        int duration = 10,
+        int steps = 5)
+    {
+        var progressToken = context.Params?.Meta?.ProgressToken;
+        var stepDuration = duration / steps;
 
-//        for (int i = 1; i <= steps + 1; i++)
-//        {
-//            // Simulate a long-running operation
-//            await Task.Delay(stepDuration);
-//            // Report progress
-//            var progress = (i * 100) / steps;
-//            Console.WriteLine($"Progress: {progress}%");
-//        }
-//    }
-//}
+        for (int i = 1; i <= steps + 1; i++)
+        {
+            await Task.Delay(stepDuration * 1000);
+            
+            if (progressToken is not null)
+            {
+                await server.SendMessageAsync(new JsonRpcNotification
+                {
+                    Method = "notifications/progress",
+                    Params = new
+                    {
+                        Progress = i,
+                        Total = steps,
+                        progressToken
+                    }
+                });
+            }
+        }
+
+        return $"Long running operation completed. Duration: {duration} seconds. Steps: {steps}.";
+    }
+}
