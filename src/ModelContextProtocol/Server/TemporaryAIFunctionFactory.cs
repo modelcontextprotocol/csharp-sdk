@@ -1,10 +1,15 @@
 ﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils;
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+
 #if !NET
 using System.Linq;
 #endif
@@ -114,6 +119,42 @@ internal static partial class TemporaryAIFunctionFactory
     /// Creates an <see cref="AIFunction"/> instance for a method, specified via an <see cref="MethodInfo"/> instance
     /// and an optional target object if the method is an instance method.
     /// </summary>
+    /// <param name="method">The instance method to be represented via the created <see cref="AIFunction"/>.</param>
+    /// <param name="targetType">
+    /// The <see cref="Type"/> to construct an instance of on which to invoke <paramref name="method"/> when
+    /// the resulting <see cref="AIFunction"/> is invoked. If services are provided,
+    /// ActivatorUtilities.CreateInstance will be used to construct the instance using those services; otherwise,
+    /// <see cref="Activator.CreateInstance(Type)"/> is used, utilizing the type's public parameterless constructor.
+    /// If an instance can't be constructed, an exception is thrown during the function's invocation.
+    /// </param>
+    /// <param name="options">Metadata to use to override defaults inferred from <paramref name="method"/>.</param>
+    /// <returns>The created <see cref="AIFunction"/> for invoking <paramref name="method"/>.</returns>
+    /// <remarks>
+    /// <para>
+    /// Return values are serialized to <see cref="JsonElement"/> using <paramref name="options"/>'s
+    /// <see cref="AIFunctionFactoryOptions.SerializerOptions"/>. Arguments that are not already of the expected type are
+    /// marshaled to the expected type via JSON and using <paramref name="options"/>'s
+    /// <see cref="AIFunctionFactoryOptions.SerializerOptions"/>. If the argument is a <see cref="JsonElement"/>,
+    /// <see cref="JsonDocument"/>, or <see cref="JsonNode"/>, it is deserialized directly. If the argument is anything else unknown,
+    /// it is round-tripped through JSON, serializing the object as JSON and then deserializing it to the expected type.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="method"/> is <see langword="null"/>.</exception>
+    public static AIFunction Create(
+        MethodInfo method,
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type targetType,
+        TemporaryAIFunctionFactoryOptions? options = null)
+    {
+        Throw.IfNull(method);
+        Throw.IfNull(targetType);
+
+        return ReflectionAIFunction.Build(method, targetType, options ?? _defaultOptions);
+    }
+
+    /// <summary>
+    /// Creates an <see cref="AIFunction"/> instance for a method, specified via an <see cref="MethodInfo"/> instance
+    /// and an optional target object if the method is an instance method.
+    /// </summary>
     /// <param name="method">The method to be represented via the created <see cref="AIFunction"/>.</param>
     /// <param name="target">
     /// The target object for the <paramref name="method"/> if it represents an instance method.
@@ -176,6 +217,32 @@ internal static partial class TemporaryAIFunctionFactory
             return new(functionDescriptor, target, options);
         }
 
+        public static ReflectionAIFunction Build(
+            MethodInfo method,
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type targetType,
+            TemporaryAIFunctionFactoryOptions options)
+        {
+            Throw.IfNull(method);
+
+            if (method.ContainsGenericParameters)
+            {
+                throw new ArgumentException("Open generic methods are not supported", nameof(method));
+            }
+
+            if (method.IsStatic)
+            {
+                throw new ArgumentException("The method must be an instance method.", nameof(method));
+            }
+
+            if (method.DeclaringType is { } declaringType &&
+                !declaringType.IsAssignableFrom(targetType))
+            {
+                throw new ArgumentException("The target type must be assignable to the method's declaring type.", nameof(targetType));
+            }
+
+            return new(ReflectionAIFunctionDescriptor.GetOrCreate(method, options), targetType, options);
+        }
+
         private ReflectionAIFunction(ReflectionAIFunctionDescriptor functionDescriptor, object? target, TemporaryAIFunctionFactoryOptions options)
         {
             FunctionDescriptor = functionDescriptor;
@@ -183,8 +250,20 @@ internal static partial class TemporaryAIFunctionFactory
             AdditionalProperties = options.AdditionalProperties ?? new Dictionary<string, object?>();
         }
 
+        private ReflectionAIFunction(
+            ReflectionAIFunctionDescriptor functionDescriptor,
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type targetType,
+            TemporaryAIFunctionFactoryOptions options)
+        {
+            FunctionDescriptor = functionDescriptor;
+            TargetType = targetType;
+            AdditionalProperties = options.AdditionalProperties ?? new Dictionary<string, object?>();
+        }
+
         public ReflectionAIFunctionDescriptor FunctionDescriptor { get; }
         public object? Target { get; }
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+        public Type? TargetType { get; }
         public override IReadOnlyDictionary<string, object?> AdditionalProperties { get; }
         public override string Name => FunctionDescriptor.Name;
         public override string Description => FunctionDescriptor.Description;
@@ -192,22 +271,59 @@ internal static partial class TemporaryAIFunctionFactory
         public override JsonElement JsonSchema => FunctionDescriptor.JsonSchema;
         public override JsonSerializerOptions JsonSerializerOptions => FunctionDescriptor.JsonSerializerOptions;
 
-        protected override Task<object?> InvokeCoreAsync(
+        protected override async Task<object?> InvokeCoreAsync(
             IEnumerable<KeyValuePair<string, object?>> arguments,
             CancellationToken cancellationToken)
         {
-            var paramMarshallers = FunctionDescriptor.ParameterMarshallers;
-            object?[] args = paramMarshallers.Length != 0 ? new object?[paramMarshallers.Length] : [];
-
             Dictionary<string, object?> argumentsDictionary = arguments.ToDictionary();
 
-            for (int i = 0; i < args.Length; i++)
+            bool disposeTarget = false;
+            object? target = Target;
+            try
             {
-                args[i] = paramMarshallers[i](argumentsDictionary, cancellationToken);
-            }
+                if (TargetType is { } targetType)
+                {
+                    Debug.Assert(target is null, "Expected target to be null when we have a non-null target type");
+                    Debug.Assert(!FunctionDescriptor.Method.IsStatic, "Expected an instance method");
 
-            return FunctionDescriptor.ReturnParameterMarshaller(
-                ReflectionInvoke(FunctionDescriptor.Method, Target, args), cancellationToken);
+                    if (argumentsDictionary.TryGetValue(AIFunctionMcpServerTool.RequestContextKey, out object? value) &&
+                        value is RequestContext<CallToolRequestParams> requestContext &&
+                        requestContext.Server?.Services is { } services)
+                    {
+                        target = ActivatorUtilities.CreateInstance(services, targetType!);
+                    }
+                    else
+                    {
+                        target = Activator.CreateInstance(targetType);
+                    }
+
+                    disposeTarget = true;
+                }
+                var paramMarshallers = FunctionDescriptor.ParameterMarshallers;
+                object?[] args = paramMarshallers.Length != 0 ? new object?[paramMarshallers.Length] : [];
+
+                for (int i = 0; i < args.Length; i++)
+                {
+                    args[i] = paramMarshallers[i](argumentsDictionary, cancellationToken);
+                }
+
+                return await FunctionDescriptor.ReturnParameterMarshaller(
+                    ReflectionInvoke(FunctionDescriptor.Method, target, args), cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                if (disposeTarget)
+                {
+                    if (target is IAsyncDisposable ad)
+                    {
+                        await ad.DisposeAsync().ConfigureAwait(false);
+                    }
+                    else if (target is IDisposable d)
+                    {
+                        d.Dispose();
+                    }
+                }
+            }
         }
     }
 

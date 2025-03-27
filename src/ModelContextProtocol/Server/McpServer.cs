@@ -14,7 +14,6 @@ namespace ModelContextProtocol.Server;
 internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
 {
     private readonly IServerTransport? _serverTransport;
-    private readonly ILogger _logger;
     private readonly string _serverDescription;
     private volatile bool _isInitializing;
 
@@ -33,7 +32,6 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
         Throw.IfNull(options);
 
         _serverTransport = transport as IServerTransport;
-        _logger = (ILogger?)loggerFactory?.CreateLogger<McpServer>() ?? NullLogger.Instance;
         ServerInstructions = options.ServerInstructions;
         Services = serviceProvider;
         _serverDescription = $"{options.ServerInfo.Name} {options.ServerInfo.Version}";
@@ -263,25 +261,14 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
                 return tool.InvokeAsync(request, cancellationToken);
             };
 
-            toolsCapability = toolsCapability is null ?
-                new()
-                {
-                    CallToolHandler = callToolHandler,
-                    ListToolsHandler = listToolsHandler,
-                    ToolCollection = tools,
-                    ListChanged = true,
-                } :
-                toolsCapability with
-                {
-                    CallToolHandler = callToolHandler,
-                    ListToolsHandler = listToolsHandler,
-                    ToolCollection = tools,
-                    ListChanged = true,
-                };
+            toolsCapability ??= new();
+            toolsCapability.CallToolHandler = callToolHandler;
+            toolsCapability.ListToolsHandler = listToolsHandler;
+            toolsCapability.ToolCollection = tools;
+            toolsCapability.ListChanged = true;
 
-            options.Capabilities = options.Capabilities is null ?
-                new() { Tools = toolsCapability } :
-                options.Capabilities with { Tools = toolsCapability };
+            options.Capabilities ??= new();
+            options.Capabilities.Tools = toolsCapability;
 
             tools.Changed += delegate
             {
