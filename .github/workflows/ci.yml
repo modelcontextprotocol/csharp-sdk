@@ -46,8 +46,8 @@ jobs:
     - name: Install dependencies for tests
       run: npm install @modelcontextprotocol/server-memory
 
-    - name: Build
-      run: dotnet build --configuration ${{ matrix.configuration }}
+    - name: Build and Package
+      run: dotnet pack --configuration ${{ matrix.configuration }}
 
     - name: Test
       run: >-
