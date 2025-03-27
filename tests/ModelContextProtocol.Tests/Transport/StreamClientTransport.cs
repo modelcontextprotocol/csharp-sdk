@@ -11,14 +11,14 @@ internal sealed class StreamClientTransport : TransportBase, IClientTransport
     private readonly JsonSerializerOptions _jsonOptions = McpJsonUtilities.DefaultOptions;
     private Task? _readTask;
     private CancellationTokenSource _shutdownCts = new CancellationTokenSource();
-    private readonly TextReader _stdin;
-    private readonly TextWriter _stdout;
+    private readonly TextReader _stdout;
+    private readonly TextWriter _stdin;
 
-    public StreamClientTransport(TextReader stdin, TextWriter stdout)
+    public StreamClientTransport(TextWriter stdin, TextReader stdout)
         : base(NullLoggerFactory.Instance)
     {
-        _stdin = stdin;
         _stdout = stdout;
+        _stdin = stdin;
         _readTask = Task.Run(() => ReadMessagesAsync(_shutdownCts.Token), CancellationToken.None);
         SetConnected(true);
     }
@@ -31,13 +31,13 @@ internal sealed class StreamClientTransport : TransportBase, IClientTransport
             messageWithId.Id.ToString() :
             "(no id)";
      
-        await _stdout.WriteLineAsync(JsonSerializer.Serialize(message)).ConfigureAwait(false);
-        await _stdout.FlushAsync(cancellationToken).ConfigureAwait(false);
+        await _stdin.WriteLineAsync(JsonSerializer.Serialize(message)).ConfigureAwait(false);
+        await _stdin.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private async Task ReadMessagesAsync(CancellationToken cancellationToken)
     {
-        while (await _stdin.ReadLineAsync(cancellationToken).ConfigureAwait(false) is string line)
+        while (await _stdout.ReadLineAsync(cancellationToken).ConfigureAwait(false) is string line)
         {
             if (!string.IsNullOrWhiteSpace(line))
             {

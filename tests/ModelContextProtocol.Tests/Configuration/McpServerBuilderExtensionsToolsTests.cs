@@ -48,8 +48,8 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
     {
         await _server.StartAsync(TestContext.Current.CancellationToken);
 
-        var stdin = new StreamReader(_serverToClientPipe.Reader.AsStream());
-        var stdout = new StreamWriter(_clientToServerPipe.Writer.AsStream());
+        var stdin = new StreamWriter(_clientToServerPipe.Writer.AsStream());
+        var stdout = new StreamReader(_serverToClientPipe.Reader.AsStream());
 
         var serverConfig = new McpServerConfig()
         {
@@ -124,7 +124,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
 
                 var client = await McpClientFactory.CreateAsync(
                     serverConfig,
-                    createTransportFunc: (_, _) => new StreamClientTransport(stdout, stdin),
+                    createTransportFunc: (_, _) => new StreamClientTransport(stdin, stdout),
                     cancellationToken: TestContext.Current.CancellationToken);
 
                 var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
