@@ -5,32 +5,31 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
-  workflow_call:
 
 jobs:
   build:
-
-    runs-on: ${{ matrix.os }}
-
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         configuration: [Debug, Release]
       fail-fast: false
 
+    runs-on: ${{ matrix.os }}
+
     steps:
-    - uses: actions/checkout@v4
+    - name: Clone the repo
+      uses: actions/checkout@v4
       with:
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
 
-    - name: Setup .NET
+    - name: Set up .NET
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: |
           9.0.x
           8.0.x
 
-    # Netfx testing on non-Windows requires mono
+    # NetFX testing on non-Windows requires mono
     - name: Setup Mono
       if: runner.os == 'Linux'
       run: sudo apt-get install -y mono-devel
