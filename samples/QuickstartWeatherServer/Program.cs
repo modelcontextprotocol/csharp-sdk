@@ -16,6 +16,4 @@ builder.Services.AddSingleton(_ =>
     return client;
 });
 
-var app = builder.Build();
-
-await app.RunAsync();
+await builder.Build().RunAsync();
