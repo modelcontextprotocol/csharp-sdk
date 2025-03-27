@@ -104,13 +104,7 @@ public static class AIContentExtensions
 #endif
     }
 
-    /// <summary>
-    /// Converts different types of <see cref="AIContent"/> into a standardized <see cref="Content"/> object with specific properties based on the
-    /// content type.
-    /// </summary>
-    /// <param name="content"></param>
-    /// <returns>A <see cref="Content"/> object that encapsulates the relevant properties derived from the input content.</returns>
-    public static Content ToContent(this AIContent content) =>
+    internal static Content ToContent(this AIContent content) =>
         content switch
         {
             TextContent textContent => new()
@@ -123,9 +117,9 @@ public static class AIContentExtensions
                 Data = dataContent.GetBase64Data(),
                 MimeType = dataContent.MediaType,
                 Type =
-                dataContent.HasTopLevelMediaType("image") ? "image" :
-                dataContent.HasTopLevelMediaType("audio") ? "audio" :
-                "resource",
+                    dataContent.HasTopLevelMediaType("image") ? "image" :
+                    dataContent.HasTopLevelMediaType("audio") ? "audio" :
+                    "resource",
             },
             _ => new()
             {

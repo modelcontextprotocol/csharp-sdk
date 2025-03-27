@@ -164,4 +164,31 @@ public  class McpServerToolReturnTests
         Assert.Equal("image/png", result.Content[1].MimeType);
         Assert.Null(result.Content[1].Text);
     }
+
+    [Fact]
+    public async Task CanReturnCallToolResponse()
+    {
+        CallToolResponse response = new()
+        {
+            Content = [new() { Text = "text", Type = "text" }, new() { Data = "1234", Type = "image" }]
+        };
+
+        Mock<IMcpServer> mockServer = new();
+        McpServerTool tool = McpServerTool.Create((IMcpServer server) =>
+        {
+            Assert.Same(mockServer.Object, server);
+            return response;
+        });
+        var result = await tool.InvokeAsync(
+            new RequestContext<CallToolRequestParams>(mockServer.Object, null),
+            TestContext.Current.CancellationToken);
+
+        Assert.Same(response, result);
+
+        Assert.Equal(2, result.Content.Count);
+        Assert.Equal("text", result.Content[0].Text);
+        Assert.Equal("text", result.Content[0].Type);
+        Assert.Equal("1234", result.Content[1].Data);
+        Assert.Equal("image", result.Content[1].Type);
+    }
 }

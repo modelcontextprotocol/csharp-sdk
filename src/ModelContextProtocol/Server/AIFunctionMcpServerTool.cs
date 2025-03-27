@@ -225,6 +225,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             {
                 Content = [.. contents]
             },
+            CallToolResponse callToolResponse => callToolResponse,
 
             // TODO https://github.com/modelcontextprotocol/csharp-sdk/issues/69:
             // Add specialization for annotations.
