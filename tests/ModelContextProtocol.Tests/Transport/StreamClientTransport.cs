@@ -14,11 +14,11 @@ internal sealed class StreamClientTransport : TransportBase, IClientTransport
     private readonly TextReader _serverStdoutReader;
     private readonly TextWriter _serverStdinWriter;
 
-    public StreamClientTransport(TextWriter serverStdinReader, TextReader serverStdoutWriter)
+    public StreamClientTransport(TextWriter serverStdinWriter, TextReader serverStdoutReader)
         : base(NullLoggerFactory.Instance)
     {
-        _serverStdoutReader = serverStdoutWriter;
-        _serverStdinWriter = serverStdinReader;
+        _serverStdoutReader = serverStdoutReader;
+        _serverStdinWriter = serverStdinWriter;
         _readTask = Task.Run(() => ReadMessagesAsync(_shutdownCts.Token), CancellationToken.None);
         SetConnected(true);
     }
