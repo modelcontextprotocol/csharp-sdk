@@ -149,6 +149,8 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(SubscribeRequestParams))]
     [JsonSerializable(typeof(UnsubscribeFromResourceRequestParams))]
     [JsonSerializable(typeof(UnsubscribeRequestParams))]
+
+    [ExcludeFromCodeCoverage]
     internal sealed partial class JsonContext : JsonSerializerContext;
 
     private static JsonElement ParseJsonElement(ReadOnlySpan<byte> utf8Json)
