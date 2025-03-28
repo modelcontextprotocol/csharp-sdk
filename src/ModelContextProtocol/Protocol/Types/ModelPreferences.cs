@@ -11,7 +11,7 @@
 /// These preferences are always advisory. The client MAY ignore them. It is also
 /// up to the client to decide how to interpret these preferences and how to
 /// balance them against other considerations.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
+/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
 /// </summary>
 public class ModelPreferences
 {

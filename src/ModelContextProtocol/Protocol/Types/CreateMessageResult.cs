@@ -6,7 +6,7 @@ namespace ModelContextProtocol.Protocol.Types;
 /// The client's response to a sampling/create_message request from the server. 
 /// The client should inform the user before returning the sampled message, to allow them to inspect the response (human in the loop) 
 ///  and decide whether to allow the server to see it.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
+/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
 /// </summary>
 public class CreateMessageResult
 {

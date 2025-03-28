@@ -37,14 +37,9 @@ public static partial class McpServerBuilderExtensions
         {
             if (toolMethod.GetCustomAttribute<McpServerToolAttribute>() is not null)
             {
-                if (toolMethod.IsStatic)
-                {
-                    builder.Services.AddSingleton(services => McpServerTool.Create(toolMethod, services: services));
-                }
-                else
-                {
-                    builder.Services.AddSingleton(services => McpServerTool.Create(toolMethod, typeof(TTool), services: services));
-                }
+                builder.Services.AddSingleton((Func<IServiceProvider, McpServerTool>)(toolMethod.IsStatic ?
+                    services => McpServerTool.Create(toolMethod, new McpServerToolCreateOptions() { Services = services }) :
+                    services => McpServerTool.Create(toolMethod, typeof(TTool), new() { Services = services })));
             }
         }
 
@@ -71,18 +66,13 @@ public static partial class McpServerBuilderExtensions
         {
             if (toolType is not null)
             {
-                foreach (var method in toolType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
+                foreach (var toolMethod in toolType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
                 {
-                    if (method.GetCustomAttribute<McpServerToolAttribute>() is not null)
+                    if (toolMethod.GetCustomAttribute<McpServerToolAttribute>() is not null)
                     {
-                        if (method.IsStatic)
-                        {
-                            builder.Services.AddSingleton(services => McpServerTool.Create(method, services: services));
-                        }
-                        else
-                        {
-                            builder.Services.AddSingleton(services => McpServerTool.Create(method, toolType, services: services));
-                        }
+                        builder.Services.AddSingleton((Func<IServiceProvider, McpServerTool>)(toolMethod.IsStatic ?
+                            services => McpServerTool.Create(toolMethod, new McpServerToolCreateOptions() { Services = services }) :
+                            services => McpServerTool.Create(toolMethod, toolType, new() { Services = services })));
                     }
                 }
             }

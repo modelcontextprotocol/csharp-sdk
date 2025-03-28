@@ -11,7 +11,7 @@
 /// However, any errors in _finding_ the tool, an error indicating that the
 /// server does not support tool calls, or any other exceptional conditions,
 /// should be reported as an MCP error response.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
+/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
 /// </summary>
 public class CallToolResponse
 {
