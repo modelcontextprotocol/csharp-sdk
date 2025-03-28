@@ -7,7 +7,7 @@ namespace ModelContextProtocol.Protocol.Types;
 /// Sent from the server as the payload of "notifications/message" notifications whenever a log message is generated.
 /// 
 /// If no logging/setLevel request has been sent from the client, the server MAY decide which messages to send automatically.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
+/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
 /// </summary>
 public class LoggingMessageNotificationParams
 {

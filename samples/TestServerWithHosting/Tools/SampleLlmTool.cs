@@ -8,23 +8,17 @@ namespace TestServerWithHosting.Tools;
 /// This tool uses depenency injection and async method
 /// </summary>
 [McpServerToolType]
-public class SampleLlmTool
+public static class SampleLlmTool
 {
-    private readonly IMcpServer _server;
-
-    public SampleLlmTool(IMcpServer server)
-    {
-        _server = server ?? throw new ArgumentNullException(nameof(server));
-    }
-
-    [McpServerTool("sampleLLM"), Description("Samples from an LLM using MCP's sampling feature")]
-    public async Task<string> SampleLLM(
+    [McpServerTool(Name = "sampleLLM"), Description("Samples from an LLM using MCP's sampling feature")]
+    public static async Task<string> SampleLLM(
+        IMcpServer thisServer,
         [Description("The prompt to send to the LLM")] string prompt,
         [Description("Maximum number of tokens to generate")] int maxTokens,
         CancellationToken cancellationToken)
     {
         var samplingParams = CreateRequestSamplingParams(prompt ?? string.Empty, "sampleLLM", maxTokens);
-        var sampleResult = await _server.RequestSamplingAsync(samplingParams, cancellationToken);
+        var sampleResult = await thisServer.RequestSamplingAsync(samplingParams, cancellationToken);
 
         return $"LLM sampling result: {sampleResult.Content.Text}";
     }

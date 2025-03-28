@@ -101,11 +101,11 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
                     new JsonRpcRequest
                     {
                         Method = "initialize",
-                        Params = new
+                        Params = new InitializeRequestParams()
                         {
-                            protocolVersion = _options.ProtocolVersion,
-                            capabilities = _options.Capabilities ?? new ClientCapabilities(),
-                            clientInfo = _options.ClientInfo
+                            ProtocolVersion = _options.ProtocolVersion,
+                            Capabilities = _options.Capabilities ?? new ClientCapabilities(),
+                            ClientInfo = _options.ClientInfo,
                         }
                     },
                     initializationCts.Token).ConfigureAwait(false);

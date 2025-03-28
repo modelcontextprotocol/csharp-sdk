@@ -88,13 +88,13 @@ public static class McpServerExtensions
                             });
                             break;
 
-                        case DataContent dataContent when dataContent.HasTopLevelMediaType("image"):
+                        case DataContent dataContent when dataContent.HasTopLevelMediaType("image") || dataContent.HasTopLevelMediaType("audio"):
                             samplingMessages.Add(new()
                             {
                                 Role = role,
                                 Content = new()
                                 {
-                                    Type = "image",
+                                    Type = dataContent.HasTopLevelMediaType("image") ? "image" : "audio",
                                     MimeType = dataContent.MediaType,
                                     Data = dataContent.GetBase64Data(),
                                 },

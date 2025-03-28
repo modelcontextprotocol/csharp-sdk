@@ -4,7 +4,7 @@
 /// Hints to use for model selection.
 /// Keys not declared here are currently left unspecified by the spec and are up
 /// to the client to interpret.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
+/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
 /// </summary>
 public class ModelHint
 {
