@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Hosting;
 using ModelContextProtocol.Protocol.Types;
 using EverythingServer.Tools;
+using EverythingServer;
 
 var builder = Host.CreateEmptyApplicationBuilder(settings: null);
 
@@ -18,7 +19,7 @@ builder.Services
                 new Prompt { Name= "simple_prompt", Description = "A prompt without arguments" },
                 new Prompt { Name= "complex_prompt", Description = "A prompt with arguments", Arguments = [
                     new PromptArgument { Name = "temperature", Description = "Temperature setting", Required = true },
-                    new PromptArgument { Name = "style", Description = "Output style", Required = false}
+                    new PromptArgument { Name = "style", Description = "Output style", Required = false }
                 ]
                 }
             ]
@@ -42,6 +43,47 @@ builder.Services
         {
             Messages = messages
         });
-    });
+    })
+    .WithListResourceTemplatesHandler((ctx, ct) =>
+    {
+        return Task.FromResult(new ListResourceTemplatesResult
+        {
+            ResourceTemplates =
+            [
+                new ResourceTemplate { Name = "Static Resource", Description = "A static resource with a numeric ID", UriTemplate = "test://static/resource/{id}" }
+            ]
+        });
+    })
+    .WithReadResourceHandler((ctx, ct) =>
+    {
+        var uri = ctx.Params?.Uri;
+
+        if (uri is null || !uri.StartsWith("test://static/resource/"))
+        {
+            throw new NotSupportedException($"Unknown resource: {uri}");
+        }
+
+        int index = int.Parse(uri["test://static/resource/".Length..]) - 1;
+
+        if (index < 0 || index >= ResourceGenerator.Resources.Count)
+        {
+            throw new NotSupportedException($"Unknown resource: {uri}");
+        }
+
+        var resource = ResourceGenerator.Resources[index];
+
+        return Task.FromResult(new ReadResourceResult
+        {
+            Contents = [new ResourceContents
+                {
+                    Uri = resource.Uri,
+                    MimeType = resource.MimeType,
+                    Blob = resource.Description,
+                    Name = resource.Description
+                }
+            ]
+        });
+    })
+    ;
 
 await builder.Build().RunAsync();
