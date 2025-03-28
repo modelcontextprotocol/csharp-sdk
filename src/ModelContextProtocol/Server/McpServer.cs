@@ -150,19 +150,21 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
             return;
         }
 
-        if (resourcesCapability.ListResourcesHandler is not { } listResourcesHandler ||
+        var listResourcesHandler = resourcesCapability.ListResourcesHandler;
+        var listResourceTemplatesHandler = resourcesCapability.ListResourceTemplatesHandler;
+
+        if ((listResourcesHandler is not { } && listResourceTemplatesHandler is not { }) ||
             resourcesCapability.ReadResourceHandler is not { } readResourceHandler)
         {
             throw new McpServerException("Resources capability was enabled, but ListResources and/or ReadResource handlers were not specified.");
         }
 
+        listResourcesHandler ??= (static (_, _) => Task.FromResult(new ListResourcesResult()));
+
         SetRequestHandler<ListResourcesRequestParams, ListResourcesResult>("resources/list", (request, ct) => listResourcesHandler(new(this, request), ct));
         SetRequestHandler<ReadResourceRequestParams, ReadResourceResult>("resources/read", (request, ct) => readResourceHandler(new(this, request), ct));
 
-        // Set the list resource templates handler, or use the default if not specified
-        var listResourceTemplatesHandler = resourcesCapability.ListResourceTemplatesHandler
-            ?? (static (_, _) => Task.FromResult(new ListResourceTemplatesResult()));
-
+        listResourceTemplatesHandler ??= (static (_, _) => Task.FromResult(new ListResourceTemplatesResult()));
         SetRequestHandler<ListResourceTemplatesRequestParams, ListResourceTemplatesResult>("resources/templates/list", (request, ct) => listResourceTemplatesHandler(new(this, request), ct));
 
         if (resourcesCapability.Subscribe is not true)
