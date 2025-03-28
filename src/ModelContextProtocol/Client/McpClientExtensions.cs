@@ -475,17 +475,7 @@ public static class McpClientExtensions
             }
             else if (sm.Content is { Type: "resource", Resource: not null })
             {
-                ResourceContents resource = sm.Content.Resource;
-
-                if (resource.Text is not null)
-                {
-                    message.Contents.Add(new TextContent(resource.Text));
-                }
-
-                if (resource.Blob is not null && resource.MimeType is not null)
-                {
-                    message.Contents.Add(new DataContent(Convert.FromBase64String(resource.Blob), resource.MimeType));
-                }
+                message.Contents.Add(sm.Content.Resource.ToAIContent());
             }
 
             messages.Add(message);

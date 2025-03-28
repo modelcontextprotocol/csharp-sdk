@@ -224,7 +224,9 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
 
         Assert.NotNull(result);
         Assert.Single(result.Contents);
-        Assert.NotNull(result.Contents[0].Text);
+
+        TextResourceContents textResource = Assert.IsType<TextResourceContents>(result.Contents[0]);
+        Assert.NotNull(textResource.Text);
     }
 
     [Theory]
@@ -241,7 +243,9 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
 
         Assert.NotNull(result);
         Assert.Single(result.Contents);
-        Assert.NotNull(result.Contents[0].Blob);
+
+        BlobResourceContents blobResource = Assert.IsType<BlobResourceContents>(result.Contents[0]);
+        Assert.NotNull(blobResource.Blob);
     }
 
     // Not supported by "everything" server version on npx

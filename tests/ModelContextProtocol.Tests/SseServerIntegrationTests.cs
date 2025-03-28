@@ -113,7 +113,9 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
 
         Assert.NotNull(result);
         Assert.Single(result.Contents);
-        Assert.NotNull(result.Contents[0].Text);
+
+        TextResourceContents textContent = Assert.IsType<TextResourceContents>(result.Contents[0]);
+        Assert.NotNull(textContent.Text);
     }
 
     [Fact]
@@ -130,7 +132,9 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
 
         Assert.NotNull(result);
         Assert.Single(result.Contents);
-        Assert.NotNull(result.Contents[0].Blob);
+
+        BlobResourceContents blobContent = Assert.IsType<BlobResourceContents>(result.Contents[0]);
+        Assert.NotNull(blobContent.Blob);
     }
 
     [Fact]
