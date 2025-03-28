@@ -185,24 +185,24 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             newOptions.Name ??= attr.Name;
             newOptions.Title ??= attr.Title;
 
-            if (attr.DestructiveIsSet)
+            if (attr._destructive is bool destructive)
             {
-                newOptions.Destructive ??= attr.Destructive;
+                newOptions.Destructive ??= destructive;
             }
 
-            if (attr.IdempotentIsSet)
+            if (attr._idempotent is bool idempotent)
             {
-                newOptions.Idempotent ??= attr.Idempotent;
+                newOptions.Idempotent ??= idempotent;
             }
 
-            if (attr.OpenWorldIsSet)
+            if (attr._openWorld is bool openWorld)
             {
-                newOptions.OpenWorld ??= attr.OpenWorld;
+                newOptions.OpenWorld ??= openWorld;
             }
 
-            if (attr.ReadOnlyIsSet)
+            if (attr._readOnly is bool readOnly)
             {
-                newOptions.ReadOnly ??= attr.ReadOnly;
+                newOptions.ReadOnly ??= readOnly;
             }
         }
 
