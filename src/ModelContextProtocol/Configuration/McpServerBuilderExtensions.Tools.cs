@@ -12,7 +12,9 @@ namespace ModelContextProtocol;
 /// </summary>
 public static partial class McpServerBuilderExtensions
 {
-    private const string RequiresUnreferencedCodeMessage = "This method requires dynamic lookup of method metadata and might not work in Native AOT.";
+    private const string WithToolsRequiresUnreferencedCodeMessage = 
+        $"The non-generic {nameof(WithTools)} and {nameof(WithToolsFromAssembly)} methods require dynamic lookup of method metadata" +
+        $"and may not work in Native AOT. Use the generic {nameof(WithTools)} method instead.";
 
     /// <summary>Adds <see cref="McpServerTool"/> instances to the service collection backing <paramref name="builder"/>.</summary>
     /// <typeparam name="TTool">The tool type.</typeparam>
@@ -59,7 +61,7 @@ public static partial class McpServerBuilderExtensions
     /// types, where the methods are attributed as <see cref="McpServerToolAttribute"/>, and adds an <see cref="McpServerTool"/>
     /// instance for each. For instance methods, an instance will be constructed for each invocation of the tool.
     /// </remarks>
-    [RequiresUnreferencedCode(RequiresUnreferencedCodeMessage)]
+    [RequiresUnreferencedCode(WithToolsRequiresUnreferencedCodeMessage)]
     public static IMcpServerBuilder WithTools(this IMcpServerBuilder builder, params IEnumerable<Type> toolTypes)
     {
         Throw.IfNull(builder);
@@ -95,7 +97,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="toolAssembly">The assembly to load the types from. Null to get the current assembly</param>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    [RequiresUnreferencedCode(RequiresUnreferencedCodeMessage)]
+    [RequiresUnreferencedCode(WithToolsRequiresUnreferencedCodeMessage)]
     public static IMcpServerBuilder WithToolsFromAssembly(this IMcpServerBuilder builder, Assembly? toolAssembly = null)
     {
         Throw.IfNull(builder);
