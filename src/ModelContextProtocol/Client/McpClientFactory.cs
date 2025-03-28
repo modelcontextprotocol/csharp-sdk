@@ -65,24 +65,16 @@ public static class McpClientFactory
             createTransportFunc(serverConfig, loggerFactory) ??
             throw new InvalidOperationException($"{nameof(createTransportFunc)} returned a null transport.");
 
+        McpClient client = new(transport, clientOptions, serverConfig, loggerFactory);
         try
         {
-            McpClient client = new(transport, clientOptions, serverConfig, loggerFactory);
-            try
-            {
-                await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
-                logger.ClientCreated(endpointName);
-                return client;
-            }
-            catch
-            {
-                await client.DisposeAsync().ConfigureAwait(false);
-                throw;
-            }
+            await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
+            logger.ClientCreated(endpointName);
+            return client;
         }
         catch
         {
-            await transport.DisposeAsync().ConfigureAwait(false);
+            await client.DisposeAsync().ConfigureAwait(false);
             throw;
         }
     }

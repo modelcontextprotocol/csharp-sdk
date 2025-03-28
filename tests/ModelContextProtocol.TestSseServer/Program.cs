@@ -382,10 +382,15 @@ public class Program
         };
 
         loggerFactory ??= CreateLoggerFactory();
-        await using IMcpServer server = McpServerFactory.Create(new HttpListenerSseServerTransport("TestServer", 3001, loggerFactory), options, loggerFactory);
-
+        await using var httpListenerSseTransport = new HttpListenerSseServerTransport("TestServer", 3001, loggerFactory);
         Console.WriteLine("Server running...");
-        await server.RunAsync(cancellationToken: cancellationToken);
+
+        // Each IMcpServer represents a new SSE session.
+        while (true)
+        {
+            var server = await McpServerFactory.AcceptAsync(httpListenerSseTransport, options, loggerFactory, cancellationToken: cancellationToken);
+            _ = server.RunAsync(cancellationToken: cancellationToken);
+        }
     }
 
     const string MCP_TINY_IMAGE =

@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+﻿﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Logging;
@@ -14,7 +14,7 @@ namespace ModelContextProtocol.Protocol.Transport;
 /// <summary>
 /// Provides an implementation of the MCP transport protocol over standard input/output streams.
 /// </summary>
-public sealed class StdioServerTransport : TransportBase, IServerTransport
+public sealed class StdioServerTransport : TransportBase, ITransport
 {
     private static readonly byte[] s_newlineBytes = "\n"u8.ToArray();
 
@@ -28,8 +28,7 @@ public sealed class StdioServerTransport : TransportBase, IServerTransport
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private readonly CancellationTokenSource _shutdownCts = new();
 
-    private Task _readLoopCompleted = Task.CompletedTask;
-    private TaskCompletionSource<bool> _serverCompleted = new();
+    private readonly Task _readLoopCompleted;
     private int _disposed = 0;
 
     private string EndpointName => $"Server (stdio) ({_serverName})";
@@ -119,23 +118,10 @@ public sealed class StdioServerTransport : TransportBase, IServerTransport
 
         _stdInReader = new StreamReader(stdinStream ?? Console.OpenStandardInput(), Encoding.UTF8);
         _stdOutStream = stdoutStream ?? new BufferedStream(Console.OpenStandardOutput());
-    }
-
-    /// <inheritdoc/>
-    public Task StartListeningAsync(CancellationToken cancellationToken = default)
-    {
-        _logger.LogDebug("Starting StdioServerTransport listener for {EndpointName}", EndpointName);
 
         SetConnected(true);
         _readLoopCompleted = Task.Run(ReadMessagesAsync, _shutdownCts.Token);
-
-        _logger.LogDebug("StdioServerTransport now connected for {EndpointName}", EndpointName);
-
-        return Task.CompletedTask;
     }
-
-    /// <summary>Gets a <see cref="Task"/> that completes when the server transport has finished its work.</summary>
-    public Task Completion => _serverCompleted.Task;
 
     /// <inheritdoc/>
     public override async Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
@@ -225,19 +211,17 @@ public sealed class StdioServerTransport : TransportBase, IServerTransport
 
             _logger.TransportExitingReadMessagesLoop(EndpointName);
         }
-        catch (OperationCanceledException oce)
+        catch (OperationCanceledException)
         {
             _logger.TransportReadMessagesCancelled(EndpointName);
-            _serverCompleted.TrySetCanceled(oce.CancellationToken);
         }
         catch (Exception ex)
         {
             _logger.TransportReadMessagesFailed(EndpointName, ex);
-            _serverCompleted.TrySetException(ex);
         }
         finally
         {
-            _serverCompleted.TrySetResult(true);
+            SetConnected(false);
         }
     }
 

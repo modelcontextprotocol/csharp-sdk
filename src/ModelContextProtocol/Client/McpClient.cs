@@ -1,11 +1,11 @@
-﻿using ModelContextProtocol.Configuration;
+﻿using Microsoft.Extensions.Logging;
+using ModelContextProtocol.Configuration;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Shared;
 using ModelContextProtocol.Utils.Json;
-using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Client;
@@ -13,23 +13,25 @@ namespace ModelContextProtocol.Client;
 /// <inheritdoc/>
 internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
 {
-    private readonly McpClientOptions _options;
     private readonly IClientTransport _clientTransport;
+    private readonly McpClientOptions _options;
 
-    private int _connecting;
+    private ITransport? _sessionTransport;
+    private CancellationTokenSource? _connectCts;
+    private int _disposed;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="McpClient"/> class.
     /// </summary>
-    /// <param name="transport">The transport to use for communication with the server.</param>
+    /// <param name="clientTransport">The transport to use for communication with the server.</param>
     /// <param name="options">Options for the client, defining protocol version and capabilities.</param>
     /// <param name="serverConfig">The server configuration.</param>
     /// <param name="loggerFactory">The logger factory.</param>
-    public McpClient(IClientTransport transport, McpClientOptions options, McpServerConfig serverConfig, ILoggerFactory? loggerFactory)
-        : base(transport, loggerFactory)
+    public McpClient(IClientTransport clientTransport, McpClientOptions options, McpServerConfig serverConfig, ILoggerFactory? loggerFactory)
+        : base(loggerFactory)
     {
+        _clientTransport = clientTransport;
         _options = options;
-        _clientTransport = transport;
 
         EndpointName = $"Client ({serverConfig.Id}: {serverConfig.Name})";
 
@@ -70,25 +72,19 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
     /// <inheritdoc/>
     public override string EndpointName { get; }
 
-    /// <inheritdoc/>
     public async Task ConnectAsync(CancellationToken cancellationToken = default)
     {
-        if (Interlocked.Exchange(ref _connecting, 1) != 0)
-        {
-            _logger.ClientAlreadyInitializing(EndpointName);
-            throw new InvalidOperationException("Client is already in use.");
-        }
-
-        CancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        cancellationToken = CancellationTokenSource.Token;
+        _connectCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cancellationToken = _connectCts.Token;
 
         try
         {
             // Connect transport
-            await _clientTransport.ConnectAsync(cancellationToken).ConfigureAwait(false);
-
-            // Start processing messages
-            MessageProcessingTask = ProcessMessagesAsync(cancellationToken);
+            _sessionTransport = await _clientTransport.ConnectAsync(cancellationToken).ConfigureAwait(false);
+            InitializeSession(_sessionTransport);
+            // We don't want the ConnectAsync token to cancel the session after we've successfully connected.
+            // The base class handles cleaning up the session in DisposeAsync without our help.
+            StartSession(fullSessionCancellationToken: CancellationToken.None);
 
             // Perform initialization sequence
             using var initializationCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -140,8 +136,27 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
         catch (Exception e)
         {
             _logger.ClientInitializationError(EndpointName, e);
-            await CleanupAsync().ConfigureAwait(false);
+            await DisposeAsync().ConfigureAwait(false);
             throw;
         }
+    }
+
+    /// <inheritdoc/>
+    public override async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            // TODO: It's more correct to await the last DisposeAsync before returning if it's still ongoing.
+            return;
+        }
+
+        if (_connectCts is not null)
+        {
+            await _connectCts.CancelAsync().ConfigureAwait(false);
+        }
+
+        await base.DisposeAsync().ConfigureAwait(false);
+
+        _connectCts?.Dispose();
     }
 }

@@ -48,52 +48,58 @@ internal static class Program
         };
 
         using var loggerFactory = CreateLoggerFactory();
-        await using IMcpServer server = McpServerFactory.Create(new StdioServerTransport("TestServer", loggerFactory), options, loggerFactory);
+        await using var stdioTransport = new StdioServerTransport("TestServer", loggerFactory);
+        await using IMcpServer server = McpServerFactory.Create(stdioTransport, options, loggerFactory);
 
         Log.Logger.Information("Server running...");
-        await server.RunAsync(async cancellationToken =>
+
+        // Run until process is stopped by the client (parent process)
+        _ = RunBackgroundLoop(server);
+
+        await server.RunAsync();
+    }
+
+    private static async Task RunBackgroundLoop(IMcpServer server, CancellationToken cancellationToken = default)
+    {
+        var loggingLevels = Enum.GetValues<LoggingLevel>();
+
+        while (true)
         {
-            var loggingLevels = Enum.GetValues<LoggingLevel>();
-
-            // Run until process is stopped by the client (parent process)
-            while (true)
+            await Task.Delay(1000, cancellationToken);
+            try
             {
-                await Task.Delay(1000, cancellationToken);
-                try
+                // Send random log messages every few seconds
+                if (_minimumLoggingLevel is not null)
                 {
-                    // Send random log messages every few seconds
-                    if (_minimumLoggingLevel is not null)
+                    var logLevel = loggingLevels[Random.Shared.Next(loggingLevels.Length)];
+                    await server.SendMessageAsync(new JsonRpcNotification()
                     {
-                        var logLevel = loggingLevels[Random.Shared.Next(loggingLevels.Length)];
-                        await server.SendMessageAsync(new JsonRpcNotification()
+                        Method = NotificationMethods.LoggingMessageNotification,
+                        Params = new LoggingMessageNotificationParams
                         {
-                            Method = NotificationMethods.LoggingMessageNotification,
-                            Params = new LoggingMessageNotificationParams
-                            {
-                                Level = logLevel,
-                                Data = JsonSerializer.Deserialize<JsonElement>("\"Random log message\"")
-                            }
-                        }, cancellationToken);
-                    }
-
-                    // Snapshot the subscribed resources, rather than locking while sending notifications
-                    foreach (var resource in _subscribedResources)
-                    {
-                        ResourceUpdatedNotificationParams notificationParams = new() { Uri = resource.Key };
-                        await server.SendMessageAsync(new JsonRpcNotification()
-                        {
-                            Method = NotificationMethods.ResourceUpdatedNotification,
-                            Params = notificationParams
-                        }, cancellationToken);
-                    }
+                            Level = logLevel,
+                            Data = JsonSerializer.Deserialize<JsonElement>("\"Random log message\"")
+                        }
+                    }, cancellationToken);
                 }
-                catch (Exception ex)
+
+                // Snapshot the subscribed resources, rather than locking while sending notifications
+                foreach (var resource in _subscribedResources)
                 {
-                    Log.Logger.Error(ex, "Error sending log message");
-                    break;
+                    ResourceUpdatedNotificationParams notificationParams = new() { Uri = resource.Key };
+                    await server.SendMessageAsync(new JsonRpcNotification()
+                    {
+                        Method = NotificationMethods.ResourceUpdatedNotification,
+                        Params = notificationParams
+                    }, cancellationToken);
                 }
             }
-        });
+            catch (Exception ex)
+            {
+                Log.Logger.Error(ex, "Error sending log message");
+                break;
+            }
+        }
     }
 
     private static ToolsCapability ConfigureTools()

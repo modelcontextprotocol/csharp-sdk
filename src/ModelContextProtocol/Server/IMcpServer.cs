@@ -45,21 +45,21 @@ public interface IMcpServer : IAsyncDisposable
     /// <summary>
     /// Runs the server, listening for and handling client requests.
     /// </summary>
-    Task RunAsync(Func<CancellationToken, Task>? onInitialized = null, CancellationToken cancellationToken = default);
+    Task RunAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Sends a generic JSON-RPC request to the client.
-    /// NB! This is a temporary method that is available to send not yet implemented feature messages. 
+    /// NB! This is a temporary method that is available to send not yet implemented feature messages.
     /// Once all MCP features are implemented this will be made private, as it is purely a convenience for those who wish to implement features ahead of the library.
     /// </summary>
-    /// <typeparam name="T">The expected response type.</typeparam>
+    /// <typeparam name="TResult">The expected response type.</typeparam>
     /// <param name="request">The JSON-RPC request to send.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task containing the client's response.</returns>
-    Task<T> SendRequestAsync<T>(JsonRpcRequest request, CancellationToken cancellationToken) where T : class;
+    Task<TResult> SendRequestAsync<TResult>(JsonRpcRequest request, CancellationToken cancellationToken = default) where TResult : class;
 
     /// <summary>
-    /// Sends a message to the server.
+    /// Sends a message to the client.
     /// </summary>
     /// <param name="message">The message.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>

@@ -44,8 +44,7 @@ internal sealed class HttpListenerServerProvider : IAsyncDisposable
     public required Func<Stream, CancellationToken, Task> OnSseConnectionAsync { get; set; }
     public required Func<Stream, CancellationToken, Task<bool>> OnMessageAsync { get; set; }
 
-    /// <inheritdoc/>
-    public async Task StartAsync(CancellationToken cancellationToken = default)
+    public void Start()
     {
         if (Interlocked.CompareExchange(ref _state, StateRunning, StateNotStarted) != StateNotStarted)
         {
@@ -60,7 +59,7 @@ internal sealed class HttpListenerServerProvider : IAsyncDisposable
         {
             try
             {
-                using var cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdownTokenSource.Token, cancellationToken);
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdownTokenSource.Token);
                 cts.Token.Register(_listener.Stop);
                 while (!cts.IsCancellationRequested)
                 {
@@ -100,6 +99,7 @@ internal sealed class HttpListenerServerProvider : IAsyncDisposable
         await _shutdownTokenSource.CancelAsync().ConfigureAwait(false);
         _listener.Stop();
         await _listeningTask.ConfigureAwait(false);
+        await _completed.Task.ConfigureAwait(false);
     }
 
     /// <summary>Gets a <see cref="Task"/> that completes when the server has finished its work.</summary>
