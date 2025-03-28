@@ -9,7 +9,7 @@ namespace ModelContextProtocol.Protocol.Types;
 public class BlobResourceContents : ResourceContents
 {
     /// <summary>
-    /// The binary content of the resource.
+    /// The base64-encoded string representing the binary data of the item.
     /// </summary>
     [JsonPropertyName("blob")]
     public string Blob { get; set; } = default!;

@@ -9,7 +9,7 @@ namespace ModelContextProtocol.Protocol.Types;
 public class TextResourceContents : ResourceContents
 {
     /// <summary>
-    /// The text content of the resource.
+    /// The text of the item. This must only be set if the item can actually be represented as text (not binary data).
     /// </summary>
     [JsonPropertyName("text")]
     public string Text { get; set; } = string.Empty;
