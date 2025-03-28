@@ -26,7 +26,7 @@ public class McpServerResourceTests
             {
                 return Task.FromResult(new ReadResourceResult
                 {
-                    Contents = [new ResourceContents
+                    Contents = [new TextResourceContents
                     {
                         Uri = ctx.Params!.Uri!,
                         Text = "Static Resource",
@@ -61,7 +61,7 @@ public class McpServerResourceTests
             {
                 return Task.FromResult(new ReadResourceResult
                 {
-                    Contents = [new ResourceContents
+                    Contents = [new TextResourceContents
                     {
                         Uri = ctx.Params!.Uri!,
                         Text = "Static Resource",
@@ -85,7 +85,7 @@ public class McpServerResourceTests
             {
                 return Task.FromResult(new ReadResourceResult
                 {
-                    Contents = [new ResourceContents
+                    Contents = [new TextResourceContents
                     {
                         Uri = ctx.Params!.Uri!,
                         Text = "Static Resource",

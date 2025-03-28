@@ -384,7 +384,7 @@ public class McpServerTests : LoggedTest
                     {
                         return Task.FromResult(new ReadResourceResult
                         {
-                            Contents = [new() { Text = "test" }]
+                            Contents = [new TextResourceContents() { Text = "test" }]
                         });
                     },
                     ListResourcesHandler = (request, ct) => throw new NotImplementedException(),
@@ -399,7 +399,9 @@ public class McpServerTests : LoggedTest
                 var result = (ReadResourceResult)response;
                 Assert.NotNull(result.Contents);
                 Assert.NotEmpty(result.Contents);
-                Assert.Equal("test", result.Contents[0].Text);
+
+                TextResourceContents textResource = Assert.IsType<TextResourceContents>(result.Contents[0]);
+                Assert.Equal("test", textResource.Text);
             });
     }
 

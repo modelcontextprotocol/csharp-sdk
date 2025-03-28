@@ -39,11 +39,7 @@ public static class AIContentExtensions
         }
         else if (content is { Type: "resource" } && content.Resource is { } resourceContents)
         {
-            ac = resourceContents.Blob is not null && resourceContents.MimeType is not null ?
-                new DataContent(Convert.FromBase64String(resourceContents.Blob), resourceContents.MimeType) :
-                new TextContent(resourceContents.Text);
-
-            (ac.AdditionalProperties ??= [])["uri"] = resourceContents.Uri;
+            ac = resourceContents.ToAIContent();
         }
         else
         {
@@ -62,9 +58,12 @@ public static class AIContentExtensions
     {
         Throw.IfNull(content);
 
-        AIContent ac = content.Blob is not null && content.MimeType is not null ?
-            new DataContent(Convert.FromBase64String(content.Blob), content.MimeType) :
-            new TextContent(content.Text);
+        AIContent ac = content switch
+        {
+            BlobResourceContents blobResource => new DataContent(Convert.FromBase64String(blobResource.Blob), blobResource.MimeType ?? "application/octet-stream"),
+            TextResourceContents textResource => new TextContent(textResource.Text),
+            _ => throw new NotSupportedException($"Resource type '{content.GetType().Name}' is not supported.")
+        };
 
         (ac.AdditionalProperties ??= [])["uri"] = content.Uri;
         ac.RawRepresentation = content;
@@ -79,7 +78,7 @@ public static class AIContentExtensions
     {
         Throw.IfNull(contents);
 
-        return contents.Select(ToAIContent).ToList();
+        return [.. contents.Select(ToAIContent)];
     }
 
     /// <summary>Creates a list of <see cref="AIContent"/> from a sequence of <see cref="ResourceContents"/>.</summary>
@@ -89,7 +88,7 @@ public static class AIContentExtensions
     {
         Throw.IfNull(contents);
 
-        return contents.Select(ToAIContent).ToList();
+        return [.. contents.Select(ToAIContent)];
     }
 
     /// <summary>Extracts the data from a <see cref="DataContent"/> as a Base64 string.</summary>
