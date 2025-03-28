@@ -25,7 +25,7 @@ public sealed class StdioServerTransport : TransportBase, IServerTransport
     private readonly TextReader _stdInReader;
     private readonly Stream _stdOutStream;
 
-    private SemaphoreSlim _sendLock = new(1, 1);
+    private readonly SemaphoreSlim _sendLock = new(1, 1);
     private Task? _readTask;
     private CancellationTokenSource? _shutdownCts;
 

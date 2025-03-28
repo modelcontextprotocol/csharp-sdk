@@ -6,7 +6,6 @@ using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Shared;
 using ModelContextProtocol.Utils.Json;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Client;
@@ -126,11 +125,11 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
                 new JsonRpcRequest
                 {
                     Method = "initialize",
-                    Params = new
+                    Params = new InitializeRequestParams()
                     {
-                        protocolVersion = _options.ProtocolVersion,
-                        capabilities = _options.Capabilities ?? new ClientCapabilities(),
-                        clientInfo = _options.ClientInfo
+                        ProtocolVersion = _options.ProtocolVersion,
+                        Capabilities = _options.Capabilities ?? new ClientCapabilities(),
+                        ClientInfo = _options.ClientInfo
                     }
                 },
                 initializationCts.Token).ConfigureAwait(false);

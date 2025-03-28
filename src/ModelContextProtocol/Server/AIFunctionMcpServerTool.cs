@@ -21,13 +21,13 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
     /// </summary>
     public static new AIFunctionMcpServerTool Create(
         Delegate method,
-        string? name,
-        string? description,
-        IServiceProvider? services)
+        McpServerToolCreateOptions? options)
     {
         Throw.IfNull(method);
+        
+        options = DeriveOptions(method.Method, options);
 
-        return Create(method.Method, method.Target, name, description, services);
+        return Create(method.Method, method.Target, options);
     }
 
     /// <summary>
@@ -36,9 +36,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
     public static new AIFunctionMcpServerTool Create(
         MethodInfo method,
         object? target,
-        string? name,
-        string? description,
-        IServiceProvider? services)
+        McpServerToolCreateOptions? options)
     {
         Throw.IfNull(method);
 
@@ -49,7 +47,11 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
         // AIFunctionFactory, delete the TemporaryXx types, and fix-up the mechanism by
         // which the arguments are passed.
 
-        return Create(TemporaryAIFunctionFactory.Create(method, target, CreateAIFunctionFactoryOptions(method, name, description, services)));
+        options = DeriveOptions(method, options);
+
+        return Create(
+            TemporaryAIFunctionFactory.Create(method, target, CreateAIFunctionFactoryOptions(method, options)),
+            options);
     }
 
     /// <summary>
@@ -58,21 +60,23 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
     public static new AIFunctionMcpServerTool Create(
         MethodInfo method,
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type targetType,
-        string? name = null,
-        string? description = null,
-        IServiceProvider? services = null)
+        McpServerToolCreateOptions? options)
     {
         Throw.IfNull(method);
 
-        return Create(TemporaryAIFunctionFactory.Create(method, targetType, CreateAIFunctionFactoryOptions(method, name, description, services)));
+        options = DeriveOptions(method, options);
+
+        return Create(
+            TemporaryAIFunctionFactory.Create(method, targetType, CreateAIFunctionFactoryOptions(method, options)),
+            options);
     }
 
     private static TemporaryAIFunctionFactoryOptions CreateAIFunctionFactoryOptions(
-        MethodInfo method, string? name, string? description, IServiceProvider? services) =>
-        new TemporaryAIFunctionFactoryOptions()
+        MethodInfo method, McpServerToolCreateOptions? options) =>
+        new()
         {
-            Name = name ?? method.GetCustomAttribute<McpServerToolAttribute>()?.Name,
-            Description = description,
+            Name = options?.Name ?? method.GetCustomAttribute<McpServerToolAttribute>()?.Name,
+            Description = options?.Description,
             MarshalResult = static (result, _, cancellationToken) => Task.FromResult(result),
             ConfigureParameterBinding = pi =>
             {
@@ -97,7 +101,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
                 // We assume that if the services used to create the tool support a particular type,
                 // so too do the services associated with the server. This is the same basic assumption
                 // made in ASP.NET.
-                if (services is not null &&
+                if (options?.Services is { } services &&
                     services.GetService<IServiceProviderIsService>() is { } ispis &&
                     ispis.IsService(pi.ParameterType))
                 {
@@ -139,26 +143,80 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
         };
 
     /// <summary>Creates an <see cref="McpServerTool"/> that wraps the specified <see cref="AIFunction"/>.</summary>
-    public static new AIFunctionMcpServerTool Create(AIFunction function)
+    public static new AIFunctionMcpServerTool Create(AIFunction function, McpServerToolCreateOptions? options)
     {
         Throw.IfNull(function);
 
-        return new AIFunctionMcpServerTool(function);
+        Tool tool = new()
+        {
+            Name = options?.Name ?? function.Name,
+            Description = options?.Description ?? function.Description,
+            InputSchema = function.JsonSchema,     
+        };
+
+        if (options is not null)
+        {
+            if (options.Title is not null ||
+                options.Idempotent is not null ||
+                options.Destructive is not null ||
+                options.OpenWorld is not null ||
+                options.ReadOnly is not null)
+            {
+                tool.Annotations = new()
+                {
+                    Title = options?.Title,
+                    IdempotentHint = options?.Idempotent,
+                    DestructiveHint = options?.Destructive,
+                    OpenWorldHint = options?.OpenWorld,
+                    ReadOnlyHint = options?.ReadOnly,
+                };
+            }
+        }
+
+        return new AIFunctionMcpServerTool(function, tool);
+    }
+
+    private static McpServerToolCreateOptions? DeriveOptions(MethodInfo method, McpServerToolCreateOptions? options)
+    {
+        McpServerToolCreateOptions newOptions = options?.Clone() ?? new();
+
+        if (method.GetCustomAttribute<McpServerToolAttribute>() is { } attr)
+        {
+            newOptions.Name ??= attr.Name;
+            newOptions.Title ??= attr.Title;
+
+            if (attr._destructive is bool destructive)
+            {
+                newOptions.Destructive ??= destructive;
+            }
+
+            if (attr._idempotent is bool idempotent)
+            {
+                newOptions.Idempotent ??= idempotent;
+            }
+
+            if (attr._openWorld is bool openWorld)
+            {
+                newOptions.OpenWorld ??= openWorld;
+            }
+
+            if (attr._readOnly is bool readOnly)
+            {
+                newOptions.ReadOnly ??= readOnly;
+            }
+        }
+
+        return newOptions;
     }
 
     /// <summary>Gets the <see cref="AIFunction"/> wrapped by this tool.</summary>
     internal AIFunction AIFunction { get; }
 
     /// <summary>Initializes a new instance of the <see cref="McpServerTool"/> class.</summary>
-    private AIFunctionMcpServerTool(AIFunction function)
+    private AIFunctionMcpServerTool(AIFunction function, Tool tool)
     {
         AIFunction = function;
-        ProtocolTool = new()
-        {
-            Name = function.Name,
-            Description = function.Description,
-            InputSchema = function.JsonSchema,
-        };
+        ProtocolTool = tool;
     }
 
     /// <inheritdoc />
@@ -201,30 +259,37 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             {
                 Content = [aiContent.ToContent()]
             },
+
             null => new()
             {
                 Content = []
             },
+            
             string text => new()
             {
                 Content = [new() { Text = text, Type = "text" }]
             },
+            
             Content content => new()
             {
                 Content = [content]
             },
+            
             IEnumerable<string> texts => new()
             {
                 Content = [.. texts.Select(x => new Content() { Type = "text", Text = x ?? string.Empty })]
             },
+            
             IEnumerable<AIContent> contentItems => new()
             {
                 Content = [.. contentItems.Select(static item => item.ToContent())]
             },
+            
             IEnumerable<Content> contents => new()
             {
                 Content = [.. contents]
             },
+            
             CallToolResponse callToolResponse => callToolResponse,
 
             // TODO https://github.com/modelcontextprotocol/csharp-sdk/issues/69:
@@ -232,10 +297,10 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             _ => new()
             {
                 Content = [new()
-                    {
-                        Text = JsonSerializer.Serialize(result, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(object))),
-                        Type = "text"
-                    }]
+                {
+                    Text = JsonSerializer.Serialize(result, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(object))),
+                    Type = "text"
+                }]
             },
         };
     }

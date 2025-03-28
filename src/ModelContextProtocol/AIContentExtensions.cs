@@ -33,7 +33,7 @@ public static class AIContentExtensions
         Throw.IfNull(content);
 
         AIContent ac;
-        if (content is { Type: "image", MimeType: not null, Data: not null })
+        if (content is { Type: "image" or "audio", MimeType: not null, Data: not null })
         {
             ac = new DataContent(Convert.FromBase64String(content.Data), content.MimeType);
         }
@@ -112,6 +112,7 @@ public static class AIContentExtensions
                 Text = textContent.Text,
                 Type = "text",
             },
+
             DataContent dataContent => new()
             {
                 Data = dataContent.GetBase64Data(),
@@ -121,6 +122,7 @@ public static class AIContentExtensions
                     dataContent.HasTopLevelMediaType("audio") ? "audio" :
                     "resource",
             },
+            
             _ => new()
             {
                 Text = JsonSerializer.Serialize(content, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(object))),

@@ -4,6 +4,7 @@ using System.Text.Json;
 using ModelContextProtocol.Protocol.Messages;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using ModelContextProtocol.Protocol.Types;
 
 namespace ModelContextProtocol.Tests.Utils;
 
@@ -288,19 +289,14 @@ public sealed class InMemoryTestSseServer : IAsyncDisposable
         var jsonRpcResponse = new JsonRpcResponse()
         {
             Id = jsonRpcRequest.Id,
-            Result = new
+            Result = new InitializeResult()
             {
-                protocolVersion = "2024-11-05",
-                capabilities = new
+                ProtocolVersion = "2024-11-05",
+                Capabilities = new(),
+                ServerInfo = new()
                 {
-                    experimental = (object?)null,
-                    roots = (object?)null,
-                    sampling = (object?)null
-                },
-                serverInfo = new
-                {
-                    name = "ExampleServer",
-                    version = "1.0.0"
+                    Name = "ExampleServer",
+                    Version = "1.0.0"
                 }
             }
         };
