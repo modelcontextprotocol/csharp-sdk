@@ -39,4 +39,10 @@ public class Content
     /// </summary>
     [JsonPropertyName("resource")]
     public ResourceContents? Resource { get; set; }
+
+    /// <summary>
+    /// Optional annotations for the content.
+    /// </summary>
+    [JsonPropertyName("annotations")]
+    public Annotations? Annotations { get; init; }
 }

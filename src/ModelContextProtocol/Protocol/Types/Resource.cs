@@ -6,7 +6,7 @@ namespace ModelContextProtocol.Protocol.Types;
 /// Represents a known resource that the server is capable of reading.
 /// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
 /// </summary>
-public record Resource : Annotated
+public record Resource
 {
     /// <summary>
     /// The URI of this resource.
@@ -31,4 +31,10 @@ public record Resource : Annotated
     /// </summary>
     [JsonPropertyName("mimeType")]
     public string? MimeType { get; init; }
+
+    /// <summary>
+    /// Optional annotations for the resource.
+    /// </summary>
+    [JsonPropertyName("annotations")]
+    public Annotations? Annotations { get; init; }
 }
