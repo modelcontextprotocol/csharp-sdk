@@ -44,7 +44,7 @@ var client = await McpClientFactory.CreateAsync(new()
 });
 
 // Print the list of tools available from the server.
-await foreach (var tool in client.ListToolsAsync())
+foreach (var tool in await client.ListToolsAsync())
 {
     Console.WriteLine($"{tool.Name} ({tool.Description})");
 }
