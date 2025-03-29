@@ -1,6 +1,7 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
@@ -61,29 +62,39 @@ public class McpClientExtensionsTests : LoggedTest
                 }
             ],
             Temperature = temperature,
-            MaxTokens = maxTokens
+            MaxTokens = maxTokens,
+            Meta = new RequestParamsMetadata
+            {
+                ProgressToken = new ProgressToken(),
+            }
         };
 
         var cancellationToken = CancellationToken.None;
-        var expectedResponse = new ChatResponse
-        {
-            Messages = { new ChatMessage { Role = ChatRole.Assistant, Contents = { new TextContent("Hi there!") } } },
-            ModelId = "test-model",
-            FinishReason = ChatFinishReason.Stop
-        };
+        var expectedResponse = new[] {
+            new ChatResponseUpdate
+            {
+                ModelId = "test-model",
+                FinishReason = ChatFinishReason.Stop,
+                Role = ChatRole.Assistant,
+                Contents =
+                [
+                    new TextContent("Hello, World!") { RawRepresentation = "Hello, World!" }
+                ]
+            }
+        }.ToAsyncEnumerable();
 
         mockChatClient
-            .Setup(client => client.GetResponseAsync(It.IsAny<IList<ChatMessage>>(), It.IsAny<ChatOptions>(), cancellationToken))
-            .ReturnsAsync(expectedResponse);
+            .Setup(client => client.GetStreamingResponseAsync(It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<ChatOptions>(), cancellationToken))
+            .Returns(expectedResponse);
 
         var handler = McpClientExtensions.CreateSamplingHandler(mockChatClient.Object);
 
         // Act
-        var result = await handler(requestParams, cancellationToken);
+        var result = await handler(requestParams, Mock.Of<IProgress<ProgressNotificationValue>>(), cancellationToken);
 
         // Assert
         Assert.NotNull(result);
-        Assert.Equal("Hi there!", result.Content.Text);
+        Assert.Equal("Hello, World!", result.Content.Text);
         Assert.Equal("test-model", result.Model);
         Assert.Equal("assistant", result.Role);
         Assert.Equal("endTurn", result.StopReason);
@@ -96,42 +107,49 @@ public class McpClientExtensionsTests : LoggedTest
         var mockChatClient = new Mock<IChatClient>();
         var requestParams = new CreateMessageRequestParams
         {
-            Messages = new[]
-            {
-            new SamplingMessage
-            {
-                Role = Role.User,
-                Content = new Content
+            Messages =
+            [
+                new SamplingMessage
                 {
-                    Type = "image",
-                    MimeType = "image/png",
-                    Data = Convert.ToBase64String(new byte[] { 1, 2, 3 })
+                    Role = Role.User,
+                    Content = new Content
+                    {
+                        Type = "image",
+                        MimeType = "image/png",
+                        Data = Convert.ToBase64String(new byte[] { 1, 2, 3 })
+                    }
                 }
-            }
-        },
+            ],
             MaxTokens = 100
         };
-        var cancellationToken = CancellationToken.None;
 
-        var expectedResponse = new ChatResponse
-        {
-            Messages = { new ChatMessage { Role = ChatRole.Assistant, Contents = new[] { new TextContent("Image received!") } } },
-            ModelId = "test-model",
-            FinishReason = ChatFinishReason.Stop
-        };
+        const string expectedData = "SGVsbG8sIFdvcmxkIQ==";
+        var cancellationToken = CancellationToken.None;
+        var expectedResponse = new[] {
+            new ChatResponseUpdate
+            {
+                ModelId = "test-model",
+                FinishReason = ChatFinishReason.Stop,
+                Role = ChatRole.Assistant,
+                Contents =
+                [
+                    new DataContent($"data:image/png;base64,{expectedData}") { RawRepresentation = "Hello, World!" }
+                ]
+            }
+        }.ToAsyncEnumerable();
 
         mockChatClient
-            .Setup(client => client.GetResponseAsync(It.IsAny<IList<ChatMessage>>(), It.IsAny<ChatOptions>(), cancellationToken))
-            .ReturnsAsync(expectedResponse);
+            .Setup(client => client.GetStreamingResponseAsync(It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<ChatOptions>(), cancellationToken))
+            .Returns(expectedResponse);
 
         var handler = McpClientExtensions.CreateSamplingHandler(mockChatClient.Object);
 
         // Act
-        var result = await handler(requestParams, cancellationToken);
+        var result = await handler(requestParams, Mock.Of<IProgress<ProgressNotificationValue>>(), cancellationToken);
 
         // Assert
         Assert.NotNull(result);
-        Assert.Equal("Image received!", result.Content.Text);
+        Assert.Equal(expectedData, result.Content.Data);
         Assert.Equal("test-model", result.Model);
         Assert.Equal("assistant", result.Role);
         Assert.Equal("endTurn", result.StopReason);
@@ -141,55 +159,65 @@ public class McpClientExtensionsTests : LoggedTest
     public async Task CreateSamplingHandler_ShouldHandleResourceMessages()
     {
         // Arrange
+        const string data = "SGVsbG8sIFdvcmxkIQ==";
+        string content = $"data:application/octet-stream;base64,{data}";
         var mockChatClient = new Mock<IChatClient>();
+        var resource = new BlobResourceContents
+        {
+            Blob = data,
+            MimeType = "application/octet-stream",
+            Uri = "data:application/octet-stream"
+        };
+
         var requestParams = new CreateMessageRequestParams
         {
-            Messages = new[]
-            {
-            new SamplingMessage
-            {
-                Role = Role.User,
-                Content = new Content
+            Messages =
+            [
+                new SamplingMessage
                 {
-                    Type = "resource",
-                    Resource = new ResourceContents
+                    Role = Role.User,
+                    Content = new Content
                     {
-                        Text = "Resource text",
-                        Blob = Convert.ToBase64String(new byte[] { 4, 5, 6 }),
-                        MimeType = "application/octet-stream"
-                    }
+                        Type = "resource",
+                        Resource = resource
+                    },
                 }
-            }
-        },
+            ],
             MaxTokens = 100
         };
-        var cancellationToken = CancellationToken.None;
 
-        var expectedResponse = new ChatResponse
-        {
-            Messages = { new ChatMessage { Role = ChatRole.Assistant, Contents = new[] { new TextContent("Resource processed!") } } },
-            ModelId = "test-model",
-            FinishReason = ChatFinishReason.Stop
-        };
+        var cancellationToken = CancellationToken.None;
+        var expectedResponse = new[] {
+            new ChatResponseUpdate
+            {
+                ModelId = "test-model",
+                FinishReason = ChatFinishReason.Stop,
+                AuthorName = "bot",
+                Role = ChatRole.Assistant,
+                Contents =
+                [
+                    resource.ToAIContent()
+                ]
+            }
+        }.ToAsyncEnumerable();
 
         mockChatClient
-            .Setup(client => client.GetResponseAsync(It.IsAny<IList<ChatMessage>>(), It.IsAny<ChatOptions>(), cancellationToken))
-            .ReturnsAsync(expectedResponse);
+            .Setup(client => client.GetStreamingResponseAsync(It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<ChatOptions>(), cancellationToken))
+            .Returns(expectedResponse);
 
         var handler = McpClientExtensions.CreateSamplingHandler(mockChatClient.Object);
 
         // Act
-        var result = await handler(requestParams, cancellationToken);
+        var result = await handler(requestParams, Mock.Of<IProgress<ProgressNotificationValue>>(), cancellationToken);
 
         // Assert
         Assert.NotNull(result);
-        Assert.Equal("Resource processed!", result.Content.Text);
         Assert.Equal("test-model", result.Model);
-        Assert.Equal("assistant", result.Role);
+        Assert.Equal(ChatRole.Assistant.ToString(), result.Role);
         Assert.Equal("endTurn", result.StopReason);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         await _cts.CancelAsync();
 
