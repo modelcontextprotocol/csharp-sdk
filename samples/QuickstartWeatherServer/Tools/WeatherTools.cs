@@ -5,7 +5,7 @@ using System.Text.Json;
 
 namespace QuickstartWeatherServer.Tools;
 
-[McpServerToolType]
+[McpServerType]
 public static class WeatherTools
 {
     [McpServerTool, Description("Get weather alerts for a US state.")]

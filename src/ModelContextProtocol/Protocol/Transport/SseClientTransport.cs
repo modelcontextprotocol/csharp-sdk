@@ -2,7 +2,6 @@
 using System.Net.ServerSentEvents;
 using System.Text;
 using System.Text.Json;
-using ModelContextProtocol.Configuration;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Utils;

@@ -1,5 +1,4 @@
-﻿using ModelContextProtocol.Configuration;
-using ModelContextProtocol.Protocol.Transport;
+﻿using ModelContextProtocol.Protocol.Transport;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 

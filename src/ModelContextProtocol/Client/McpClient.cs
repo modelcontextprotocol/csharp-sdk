@@ -1,5 +1,4 @@
-﻿using ModelContextProtocol.Configuration;
-using ModelContextProtocol.Logging;
+﻿using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;

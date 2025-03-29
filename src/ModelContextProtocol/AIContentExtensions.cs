@@ -25,6 +25,37 @@ public static class AIContentExtensions
         };
     }
 
+    /// <summary>Creates <see cref="ChatMessage"/>s from a <see cref="GetPromptResult"/>.</summary>
+    /// <param name="promptResult">The messages to convert.</param>
+    /// <returns>The created <see cref="ChatMessage"/>.</returns>
+    public static IList<ChatMessage> ToChatMessages(this GetPromptResult promptResult)
+    {
+        Throw.IfNull(promptResult);
+
+        return promptResult.Messages.Select(m => m.ToChatMessage()).ToList();
+    }
+
+    /// <summary>Gets <see cref="PromptMessage"/> instances for the specified <see cref="ChatMessage"/>.</summary>
+    /// <param name="chatMessage">The message for which to extract its contents as <see cref="PromptMessage"/> instances.</param>
+    /// <returns>The converted content.</returns>
+    public static IList<PromptMessage> ToPromptMessages(this ChatMessage chatMessage)
+    {
+        Throw.IfNull(chatMessage);
+
+        Role r = chatMessage.Role == ChatRole.User ? Role.User : Role.Assistant;
+
+        List<PromptMessage> messages = [];
+        foreach (var content in chatMessage.Contents)
+        {
+            if (content is TextContent or DataContent)
+            {
+                messages.Add(new PromptMessage { Role = r, Content = content.ToContent() });
+            }
+        }
+
+        return messages;
+    }
+
     /// <summary>Creates a new <see cref="AIContent"/> from the content of a <see cref="Content"/>.</summary>
     /// <param name="content">The <see cref="Content"/> to convert.</param>
     /// <returns>The created <see cref="AIContent"/>.</returns>

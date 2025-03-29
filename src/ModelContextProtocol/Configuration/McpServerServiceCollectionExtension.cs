@@ -1,11 +1,9 @@
-﻿using ModelContextProtocol.Configuration;
-using ModelContextProtocol.Protocol.Transport;
+﻿using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Server;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace ModelContextProtocol;
+namespace Microsoft.Extensions.DependencyInjection;
 
 /// <summary>
 /// Extension to host the MCP server

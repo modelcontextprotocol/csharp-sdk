@@ -19,7 +19,7 @@ public sealed class McpServerToolAttribute : Attribute
     internal bool? _readOnly;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="McpServerToolTypeAttribute"/> class.
+    /// Initializes a new instance of the <see cref="McpServerTypeAttribute"/> class.
     /// </summary>
     public McpServerToolAttribute()
     {

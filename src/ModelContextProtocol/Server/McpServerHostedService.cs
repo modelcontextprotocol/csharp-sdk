@@ -1,13 +1,12 @@
-﻿using ModelContextProtocol.Server;
-using ModelContextProtocol.Utils;
+﻿using ModelContextProtocol.Utils;
 using Microsoft.Extensions.Hosting;
 
-namespace ModelContextProtocol.Hosting;
+namespace ModelContextProtocol.Server;
 
 /// <summary>
 /// Hosted service for the MCP server.
 /// </summary>
-public class McpServerHostedService : BackgroundService
+public sealed class McpServerHostedService : BackgroundService
 {
     private readonly IMcpServer _server;
 

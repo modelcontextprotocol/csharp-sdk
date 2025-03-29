@@ -5,7 +5,6 @@ using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol.Transport;
 using System.IO.Pipelines;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Configuration;
 using ModelContextProtocol.Tests.Transport;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.AI;
@@ -345,16 +344,16 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         Assert.Contains("'NotRegisteredTool'", e.Message);
     }
 
-    [Fact(Skip = "https://github.com/dotnet/extensions/issues/6124")]
-    public async Task Throws_Exception_Missing_Parameter()
+    [Fact]
+    public async Task Returns_IsError_Missing_Parameter()
     {
         IMcpClient client = await CreateMcpClientForServer();
 
-        var e = await Assert.ThrowsAsync<McpClientException>(async () => await client.CallToolAsync(
+        var result = await client.CallToolAsync(
             "Echo",
-            cancellationToken: TestContext.Current.CancellationToken));
+            cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal("Missing required argument 'message'.", e.Message);
+        Assert.True(result.IsError);
     }
 
     [Fact]
@@ -459,7 +458,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         Assert.Null(annotations.ReadOnlyHint);
     }
 
-    [McpServerToolType]
+    [McpServerType]
     public sealed class EchoTool(ObjectWithId objectFromDI)
     {
         private readonly string _randomValue = Guid.NewGuid().ToString("N");
@@ -528,7 +527,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         public string GetCtorParameter() => $"{_randomValue}:{objectFromDI.Id}";
     }
 
-    [McpServerToolType]
+    [McpServerType]
     internal class AnotherToolType
     {
         [McpServerTool(Name = "DifferentName")]

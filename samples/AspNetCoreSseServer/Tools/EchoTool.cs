@@ -3,7 +3,7 @@ using System.ComponentModel;
 
 namespace TestServerWithHosting.Tools;
 
-[McpServerToolType]
+[McpServerType]
 public static class EchoTool
 {
     [McpServerTool, Description("Echoes the input back to the client.")]
