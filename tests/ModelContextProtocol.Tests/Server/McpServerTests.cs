@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.AI;
+﻿using System.Reflection;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
@@ -8,7 +9,6 @@ using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using Moq;
-using System.Reflection;
 
 namespace ModelContextProtocol.Tests.Server;
 
@@ -132,9 +132,9 @@ public class McpServerTests : LoggedTest
 
         // Send initialized notification
         await transport.SendMessageAsync(new JsonRpcNotification
-            {
-                Method = "notifications/initialized"
-            }, TestContext.Current.CancellationToken);
+        {
+            Method = "notifications/initialized"
+        }, TestContext.Current.CancellationToken);
 
         await Task.Delay(50, TestContext.Current.CancellationToken);
 
@@ -389,7 +389,7 @@ public class McpServerTests : LoggedTest
                     },
                     ListResourcesHandler = (request, ct) => throw new NotImplementedException(),
                 }
-            }, 
+            },
             method: "resources/read",
             configureOptions: null,
             assertResult: response =>
@@ -450,7 +450,7 @@ public class McpServerTests : LoggedTest
     public async Task Can_Handle_Get_Prompts_Requests()
     {
         await Can_Handle_Requests(
-            new ServerCapabilities 
+            new ServerCapabilities
             {
                 Prompts = new()
                 {
@@ -479,7 +479,7 @@ public class McpServerTests : LoggedTest
     public async Task Can_Handle_List_Tools_Requests()
     {
         await Can_Handle_Requests(
-            new ServerCapabilities 
+            new ServerCapabilities
             {
                 Tools = new()
                 {
@@ -528,7 +528,7 @@ public class McpServerTests : LoggedTest
                     },
                     ListToolsHandler = (request, ct) => throw new NotImplementedException(),
                 }
-            }, 
+            },
             method: "tools/call",
             configureOptions: null,
             assertResult: response =>
@@ -559,10 +559,12 @@ public class McpServerTests : LoggedTest
 
         var receivedMessage = new TaskCompletionSource<JsonRpcResponse>();
 
-        transport.OnMessageSent = (message) =>
+        transport.HandleMessage = (message, _) =>
         {
             if (message is JsonRpcResponse response && response.Id.AsNumber == 55)
                 receivedMessage.SetResult(response);
+
+            return Task.FromResult((IJsonRpcMessage?)message);
         };
 
         await transport.SendMessageAsync(
@@ -582,7 +584,7 @@ public class McpServerTests : LoggedTest
 
     private async Task Throws_Exception_If_No_Handler_Assigned(ServerCapabilities serverCapabilities, string method, string expectedError)
     {
-        await using var transport = new TestServerTransport();
+        await using var transport = new InMemoryServerTransport();
         var options = CreateOptions(serverCapabilities);
 
         Assert.Throws<McpServerException>(() => McpServerFactory.Create(transport, options, LoggerFactory, _serviceProvider));
@@ -680,7 +682,7 @@ public class McpServerTests : LoggedTest
         public Implementation? ClientInfo => throw new NotImplementedException();
         public McpServerOptions ServerOptions => throw new NotImplementedException();
         public IServiceProvider? Services => throw new NotImplementedException();
-        public void AddNotificationHandler(string method, Func<JsonRpcNotification, Task> handler) => 
+        public void AddNotificationHandler(string method, Func<JsonRpcNotification, Task> handler) =>
             throw new NotImplementedException();
         public Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
