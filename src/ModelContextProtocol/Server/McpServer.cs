@@ -72,7 +72,7 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
 
         _toolsChangedDelegate = delegate
         {
-            _ = _session?.SendMessageAsync(new JsonRpcNotification()
+            _ = SendMessageAsync(new JsonRpcNotification()
             {
                 Method = NotificationMethods.ToolListChangedNotification,
             });
@@ -141,9 +141,6 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
     /// <inheritdoc />
     public async Task RunAsync(CancellationToken cancellationToken = default)
     {
-        // Below is effectively an assertion. The McpServerFactory should not return before the _transport is initialized.
-        Throw.IfNull(_session);
-
         try
         {
             // Start processing messages

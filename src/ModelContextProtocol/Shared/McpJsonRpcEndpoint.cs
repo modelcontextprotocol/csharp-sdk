@@ -19,12 +19,12 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
     private readonly RequestHandlers _requestHandlers = [];
     private readonly NotificationHandlers _notificationHandlers = [];
 
+    private McpSession? _session;
     private CancellationTokenSource? _sessionCts;
     private int _started;
     private int _disposed;
 
     protected readonly ILogger _logger;
-    protected McpSession? _session;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="McpJsonRpcEndpoint"/> class.
