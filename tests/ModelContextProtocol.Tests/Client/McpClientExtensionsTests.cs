@@ -1,9 +1,12 @@
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Configuration;
 using ModelContextProtocol.Protocol.Transport;
+using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Transport;
+using Moq;
 using System.IO.Pipelines;
 
 namespace ModelContextProtocol.Tests.Client;
@@ -27,6 +30,153 @@ public class McpClientExtensionsTests
         sc.AddSingleton(McpServerTool.Create([McpServerTool(Destructive = false, OpenWorld = true)](string i) => $"{i} Result", new() { Name = "ValuesSetViaAttr" }));
         sc.AddSingleton(McpServerTool.Create([McpServerTool(Destructive = false, OpenWorld = true)](string i) => $"{i} Result", new() { Name = "ValuesSetViaOptions", Destructive = true, OpenWorld = false, ReadOnly = true }));
         _server = sc.BuildServiceProvider().GetRequiredService<IMcpServer>();
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData(0.7f, 50)]
+    [InlineData(1.0f, 100)]
+    public async Task CreateSamplingHandler_ShouldHandleTextMessages(float? temperature, int? maxTokens)
+    {
+        // Arrange
+        var mockChatClient = new Mock<IChatClient>();
+        var requestParams = new CreateMessageRequestParams
+        {
+            Messages =
+            [
+                new SamplingMessage
+                {
+                    Role = Role.User,
+                    Content = new Content { Type = "text", Text = "Hello" }
+                }
+            ],
+            Temperature = temperature,
+            MaxTokens = maxTokens
+        };
+
+        var cancellationToken = CancellationToken.None;
+        var expectedResponse = new ChatResponse
+        {
+            Messages = { new ChatMessage { Role = ChatRole.Assistant, Contents = { new TextContent("Hi there!") } } },
+            ModelId = "test-model",
+            FinishReason = ChatFinishReason.Stop
+        };
+
+        mockChatClient
+            .Setup(client => client.GetResponseAsync(It.IsAny<IList<ChatMessage>>(), It.IsAny<ChatOptions>(), cancellationToken))
+            .ReturnsAsync(expectedResponse);
+
+        var handler = McpClientExtensions.CreateSamplingHandler(mockChatClient.Object);
+
+        // Act
+        var result = await handler(requestParams, cancellationToken);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal("Hi there!", result.Content.Text);
+        Assert.Equal("test-model", result.Model);
+        Assert.Equal("assistant", result.Role);
+        Assert.Equal("endTurn", result.StopReason);
+    }
+
+    [Fact]
+    public async Task CreateSamplingHandler_ShouldHandleImageMessages()
+    {
+        // Arrange
+        var mockChatClient = new Mock<IChatClient>();
+        var requestParams = new CreateMessageRequestParams
+        {
+            Messages = new[]
+            {
+            new SamplingMessage
+            {
+                Role = Role.User,
+                Content = new Content
+                {
+                    Type = "image",
+                    MimeType = "image/png",
+                    Data = Convert.ToBase64String(new byte[] { 1, 2, 3 })
+                }
+            }
+        },
+            MaxTokens = 100
+        };
+        var cancellationToken = CancellationToken.None;
+
+        var expectedResponse = new ChatResponse
+        {
+            Messages = { new ChatMessage { Role = ChatRole.Assistant, Contents = new[] { new TextContent("Image received!") } } },
+            ModelId = "test-model",
+            FinishReason = ChatFinishReason.Stop
+        };
+
+        mockChatClient
+            .Setup(client => client.GetResponseAsync(It.IsAny<IList<ChatMessage>>(), It.IsAny<ChatOptions>(), cancellationToken))
+            .ReturnsAsync(expectedResponse);
+
+        var handler = McpClientExtensions.CreateSamplingHandler(mockChatClient.Object);
+
+        // Act
+        var result = await handler(requestParams, cancellationToken);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal("Image received!", result.Content.Text);
+        Assert.Equal("test-model", result.Model);
+        Assert.Equal("assistant", result.Role);
+        Assert.Equal("endTurn", result.StopReason);
+    }
+
+    [Fact]
+    public async Task CreateSamplingHandler_ShouldHandleResourceMessages()
+    {
+        // Arrange
+        var mockChatClient = new Mock<IChatClient>();
+        var requestParams = new CreateMessageRequestParams
+        {
+            Messages = new[]
+            {
+            new SamplingMessage
+            {
+                Role = Role.User,
+                Content = new Content
+                {
+                    Type = "resource",
+                    Resource = new ResourceContents
+                    {
+                        Text = "Resource text",
+                        Blob = Convert.ToBase64String(new byte[] { 4, 5, 6 }),
+                        MimeType = "application/octet-stream"
+                    }
+                }
+            }
+        },
+            MaxTokens = 100
+        };
+        var cancellationToken = CancellationToken.None;
+
+        var expectedResponse = new ChatResponse
+        {
+            Messages = { new ChatMessage { Role = ChatRole.Assistant, Contents = new[] { new TextContent("Resource processed!") } } },
+            ModelId = "test-model",
+            FinishReason = ChatFinishReason.Stop
+        };
+
+        mockChatClient
+            .Setup(client => client.GetResponseAsync(It.IsAny<IList<ChatMessage>>(), It.IsAny<ChatOptions>(), cancellationToken))
+            .ReturnsAsync(expectedResponse);
+
+        var handler = McpClientExtensions.CreateSamplingHandler(mockChatClient.Object);
+
+        // Act
+        var result = await handler(requestParams, cancellationToken);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal("Resource processed!", result.Content.Text);
+        Assert.Equal("test-model", result.Model);
+        Assert.Equal("assistant", result.Role);
+        Assert.Equal("endTurn", result.StopReason);
     }
 
     public ValueTask DisposeAsync()
