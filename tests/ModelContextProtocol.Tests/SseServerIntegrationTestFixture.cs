@@ -3,6 +3,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Configuration;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Test.Utils;
+using ModelContextProtocol.Tests.Utils;
 using ModelContextProtocol.TestSseServer;
 
 namespace ModelContextProtocol.Tests;
@@ -47,6 +48,11 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
         _delegatingTestOutputHelper.CurrentTestOutputHelper = output;
     }
 
+    public void TestCompleted()
+    {
+        _delegatingTestOutputHelper.CurrentTestOutputHelper = null;
+    }
+
     public async ValueTask DisposeAsync()
     {
         _delegatingTestOutputHelper.CurrentTestOutputHelper = null;
@@ -60,17 +66,5 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
         }
         _redirectingLoggerFactory.Dispose();
         _stopCts.Dispose();
-    }
-
-    private class DelegatingTestOutputHelper() : ITestOutputHelper
-    {
-        public ITestOutputHelper? CurrentTestOutputHelper { get; set; }
-
-        public string Output => CurrentTestOutputHelper?.Output ?? string.Empty;
-
-        public void Write(string message) => CurrentTestOutputHelper?.Write(message);
-        public void Write(string format, params object[] args) => CurrentTestOutputHelper?.Write(format, args);
-        public void WriteLine(string message) => CurrentTestOutputHelper?.WriteLine(message);
-        public void WriteLine(string format, params object[] args) => CurrentTestOutputHelper?.WriteLine(format, args);
     }
 }

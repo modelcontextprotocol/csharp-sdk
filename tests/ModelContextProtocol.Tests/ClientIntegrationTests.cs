@@ -39,7 +39,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
 
         // Act
         await using var client = await _fixture.CreateClientAsync(clientId);
-        await client.PingAsync(CancellationToken.None);
+        await client.PingAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(client);
@@ -89,7 +89,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
             {
                 ["message"] = "Hello MCP!"
             },
-            CancellationToken.None
+            TestContext.Current.CancellationToken
         );
 
         // assert
@@ -141,7 +141,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
 
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
-        var result = await client.GetPromptAsync("simple_prompt", null, CancellationToken.None);
+        var result = await client.GetPromptAsync("simple_prompt", null, TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(result);
@@ -161,7 +161,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
             { "temperature", "0.7" },
             { "style", "formal" }
         };
-        var result = await client.GetPromptAsync("complex_prompt", arguments, CancellationToken.None);
+        var result = await client.GetPromptAsync("complex_prompt", arguments, TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(result);
@@ -177,7 +177,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
         await Assert.ThrowsAsync<McpClientException>(() =>
-            client.GetPromptAsync("non_existent_prompt", null, CancellationToken.None));
+            client.GetPromptAsync("non_existent_prompt", null, TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -220,7 +220,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         await using var client = await _fixture.CreateClientAsync(clientId);
         // Odd numbered resources are text in the everything server (despite the docs saying otherwise)
         // 1 is index 0, which is "even" in the 0-based index
-        var result = await client.ReadResourceAsync("test://static/resource/1", CancellationToken.None);
+        var result = await client.ReadResourceAsync("test://static/resource/1", TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
         Assert.Single(result.Contents);
@@ -237,7 +237,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         await using var client = await _fixture.CreateClientAsync(clientId);
         // Even numbered resources are binary in the everything server (despite the docs saying otherwise)
         // 2 is index 1, which is "odd" in the 0-based index
-        var result = await client.ReadResourceAsync("test://static/resource/2", CancellationToken.None);
+        var result = await client.ReadResourceAsync("test://static/resource/2", TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
         Assert.Single(result.Contents);
@@ -260,7 +260,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
             tcs.TrySetResult(true);
             return Task.CompletedTask;
         });
-        await client.SubscribeToResourceAsync("test://static/resource/1", CancellationToken.None);
+        await client.SubscribeToResourceAsync("test://static/resource/1", TestContext.Current.CancellationToken);
 
         await tcs.Task;
     }
@@ -281,13 +281,13 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
             receivedNotification.TrySetResult(true);
             return Task.CompletedTask;
         });
-        await client.SubscribeToResourceAsync("test://static/resource/1", CancellationToken.None);
+        await client.SubscribeToResourceAsync("test://static/resource/1", TestContext.Current.CancellationToken);
 
         // wait until we received a notification
         await receivedNotification.Task;
 
         // unsubscribe
-        await client.UnsubscribeFromResourceAsync("test://static/resource/1", CancellationToken.None);
+        await client.UnsubscribeFromResourceAsync("test://static/resource/1", TestContext.Current.CancellationToken);
         receivedNotification = new();
 
         // wait a bit to validate we don't receive another. this is best effort only;
@@ -309,7 +309,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
             Uri = "test://static/resource/1"
         },
             "argument_name", "1",
-            CancellationToken.None
+            TestContext.Current.CancellationToken
         );
 
         Assert.NotNull(result);
@@ -331,7 +331,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
             Name = "irrelevant"
         },
             argumentName: "style", argumentValue: "fo",
-            CancellationToken.None
+            TestContext.Current.CancellationToken
         );
 
         Assert.NotNull(result);
@@ -411,7 +411,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
     //    });
 
     //    // Connect
-    //    await client.ConnectAsync(CancellationToken.None);
+    //    await client.ConnectAsync(TestContext.Current.CancellationToken);
 
     //    // assert
     //    // nothing to assert, no servers implement roots, so we if no exception is thrown, it's a success
@@ -560,7 +560,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         });
 
         // act
-        await client.SetLoggingLevel(LoggingLevel.Debug, CancellationToken.None);
+        await client.SetLoggingLevel(LoggingLevel.Debug, TestContext.Current.CancellationToken);
 
         // assert
         await receivedNotification.Task;

@@ -20,6 +20,7 @@ internal sealed class StdioClientStreamTransport : TransportBase
     private readonly McpServerConfig _serverConfig;
     private readonly ILogger _logger;
     private readonly JsonSerializerOptions _jsonOptions;
+    private readonly DataReceivedEventHandler _logProcessErrors;
     private Process? _process;
     private Task? _readTask;
     private CancellationTokenSource? _shutdownCts;
@@ -42,6 +43,7 @@ internal sealed class StdioClientStreamTransport : TransportBase
         _options = options;
         _serverConfig = serverConfig;
         _logger = (ILogger?)loggerFactory?.CreateLogger<StdioClientTransport>() ?? NullLogger.Instance;
+        _logProcessErrors = (sender, args) => _logger.TransportError(EndpointName, args.Data ?? "(no data)");
         _jsonOptions = McpJsonUtilities.DefaultOptions;
     }
 
@@ -98,7 +100,7 @@ internal sealed class StdioClientStreamTransport : TransportBase
             _process = new Process { StartInfo = startInfo };
 
             // Set up error logging
-            _process.ErrorDataReceived += (sender, args) => _logger.TransportError(EndpointName, args.Data ?? "(no data)");
+            _process.ErrorDataReceived += _logProcessErrors;
 
             // We need both stdin and stdout to use a no-BOM UTF-8 encoding. On .NET Core,
             // we can use ProcessStartInfo.StandardOutputEncoding/StandardInputEncoding, but
@@ -277,6 +279,7 @@ internal sealed class StdioClientStreamTransport : TransportBase
             }
             finally
             {
+                process.ErrorDataReceived -= _logProcessErrors;
                 process.Dispose();
                 _process = null;
             }

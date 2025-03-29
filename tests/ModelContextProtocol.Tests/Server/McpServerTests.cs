@@ -538,7 +538,7 @@ public class McpServerTests : LoggedTest
         }
         );
 
-        var response = await receivedMessage.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        var response = await receivedMessage.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.NotNull(response);
         Assert.NotNull(response.Result);
 

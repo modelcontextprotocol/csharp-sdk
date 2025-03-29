@@ -15,6 +15,12 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
         _fixture.Initialize(testOutputHelper);
     }
 
+    public override void Dispose()
+    {
+        _fixture.TestCompleted();
+        base.Dispose();
+    }
+
     private Task<IMcpClient> GetClientAsync(McpClientOptions? options = null)
     {
         return McpClientFactory.CreateAsync(
