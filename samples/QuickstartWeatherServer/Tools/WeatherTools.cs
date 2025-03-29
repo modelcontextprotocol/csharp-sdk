@@ -41,13 +41,23 @@ public static class WeatherTools
         [Description("Longitude of the location.")] double longitude)
     {
         var jsonElement = await client.GetFromJsonAsync<JsonElement>($"/points/{latitude},{longitude}");
+        var forecastUrl = jsonElement.GetProperty("properties").GetProperty("forecast").GetString();
+        jsonElement = await client.GetFromJsonAsync<JsonElement>(forecastUrl);
         var periods = jsonElement.GetProperty("properties").GetProperty("periods").EnumerateArray();
 
-        return string.Join("\n---\n", periods.Select(period => $"""
-                {period.GetProperty("name").GetString()}
-                Temperature: {period.GetProperty("temperature").GetInt32()}°F
-                Wind: {period.GetProperty("windSpeed").GetString()} {period.GetProperty("windDirection").GetString()}
-                Forecast: {period.GetProperty("detailedForecast").GetString()}
-                """));
+        return string.Join("\n---\n",
+            periods.Select(period =>
+            {
+                return $"""
+                    Name: {period.GetProperty("name").GetString()}
+                    Start Time: {period.GetProperty("startTime").GetString()}
+                    End Time: {period.GetProperty("endTime").GetString()}
+                    Temperature: {period.GetProperty("temperature").GetInt32()}°F
+                    Wind Speed: {period.GetProperty("windSpeed").GetString()}
+                    Wind Direction: {period.GetProperty("windDirection").GetString()}
+                    Short Forecast: {period.GetProperty("shortForecast").GetString()}
+                    Detailed Forecast: {period.GetProperty("detailedForecast").GetString()}
+                    """;
+            }));
     }
 }
