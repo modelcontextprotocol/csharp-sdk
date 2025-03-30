@@ -121,6 +121,7 @@ public static partial class McpJsonUtilities
     // MCP Request Params / Results
     [JsonSerializable(typeof(CallToolRequestParams))]
     [JsonSerializable(typeof(CallToolResponse))]
+    [JsonSerializable(typeof(CancelledNotification))]
     [JsonSerializable(typeof(CompleteRequestParams))]
     [JsonSerializable(typeof(CompleteResult))]
     [JsonSerializable(typeof(CreateMessageRequestParams))]
