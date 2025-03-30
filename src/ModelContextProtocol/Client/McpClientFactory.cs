@@ -64,6 +64,7 @@ public static class McpClientFactory
         var transport = 
             createTransportFunc(serverConfig, loggerFactory) ??
             throw new InvalidOperationException($"{nameof(createTransportFunc)} returned a null transport.");
+
         try
         {
             McpClient client = new(transport, clientOptions, serverConfig, loggerFactory);
