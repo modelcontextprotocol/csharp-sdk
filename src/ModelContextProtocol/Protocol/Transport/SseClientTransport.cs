@@ -7,7 +7,7 @@ namespace ModelContextProtocol.Protocol.Transport;
 /// <summary>
 /// The ServerSideEvents client transport implementation
 /// </summary>
-public sealed class SseClientTransport : IClientTransport
+public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
 {
     private readonly SseClientTransportOptions _options;
     private readonly McpServerConfig _serverConfig;
@@ -52,7 +52,7 @@ public sealed class SseClientTransport : IClientTransport
     /// <inheritdoc />
     public async Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default)
     {
-        var sessionTransport = new SseClientSessionTransport(_options, _serverConfig, _httpClient, _loggerFactory, _ownsHttpClient);
+        var sessionTransport = new SseClientSessionTransport(_options, _serverConfig, _httpClient, _loggerFactory);
 
         try
         {
@@ -64,5 +64,16 @@ public sealed class SseClientTransport : IClientTransport
             await sessionTransport.DisposeAsync().ConfigureAwait(false);
             throw;
         }
+    }
+
+    /// <inheritdoc />
+    public ValueTask DisposeAsync()
+    {
+        if (_ownsHttpClient)
+        {
+            _httpClient.Dispose();
+        }
+
+        return default;
     }
 }

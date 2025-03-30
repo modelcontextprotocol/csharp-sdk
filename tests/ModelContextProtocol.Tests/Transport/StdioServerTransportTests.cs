@@ -6,6 +6,7 @@ using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using ModelContextProtocol.Utils.Json;
 using System.IO.Pipelines;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 
@@ -34,6 +35,8 @@ public class StdioServerTransportTests : LoggedTest
     [Fact]
     public async Task Constructor_Should_Initialize_With_Valid_Parameters()
     {
+        Assert.SkipWhen(RuntimeInformation.IsOSPlatform(OSPlatform.Linux), "https://github.com/modelcontextprotocol/csharp-sdk/issues/143");
+
         // Act
         await using var transport = new StdioServerTransport(_serverOptions);
 

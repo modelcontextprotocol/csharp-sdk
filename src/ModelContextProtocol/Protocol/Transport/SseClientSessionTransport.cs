@@ -27,7 +27,6 @@ internal sealed class SseClientSessionTransport : TransportBase
     private readonly McpServerConfig _serverConfig;
     private readonly JsonSerializerOptions _jsonOptions;
     private readonly TaskCompletionSource<bool> _connectionEstablished;
-    private readonly bool _ownsHttpClient;
 
     private string EndpointName => $"Client (SSE) for ({_serverConfig.Id}: {_serverConfig.Name})";
 
@@ -39,8 +38,7 @@ internal sealed class SseClientSessionTransport : TransportBase
     /// <param name="serverConfig">The configuration object indicating which server to connect to.</param>
     /// <param name="httpClient">The HTTP client instance used for requests.</param>
     /// <param name="loggerFactory">Logger factory for creating loggers.</param>
-    /// <param name="ownsHttpClient">True to dispose HTTP client on close connection.</param>
-    public SseClientSessionTransport(SseClientTransportOptions transportOptions, McpServerConfig serverConfig, HttpClient httpClient, ILoggerFactory? loggerFactory, bool ownsHttpClient = false)
+    public SseClientSessionTransport(SseClientTransportOptions transportOptions, McpServerConfig serverConfig, HttpClient httpClient, ILoggerFactory? loggerFactory)
         : base(loggerFactory)
     {
         Throw.IfNull(transportOptions);
@@ -55,7 +53,6 @@ internal sealed class SseClientSessionTransport : TransportBase
         _logger = (ILogger?)loggerFactory?.CreateLogger<SseClientTransport>() ?? NullLogger.Instance;
         _jsonOptions = McpJsonUtilities.DefaultOptions;
         _connectionEstablished = new TaskCompletionSource<bool>();
-        _ownsHttpClient = ownsHttpClient;
     }
 
     /// <inheritdoc/>
@@ -180,11 +177,6 @@ internal sealed class SseClientSessionTransport : TransportBase
         try
         {
             await CloseAsync();
-
-            if (_ownsHttpClient)
-            {
-                _httpClient?.Dispose();
-            }
         }
         catch (Exception)
         {
