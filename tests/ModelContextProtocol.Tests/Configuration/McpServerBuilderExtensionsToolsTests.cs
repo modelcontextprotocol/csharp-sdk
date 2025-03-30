@@ -53,6 +53,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
 
         await _serviceProvider.DisposeAsync();
         _cts.Dispose();
+        Dispose();
     }
 
     private async Task<IMcpClient> CreateMcpClientForServer()
@@ -69,7 +70,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
 
         return await McpClientFactory.CreateAsync(
             serverConfig,
-            createTransportFunc: (_, _) => new StreamClientTransport(serverStdinWriter, serverStdoutReader),
+            createTransportFunc: (_, _) => new StreamClientTransport(serverStdinWriter, serverStdoutReader, LoggerFactory),
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
     }
@@ -104,7 +105,6 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         Assert.Equal("Echoes the input back to the client.", doubleEchoTool.Description);
     }
 
-
     [Fact]
     public async Task Can_Create_Multiple_Servers_From_Options_And_List_Registered_Tools()
     {
@@ -132,7 +132,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
 
             await using (var client = await McpClientFactory.CreateAsync(
                 serverConfig,
-                createTransportFunc: (_, _) => new StreamClientTransport(serverStdinWriter, serverStdoutReader),
+                createTransportFunc: (_, _) => new StreamClientTransport(serverStdinWriter, serverStdoutReader, LoggerFactory),
                 loggerFactory: LoggerFactory,
                 cancellationToken: TestContext.Current.CancellationToken))
             {

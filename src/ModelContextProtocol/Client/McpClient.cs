@@ -18,7 +18,6 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
 
     private ITransport? _sessionTransport;
     private CancellationTokenSource? _connectCts;
-    private int _disposed;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="McpClient"/> class.
@@ -142,20 +141,19 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
     }
 
     /// <inheritdoc/>
-    public override async ValueTask DisposeAsync()
+    public override async ValueTask DisposeUnsynchronizedAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
-        {
-            // TODO: It's more correct to await the last DisposeAsync before returning if it's still ongoing.
-            return;
-        }
-
         if (_connectCts is not null)
         {
             await _connectCts.CancelAsync().ConfigureAwait(false);
         }
 
-        await base.DisposeAsync().ConfigureAwait(false);
+        await base.DisposeUnsynchronizedAsync().ConfigureAwait(false);
+
+        if (_sessionTransport is not null)
+        {
+            await _sessionTransport.DisposeAsync().ConfigureAwait(false);
+        }
 
         _connectCts?.Dispose();
     }

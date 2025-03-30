@@ -153,14 +153,14 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
         }
     }
 
-    public override async ValueTask DisposeAsync()
+    public override async ValueTask DisposeUnsynchronizedAsync()
     {
         if (ServerOptions.Capabilities?.Tools?.ToolCollection is { } tools)
         {
             tools.Changed -= _toolsChangedDelegate;
         }
 
-        await base.DisposeAsync().ConfigureAwait(false);
+        await base.DisposeUnsynchronizedAsync().ConfigureAwait(false);
 
         if (_serverTransport is not null && _sessionTransport is not null)
         {

@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging.Abstractions;
+﻿using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Utils.Json;
@@ -14,8 +14,8 @@ internal sealed class StreamClientTransport : TransportBase, IClientTransport
     private readonly TextReader _serverStdoutReader;
     private readonly TextWriter _serverStdinWriter;
 
-    public StreamClientTransport(TextWriter serverStdinWriter, TextReader serverStdoutReader)
-        : base(NullLoggerFactory.Instance)
+    public StreamClientTransport(TextWriter serverStdinWriter, TextReader serverStdoutReader, ILoggerFactory loggerFactory)
+        : base(loggerFactory)
     {
         _serverStdoutReader = serverStdoutReader;
         _serverStdinWriter = serverStdinWriter;

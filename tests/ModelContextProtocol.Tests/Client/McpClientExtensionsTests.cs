@@ -67,7 +67,7 @@ public class McpClientExtensionsTests : LoggedTest
 
         return await McpClientFactory.CreateAsync(
             serverConfig,
-            createTransportFunc: (_, _) => new StreamClientTransport(serverStdinWriter, serverStdoutReader),
+            createTransportFunc: (_, _) => new StreamClientTransport(serverStdinWriter, serverStdoutReader, LoggerFactory),
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
     }

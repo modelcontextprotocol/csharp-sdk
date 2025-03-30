@@ -22,7 +22,9 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
     private McpSession? _session;
     private CancellationTokenSource? _sessionCts;
     private int _started;
-    private int _disposed;
+
+    private readonly SemaphoreSlim _disposeLock = new(1);
+    private bool _disposed;
 
     protected readonly ILogger _logger;
 
@@ -74,18 +76,32 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
         MessageProcessingTask = GetSessionOrThrow().ProcessMessagesAsync(_sessionCts.Token);
     }
 
+    public async ValueTask DisposeAsync()
+    {
+        await _disposeLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (_disposed)
+            {
+                return;
+            }
+            _disposed = true;
+
+            await DisposeUnsynchronizedAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _disposeLock.Release();
+        }
+    }
+
     /// <summary>
     /// Cleans up the endpoint and releases resources.
     /// </summary>
     /// <returns></returns>
-    public virtual async ValueTask DisposeAsync()
+    public virtual async ValueTask DisposeUnsynchronizedAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
-        {
-            // TODO: It's more correct to await the last DisposeAsync before returning if it's still ongoing.
-            return;
-        }
-
+        // Both McpClient and McpServer guard this with a semaphore
         _logger.CleaningUpEndpoint(EndpointName);
 
         if (_sessionCts is not null)

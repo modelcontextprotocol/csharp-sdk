@@ -18,7 +18,7 @@ internal sealed class McpSession : IDisposable
 {
     private readonly ITransport _transport;
     private readonly RequestHandlers _requestHandlers;
-    private readonly NotificationHandlers _notificationHandlers = [];
+    private readonly NotificationHandlers _notificationHandlers;
 
     private readonly ConcurrentDictionary<RequestId, TaskCompletionSource<IJsonRpcMessage>> _pendingRequests = [];
     private readonly JsonSerializerOptions _jsonOptions;
