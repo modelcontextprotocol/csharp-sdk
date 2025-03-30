@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using System.ComponentModel;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol.Types;
@@ -27,8 +28,13 @@ public abstract class ResourceContents
     public string? MimeType { get; set; }
 }
 
-internal class ResourceContentsConverter : JsonConverter<ResourceContents>
+/// <summary>
+/// Converter for <see cref="ResourceContents"/>.
+/// </summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
+public class ResourceContentsConverter : JsonConverter<ResourceContents>
 {
+    /// <inheritdoc/>
     public override ResourceContents? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.Null)
@@ -100,9 +106,10 @@ internal class ResourceContentsConverter : JsonConverter<ResourceContents>
         return null;
     }
 
+    /// <inheritdoc/>
     public override void Write(Utf8JsonWriter writer, ResourceContents value, JsonSerializerOptions options)
     {
-        if (value == null)
+        if (value is null)
         {
             writer.WriteNullValue();
             return;
