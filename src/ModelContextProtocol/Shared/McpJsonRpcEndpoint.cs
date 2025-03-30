@@ -101,7 +101,6 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
     /// <returns></returns>
     public virtual async ValueTask DisposeUnsynchronizedAsync()
     {
-        // Both McpClient and McpServer guard this with a semaphore
         _logger.CleaningUpEndpoint(EndpointName);
 
         if (_sessionCts is not null)
