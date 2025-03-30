@@ -10,6 +10,10 @@ namespace ModelContextProtocol.Protocol.Types;
 [JsonConverter(typeof(ResourceContentsConverter))]
 public abstract class ResourceContents
 {
+    internal ResourceContents()
+    {
+    }
+
     /// <summary>
     /// The URI of the resource.
     /// </summary>
