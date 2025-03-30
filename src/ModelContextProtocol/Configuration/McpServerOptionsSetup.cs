@@ -27,11 +27,11 @@ internal sealed class McpServerOptionsSetup(
         // if it otherwise lacks server information.
         if (options.ServerInfo is not { } serverInfo)
         {
-            var assemblyName = (Assembly.GetEntryAssembly() ?? Assembly.GetCallingAssembly()).GetName();
+            var assemblyName = Assembly.GetEntryAssembly()?.GetName();
             options.ServerInfo = new()
             {
-                Name = assemblyName.Name ?? "McpServer",
-                Version = assemblyName.Version?.ToString() ?? "1.0.0",
+                Name = assemblyName?.Name ?? "McpServer",
+                Version = assemblyName?.Version?.ToString() ?? "1.0.0",
             };
         }
 

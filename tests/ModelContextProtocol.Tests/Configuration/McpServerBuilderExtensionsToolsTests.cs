@@ -171,7 +171,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         var serverTools = _server.ServerOptions.Capabilities?.Tools?.ToolCollection;
         Assert.NotNull(serverTools);
 
-        var newTool = McpServerTool.Create([McpServerTool(name: "NewTool")] () => "42");
+        var newTool = McpServerTool.Create([McpServerTool(Name = "NewTool")] () => "42");
         serverTools.Add(newTool);
         await notificationRead;
 
@@ -427,10 +427,42 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         Assert.Contains(services.GetServices<McpServerTool>(), t => t.ProtocolTool.Name == "MethodD");
     }
 
+    [Fact]
+    public void Create_ExtractsToolAnnotations_AllSet()
+    {
+        var tool = McpServerTool.Create(EchoTool.ReturnInteger);
+        Assert.NotNull(tool);
+        Assert.NotNull(tool.ProtocolTool);
+
+        var annotations = tool.ProtocolTool.Annotations;
+        Assert.NotNull(annotations);
+        Assert.Equal("Return An Integer", annotations.Title);
+        Assert.False(annotations.DestructiveHint);
+        Assert.True(annotations.IdempotentHint);
+        Assert.False(annotations.OpenWorldHint);
+        Assert.True(annotations.ReadOnlyHint);
+    }
+
+    [Fact]
+    public void Create_ExtractsToolAnnotations_SomeSet()
+    {
+        var tool = McpServerTool.Create(EchoTool.ReturnJson);
+        Assert.NotNull(tool);
+        Assert.NotNull(tool.ProtocolTool);
+
+        var annotations = tool.ProtocolTool.Annotations;
+        Assert.NotNull(annotations);
+        Assert.Null(annotations.Title);
+        Assert.Null(annotations.DestructiveHint);
+        Assert.False(annotations.IdempotentHint);
+        Assert.Null(annotations.OpenWorldHint);
+        Assert.Null(annotations.ReadOnlyHint);
+    }
+
     [McpServerToolType]
     public sealed class EchoTool(ObjectWithId objectFromDI)
     {
-        private string _randomValue = Guid.NewGuid().ToString("N");
+        private readonly string _randomValue = Guid.NewGuid().ToString("N");
 
         [McpServerTool, Description("Echoes the input back to the client.")]
         public static string Echo([Description("the echoes message")] string message)
@@ -438,7 +470,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
             return "hello " + message;
         }
 
-        [McpServerTool("double_echo"), Description("Echoes the input back to the client.")]
+        [McpServerTool(Name = "double_echo"), Description("Echoes the input back to the client.")]
         public static string Echo2(string message)
         {
             return "hello hello" + message;
@@ -462,13 +494,13 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
             return null;
         }
 
-        [McpServerTool]
+        [McpServerTool(Idempotent = false)]
         public static JsonElement ReturnJson()
         {
             return JsonDocument.Parse("{\"SomeProp\": false}").RootElement;
         }
 
-        [McpServerTool]
+        [McpServerTool(Title = "Return An Integer", Destructive = false, Idempotent = true, OpenWorld = false, ReadOnly = true)]
         public static int ReturnInteger()
         {
             return 5;
@@ -499,7 +531,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
     [McpServerToolType]
     internal class AnotherToolType
     {
-        [McpServerTool("DifferentName")]
+        [McpServerTool(Name = "DifferentName")]
         private static string MethodA(int a) => a.ToString();
 
         [McpServerTool]

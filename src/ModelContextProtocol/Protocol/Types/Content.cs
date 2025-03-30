@@ -4,13 +4,13 @@ namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
 /// Represents the content of a tool response.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
+/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
 /// There are multiple subtypes of content, depending on the "type" field, these are represented as separate classes.
 /// </summary>
 public class Content
 {
     /// <summary>
-    /// The type of content. This determines the structure of the content object. Can be "image", "text", "resource".
+    /// The type of content. This determines the structure of the content object. Can be "image", "audio", "text", "resource".
     /// </summary>
 
     [JsonPropertyName("type")]
@@ -39,4 +39,10 @@ public class Content
     /// </summary>
     [JsonPropertyName("resource")]
     public ResourceContents? Resource { get; set; }
+
+    /// <summary>
+    /// Optional annotations for the content.
+    /// </summary>
+    [JsonPropertyName("annotations")]
+    public Annotations? Annotations { get; init; }
 }

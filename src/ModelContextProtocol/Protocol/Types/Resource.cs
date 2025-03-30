@@ -3,10 +3,10 @@
 namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
-/// A known resource that the server is capable of reading.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
+/// Represents a known resource that the server is capable of reading.
+/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
 /// </summary>
-public record Resource : Annotated
+public record Resource
 {
     /// <summary>
     /// The URI of this resource.
@@ -42,5 +42,12 @@ public record Resource : Annotated
     /// This can be used by Hosts to display file sizes and estimate context window usage.
     /// </summary>
     [JsonPropertyName("size")]
+
     public long? Size { get; init; }
+
+    /// <summary>
+    /// Optional annotations for the resource.
+    /// </summary>
+    [JsonPropertyName("annotations")]
+    public Annotations? Annotations { get; init; }
 }

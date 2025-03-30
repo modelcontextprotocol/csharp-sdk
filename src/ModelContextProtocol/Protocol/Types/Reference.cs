@@ -5,7 +5,7 @@ namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
 /// Represents a reference to a resource or prompt. Umbrella type for both ResourceReference and PromptReference from the spec schema.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
+/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
 /// </summary>
 public class Reference
 {

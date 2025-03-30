@@ -4,8 +4,8 @@ using System.Text.Json.Serialization;
 namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
-/// The contents of a specific resource or sub-resource.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
+/// Represents the content of a resource.
+/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
 /// </summary>
 [JsonConverter(typeof(ResourceContentsConverter))]
 public abstract class ResourceContents

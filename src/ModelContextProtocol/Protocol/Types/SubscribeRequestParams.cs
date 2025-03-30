@@ -2,7 +2,7 @@
 
 /// <summary>
 /// Sent from the client to request updated notifications from the server whenever a particular primitive changes.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
+/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
 /// </summary>
 public class SubscribeRequestParams : RequestParams
 {

@@ -105,21 +105,52 @@ public static partial class McpJsonUtilities
         UseStringEnumConverter = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         NumberHandling = JsonNumberHandling.AllowReadingFromString)]
+
+    // JSON
     [JsonSerializable(typeof(JsonDocument))]
     [JsonSerializable(typeof(JsonElement))]
     [JsonSerializable(typeof(JsonNode))]
+    
+    // JSON-RPC
     [JsonSerializable(typeof(IJsonRpcMessage))]
     [JsonSerializable(typeof(JsonRpcRequest))]
     [JsonSerializable(typeof(JsonRpcNotification))]
     [JsonSerializable(typeof(JsonRpcResponse))]
     [JsonSerializable(typeof(JsonRpcError))]
-    [JsonSerializable(typeof(ServerCapabilities))]
-    [JsonSerializable(typeof(ClientCapabilities))]
-    [JsonSerializable(typeof(Implementation))]
-    [JsonSerializable(typeof(CreateMessageResult))]
-    [JsonSerializable(typeof(ListRootsResult))]
-    [JsonSerializable(typeof(InitializeResult))]
+
+    // MCP Request Params / Results
+    [JsonSerializable(typeof(CallToolRequestParams))]
     [JsonSerializable(typeof(CallToolResponse))]
+    [JsonSerializable(typeof(CompleteRequestParams))]
+    [JsonSerializable(typeof(CompleteResult))]
+    [JsonSerializable(typeof(CreateMessageRequestParams))]
+    [JsonSerializable(typeof(CreateMessageResult))]
+    [JsonSerializable(typeof(EmptyResult))]
+    [JsonSerializable(typeof(GetPromptRequestParams))]
+    [JsonSerializable(typeof(GetPromptResult))]
+    [JsonSerializable(typeof(InitializeRequestParams))]
+    [JsonSerializable(typeof(InitializeResult))]
+    [JsonSerializable(typeof(ListPromptsRequestParams))]
+    [JsonSerializable(typeof(ListPromptsResult))]
+    [JsonSerializable(typeof(ListResourcesRequestParams))]
+    [JsonSerializable(typeof(ListResourcesResult))]
+    [JsonSerializable(typeof(ListResourceTemplatesRequestParams))]
+    [JsonSerializable(typeof(ListResourceTemplatesResult))]
+    [JsonSerializable(typeof(ListRootsRequestParams))]
+    [JsonSerializable(typeof(ListRootsResult))]
+    [JsonSerializable(typeof(ListToolsRequestParams))]
+    [JsonSerializable(typeof(ListToolsResult))]
+    [JsonSerializable(typeof(LoggingMessageNotificationParams))]
+    [JsonSerializable(typeof(PingResult))]
+    [JsonSerializable(typeof(ReadResourceRequestParams))]
+    [JsonSerializable(typeof(ReadResourceResult))]
+    [JsonSerializable(typeof(ResourceUpdatedNotificationParams))]
+    [JsonSerializable(typeof(SetLevelRequestParams))]
+    [JsonSerializable(typeof(SubscribeRequestParams))]
+    [JsonSerializable(typeof(UnsubscribeFromResourceRequestParams))]
+    [JsonSerializable(typeof(UnsubscribeRequestParams))]
+
+    [ExcludeFromCodeCoverage]
     internal sealed partial class JsonContext : JsonSerializerContext;
 
     private static JsonElement ParseJsonElement(ReadOnlySpan<byte> utf8Json)
