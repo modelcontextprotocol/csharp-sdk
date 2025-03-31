@@ -1,5 +1,4 @@
 ﻿using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
@@ -14,35 +13,82 @@ namespace ModelContextProtocol.Server;
 internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
 {
     private readonly IServerTransport? _serverTransport;
-    private readonly string _serverDescription;
-    private volatile bool _isInitializing;
+    private readonly EventHandler? _toolsChangedDelegate;
+
+    private ITransport? _sessionTransport;
+    private string _endpointName;
 
     /// <summary>
     /// Creates a new instance of <see cref="McpServer"/>.
     /// </summary>
-    /// <param name="transport">Transport to use for the server</param>
-    /// <param name="options">Configuration options for this server, including capabilities. 
-    /// Make sure to accurately reflect exactly what capabilities the server supports and does not support.</param>    
+    /// <param name="serverTransport">Transport to use for the server that is ready to accept new sessions asynchronously.</param>
+    /// <param name="options">Configuration options for this server, including capabilities.
+    /// Make sure to accurately reflect exactly what capabilities the server supports and does not support.</param>
+    /// <param name="loggerFactory">Logger factory to use for logging</param>
+    /// <param name="serviceProvider">Optional service provider to use for dependency injection</param>
+    /// <exception cref="McpServerException"></exception>
+    public McpServer(IServerTransport serverTransport, McpServerOptions options, ILoggerFactory? loggerFactory, IServiceProvider? serviceProvider)
+        : this(options, loggerFactory, serviceProvider)
+    {
+        Throw.IfNull(serverTransport);
+
+        _serverTransport = serverTransport;
+    }
+
+    /// <summary>
+    /// Creates a new instance of <see cref="McpServer"/>.
+    /// </summary>
+    /// <param name="transport">Transport to use for the server representing an already-established session.</param>
+    /// <param name="options">Configuration options for this server, including capabilities.
+    /// Make sure to accurately reflect exactly what capabilities the server supports and does not support.</param>
     /// <param name="loggerFactory">Logger factory to use for logging</param>
     /// <param name="serviceProvider">Optional service provider to use for dependency injection</param>
     /// <exception cref="McpServerException"></exception>
     public McpServer(ITransport transport, McpServerOptions options, ILoggerFactory? loggerFactory, IServiceProvider? serviceProvider)
-        : base(transport, loggerFactory)
+        : this(options, loggerFactory, serviceProvider)
+    {
+        Throw.IfNull(transport);
+
+        _sessionTransport = transport;
+        InitializeSession(transport);
+    }
+
+    /// <summary>
+    /// Creates a new instance of <see cref="McpServer"/>.
+    /// </summary>
+    /// <param name="options">Configuration options for this server, including capabilities. 
+    /// Make sure to accurately reflect exactly what capabilities the server supports and does not support.</param>
+    /// <param name="loggerFactory">Logger factory to use for logging</param>
+    /// <param name="serviceProvider">Optional service provider to use for dependency injection</param>
+    /// <exception cref="McpServerException"></exception>
+    private McpServer(McpServerOptions options, ILoggerFactory? loggerFactory, IServiceProvider? serviceProvider)
+        : base(loggerFactory)
     {
         Throw.IfNull(options);
 
-        _serverTransport = transport as IServerTransport;
-        ServerInstructions = options.ServerInstructions;
+        ServerOptions = options;
         Services = serviceProvider;
-        _serverDescription = $"{options.ServerInfo.Name} {options.ServerInfo.Version}";
+        _endpointName = $"Server ({options.ServerInfo.Name} {options.ServerInfo.Version})";
+
+        _toolsChangedDelegate = delegate
+        {
+            _ = SendMessageAsync(new JsonRpcNotification()
+            {
+                Method = NotificationMethods.ToolListChangedNotification,
+            });
+        };
 
         AddNotificationHandler("notifications/initialized", _ =>
         {
-            IsInitialized = true;
+            if (ServerOptions.Capabilities?.Tools?.ToolCollection is { } tools)
+            {
+                tools.Changed += _toolsChangedDelegate;
+            }
+
             return Task.CompletedTask;
         });
 
-        SetToolsHandler(ref options);
+        SetToolsHandler(options);
 
         SetInitializeHandler(options);
         SetCompletionHandler(options);
@@ -50,17 +96,15 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
         SetPromptsHandler(options);
         SetResourcesHandler(options);
         SetSetLoggingLevelHandler(options);
-
-        ServerOptions = options;
     }
 
+    public ServerCapabilities? ServerCapabilities { get; set; }
+
+    /// <inheritdoc />
     public ClientCapabilities? ClientCapabilities { get; set; }
 
     /// <inheritdoc />
     public Implementation? ClientInfo { get; set; }
-
-    /// <inheritdoc />
-    public string? ServerInstructions { get; set; }
 
     /// <inheritdoc />
     public McpServerOptions ServerOptions { get; }
@@ -69,45 +113,64 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
     public IServiceProvider? Services { get; }
 
     /// <inheritdoc />
-    public override string EndpointName =>
-        $"Server ({_serverDescription}), Client ({ClientInfo?.Name} {ClientInfo?.Version})";
+    public override string EndpointName => _endpointName;
 
-    /// <inheritdoc />
-    public async Task StartAsync(CancellationToken cancellationToken = default)
+    public async Task AcceptSessionAsync(CancellationToken cancellationToken = default)
     {
-        if (_isInitializing)
-        {
-            _logger.ServerAlreadyInitializing(EndpointName);
-            throw new InvalidOperationException("Server is already initializing");
-        }
-        _isInitializing = true;
-
-        if (IsInitialized)
-        {
-            _logger.ServerAlreadyInitializing(EndpointName);
-            return;
-        }
+        // Below is effectively an assertion. The McpServerFactory should only use this with the IServerTransport constructor.
+        Throw.IfNull(_serverTransport);
 
         try
         {
-            CancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _sessionTransport = await _serverTransport.AcceptAsync(cancellationToken).ConfigureAwait(false);
 
-            if (_serverTransport is not null)
+            if (_sessionTransport is null)
             {
-                // Start listening for messages
-                await _serverTransport.StartListeningAsync(CancellationTokenSource.Token).ConfigureAwait(false);
+                throw new McpServerException("The server transport closed before a client started a new session.");
             }
 
-            // Start processing messages
-            MessageProcessingTask = ProcessMessagesAsync(CancellationTokenSource.Token);
-
-            // Unlike McpClient, we're not done initializing until we've received a message from the client, so we don't set IsInitialized here
+            InitializeSession(_sessionTransport);
         }
         catch (Exception e)
         {
             _logger.ServerInitializationError(EndpointName, e);
-            await CleanupAsync().ConfigureAwait(false);
             throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task RunAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // Start processing messages
+            StartSession(fullSessionCancellationToken: cancellationToken);
+            await MessageProcessingTask.ConfigureAwait(false);
+        }
+        finally
+        {
+            await DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    public override async ValueTask DisposeUnsynchronizedAsync()
+    {
+        if (ServerOptions.Capabilities?.Tools?.ToolCollection is { } tools)
+        {
+            tools.Changed -= _toolsChangedDelegate;
+        }
+
+        try
+        {
+            await base.DisposeUnsynchronizedAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            if (_serverTransport is not null && _sessionTransport is not null)
+            {
+                // We created the _sessionTransport from the _serverTransport, so we own it.
+                await _sessionTransport.DisposeAsync().ConfigureAwait(false);
+            }
         }
     }
 
@@ -124,12 +187,17 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
             {
                 ClientCapabilities = request?.Capabilities ?? new();
                 ClientInfo = request?.ClientInfo;
+
+                // Use the ClientInfo to update the session EndpointName for logging.
+                _endpointName = $"{_endpointName}, Client ({ClientInfo?.Name} {ClientInfo?.Version})";
+                GetSessionOrThrow().EndpointName = EndpointName;
+
                 return Task.FromResult(new InitializeResult()
                 {
                     ProtocolVersion = options.ProtocolVersion,
-                    Instructions = ServerInstructions,
+                    Instructions = options.ServerInstructions,
                     ServerInfo = options.ServerInfo,
-                    Capabilities = options.Capabilities ?? new ServerCapabilities(),
+                    Capabilities = ServerCapabilities ?? new(),
                 });
             });
     }
@@ -200,7 +268,7 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
         SetRequestHandler<GetPromptRequestParams, GetPromptResult>("prompts/get", (request, ct) => getPromptHandler(new(this, request), ct));
     }
 
-    private void SetToolsHandler(ref McpServerOptions options)
+    private void SetToolsHandler(McpServerOptions options)
     {
         ToolsCapability? toolsCapability = options.Capabilities?.Tools;
         var listToolsHandler = toolsCapability?.ListToolsHandler;
@@ -263,25 +331,25 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
                 return tool.InvokeAsync(request, cancellationToken);
             };
 
-            toolsCapability ??= new();
-            toolsCapability.CallToolHandler = callToolHandler;
-            toolsCapability.ListToolsHandler = listToolsHandler;
-            toolsCapability.ToolCollection = tools;
-            toolsCapability.ListChanged = true;
-
-            options.Capabilities ??= new();
-            options.Capabilities.Tools = toolsCapability;
-
-            tools.Changed += delegate
+            ServerCapabilities = new()
             {
-                _ = SendMessageAsync(new JsonRpcNotification()
+                Experimental = options.Capabilities?.Experimental,
+                Logging = options.Capabilities?.Logging,
+                Prompts = options.Capabilities?.Prompts,
+                Resources = options.Capabilities?.Resources,
+                Tools = new()
                 {
-                    Method = NotificationMethods.ToolListChangedNotification,
-                });
+                    ListToolsHandler = listToolsHandler,
+                    CallToolHandler = callToolHandler,
+                    ToolCollection = tools,
+                    ListChanged = true,
+                }
             };
         }
         else
         {
+            ServerCapabilities = options.Capabilities;
+
             if (toolsCapability is null)
             {
                 // No tools, and no tools capability was declared, so nothing to do.

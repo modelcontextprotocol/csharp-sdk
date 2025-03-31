@@ -469,23 +469,13 @@ public static class McpClientExtensions
             {
                 message.Contents.Add(new TextContent(sm.Content.Text));
             }
-            else if (sm.Content is { Type: "image", MimeType: not null, Data: not null })
+            else if (sm.Content is { Type: "image" or "audio", MimeType: not null, Data: not null })
             {
                 message.Contents.Add(new DataContent(Convert.FromBase64String(sm.Content.Data), sm.Content.MimeType));
             }
             else if (sm.Content is { Type: "resource", Resource: not null })
             {
-                ResourceContents resource = sm.Content.Resource;
-
-                if (resource.Text is not null)
-                {
-                    message.Contents.Add(new TextContent(resource.Text));
-                }
-
-                if (resource.Blob is not null && resource.MimeType is not null)
-                {
-                    message.Contents.Add(new DataContent(Convert.FromBase64String(resource.Blob), resource.MimeType));
-                }
+                message.Contents.Add(sm.Content.Resource.ToAIContent());
             }
 
             messages.Add(message);
@@ -512,11 +502,11 @@ public static class McpClientExtensions
         {
             foreach (var lmc in lastMessage.Contents)
             {
-                if (lmc is DataContent dc && dc.HasTopLevelMediaType("image"))
+                if (lmc is DataContent dc && (dc.HasTopLevelMediaType("image") || dc.HasTopLevelMediaType("audio")))
                 {
                     content = new()
                     {
-                        Type = "image",
+                        Type = dc.HasTopLevelMediaType("image") ? "image" : "audio",
                         MimeType = dc.MediaType,
                         Data = dc.GetBase64Data(),
                     };

@@ -6,7 +6,7 @@ namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
 /// Represents a tool that the server is capable of calling. Part of the ListToolsResponse.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
+/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
 /// </summary>
 public class Tool
 {
@@ -44,4 +44,10 @@ public class Tool
             _inputSchema = value;
         }
     }
+
+    /// <summary>
+    /// Optional additional tool information.
+    /// </summary>
+    [JsonPropertyName("annotations")]
+    public ToolAnnotations? Annotations { get; set; }
 }

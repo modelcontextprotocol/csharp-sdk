@@ -4,9 +4,9 @@ namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
 /// Represents a known resource template that the server is capable of reading.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
+/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
 /// </summary>
-public record ResourceTemplate : Annotated
+public record ResourceTemplate
 {
     /// <summary>
     /// The URI template (according to RFC 6570) that can be used to construct resource URIs.
@@ -31,4 +31,10 @@ public record ResourceTemplate : Annotated
     /// </summary>
     [JsonPropertyName("mimeType")]
     public string? MimeType { get; init; }
+
+    /// <summary>
+    /// Optional annotations for the resource template.
+    /// </summary>
+    [JsonPropertyName("annotations")]
+    public Annotations? Annotations { get; init; }
 }

@@ -4,7 +4,7 @@ namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
 /// Base class for all request parameters.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json#L771-L806">See the schema for details</see>
+/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/#L771-L806">See the schema for details</see>
 /// </summary>
 public abstract class RequestParams
 {

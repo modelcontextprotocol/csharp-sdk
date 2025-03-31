@@ -4,6 +4,7 @@ using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using Serilog;
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 
@@ -47,32 +48,30 @@ internal static class Program
         };
 
         using var loggerFactory = CreateLoggerFactory();
-        await using IMcpServer server = McpServerFactory.Create(new StdioServerTransport("TestServer", loggerFactory), options, loggerFactory);
+        await using var stdioTransport = new StdioServerTransport("TestServer", loggerFactory);
+        await using IMcpServer server = McpServerFactory.Create(stdioTransport, options, loggerFactory);
 
-        Log.Logger.Information("Server initialized.");
-
-        await server.StartAsync();
-
-        Log.Logger.Information("Server started.");
-
-        // everything server sends random log level messages every 15 seconds
-        int loggingSeconds = 0;
-        Random random = Random.Shared;
-        var loggingLevels = Enum.GetValues<LoggingLevel>().ToList();
+        Log.Logger.Information("Server running...");
 
         // Run until process is stopped by the client (parent process)
+        _ = RunBackgroundLoop(server);
+
+        await server.RunAsync();
+    }
+
+    private static async Task RunBackgroundLoop(IMcpServer server, CancellationToken cancellationToken = default)
+    {
+        var loggingLevels = Enum.GetValues<LoggingLevel>();
+
         while (true)
         {
-            await Task.Delay(5000);
-            if (_minimumLoggingLevel is not null)
+            await Task.Delay(1000, cancellationToken);
+            try
             {
-                loggingSeconds += 5;
-
-                // Send random log messages every 15 seconds
-                if (loggingSeconds >= 15)
+                // Send random log messages every few seconds
+                if (_minimumLoggingLevel is not null)
                 {
-                    var logLevelIndex = random.Next(loggingLevels.Count);
-                    var logLevel = loggingLevels[logLevelIndex];
+                    var logLevel = loggingLevels[Random.Shared.Next(loggingLevels.Length)];
                     await server.SendMessageAsync(new JsonRpcNotification()
                     {
                         Method = NotificationMethods.LoggingMessageNotification,
@@ -81,25 +80,24 @@ internal static class Program
                             Level = logLevel,
                             Data = JsonSerializer.Deserialize<JsonElement>("\"Random log message\"")
                         }
-                    });
+                    }, cancellationToken);
+                }
+
+                // Snapshot the subscribed resources, rather than locking while sending notifications
+                foreach (var resource in _subscribedResources)
+                {
+                    ResourceUpdatedNotificationParams notificationParams = new() { Uri = resource.Key };
+                    await server.SendMessageAsync(new JsonRpcNotification()
+                    {
+                        Method = NotificationMethods.ResourceUpdatedNotification,
+                        Params = notificationParams
+                    }, cancellationToken);
                 }
             }
-
-            // Snapshot the subscribed resources, rather than locking while sending notifications
-            List<string> resources;
-            lock (_subscribedResourcesLock)
+            catch (Exception ex)
             {
-                resources = _subscribedResources.ToList();
-            }
-            
-            foreach (var resource in resources)
-            {
-                ResourceUpdatedNotificationParams notificationParams = new() { Uri = resource };
-                await server.SendMessageAsync(new JsonRpcNotification()
-                {
-                    Method = NotificationMethods.ResourceUpdatedNotification,
-                    Params = notificationParams
-                });
+                Log.Logger.Error(ex, "Error sending log message");
+                break;
             }
         }
     }
@@ -312,8 +310,7 @@ internal static class Program
         };
     }
 
-    private static readonly HashSet<string> _subscribedResources = new();
-    private static readonly object _subscribedResourcesLock = new();
+    private static readonly ConcurrentDictionary<string, bool> _subscribedResources = new();
 
     private static ResourcesCapability ConfigureResources()
     {
@@ -330,7 +327,7 @@ internal static class Program
                     Name = $"Resource {i + 1}",
                     MimeType = "text/plain"
                 });
-                resourceContents.Add(new ResourceContents()
+                resourceContents.Add(new TextResourceContents()
                 {
                     Uri = uri,
                     MimeType = "text/plain",
@@ -346,7 +343,7 @@ internal static class Program
                     Name = $"Resource {i + 1}",
                     MimeType = "application/octet-stream"
                 });
-                resourceContents.Add(new ResourceContents()
+                resourceContents.Add(new BlobResourceContents()
                 {
                     Uri = uri,
                     MimeType = "application/octet-stream",
@@ -420,7 +417,7 @@ internal static class Program
                     return Task.FromResult(new ReadResourceResult()
                     {
                         Contents = [
-                            new ResourceContents()
+                            new TextResourceContents()
                             {
                                 Uri = request.Params.Uri,
                                 MimeType = "text/plain",
@@ -451,10 +448,7 @@ internal static class Program
                     throw new McpServerException("Invalid resource URI");
                 }
 
-                lock (_subscribedResourcesLock)
-                {
-                    _subscribedResources.Add(request.Params.Uri);
-                }
+                _subscribedResources.TryAdd(request.Params.Uri, true);
 
                 return Task.FromResult(new EmptyResult());
             },
@@ -471,10 +465,7 @@ internal static class Program
                     throw new McpServerException("Invalid resource URI");
                 }
 
-                lock (_subscribedResourcesLock)
-                {
-                    _subscribedResources.Remove(request.Params.Uri);
-                }
+                _subscribedResources.Remove(request.Params.Uri, out _);
 
                 return Task.FromResult(new EmptyResult());
             },

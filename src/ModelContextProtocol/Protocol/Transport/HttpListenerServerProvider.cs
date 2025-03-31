@@ -1,22 +1,28 @@
 ﻿using System.Net;
-using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Protocol.Transport;
 
 /// <summary>
 /// HTTP server provider using HttpListener.
 /// </summary>
-internal class HttpListenerServerProvider : IDisposable
+internal sealed class HttpListenerServerProvider : IAsyncDisposable
 {
     private static readonly byte[] s_accepted = "Accepted"u8.ToArray();
 
     private const string SseEndpoint = "/sse";
     private const string MessageEndpoint = "/message";
 
-    private readonly int _port;
-    private HttpListener? _listener;
-    private CancellationTokenSource? _cts;
-    private bool _isRunning;
+    private readonly HttpListener _listener;
+    private readonly CancellationTokenSource _shutdownTokenSource = new();
+    private Task _listeningTask = Task.CompletedTask;
+
+    private readonly TaskCompletionSource<bool> _completed = new();
+    private int _outstandingOperations;
+
+    private int _state;
+    private const int StateNotStarted = 0;
+    private const int StateRunning = 1;
+    private const int StateStopped = 2;
 
     /// <summary>
     /// Creates a new instance of the HTTP server provider.
@@ -24,84 +30,100 @@ internal class HttpListenerServerProvider : IDisposable
     /// <param name="port">The port to listen on</param>
     public HttpListenerServerProvider(int port)
     {
-        _port = port;
+        if (port < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(port));
+        }
+
+        _listener = new();
+        _listener.Prefixes.Add($"http://localhost:{port}/");
     }
 
     public required Func<Stream, CancellationToken, Task> OnSseConnectionAsync { get; set; }
     public required Func<Stream, CancellationToken, Task<bool>> OnMessageAsync { get; set; }
 
-    /// <inheritdoc/>
-    public Task StartAsync(CancellationToken cancellationToken = default)
+    public void Start()
     {
-        if (_isRunning)
-            return Task.CompletedTask;
-
-        _cts = new CancellationTokenSource();
-        _listener = new HttpListener();
-        _listener.Prefixes.Add($"http://localhost:{_port}/");
-        _listener.Start();
-        _isRunning = true;
-
-        // Start listening for connections
-        _ = Task.Run(() => ListenForConnectionsAsync(_cts.Token), cancellationToken).ConfigureAwait(false);
-        return Task.CompletedTask;
-    }
-
-    /// <inheritdoc/>
-    public Task StopAsync(CancellationToken cancellationToken = default)
-    {
-        if (!_isRunning)
-            return Task.CompletedTask;
-
-        _cts?.Cancel();
-        _listener?.Stop();
-
-        _isRunning = false;
-        return Task.CompletedTask;
-    }
-
-    private async Task ListenForConnectionsAsync(CancellationToken cancellationToken)
-    {
-        if (_listener == null)
+        if (Interlocked.CompareExchange(ref _state, StateRunning, StateNotStarted) != StateNotStarted)
         {
-            throw new McpServerException("Listener not initialized");
+            throw new ObjectDisposedException("Server may not be started twice.");
         }
 
-        while (!cancellationToken.IsCancellationRequested)
+        // Start listening for connections
+        _listener.Start();
+
+        OperationAdded(); // for the listening task
+        _listeningTask = Task.Run(async () =>
         {
             try
             {
-                var context = await _listener.GetContextAsync().ConfigureAwait(false);
-
-                // Process the request in a separate task
-                _ = Task.Run(() => ProcessRequestAsync(context, cancellationToken), cancellationToken);
-            }
-            catch (Exception) when (cancellationToken.IsCancellationRequested)
-            {
-                // Shutdown requested, exit gracefully
-                break;
-            }
-            catch (Exception)
-            {
-                // Log error but continue listening
-                if (!cancellationToken.IsCancellationRequested)
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdownTokenSource.Token);
+                cts.Token.Register(_listener.Stop);
+                while (!cts.IsCancellationRequested)
                 {
-                    // Continue listening if not shutting down
-                    continue;
+                    try
+                    {
+                        var context = await _listener.GetContextAsync().ConfigureAwait(false);
+
+                        // Process the request in a separate task
+                        OperationAdded(); // for the processing task; decremented in ProcessRequestAsync
+                        _ = Task.Run(() => ProcessRequestAsync(context, cts.Token), CancellationToken.None);
+                    }
+                    catch (Exception)
+                    {
+                        if (cts.IsCancellationRequested)
+                        {
+                            // Shutdown requested, exit gracefully
+                            break;
+                        }
+                    }
                 }
             }
+            finally
+            {
+                OperationCompleted(); // for the listening task
+            }
+        }, CancellationToken.None);
+    }
+
+    /// <inheritdoc/>
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.CompareExchange(ref _state, StateStopped, StateRunning) != StateRunning)
+        {
+            return;
+        }
+
+        await _shutdownTokenSource.CancelAsync().ConfigureAwait(false);
+        _listener.Stop();
+        await _listeningTask.ConfigureAwait(false);
+        await _completed.Task.ConfigureAwait(false);
+    }
+
+    /// <summary>Gets a <see cref="Task"/> that completes when the server has finished its work.</summary>
+    public Task Completed => _completed.Task;
+
+    private void OperationAdded() => Interlocked.Increment(ref _outstandingOperations);
+
+    private void OperationCompleted()
+    {
+        if (Interlocked.Decrement(ref _outstandingOperations) == 0)
+        {
+            // All operations completed
+            _completed.TrySetResult(true);
         }
     }
 
     private async Task ProcessRequestAsync(HttpListenerContext context, CancellationToken cancellationToken)
     {
+        var request = context.Request;
+        var response = context.Response;
         try
         {
-            var request = context.Request;
-            var response = context.Response;
-
-            if (request == null)
-                throw new McpServerException("Request is null");
+            if (request is null || response is null)
+            {
+                return;
+            }
 
             // Handle SSE connection
             if (request.HttpMethod == "GET" && request.Url?.LocalPath == SseEndpoint)
@@ -124,10 +146,14 @@ internal class HttpListenerServerProvider : IDisposable
         {
             try
             {
-                context.Response.StatusCode = 500;
-                context.Response.Close();
+                response.StatusCode = 500;
+                response.Close();
             }
             catch { /* Ignore errors during error handling */ }
+        }
+        finally
+        {
+            OperationCompleted();
         }
     }
 
@@ -145,13 +171,8 @@ internal class HttpListenerServerProvider : IDisposable
         {
             await OnSseConnectionAsync(response.OutputStream, cancellationToken).ConfigureAwait(false);
         }
-        catch (TaskCanceledException)
-        {
-            // Normal shutdown
-        }
         catch (Exception)
         {
-            // Client disconnected or other error
         }
         finally
         {
@@ -185,21 +206,5 @@ internal class HttpListenerServerProvider : IDisposable
         }
 
         response.Close();
-    }
-
-
-    /// <inheritdoc/>
-    public void Dispose()
-    {
-        Dispose(true);
-        GC.SuppressFinalize(this);
-    }
-
-    /// <inheritdoc/>
-    protected virtual void Dispose(bool disposing)
-    {
-        StopAsync().GetAwaiter().GetResult();
-        _cts?.Dispose();
-        _listener?.Close();
     }
 }

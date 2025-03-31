@@ -1,13 +1,21 @@
-﻿using System.Text.Json.Serialization;
+﻿using System.ComponentModel;
+using System.Diagnostics;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
-/// A known resource that the server is capable of reading.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
+/// Represents the content of a resource.
+/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
 /// </summary>
-public class ResourceContents
+[JsonConverter(typeof(Converter))]
+public abstract class ResourceContents
 {
+    internal ResourceContents()
+    {
+    }
+
     /// <summary>
     /// The URI of the resource.
     /// </summary>
@@ -20,30 +28,104 @@ public class ResourceContents
     [JsonPropertyName("mimeType")]
     public string? MimeType { get; set; }
 
-    /// <summary>
-    /// The text content of the resource.
-    /// </summary>
-    [JsonPropertyName("text")]
-    public string? Text { get; set; }
-
 
     /// <summary>
-    /// The base64-encoded binary content of the resource.
+    /// Converter for <see cref="ResourceContents"/>.
     /// </summary>
-    [JsonPropertyName("blob")]
-    public string? Blob { get; set; }
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public class Converter : JsonConverter<ResourceContents>
+    {
+        /// <inheritdoc/>
+        public override ResourceContents? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.Null)
+            {
+                return null;
+            }
 
-    /// <summary>
-    /// A human-readable name for this resource.\n\nThis can be used by clients to populate UI elements.
-    /// </summary>
-    [JsonPropertyName("name")]
-    public string? Name { get; set; }
+            if (reader.TokenType != JsonTokenType.StartObject)
+            {
+                throw new JsonException();
+            }
 
-    /// <summary>
-    /// The size of the raw resource content, in bytes (i.e., before base64 encoding or any tokenization), if known.
-    /// 
-    /// This can be used by Hosts to display file sizes and estimate context window usage.
-    /// </summary>
-    [JsonPropertyName("size")]
-    public long? Size { get; set; }
+            string? uri = null;
+            string? mimeType = null;
+            string? blob = null;
+            string? text = null;
+
+            while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+            {
+                if (reader.TokenType != JsonTokenType.PropertyName)
+                {
+                    continue;
+                }
+
+                string? propertyName = reader.GetString();
+
+                switch (propertyName)
+                {
+                    case "uri":
+                        uri = reader.GetString();
+                        break;
+                    case "mimeType":
+                        mimeType = reader.GetString();
+                        break;
+                    case "blob":
+                        blob = reader.GetString();
+                        break;
+                    case "text":
+                        text = reader.GetString();
+                        break;
+                    default:
+                        break;
+                }
+            }
+
+            if (blob is not null)
+            {
+                return new BlobResourceContents
+                {
+                    Uri = uri ?? string.Empty,
+                    MimeType = mimeType,
+                    Blob = blob
+                };
+            }
+
+            if (text is not null)
+            {
+                return new TextResourceContents
+                {
+                    Uri = uri ?? string.Empty,
+                    MimeType = mimeType,
+                    Text = text
+                };
+            }
+
+            return null;
+        }
+
+        /// <inheritdoc/>
+        public override void Write(Utf8JsonWriter writer, ResourceContents value, JsonSerializerOptions options)
+        {
+            if (value is null)
+            {
+                writer.WriteNullValue();
+                return;
+            }
+
+            writer.WriteStartObject();
+            writer.WriteString("uri", value.Uri);
+            writer.WriteString("mimeType", value.MimeType);
+            Debug.Assert(value is BlobResourceContents or TextResourceContents);
+            if (value is BlobResourceContents blobResource)
+            {
+                writer.WriteString("blob", blobResource.Blob);
+            }
+            else if (value is TextResourceContents textResource)
+            {
+                writer.WriteString("text", textResource.Text);
+            }
+            writer.WriteEndObject();
+        }
+    }
 }

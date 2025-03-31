@@ -15,12 +15,19 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
         _fixture.Initialize(testOutputHelper);
     }
 
+    public override void Dispose()
+    {
+        _fixture.TestCompleted();
+        base.Dispose();
+    }
+
     private Task<IMcpClient> GetClientAsync(McpClientOptions? options = null)
     {
         return McpClientFactory.CreateAsync(
             _fixture.DefaultConfig,
             options ?? SseServerIntegrationTestFixture.CreateDefaultClientOptions(),
-            loggerFactory: LoggerFactory);
+            loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -30,7 +37,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
 
         // Act
         var client = await GetClientAsync();
-        await client.PingAsync(CancellationToken.None);
+        await client.PingAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(client);
@@ -75,7 +82,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
             {
                 ["message"] = "Hello MCP!"
             },
-            CancellationToken.None
+            TestContext.Current.CancellationToken
         );
 
         // assert
@@ -109,11 +116,13 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
         // Odd numbered resources are text in the everything server (despite the docs saying otherwise)
         // 1 is index 0, which is "even" in the 0-based index
         // We copied this oddity to the test server
-        var result = await client.ReadResourceAsync("test://static/resource/1", CancellationToken.None);
+        var result = await client.ReadResourceAsync("test://static/resource/1", TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
         Assert.Single(result.Contents);
-        Assert.NotNull(result.Contents[0].Text);
+
+        TextResourceContents textContent = Assert.IsType<TextResourceContents>(result.Contents[0]);
+        Assert.NotNull(textContent.Text);
     }
 
     [Fact]
@@ -126,11 +135,13 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
         // Even numbered resources are binary in the everything server (despite the docs saying otherwise)
         // 2 is index 1, which is "odd" in the 0-based index
         // We copied this oddity to the test server
-        var result = await client.ReadResourceAsync("test://static/resource/2", CancellationToken.None);
+        var result = await client.ReadResourceAsync("test://static/resource/2", TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
         Assert.Single(result.Contents);
-        Assert.NotNull(result.Contents[0].Blob);
+
+        BlobResourceContents blobContent = Assert.IsType<BlobResourceContents>(result.Contents[0]);
+        Assert.NotNull(blobContent.Blob);
     }
 
     [Fact]
@@ -157,7 +168,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
 
         // act
         var client = await GetClientAsync();
-        var result = await client.GetPromptAsync("simple_prompt", null, CancellationToken.None);
+        var result = await client.GetPromptAsync("simple_prompt", null, TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(result);
@@ -176,7 +187,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
             { "temperature", "0.7" },
             { "style", "formal" }
         };
-        var result = await client.GetPromptAsync("complex_prompt", arguments, CancellationToken.None);
+        var result = await client.GetPromptAsync("complex_prompt", arguments, TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(result);
@@ -191,7 +202,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
         // act
         var client = await GetClientAsync();
         await Assert.ThrowsAsync<McpClientException>(() =>
-            client.GetPromptAsync("non_existent_prompt", null, CancellationToken.None));
+            client.GetPromptAsync("non_existent_prompt", null, TestContext.Current.CancellationToken));
     }
 
     [Fact]

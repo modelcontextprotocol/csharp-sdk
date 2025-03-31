@@ -3,6 +3,9 @@ using ModelContextProtocol.Hosting;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Utils;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol;
 
@@ -19,8 +22,18 @@ public static partial class McpServerBuilderExtensions
     {
         Throw.IfNull(builder);
 
-        builder.Services.AddSingleton<IServerTransport, StdioServerTransport>();
-        builder.Services.AddHostedService<McpServerHostedService>();
+        builder.Services.AddSingleton<ITransport, StdioServerTransport>();
+        builder.Services.AddHostedService<McpServerSingleSessionHostedService>();
+
+        builder.Services.AddSingleton(services =>
+        {
+            ITransport serverTransport = services.GetRequiredService<ITransport>();
+            IOptions<McpServerOptions> options = services.GetRequiredService<IOptions<McpServerOptions>>();
+            ILoggerFactory? loggerFactory = services.GetService<ILoggerFactory>();
+
+            return McpServerFactory.Create(serverTransport, options.Value, loggerFactory, services);
+        });
+
         return builder;
     }
 
@@ -33,7 +46,7 @@ public static partial class McpServerBuilderExtensions
         Throw.IfNull(builder);
 
         builder.Services.AddSingleton<IServerTransport, HttpListenerSseServerTransport>();
-        builder.Services.AddHostedService<McpServerHostedService>();
+        builder.Services.AddHostedService<McpServerMultiSessionHostedService>();
         return builder;
     }
 }

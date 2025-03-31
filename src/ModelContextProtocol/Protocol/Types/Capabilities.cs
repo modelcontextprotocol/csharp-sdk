@@ -5,7 +5,7 @@ namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
 /// Represents the capabilities that a client may support.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
+/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
 /// </summary>
 public class ClientCapabilities
 {
@@ -30,7 +30,7 @@ public class ClientCapabilities
 
 /// <summary>
 /// Represents the roots capability configuration.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
+/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
 /// </summary>
 public class RootsCapability
 {
@@ -47,7 +47,7 @@ public class RootsCapability
 
 /// <summary>
 /// Represents the sampling capability configuration.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
+/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
 /// </summary>
 public class SamplingCapability
 {
@@ -60,7 +60,7 @@ public class SamplingCapability
 
 /// <summary>
 /// Represents the logging capability configuration.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
+/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
 /// </summary>
 public class LoggingCapability
 {
@@ -76,7 +76,7 @@ public class LoggingCapability
 
 /// <summary>
 /// Represents the prompts capability configuration.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
+/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
 /// </summary>
 public class PromptsCapability
 {
@@ -101,7 +101,7 @@ public class PromptsCapability
 
 /// <summary>
 /// Represents the resources capability configuration.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
+/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
 /// </summary>
 public class ResourcesCapability
 {
@@ -150,7 +150,7 @@ public class ResourcesCapability
 
 /// <summary>
 /// Represents the tools capability configuration.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/2024-11-05/schema.json">See the schema for details</see>
+/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
 /// </summary>
 public class ToolsCapability
 {

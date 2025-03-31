@@ -10,7 +10,7 @@ namespace TestServerWithHosting.Tools;
 [McpServerToolType]
 public static class SampleLlmTool
 {
-    [McpServerTool("sampleLLM"), Description("Samples from an LLM using MCP's sampling feature")]
+    [McpServerTool(Name = "sampleLLM"), Description("Samples from an LLM using MCP's sampling feature")]
     public static async Task<string> SampleLLM(
         IMcpServer thisServer,
         [Description("The prompt to send to the LLM")] string prompt,

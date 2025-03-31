@@ -6,18 +6,23 @@ using ModelContextProtocol.Utils.Json;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils;
+using System.Threading.Channels;
 
 namespace ModelContextProtocol.Protocol.Transport;
 
 /// <summary>
 /// Implements the MCP transport protocol using <see cref="HttpListener"/>.
 /// </summary>
-public sealed class HttpListenerSseServerTransport : TransportBase, IServerTransport
+public sealed class HttpListenerSseServerTransport : IServerTransport, IAsyncDisposable
 {
     private readonly string _serverName;
     private readonly HttpListenerServerProvider _httpServerProvider;
+    private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<HttpListenerSseServerTransport> _logger;
-    private SseResponseStreamTransport? _sseResponseStreamTransport;
+
+    private readonly Channel<ITransport> _incomingSessions;
+
+    private HttpListenerSseServerSessionTransport? _sessionTransport;
 
     private string EndpointName => $"Server (SSE) ({_serverName})";
 
@@ -39,81 +44,69 @@ public sealed class HttpListenerSseServerTransport : TransportBase, IServerTrans
     /// <param name="port">The port to listen on.</param>
     /// <param name="loggerFactory">A logger factory for creating loggers.</param>
     public HttpListenerSseServerTransport(string serverName, int port, ILoggerFactory loggerFactory)
-        : base(loggerFactory)
     {
+        Throw.IfNull(serverName);
+
         _serverName = serverName;
+        _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<HttpListenerSseServerTransport>();
         _httpServerProvider = new HttpListenerServerProvider(port)
         {
             OnSseConnectionAsync = OnSseConnectionAsync,
             OnMessageAsync = OnMessageAsync,
         };
+
+        // Until we support session IDs, there's no way to support more than one concurrent session.
+        // Any new SSE connection overwrites the old session and any new /messages go to the new session.
+        _incomingSessions = Channel.CreateBounded<ITransport>(new BoundedChannelOptions(1)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+        });
+
+        // REVIEW: We could add another layer of async for binding similar to Kestrel's IConnectionListenerFactory,
+        // but this wouldn't play well with a static factory method to accept new sessions. Ultimately,
+        // ASP.NET Core is not going to hand over binding to the MCP SDK, so I decided to just bind in the transport
+        // constructor for now.
+        _httpServerProvider.Start();
     }
 
     /// <inheritdoc/>
-    public Task StartListeningAsync(CancellationToken cancellationToken = default)
+    public async Task<ITransport?> AcceptAsync(CancellationToken cancellationToken = default)
     {
-        return _httpServerProvider.StartAsync(cancellationToken);
-    }
-
-    /// <inheritdoc/>
-    public override async Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
-    {
-        if (!IsConnected || _sseResponseStreamTransport is null)
+        while (await _incomingSessions.Reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
         {
-            _logger.TransportNotConnected(EndpointName);
-            throw new McpTransportException("Transport is not connected");
-        }
-
-        string id = "(no id)";
-        if (message is IJsonRpcMessageWithId messageWithId)
-        {
-            id = messageWithId.Id.ToString();
-        }
-
-        try
-        {
-            if (_logger.IsEnabled(LogLevel.Debug))
+            if (_incomingSessions.Reader.TryRead(out var session))
             {
-                var json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions.GetTypeInfo<IJsonRpcMessage>());
-                _logger.TransportSendingMessage(EndpointName, id, json);
+                return session;
             }
-
-            await _sseResponseStreamTransport.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
-
-            _logger.TransportSentMessage(EndpointName, id);
         }
-        catch (Exception ex)
-        {
-            _logger.TransportSendFailed(EndpointName, id, ex);
-            throw new McpTransportException("Failed to send message", ex);
-        }
+
+        return null;
     }
 
     /// <inheritdoc/>
-    public override async ValueTask DisposeAsync()
-    {
-        await CleanupAsync(CancellationToken.None).ConfigureAwait(false);
-        GC.SuppressFinalize(this);
-    }
-
-    private Task CleanupAsync(CancellationToken cancellationToken)
+    public async ValueTask DisposeAsync()
     {
         _logger.TransportCleaningUp(EndpointName);
 
-        _httpServerProvider.Dispose();
-        SetConnected(false);
+        await _httpServerProvider.DisposeAsync().ConfigureAwait(false);
+        _incomingSessions.Writer.TryComplete();
 
         _logger.TransportCleanedUp(EndpointName);
-        return Task.CompletedTask;
     }
 
     private async Task OnSseConnectionAsync(Stream responseStream, CancellationToken cancellationToken)
     {
-        await using var sseResponseStreamTransport = new SseResponseStreamTransport(responseStream);
-        _sseResponseStreamTransport = sseResponseStreamTransport;
-        SetConnected(true);
-        await sseResponseStreamTransport.RunAsync(cancellationToken);
+        var sseResponseStreamTransport = new SseResponseStreamTransport(responseStream);
+        var sessionTransport = new HttpListenerSseServerSessionTransport(_serverName, sseResponseStreamTransport, _loggerFactory);
+
+        await using (sseResponseStreamTransport.ConfigureAwait(false))
+        await using (sseResponseStreamTransport.ConfigureAwait(false))
+        {
+            _sessionTransport = sessionTransport;
+            await _incomingSessions.Writer.WriteAsync(sessionTransport).ConfigureAwait(false);
+            await sseResponseStreamTransport.RunAsync(cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <summary>
@@ -140,7 +133,7 @@ public sealed class HttpListenerSseServerTransport : TransportBase, IServerTrans
 
         try
         {
-            message ??= await JsonSerializer.DeserializeAsync(requestStream, McpJsonUtilities.DefaultOptions.GetTypeInfo<IJsonRpcMessage>());
+            message ??= await JsonSerializer.DeserializeAsync(requestStream, McpJsonUtilities.DefaultOptions.GetTypeInfo<IJsonRpcMessage>()).ConfigureAwait(false);
             if (message != null)
             {
                 string messageId = "(no id)";
@@ -150,7 +143,14 @@ public sealed class HttpListenerSseServerTransport : TransportBase, IServerTrans
                 }
 
                 _logger.TransportReceivedMessageParsed(EndpointName, messageId);
-                await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
+
+                if (_sessionTransport is null)
+                {
+                    return false;
+                }
+
+                await _sessionTransport.OnMessageReceivedAsync(message, cancellationToken).ConfigureAwait(false);
+
                 _logger.TransportMessageWritten(EndpointName, messageId);
 
                 return true;
@@ -173,6 +173,7 @@ public sealed class HttpListenerSseServerTransport : TransportBase, IServerTrans
     {
         Throw.IfNull(serverOptions);
         Throw.IfNull(serverOptions.ServerInfo);
+        Throw.IfNull(serverOptions.ServerInfo.Name);
 
         return serverOptions.ServerInfo.Name;
     }

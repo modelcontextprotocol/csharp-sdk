@@ -44,8 +44,6 @@ public class Program
             ServerInstructions = "This is a test server with only stub functionality"
         };
 
-        IMcpServer? server = null;
-
         Console.WriteLine("Registering handlers.");
 
         #region Helped method
@@ -83,7 +81,7 @@ public class Program
                     Name = $"Resource {i + 1}",
                     MimeType = "text/plain"
                 });
-                resourceContents.Add(new ResourceContents()
+                resourceContents.Add(new TextResourceContents()
                 {
                     Uri = uri,
                     MimeType = "text/plain",
@@ -99,7 +97,7 @@ public class Program
                     Name = $"Resource {i + 1}",
                     MimeType = "application/octet-stream"
                 });
-                resourceContents.Add(new ResourceContents()
+                resourceContents.Add(new BlobResourceContents()
                 {
                     Uri = uri,
                     MimeType = "application/octet-stream",
@@ -186,7 +184,7 @@ public class Program
                         {
                             throw new McpServerException("Missing required arguments 'prompt' and 'maxTokens'");
                         }
-                        var sampleResult = await server!.RequestSamplingAsync(CreateRequestSamplingParams(prompt?.ToString() ?? "", "sampleLLM", Convert.ToInt32(maxTokens?.ToString())),
+                        var sampleResult = await request.Server.RequestSamplingAsync(CreateRequestSamplingParams(prompt?.ToString() ?? "", "sampleLLM", Convert.ToInt32(maxTokens?.ToString())),
                             cancellationToken);
 
                         return new CallToolResponse()
@@ -264,7 +262,7 @@ public class Program
                         return Task.FromResult(new ReadResourceResult()
                         {
                             Contents = [
-                                new ResourceContents()
+                                new TextResourceContents()
                                 {
                                     Uri = request.Params.Uri,
                                     MimeType = "text/plain",
@@ -384,22 +382,14 @@ public class Program
         };
 
         loggerFactory ??= CreateLoggerFactory();
-        server = McpServerFactory.Create(new HttpListenerSseServerTransport("TestServer", 3001, loggerFactory), options, loggerFactory);
+        await using var httpListenerSseTransport = new HttpListenerSseServerTransport("TestServer", 3001, loggerFactory);
+        Console.WriteLine("Server running...");
 
-        Console.WriteLine("Server initialized.");
-
-        await server.StartAsync(cancellationToken);
-
-        Console.WriteLine("Server started.");
-
-        try
+        // Each IMcpServer represents a new SSE session.
+        while (true)
         {
-            // Run until process is stopped by the client (parent process) or test
-            await Task.Delay(Timeout.Infinite, cancellationToken);
-        }
-        finally
-        {
-            await server.DisposeAsync();
+            var server = await McpServerFactory.AcceptAsync(httpListenerSseTransport, options, loggerFactory, cancellationToken: cancellationToken);
+            _ = server.RunAsync(cancellationToken: cancellationToken);
         }
     }
 

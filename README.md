@@ -5,7 +5,7 @@
 The official C# SDK for the [Model Context Protocol](https://modelcontextprotocol.io/), enabling .NET applications, services, and libraries to implement and interact with MCP clients and servers. Please visit our [API documentation](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.html) for more details on available functionality.
 
 > [!NOTE]
-> This repo is still in preview, breaking changes can be introduced without prior notice.
+> This project is in preview; breaking changes can be introduced without prior notice.
 
 ## About MCP
 
@@ -44,7 +44,7 @@ var client = await McpClientFactory.CreateAsync(new()
 });
 
 // Print the list of tools available from the server.
-await foreach (var tool in client.ListToolsAsync())
+foreach (var tool in await client.ListToolsAsync())
 {
     Console.WriteLine($"{tool.Name} ({tool.Description})");
 }
@@ -80,7 +80,7 @@ var response = await chatClient.GetResponseAsync(
 
 Here is an example of how to create an MCP server and register all tools from the current application.
 It includes a simple echo tool as an example (this is included in the same file here for easy of copy and paste, but it needn't be in the same file...
-the employed overload of `WithTools` examines the current assembly for classes with the `McpToolType` attribute, and registers all methods with the
+the employed overload of `WithTools` examines the current assembly for classes with the `McpServerToolType` attribute, and registers all methods with the
 `McpTool` attribute as tools.)
 
 ```csharp
@@ -198,11 +198,7 @@ McpServerOptions options = new()
 };
 
 await using IMcpServer server = McpServerFactory.Create(new StdioServerTransport("MyServer"), options);
-
-await server.StartAsync();
-
-// Run until process is stopped by the client (parent process)
-await Task.Delay(Timeout.Infinite);
+await server.RunAsync();
 ```
 
 ## Acknowledgements
