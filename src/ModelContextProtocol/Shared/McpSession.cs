@@ -16,17 +16,17 @@ namespace ModelContextProtocol.Shared;
 /// </summary>
 internal sealed class McpSession : IDisposable
 {
-    /// <summary>
-    /// In-flight request handling, indexed by request ID. The value provides a <see cref="CancellationTokenSource"/>
-    /// that can be used to request cancellation of the in-flight handler.
-    /// </summary>
-    private static readonly ConcurrentDictionary<RequestId, CancellationTokenSource> s_handlingRequests = new();
-
     private readonly ITransport _transport;
     private readonly RequestHandlers _requestHandlers;
     private readonly NotificationHandlers _notificationHandlers;
 
+    /// <summary>Collection of requests sent on this session and waiting for responses.</summary>
     private readonly ConcurrentDictionary<RequestId, TaskCompletionSource<IJsonRpcMessage>> _pendingRequests = [];
+    /// <summary>
+    /// Collection of requests received on this session and currently being handled. The value provides a <see cref="CancellationTokenSource"/>
+    /// that can be used to request cancellation of the in-flight handler.
+    /// </summary>
+    private readonly ConcurrentDictionary<RequestId, CancellationTokenSource> s_handlingRequests = new();
     private readonly JsonSerializerOptions _jsonOptions;
     private readonly ILogger _logger;
     
@@ -183,6 +183,7 @@ internal sealed class McpSession : IDisposable
                     s_handlingRequests.TryGetValue(cn.RequestId, out var cts))
                 {
                     await cts.CancelAsync().ConfigureAwait(false);
+                    _logger.RequestCanceled(cn.RequestId);
                 }
             }
             catch
