@@ -59,7 +59,7 @@ public class ResourceContentsConverter : JsonConverter<ResourceContents>
                 continue;
             }
 
-            string propertyName = reader.GetString();
+            string? propertyName = reader.GetString();
 
             switch (propertyName)
             {
