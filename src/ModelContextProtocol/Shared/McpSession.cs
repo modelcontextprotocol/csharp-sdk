@@ -26,7 +26,7 @@ internal sealed class McpSession : IDisposable
     /// Collection of requests received on this session and currently being handled. The value provides a <see cref="CancellationTokenSource"/>
     /// that can be used to request cancellation of the in-flight handler.
     /// </summary>
-    private readonly ConcurrentDictionary<RequestId, CancellationTokenSource> s_handlingRequests = new();
+    private readonly ConcurrentDictionary<RequestId, CancellationTokenSource> _handlingRequests = new();
     private readonly JsonSerializerOptions _jsonOptions;
     private readonly ILogger _logger;
     
@@ -88,7 +88,7 @@ internal sealed class McpSession : IDisposable
                         if (messageWithId is not null)
                         {
                             combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                            s_handlingRequests[messageWithId.Id] = combinedCts;
+                            _handlingRequests[messageWithId.Id] = combinedCts;
                         }
 
                         // Fire and forget the message handling to avoid blocking the transport
@@ -136,7 +136,7 @@ internal sealed class McpSession : IDisposable
                     {
                         if (messageWithId is not null)
                         {
-                            s_handlingRequests.TryRemove(messageWithId.Id, out _);
+                            _handlingRequests.TryRemove(messageWithId.Id, out _);
                             combinedCts!.Dispose();
                         }
                     }
@@ -180,10 +180,10 @@ internal sealed class McpSession : IDisposable
             try
             {
                 if (GetCancelledNotificationParams(notification.Params) is CancelledNotification cn &&
-                    s_handlingRequests.TryGetValue(cn.RequestId, out var cts))
+                    _handlingRequests.TryGetValue(cn.RequestId, out var cts))
                 {
                     await cts.CancelAsync().ConfigureAwait(false);
-                    _logger.RequestCanceled(cn.RequestId);
+                    _logger.RequestCanceled(cn.RequestId, cn.Reason);
                 }
             }
             catch
