@@ -191,7 +191,7 @@ public sealed class InMemoryTestSseServer : IAsyncDisposable
             string content = await reader.ReadToEndAsync(cancellationToken);
 
             var jsonRpcNotification = JsonSerializer.Deserialize<JsonRpcNotification>(content);
-            if (jsonRpcNotification != null && jsonRpcNotification.Method != "initialize")
+            if (jsonRpcNotification != null && jsonRpcNotification.Method != RequestMethods.Initialize)
             {
                 // Test server so just ignore notifications
 
@@ -209,7 +209,7 @@ public sealed class InMemoryTestSseServer : IAsyncDisposable
 
             if (jsonRpcRequest != null)
             {
-                if (jsonRpcRequest.Method == "initialize")
+                if (jsonRpcRequest.Method == RequestMethods.Initialize)
                 {
                     await HandleInitializationRequest(response, jsonRpcRequest);
                 }
@@ -266,7 +266,7 @@ public sealed class InMemoryTestSseServer : IAsyncDisposable
     {
         var errorResponse = new JsonRpcError
         {
-            Id = id ?? RequestId.FromString("error"),
+            Id = id ?? new RequestId("error"),
             JsonRpc = "2.0",
             Error = new JsonRpcErrorDetail
             {

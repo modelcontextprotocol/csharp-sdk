@@ -77,7 +77,7 @@ public class StdioServerTransportTests : LoggedTest
         // Verify transport is connected
         Assert.True(transport.IsConnected, "Transport should be connected after StartListeningAsync");
 
-        var message = new JsonRpcRequest { Method = "test", Id = RequestId.FromNumber(44) };
+        var message = new JsonRpcRequest { Method = "test", Id = new RequestId(44) };
 
         await transport.SendMessageAsync(message, TestContext.Current.CancellationToken);
 
@@ -100,7 +100,7 @@ public class StdioServerTransportTests : LoggedTest
     [Fact]
     public async Task ReadMessagesAsync_Should_Read_Messages()
     {
-        var message = new JsonRpcRequest { Method = "test", Id = RequestId.FromNumber(44) };
+        var message = new JsonRpcRequest { Method = "test", Id = new RequestId(44) };
         var json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions);
 
         // Use a reader that won't terminate
@@ -125,7 +125,7 @@ public class StdioServerTransportTests : LoggedTest
         Assert.True(transport.MessageReader.TryPeek(out var readMessage));
         Assert.NotNull(readMessage);
         Assert.IsType<JsonRpcRequest>(readMessage);
-        Assert.Equal(44, ((JsonRpcRequest)readMessage).Id.AsNumber);
+        Assert.Equal("44", ((JsonRpcRequest)readMessage).Id.ToString());
     }
 
     [Fact]
@@ -158,7 +158,7 @@ public class StdioServerTransportTests : LoggedTest
         var chineseMessage = new JsonRpcRequest
         {
             Method = "test",
-            Id = RequestId.FromNumber(44),
+            Id = new RequestId(44),
             Params = new Dictionary<string, JsonElement>
             {
                 ["text"] = JsonSerializer.SerializeToElement(chineseText)
@@ -180,7 +180,7 @@ public class StdioServerTransportTests : LoggedTest
         var emojiMessage = new JsonRpcRequest
         {
             Method = "test",
-            Id = RequestId.FromNumber(45),
+            Id = new RequestId(45),
             Params = new Dictionary<string, JsonElement>
             {
                 ["text"] = JsonSerializer.SerializeToElement(emojiText)

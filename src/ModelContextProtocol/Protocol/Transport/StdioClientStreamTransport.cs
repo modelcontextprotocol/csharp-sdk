@@ -21,6 +21,7 @@ internal sealed class StdioClientStreamTransport : TransportBase
     private readonly ILogger _logger;
     private readonly JsonSerializerOptions _jsonOptions;
     private readonly DataReceivedEventHandler _logProcessErrors;
+    private readonly SemaphoreSlim _sendLock = new(1, 1);
     private Process? _process;
     private Task? _readTask;
     private CancellationTokenSource? _shutdownCts;
@@ -150,6 +151,8 @@ internal sealed class StdioClientStreamTransport : TransportBase
     /// <inheritdoc/>
     public override async Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
     {
+        using var _ = await _sendLock.LockAsync(cancellationToken).ConfigureAwait(false);
+
         if (!IsConnected || _process?.HasExited == true)
         {
             _logger.TransportNotConnected(EndpointName);

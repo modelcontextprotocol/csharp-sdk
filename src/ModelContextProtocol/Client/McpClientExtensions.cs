@@ -41,7 +41,7 @@ public static class McpClientExtensions
         Throw.IfNull(client);
 
         return client.SendRequestAsync<dynamic>(
-            CreateRequest("ping", null),
+            CreateRequest(RequestMethods.Ping, null),
             cancellationToken);
     }
 
@@ -61,7 +61,7 @@ public static class McpClientExtensions
         do
         {
             var toolResults = await client.SendRequestAsync<ListToolsResult>(
-                CreateRequest("tools/list", CreateCursorDictionary(cursor)),
+                CreateRequest(RequestMethods.ToolsList, CreateCursorDictionary(cursor)),
                 cancellationToken).ConfigureAwait(false);
 
             tools ??= new List<McpClientTool>(toolResults.Tools.Count);
@@ -96,7 +96,7 @@ public static class McpClientExtensions
         do
         {
             var toolResults = await client.SendRequestAsync<ListToolsResult>(
-                CreateRequest("tools/list", CreateCursorDictionary(cursor)),
+                CreateRequest(RequestMethods.ToolsList, CreateCursorDictionary(cursor)),
                 cancellationToken).ConfigureAwait(false);
 
             foreach (var tool in toolResults.Tools)
@@ -126,7 +126,7 @@ public static class McpClientExtensions
         do
         {
             var promptResults = await client.SendRequestAsync<ListPromptsResult>(
-                CreateRequest("prompts/list", CreateCursorDictionary(cursor)),
+                CreateRequest(RequestMethods.PromptsList, CreateCursorDictionary(cursor)),
                 cancellationToken).ConfigureAwait(false);
 
             if (prompts is null)
@@ -164,7 +164,7 @@ public static class McpClientExtensions
         do
         {
             var promptResults = await client.SendRequestAsync<ListPromptsResult>(
-                CreateRequest("prompts/list", CreateCursorDictionary(cursor)),
+                CreateRequest(RequestMethods.PromptsList, CreateCursorDictionary(cursor)),
                 cancellationToken).ConfigureAwait(false);
 
             foreach (var prompt in promptResults.Prompts)
@@ -192,7 +192,7 @@ public static class McpClientExtensions
         Throw.IfNullOrWhiteSpace(name);
 
         return client.SendRequestAsync<GetPromptResult>(
-            CreateRequest("prompts/get", CreateParametersDictionary(name, arguments)),
+            CreateRequest(RequestMethods.PromptsGet, CreateParametersDictionary(name, arguments)),
             cancellationToken);
     }
 
@@ -213,7 +213,7 @@ public static class McpClientExtensions
         do
         {
             var templateResults = await client.SendRequestAsync<ListResourceTemplatesResult>(
-                CreateRequest("resources/templates/list", CreateCursorDictionary(cursor)),
+                CreateRequest(RequestMethods.ResourcesTemplatesList, CreateCursorDictionary(cursor)),
                 cancellationToken).ConfigureAwait(false);
 
             if (templates is null)
@@ -251,7 +251,7 @@ public static class McpClientExtensions
         do
         {
             var templateResults = await client.SendRequestAsync<ListResourceTemplatesResult>(
-                CreateRequest("resources/templates/list", CreateCursorDictionary(cursor)),
+                CreateRequest(RequestMethods.ResourcesTemplatesList, CreateCursorDictionary(cursor)),
                 cancellationToken).ConfigureAwait(false);
 
             foreach (var template in templateResults.ResourceTemplates)
@@ -281,7 +281,7 @@ public static class McpClientExtensions
         do
         {
             var resourceResults = await client.SendRequestAsync<ListResourcesResult>(
-                CreateRequest("resources/list", CreateCursorDictionary(cursor)),
+                CreateRequest(RequestMethods.ResourcesList, CreateCursorDictionary(cursor)),
                 cancellationToken).ConfigureAwait(false);
 
             if (resources is null)
@@ -319,7 +319,7 @@ public static class McpClientExtensions
         do
         {
             var resourceResults = await client.SendRequestAsync<ListResourcesResult>(
-                CreateRequest("resources/list", CreateCursorDictionary(cursor)),
+                CreateRequest(RequestMethods.ResourcesList, CreateCursorDictionary(cursor)),
                 cancellationToken).ConfigureAwait(false);
 
             foreach (var resource in resourceResults.Resources)
@@ -345,7 +345,7 @@ public static class McpClientExtensions
         Throw.IfNullOrWhiteSpace(uri);
 
         return client.SendRequestAsync<ReadResourceResult>(
-            CreateRequest("resources/read", new() { ["uri"] = uri }),
+            CreateRequest(RequestMethods.ResourcesRead, new() { ["uri"] = uri }),
             cancellationToken);
     }
 
@@ -369,7 +369,7 @@ public static class McpClientExtensions
         }
 
         return client.SendRequestAsync<CompleteResult>(
-            CreateRequest("completion/complete", new()
+            CreateRequest(RequestMethods.CompletionComplete, new()
             {
                 ["ref"] = reference,
                 ["argument"] = new Argument { Name = argumentName, Value = argumentValue }
@@ -389,7 +389,7 @@ public static class McpClientExtensions
         Throw.IfNullOrWhiteSpace(uri);
 
         return client.SendRequestAsync<EmptyResult>(
-            CreateRequest("resources/subscribe", new() { ["uri"] = uri }),
+            CreateRequest(RequestMethods.ResourcesSubscribe, new() { ["uri"] = uri }),
             cancellationToken);
     }
 
@@ -405,7 +405,7 @@ public static class McpClientExtensions
         Throw.IfNullOrWhiteSpace(uri);
 
         return client.SendRequestAsync<EmptyResult>(
-            CreateRequest("resources/unsubscribe", new() { ["uri"] = uri }),
+            CreateRequest(RequestMethods.ResourcesUnsubscribe, new() { ["uri"] = uri }),
             cancellationToken);
     }
 
@@ -424,7 +424,7 @@ public static class McpClientExtensions
         Throw.IfNull(toolName);
 
         return client.SendRequestAsync<CallToolResponse>(
-            CreateRequest("tools/call", CreateParametersDictionary(toolName, arguments)),
+            CreateRequest(RequestMethods.ToolsCall, CreateParametersDictionary(toolName, arguments)),
             cancellationToken);
     }
 
@@ -560,7 +560,7 @@ public static class McpClientExtensions
         Throw.IfNull(client);
 
         return client.SendRequestAsync<EmptyResult>(
-            CreateRequest("logging/setLevel", new() { ["level"] = level }),
+            CreateRequest(RequestMethods.LoggingSetLevel, new() { ["level"] = level }),
             cancellationToken);
     }
 

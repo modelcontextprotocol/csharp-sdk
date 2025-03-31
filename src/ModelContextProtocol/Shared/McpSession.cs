@@ -23,8 +23,9 @@ internal sealed class McpSession : IDisposable
     private readonly ConcurrentDictionary<RequestId, TaskCompletionSource<IJsonRpcMessage>> _pendingRequests = [];
     private readonly JsonSerializerOptions _jsonOptions;
     private readonly ILogger _logger;
-
-    private int _nextRequestId;
+    
+    private readonly string _id = Guid.NewGuid().ToString("N");
+    private long _nextRequestId;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="McpSession"/> class.
@@ -141,7 +142,7 @@ internal sealed class McpSession : IDisposable
 
     private void HandleMessageWithId(IJsonRpcMessage message, IJsonRpcMessageWithId messageWithId)
     {
-        if (!messageWithId.Id.IsValid)
+        if (messageWithId.Id.IsDefault)
         {
             _logger.RequestHasInvalidId(EndpointName);
         }
@@ -212,7 +213,10 @@ internal sealed class McpSession : IDisposable
         }
 
         // Set request ID
-        request.Id = RequestId.FromNumber(Interlocked.Increment(ref _nextRequestId));
+        if (request.Id.IsDefault)
+        {
+            request.Id = new RequestId($"{_id}-{Interlocked.Increment(ref _nextRequestId)}");
+        }
 
         var tcs = new TaskCompletionSource<IJsonRpcMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pendingRequests[request.Id] = tcs;

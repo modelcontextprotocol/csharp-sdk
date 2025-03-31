@@ -142,6 +142,7 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(ListToolsResult))]
     [JsonSerializable(typeof(LoggingMessageNotificationParams))]
     [JsonSerializable(typeof(PingResult))]
+    [JsonSerializable(typeof(ProgressNotification))]
     [JsonSerializable(typeof(ReadResourceRequestParams))]
     [JsonSerializable(typeof(ReadResourceResult))]
     [JsonSerializable(typeof(ResourceUpdatedNotificationParams))]

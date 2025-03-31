@@ -136,7 +136,7 @@ public class SseClientTransportTests : LoggedTest
         };
 
         await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
-        await session.SendMessageAsync(new JsonRpcRequest() { Method = "initialize", Id = RequestId.FromNumber(44) }, CancellationToken.None);
+        await session.SendMessageAsync(new JsonRpcRequest() { Method = RequestMethods.Initialize, Id = new RequestId(44) }, CancellationToken.None);
         Assert.True(true);
     }
 
@@ -181,7 +181,7 @@ public class SseClientTransportTests : LoggedTest
 
         await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
 
-        await session.SendMessageAsync(new JsonRpcRequest() { Method = "initialize", Id = RequestId.FromNumber(44) }, CancellationToken.None);
+        await session.SendMessageAsync(new JsonRpcRequest() { Method = RequestMethods.Initialize, Id = new RequestId(44) }, CancellationToken.None);
         Assert.True(true);
         eventSourcePipe.Writer.Complete();
     }
@@ -214,7 +214,7 @@ public class SseClientTransportTests : LoggedTest
         Assert.True(session.MessageReader.TryRead(out var message));
         Assert.NotNull(message);
         Assert.IsType<JsonRpcRequest>(message);
-        Assert.Equal("44", ((JsonRpcRequest)message).Id.AsString);
+        Assert.Equal("44", ((JsonRpcRequest)message).Id.ToString());
     }
 
     [Fact]

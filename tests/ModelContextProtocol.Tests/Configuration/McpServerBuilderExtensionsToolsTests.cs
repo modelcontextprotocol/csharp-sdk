@@ -6,9 +6,11 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Configuration;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
+using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Transport;
 using ModelContextProtocol.Tests.Utils;
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.IO.Pipelines;
 using System.Text.Json;
@@ -90,7 +92,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         IMcpClient client = await CreateMcpClientForServer();
 
         var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(11, tools.Count);
+        Assert.Equal(12, tools.Count);
 
         McpClientTool echoTool = tools.First(t => t.Name == "Echo");
         Assert.Equal("Echo", echoTool.Name);
@@ -137,7 +139,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
                 cancellationToken: TestContext.Current.CancellationToken))
             {
                 var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
-                Assert.Equal(11, tools.Count);
+                Assert.Equal(12, tools.Count);
 
                 McpClientTool echoTool = tools.First(t => t.Name == "Echo");
                 Assert.Equal("Echo", echoTool.Name);
@@ -164,10 +166,10 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         IMcpClient client = await CreateMcpClientForServer();
 
         var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(11, tools.Count);
+        Assert.Equal(12, tools.Count);
 
         Channel<JsonRpcNotification> listChanged = Channel.CreateUnbounded<JsonRpcNotification>();
-        client.AddNotificationHandler("notifications/tools/list_changed", notification =>
+        client.AddNotificationHandler(NotificationMethods.ToolListChangedNotification, notification =>
         {
             listChanged.Writer.TryWrite(notification);
             return Task.CompletedTask;
@@ -185,7 +187,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         await notificationRead;
 
         tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(12, tools.Count);
+        Assert.Equal(13, tools.Count);
         Assert.Contains(tools, t => t.Name == "NewTool");
 
         notificationRead = listChanged.Reader.ReadAsync(TestContext.Current.CancellationToken);
@@ -194,7 +196,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         await notificationRead;
 
         tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(11, tools.Count);
+        Assert.Equal(12, tools.Count);
         Assert.DoesNotContain(tools, t => t.Name == "NewTool");
     }
 
@@ -516,6 +518,49 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         Assert.Null(annotations.ReadOnlyHint);
     }
 
+    [Fact]
+    public async Task HandlesIProgressParameter()
+    {
+        ConcurrentQueue<ProgressNotification> notifications = new();
+
+        IMcpClient client = await CreateMcpClientForServer();
+        client.AddNotificationHandler(NotificationMethods.ProgressNotification, notification =>
+        {
+            ProgressNotification pn = JsonSerializer.Deserialize<ProgressNotification>((JsonElement)notification.Params!)!;
+            notifications.Enqueue(pn);
+            return Task.CompletedTask;
+        });
+
+        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+        Assert.NotNull(tools);
+        Assert.NotEmpty(tools);
+
+        McpClientTool progressTool = tools.First(t => t.Name == nameof(EchoTool.SendsProgressNotifications));
+
+        var result = await client.SendRequestAsync<CallToolResponse>(new JsonRpcRequest()
+        {
+            Method = RequestMethods.ToolsCall,
+            Params = new CallToolRequestParams()
+            {
+                Name = progressTool.ProtocolTool.Name,
+                Meta = new() { ProgressToken = new("abc123") },
+            },
+        }, TestContext.Current.CancellationToken);
+
+        Assert.Contains("done", JsonSerializer.Serialize(result));
+        SpinWait.SpinUntil(() => notifications.Count == 10, TimeSpan.FromSeconds(10));
+
+        ProgressNotification[] array = notifications.OrderBy(n => n.Progress.Progress).ToArray();
+        Assert.Equal(10, array.Length);
+        for (int i = 0; i < array.Length; i++)
+        {
+            Assert.Equal("abc123", array[i].ProgressToken.ToString());
+            Assert.Equal(i, array[i].Progress.Progress);
+            Assert.Equal(10, array[i].Progress.Total);
+            Assert.Equal($"Progress {i}", array[i].Progress.Message);
+        }
+    }
+
     [McpServerToolType]
     public sealed class EchoTool(ObjectWithId objectFromDI)
     {
@@ -583,6 +628,17 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
 
         [McpServerTool]
         public string GetCtorParameter() => $"{_randomValue}:{objectFromDI.Id}";
+
+        [McpServerTool]
+        public string SendsProgressNotifications(IProgress<ProgressNotificationValue> progress)
+        {
+            for (int i = 0; i < 10; i++)
+            {
+                progress.Report(new() { Progress = i, Total = 10, Message = $"Progress {i}" });
+            }
+
+            return "done";
+        }
     }
 
     [McpServerToolType]

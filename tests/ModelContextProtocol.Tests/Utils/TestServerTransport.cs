@@ -39,9 +39,9 @@ public class TestServerTransport : ITransport
         SentMessages.Add(message);
         if (message is JsonRpcRequest request)
         {
-            if (request.Method == "roots/list")
+            if (request.Method == RequestMethods.RootsList)
                 await ListRoots(request, cancellationToken);
-            else if (request.Method == "sampling/createMessage")
+            else if (request.Method == RequestMethods.SamplingCreateMessage)
                 await Sampling(request, cancellationToken);
             else
                 await WriteMessageAsync(request, cancellationToken);
