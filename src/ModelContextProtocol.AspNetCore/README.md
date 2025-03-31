@@ -30,10 +30,9 @@ dotnet add package ModelContextProtocol.AspNetCore --prerelease
 
 ```csharp
 // Program.cs
-using System.ComponentModel;
-using ModelContextProtocol;
-using ModelContextProtocol.Server;
 using ModelContextProtocol.AspNetCore;
+using ModelContextProtocol.Server;
+using System.ComponentModel;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.ConfigureKestrel(options =>
