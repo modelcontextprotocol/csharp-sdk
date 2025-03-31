@@ -3,8 +3,13 @@ using Microsoft.Extensions.Hosting;
 using ModelContextProtocol.Protocol.Types;
 using EverythingServer.Tools;
 using EverythingServer;
+using ModelContextProtocol.Server;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 
 var builder = Host.CreateEmptyApplicationBuilder(settings: null);
+
+HashSet<string> subscriptions = [];
 
 builder.Services
     .AddMcpServer()
@@ -97,6 +102,43 @@ builder.Services
             });
         }
     })
+    .WithSubscribeToResourcesHandler(async (ctx, ct) =>
+    {
+        var uri = ctx.Params?.Uri;
+
+        if (uri is not null)
+        {
+            subscriptions.Add(uri);
+
+            await ctx.Server.RequestSamplingAsync([
+                new ChatMessage(ChatRole.System, "You are a helpful test server"),
+                new ChatMessage(ChatRole.User, $"Resource {uri}, context: A new subscription was started"),
+            ],
+            options: new ChatOptions
+            {
+                MaxOutputTokens = 100,
+                Temperature = 0.7f,
+            },
+            cancellationToken: ct);
+        }
+
+        return new EmptyResult();
+    })
+    .WithUnsubscribeFromResourcesHandler((ctx, ct) =>
+    {
+        var uri = ctx.Params?.Uri;
+        if (uri is not null)
+        {
+            subscriptions.Remove(uri);
+        }
+        return Task.FromResult(new EmptyResult());
+    })
     ;
+
+builder.Services.AddHostedService(sp =>
+{
+    var server = sp.GetRequiredService<IMcpServer>();
+    return new SubscriptionMessageSender(server, subscriptions);
+});
 
 await builder.Build().RunAsync();
