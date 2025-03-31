@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
+using ModelContextProtocol.Utils;
 using System.Diagnostics.CodeAnalysis;
 
 namespace ModelContextProtocol.Shared;
@@ -23,7 +24,7 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
     private CancellationTokenSource? _sessionCts;
     private int _started;
 
-    private readonly SemaphoreSlim _disposeLock = new(1);
+    private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private bool _disposed;
 
     protected readonly ILogger _logger;
@@ -78,21 +79,15 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        await _disposeLock.WaitAsync().ConfigureAwait(false);
-        try
-        {
-            if (_disposed)
-            {
-                return;
-            }
-            _disposed = true;
+        using var _ = await _disposeLock.LockAsync().ConfigureAwait(false);
 
-            await DisposeUnsynchronizedAsync().ConfigureAwait(false);
-        }
-        finally
+        if (_disposed)
         {
-            _disposeLock.Release();
+            return;
         }
+        _disposed = true;
+
+        await DisposeUnsynchronizedAsync().ConfigureAwait(false);
     }
 
     /// <summary>
@@ -126,6 +121,6 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
         _logger.EndpointCleanedUp(EndpointName);
     }
 
-    protected McpSession GetSessionOrThrow() =>
-        _session ?? throw new InvalidOperationException($"This should be unreachable from public API! Call {nameof(InitializeSession)} before sending messages.");
+    protected McpSession GetSessionOrThrow()
+        => _session ?? throw new InvalidOperationException($"This should be unreachable from public API! Call {nameof(InitializeSession)} before sending messages.");
 }

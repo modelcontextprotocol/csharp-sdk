@@ -148,13 +148,18 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
             await _connectCts.CancelAsync().ConfigureAwait(false);
         }
 
-        await base.DisposeUnsynchronizedAsync().ConfigureAwait(false);
-
-        if (_sessionTransport is not null)
+        try
         {
-            await _sessionTransport.DisposeAsync().ConfigureAwait(false);
+            await base.DisposeUnsynchronizedAsync().ConfigureAwait(false);
         }
+        finally
+        {
+            if (_sessionTransport is not null)
+            {
+                await _sessionTransport.DisposeAsync().ConfigureAwait(false);
+            }
 
-        _connectCts?.Dispose();
+            _connectCts?.Dispose();
+        }
     }
 }

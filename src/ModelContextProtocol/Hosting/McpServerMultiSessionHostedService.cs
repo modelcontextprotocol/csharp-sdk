@@ -9,7 +9,7 @@ namespace ModelContextProtocol.Hosting;
 /// <summary>
 /// Hosted service for a multi-session (i.e. HTTP) MCP server.
 /// </summary>
-internal class McpServerMultiSessionHostedService : BackgroundService
+internal sealed class McpServerMultiSessionHostedService : BackgroundService
 {
     private readonly IServerTransport _serverTransport;
     private readonly McpServerOptions _serverOptions;

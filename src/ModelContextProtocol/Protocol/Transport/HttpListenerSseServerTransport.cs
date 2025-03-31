@@ -33,7 +33,7 @@ public sealed class HttpListenerSseServerTransport : IServerTransport, IAsyncDis
     /// <param name="port">The port to listen on.</param>
     /// <param name="loggerFactory">A logger factory for creating loggers.</param>
     public HttpListenerSseServerTransport(McpServerOptions serverOptions, int port, ILoggerFactory loggerFactory)
-        : this(serverOptions?.ServerInfo?.Name!, port, loggerFactory)
+        : this(GetServerName(serverOptions), port, loggerFactory)
     {
     }
 
@@ -166,5 +166,15 @@ public sealed class HttpListenerSseServerTransport : IServerTransport, IAsyncDis
             _logger.TransportMessageParseFailed(EndpointName, request, ex);
             return false;
         }
+    }
+
+    /// <summary>Validates the <paramref name="serverOptions"/> and extracts from it the server name to use.</summary>
+    private static string GetServerName(McpServerOptions serverOptions)
+    {
+        Throw.IfNull(serverOptions);
+        Throw.IfNull(serverOptions.ServerInfo);
+        Throw.IfNull(serverOptions.ServerInfo.Name);
+
+        return serverOptions.ServerInfo.Name;
     }
 }

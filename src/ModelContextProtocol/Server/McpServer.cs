@@ -160,12 +160,17 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
             tools.Changed -= _toolsChangedDelegate;
         }
 
-        await base.DisposeUnsynchronizedAsync().ConfigureAwait(false);
-
-        if (_serverTransport is not null && _sessionTransport is not null)
+        try
         {
-            // We created the _sessionTransport from the _serverTransport, so we own it.
-            await _sessionTransport.DisposeAsync().ConfigureAwait(false);
+            await base.DisposeUnsynchronizedAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            if (_serverTransport is not null && _sessionTransport is not null)
+            {
+                // We created the _sessionTransport from the _serverTransport, so we own it.
+                await _sessionTransport.DisposeAsync().ConfigureAwait(false);
+            }
         }
     }
 
