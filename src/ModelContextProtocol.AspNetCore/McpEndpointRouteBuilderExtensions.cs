@@ -1,5 +1,4 @@
-﻿using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
+﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,7 +11,7 @@ using ModelContextProtocol.Utils.Json;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 
-namespace ModelContextProtocol.AspNetCore;
+namespace Microsoft.AspNetCore.Builder;
 
 /// <summary>
 /// Extension methods for <see cref="IEndpointRouteBuilder"/> to add MCP endpoints.

@@ -1,5 +1,4 @@
-﻿using ModelContextProtocol.AspNetCore;
-using ModelContextProtocol.Protocol.Types;
+﻿using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using Serilog;
 using System.Text;
