@@ -20,12 +20,12 @@ namespace ModelContextProtocol.AspNetCore;
 public static class McpEndpointRouteBuilderExtensions
 {
     /// <summary>
-    /// Sets up endpoints for handling MCP "HTTP with SSE" transport.
+    /// Sets up endpoints for handling MCP HTTP Streaming transport.
     /// </summary>
     /// <param name="endpoints">The web application to attach MCP HTTP endpoints.</param>
-    /// <param name="onSessionAsync">Provides an optional asynchronous callback for handling new MCP sessions.</param>
+    /// <param name="runSession">Provides an optional asynchronous callback for handling new MCP sessions.</param>
     /// <returns>Returns a builder for configuring additional endpoint conventions like authorization policies.</returns>
-    public static IEndpointConventionBuilder MapMcp(this IEndpointRouteBuilder endpoints, Func<HttpContext, IMcpServer, Task>? onSessionAsync = null)
+    public static IEndpointConventionBuilder MapMcp(this IEndpointRouteBuilder endpoints, Func<HttpContext, IMcpServer, CancellationToken, Task>? runSession = null)
     {
         ConcurrentDictionary<string, SseResponseStreamTransport> _sessions = new(StringComparer.Ordinal);
 
@@ -44,19 +44,26 @@ public static class McpEndpointRouteBuilderExtensions
 
             var sessionId = MakeNewSessionId();
             await using var transport = new SseResponseStreamTransport(response.Body, $"/message?sessionId={sessionId}");
+            if (!_sessions.TryAdd(sessionId, transport))
+            {
+                throw new Exception($"Unreachable given good entropy! Session with ID '{sessionId}' has already been created.");
+            }
             await using var server = McpServerFactory.Create(transport, mcpServerOptions.Value, loggerFactory, endpoints.ServiceProvider);
-            _sessions.TryAdd(sessionId, transport);
 
             try
             {
                 var transportTask = transport.RunAsync(cancellationToken: requestAborted);
-                var serverTask = server.RunAsync(cancellationToken: requestAborted);
-                if (onSessionAsync is not null)
+                runSession ??= RunSession;
+
+                try
                 {
-                    await onSessionAsync(context, server);
+                    await runSession(context, server, requestAborted);
                 }
-                await serverTask;
-                await transportTask;
+                finally
+                {
+                    await transport.DisposeAsync();
+                    await transportTask;
+                }
             }
             catch (OperationCanceledException) when (requestAborted.IsCancellationRequested)
             {
@@ -97,6 +104,9 @@ public static class McpEndpointRouteBuilderExtensions
 
         return routeGroup;
     }
+
+    private static Task RunSession(HttpContext httpContext, IMcpServer session, CancellationToken requestAborted)
+        => session.RunAsync(requestAborted);
 
     private static string MakeNewSessionId()
     {
