@@ -8,7 +8,7 @@ using Microsoft.Extensions.Options;
 namespace ModelContextProtocol;
 
 /// <summary>
-/// Extension to host the MCP server
+/// Extension to host an MCP server
 /// </summary>
 public static class McpServerServiceCollectionExtension
 {
@@ -20,15 +20,6 @@ public static class McpServerServiceCollectionExtension
     /// <returns></returns>
     public static IMcpServerBuilder AddMcpServer(this IServiceCollection services, Action<McpServerOptions>? configureOptions = null)
     {
-        services.AddSingleton(services =>
-        {
-            IServerTransport serverTransport = services.GetRequiredService<IServerTransport>();
-            IOptions<McpServerOptions> options = services.GetRequiredService<IOptions<McpServerOptions>>();
-            ILoggerFactory? loggerFactory = services.GetService<ILoggerFactory>();
-
-            return McpServerFactory.Create(serverTransport, options.Value, loggerFactory, services);
-        });
-
         services.AddOptions();
         services.AddTransient<IConfigureOptions<McpServerOptions>, McpServerOptionsSetup>();
         if (configureOptions is not null)

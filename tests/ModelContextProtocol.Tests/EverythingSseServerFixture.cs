@@ -56,8 +56,6 @@ public class EverythingSseServerFixture : IAsyncDisposable
             // Log the exception but don't throw
             await Console.Error.WriteLineAsync($"Error stopping Docker container: {ex.Message}");
         }
-
-        GC.SuppressFinalize(this);
     }
 
     private static bool CheckIsDockerAvailable()

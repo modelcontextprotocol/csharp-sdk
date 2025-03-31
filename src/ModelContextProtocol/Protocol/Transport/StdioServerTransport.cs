@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+﻿﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Logging;
@@ -14,7 +14,7 @@ namespace ModelContextProtocol.Protocol.Transport;
 /// <summary>
 /// Provides an implementation of the MCP transport protocol over standard input/output streams.
 /// </summary>
-public sealed class StdioServerTransport : TransportBase, IServerTransport
+public sealed class StdioServerTransport : TransportBase, ITransport
 {
     private static readonly byte[] s_newlineBytes = "\n"u8.ToArray();
 
@@ -26,8 +26,10 @@ public sealed class StdioServerTransport : TransportBase, IServerTransport
     private readonly Stream _stdOutStream;
 
     private readonly SemaphoreSlim _sendLock = new(1, 1);
-    private Task? _readTask;
-    private CancellationTokenSource? _shutdownCts;
+    private readonly CancellationTokenSource _shutdownCts = new();
+
+    private readonly Task _readLoopCompleted;
+    private int _disposed = 0;
 
     private string EndpointName => $"Server (stdio) ({_serverName})";
 
@@ -44,8 +46,8 @@ public sealed class StdioServerTransport : TransportBase, IServerTransport
     /// to <see cref="Console.Out"/>, as that will interfere with the transport's output.
     /// </para>
     /// </remarks>
-    public StdioServerTransport(McpServerOptions serverOptions, ILoggerFactory? loggerFactory = null)
-        : this(GetServerName(serverOptions), loggerFactory)
+    public StdioServerTransport(IOptions<McpServerOptions> serverOptions, ILoggerFactory? loggerFactory = null)
+        : this(serverOptions?.Value!, loggerFactory: loggerFactory)
     {
     }
 
@@ -62,9 +64,17 @@ public sealed class StdioServerTransport : TransportBase, IServerTransport
     /// to <see cref="Console.Out"/>, as that will interfere with the transport's output.
     /// </para>
     /// </remarks>
-    public StdioServerTransport(IOptions<McpServerOptions> serverOptions, ILoggerFactory? loggerFactory = null)
-        : this(GetServerName(serverOptions.Value), loggerFactory)
+    public StdioServerTransport(McpServerOptions serverOptions, ILoggerFactory? loggerFactory = null)
+        : this(GetServerName(serverOptions), loggerFactory: loggerFactory)
     {
+    }
+
+    private static string GetServerName(McpServerOptions serverOptions)
+    {
+        Throw.IfNull(serverOptions);
+        Throw.IfNull(serverOptions.ServerInfo);
+        Throw.IfNull(serverOptions.ServerInfo.Name);
+        return serverOptions.ServerInfo.Name;
     }
 
     /// <summary>
@@ -80,25 +90,17 @@ public sealed class StdioServerTransport : TransportBase, IServerTransport
     /// to <see cref="Console.Out"/>, as that will interfere with the transport's output.
     /// </para>
     /// </remarks>
-    public StdioServerTransport(string serverName, ILoggerFactory? loggerFactory = null)
-        : base(loggerFactory)
+    public StdioServerTransport(string serverName, ILoggerFactory? loggerFactory)
+        : this(serverName, stdinStream: null, stdoutStream: null, loggerFactory)
     {
-        Throw.IfNull(serverName);
-        
-        _serverName = serverName;
-        _logger = (ILogger?)loggerFactory?.CreateLogger<StdioClientTransport>() ?? NullLogger.Instance;
-        
-        // Get raw console streams and wrap them with UTF-8 encoding
-        _stdInReader = new StreamReader(Console.OpenStandardInput(), Encoding.UTF8);
-        _stdOutStream = new BufferedStream(Console.OpenStandardOutput());
     }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="StdioServerTransport"/> class with explicit input/output streams.
     /// </summary>
     /// <param name="serverName">The name of the server.</param>
-    /// <param name="stdinStream">The input TextReader to use.</param>
-    /// <param name="stdoutStream">The output TextWriter to use.</param>
+    /// <param name="stdinStream">The input <see cref="Stream"/> to use as standard input. If <see langword="null"/>, <see cref="Console.In"/> will be used.</param>
+    /// <param name="stdoutStream">The output <see cref="Stream"/> to use as standard output. If <see langword="null"/>, <see cref="Console.Out"/> will be used.</param>
     /// <param name="loggerFactory">Optional logger factory used for logging employed by the transport.</param>
     /// <exception cref="ArgumentNullException"><paramref name="serverName"/> is <see langword="null"/>.</exception>
     /// <remarks>
@@ -106,33 +108,19 @@ public sealed class StdioServerTransport : TransportBase, IServerTransport
     /// This constructor is useful for testing scenarios where you want to redirect input/output.
     /// </para>
     /// </remarks>
-    public StdioServerTransport(string serverName, Stream stdinStream, Stream stdoutStream, ILoggerFactory? loggerFactory = null)
+    public StdioServerTransport(string serverName, Stream? stdinStream = null, Stream? stdoutStream = null, ILoggerFactory? loggerFactory = null)
         : base(loggerFactory)
     {
         Throw.IfNull(serverName);
-        Throw.IfNull(stdinStream);
-        Throw.IfNull(stdoutStream);
         
         _serverName = serverName;
         _logger = (ILogger?)loggerFactory?.CreateLogger<StdioClientTransport>() ?? NullLogger.Instance;
-        
-        _stdInReader = new StreamReader(stdinStream, Encoding.UTF8);
-        _stdOutStream = stdoutStream;
-    }
 
-    /// <inheritdoc/>
-    public Task StartListeningAsync(CancellationToken cancellationToken = default)
-    {
-        _logger.LogDebug("Starting StdioServerTransport listener for {EndpointName}", EndpointName);
-        
-        _shutdownCts = new CancellationTokenSource();
-
-        _readTask = Task.Run(async () => await ReadMessagesAsync(_shutdownCts.Token).ConfigureAwait(false), CancellationToken.None);
+        _stdInReader = new StreamReader(stdinStream ?? Console.OpenStandardInput(), Encoding.UTF8);
+        _stdOutStream = stdoutStream ?? new BufferedStream(Console.OpenStandardOutput());
 
         SetConnected(true);
-        _logger.LogDebug("StdioServerTransport now connected for {EndpointName}", EndpointName);
-
-        return Task.CompletedTask;
+        _readLoopCompleted = Task.Run(ReadMessagesAsync, _shutdownCts.Token);
     }
 
     /// <inheritdoc/>
@@ -169,33 +157,26 @@ public sealed class StdioServerTransport : TransportBase, IServerTransport
         }
     }
 
-    /// <inheritdoc/>
-    public override async ValueTask DisposeAsync()
+    private async Task ReadMessagesAsync()
     {
-        await CleanupAsync(CancellationToken.None).ConfigureAwait(false);
-        GC.SuppressFinalize(this);
-    }
-
-    private async Task ReadMessagesAsync(CancellationToken cancellationToken)
-    {
+        CancellationToken shutdownToken = _shutdownCts.Token;
         try
         {
             _logger.TransportEnteringReadMessagesLoop(EndpointName);
 
-            while (!cancellationToken.IsCancellationRequested)
+            while (!shutdownToken.IsCancellationRequested)
             {
                 _logger.TransportWaitingForMessage(EndpointName);
 
-                var reader = _stdInReader;
-                var line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                if (line == null)
-                {
-                    _logger.TransportEndOfStream(EndpointName);
-                    break;
-                }
-
+                var line = await _stdInReader.ReadLineAsync(shutdownToken).ConfigureAwait(false);
                 if (string.IsNullOrWhiteSpace(line))
                 {
+                    if (line is null)
+                    {
+                        _logger.TransportEndOfStream(EndpointName);
+                        break;
+                    }
+
                     continue;
                 }
 
@@ -204,8 +185,7 @@ public sealed class StdioServerTransport : TransportBase, IServerTransport
 
                 try
                 {
-                    var message = JsonSerializer.Deserialize(line, _jsonOptions.GetTypeInfo<IJsonRpcMessage>());
-                    if (message != null)
+                    if (JsonSerializer.Deserialize(line, _jsonOptions.GetTypeInfo<IJsonRpcMessage>()) is { } message)
                     {
                         string messageId = "(no id)";
                         if (message is IJsonRpcMessageWithId messageWithId)
@@ -213,7 +193,8 @@ public sealed class StdioServerTransport : TransportBase, IServerTransport
                             messageId = messageWithId.Id.ToString();
                         }
                         _logger.TransportReceivedMessageParsed(EndpointName, messageId);
-                        await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
+
+                        await WriteMessageAsync(message, shutdownToken).ConfigureAwait(false);
                         _logger.TransportMessageWritten(EndpointName, messageId);
                     }
                     else
@@ -227,12 +208,12 @@ public sealed class StdioServerTransport : TransportBase, IServerTransport
                     // Continue reading even if we fail to parse a message
                 }
             }
+
             _logger.TransportExitingReadMessagesLoop(EndpointName);
         }
         catch (OperationCanceledException)
         {
             _logger.TransportReadMessagesCancelled(EndpointName);
-            // Normal shutdown
         }
         catch (Exception ex)
         {
@@ -240,63 +221,55 @@ public sealed class StdioServerTransport : TransportBase, IServerTransport
         }
         finally
         {
-            await CleanupAsync(cancellationToken).ConfigureAwait(false);
+            SetConnected(false);
         }
     }
 
-    private async Task CleanupAsync(CancellationToken cancellationToken)
+    /// <inheritdoc />
+    public override async ValueTask DisposeAsync()
     {
-        _logger.TransportCleaningUp(EndpointName);
-
-        if (_shutdownCts is { } shutdownCts)
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
         {
-            await shutdownCts.CancelAsync().ConfigureAwait(false);
-            shutdownCts.Dispose();
-
-            _shutdownCts = null;
+            return;
         }
 
-        if (_readTask is { } readTask)
+        try
         {
+            _logger.TransportCleaningUp(EndpointName);
+
+            // Signal to the stdin reading loop to stop.
+            await _shutdownCts.CancelAsync().ConfigureAwait(false);
+            _shutdownCts.Dispose();
+
+            // Dispose of stdin/out. Cancellation may not be able to wake up operations
+            // synchronously blocked in a syscall; we need to forcefully close the handle / file descriptor.
+            _stdInReader?.Dispose();
+            _stdOutStream?.Dispose();
+
+            // Make sure the work has quiesced.
             try
             {
                 _logger.TransportWaitingForReadTask(EndpointName);
-                await readTask.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
+                await _readLoopCompleted.ConfigureAwait(false);
+                _logger.TransportReadTaskCleanedUp(EndpointName);
             }
             catch (TimeoutException)
             {
                 _logger.TransportCleanupReadTaskTimeout(EndpointName);
-                // Continue with cleanup
             }
             catch (OperationCanceledException)
             {
                 _logger.TransportCleanupReadTaskCancelled(EndpointName);
-                // Ignore cancellation
             }
             catch (Exception ex)
             {
                 _logger.TransportCleanupReadTaskFailed(EndpointName, ex);
             }
-            finally
-            {
-                _logger.TransportReadTaskCleanedUp(EndpointName);
-                _readTask = null;
-            }
         }
-
-        _stdInReader?.Dispose();
-        _stdOutStream?.Dispose();
-
-        SetConnected(false);
-        _logger.TransportCleanedUp(EndpointName);
-    }
-
-    /// <summary>Validates the <paramref name="serverOptions"/> and extracts from it the server name to use.</summary>
-    private static string GetServerName(McpServerOptions serverOptions)
-    {
-        Throw.IfNull(serverOptions);
-        Throw.IfNull(serverOptions.ServerInfo);
-
-        return serverOptions.ServerInfo.Name;
+        finally
+        {
+            SetConnected(false);
+            _logger.TransportCleanedUp(EndpointName);
+        }
     }
 }

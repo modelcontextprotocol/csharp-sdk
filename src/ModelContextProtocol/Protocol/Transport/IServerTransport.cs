@@ -3,11 +3,12 @@
 /// <summary>
 /// Represents a transport mechanism for MCP communication (from the server).
 /// </summary>
-public interface IServerTransport : ITransport
+public interface IServerTransport
 {
     /// <summary>
-    /// Starts listening for incoming messages.
+    /// Asynchronously accepts a transport session initiated by an MCP client and returns an interface for the duplex JSON-RPC message stream.
     /// </summary>
-    /// <param name="cancellationToken">Token to cancel the operation.</param>
-    Task StartListeningAsync(CancellationToken cancellationToken = default);
+    /// <param name="cancellationToken">Used to signal the cancellation of the asynchronous operation.</param>
+    /// <returns>Returns an interface for the duplex JSON-RPC message stream.</returns>
+    Task<ITransport?> AcceptAsync(CancellationToken cancellationToken = default);
 }

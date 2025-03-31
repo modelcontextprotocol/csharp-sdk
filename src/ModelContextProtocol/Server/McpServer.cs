@@ -13,29 +13,63 @@ namespace ModelContextProtocol.Server;
 internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
 {
     private readonly IServerTransport? _serverTransport;
-    private readonly string _serverDescription;
     private readonly EventHandler? _toolsChangedDelegate;
 
-    private volatile bool _isInitializing;
+    private ITransport? _sessionTransport;
+    private string _endpointName;
 
     /// <summary>
     /// Creates a new instance of <see cref="McpServer"/>.
     /// </summary>
-    /// <param name="transport">Transport to use for the server</param>
-    /// <param name="options">Configuration options for this server, including capabilities. 
-    /// Make sure to accurately reflect exactly what capabilities the server supports and does not support.</param>    
+    /// <param name="serverTransport">Transport to use for the server that is ready to accept new sessions asynchronously.</param>
+    /// <param name="options">Configuration options for this server, including capabilities.
+    /// Make sure to accurately reflect exactly what capabilities the server supports and does not support.</param>
+    /// <param name="loggerFactory">Logger factory to use for logging</param>
+    /// <param name="serviceProvider">Optional service provider to use for dependency injection</param>
+    /// <exception cref="McpServerException"></exception>
+    public McpServer(IServerTransport serverTransport, McpServerOptions options, ILoggerFactory? loggerFactory, IServiceProvider? serviceProvider)
+        : this(options, loggerFactory, serviceProvider)
+    {
+        Throw.IfNull(serverTransport);
+
+        _serverTransport = serverTransport;
+    }
+
+    /// <summary>
+    /// Creates a new instance of <see cref="McpServer"/>.
+    /// </summary>
+    /// <param name="transport">Transport to use for the server representing an already-established session.</param>
+    /// <param name="options">Configuration options for this server, including capabilities.
+    /// Make sure to accurately reflect exactly what capabilities the server supports and does not support.</param>
     /// <param name="loggerFactory">Logger factory to use for logging</param>
     /// <param name="serviceProvider">Optional service provider to use for dependency injection</param>
     /// <exception cref="McpServerException"></exception>
     public McpServer(ITransport transport, McpServerOptions options, ILoggerFactory? loggerFactory, IServiceProvider? serviceProvider)
-        : base(transport, loggerFactory)
+        : this(options, loggerFactory, serviceProvider)
+    {
+        Throw.IfNull(transport);
+
+        _sessionTransport = transport;
+        InitializeSession(transport);
+    }
+
+    /// <summary>
+    /// Creates a new instance of <see cref="McpServer"/>.
+    /// </summary>
+    /// <param name="options">Configuration options for this server, including capabilities. 
+    /// Make sure to accurately reflect exactly what capabilities the server supports and does not support.</param>
+    /// <param name="loggerFactory">Logger factory to use for logging</param>
+    /// <param name="serviceProvider">Optional service provider to use for dependency injection</param>
+    /// <exception cref="McpServerException"></exception>
+    private McpServer(McpServerOptions options, ILoggerFactory? loggerFactory, IServiceProvider? serviceProvider)
+        : base(loggerFactory)
     {
         Throw.IfNull(options);
 
-        _serverTransport = transport as IServerTransport;
         ServerOptions = options;
         Services = serviceProvider;
-        _serverDescription = $"{options.ServerInfo.Name} {options.ServerInfo.Version}";
+        _endpointName = $"Server ({options.ServerInfo.Name} {options.ServerInfo.Version})";
+
         _toolsChangedDelegate = delegate
         {
             _ = SendMessageAsync(new JsonRpcNotification()
@@ -51,7 +85,6 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
                 tools.Changed += _toolsChangedDelegate;
             }
 
-            IsInitialized = true;
             return Task.CompletedTask;
         });
 
@@ -67,6 +100,7 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
 
     public ServerCapabilities? ServerCapabilities { get; set; }
 
+    /// <inheritdoc />
     public ClientCapabilities? ClientCapabilities { get; set; }
 
     /// <inheritdoc />
@@ -79,55 +113,65 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
     public IServiceProvider? Services { get; }
 
     /// <inheritdoc />
-    public override string EndpointName =>
-        $"Server ({_serverDescription}), Client ({ClientInfo?.Name} {ClientInfo?.Version})";
+    public override string EndpointName => _endpointName;
 
-    /// <inheritdoc />
-    public async Task StartAsync(CancellationToken cancellationToken = default)
+    public async Task AcceptSessionAsync(CancellationToken cancellationToken = default)
     {
-        if (_isInitializing)
-        {
-            _logger.ServerAlreadyInitializing(EndpointName);
-            throw new InvalidOperationException("Server is already initializing");
-        }
-        _isInitializing = true;
-
-        if (IsInitialized)
-        {
-            _logger.ServerAlreadyInitializing(EndpointName);
-            return;
-        }
+        // Below is effectively an assertion. The McpServerFactory should only use this with the IServerTransport constructor.
+        Throw.IfNull(_serverTransport);
 
         try
         {
-            CancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _sessionTransport = await _serverTransport.AcceptAsync(cancellationToken).ConfigureAwait(false);
 
-            if (_serverTransport is not null)
+            if (_sessionTransport is null)
             {
-                // Start listening for messages
-                await _serverTransport.StartListeningAsync(CancellationTokenSource.Token).ConfigureAwait(false);
+                throw new McpServerException("The server transport closed before a client started a new session.");
             }
 
-            // Start processing messages
-            MessageProcessingTask = ProcessMessagesAsync(CancellationTokenSource.Token);
-
-            // Unlike McpClient, we're not done initializing until we've received a message from the client, so we don't set IsInitialized here
+            InitializeSession(_sessionTransport);
         }
         catch (Exception e)
         {
             _logger.ServerInitializationError(EndpointName, e);
-            await CleanupAsync().ConfigureAwait(false);
             throw;
         }
     }
 
-    protected override Task CleanupAsync()
+    /// <inheritdoc />
+    public async Task RunAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // Start processing messages
+            StartSession(fullSessionCancellationToken: cancellationToken);
+            await MessageProcessingTask.ConfigureAwait(false);
+        }
+        finally
+        {
+            await DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    public override async ValueTask DisposeUnsynchronizedAsync()
     {
         if (ServerOptions.Capabilities?.Tools?.ToolCollection is { } tools)
         {
             tools.Changed -= _toolsChangedDelegate;
         }
-        return base.CleanupAsync();
+
+        try
+        {
+            await base.DisposeUnsynchronizedAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            if (_serverTransport is not null && _sessionTransport is not null)
+            {
+                // We created the _sessionTransport from the _serverTransport, so we own it.
+                await _sessionTransport.DisposeAsync().ConfigureAwait(false);
+            }
+        }
     }
 
     private void SetPingHandler()
@@ -143,6 +187,11 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
             {
                 ClientCapabilities = request?.Capabilities ?? new();
                 ClientInfo = request?.ClientInfo;
+
+                // Use the ClientInfo to update the session EndpointName for logging.
+                _endpointName = $"{_endpointName}, Client ({ClientInfo?.Name} {ClientInfo?.Version})";
+                GetSessionOrThrow().EndpointName = EndpointName;
+
                 return Task.FromResult(new InitializeResult()
                 {
                     ProtocolVersion = options.ProtocolVersion,

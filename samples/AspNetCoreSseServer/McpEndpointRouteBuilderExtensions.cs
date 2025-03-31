@@ -10,7 +10,6 @@ public static class McpEndpointRouteBuilderExtensions
 {
     public static IEndpointConventionBuilder MapMcpSse(this IEndpointRouteBuilder endpoints)
     {
-        IMcpServer? server = null;
         SseResponseStreamTransport? transport = null;
         var loggerFactory = endpoints.ServiceProvider.GetRequiredService<ILoggerFactory>();
         var mcpServerOptions = endpoints.ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>();
@@ -19,17 +18,17 @@ public static class McpEndpointRouteBuilderExtensions
 
         routeGroup.MapGet("/sse", async (HttpResponse response, CancellationToken requestAborted) =>
         {
-            await using var localTransport = transport = new SseResponseStreamTransport(response.Body);
-            await using var localServer = server = McpServerFactory.Create(transport, mcpServerOptions.Value, loggerFactory, endpoints.ServiceProvider);
-
-            await localServer.StartAsync(requestAborted);
-
             response.Headers.ContentType = "text/event-stream";
             response.Headers.CacheControl = "no-cache";
 
+            await using var localTransport = transport = new SseResponseStreamTransport(response.Body);
+            await using var server = McpServerFactory.Create(transport, mcpServerOptions.Value, loggerFactory, endpoints.ServiceProvider);
+
             try
             {
-                await transport.RunAsync(requestAborted);
+                var transportTask = transport.RunAsync(cancellationToken: requestAborted);
+                await server.RunAsync(cancellationToken: requestAborted);
+                await transportTask;
             }
             catch (OperationCanceledException) when (requestAborted.IsCancellationRequested)
             {

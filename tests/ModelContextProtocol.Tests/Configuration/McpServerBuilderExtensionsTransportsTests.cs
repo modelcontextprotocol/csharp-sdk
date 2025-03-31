@@ -16,7 +16,7 @@ public class McpServerBuilderExtensionsTransportsTests
 
         builder.Object.WithStdioServerTransport();
 
-        var transportType = services.FirstOrDefault(s => s.ServiceType == typeof(IServerTransport));
+        var transportType = services.FirstOrDefault(s => s.ServiceType == typeof(ITransport));
         Assert.NotNull(transportType);
         Assert.Equal(typeof(StdioServerTransport), transportType.ImplementationType);
     }

@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging.Abstractions;
+﻿using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Utils.Json;
@@ -14,8 +14,8 @@ internal sealed class StreamClientTransport : TransportBase, IClientTransport
     private readonly TextReader _serverStdoutReader;
     private readonly TextWriter _serverStdinWriter;
 
-    public StreamClientTransport(TextWriter serverStdinWriter, TextReader serverStdoutReader)
-        : base(NullLoggerFactory.Instance)
+    public StreamClientTransport(TextWriter serverStdinWriter, TextReader serverStdoutReader, ILoggerFactory loggerFactory)
+        : base(loggerFactory)
     {
         _serverStdoutReader = serverStdoutReader;
         _serverStdinWriter = serverStdinWriter;
@@ -23,7 +23,7 @@ internal sealed class StreamClientTransport : TransportBase, IClientTransport
         SetConnected(true);
     }
 
-    public Task ConnectAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default) => Task.FromResult<ITransport>(this);
 
     public override async Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
     {
@@ -37,21 +37,27 @@ internal sealed class StreamClientTransport : TransportBase, IClientTransport
 
     private async Task ReadMessagesAsync(CancellationToken cancellationToken)
     {
-        while (await _serverStdoutReader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is string line)
+        try
         {
-            if (!string.IsNullOrWhiteSpace(line))
+            while (await _serverStdoutReader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is string line)
             {
-                try
+                if (!string.IsNullOrWhiteSpace(line))
                 {
-                    if (JsonSerializer.Deserialize<IJsonRpcMessage>(line.Trim(), _jsonOptions) is { } message)
+                    try
                     {
-                        await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
+                        if (JsonSerializer.Deserialize<IJsonRpcMessage>(line.Trim(), _jsonOptions) is { } message)
+                        {
+                            await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
+                        }
+                    }
+                    catch (JsonException)
+                    {
                     }
                 }
-                catch (JsonException)
-                {
-                }
             }
+        }
+        catch (OperationCanceledException)
+        {
         }
     }
 

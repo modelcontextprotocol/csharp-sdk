@@ -5,12 +5,11 @@ using ModelContextProtocol.Protocol.Types;
 
 namespace ModelContextProtocol.Tests.Utils;
 
-public class TestServerTransport : IServerTransport
+public class TestServerTransport : ITransport
 {
     private readonly Channel<IJsonRpcMessage> _messageChannel;
-    private bool _isStarted;
 
-    public bool IsConnected => _isStarted;
+    public bool IsConnected { get; set; }
 
     public ChannelReader<IJsonRpcMessage> MessageReader => _messageChannel;
 
@@ -25,9 +24,15 @@ public class TestServerTransport : IServerTransport
             SingleReader = true,
             SingleWriter = true,
         });
+        IsConnected = true;
     }
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    public ValueTask DisposeAsync()
+    {
+        _messageChannel.Writer.TryComplete();
+        IsConnected = false;
+        return ValueTask.CompletedTask;
+    }
 
     public async Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
     {
@@ -47,12 +52,6 @@ public class TestServerTransport : IServerTransport
         }
 
         OnMessageSent?.Invoke(message);
-    }
-
-    public Task StartListeningAsync(CancellationToken cancellationToken = default)
-    {
-        _isStarted = true;
-        return Task.CompletedTask;
     }
 
     private async Task ListRoots(JsonRpcRequest request, CancellationToken cancellationToken)
@@ -76,7 +75,7 @@ public class TestServerTransport : IServerTransport
         }, cancellationToken);
     }
 
-    protected async Task WriteMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
+    private async Task WriteMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         await _messageChannel.Writer.WriteAsync(message, cancellationToken);
     }

@@ -3,11 +3,12 @@
 /// <summary>
 /// Represents a transport mechanism for MCP communication (from the client).
 /// </summary>
-public interface IClientTransport : ITransport
+public interface IClientTransport
 {
     /// <summary>
-    /// Establishes the transport connection.
+    /// Asynchronously establishes a transport session with an MCP server and returns an interface for the duplex JSON-RPC message stream.
     /// </summary>
     /// <param name="cancellationToken">Token to cancel the operation.</param>
-    Task ConnectAsync(CancellationToken cancellationToken = default);
+    /// <returns>Returns an interface for the duplex JSON-RPC message stream.</returns>
+    Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default);
 }

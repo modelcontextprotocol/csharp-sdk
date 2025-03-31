@@ -1,24 +1,31 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Configuration;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Transport;
+using ModelContextProtocol.Tests.Utils;
 using System.IO.Pipelines;
 
 namespace ModelContextProtocol.Tests.Client;
 
-public class McpClientExtensionsTests
+public class McpClientExtensionsTests : LoggedTest
 {
     private readonly Pipe _clientToServerPipe = new();
     private readonly Pipe _serverToClientPipe = new();
-    private readonly IMcpServer _server;
+    private readonly ServiceProvider _serviceProvider;
+    private readonly CancellationTokenSource _cts;
+    private readonly Task _serverTask;
 
-    public McpClientExtensionsTests()
+    public McpClientExtensionsTests(ITestOutputHelper outputHelper)
+        : base(outputHelper)
     {
         ServiceCollection sc = new();
-        sc.AddSingleton<IServerTransport>(new StdioServerTransport("TestServer", _clientToServerPipe.Reader.AsStream(), _serverToClientPipe.Writer.AsStream()));
-        sc.AddMcpServer();
+        sc.AddSingleton(LoggerFactory);
+        sc.AddMcpServer().WithStdioServerTransport();
+        // Call WithStdioServerTransport to get the IMcpServer registration, then overwrite default transport with a pipe transport.
+        sc.AddSingleton<ITransport>(new StdioServerTransport("TestServer", _clientToServerPipe.Reader.AsStream(), _serverToClientPipe.Writer.AsStream()));
         for (int f = 0; f < 10; f++)
         {
             string name = $"Method{f}";
@@ -26,20 +33,28 @@ public class McpClientExtensionsTests
         }
         sc.AddSingleton(McpServerTool.Create([McpServerTool(Destructive = false, OpenWorld = true)](string i) => $"{i} Result", new() { Name = "ValuesSetViaAttr" }));
         sc.AddSingleton(McpServerTool.Create([McpServerTool(Destructive = false, OpenWorld = true)](string i) => $"{i} Result", new() { Name = "ValuesSetViaOptions", Destructive = true, OpenWorld = false, ReadOnly = true }));
-        _server = sc.BuildServiceProvider().GetRequiredService<IMcpServer>();
+        _serviceProvider = sc.BuildServiceProvider();
+
+        var server = _serviceProvider.GetRequiredService<IMcpServer>();
+        _cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        _serverTask = server.RunAsync(cancellationToken: _cts.Token);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
+        await _cts.CancelAsync();
+
         _clientToServerPipe.Writer.Complete();
         _serverToClientPipe.Writer.Complete();
-        return _server.DisposeAsync();
+
+        await _serverTask;
+
+        await _serviceProvider.DisposeAsync();
+        _cts.Dispose();
     }
 
     private async Task<IMcpClient> CreateMcpClientForServer()
     {
-        await _server.StartAsync(TestContext.Current.CancellationToken);
-
         var serverStdinWriter = new StreamWriter(_clientToServerPipe.Writer.AsStream());
         var serverStdoutReader = new StreamReader(_serverToClientPipe.Reader.AsStream());
 
@@ -52,7 +67,8 @@ public class McpClientExtensionsTests
 
         return await McpClientFactory.CreateAsync(
             serverConfig,
-            createTransportFunc: (_, _) => new StreamClientTransport(serverStdinWriter, serverStdoutReader),
+            createTransportFunc: (_, _) => new StreamClientTransport(serverStdinWriter, serverStdoutReader, LoggerFactory),
+            loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
     }
 

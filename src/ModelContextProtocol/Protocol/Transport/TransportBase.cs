@@ -26,7 +26,7 @@ public abstract class TransportBase : ITransport
             SingleReader = true,
             SingleWriter = true,
         });
-        _logger = (ILogger?)loggerFactory?.CreateLogger<TransportBase>() ?? NullLogger.Instance;
+        _logger = loggerFactory?.CreateLogger(GetType()) ?? NullLogger.Instance;
     }
 
     /// <inheritdoc/>

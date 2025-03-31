@@ -8,13 +8,11 @@ namespace ModelContextProtocol.Tests.Server;
 
 public class McpServerFactoryTests : LoggedTest
 {
-    private readonly Mock<IServerTransport> _serverTransport;
     private readonly McpServerOptions _options;
 
     public McpServerFactoryTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
     {
-        _serverTransport = new Mock<IServerTransport>();
         _options = new McpServerOptions
         {
             ServerInfo = new Implementation { Name = "TestServer", Version = "1.0" },
@@ -27,23 +25,29 @@ public class McpServerFactoryTests : LoggedTest
     public async Task Create_Should_Initialize_With_Valid_Parameters()
     {
         // Arrange & Act
-        await using IMcpServer server = McpServerFactory.Create(_serverTransport.Object, _options, LoggerFactory);
+        await using IMcpServer server = McpServerFactory.Create(Mock.Of<ITransport>(), _options, LoggerFactory);
 
         // Assert
         Assert.NotNull(server);
     }
 
     [Fact]
-    public void Constructor_Throws_For_Null_ServerTransport()
+    public async Task Create_Throws_For_Null_ServerTransport()
     {
         // Arrange, Act & Assert
-        Assert.Throws<ArgumentNullException>("serverTransport", () => McpServerFactory.Create(null!, _options, LoggerFactory));
+        Assert.Throws<ArgumentNullException>("transport", () => McpServerFactory.Create(null!, _options, LoggerFactory));
+
+        await Assert.ThrowsAsync<ArgumentNullException>("serverTransport", () => 
+            McpServerFactory.AcceptAsync(null!, _options, LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
-    public void Constructor_Throws_For_Null_Options()
+    public async Task Create_Throws_For_Null_Options()
     {
         // Arrange, Act & Assert
-        Assert.Throws<ArgumentNullException>("serverOptions", () => McpServerFactory.Create(_serverTransport.Object, null!, LoggerFactory));
+        Assert.Throws<ArgumentNullException>("serverOptions", () => McpServerFactory.Create(Mock.Of<ITransport>(), null!, LoggerFactory));
+
+        await Assert.ThrowsAsync<ArgumentNullException>("serverOptions", () => 
+            McpServerFactory.AcceptAsync(Mock.Of<IServerTransport>(), null!, LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
     }
 }

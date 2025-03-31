@@ -9,19 +9,14 @@ using System.Text.Json;
 
 namespace ModelContextProtocol.Tests;
 
-public class SseIntegrationTests
+public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(outputHelper)
 {
     [Fact]
     public async Task ConnectAndReceiveMessage_InMemoryServer()
     {
         // Arrange
-        using var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
-            builder.AddConsole()
-            .SetMinimumLevel(LogLevel.Debug));
-
-        await using InMemoryTestSseServer server = new(logger: loggerFactory.CreateLogger<InMemoryTestSseServer>());
+        await using InMemoryTestSseServer server = new(logger: LoggerFactory.CreateLogger<InMemoryTestSseServer>());
         await server.StartAsync();
-
 
         var defaultOptions = new McpClientOptions
         {
@@ -41,7 +36,7 @@ public class SseIntegrationTests
         await using var client = await McpClientFactory.CreateAsync(
             defaultConfig, 
             defaultOptions,
-            loggerFactory: loggerFactory,
+            loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Wait for SSE connection to be established
@@ -59,10 +54,6 @@ public class SseIntegrationTests
     public async Task ConnectAndReceiveMessage_EverythingServerWithSse()
     {
         Assert.SkipWhen(!EverythingSseServerFixture.IsDockerAvailable, "docker is not available");
-
-        using var loggerFactory = LoggerFactory.Create(builder =>
-            builder.AddConsole()
-            .SetMinimumLevel(LogLevel.Debug));
 
         int port = 3001;
 
@@ -87,7 +78,7 @@ public class SseIntegrationTests
         await using var client = await McpClientFactory.CreateAsync(
             defaultConfig, 
             defaultOptions, 
-            loggerFactory: loggerFactory,
+            loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
         var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
 
@@ -100,11 +91,6 @@ public class SseIntegrationTests
     public async Task Sampling_Sse_EverythingServer()
     {
         Assert.SkipWhen(!EverythingSseServerFixture.IsDockerAvailable, "docker is not available");
-
-        // arrange
-        using var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
-            builder.AddConsole()
-            .SetMinimumLevel(LogLevel.Debug));
 
         int port = 3002;
 
@@ -153,7 +139,7 @@ public class SseIntegrationTests
         await using var client = await McpClientFactory.CreateAsync(
             defaultConfig, 
             defaultOptions,
-            loggerFactory: loggerFactory,
+            loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Call the server's sampleLLM tool which should trigger our sampling handler
@@ -161,8 +147,7 @@ public class SseIntegrationTests
             {
                 ["prompt"] = "Test prompt",
                 ["maxTokens"] = 100
-            }
-, TestContext.Current.CancellationToken);
+            }, TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(result);
@@ -175,11 +160,7 @@ public class SseIntegrationTests
     public async Task ConnectAndReceiveMessage_InMemoryServer_WithFullEndpointEventUri()
     {
         // Arrange
-        using var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
-            builder.AddConsole()
-            .SetMinimumLevel(LogLevel.Debug));
-
-        await using InMemoryTestSseServer server = new(logger: loggerFactory.CreateLogger<InMemoryTestSseServer>());
+        await using InMemoryTestSseServer server = new(logger: LoggerFactory.CreateLogger<InMemoryTestSseServer>());
         server.UseFullUrlForEndpointEvent = true;
         await server.StartAsync();
 
@@ -202,7 +183,7 @@ public class SseIntegrationTests
         await using var client = await McpClientFactory.CreateAsync(
             defaultConfig,
             defaultOptions,
-            loggerFactory: loggerFactory,
+            loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Wait for SSE connection to be established
@@ -219,11 +200,7 @@ public class SseIntegrationTests
     public async Task ConnectAndReceiveNotification_InMemoryServer()
     {
         // Arrange
-        using var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
-            builder.AddConsole()
-            .SetMinimumLevel(LogLevel.Debug));
-
-        await using InMemoryTestSseServer server = new(logger: loggerFactory.CreateLogger<InMemoryTestSseServer>());
+        await using InMemoryTestSseServer server = new(logger: LoggerFactory.CreateLogger<InMemoryTestSseServer>());
         await server.StartAsync();
 
 
@@ -245,7 +222,7 @@ public class SseIntegrationTests
         await using var client = await McpClientFactory.CreateAsync(
             defaultConfig, 
             defaultOptions, 
-            loggerFactory: loggerFactory,
+            loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Wait for SSE connection to be established
@@ -266,49 +243,5 @@ public class SseIntegrationTests
         // Assert
         var message = await receivedNotification.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         Assert.Equal("Hello from server!", message);
-    }
-
-    [Fact]
-    public async Task ConnectTwice_Throws()
-    {
-        // Arrange
-        using var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
-            builder.AddConsole()
-            .SetMinimumLevel(LogLevel.Debug));
-
-        await using InMemoryTestSseServer server = new(logger: loggerFactory.CreateLogger<InMemoryTestSseServer>());
-        await server.StartAsync();
-
-
-        var defaultOptions = new McpClientOptions
-        {
-            ClientInfo = new() { Name = "IntegrationTestClient", Version = "1.0.0" }
-        };
-
-        var defaultConfig = new McpServerConfig
-        {
-            Id = "test_server",
-            Name = "In-memory Test Server",
-            TransportType = TransportTypes.Sse,
-            TransportOptions = [],
-            Location = "http://localhost:5000/sse"
-        };
-
-        // Act
-        await using var client = await McpClientFactory.CreateAsync(
-            defaultConfig, 
-            defaultOptions, 
-            loggerFactory: loggerFactory,
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        PropertyInfo? transportProperty = client.GetType().GetProperty("Transport", BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.NotNull(transportProperty);
-        var transport = (SseClientTransport)transportProperty.GetValue(client)!;
-
-        // Wait for SSE connection to be established
-        await server.WaitForConnectionAsync(TimeSpan.FromSeconds(10));
-
-        // Assert
-        await Assert.ThrowsAsync<McpTransportException>(async () => await transport.ConnectAsync(TestContext.Current.CancellationToken));
     }
 }
