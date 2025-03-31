@@ -7,7 +7,7 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <IsPackable>true</IsPackable>
     <PackageId>ModelContextProtocol.AspNetCore</PackageId>
-    <Description>.NET ASP.NET Core SDK for the Model Context Protocol (MCP)</Description>
+    <Description>ASP.NET Core extensions for the C# Model Context Protocol (MCP) SDK.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
