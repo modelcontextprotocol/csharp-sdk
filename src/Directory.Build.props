@@ -6,7 +6,7 @@
     <RepositoryUrl>https://github.com/modelcontextprotocol/csharp-sdk</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <VersionPrefix>0.1.0</VersionPrefix>
-    <VersionSuffix>preview.3</VersionSuffix>
+    <VersionSuffix>preview.4</VersionSuffix>
     <Authors>ModelContextProtocolOfficial</Authors>
     <Copyright>© Anthropic and Contributors.</Copyright>
     <PackageTags>ModelContextProtocol;mcp;ai;llm</PackageTags>
