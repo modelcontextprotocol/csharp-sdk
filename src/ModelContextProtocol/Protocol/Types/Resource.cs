@@ -42,7 +42,6 @@ public record Resource
     /// This can be used by Hosts to display file sizes and estimate context window usage.
     /// </summary>
     [JsonPropertyName("size")]
-
     public long? Size { get; init; }
 
     /// <summary>

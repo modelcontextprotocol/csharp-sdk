@@ -52,19 +52,14 @@ public class ResourceContentsConverter : JsonConverter<ResourceContents>
         string? blob = null;
         string? text = null;
 
-        while (reader.Read())
+        while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
         {
-            if (reader.TokenType == JsonTokenType.EndObject)
-            {
-                break;
-            }
-
-            string? propertyName = reader.GetString();
-
-            if (propertyName == null)
+            if (reader.TokenType != JsonTokenType.PropertyName)
             {
                 continue;
             }
+
+            string propertyName = reader.GetString();
 
             switch (propertyName)
             {
@@ -94,6 +89,7 @@ public class ResourceContentsConverter : JsonConverter<ResourceContents>
                 Blob = blob
             };
         }
+
         if (text is not null)
         {
             return new TextResourceContents
@@ -103,6 +99,7 @@ public class ResourceContentsConverter : JsonConverter<ResourceContents>
                 Text = text
             };
         }
+
         return null;
     }
 
@@ -118,6 +115,7 @@ public class ResourceContentsConverter : JsonConverter<ResourceContents>
         writer.WriteStartObject();
         writer.WriteString("uri", value.Uri);
         writer.WriteString("mimeType", value.MimeType);
+        Debug.Assert(value is BlobResourceContents or TextResourceContents);
         if (value is BlobResourceContents blobResource)
         {
             writer.WriteString("blob", blobResource.Blob);
