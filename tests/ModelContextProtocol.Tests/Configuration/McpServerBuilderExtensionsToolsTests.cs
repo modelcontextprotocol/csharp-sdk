@@ -91,7 +91,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         IMcpClient client = await CreateMcpClientForServer();
 
         var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(12, tools.Count);
+        Assert.Equal(13, tools.Count);
 
         McpClientTool echoTool = tools.First(t => t.Name == "Echo");
         Assert.Equal("Echo", echoTool.Name);
@@ -138,7 +138,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
                 cancellationToken: TestContext.Current.CancellationToken))
             {
                 var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
-                Assert.Equal(12, tools.Count);
+                Assert.Equal(13, tools.Count);
 
                 McpClientTool echoTool = tools.First(t => t.Name == "Echo");
                 Assert.Equal("Echo", echoTool.Name);
@@ -165,7 +165,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         IMcpClient client = await CreateMcpClientForServer();
 
         var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(12, tools.Count);
+        Assert.Equal(13, tools.Count);
 
         Channel<JsonRpcNotification> listChanged = Channel.CreateUnbounded<JsonRpcNotification>();
         client.AddNotificationHandler(NotificationMethods.ToolListChangedNotification, notification =>
@@ -186,7 +186,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         await notificationRead;
 
         tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(13, tools.Count);
+        Assert.Equal(14, tools.Count);
         Assert.Contains(tools, t => t.Name == "NewTool");
 
         notificationRead = listChanged.Reader.ReadAsync(TestContext.Current.CancellationToken);
@@ -195,7 +195,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         await notificationRead;
 
         tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(12, tools.Count);
+        Assert.Equal(13, tools.Count);
         Assert.DoesNotContain(tools, t => t.Name == "NewTool");
     }
 
@@ -560,6 +560,35 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         }
     }
 
+    [Fact]
+    public async Task CancellationNotificationsPropagateToToolTokens()
+    {
+        IMcpClient client = await CreateMcpClientForServer();
+
+        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+        Assert.NotNull(tools);
+        Assert.NotEmpty(tools);
+        McpClientTool cancelableTool = tools.First(t => t.Name == nameof(EchoTool.InfiniteCancelableOperation));
+
+        var requestId = new RequestId(Guid.NewGuid().ToString());
+        var invokeTask = client.SendRequestAsync<CallToolResponse>(new JsonRpcRequest()
+        {
+            Method = RequestMethods.ToolsCall,
+            Id = requestId,
+            Params = new CallToolRequestParams() { Name = cancelableTool.ProtocolTool.Name },
+        }, TestContext.Current.CancellationToken);
+
+        await client.SendNotificationAsync(
+            NotificationMethods.CancelledNotification,
+            parameters: new CancelledNotification()
+            {
+                RequestId = requestId,
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => invokeTask);
+    }
+
     [McpServerToolType]
     public sealed class EchoTool(ObjectWithId objectFromDI)
     {
@@ -623,6 +652,21 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         public static string EchoComplex(ComplexObject complex)
         {
             return complex.Name!;
+        }
+
+        [McpServerTool]
+        public static async Task<string> InfiniteCancelableOperation(CancellationToken cancellationToken)
+        {
+            try
+            {
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+            }
+            catch (Exception)
+            {
+                return "canceled";
+            }
+
+            return "unreachable";
         }
 
         [McpServerTool]

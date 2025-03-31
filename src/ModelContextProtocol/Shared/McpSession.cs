@@ -20,7 +20,13 @@ internal sealed class McpSession : IDisposable
     private readonly RequestHandlers _requestHandlers;
     private readonly NotificationHandlers _notificationHandlers;
 
+    /// <summary>Collection of requests sent on this session and waiting for responses.</summary>
     private readonly ConcurrentDictionary<RequestId, TaskCompletionSource<IJsonRpcMessage>> _pendingRequests = [];
+    /// <summary>
+    /// Collection of requests received on this session and currently being handled. The value provides a <see cref="CancellationTokenSource"/>
+    /// that can be used to request cancellation of the in-flight handler.
+    /// </summary>
+    private readonly ConcurrentDictionary<RequestId, CancellationTokenSource> _handlingRequests = new();
     private readonly JsonSerializerOptions _jsonOptions;
     private readonly ILogger _logger;
     
@@ -69,25 +75,70 @@ internal sealed class McpSession : IDisposable
             {
                 _logger.TransportMessageRead(EndpointName, message.GetType().Name);
 
-                // Fire and forget the message handling task to avoid blocking the transport
-                // If awaiting the task, the transport will not be able to read more messages,
-                // which could lead to a deadlock if the handler sends a message back
                 _ = ProcessMessageAsync();
                 async Task ProcessMessageAsync()
                 {
-#if NET
-                    await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
-#else
-                    await default(ForceYielding);
-#endif
+                    IJsonRpcMessageWithId? messageWithId = message as IJsonRpcMessageWithId;
+                    CancellationTokenSource? combinedCts = null;
                     try
                     {
-                        await HandleMessageAsync(message, cancellationToken).ConfigureAwait(false);
+                        // Register before we yield, so that the tracking is guaranteed to be there
+                        // when subsequent messages arrive, even if the asynchronous processing happens
+                        // out of order.
+                        if (messageWithId is not null)
+                        {
+                            combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                            _handlingRequests[messageWithId.Id] = combinedCts;
+                        }
+
+                        // Fire and forget the message handling to avoid blocking the transport
+                        // If awaiting the task, the transport will not be able to read more messages,
+                        // which could lead to a deadlock if the handler sends a message back
+
+#if NET
+                        await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+#else
+                        await default(ForceYielding);
+#endif
+
+                        // Handle the message.
+                        await HandleMessageAsync(message, combinedCts?.Token ?? cancellationToken).ConfigureAwait(false);
                     }
                     catch (Exception ex)
                     {
-                        var payload = JsonSerializer.Serialize(message, _jsonOptions.GetTypeInfo<IJsonRpcMessage>());
-                        _logger.MessageHandlerError(EndpointName, message.GetType().Name, payload, ex);
+                        // Only send responses for request errors that aren't user-initiated cancellation.
+                        bool isUserCancellation =
+                            ex is OperationCanceledException &&
+                            !cancellationToken.IsCancellationRequested &&
+                            combinedCts?.IsCancellationRequested is true;
+
+                        if (!isUserCancellation && message is JsonRpcRequest request)
+                        {
+                            _logger.RequestHandlerError(EndpointName, request.Method, ex);
+                            await _transport.SendMessageAsync(new JsonRpcError
+                            {
+                                Id = request.Id,
+                                JsonRpc = "2.0",
+                                Error = new JsonRpcErrorDetail
+                                {
+                                    Code = ErrorCodes.InternalError,
+                                    Message = ex.Message
+                                }
+                            }, cancellationToken).ConfigureAwait(false);
+                        }
+                        else if (ex is not OperationCanceledException)
+                        {
+                            var payload = JsonSerializer.Serialize(message, _jsonOptions.GetTypeInfo<IJsonRpcMessage>());
+                            _logger.MessageHandlerError(EndpointName, message.GetType().Name, payload, ex);
+                        }
+                    }
+                    finally
+                    {
+                        if (messageWithId is not null)
+                        {
+                            _handlingRequests.TryRemove(messageWithId.Id, out _);
+                            combinedCts!.Dispose();
+                        }
                     }
                 }
             }
@@ -123,6 +174,25 @@ internal sealed class McpSession : IDisposable
 
     private async Task HandleNotification(JsonRpcNotification notification)
     {
+        // Special-case cancellation to cancel a pending operation. (We'll still subsequently invoke a user-specified handler if one exists.)
+        if (notification.Method == NotificationMethods.CancelledNotification)
+        {
+            try
+            {
+                if (GetCancelledNotificationParams(notification.Params) is CancelledNotification cn &&
+                    _handlingRequests.TryGetValue(cn.RequestId, out var cts))
+                {
+                    await cts.CancelAsync().ConfigureAwait(false);
+                    _logger.RequestCanceled(cn.RequestId, cn.Reason);
+                }
+            }
+            catch
+            {
+                // "Invalid cancellation notifications SHOULD be ignored"
+            }
+        }
+
+        // Handle user-defined notifications.
         if (_notificationHandlers.TryGetValue(notification.Method, out var handlers))
         {
             foreach (var notificationHandler in handlers)
@@ -161,33 +231,15 @@ internal sealed class McpSession : IDisposable
     {
         if (_requestHandlers.TryGetValue(request.Method, out var handler))
         {
-            try
+            _logger.RequestHandlerCalled(EndpointName, request.Method);
+            var result = await handler(request, cancellationToken).ConfigureAwait(false);
+            _logger.RequestHandlerCompleted(EndpointName, request.Method);
+            await _transport.SendMessageAsync(new JsonRpcResponse
             {
-                _logger.RequestHandlerCalled(EndpointName, request.Method);
-                var result = await handler(request, cancellationToken).ConfigureAwait(false);
-                _logger.RequestHandlerCompleted(EndpointName, request.Method);
-                await _transport.SendMessageAsync(new JsonRpcResponse
-                {
-                    Id = request.Id,
-                    JsonRpc = "2.0",
-                    Result = result
-                }, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _logger.RequestHandlerError(EndpointName, request.Method, ex);
-                // Send error response
-                await _transport.SendMessageAsync(new JsonRpcError
-                {
-                    Id = request.Id,
-                    JsonRpc = "2.0",
-                    Error = new JsonRpcErrorDetail
-                    {
-                        Code = -32000,  // Implementation defined error
-                        Message = ex.Message
-                    }
-                }, cancellationToken).ConfigureAwait(false);
-            }
+                Id = request.Id,
+                JsonRpc = "2.0",
+                Result = result
+            }, cancellationToken).ConfigureAwait(false);
         }
         else
         {
@@ -273,7 +325,7 @@ internal sealed class McpSession : IDisposable
         }
     }
 
-    public Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
+    public async Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(message);
 
@@ -288,7 +340,44 @@ internal sealed class McpSession : IDisposable
             _logger.SendingMessage(EndpointName, JsonSerializer.Serialize(message, _jsonOptions.GetTypeInfo<IJsonRpcMessage>()));
         }
 
-        return _transport.SendMessageAsync(message, cancellationToken);
+        await _transport.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
+
+        // If the sent notification was a cancellation notification, cancel the pending request's await, as either the
+        // server won't be sending a response, or per the specification, the response should be ignored. There are inherent
+        // race conditions here, so it's possible and allowed for the operation to complete before we get to this point.
+        if (message is JsonRpcNotification { Method: NotificationMethods.CancelledNotification } notification &&
+            GetCancelledNotificationParams(notification.Params) is CancelledNotification cn &&
+            _pendingRequests.TryRemove(cn.RequestId, out var tcs))
+        {
+            tcs.TrySetCanceled(default);
+        }
+    }
+
+    private static CancelledNotification? GetCancelledNotificationParams(object? notificationParams)
+    {
+        try
+        {
+            switch (notificationParams)
+            {
+                case null:
+                    return null;
+
+                case CancelledNotification cn:
+                    return cn;
+
+                case JsonElement je:
+                    return JsonSerializer.Deserialize(je, McpJsonUtilities.DefaultOptions.GetTypeInfo<CancelledNotification>());
+
+                default:
+                    return JsonSerializer.Deserialize(
+                        JsonSerializer.Serialize(notificationParams, McpJsonUtilities.DefaultOptions.GetTypeInfo<object?>()),
+                        McpJsonUtilities.DefaultOptions.GetTypeInfo<CancelledNotification>());
+            }
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public void Dispose()
