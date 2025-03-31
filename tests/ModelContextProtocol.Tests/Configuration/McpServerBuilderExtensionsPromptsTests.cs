@@ -30,7 +30,7 @@ public class McpServerBuilderExtensionsPromptsTests : LoggedTest, IAsyncDisposab
         sc.AddSingleton(LoggerFactory);
         _builder = sc.AddMcpServer().WithStdioServerTransport().WithPrompts<SimplePrompts>();
         // Call WithStdioServerTransport to get the IMcpServer registration, then overwrite default transport with a pipe transport.
-        sc.AddSingleton<ITransport>(new StdioServerTransport("TestServer", _clientToServerPipe.Reader.AsStream(), _serverToClientPipe.Writer.AsStream(), LoggerFactory));
+        sc.AddSingleton<ITransport>(new StreamServerTransport(_clientToServerPipe.Reader.AsStream(), _serverToClientPipe.Writer.AsStream(), loggerFactory: LoggerFactory));
         sc.AddSingleton(new ObjectWithId());
         _serviceProvider = sc.BuildServiceProvider();
 
@@ -55,19 +55,17 @@ public class McpServerBuilderExtensionsPromptsTests : LoggedTest, IAsyncDisposab
 
     private async Task<IMcpClient> CreateMcpClientForServer()
     {
-        var serverStdinWriter = new StreamWriter(_clientToServerPipe.Writer.AsStream());
-        var serverStdoutReader = new StreamReader(_serverToClientPipe.Reader.AsStream());
-
-        var serverConfig = new McpServerConfig()
-        {
-            Id = "TestServer",
-            Name = "TestServer",
-            TransportType = "ignored",
-        };
-
         return await McpClientFactory.CreateAsync(
-            serverConfig,
-            createTransportFunc: (_, _) => new StreamClientTransport(serverStdinWriter, serverStdoutReader, LoggerFactory),
+            new McpServerConfig()
+            {
+                Id = "TestServer",
+                Name = "TestServer",
+                TransportType = "ignored",
+            },
+            createTransportFunc: (_, _) => new StreamClientTransport(
+                serverInput: _clientToServerPipe.Writer.AsStream(),
+                serverOutput: _serverToClientPipe.Reader.AsStream(),
+                LoggerFactory),
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
     }

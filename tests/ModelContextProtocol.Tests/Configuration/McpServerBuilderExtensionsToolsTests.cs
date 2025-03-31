@@ -34,7 +34,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         sc.AddSingleton(LoggerFactory);
         _builder = sc.AddMcpServer().WithStdioServerTransport().WithTools<EchoTool>();
         // Call WithStdioServerTransport to get the IMcpServer registration, then overwrite default transport with a pipe transport.
-        sc.AddSingleton<ITransport>(new StdioServerTransport("TestServer", _clientToServerPipe.Reader.AsStream(), _serverToClientPipe.Writer.AsStream(), LoggerFactory));
+        sc.AddSingleton<ITransport>(new StreamServerTransport(_clientToServerPipe.Reader.AsStream(), _serverToClientPipe.Writer.AsStream(), loggerFactory: LoggerFactory));
         sc.AddSingleton(new ObjectWithId());
         _serviceProvider = sc.BuildServiceProvider();
 
@@ -59,19 +59,17 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
 
     private async Task<IMcpClient> CreateMcpClientForServer()
     {
-        var serverStdinWriter = new StreamWriter(_clientToServerPipe.Writer.AsStream());
-        var serverStdoutReader = new StreamReader(_serverToClientPipe.Reader.AsStream());
-
-        var serverConfig = new McpServerConfig()
-        {
-            Id = "TestServer",
-            Name = "TestServer",
-            TransportType = "ignored",
-        };
-
         return await McpClientFactory.CreateAsync(
-            serverConfig,
-            createTransportFunc: (_, _) => new StreamClientTransport(serverStdinWriter, serverStdoutReader, LoggerFactory),
+             new McpServerConfig()
+             {
+                 Id = "TestServer",
+                 Name = "TestServer",
+                 TransportType = "ignored",
+             },
+            createTransportFunc: (_, _) => new StreamClientTransport(
+                serverInput: _clientToServerPipe.Writer.AsStream(),
+                _serverToClientPipe.Reader.AsStream(),
+                LoggerFactory),
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
     }
@@ -117,23 +115,21 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
             var stdinPipe = new Pipe();
             var stdoutPipe = new Pipe();
 
-            await using var transport = new StdioServerTransport($"TestServer_{i}", stdinPipe.Reader.AsStream(), stdoutPipe.Writer.AsStream());
+            await using var transport = new StreamServerTransport(stdinPipe.Reader.AsStream(), stdoutPipe.Writer.AsStream());
             await using var server = McpServerFactory.Create(transport, options, loggerFactory, _serviceProvider);
             var serverRunTask = server.RunAsync(TestContext.Current.CancellationToken);
 
-            using var serverStdinWriter = new StreamWriter(stdinPipe.Writer.AsStream());
-            using var serverStdoutReader = new StreamReader(stdoutPipe.Reader.AsStream());
-
-            var serverConfig = new McpServerConfig()
-            {
-                Id = $"TestServer_{i}",
-                Name = $"TestServer_{i}",
-                TransportType = "ignored",
-            };
-
             await using (var client = await McpClientFactory.CreateAsync(
-                serverConfig,
-                createTransportFunc: (_, _) => new StreamClientTransport(serverStdinWriter, serverStdoutReader, LoggerFactory),
+                 new McpServerConfig()
+                 {
+                     Id = $"TestServer_{i}",
+                     Name = $"TestServer_{i}",
+                     TransportType = "ignored",
+                 },
+                createTransportFunc: (_, _) => new StreamClientTransport(
+                    serverInput: stdinPipe.Writer.AsStream(), 
+                    serverOutput: stdoutPipe.Reader.AsStream(), 
+                    LoggerFactory),
                 loggerFactory: LoggerFactory,
                 cancellationToken: TestContext.Current.CancellationToken))
             {
