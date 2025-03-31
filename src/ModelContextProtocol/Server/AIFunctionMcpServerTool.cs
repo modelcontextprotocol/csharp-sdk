@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Shared;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
 using System.Diagnostics.CodeAnalysis;
@@ -95,6 +96,27 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
                     {
                         ExcludeFromSchema = true,
                         BindParameter = (pi, args) => GetRequestContext(args)?.Server,
+                    };
+                }
+
+                if (pi.ParameterType == typeof(IProgress<ProgressNotificationValue>))
+                {
+                    // Bind IProgress<ProgressNotificationValue> to the progress token in the request,
+                    // if there is one. If we can't get one, return a nop progress.
+                    return new()
+                    {
+                        ExcludeFromSchema = true,
+                        BindParameter = (pi, args) =>
+                        {
+                            var requestContent = GetRequestContext(args);
+                            if (requestContent?.Server is { } server &&
+                                requestContent?.Params?.Meta?.ProgressToken is { } progressToken)
+                            {
+                                return new TokenProgress(server, progressToken);
+                            }
+
+                            return NullProgress.Instance;
+                        },
                     };
                 }
 

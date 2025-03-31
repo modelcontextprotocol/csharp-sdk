@@ -41,7 +41,7 @@ public static class McpClientExtensions
         Throw.IfNull(client);
 
         return client.SendRequestAsync<dynamic>(
-            CreateRequest("ping", null),
+            CreateRequest(RequestMethods.Ping, null),
             cancellationToken);
     }
 
@@ -61,7 +61,7 @@ public static class McpClientExtensions
         do
         {
             var toolResults = await client.SendRequestAsync<ListToolsResult>(
-                CreateRequest("tools/list", CreateCursorDictionary(cursor)),
+                CreateRequest(RequestMethods.ToolsList, CreateCursorDictionary(cursor)),
                 cancellationToken).ConfigureAwait(false);
 
             tools ??= new List<McpClientTool>(toolResults.Tools.Count);
@@ -96,7 +96,7 @@ public static class McpClientExtensions
         do
         {
             var toolResults = await client.SendRequestAsync<ListToolsResult>(
-                CreateRequest("tools/list", CreateCursorDictionary(cursor)),
+                CreateRequest(RequestMethods.ToolsList, CreateCursorDictionary(cursor)),
                 cancellationToken).ConfigureAwait(false);
 
             foreach (var tool in toolResults.Tools)
@@ -115,27 +115,23 @@ public static class McpClientExtensions
     /// <param name="client">The client.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A list of all available prompts.</returns>
-    public static async Task<IList<Prompt>> ListPromptsAsync(
+    public static async Task<IList<McpClientPrompt>> ListPromptsAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
 
-        List<Prompt>? prompts = null;
-
+        List<McpClientPrompt>? prompts = null;
         string? cursor = null;
         do
         {
             var promptResults = await client.SendRequestAsync<ListPromptsResult>(
-                CreateRequest("prompts/list", CreateCursorDictionary(cursor)),
+                CreateRequest(RequestMethods.PromptsList, CreateCursorDictionary(cursor)),
                 cancellationToken).ConfigureAwait(false);
 
-            if (prompts is null)
+            prompts ??= new List<McpClientPrompt>(promptResults.Prompts.Count);
+            foreach (var prompt in promptResults.Prompts)
             {
-                prompts = promptResults.Prompts;
-            }
-            else
-            {
-                prompts.AddRange(promptResults.Prompts);
+                prompts.Add(new McpClientPrompt(client, prompt));
             }
 
             cursor = promptResults.NextCursor;
@@ -164,7 +160,7 @@ public static class McpClientExtensions
         do
         {
             var promptResults = await client.SendRequestAsync<ListPromptsResult>(
-                CreateRequest("prompts/list", CreateCursorDictionary(cursor)),
+                CreateRequest(RequestMethods.PromptsList, CreateCursorDictionary(cursor)),
                 cancellationToken).ConfigureAwait(false);
 
             foreach (var prompt in promptResults.Prompts)
@@ -186,13 +182,13 @@ public static class McpClientExtensions
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task containing the prompt's content and messages.</returns>
     public static Task<GetPromptResult> GetPromptAsync(
-        this IMcpClient client, string name, Dictionary<string, object?>? arguments = null, CancellationToken cancellationToken = default)
+        this IMcpClient client, string name, IReadOnlyDictionary<string, object?>? arguments = null, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
         Throw.IfNullOrWhiteSpace(name);
 
         return client.SendRequestAsync<GetPromptResult>(
-            CreateRequest("prompts/get", CreateParametersDictionary(name, arguments)),
+            CreateRequest(RequestMethods.PromptsGet, CreateParametersDictionary(name, arguments)),
             cancellationToken);
     }
 
@@ -213,7 +209,7 @@ public static class McpClientExtensions
         do
         {
             var templateResults = await client.SendRequestAsync<ListResourceTemplatesResult>(
-                CreateRequest("resources/templates/list", CreateCursorDictionary(cursor)),
+                CreateRequest(RequestMethods.ResourcesTemplatesList, CreateCursorDictionary(cursor)),
                 cancellationToken).ConfigureAwait(false);
 
             if (templates is null)
@@ -251,7 +247,7 @@ public static class McpClientExtensions
         do
         {
             var templateResults = await client.SendRequestAsync<ListResourceTemplatesResult>(
-                CreateRequest("resources/templates/list", CreateCursorDictionary(cursor)),
+                CreateRequest(RequestMethods.ResourcesTemplatesList, CreateCursorDictionary(cursor)),
                 cancellationToken).ConfigureAwait(false);
 
             foreach (var template in templateResults.ResourceTemplates)
@@ -281,7 +277,7 @@ public static class McpClientExtensions
         do
         {
             var resourceResults = await client.SendRequestAsync<ListResourcesResult>(
-                CreateRequest("resources/list", CreateCursorDictionary(cursor)),
+                CreateRequest(RequestMethods.ResourcesList, CreateCursorDictionary(cursor)),
                 cancellationToken).ConfigureAwait(false);
 
             if (resources is null)
@@ -319,7 +315,7 @@ public static class McpClientExtensions
         do
         {
             var resourceResults = await client.SendRequestAsync<ListResourcesResult>(
-                CreateRequest("resources/list", CreateCursorDictionary(cursor)),
+                CreateRequest(RequestMethods.ResourcesList, CreateCursorDictionary(cursor)),
                 cancellationToken).ConfigureAwait(false);
 
             foreach (var resource in resourceResults.Resources)
@@ -345,7 +341,7 @@ public static class McpClientExtensions
         Throw.IfNullOrWhiteSpace(uri);
 
         return client.SendRequestAsync<ReadResourceResult>(
-            CreateRequest("resources/read", new() { ["uri"] = uri }),
+            CreateRequest(RequestMethods.ResourcesRead, new Dictionary<string, object?>() { ["uri"] = uri }),
             cancellationToken);
     }
 
@@ -369,7 +365,7 @@ public static class McpClientExtensions
         }
 
         return client.SendRequestAsync<CompleteResult>(
-            CreateRequest("completion/complete", new()
+            CreateRequest(RequestMethods.CompletionComplete, new Dictionary<string, object?>()
             {
                 ["ref"] = reference,
                 ["argument"] = new Argument { Name = argumentName, Value = argumentValue }
@@ -389,7 +385,7 @@ public static class McpClientExtensions
         Throw.IfNullOrWhiteSpace(uri);
 
         return client.SendRequestAsync<EmptyResult>(
-            CreateRequest("resources/subscribe", new() { ["uri"] = uri }),
+            CreateRequest(RequestMethods.ResourcesSubscribe, new Dictionary<string, object?>() { ["uri"] = uri }),
             cancellationToken);
     }
 
@@ -405,7 +401,7 @@ public static class McpClientExtensions
         Throw.IfNullOrWhiteSpace(uri);
 
         return client.SendRequestAsync<EmptyResult>(
-            CreateRequest("resources/unsubscribe", new() { ["uri"] = uri }),
+            CreateRequest(RequestMethods.ResourcesUnsubscribe, new Dictionary<string, object?>() { ["uri"] = uri }),
             cancellationToken);
     }
 
@@ -424,7 +420,7 @@ public static class McpClientExtensions
         Throw.IfNull(toolName);
 
         return client.SendRequestAsync<CallToolResponse>(
-            CreateRequest("tools/call", CreateParametersDictionary(toolName, arguments)),
+            CreateRequest(RequestMethods.ToolsCall, CreateParametersDictionary(toolName, arguments)),
             cancellationToken);
     }
 
@@ -560,11 +556,11 @@ public static class McpClientExtensions
         Throw.IfNull(client);
 
         return client.SendRequestAsync<EmptyResult>(
-            CreateRequest("logging/setLevel", new() { ["level"] = level }),
+            CreateRequest(RequestMethods.LoggingSetLevel, new Dictionary<string, object?>() { ["level"] = level }),
             cancellationToken);
     }
 
-    private static JsonRpcRequest CreateRequest(string method, Dictionary<string, object?>? parameters) =>
+    private static JsonRpcRequest CreateRequest(string method, IReadOnlyDictionary<string, object?>? parameters) =>
         new()
         {
             Method = method,

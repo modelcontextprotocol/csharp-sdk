@@ -6,7 +6,6 @@ using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using ModelContextProtocol.Utils.Json;
 using System.IO.Pipelines;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 
@@ -32,11 +31,9 @@ public class StdioServerTransportTests : LoggedTest
         };
     }
 
-    [Fact]
+    [Fact(Skip="https://github.com/modelcontextprotocol/csharp-sdk/issues/143")]
     public async Task Constructor_Should_Initialize_With_Valid_Parameters()
     {
-        Assert.SkipWhen(RuntimeInformation.IsOSPlatform(OSPlatform.Linux), "https://github.com/modelcontextprotocol/csharp-sdk/issues/143");
-
         // Act
         await using var transport = new StdioServerTransport(_serverOptions);
 
@@ -58,7 +55,7 @@ public class StdioServerTransportTests : LoggedTest
     [Fact]
     public async Task Should_Start_In_Connected_State()
     {
-        await using var transport = new StdioServerTransport(_serverOptions.ServerInfo.Name, new Pipe().Reader.AsStream(), Stream.Null, LoggerFactory);
+        await using var transport = new StreamServerTransport(new Pipe().Reader.AsStream(), Stream.Null, loggerFactory: LoggerFactory);
 
         Assert.True(transport.IsConnected);
     }
@@ -68,16 +65,15 @@ public class StdioServerTransportTests : LoggedTest
     {
         using var output = new MemoryStream();
 
-        await using var transport = new StdioServerTransport(
-            _serverOptions.ServerInfo.Name,
+        await using var transport = new StreamServerTransport(
             new Pipe().Reader.AsStream(),
             output,
-            LoggerFactory);
+            loggerFactory: LoggerFactory);
 
         // Verify transport is connected
         Assert.True(transport.IsConnected, "Transport should be connected after StartListeningAsync");
 
-        var message = new JsonRpcRequest { Method = "test", Id = RequestId.FromNumber(44) };
+        var message = new JsonRpcRequest { Method = "test", Id = new RequestId(44) };
 
         await transport.SendMessageAsync(message, TestContext.Current.CancellationToken);
 
@@ -90,7 +86,7 @@ public class StdioServerTransportTests : LoggedTest
     [Fact]
     public async Task DisposeAsync_Should_Dispose_Resources()
     {
-        await using var transport = new StdioServerTransport(_serverOptions.ServerInfo.Name, Stream.Null, Stream.Null, LoggerFactory);
+        await using var transport = new StreamServerTransport(Stream.Null, Stream.Null, loggerFactory: LoggerFactory);
 
         await transport.DisposeAsync();
 
@@ -100,18 +96,17 @@ public class StdioServerTransportTests : LoggedTest
     [Fact]
     public async Task ReadMessagesAsync_Should_Read_Messages()
     {
-        var message = new JsonRpcRequest { Method = "test", Id = RequestId.FromNumber(44) };
+        var message = new JsonRpcRequest { Method = "test", Id = new RequestId(44) };
         var json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions);
 
         // Use a reader that won't terminate
         Pipe pipe = new();
         using var input = pipe.Reader.AsStream();
 
-        await using var transport = new StdioServerTransport(
-            _serverOptions.ServerInfo.Name,
+        await using var transport = new StreamServerTransport(
             input,
             Stream.Null,
-            LoggerFactory);
+            loggerFactory: LoggerFactory);
 
         // Verify transport is connected
         Assert.True(transport.IsConnected, "Transport should be connected after StartListeningAsync");
@@ -125,13 +120,13 @@ public class StdioServerTransportTests : LoggedTest
         Assert.True(transport.MessageReader.TryPeek(out var readMessage));
         Assert.NotNull(readMessage);
         Assert.IsType<JsonRpcRequest>(readMessage);
-        Assert.Equal(44, ((JsonRpcRequest)readMessage).Id.AsNumber);
+        Assert.Equal("44", ((JsonRpcRequest)readMessage).Id.ToString());
     }
 
     [Fact]
     public async Task CleanupAsync_Should_Cleanup_Resources()
     {
-        var transport = new StdioServerTransport(_serverOptions.ServerInfo.Name, Stream.Null, Stream.Null, LoggerFactory);
+        var transport = new StreamServerTransport(Stream.Null, Stream.Null, loggerFactory: LoggerFactory);
 
         await transport.DisposeAsync();
 
@@ -144,11 +139,10 @@ public class StdioServerTransportTests : LoggedTest
         // Use a reader that won't terminate
         using var output = new MemoryStream();
 
-        await using var transport = new StdioServerTransport(
-            _serverOptions.ServerInfo.Name,
+        await using var transport = new StreamServerTransport(
             new Pipe().Reader.AsStream(),
             output,
-            LoggerFactory);
+            loggerFactory: LoggerFactory);
 
         // Verify transport is connected
         Assert.True(transport.IsConnected, "Transport should be connected after StartListeningAsync");
@@ -158,7 +152,7 @@ public class StdioServerTransportTests : LoggedTest
         var chineseMessage = new JsonRpcRequest
         {
             Method = "test",
-            Id = RequestId.FromNumber(44),
+            Id = new RequestId(44),
             Params = new Dictionary<string, JsonElement>
             {
                 ["text"] = JsonSerializer.SerializeToElement(chineseText)
@@ -180,7 +174,7 @@ public class StdioServerTransportTests : LoggedTest
         var emojiMessage = new JsonRpcRequest
         {
             Method = "test",
-            Id = RequestId.FromNumber(45),
+            Id = new RequestId(45),
             Params = new Dictionary<string, JsonElement>
             {
                 ["text"] = JsonSerializer.SerializeToElement(emojiText)

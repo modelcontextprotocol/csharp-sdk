@@ -1,4 +1,3 @@
-using ModelContextProtocol.Configuration;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using Microsoft.Extensions.DependencyInjection;

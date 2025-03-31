@@ -201,9 +201,16 @@ internal static partial class TemporaryAIFunctionFactory
                 throw new ArgumentException("Open generic methods are not supported", nameof(method));
             }
 
-            if (!method.IsStatic && target is null)
+            if (method.IsStatic)
             {
-                throw new ArgumentNullException("Target must not be null for an instance method.", nameof(target));
+                if (target is not null)
+                {
+                    throw new ArgumentException("The specified method is a static method but the specified target is non-null.", nameof(target));
+                }
+            }
+            else if (target is null)
+            {
+                throw new ArgumentNullException(nameof(target), "The specified method is an instance method but the specified target is null.");
             }
 
             var functionDescriptor = ReflectionAIFunctionDescriptor.GetOrCreate(method, options);

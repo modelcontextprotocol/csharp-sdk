@@ -1,12 +1,11 @@
 ﻿using ModelContextProtocol.Utils;
-using Microsoft.Extensions.DependencyInjection;
 
-namespace ModelContextProtocol.Configuration;
+namespace Microsoft.Extensions.DependencyInjection;
 
 /// <summary>
 /// Default implementation of <see cref="IMcpServerBuilder"/>.
 /// </summary>
-internal class DefaultMcpServerBuilder : IMcpServerBuilder
+internal sealed class DefaultMcpServerBuilder : IMcpServerBuilder
 {
     /// <inheritdoc/>
     public IServiceCollection Services { get; }

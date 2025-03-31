@@ -1,76 +1,55 @@
-﻿using System.Text.Json.Serialization;
+﻿using ModelContextProtocol.Utils;
+using System.ComponentModel;
+using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol.Messages;
 
 /// <summary>
-/// Represents a JSON-RPC request identifier which can be either a string or a number.
+/// Represents a JSON-RPC request identifier, which can be either a string or an integer.
 /// </summary>
-[JsonConverter(typeof(RequestIdConverter))]
+[JsonConverter(typeof(Converter))]
 public readonly struct RequestId : IEquatable<RequestId>
 {
-    private readonly object _value;
+    /// <summary>The id, either a string or a boxed long or null.</summary>
+    private readonly object? _id;
 
-    private RequestId(object value)
+    /// <summary>Initializes a new instance of the <see cref="RequestId"/> with a specified value.</summary>
+    /// <param name="value">The required ID value.</param>
+    public RequestId(string value)
     {
-        _value = value;
+        Throw.IfNull(value);
+        _id = value;
     }
 
-    /// <summary>
-    /// Creates a new RequestId from a string.
-    /// </summary>
-    /// <param name="value">The Id</param>
-    /// <returns>Wrapped Id object</returns>
-    public static RequestId FromString(string value) => new(value);
+    /// <summary>Initializes a new instance of the <see cref="RequestId"/> with a specified value.</summary>
+    /// <param name="value">The required ID value.</param>
+    public RequestId(long value)
+    {
+        // Box the long. Request IDs are almost always strings in practice, so this should be rare.
+        _id = value;
+    }
 
-    /// <summary>
-    /// Creates a new RequestId from a number.
-    /// </summary>
-    /// <param name="value">The Id</param>
-    /// <returns>Wrapped Id object</returns>
-    public static RequestId FromNumber(long value) => new(value);
+    /// <summary>Gets whether the identifier is uninitialized.</summary>
+    public bool IsDefault => _id is null;
 
-    /// <summary>
-    /// Checks if the RequestId is a string.
-    /// </summary>
-    public bool IsString => _value is string;
-
-    /// <summary>
-    /// Checks if the RequestId is a number.
-    /// </summary>
-    public bool IsNumber => _value is long;
-
-    /// <summary>
-    /// Checks if the request id is valid (has a value)
-    /// </summary>
-    public bool IsValid => _value != null;
-
-    /// <summary>
-    /// Gets the RequestId as a string.
-    /// </summary>
-    /// <exception cref="InvalidOperationException">Thrown if the RequestId is not a string</exception>"
-    public string AsString => _value as string ?? throw new InvalidOperationException("RequestId is not a string");
-
-    /// <summary>
-    /// Gets the RequestId as a number.
-    /// </summary>
-    /// <exception cref="InvalidOperationException">Thrown if the RequestId is not a number</exception>""
-    public long AsNumber => _value is long number ? number : throw new InvalidOperationException("RequestId is not a number");
-
-    /// <summary>
-    /// Returns the string representation of the RequestId. Will box the value if it is a number.
-    /// </summary>
-    public override string ToString() => _value.ToString() ?? "";
+    /// <inheritdoc />
+    public override string ToString() =>
+        _id is string stringValue ? $"\"{stringValue}\"" :
+        _id is long longValue ? longValue.ToString(CultureInfo.InvariantCulture) :
+        string.Empty;
 
     /// <summary>
     /// Compares this RequestId to another RequestId.
     /// </summary>
-    public bool Equals(RequestId other) => _value.Equals(other._value);
+    public bool Equals(RequestId other) => Equals(_id, other._id);
 
     /// <inheritdoc />
     public override bool Equals(object? obj) => obj is RequestId other && Equals(other);
 
     /// <inheritdoc />
-    public override int GetHashCode() => _value.GetHashCode();
+    public override int GetHashCode() => _id?.GetHashCode() ?? 0;
 
     /// <summary>
     /// Compares two RequestIds for equality.
@@ -81,4 +60,43 @@ public readonly struct RequestId : IEquatable<RequestId>
     /// Compares two RequestIds for inequality.
     /// </summary>
     public static bool operator !=(RequestId left, RequestId right) => !left.Equals(right);
+
+    /// <summary>
+    /// JSON converter for RequestId that handles both string and number values.
+    /// </summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public sealed class Converter: JsonConverter<RequestId>
+    {
+        /// <inheritdoc />
+        public override RequestId Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            return reader.TokenType switch
+            {
+                JsonTokenType.String => new(reader.GetString()!),
+                JsonTokenType.Number => new(reader.GetInt64()),
+                _ => throw new JsonException("requestId must be a string or an integer"),
+            };
+        }
+
+        /// <inheritdoc />
+        public override void Write(Utf8JsonWriter writer, RequestId value, JsonSerializerOptions options)
+        {
+            Throw.IfNull(writer);
+
+            switch (value._id)
+            {
+                case string str:
+                    writer.WriteStringValue(str);
+                    return;
+                
+                case long longValue:
+                    writer.WriteNumberValue(longValue);
+                    return;
+
+                case null:
+                    writer.WriteStringValue(string.Empty);
+                    return;
+            }
+        }
+    }
 }

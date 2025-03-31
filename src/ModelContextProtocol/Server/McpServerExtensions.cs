@@ -26,7 +26,7 @@ public static class McpServerExtensions
         }
 
         return server.SendRequestAsync<CreateMessageResult>(
-            new JsonRpcRequest { Method = "sampling/createMessage", Params = request },
+            new JsonRpcRequest { Method = RequestMethods.SamplingCreateMessage, Params = request },
             cancellationToken);
     }
 
@@ -165,7 +165,7 @@ public static class McpServerExtensions
         }
 
         return server.SendRequestAsync<ListRootsResult>(
-            new JsonRpcRequest { Method = "roots/list", Params = request },
+            new JsonRpcRequest { Method = RequestMethods.RootsList, Params = request },
             cancellationToken);
     }
 

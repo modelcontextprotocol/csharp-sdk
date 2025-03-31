@@ -6,7 +6,7 @@ using System.Reflection;
 namespace ModelContextProtocol.Server;
 
 /// <summary>Represents an invocable tool used by Model Context Protocol clients and servers.</summary>
-public abstract class McpServerTool
+public abstract class McpServerTool : IMcpServerPrimitive
 {
     /// <summary>Initializes a new instance of the <see cref="McpServerTool"/> class.</summary>
     protected McpServerTool()
@@ -89,4 +89,7 @@ public abstract class McpServerTool
 
     /// <inheritdoc />
     public override string ToString() => ProtocolTool.Name;
+
+    /// <inheritdoc />
+    string IMcpServerPrimitive.Name => ProtocolTool.Name;
 }

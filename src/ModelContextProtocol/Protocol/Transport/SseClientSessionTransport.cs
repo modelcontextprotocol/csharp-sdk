@@ -1,6 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using ModelContextProtocol.Configuration;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Utils;
@@ -118,7 +117,7 @@ internal sealed class SseClientSessionTransport : TransportBase
         var responseContent = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 
         // Check if the message was an initialize request
-        if (message is JsonRpcRequest request && request.Method == "initialize")
+        if (message is JsonRpcRequest request && request.Method == RequestMethods.Initialize)
         {
             // If the response is not a JSON-RPC response, it is an SSE message
             if (responseContent.Equals("accepted", StringComparison.OrdinalIgnoreCase))

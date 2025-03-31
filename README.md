@@ -84,9 +84,9 @@ the employed overload of `WithTools` examines the current assembly for classes w
 `McpTool` attribute as tools.)
 
 ```csharp
-using ModelContextProtocol;
-using ModelContextProtocol.Server;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using ModelContextProtocol.Server;
 using System.ComponentModel;
 
 var builder = Host.CreateEmptyApplicationBuilder(settings: null);
@@ -109,7 +109,7 @@ the connected client. Similarly, arguments may be injected via dependency inject
 `IMcpServer` to make sampling requests back to the client in order to summarize content it downloads from the specified url via
 an `HttpClient` injected via dependency injection.
 ```csharp
-[McpServerTool("SummarizeContentFromUrl"), Description("Summarizes content downloaded from a specific URI")]
+[McpServerTool(Name = "SummarizeContentFromUrl"), Description("Summarizes content downloaded from a specific URI")]
 public static async Task<string> SummarizeDownloadedContent(
     IMcpServer thisServer,
     HttpClient httpClient,
@@ -122,8 +122,8 @@ public static async Task<string> SummarizeDownloadedContent(
     [
         new(ChatRole.User, "Briefly summarize the following downloaded content:"),
         new(ChatRole.User, content),
-    ]
-
+    ];
+    
     ChatOptions options = new()
     {
         MaxOutputTokens = 256,
@@ -134,13 +134,24 @@ public static async Task<string> SummarizeDownloadedContent(
 }
 ```
 
+Prompts can be exposed in a similar manner, using `[McpServerPrompt]`, e.g.
+```csharp
+[McpServerPromptType]
+public static class MyPrompts
+{
+    [McpServerPrompt, Description("Creates a prompt to summarize the provided message.")]
+    public static ChatMessage Summarize([Description("The content to summarize")] string content) =>
+        new(ChatRole.User, $"Please summarize this content into a single sentence: {content}");
+}
+```
+
 More control is also available, with fine-grained control over configuring the server and how it should handle client requests. For example:
 
 ```csharp
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
-using Microsoft.Extensions.Logging.Abstractions;
+using System.Text.Json;
 
 McpServerOptions options = new()
 {
@@ -149,9 +160,8 @@ McpServerOptions options = new()
     {
         Tools = new()
         {
-            ListToolsHandler = async (request, cancellationToken) =>
-            {
-                return new ListToolsResult()
+            ListToolsHandler = (request, cancellationToken) =>
+                Task.FromResult(new ListToolsResult()
                 {
                     Tools =
                     [
@@ -173,10 +183,9 @@ McpServerOptions options = new()
                                 """),
                         }
                     ]
-                };
-            },
+                }),
 
-            CallToolHandler = async (request, cancellationToken) =>
+            CallToolHandler = (request, cancellationToken) =>
             {
                 if (request.Params?.Name == "echo")
                 {
@@ -185,10 +194,10 @@ McpServerOptions options = new()
                         throw new McpServerException("Missing required argument 'message'");
                     }
 
-                    return new CallToolResponse()
+                    return Task.FromResult(new CallToolResponse()
                     {
                         Content = [new Content() { Text = $"Echo: {message}", Type = "text" }]
-                    };
+                    });
                 }
 
                 throw new McpServerException($"Unknown tool: '{request.Params?.Name}'");

@@ -1,4 +1,4 @@
-﻿using ModelContextProtocol;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 

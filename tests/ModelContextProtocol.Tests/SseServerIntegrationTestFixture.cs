@@ -1,6 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Configuration;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Test.Utils;
 using ModelContextProtocol.Tests.Utils;
@@ -14,18 +13,11 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
     private readonly CancellationTokenSource _stopCts = new();
 
     private readonly DelegatingTestOutputHelper _delegatingTestOutputHelper = new();
-    private readonly ILoggerFactory _redirectingLoggerFactory;
 
     public McpServerConfig DefaultConfig { get; }
 
     public SseServerIntegrationTestFixture()
     {
-        _redirectingLoggerFactory = LoggerFactory.Create(builder =>
-        {
-            Program.ConfigureSerilog(builder);
-            builder.AddProvider(new XunitLoggerProvider(_delegatingTestOutputHelper));
-        });
-
         DefaultConfig = new McpServerConfig
         {
             Id = "test_server",
@@ -35,7 +27,7 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
             Location = "http://localhost:3001/sse"
         };
 
-        _serverTask = Program.MainAsync([], _redirectingLoggerFactory, _stopCts.Token);
+        _serverTask = Program.MainAsync([], new XunitLoggerProvider(_delegatingTestOutputHelper), _stopCts.Token);
     }
 
     public static McpClientOptions CreateDefaultClientOptions() => new()
@@ -64,7 +56,6 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
         catch (OperationCanceledException)
         {
         }
-        _redirectingLoggerFactory.Dispose();
         _stopCts.Dispose();
     }
 }

@@ -1,7 +1,6 @@
 ﻿using ModelContextProtocol.Server;
-using Microsoft.Extensions.DependencyInjection;
 
-namespace ModelContextProtocol.Configuration;
+namespace Microsoft.Extensions.DependencyInjection;
 
 /// <summary>
 /// Builder for configuring <see cref="IMcpServer"/> instances.

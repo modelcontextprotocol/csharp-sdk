@@ -19,6 +19,11 @@ public class McpServerToolTests
         Assert.Throws<ArgumentNullException>("method", () => McpServerTool.Create((MethodInfo)null!, typeof(object)));
         Assert.Throws<ArgumentNullException>("targetType", () => McpServerTool.Create(typeof(McpServerToolTests).GetMethod(nameof(Create_InvalidArgs_Throws))!, (Type)null!));
         Assert.Throws<ArgumentNullException>("method", () => McpServerTool.Create((Delegate)null!));
+
+        Assert.NotNull(McpServerTool.Create(typeof(DisposableToolType).GetMethod(nameof(DisposableToolType.InstanceMethod))!, new DisposableToolType()));
+        Assert.NotNull(McpServerTool.Create(typeof(DisposableToolType).GetMethod(nameof(DisposableToolType.StaticMethod))!));
+        Assert.Throws<ArgumentNullException>("target", () => McpServerTool.Create(typeof(DisposableToolType).GetMethod(nameof(DisposableToolType.InstanceMethod))!, target: null!));
+        Assert.Throws<ArgumentException>("target", () => McpServerTool.Create(typeof(DisposableToolType).GetMethod(nameof(DisposableToolType.StaticMethod))!, new DisposableToolType()));
     }
 
     [Fact]
@@ -338,6 +343,11 @@ public class McpServerToolTests
             }
 
             return this;
+        }
+
+        public static object StaticMethod()
+        {
+            return "42";
         }
     }
 

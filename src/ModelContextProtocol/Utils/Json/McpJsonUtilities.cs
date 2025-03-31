@@ -121,6 +121,7 @@ public static partial class McpJsonUtilities
     // MCP Request Params / Results
     [JsonSerializable(typeof(CallToolRequestParams))]
     [JsonSerializable(typeof(CallToolResponse))]
+    [JsonSerializable(typeof(CancelledNotification))]
     [JsonSerializable(typeof(CompleteRequestParams))]
     [JsonSerializable(typeof(CompleteResult))]
     [JsonSerializable(typeof(CreateMessageRequestParams))]
@@ -142,6 +143,7 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(ListToolsResult))]
     [JsonSerializable(typeof(LoggingMessageNotificationParams))]
     [JsonSerializable(typeof(PingResult))]
+    [JsonSerializable(typeof(ProgressNotification))]
     [JsonSerializable(typeof(ReadResourceRequestParams))]
     [JsonSerializable(typeof(ReadResourceResult))]
     [JsonSerializable(typeof(ResourceUpdatedNotificationParams))]
