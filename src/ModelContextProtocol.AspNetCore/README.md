@@ -1,4 +1,4 @@
-# MCP C# ASP.NET Core SDK
+# ASP.NET Core extensions for the MCP C# SDK
 
 [![NuGet preview version](https://img.shields.io/nuget/vpre/ModelContextProtocol.svg)](https://www.nuget.org/packages/ModelContextProtocol/absoluteLatest)
 
