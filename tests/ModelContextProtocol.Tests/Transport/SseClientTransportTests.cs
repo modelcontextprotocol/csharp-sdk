@@ -214,7 +214,7 @@ public class SseClientTransportTests : LoggedTest
         Assert.True(session.MessageReader.TryRead(out var message));
         Assert.NotNull(message);
         Assert.IsType<JsonRpcRequest>(message);
-        Assert.Equal("44", ((JsonRpcRequest)message).Id.ToString());
+        Assert.Equal("\"44\"", ((JsonRpcRequest)message).Id.ToString());
     }
 
     [Fact]

@@ -42,11 +42,7 @@ public class ProgressNotification
                     switch (propertyName)
                     {
                         case "progressToken":
-                            if (JsonSerializer.Deserialize(ref reader, options.GetTypeInfo(typeof(ProgressToken))) is not ProgressToken token)
-                            {
-                                throw new JsonException("Invalid value for 'progressToken'.");
-                            }
-                            progressToken = token;
+                            progressToken = (ProgressToken)JsonSerializer.Deserialize(ref reader, options.GetTypeInfo(typeof(ProgressToken)))!;
                             break;
 
                         case "progress":
