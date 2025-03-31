@@ -31,9 +31,9 @@ builder.Services
         {
             "simple_prompt" => [new PromptMessage { Role = Role.User, Content = new Content { Type = "text", Text = "This is a simple prompt without arguments" } }],
             "complex_prompt" => [
-                new PromptMessage { Role = Role.User, Content = new Content { Type = "text", Text = $"This is a complex prompt with arguments: temperature={args.Params?.Arguments?["temperature"]}, style={args.Params?.Arguments?["style"]}" } },
+                new PromptMessage { Role = Role.User, Content = new Content { Type = "text", Text = $"This is a complex prompt with arguments: temperature={args.Params?.Arguments?["temperature"]}, style={(args.Params?.Arguments?.ContainsKey("style") == true ? args.Params?.Arguments?["style"] : "")}" } },
                 new PromptMessage { Role = Role.Assistant, Content = new Content { Type = "text", Text = "I understand. You've provided a complex prompt with temperature and style arguments. How would you like me to proceed?" } },
-                new PromptMessage { Role = Role.User, Content = new Content { Type = "image", Data = TinyImageTool.MCP_TINY_IMAGE, MimeType = "image/png" } }
+                new PromptMessage { Role = Role.User, Content = new Content { Type = "image", Data = TinyImageTool.MCP_TINY_IMAGE.Split(",").Last(), MimeType = "image/png" } }
                 ]
             ,
             _ => throw new NotSupportedException($"Unknown prompt name: {args.Params?.Name}")
