@@ -83,13 +83,24 @@ It includes a simple echo tool as an example (this is included in the same file 
 the employed overload of `WithTools` examines the current assembly for classes with the `McpServerToolType` attribute, and registers all methods with the
 `McpTool` attribute as tools.)
 
+```
+dotnet add package ModelContextProtocol --prerelease
+dotnet add package Microsoft.Extensions.Hosting
+```
+
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
 
 var builder = Host.CreateEmptyApplicationBuilder(settings: null);
+builder.Logging.AddConsole(consoleLogOptions =>
+{
+    // Configure all logs to go to stderr
+    consoleLogOptions.LogToStandardErrorThreshold = LogLevel.Trace;
+});
 builder.Services
     .AddMcpServer()
     .WithStdioServerTransport()
@@ -101,8 +112,7 @@ public static class EchoTool
 {
     [McpServerTool, Description("Echoes the message back to the client.")]
     public static string Echo(string message) => $"hello {message}";
-}
-```
+}```
 
 Tools can have the `IMcpServer` representing the server injected via a parameter to the method, and can use that for interaction with 
 the connected client. Similarly, arguments may be injected via dependency injection. For example, this tool will use the supplied 
