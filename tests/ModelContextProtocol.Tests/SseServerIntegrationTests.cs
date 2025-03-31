@@ -36,7 +36,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
         // Arrange
 
         // Act
-        var client = await GetClientAsync();
+        await using var client = await GetClientAsync();
         await client.PingAsync(TestContext.Current.CancellationToken);
 
         // Assert
@@ -49,7 +49,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
         // Arrange
 
         // Act
-        var client = await GetClientAsync();
+        await using var client = await GetClientAsync();
 
         // Assert
         Assert.NotNull(client.ServerCapabilities);
@@ -62,7 +62,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
         // arrange
 
         // act
-        var client = await GetClientAsync();
+        await using var client = await GetClientAsync();
         var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
 
         // assert
@@ -75,7 +75,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
         // arrange
 
         // act
-        var client = await GetClientAsync();
+        await using var client = await GetClientAsync();
         var result = await client.CallToolAsync(
             "echo",
             new Dictionary<string, object?>
@@ -98,7 +98,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
         // arrange
 
         // act
-        var client = await GetClientAsync();
+        await using var client = await GetClientAsync();
 
         IList<Resource> allResources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
 
@@ -112,7 +112,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
         // arrange
 
         // act
-        var client = await GetClientAsync();
+        await using var client = await GetClientAsync();
         // Odd numbered resources are text in the everything server (despite the docs saying otherwise)
         // 1 is index 0, which is "even" in the 0-based index
         // We copied this oddity to the test server
@@ -131,7 +131,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
         // arrange
 
         // act
-        var client = await GetClientAsync();
+        await using var client = await GetClientAsync();
         // Even numbered resources are binary in the everything server (despite the docs saying otherwise)
         // 2 is index 1, which is "odd" in the 0-based index
         // We copied this oddity to the test server
@@ -150,7 +150,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
         // arrange
 
         // act
-        var client = await GetClientAsync();
+        await using var client = await GetClientAsync();
         var prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
 
         // assert
@@ -167,7 +167,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
         // arrange
 
         // act
-        var client = await GetClientAsync();
+        await using var client = await GetClientAsync();
         var result = await client.GetPromptAsync("simple_prompt", null, TestContext.Current.CancellationToken);
 
         // assert
@@ -181,7 +181,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
         // arrange
 
         // act
-        var client = await GetClientAsync();
+        await using var client = await GetClientAsync();
         var arguments = new Dictionary<string, object?>
         {
             { "temperature", "0.7" },
@@ -200,7 +200,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
         // arrange
 
         // act
-        var client = await GetClientAsync();
+        await using var client = await GetClientAsync();
         await Assert.ThrowsAsync<McpClientException>(() =>
             client.GetPromptAsync("non_existent_prompt", null, TestContext.Current.CancellationToken));
     }
@@ -229,7 +229,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
                 }
             };
         };
-        var client = await GetClientAsync(options);
+        await using var client = await GetClientAsync(options);
 #pragma warning restore CS1998 // Async method lacks 'await' operators and will run synchronously
 
         // Call the server's sampleLLM tool which should trigger our sampling handler
@@ -245,5 +245,30 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
         var textContent = Assert.Single(result.Content);
         Assert.Equal("text", textContent.Type);
         Assert.False(string.IsNullOrEmpty(textContent.Text));
+    }
+
+    [Fact]
+    public async Task CallTool_Sse_EchoServer_Concurrently()
+    {
+        await using var client1 = await GetClientAsync();
+        await using var client2 = await GetClientAsync();
+
+        for (int i = 0; i < 4; i++)
+        {
+            var client = (i % 2 == 0) ? client1 : client2;
+            var result =  await client.CallToolAsync(
+                "echo",
+                new Dictionary<string, object?>
+                {
+                    ["message"] = $"Hello MCP! {i}"
+                },
+                TestContext.Current.CancellationToken
+            );
+
+            Assert.NotNull(result);
+            Assert.False(result.IsError);
+            var textContent = Assert.Single(result.Content, c => c.Type == "text");
+            Assert.Equal($"Echo: Hello MCP! {i}", textContent.Text);
+        }
     }
 }

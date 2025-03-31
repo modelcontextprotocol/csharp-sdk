@@ -1,7 +1,6 @@
-﻿using ModelContextProtocol.Protocol.Transport;
+﻿using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
-using Microsoft.Extensions.Logging;
 using Serilog;
 using System.Text;
 using System.Text.Json;
@@ -10,9 +9,7 @@ namespace ModelContextProtocol.TestSseServer;
 
 public class Program
 {
-    private static ILoggerFactory CreateLoggerFactory() => LoggerFactory.Create(ConfigureSerilog);
-
-    public static void ConfigureSerilog(ILoggingBuilder loggingBuilder)
+    private static void ConfigureSerilog(ILoggingBuilder loggingBuilder)
     {
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Verbose() // Capture all log levels
@@ -27,22 +24,17 @@ public class Program
 
     public static Task Main(string[] args) => MainAsync(args);
 
-    public static async Task MainAsync(string[] args, ILoggerFactory? loggerFactory = null, CancellationToken cancellationToken = default)
+    private static void ConfigureOptions(McpServerOptions options)
     {
-        Console.WriteLine("Starting server...");
-
-        McpServerOptions options = new()
+        options.ServerInfo = new Implementation() { Name = "TestServer", Version = "1.0.0" };
+        options.Capabilities = new ServerCapabilities()
         {
-            ServerInfo = new Implementation() { Name = "TestServer", Version = "1.0.0" },
-            Capabilities = new ServerCapabilities()
-            {
-                Tools = new(),
-                Resources = new(),
-                Prompts = new(),
-            },
-            ProtocolVersion = "2024-11-05",
-            ServerInstructions = "This is a test server with only stub functionality"
+            Tools = new(),
+            Resources = new(),
+            Prompts = new(),
         };
+        options.ProtocolVersion = "2024-11-05";
+        options.ServerInstructions = "This is a test server with only stub functionality";
 
         Console.WriteLine("Registering handlers.");
 
@@ -380,17 +372,31 @@ public class Program
                 }
             },
         };
+    }
 
-        loggerFactory ??= CreateLoggerFactory();
-        await using var httpListenerSseTransport = new HttpListenerSseServerTransport("TestServer", 3001, loggerFactory);
-        Console.WriteLine("Server running...");
+    public static async Task MainAsync(string[] args, ILoggerProvider? loggerProvider = null, CancellationToken cancellationToken = default)
+    {
+        Console.WriteLine("Starting server...");
 
-        // Each IMcpServer represents a new SSE session.
-        while (true)
+        var builder = WebApplication.CreateSlimBuilder(args);
+        builder.WebHost.ConfigureKestrel(options =>
         {
-            var server = await McpServerFactory.AcceptAsync(httpListenerSseTransport, options, loggerFactory, cancellationToken: cancellationToken);
-            _ = server.RunAsync(cancellationToken: cancellationToken);
+            options.ListenLocalhost(3001);
+        });
+
+        ConfigureSerilog(builder.Logging);
+        if (loggerProvider is not null)
+        {
+            builder.Logging.AddProvider(loggerProvider);
         }
+
+        builder.Services.AddMcpServer(ConfigureOptions);
+
+        var app = builder.Build();
+
+        app.MapMcp();
+
+        await app.RunAsync(cancellationToken);
     }
 
     const string MCP_TINY_IMAGE =

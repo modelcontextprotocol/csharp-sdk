@@ -337,7 +337,7 @@ public static partial class McpServerBuilderExtensions
         Throw.IfNull(builder);
 
         builder.Services.AddSingleton<ITransport, StdioServerTransport>();
-        builder.Services.AddHostedService<McpServerSingleSessionHostedService>();
+        builder.Services.AddHostedService<StdioMcpServerHostedService>();
 
         builder.Services.AddSingleton(services =>
         {
@@ -348,19 +348,6 @@ public static partial class McpServerBuilderExtensions
             return McpServerFactory.Create(serverTransport, options.Value, loggerFactory, services);
         });
 
-        return builder;
-    }
-
-    /// <summary>
-    /// Adds a server transport that uses SSE via a HttpListener for communication.
-    /// </summary>
-    /// <param name="builder">The builder instance.</param>
-    public static IMcpServerBuilder WithHttpListenerSseServerTransport(this IMcpServerBuilder builder)
-    {
-        Throw.IfNull(builder);
-
-        builder.Services.AddSingleton<IServerTransport, HttpListenerSseServerTransport>();
-        builder.Services.AddHostedService<McpServerMultiSessionHostedService>();
         return builder;
     }
     #endregion

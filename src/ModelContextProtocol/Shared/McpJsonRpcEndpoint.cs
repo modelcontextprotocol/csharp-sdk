@@ -60,13 +60,8 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
     /// </summary>
     protected Task? MessageProcessingTask { get; set; }
 
-    protected void InitializeSession(ITransport sessionTransport)
-    {
-        _session = new McpSession(sessionTransport, EndpointName, _requestHandlers, _notificationHandlers, _logger);
-    }
-
     [MemberNotNull(nameof(MessageProcessingTask))]
-    protected void StartSession(CancellationToken fullSessionCancellationToken = default)
+    protected void StartSession(ITransport sessionTransport, CancellationToken fullSessionCancellationToken = default)
     {
         if (Interlocked.Exchange(ref _started, 1) != 0)
         {
@@ -74,7 +69,8 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
         }
 
         _sessionCts = CancellationTokenSource.CreateLinkedTokenSource(fullSessionCancellationToken);
-        MessageProcessingTask = GetSessionOrThrow().ProcessMessagesAsync(_sessionCts.Token);
+        _session = new McpSession(sessionTransport, EndpointName, _requestHandlers, _notificationHandlers, _logger);
+        MessageProcessingTask = _session.ProcessMessagesAsync(_sessionCts.Token);
     }
 
     public async ValueTask DisposeAsync()
@@ -122,5 +118,5 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
     }
 
     protected McpSession GetSessionOrThrow()
-        => _session ?? throw new InvalidOperationException($"This should be unreachable from public API! Call {nameof(InitializeSession)} before sending messages.");
+        => _session ?? throw new InvalidOperationException($"This should be unreachable from public API! Call {nameof(StartSession)} before sending messages.");
 }

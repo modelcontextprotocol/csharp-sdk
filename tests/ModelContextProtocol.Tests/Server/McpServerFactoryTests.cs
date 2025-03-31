@@ -32,22 +32,16 @@ public class McpServerFactoryTests : LoggedTest
     }
 
     [Fact]
-    public async Task Create_Throws_For_Null_ServerTransport()
+    public void Create_Throws_For_Null_ServerTransport()
     {
         // Arrange, Act & Assert
         Assert.Throws<ArgumentNullException>("transport", () => McpServerFactory.Create(null!, _options, LoggerFactory));
-
-        await Assert.ThrowsAsync<ArgumentNullException>("serverTransport", () => 
-            McpServerFactory.AcceptAsync(null!, _options, LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
-    public async Task Create_Throws_For_Null_Options()
+    public void Create_Throws_For_Null_Options()
     {
         // Arrange, Act & Assert
         Assert.Throws<ArgumentNullException>("serverOptions", () => McpServerFactory.Create(Mock.Of<ITransport>(), null!, LoggerFactory));
-
-        await Assert.ThrowsAsync<ArgumentNullException>("serverOptions", () => 
-            McpServerFactory.AcceptAsync(Mock.Of<IServerTransport>(), null!, LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
     }
 }

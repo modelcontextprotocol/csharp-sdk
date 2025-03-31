@@ -169,18 +169,6 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
-    public async Task Throws_Exception_If_Not_Connected()
-    {
-        await using var server = McpServerFactory.Create(_serverTransport.Object, _options, LoggerFactory, _serviceProvider);
-        SetClientCapabilities(server, new ClientCapabilities { Roots = new RootsCapability() });
-        _serverTransport.SetupGet(t => t.IsConnected).Returns(false);
-
-        var action = async () => await server.RequestRootsAsync(new ListRootsRequestParams(), CancellationToken.None);
-
-        await Assert.ThrowsAsync<McpClientException>(action);
-    }
-
-    [Fact]
     public async Task Can_Handle_Ping_Requests()
     {
         await Can_Handle_Requests(

@@ -1,20 +1,20 @@
-﻿using ModelContextProtocol.Client;
-using Microsoft.Extensions.AI;
-using OpenAI;
-using ModelContextProtocol.Protocol.Types;
+﻿using Microsoft.Extensions.AI;
+using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Messages;
-using System.Text.Json;
 using ModelContextProtocol.Protocol.Transport;
+using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Tests.Utils;
+using OpenAI;
 using System.Text.Encodings.Web;
-using System.Text.Json.Serialization.Metadata;
+using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Tests;
 
 public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegrationTestFixture>
 {
-    private static readonly string? s_openAIKey = Environment.GetEnvironmentVariable("AI:OpenAI:ApiKey")!;
+    private static readonly string? s_openAIKey = Environment.GetEnvironmentVariable("AI:OpenAI:ApiKey");
 
     public static bool NoOpenAIKeySet => string.IsNullOrWhiteSpace(s_openAIKey);
 
