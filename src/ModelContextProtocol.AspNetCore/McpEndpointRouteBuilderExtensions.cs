@@ -40,7 +40,7 @@ public static class McpEndpointRouteBuilderExtensions
             var requestAborted = context.RequestAborted;
 
             response.Headers.ContentType = "text/event-stream";
-            response.Headers.CacheControl = "no-cache";
+            response.Headers.CacheControl = "no-store";
 
             var sessionId = MakeNewSessionId();
             await using var transport = new SseResponseStreamTransport(response.Body, $"/message?sessionId={sessionId}");
@@ -53,10 +53,10 @@ public static class McpEndpointRouteBuilderExtensions
             try
             {
                 var transportTask = transport.RunAsync(cancellationToken: requestAborted);
-                runSession ??= RunSession;
 
                 try
                 {
+                    runSession ??= RunSession;
                     await runSession(context, server, requestAborted);
                 }
                 finally
