@@ -395,6 +395,54 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         Assert.Contains(services.GetServices<McpServerTool>(), t => t.ProtocolTool.Name == "Echo");
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WithTools_Parameters_Satisfiable_From_DI(bool parameterInServices)
+    {
+        ServiceCollection sc = new();
+        if (parameterInServices)
+        {
+            sc.AddSingleton(new ComplexObject());
+        }
+        sc.AddMcpServer().WithTools(typeof(EchoTool));
+        IServiceProvider services = sc.BuildServiceProvider();
+
+        McpServerTool tool = services.GetServices<McpServerTool>().First(t => t.ProtocolTool.Name == "EchoComplex");
+        if (parameterInServices)
+        {
+            Assert.DoesNotContain("\"complex\"", JsonSerializer.Serialize(tool.ProtocolTool.InputSchema));
+        }
+        else
+        {
+            Assert.Contains("\"complex\"", JsonSerializer.Serialize(tool.ProtocolTool.InputSchema));
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WithToolsFromAssembly_Parameters_Satisfiable_From_DI(bool parameterInServices)
+    {
+        ServiceCollection sc = new();
+        if (parameterInServices)
+        {
+            sc.AddSingleton(new ComplexObject());
+        }
+        sc.AddMcpServer().WithToolsFromAssembly();
+        IServiceProvider services = sc.BuildServiceProvider();
+
+        McpServerTool tool = services.GetServices<McpServerTool>().First(t => t.ProtocolTool.Name == "EchoComplex");
+        if (parameterInServices)
+        {
+            Assert.DoesNotContain("\"complex\"", JsonSerializer.Serialize(tool.ProtocolTool.InputSchema));
+        }
+        else
+        {
+            Assert.Contains("\"complex\"", JsonSerializer.Serialize(tool.ProtocolTool.InputSchema));
+        }
+    }
+
     [Fact]
     public async Task Recognizes_Parameter_Types()
     {

@@ -38,7 +38,7 @@ public static partial class McpServerBuilderExtensions
             if (toolMethod.GetCustomAttribute<McpServerToolAttribute>() is not null)
             {
                 builder.Services.AddSingleton((Func<IServiceProvider, McpServerTool>)(toolMethod.IsStatic ?
-                    services => McpServerTool.Create(toolMethod, new McpServerToolCreateOptions() { Services = services }) :
+                    services => McpServerTool.Create(toolMethod, options: new() { Services = services }) :
                     services => McpServerTool.Create(toolMethod, typeof(TTool), new() { Services = services })));
             }
         }
@@ -71,7 +71,7 @@ public static partial class McpServerBuilderExtensions
                     if (toolMethod.GetCustomAttribute<McpServerToolAttribute>() is not null)
                     {
                         builder.Services.AddSingleton((Func<IServiceProvider, McpServerTool>)(toolMethod.IsStatic ?
-                            services => McpServerTool.Create(toolMethod, new McpServerToolCreateOptions() { Services = services }) :
+                            services => McpServerTool.Create(toolMethod, options: new() { Services = services }) :
                             services => McpServerTool.Create(toolMethod, toolType, new() { Services = services })));
                     }
                 }
