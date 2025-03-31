@@ -40,8 +40,11 @@ public static class WeatherTools
         [Description("Latitude of the location.")] double latitude,
         [Description("Longitude of the location.")] double longitude)
     {
-        var jsonElement = await client.GetFromJsonAsync<JsonElement>($"/points/{latitude},{longitude}");
-        var periods = jsonElement.GetProperty("properties").GetProperty("periods").EnumerateArray();
+        var gridId = jsonElement.GetProperty("properties").GetProperty("gridId");
+        var gridX = jsonElement.GetProperty("properties").GetProperty("gridX");
+        var gridY = jsonElement.GetProperty("properties").GetProperty("gridY");
+        var pointsData = await client.GetFromJsonAsync<JsonElement>($"/gridpoints/{gridId}/{gridX},{gridY}/forecast");
+        var periods = pointsData.GetProperty("properties").GetProperty("periods").EnumerateArray();
 
         return string.Join("\n---\n", periods.Select(period => $"""
                 {period.GetProperty("name").GetString()}
