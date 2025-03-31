@@ -8,7 +8,7 @@ namespace EverythingServer.Tools;
 [McpServerToolType]
 public static class TinyImageTool
 {
-    [McpServerTool("getTinyImage"), Description("Get a tiny image from the server")]
+    [McpServerTool(Name = "getTinyImage"), Description("Get a tiny image from the server")]
     public static IEnumerable<AIContent> GetTinyImage()
     {
         Debugger.Launch();

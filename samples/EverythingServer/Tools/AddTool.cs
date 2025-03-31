@@ -6,6 +6,6 @@ namespace EverythingServer.Tools;
 [McpServerToolType]
 public static class AddTool
 {
-    [McpServerTool("add"), Description("Adds two numbers.")]
+    [McpServerTool(Name = "add"), Description("Adds two numbers.")]
     public static string Add(int a, int b) => $"The sum of {a} and {b} is {a + b}";
 }

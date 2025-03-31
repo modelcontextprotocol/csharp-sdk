@@ -8,7 +8,7 @@ namespace EverythingServer.Tools;
 [McpServerToolType]
 public static class LongRunningTool
 {
-    [McpServerTool("longRunningOperation"), Description("Demonstrates a long running operation with progress updates")]
+    [McpServerTool(Name = "longRunningOperation"), Description("Demonstrates a long running operation with progress updates")]
     public static async Task<string> LongRunningOperation(
         IMcpServer server,
         RequestContext<CallToolRequestParams> context,

@@ -9,7 +9,7 @@ public class SampleLlmTool(IMcpServer server)
 {
     private readonly IMcpServer _server = server ?? throw new ArgumentNullException(nameof(server));
 
-    [McpServerTool("sampleLLM"), Description("Samples from an LLM using MCP's sampling feature")]
+    [McpServerTool(Name = "sampleLLM"), Description("Samples from an LLM using MCP's sampling feature")]
     public async Task<string> SampleLLM(
         [Description("The prompt to send to the LLM")] string prompt,
         [Description("Maximum number of tokens to generate")] int maxTokens,

@@ -72,17 +72,30 @@ builder.Services
 
         var resource = ResourceGenerator.Resources[index];
 
-        return Task.FromResult(new ReadResourceResult
+        if (resource.MimeType == "text/plain")
         {
-            Contents = [new ResourceContents
+            return Task.FromResult(new ReadResourceResult
+            {
+                Contents = [new TextResourceContents
                 {
-                    Uri = resource.Uri,
+                    Text = resource.Description!,
                     MimeType = resource.MimeType,
-                    Blob = resource.Description,
-                    Name = resource.Description
-                }
-            ]
-        });
+                    Uri = resource.Uri,
+                }]
+            });
+        }
+        else
+        {
+            return Task.FromResult(new ReadResourceResult
+            {
+                Contents = [new BlobResourceContents
+                {
+                    Blob = resource.Description!,
+                    MimeType = resource.MimeType,
+                    Uri = resource.Uri,
+                }]
+            });
+        }
     })
     ;
 
