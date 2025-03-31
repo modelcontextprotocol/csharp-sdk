@@ -112,7 +112,8 @@ public static class EchoTool
 {
     [McpServerTool, Description("Echoes the message back to the client.")]
     public static string Echo(string message) => $"hello {message}";
-}```
+}
+```
 
 Tools can have the `IMcpServer` representing the server injected via a parameter to the method, and can use that for interaction with 
 the connected client. Similarly, arguments may be injected via dependency injection. For example, this tool will use the supplied 
