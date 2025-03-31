@@ -133,6 +133,57 @@ builder.Services
         }
         return Task.FromResult(new EmptyResult());
     })
+    .WithGetCompletionHandler((ctx, ct) =>
+    {
+        var exampleCompletions = new Dictionary<string, IEnumerable<string>>
+        {
+            { "style", ["casual", "formal", "technical", "friendly"] },
+            { "temperature", ["0", "0.5", "0.7", "1.0"] },
+            { "resourceId", ["1", "2", "3", "4", "5"] }
+        };
+
+        var @ref = ctx.Params?.Ref;
+
+        if (@ref is null)
+        {
+            throw new NotSupportedException($"Reference is required.");
+        }
+
+        var argument = ctx.Params!.Argument;
+
+        if (@ref.Type == "ref/resource")
+        {
+            var resourceId = @ref.Uri?.Split("/").Last();
+
+            if (resourceId is null)
+            {
+                return Task.FromResult(new CompleteResult());
+            }
+
+            var values = exampleCompletions["resourceId"].Where(id => id.StartsWith(argument.Value));
+
+            return Task.FromResult(new CompleteResult
+            {
+                Completion = new Completion { Values = [..values], HasMore = false, Total = values.Count() }
+            });
+        }
+
+        if (@ref.Type == "ref/prompt")
+        {
+            if (!exampleCompletions.TryGetValue(argument.Name, out IEnumerable<string>? value))
+            {
+                throw new NotSupportedException($"Unknown argument name: {argument.Name}");
+            }
+
+            var values = value.Where(value => value.StartsWith(argument.Value));
+            return Task.FromResult(new CompleteResult
+            {
+                Completion = new Completion { Values = [..values], HasMore = false, Total = values.Count() }
+            });
+        }
+
+        throw new NotSupportedException($"Unknown reference type: {@ref.Type}");
+    })
     ;
 
 builder.Services.AddHostedService(sp =>
