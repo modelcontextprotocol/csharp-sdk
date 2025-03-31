@@ -94,25 +94,30 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
     {
         _logger.CleaningUpEndpoint(EndpointName);
 
-        if (_sessionCts is not null)
+        try
         {
-            await _sessionCts.CancelAsync().ConfigureAwait(false);
-        }
+            if (_sessionCts is not null)
+            {
+                await _sessionCts.CancelAsync().ConfigureAwait(false);
+            }
 
-        if (MessageProcessingTask is not null)
+            if (MessageProcessingTask is not null)
+            {
+                try
+                {
+                    await MessageProcessingTask.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Ignore cancellation
+                }
+            }
+        }
+        finally
         {
-            try
-            {
-                await MessageProcessingTask.ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                // Ignore cancellation
-            }
+            _session?.Dispose();
+            _sessionCts?.Dispose();
         }
-
-        _session?.Dispose();
-        _sessionCts?.Dispose();
 
         _logger.EndpointCleanedUp(EndpointName);
     }
