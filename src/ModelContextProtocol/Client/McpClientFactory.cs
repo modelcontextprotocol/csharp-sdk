@@ -1,6 +1,5 @@
 ﻿using System.Globalization;
 using System.Runtime.InteropServices;
-using ModelContextProtocol.Configuration;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Utils;

@@ -13,7 +13,7 @@ public static class NotificationMethods
     /// <summary>
     /// Sent by the server when the list of prompts changes.
     /// </summary>
-    public const string PromptsListChanged = "notifications/prompts/list_changed";
+    public const string PromptListChangedNotification = "notifications/prompts/list_changed";
 
     /// <summary>
     /// Sent by the server when the list of resources changes.

@@ -1,4 +1,4 @@
-﻿namespace ModelContextProtocol.Configuration;
+﻿namespace ModelContextProtocol;
 
 /// <summary>
 /// Configuration for an MCP server connection.

@@ -4,7 +4,6 @@ using OpenAI;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Protocol.Messages;
 using System.Text.Json;
-using ModelContextProtocol.Configuration;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Tests.Utils;
 using System.Text.Encodings.Web;

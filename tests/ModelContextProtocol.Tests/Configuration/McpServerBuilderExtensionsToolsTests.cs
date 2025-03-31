@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Configuration;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
@@ -356,16 +355,16 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         Assert.Contains("'NotRegisteredTool'", e.Message);
     }
 
-    [Fact(Skip = "https://github.com/dotnet/extensions/issues/6124")]
-    public async Task Throws_Exception_Missing_Parameter()
+    [Fact]
+    public async Task Returns_IsError_Missing_Parameter()
     {
         IMcpClient client = await CreateMcpClientForServer();
 
-        var e = await Assert.ThrowsAsync<McpClientException>(async () => await client.CallToolAsync(
+        var result = await client.CallToolAsync(
             "Echo",
-            cancellationToken: TestContext.Current.CancellationToken));
+            cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal("Missing required argument 'message'.", e.Message);
+        Assert.True(result.IsError);
     }
 
     [Fact]

@@ -1,6 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Configuration;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Test.Utils;
 using ModelContextProtocol.Tests.Utils;

@@ -1,5 +1,4 @@
-﻿using ModelContextProtocol.Configuration;
-using ModelContextProtocol.Protocol.Messages;
+﻿using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Tests.Utils;
 using System.IO.Pipelines;

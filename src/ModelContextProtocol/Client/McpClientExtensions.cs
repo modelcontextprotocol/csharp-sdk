@@ -115,13 +115,12 @@ public static class McpClientExtensions
     /// <param name="client">The client.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A list of all available prompts.</returns>
-    public static async Task<IList<Prompt>> ListPromptsAsync(
+    public static async Task<IList<McpClientPrompt>> ListPromptsAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
 
-        List<Prompt>? prompts = null;
-
+        List<McpClientPrompt>? prompts = null;
         string? cursor = null;
         do
         {
@@ -129,13 +128,10 @@ public static class McpClientExtensions
                 CreateRequest(RequestMethods.PromptsList, CreateCursorDictionary(cursor)),
                 cancellationToken).ConfigureAwait(false);
 
-            if (prompts is null)
+            prompts ??= new List<McpClientPrompt>(promptResults.Prompts.Count);
+            foreach (var prompt in promptResults.Prompts)
             {
-                prompts = promptResults.Prompts;
-            }
-            else
-            {
-                prompts.AddRange(promptResults.Prompts);
+                prompts.Add(new McpClientPrompt(client, prompt));
             }
 
             cursor = promptResults.NextCursor;
@@ -186,7 +182,7 @@ public static class McpClientExtensions
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task containing the prompt's content and messages.</returns>
     public static Task<GetPromptResult> GetPromptAsync(
-        this IMcpClient client, string name, Dictionary<string, object?>? arguments = null, CancellationToken cancellationToken = default)
+        this IMcpClient client, string name, IReadOnlyDictionary<string, object?>? arguments = null, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
         Throw.IfNullOrWhiteSpace(name);
@@ -345,7 +341,7 @@ public static class McpClientExtensions
         Throw.IfNullOrWhiteSpace(uri);
 
         return client.SendRequestAsync<ReadResourceResult>(
-            CreateRequest(RequestMethods.ResourcesRead, new() { ["uri"] = uri }),
+            CreateRequest(RequestMethods.ResourcesRead, new Dictionary<string, object?>() { ["uri"] = uri }),
             cancellationToken);
     }
 
@@ -369,7 +365,7 @@ public static class McpClientExtensions
         }
 
         return client.SendRequestAsync<CompleteResult>(
-            CreateRequest(RequestMethods.CompletionComplete, new()
+            CreateRequest(RequestMethods.CompletionComplete, new Dictionary<string, object?>()
             {
                 ["ref"] = reference,
                 ["argument"] = new Argument { Name = argumentName, Value = argumentValue }
@@ -389,7 +385,7 @@ public static class McpClientExtensions
         Throw.IfNullOrWhiteSpace(uri);
 
         return client.SendRequestAsync<EmptyResult>(
-            CreateRequest(RequestMethods.ResourcesSubscribe, new() { ["uri"] = uri }),
+            CreateRequest(RequestMethods.ResourcesSubscribe, new Dictionary<string, object?>() { ["uri"] = uri }),
             cancellationToken);
     }
 
@@ -405,7 +401,7 @@ public static class McpClientExtensions
         Throw.IfNullOrWhiteSpace(uri);
 
         return client.SendRequestAsync<EmptyResult>(
-            CreateRequest(RequestMethods.ResourcesUnsubscribe, new() { ["uri"] = uri }),
+            CreateRequest(RequestMethods.ResourcesUnsubscribe, new Dictionary<string, object?>() { ["uri"] = uri }),
             cancellationToken);
     }
 
@@ -560,11 +556,11 @@ public static class McpClientExtensions
         Throw.IfNull(client);
 
         return client.SendRequestAsync<EmptyResult>(
-            CreateRequest(RequestMethods.LoggingSetLevel, new() { ["level"] = level }),
+            CreateRequest(RequestMethods.LoggingSetLevel, new Dictionary<string, object?>() { ["level"] = level }),
             cancellationToken);
     }
 
-    private static JsonRpcRequest CreateRequest(string method, Dictionary<string, object?>? parameters) =>
+    private static JsonRpcRequest CreateRequest(string method, IReadOnlyDictionary<string, object?>? parameters) =>
         new()
         {
             Method = method,

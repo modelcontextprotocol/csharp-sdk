@@ -14,6 +14,7 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
 {
     private readonly IServerTransport? _serverTransport;
     private readonly EventHandler? _toolsChangedDelegate;
+    private readonly EventHandler? _promptsChangedDelegate;
 
     private ITransport? _sessionTransport;
     private string _endpointName;
@@ -77,12 +78,24 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
                 Method = NotificationMethods.ToolListChangedNotification,
             });
         };
+        _promptsChangedDelegate = delegate
+        {
+            _ = SendMessageAsync(new JsonRpcNotification()
+            {
+                Method = NotificationMethods.PromptListChangedNotification,
+            });
+        };
 
         AddNotificationHandler(NotificationMethods.InitializedNotification, _ =>
         {
             if (ServerOptions.Capabilities?.Tools?.ToolCollection is { } tools)
             {
                 tools.Changed += _toolsChangedDelegate;
+            }
+
+            if (ServerOptions.Capabilities?.Prompts?.PromptCollection is { } prompts)
+            {
+                prompts.Changed += _promptsChangedDelegate;
             }
 
             return Task.CompletedTask;
@@ -158,6 +171,11 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
         if (ServerOptions.Capabilities?.Tools?.ToolCollection is { } tools)
         {
             tools.Changed -= _toolsChangedDelegate;
+        }
+
+        if (ServerOptions.Capabilities?.Prompts?.PromptCollection is { } prompts)
+        {
+            prompts.Changed -= _promptsChangedDelegate;
         }
 
         try
@@ -253,15 +271,97 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
 
     private void SetPromptsHandler(McpServerOptions options)
     {
-        if (options.Capabilities?.Prompts is not { } promptsCapability)
+        PromptsCapability? promptsCapability = options.Capabilities?.Prompts;
+        var listPromptsHandler = promptsCapability?.ListPromptsHandler;
+        var getPromptHandler = promptsCapability?.GetPromptHandler;
+        var prompts = promptsCapability?.PromptCollection;
+
+        if (listPromptsHandler is null != getPromptHandler is null)
         {
-            return;
+            throw new McpServerException("ListPrompts and GetPrompt handlers should be specified together.");
         }
 
-        if (promptsCapability.ListPromptsHandler is not { } listPromptsHandler ||
-            promptsCapability.GetPromptHandler is not { } getPromptHandler)
+        // Handle tools provided via DI.
+        if (prompts is { IsEmpty: false })
         {
-            throw new McpServerException("Prompts capability was enabled, but ListPrompts and/or GetPrompt handlers were not specified.");
+            var originalListPromptsHandler = listPromptsHandler;
+            var originalGetPromptHandler = getPromptHandler;
+
+            // Synthesize the handlers, making sure a ToolsCapability is specified.
+            listPromptsHandler = async (request, cancellationToken) =>
+            {
+                ListPromptsResult result = new();
+                foreach (McpServerPrompt prompt in prompts)
+                {
+                    result.Prompts.Add(prompt.ProtocolPrompt);
+                }
+
+                if (originalListPromptsHandler is not null)
+                {
+                    string? nextCursor = null;
+                    do
+                    {
+                        ListPromptsResult extraResults = await originalListPromptsHandler(request, cancellationToken).ConfigureAwait(false);
+                        result.Prompts.AddRange(extraResults.Prompts);
+
+                        nextCursor = extraResults.NextCursor;
+                        if (nextCursor is not null)
+                        {
+                            request = request with { Params = new() { Cursor = nextCursor } };
+                        }
+                    }
+                    while (nextCursor is not null);
+                }
+
+                return result;
+            };
+
+            getPromptHandler = (request, cancellationToken) =>
+            {
+                if (request.Params is null ||
+                    !prompts.TryGetPrimitive(request.Params.Name, out var prompt))
+                {
+                    if (originalGetPromptHandler is not null)
+                    {
+                        return originalGetPromptHandler(request, cancellationToken);
+                    }
+
+                    throw new McpServerException($"Unknown prompt '{request.Params?.Name}'");
+                }
+
+                return prompt.GetAsync(request, cancellationToken);
+            };
+
+            ServerCapabilities = new()
+            {
+                Experimental = options.Capabilities?.Experimental,
+                Logging = options.Capabilities?.Logging,
+                Tools = options.Capabilities?.Tools,
+                Resources = options.Capabilities?.Resources,
+                Prompts = new()
+                {
+                    ListPromptsHandler = listPromptsHandler,
+                    GetPromptHandler = getPromptHandler,
+                    PromptCollection = prompts,
+                    ListChanged = true,
+                }
+            };
+        }
+        else
+        {
+            ServerCapabilities = options.Capabilities;
+
+            if (promptsCapability is null)
+            {
+                // No prompts, and no prompts capability was declared, so nothing to do.
+                return;
+            }
+
+            // Make sure the handlers are provided if the capability is enabled.
+            if (listPromptsHandler is null || getPromptHandler is null)
+            {
+                throw new McpServerException("ListPrompts and/or GetPrompt handlers were not specified but the Prompts capability was enabled.");
+            }
         }
 
         SetRequestHandler<ListPromptsRequestParams, ListPromptsResult>(RequestMethods.PromptsList, (request, ct) => listPromptsHandler(new(this, request), ct));
@@ -318,7 +418,7 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
             callToolHandler = (request, cancellationToken) =>
             {
                 if (request.Params is null ||
-                    !tools.TryGetTool(request.Params.Name, out var tool))
+                    !tools.TryGetPrimitive(request.Params.Name, out var tool))
                 {
                     if (originalCallToolHandler is not null)
                     {

@@ -1,5 +1,4 @@
 ﻿using Microsoft.Extensions.Logging;
-using ModelContextProtocol.Configuration;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;

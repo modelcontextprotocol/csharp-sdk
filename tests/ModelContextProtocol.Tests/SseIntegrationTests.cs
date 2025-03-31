@@ -1,10 +1,8 @@
 ﻿using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Configuration;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Tests.Utils;
-using System.Reflection;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Tests;
