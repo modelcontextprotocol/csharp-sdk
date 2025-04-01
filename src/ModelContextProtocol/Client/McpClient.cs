@@ -90,21 +90,21 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
             using var initializationCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             initializationCts.CancelAfter(_options.InitializationTimeout);
 
-        try
-        {
-            // Send initialize request
-            var initializeResponse = await SendRequestAsync<InitializeResult>(
-                new JsonRpcRequest
-                {
-                    Method = RequestMethods.Initialize,
-                    Params = new InitializeRequestParams()
+            try
+            {
+                // Send initialize request
+                var initializeResponse = await SendRequestAsync<InitializeResult>(
+                    new JsonRpcRequest
                     {
-                        ProtocolVersion = _options.ProtocolVersion,
-                        Capabilities = _options.Capabilities ?? new ClientCapabilities(),
-                        ClientInfo = _options.ClientInfo
-                    }
-                },
-                initializationCts.Token).ConfigureAwait(false);
+                        Method = RequestMethods.Initialize,
+                        Params = new InitializeRequestParams()
+                        {
+                            ProtocolVersion = _options.ProtocolVersion,
+                            Capabilities = _options.Capabilities ?? new ClientCapabilities(),
+                            ClientInfo = _options.ClientInfo
+                        }
+                    },
+                    initializationCts.Token).ConfigureAwait(false);
 
                 // Store server information
                 _logger.ServerCapabilitiesReceived(EndpointName,
