@@ -314,7 +314,7 @@ public static partial class McpServerBuilderExtensions
     }
 
     /// <summary>
-    /// Sets or sets the handler for subscribe to resources messages.
+    /// Sets the handler for subscribe to resources messages.
     /// </summary>
     /// <param name="builder">The builder instance.</param>
     /// <param name="handler">The handler.</param>
@@ -323,6 +323,18 @@ public static partial class McpServerBuilderExtensions
         Throw.IfNull(builder);
 
         builder.Services.Configure<McpServerHandlers>(s => s.UnsubscribeFromResourcesHandler = handler);
+        return builder;
+    }
+
+    /// <summary>
+    /// Sets the handler for setting the logging level.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="handler">The handler.</param>
+    public static IMcpServerBuilder WithSetLoggingLevelHandler(this IMcpServerBuilder builder, Func<RequestContext<SetLevelRequestParams>, CancellationToken, Task<EmptyResult>> handler)
+    {
+        Throw.IfNull(builder);
+        builder.Services.Configure<McpServerHandlers>(s => s.SetLoggingLevelHandler = handler);
         return builder;
     }
     #endregion

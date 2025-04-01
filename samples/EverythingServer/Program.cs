@@ -6,10 +6,12 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using EverythingServer.Prompts;
 using EverythingServer.Tools;
+using ModelContextProtocol.Protocol.Messages;
 
 var builder = Host.CreateEmptyApplicationBuilder(settings: null);
 
 HashSet<string> subscriptions = [];
+var _minimumLoggingLevel = LoggingLevel.Debug;
 
 builder.Services
     .AddMcpServer()
@@ -158,6 +160,28 @@ builder.Services
 
         throw new NotSupportedException($"Unknown reference type: {@ref.Type}");
     })
+    .WithSetLoggingLevelHandler(async (ctx, ct) =>
+    {
+        if (ctx.Params?.Level is null)
+        {
+            throw new McpServerException("Missing required argument 'level'");
+        }
+
+        _minimumLoggingLevel = ctx.Params.Level;
+
+        await ctx.Server.SendMessageAsync(new JsonRpcNotification
+        {
+            Method = "notifications/message",
+            Params = new
+            {
+                Level = "debug",
+                Logger = "test-server",
+                Data = $"Logging level set to {_minimumLoggingLevel}",
+            }
+        }, ct);
+
+        return new EmptyResult();
+    })
     ;
 
 builder.Services.AddHostedService(sp =>
@@ -165,5 +189,13 @@ builder.Services.AddHostedService(sp =>
     var server = sp.GetRequiredService<IMcpServer>();
     return new SubscriptionMessageSender(server, subscriptions);
 });
+
+builder.Services.AddHostedService(sp =>
+{
+    var server = sp.GetRequiredService<IMcpServer>();
+    return new LoggingUpdateMessageSender(server);
+});
+
+builder.Services.AddScoped<Func<LoggingLevel>>(_ => () => _minimumLoggingLevel);
 
 await builder.Build().RunAsync();
