@@ -1,7 +1,6 @@
 ﻿using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol.Types;
-using ModelContextProtocol.Shared;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
 using System.Diagnostics.CodeAnalysis;

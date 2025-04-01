@@ -1,6 +1,5 @@
 ﻿using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Server;
-using ModelContextProtocol.Shared;
 
 namespace ModelContextProtocol;
 

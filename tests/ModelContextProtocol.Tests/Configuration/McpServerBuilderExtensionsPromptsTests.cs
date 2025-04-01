@@ -6,11 +6,12 @@ using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
-using ModelContextProtocol.Tests.Transport;
 using ModelContextProtocol.Tests.Utils;
 using System.ComponentModel;
 using System.IO.Pipelines;
 using System.Threading.Channels;
+
+#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
 
 namespace ModelContextProtocol.Tests.Configuration;
 
@@ -28,7 +29,70 @@ public class McpServerBuilderExtensionsPromptsTests : LoggedTest, IAsyncDisposab
     {
         ServiceCollection sc = new();
         sc.AddSingleton(LoggerFactory);
-        _builder = sc.AddMcpServer().WithStdioServerTransport().WithPrompts<SimplePrompts>();
+        _builder = sc
+            .AddMcpServer()
+            .WithStdioServerTransport()
+            .WithListPromptsHandler(async (request, cancellationToken) =>
+            {
+                var cursor = request.Params?.Cursor;
+                switch (cursor)
+                {
+                    case null:
+                        return new()
+                        {
+                            NextCursor = "abc",
+                            Prompts = [new()
+                            {
+                                Name = "FirstCustomPrompt",
+                                Description = "First prompt returned by custom handler",
+                            }],
+                        };
+
+                    case "abc":
+                        return new()
+                        {
+                            NextCursor = "def",
+                            Prompts = [new()
+                            {
+                                Name = "SecondCustomPrompt",
+                                Description = "Second prompt returned by custom handler",
+                            }],
+                        };
+
+                    case "def":
+                        return new()
+                        {
+                            NextCursor = null,
+                            Prompts = [new()
+                            {
+                                Name = "FinalCustomPrompt",
+                                Description = "Final prompt returned by custom handler",
+                            }],
+                        };
+
+                    default:
+                        throw new Exception("Unexpected cursor");
+                }
+            })
+            .WithGetPromptHandler(async (request, cancellationToken) =>
+            {
+                switch (request.Params?.Name)
+                {
+                    case "FirstCustomPrompt":
+                    case "SecondCustomPrompt":
+                    case "FinalCustomPrompt":
+                        return new GetPromptResult()
+                        {
+                            Messages = [new() { Role = Role.User, Content = new() { Text = $"hello from {request.Params.Name}", Type = "text" } }],
+                        };
+
+                    default:
+                        throw new Exception($"Unknown prompt '{request.Params?.Name}'");
+                }
+            })
+            .WithPrompts<SimplePrompts>();
+
+
         // Call WithStdioServerTransport to get the IMcpServer registration, then overwrite default transport with a pipe transport.
         sc.AddSingleton<ITransport>(new StreamServerTransport(_clientToServerPipe.Reader.AsStream(), _serverToClientPipe.Writer.AsStream(), loggerFactory: LoggerFactory));
         sc.AddSingleton(new ObjectWithId());
@@ -85,7 +149,7 @@ public class McpServerBuilderExtensionsPromptsTests : LoggedTest, IAsyncDisposab
         IMcpClient client = await CreateMcpClientForServer();
 
         var prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(3, prompts.Count);
+        Assert.Equal(6, prompts.Count);
 
         var prompt = prompts.First(t => t.Name == nameof(SimplePrompts.ReturnsChatMessages));
         Assert.Equal("Returns chat messages", prompt.Description);
@@ -98,6 +162,14 @@ public class McpServerBuilderExtensionsPromptsTests : LoggedTest, IAsyncDisposab
         Assert.Equal(2, chatMessages.Count);
         Assert.Equal("The prompt is: hello", chatMessages[0].Text);
         Assert.Equal("Summarize.", chatMessages[1].Text);
+
+        prompt = prompts.First(t => t.Name == "SecondCustomPrompt");
+        Assert.Equal("Second prompt returned by custom handler", prompt.Description);
+        result = await prompt.GetAsync(cancellationToken: TestContext.Current.CancellationToken);
+        chatMessages = result.ToChatMessages();
+        Assert.NotNull(chatMessages);
+        Assert.Single(chatMessages);
+        Assert.Equal("hello from SecondCustomPrompt", chatMessages[0].Text);
     }
 
     [Fact]
@@ -106,7 +178,7 @@ public class McpServerBuilderExtensionsPromptsTests : LoggedTest, IAsyncDisposab
         IMcpClient client = await CreateMcpClientForServer();
 
         var prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(3, prompts.Count);
+        Assert.Equal(6, prompts.Count);
 
         Channel<JsonRpcNotification> listChanged = Channel.CreateUnbounded<JsonRpcNotification>();
         client.AddNotificationHandler("notifications/prompts/list_changed", notification =>
@@ -127,7 +199,7 @@ public class McpServerBuilderExtensionsPromptsTests : LoggedTest, IAsyncDisposab
         await notificationRead;
 
         prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(4, prompts.Count);
+        Assert.Equal(7, prompts.Count);
         Assert.Contains(prompts, t => t.Name == "NewPrompt");
 
         notificationRead = listChanged.Reader.ReadAsync(TestContext.Current.CancellationToken);
@@ -136,7 +208,7 @@ public class McpServerBuilderExtensionsPromptsTests : LoggedTest, IAsyncDisposab
         await notificationRead;
 
         prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(3, prompts.Count);
+        Assert.Equal(6, prompts.Count);
         Assert.DoesNotContain(prompts, t => t.Name == "NewPrompt");
     }
 

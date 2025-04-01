@@ -2,7 +2,6 @@ using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Server;
-using ModelContextProtocol.Tests.Transport;
 using ModelContextProtocol.Tests.Utils;
 using System.IO.Pipelines;
 

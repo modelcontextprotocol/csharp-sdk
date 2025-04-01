@@ -1,5 +1,4 @@
 ﻿using Microsoft.Extensions.Logging;
-using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
@@ -214,41 +213,26 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
             throw new McpServerException("ListPrompts and GetPrompt handlers should be specified together.");
         }
 
-        // Handle tools provided via DI.
+        // Handle prompts provided via DI.
         if (prompts is { IsEmpty: false })
         {
+            // Synthesize the handlers, making sure a PromptsCapability is specified.
             var originalListPromptsHandler = listPromptsHandler;
-            var originalGetPromptHandler = getPromptHandler;
-
-            // Synthesize the handlers, making sure a ToolsCapability is specified.
             listPromptsHandler = async (request, cancellationToken) =>
             {
-                ListPromptsResult result = new();
-                foreach (McpServerPrompt prompt in prompts)
-                {
-                    result.Prompts.Add(prompt.ProtocolPrompt);
-                }
+                ListPromptsResult result = originalListPromptsHandler is not null ?
+                    await originalListPromptsHandler(request, cancellationToken).ConfigureAwait(false) :
+                    new();
 
-                if (originalListPromptsHandler is not null)
+                if (request.Params?.Cursor is null)
                 {
-                    string? nextCursor = null;
-                    do
-                    {
-                        ListPromptsResult extraResults = await originalListPromptsHandler(request, cancellationToken).ConfigureAwait(false);
-                        result.Prompts.AddRange(extraResults.Prompts);
-
-                        nextCursor = extraResults.NextCursor;
-                        if (nextCursor is not null)
-                        {
-                            request = request with { Params = new() { Cursor = nextCursor } };
-                        }
-                    }
-                    while (nextCursor is not null);
+                    result.Prompts.AddRange(prompts.Select(t => t.ProtocolPrompt));
                 }
 
                 return result;
             };
 
+            var originalGetPromptHandler = getPromptHandler;
             getPromptHandler = (request, cancellationToken) =>
             {
                 if (request.Params is null ||
@@ -316,38 +300,23 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
         // Handle tools provided via DI.
         if (tools is { IsEmpty: false })
         {
-            var originalListToolsHandler = listToolsHandler;
-            var originalCallToolHandler = callToolHandler;
-
             // Synthesize the handlers, making sure a ToolsCapability is specified.
+            var originalListToolsHandler = listToolsHandler;
             listToolsHandler = async (request, cancellationToken) =>
             {
-                ListToolsResult result = new();
-                foreach (McpServerTool tool in tools)
-                {
-                    result.Tools.Add(tool.ProtocolTool);
-                }
+                ListToolsResult result = originalListToolsHandler is not null ?
+                    await originalListToolsHandler(request, cancellationToken).ConfigureAwait(false) :
+                    new();
 
-                if (originalListToolsHandler is not null)
+                if (request.Params?.Cursor is null)
                 {
-                    string? nextCursor = null;
-                    do
-                    {
-                        ListToolsResult extraResults = await originalListToolsHandler(request, cancellationToken).ConfigureAwait(false);
-                        result.Tools.AddRange(extraResults.Tools);
-
-                        nextCursor = extraResults.NextCursor;
-                        if (nextCursor is not null)
-                        {
-                            request = request with { Params = new() { Cursor = nextCursor } };
-                        }
-                    }
-                    while (nextCursor is not null);
+                    result.Tools.AddRange(tools.Select(t => t.ProtocolTool));
                 }
 
                 return result;
             };
 
+            var originalCallToolHandler = callToolHandler;
             callToolHandler = (request, cancellationToken) =>
             {
                 if (request.Params is null ||
