@@ -176,7 +176,7 @@ public static partial class McpServerBuilderExtensions
     }
 
     /// <summary>
-    /// Adds types marked with the <see cref="McpServerToolTypeAttribute"/> attribute from the given assembly as prompts to the server.
+    /// Adds types marked with the <see cref="McpServerPromptTypeAttribute"/> attribute from the given assembly as prompts to the server.
     /// </summary>
     /// <param name="builder">The builder instance.</param>
     /// <param name="promptAssembly">The assembly to load the types from. Null to get the current assembly</param>
@@ -190,7 +190,7 @@ public static partial class McpServerBuilderExtensions
 
         return builder.WithPrompts(
             from t in promptAssembly.GetTypes()
-            where t.GetCustomAttribute<McpServerToolTypeAttribute>() is not null
+            where t.GetCustomAttribute<McpServerPromptTypeAttribute>() is not null
             select t);
     }
     #endregion
