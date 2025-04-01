@@ -15,6 +15,7 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
     private readonly EventHandler? _promptsChangedDelegate;
 
     private string _endpointName;
+    private int _started;
 
     /// <summary>
     /// Creates a new instance of <see cref="McpServer"/>.
@@ -96,6 +97,11 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
     /// <inheritdoc />
     public async Task RunAsync(CancellationToken cancellationToken = default)
     {
+        if (Interlocked.Exchange(ref _started, 1) != 0)
+        {
+            throw new InvalidOperationException($"{nameof(RunAsync)} must only be called once.");
+        }
+
         try
         {
             using var _ = cancellationToken.Register(static s => ((McpServer)s!).CancelSession(), this);
