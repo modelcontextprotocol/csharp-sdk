@@ -116,7 +116,7 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
             {
                 Sampling = new()
                 {
-                    SamplingHandler = (_, _) =>
+                    SamplingHandler = (_, _, _) =>
                     {
                         samplingHandlerCalls++;
                         return Task.FromResult(new CreateMessageResult

@@ -68,7 +68,6 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
         });
 
         SetToolsHandler(options);
-
         SetInitializeHandler(options);
         SetCompletionHandler(options);
         SetPingHandler();

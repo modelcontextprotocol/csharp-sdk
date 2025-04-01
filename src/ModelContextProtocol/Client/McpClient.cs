@@ -42,7 +42,7 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
 
             SetRequestHandler<CreateMessageRequestParams, CreateMessageResult>(
                 RequestMethods.SamplingCreateMessage,
-                (request, ct) => samplingHandler(request, ct));
+                (request, ct) => samplingHandler(request, new ClientTokenProgress(this, request?.Meta?.ProgressToken), ct));
         }
 
         if (options.Capabilities?.Roots is { } rootsCapability)

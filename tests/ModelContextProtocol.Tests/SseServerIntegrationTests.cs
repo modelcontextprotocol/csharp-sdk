@@ -215,7 +215,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
         var options = SseServerIntegrationTestFixture.CreateDefaultClientOptions();
         options.Capabilities ??= new();
         options.Capabilities.Sampling ??= new();
-        options.Capabilities.Sampling.SamplingHandler = async (_, _) =>
+        options.Capabilities.Sampling.SamplingHandler = async (_, _, _) =>
         {
             samplingHandlerCalls++;
             return new CreateMessageResult

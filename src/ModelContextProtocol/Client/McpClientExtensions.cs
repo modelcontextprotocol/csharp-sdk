@@ -531,17 +531,34 @@ public static class McpClientExtensions
     /// </summary>
     /// <param name="chatClient">The <see cref="IChatClient"/> with which to satisfy sampling requests.</param>
     /// <returns>The created handler delegate.</returns>
-    public static Func<CreateMessageRequestParams?, CancellationToken, Task<CreateMessageResult>> CreateSamplingHandler(this IChatClient chatClient)
+    public static Func<CreateMessageRequestParams?, IProgress<ProgressNotificationValue>, CancellationToken, Task<CreateMessageResult>> CreateSamplingHandler(
+        this IChatClient chatClient)
     {
         Throw.IfNull(chatClient);
 
-        return async (requestParams, cancellationToken) =>
+        return async (requestParams, progress, cancellationToken) =>
         {
             Throw.IfNull(requestParams);
 
             var (messages, options) = requestParams.ToChatClientArguments();
-            var response = await chatClient.GetResponseAsync(messages, options, cancellationToken).ConfigureAwait(false);
-            return response.ToCreateMessageResult();
+            var progressToken = requestParams.Meta?.ProgressToken;
+            int progressValue = 0;
+            var streamingResponses = chatClient.GetStreamingResponseAsync(
+                messages, options, cancellationToken);
+            List<ChatResponseUpdate> updates = [];
+            await foreach (var streamingResponse in streamingResponses)
+            {
+                updates.Add(streamingResponse);
+                if (progressToken is not null)
+                {
+                    progress.Report(new()
+                    {
+                        Progress = ++progressValue,
+                    });
+                }
+            }
+
+            return updates.ToChatResponse().ToCreateMessageResult();
         };
     }
 
