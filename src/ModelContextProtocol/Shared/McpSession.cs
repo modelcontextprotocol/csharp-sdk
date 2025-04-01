@@ -7,6 +7,8 @@ using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
 using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Shared;
@@ -16,6 +18,13 @@ namespace ModelContextProtocol.Shared;
 /// </summary>
 internal sealed class McpSession : IDisposable
 {
+    private static readonly ActivitySource s_activitySource = new("ModelContextProtocol");
+    private static readonly Meter s_meter = new("ModelContextProtocol");
+    private static readonly Histogram<double> s_operationDurationHistogram = s_meter.CreateHistogram<double>(
+        "modelcontextprotocol.operation.duration",
+        "s",
+        "Measures the duration of an operation in seconds.");
+
     private readonly ITransport _transport;
     private readonly RequestHandlers _requestHandlers;
     private readonly NotificationHandlers _notificationHandlers;
@@ -152,23 +161,89 @@ internal sealed class McpSession : IDisposable
 
     private async Task HandleMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken)
     {
-        switch (message)
+        using Activity? activity = s_activitySource.StartActivity("HandlingMessage");
+        TagList tags = default;
+
+        Stopwatch? measuring = s_operationDurationHistogram.Enabled ? Stopwatch.StartNew() : null;
+        bool addTags = activity is not null || measuring is not null;
+
+        try
         {
-            case JsonRpcRequest request:
-                await HandleRequest(request, cancellationToken).ConfigureAwait(false);
-                break;
+            if (addTags)
+            {
+                tags.Add("mcp.session.id", _id);
+            }
 
-            case IJsonRpcMessageWithId messageWithId:
-                HandleMessageWithId(message, messageWithId);
-                break;
+            switch (message)
+            {
+                case JsonRpcRequest request:
+                    if (addTags)
+                    {
+                        tags.Add("mcp.request.id", request.Id.ToString());
+                        tags.Add("mcp.request.method", request.Method);
 
-            case JsonRpcNotification notification:
-                await HandleNotification(notification).ConfigureAwait(false);
-                break;
+                        if (request.Params is JsonElement je)
+                        {
+                            switch (request.Method)
+                            {
+                                case RequestMethods.ToolsCall:
+                                case RequestMethods.PromptsGet:
+                                    if (je.TryGetProperty("name", out var prop) && prop.ValueKind == JsonValueKind.String)
+                                    {
+                                        tags.Add("mcp.request.params.name", prop.GetString());
+                                    }
+                                    break;
 
-            default:
-                _logger.EndpointHandlerUnexpectedMessageType(EndpointName, message.GetType().Name);
-                break;
+                                case RequestMethods.ResourcesRead:
+                                    if (je.TryGetProperty("uri", out prop) && prop.ValueKind == JsonValueKind.String)
+                                    {
+                                        tags.Add("mcp.request.params.uri", prop.GetString());
+                                    }
+                                    break;
+                            }
+                        }
+                    }
+
+                    await HandleRequest(request, cancellationToken).ConfigureAwait(false);
+                    break;
+
+                case JsonRpcNotification notification:
+                    if (addTags)
+                    {
+                        tags.Add("mcp.notification.method", notification.Method);
+                    }
+
+                    await HandleNotification(notification).ConfigureAwait(false);
+                    break;
+
+                case IJsonRpcMessageWithId messageWithId:
+                    HandleMessageWithId(message, messageWithId);
+                    break;
+
+                default:
+                    _logger.EndpointHandlerUnexpectedMessageType(EndpointName, message.GetType().Name);
+                    break;
+            }
+        }
+        catch (Exception e) when (addTags)
+        {
+            tags.Add("error.type", e.GetType().FullName);
+            throw;
+        }
+        finally
+        {
+            if (activity is not null)
+            {
+                foreach (var tag in tags)
+                {
+                    activity.AddTag(tag.Key, tag.Value);
+                }
+            }
+
+            if (measuring is not null)
+            {
+                s_operationDurationHistogram.Record(measuring.Elapsed.TotalSeconds, tags);
+            }
         }
     }
 
@@ -264,10 +339,18 @@ internal sealed class McpSession : IDisposable
             throw new McpClientException("Transport is not connected");
         }
 
+        using Activity? activity = s_activitySource.StartActivity("SendingRequest");
+
         // Set request ID
         if (request.Id.IsDefault)
         {
             request.Id = new RequestId($"{_id}-{Interlocked.Increment(ref _nextRequestId)}");
+        }
+
+        if (activity is not null)
+        {
+            activity.SetTag("mcp.request.id", request.Id.ToString());
+            activity.SetTag("mcp.request.method", request.Method);
         }
 
         var tcs = new TaskCompletionSource<IJsonRpcMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -319,6 +402,11 @@ internal sealed class McpSession : IDisposable
             _logger.RequestInvalidResponseType(EndpointName, request.Method);
             throw new McpClientException("Invalid response type");
         }
+        catch (Exception ex) when (activity is not null)
+        {
+            activity.AddTag("error.type", ex.GetType().FullName);
+            throw;
+        }
         finally
         {
             _pendingRequests.TryRemove(request.Id, out _);
@@ -334,6 +422,8 @@ internal sealed class McpSession : IDisposable
             _logger.ClientNotConnected(EndpointName);
             throw new McpClientException("Transport is not connected");
         }
+
+        using Activity? activity = s_activitySource.StartActivity("SendingMessage");
 
         if (_logger.IsEnabled(LogLevel.Debug))
         {
