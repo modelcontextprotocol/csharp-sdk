@@ -8,9 +8,7 @@ using System.Runtime.CompilerServices;
 
 namespace ModelContextProtocol.Client;
 
-/// <summary>
-/// Provides extensions for operating on MCP clients.
-/// </summary>
+/// <summary>Provides extension methods for interacting with an <see cref="IMcpClient"/>.</summary>
 public static class McpClientExtensions
 {
     /// <summary>
@@ -542,18 +540,17 @@ public static class McpClientExtensions
 
             var (messages, options) = requestParams.ToChatClientArguments();
             var progressToken = requestParams.Meta?.ProgressToken;
-            int progressValue = 0;
-            var streamingResponses = chatClient.GetStreamingResponseAsync(
-                messages, options, cancellationToken);
+
             List<ChatResponseUpdate> updates = [];
-            await foreach (var streamingResponse in streamingResponses)
+            await foreach (var update in chatClient.GetStreamingResponseAsync(messages, options, cancellationToken))
             {
-                updates.Add(streamingResponse);
+                updates.Add(update);
+
                 if (progressToken is not null)
                 {
                     progress.Report(new()
                     {
-                        Progress = ++progressValue,
+                        Progress = updates.Count,
                     });
                 }
             }

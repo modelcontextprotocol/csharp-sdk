@@ -111,7 +111,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
                             if (requestContent?.Server is { } server &&
                                 requestContent?.Params?.Meta?.ProgressToken is { } progressToken)
                             {
-                                return new ServerTokenProgress(server, progressToken);
+                                return new TokenProgress(server, progressToken);
                             }
 
                             return NullProgress.Instance;

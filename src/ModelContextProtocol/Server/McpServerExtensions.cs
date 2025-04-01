@@ -7,7 +7,7 @@ using System.Text;
 
 namespace ModelContextProtocol.Server;
 
-/// <inheritdoc />
+/// <summary>Provides extension methods for interacting with an <see cref="IMcpServer"/>.</summary>
 public static class McpServerExtensions
 {
     /// <summary>
@@ -167,26 +167,6 @@ public static class McpServerExtensions
         return server.SendRequestAsync<ListRootsResult>(
             new JsonRpcRequest { Method = RequestMethods.RootsList, Params = request },
             cancellationToken);
-    }
-
-    /// <summary>
-    /// Requests the client to list the roots it exposes.
-    /// </summary>
-    /// <param name="server">The server issueing the request.</param>
-    /// <param name="notification">The notification to send.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>A task containing the response from the client.</returns>
-    public static Task NotifyProgressAsync(
-        this IMcpServer server,
-        ProgressNotification notification,
-        CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(server);
-        return server.SendMessageAsync(new JsonRpcNotification()
-        {
-            Method = NotificationMethods.ProgressNotification,
-            Params = notification,
-        }, cancellationToken);
     }
 
     /// <summary>Provides an <see cref="IChatClient"/> implementation that's implemented via client sampling.</summary>

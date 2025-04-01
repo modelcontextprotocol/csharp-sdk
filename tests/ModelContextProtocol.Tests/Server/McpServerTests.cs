@@ -639,14 +639,26 @@ public class McpServerTests : LoggedTest
     [Fact]
     public async Task NotifyProgress_Should_Be_Handled()
     {
-        var taskCompletionSource = new TaskCompletionSource();
-        bool notificationHandled = false;
-        await Notifications_Are_Handled(
-            serverCapabilities: null,
-            method: NotificationMethods.ProgressNotification,
-            parameters: new ProgressNotification()
+        await using TestServerTransport transport = new();
+        var options = CreateOptions();
+
+        var notificationReceived = new TaskCompletionSource<JsonRpcNotification>();
+
+        var server = McpServerFactory.Create(transport, options, LoggerFactory, _serviceProvider);
+        server.AddNotificationHandler(NotificationMethods.ProgressNotification, notification =>
+        {
+            notificationReceived.SetResult(notification);
+            return Task.CompletedTask;
+        });
+
+        Task serverTask = server.RunAsync(TestContext.Current.CancellationToken);
+
+        await transport.SendMessageAsync(new JsonRpcNotification
+        {
+            Method = NotificationMethods.ProgressNotification,
+            Params = new ProgressNotification()
             {
-                ProgressToken = new(),
+                ProgressToken = new("abc"),
                 Progress = new()
                 {
                     Progress = 50,
@@ -654,66 +666,16 @@ public class McpServerTests : LoggedTest
                     Message = "Progress message",
                 },
             },
-            configureOptions: null,
-            configureServer: server =>
-            {
-                server.AddNotificationHandler(NotificationMethods.ProgressNotification,
-                    (notification) =>
-                    {
-                        notificationHandled = true;
-                        var progress = (ProgressNotificationValue?)notification.Params;
-                        Assert.NotNull(progress);
-                        var progressValue = progress.Value;
-                        taskCompletionSource.SetResult();
-                        Assert.Equal(50, progressValue.Progress);
-                        Assert.Equal(100, progressValue.Total);
-                        Assert.Equal("Progress message", progressValue.Message);
-                        return Task.CompletedTask;
-                    });
-            },
-            assertResult: async response =>
-            {
-                //Note: awaiting here so handlers are guaranteed to be called first.
-                await taskCompletionSource.Task.WaitAsync(TimeSpan.FromSeconds(1));
-                Assert.True(notificationHandled);
-            });
-    }
+        }, TestContext.Current.CancellationToken);
 
-    private async Task Notifications_Are_Handled(
-        ServerCapabilities? serverCapabilities,
-        string method, object? parameters,
-        Action<McpServerOptions>? configureOptions,
-        Action<IMcpServer>? configureServer,
-        Action<JsonRpcNotification> assertResult)
-    {
-        await using TestServerTransport transport = new();
-        var options = CreateOptions(serverCapabilities);
-        configureOptions?.Invoke(options);
+        var notification = await notificationReceived.Task;
+        var progress = (ProgressNotification)notification.Params!;
+        Assert.Equal("\"abc\"", progress.ProgressToken.ToString());
+        Assert.Equal(50, progress.Progress.Progress);
+        Assert.Equal(100, progress.Progress.Total);
+        Assert.Equal("Progress message", progress.Progress.Message);
 
-        await using var server = McpServerFactory.Create(
-            transport, options, LoggerFactory, _serviceProvider);
-
-        configureServer?.Invoke(server);
-        await server.RunAsync();
-
-        TaskCompletionSource<JsonRpcNotification> receivedMessage = new();
-
-        transport.OnMessageSent = (message) =>
-        {
-            Assert.NotNull(message);
-            if (message is JsonRpcNotification notification && notification.Method == method)
-            {
-                assertResult(notification);
-                receivedMessage.SetResult(notification);
-            }
-        };
-
-        await transport.SendMessageAsync(new JsonRpcNotification
-        {
-            Method = method,
-            Params = parameters,
-        });
-
-        var response = await receivedMessage.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await server.DisposeAsync();
+        await serverTask;
     }
 }

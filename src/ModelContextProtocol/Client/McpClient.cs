@@ -42,7 +42,10 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
 
             SetRequestHandler<CreateMessageRequestParams, CreateMessageResult>(
                 RequestMethods.SamplingCreateMessage,
-                (request, ct) => samplingHandler(request, new ClientTokenProgress(this, request?.Meta?.ProgressToken), ct));
+                (request, cancellationToken) => samplingHandler(
+                    request,
+                    request?.Meta?.ProgressToken is { } token ? new TokenProgress(this, token) : NullProgress.Instance,
+                    cancellationToken));
         }
 
         if (options.Capabilities?.Roots is { } rootsCapability)
@@ -54,7 +57,7 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
 
             SetRequestHandler<ListRootsRequestParams, ListRootsResult>(
                 RequestMethods.RootsList,
-                (request, ct) => rootsHandler(request, ct));
+                (request, cancellationToken) => rootsHandler(request, cancellationToken));
         }
     }
 
