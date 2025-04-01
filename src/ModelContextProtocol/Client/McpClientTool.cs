@@ -49,10 +49,10 @@ public sealed class McpClientTool : AIFunction
     public Tool ProtocolTool { get; }
 
     /// <inheritdoc/>
-    public override string Name => _name ?? ProtocolTool.Name;
+    public override string Name => _name!;
 
     /// <inheritdoc/>
-    public override string Description => _description ?? ProtocolTool.Description ?? string.Empty;
+    public override string Description => _description ?? string.Empty;
 
     /// <inheritdoc/>
     public override JsonElement JsonSchema => ProtocolTool.InputSchema;
