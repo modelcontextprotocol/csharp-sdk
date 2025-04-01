@@ -15,20 +15,23 @@ public class CancelledNotificationTests(
     public async Task NotifyCancelAsync_SendsCorrectNotification()
     {
         // Arrange
-        await using var endpoint = fixture.CreateEndpoint();
-        await using var transport = fixture.CreateTransport();
-        var cancellationToken = TestContext.Current.CancellationToken;
-        endpoint.Start(transport, cancellationToken);
+        var token = TestContext.Current.CancellationToken;
+        var clientTransport = fixture.CreateClientTransport();
+        await using var endpoint = await fixture.CreateClientEndpointAsync(clientTransport);
+        var transport = await clientTransport.ConnectAsync(token);
         
         var requestId = new RequestId("test-request-id-123");
         const string reason = "Operation was cancelled by the user";
 
         // Act
-        await endpoint.NotifyCancelAsync(requestId, reason, cancellationToken);
+        await endpoint.NotifyCancelAsync(requestId, reason, token);
 
         // Assert
-        Assert.Single(transport.SentMessages);
-        var notification = Assert.IsType<JsonRpcNotification>(transport.SentMessages[0]);
+        Assert.Equal(1, transport.MessageReader.Count);
+        var message = await transport.MessageReader.ReadAsync(token);
+        Assert.NotNull(message);
+
+        var notification = Assert.IsType<JsonRpcNotification>(message);
         Assert.Equal(NotificationMethods.CancelledNotification, notification.Method);
         
         var cancelParams = Assert.IsType<CancelledNotification>(notification.Params);
@@ -40,10 +43,10 @@ public class CancelledNotificationTests(
     public async Task SendRequestAsync_Cancellation_SendsNotification()
     {
         // Arrange
-        await using var endpoint = fixture.CreateEndpoint();
-        await using var transport = fixture.CreateTransport();
-        endpoint.Start(transport, CancellationToken.None);
-        
+        var token = TestContext.Current.CancellationToken;
+        var clientTransport = fixture.CreateClientTransport();
+        await using var endpoint = await fixture.CreateClientEndpointAsync(clientTransport);
+        var transport = await clientTransport.ConnectAsync(token);
         var requestId = new RequestId("test-request-id-123");
         JsonRpcRequest request = new()
         {
@@ -68,15 +71,19 @@ public class CancelledNotificationTests(
         }
 
         // Assert
-        Assert.NotEmpty(transport.SentMessages);
-        Assert.Equal(2, transport.SentMessages.Count);
-        var notification = Assert.IsType<JsonRpcNotification>(transport.SentMessages[0]);
+        Assert.Equal(2, transport.MessageReader.Count);
+        var message = await transport.MessageReader.ReadAsync(token);
+        Assert.NotNull(message);
+
+        var notification = Assert.IsType<JsonRpcNotification>(message);
         Assert.Equal(NotificationMethods.CancelledNotification, notification.Method);
         
         var cancelParams = Assert.IsType<CancelledNotification>(notification.Params);
         Assert.Equal(requestId, cancelParams.RequestId);
 
-        var requestMessage = Assert.IsType<JsonRpcRequest>(transport.SentMessages[1]);
+        message = await transport.MessageReader.ReadAsync(token);
+        Assert.NotNull(message);
+        var requestMessage = Assert.IsType<JsonRpcRequest>(message);
         Assert.Equal(request.Id, requestMessage.Id);
         Assert.Equal(request.Method, requestMessage.Method);
         Assert.Equal(request.Params, requestMessage.Params);

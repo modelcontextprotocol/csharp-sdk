@@ -1,9 +1,10 @@
 ﻿using ModelContextProtocol.Protocol.Messages;
+using ModelContextProtocol.Shared;
 using ModelContextProtocol.Utils;
 
 namespace ModelContextProtocol;
 
-/// <summary>Provides extension methods for interacting with an <see cref="IMcpEndpoint"/>.</summary>
+/// <summary>Provides extension methods for interacting with an <see cref="IMcpSession"/>.</summary>
 public static class McpEndpointExtensions
 {
     /// <summary>
@@ -15,7 +16,7 @@ public static class McpEndpointExtensions
     /// <exception cref="ArgumentNullException"><paramref name="endpoint"/> is <see langword="null"/>.</exception>
     /// <returns>A task representing the completion of the operation.</returns>
     public static Task NotifyAsync(
-        this IMcpEndpoint endpoint,
+        this IMcpSession endpoint,
         JsonRpcNotification notification,
         CancellationToken cancellationToken = default)
     {
@@ -34,7 +35,7 @@ public static class McpEndpointExtensions
     /// <exception cref="ArgumentNullException"><paramref name="endpoint"/> is <see langword="null"/>.</exception>
     /// <returns>A task representing the completion of the operation.</returns>
     public static Task NotifyAsync(
-        this IMcpEndpoint endpoint,
+        this IMcpSession endpoint,
         string method,
         object? parameters = null,
         CancellationToken cancellationToken = default)
@@ -56,7 +57,7 @@ public static class McpEndpointExtensions
     /// <returns>A task representing the completion of the operation.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="endpoint"/> is <see langword="null"/>.</exception>
     public static Task NotifyProgressAsync(
-        this IMcpEndpoint endpoint,
+        this IMcpSession endpoint,
         ProgressToken progressToken,
         ProgressNotificationValue progress, 
         CancellationToken cancellationToken = default)
@@ -82,7 +83,7 @@ public static class McpEndpointExtensions
     /// <returns>A task representing the completion of the operation.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="endpoint"/> is <see langword="null"/>.</exception>
     public static Task NotifyCancelAsync(
-        this IMcpEndpoint endpoint,
+        this IMcpSession endpoint,
         RequestId requestId,
         string? reason = null,
         CancellationToken cancellationToken = default)

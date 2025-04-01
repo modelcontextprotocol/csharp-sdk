@@ -15,7 +15,7 @@ namespace ModelContextProtocol.Shared;
 /// This is especially true as a client represents a connection to one and only one server, and vice versa.
 /// Any multi-client or multi-server functionality should be implemented at a higher level of abstraction.
 /// </summary>
-public abstract class McpJsonRpcEndpoint : IMcpEndpoint, IAsyncDisposable
+internal abstract class McpJsonRpcEndpoint : IMcpSession
 {
     private readonly RequestHandlers _requestHandlers = [];
     private readonly NotificationHandlers _notificationHandlers = [];
@@ -66,21 +66,8 @@ public abstract class McpJsonRpcEndpoint : IMcpEndpoint, IAsyncDisposable
     /// <param name="request">The request instance</param>
     /// <param name="cancellationToken">The token for cancellation.</param>
     /// <returns>The MCP response.</returns>
-    public async Task<TResult> SendRequestAsync<TResult>(JsonRpcRequest request, CancellationToken cancellationToken = default) where TResult : class
-    {
-        using var registration = cancellationToken.Register(async () =>
-        {
-            try
-            {
-                await this.NotifyCancelAsync(request.Id).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "An error occurred while notifying cancellation for request {RequestId}.", request.Id);
-            }
-        });
-        return await GetSessionOrThrow().SendRequestAsync<TResult>(request, cancellationToken);
-    }
+    public Task<TResult> SendRequestAsync<TResult>(JsonRpcRequest request, CancellationToken cancellationToken = default) where TResult : class
+        => GetSessionOrThrow().SendRequestAsync<TResult>(request, cancellationToken);
 
     /// <summary>
     /// Sends a notification over the protocol.
@@ -166,7 +153,8 @@ public abstract class McpJsonRpcEndpoint : IMcpEndpoint, IAsyncDisposable
         }
         finally
         {
-            _session?.Dispose();
+            var valueTask = _session?.DisposeAsync().ConfigureAwait(false);
+            if (valueTask is not null) await valueTask.Value;
             _sessionCts?.Dispose();
         }
 
@@ -178,6 +166,6 @@ public abstract class McpJsonRpcEndpoint : IMcpEndpoint, IAsyncDisposable
     /// </summary>
     /// <returns>The current session.</returns>
     /// <exception cref="InvalidOperationException">Thrown if the session is not started.</exception>
-    protected IMcpSession GetSessionOrThrow()
+    protected McpSession GetSessionOrThrow()
         => _session ?? throw new InvalidOperationException($"This should be unreachable from public API! Call {nameof(StartSession)} before sending messages.");
 }

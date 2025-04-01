@@ -1,4 +1,5 @@
 ﻿using ModelContextProtocol.Protocol.Messages;
+using ModelContextProtocol.Shared;
 
 namespace ModelContextProtocol;
 
@@ -6,7 +7,7 @@ namespace ModelContextProtocol;
 /// Provides an <see cref="IProgress{ProgressNotificationValue}"/> tied to a specific progress token and that will issue
 /// progress notifications on the supplied endpoint.
 /// </summary>
-internal sealed class TokenProgress(IMcpEndpoint endpoint, ProgressToken progressToken) : IProgress<ProgressNotificationValue>
+internal sealed class TokenProgress(IMcpSession endpoint, ProgressToken progressToken) : IProgress<ProgressNotificationValue>
 {
     /// <inheritdoc />
     public void Report(ProgressNotificationValue value)

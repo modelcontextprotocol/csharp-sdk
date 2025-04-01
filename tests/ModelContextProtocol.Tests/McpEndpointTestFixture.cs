@@ -1,7 +1,8 @@
-using Microsoft.Extensions.Logging;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Server;
 using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Shared;
 using ModelContextProtocol.Protocol.Transport;
+using Microsoft.Extensions.Logging;
 using System.Threading.Channels;
 
 namespace ModelContextProtocol.Tests;
@@ -11,18 +12,46 @@ namespace ModelContextProtocol.Tests;
 /// </summary>
 public class McpEndpointTestFixture() : IAsyncDisposable
 {
-    private readonly ILoggerFactory _loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-
     /// <summary>
     /// Creates a test transport.
     /// </summary>
     internal TestCancellationTransport CreateTransport() => new();
+    internal IClientTransport CreateClientTransport(ITransport? transport = default)
+        => new TestCancellationClientTransport(transport ?? CreateTransport());
+    
 
     /// <summary>
     /// Creates a test client endpoint.
     /// </summary>
-    internal TestMcpJsonRpcEndpoint CreateEndpoint() => new();
+    internal async Task<IMcpClient> CreateClientEndpointAsync(
+        Func<McpServerConfig, ILoggerFactory?, IClientTransport>? transportFactory = default)
+    {
+        transportFactory ??= (_, _) => CreateClientTransport();
+        return await McpClientFactory.CreateAsync(new()
+        {
+            Id = "TestServer",
+            Name = "Test Server",
+            TransportType = "TestTransport",
+        }, createTransportFunc: transportFactory);
+    }
+    internal Task<IMcpClient> CreateClientEndpointAsync(IClientTransport transport)
+        => CreateClientEndpointAsync((_, _) => transport);
+    internal Task<IMcpClient> CreateClientEndpointAsync(ITransport transport)
+        => CreateClientEndpointAsync(new TestCancellationClientTransport(transport));
 
+    internal async Task<IMcpServer> CreateServerEndpointAsync(ITransport transport)
+    {
+        var server = McpServerFactory.Create(transport, new()
+        {
+            ServerInfo = new()
+            {
+                Name = "TestServer",
+                Version = "1.0.0",
+            }
+        });
+        await server.RunAsync();
+        return server;
+    }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     
@@ -41,14 +70,11 @@ public class McpEndpointTestFixture() : IAsyncDisposable
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
-    internal class TestMcpJsonRpcEndpoint(LoggerFactory? loggerFactory = null)
-        : McpJsonRpcEndpoint(loggerFactory ?? new())
-    {
-        public override string EndpointName => "TestEndpoint";
+    internal class TestCancellationClientTransport(ITransport transport) : IClientTransport
+    {        
+        public Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(transport);
 
-        public void Start(
-            ITransport transport,
-            CancellationToken token)
-            => StartSession(transport, token);
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }
