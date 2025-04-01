@@ -9,15 +9,15 @@ namespace ModelContextProtocol.Client;
 public sealed class McpClientTool : AIFunction
 {
     private readonly IMcpClient _client;
-    private readonly string? _nameOverride;
-    private readonly string? _descriptionOverride;
+    private readonly string? _name;
+    private readonly string? _description;
 
-    internal McpClientTool(IMcpClient client, Tool tool, string? nameOverride = null, string? descriptionOverride = null)
+    internal McpClientTool(IMcpClient client, Tool tool, string? name = null, string? description = null)
     {
         _client = client;
         ProtocolTool = tool;
-        _nameOverride = nameOverride;
-        _descriptionOverride = descriptionOverride;
+        _name = name ?? tool.Name;
+        _description = description ?? tool.Description;
     }
 
     /// <summary>
@@ -25,11 +25,11 @@ public sealed class McpClientTool : AIFunction
     /// This is useful for optimizing the tool name for specific models or for prefixing the tool name with a (usually server-derived) namespace to avoid conflicts.
     /// The server will still be called with the original tool name, so no mapping is required.
     /// </summary>
-    /// <param name="name">The model-facing name to give the tool</param>
-    /// <returns>Equivalent McpClientTool, but with the provided name</returns>
-    public McpClientTool WithName(string name)
+    /// <param name="name">The model-facing name to give the tool. Pass null to clear the name override and to use the MCP Tool name again.</param>
+    /// <returns>Copy of this McpClientTool with the provided name</returns>
+    public McpClientTool WithName(string? name)
     {
-        return new McpClientTool(_client, ProtocolTool, name, _descriptionOverride);
+        return new McpClientTool(_client, ProtocolTool, name, _description);
     }
 
     /// <summary>
@@ -38,21 +38,21 @@ public sealed class McpClientTool : AIFunction
     /// This will in general require a hard-coded mapping in the client. 
     /// It is not recommended to use this without running evaluations to ensure the model actually benefits from the custom description.
     /// </summary>
-    /// <param name="description"></param>
-    /// <returns></returns>
-    public McpClientTool WithDescription(string description)
+    /// <param name="description">The description to give the tool. Pass null to clear the description override and to use the MCP Tool description again.</param>
+    /// <returns>Copy of this McpClientTool with the provided description</returns>
+    public McpClientTool WithDescription(string? description)
     {
-        return new McpClientTool(_client, ProtocolTool, _nameOverride, description);
+        return new McpClientTool(_client, ProtocolTool, _name, description);
     }
 
     /// <summary>Gets the protocol <see cref="Tool"/> type for this instance.</summary>
     public Tool ProtocolTool { get; }
 
     /// <inheritdoc/>
-    public override string Name => _nameOverride ?? ProtocolTool.Name;
+    public override string Name => _name ?? ProtocolTool.Name;
 
     /// <inheritdoc/>
-    public override string Description => _descriptionOverride ?? ProtocolTool.Description ?? string.Empty;
+    public override string Description => _description ?? ProtocolTool.Description ?? string.Empty;
 
     /// <inheritdoc/>
     public override JsonElement JsonSchema => ProtocolTool.InputSchema;
