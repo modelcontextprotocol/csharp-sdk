@@ -77,9 +77,6 @@ internal static partial class Log
     [LoggerMessage(Level = LogLevel.Information, Message = "Request response received for {endpointName} with method {method}")]
     internal static partial void RequestResponseReceived(this ILogger logger, string endpointName, string method);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "Request response type conversion error for {endpointName} with method {method}: expected {expectedType}")]
-    internal static partial void RequestResponseTypeConversionError(this ILogger logger, string endpointName, string method, Type expectedType);
-
     [LoggerMessage(Level = LogLevel.Error, Message = "Request invalid response type for {endpointName} with method {method}")]
     internal static partial void RequestInvalidResponseType(this ILogger logger, string endpointName, string method);
 

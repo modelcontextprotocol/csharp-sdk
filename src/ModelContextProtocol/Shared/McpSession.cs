@@ -11,6 +11,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Shared;
 
@@ -43,7 +44,6 @@ internal sealed class McpSession : IDisposable
     /// that can be used to request cancellation of the in-flight handler.
     /// </summary>
     private readonly ConcurrentDictionary<RequestId, CancellationTokenSource> _handlingRequests = new();
-    private readonly JsonSerializerOptions _jsonOptions;
     private readonly ILogger _logger;
     
     private readonly string _id = Guid.NewGuid().ToString("N");
@@ -81,7 +81,6 @@ internal sealed class McpSession : IDisposable
         EndpointName = endpointName;
         _requestHandlers = requestHandlers;
         _notificationHandlers = notificationHandlers;
-        _jsonOptions = McpJsonUtilities.DefaultOptions;
         _logger = logger ?? NullLogger.Instance;
     }
 
@@ -155,7 +154,7 @@ internal sealed class McpSession : IDisposable
                         }
                         else if (ex is not OperationCanceledException)
                         {
-                            var payload = JsonSerializer.Serialize(message, _jsonOptions.GetTypeInfo<IJsonRpcMessage>());
+                            var payload = JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.IJsonRpcMessage);
                             _logger.MessageHandlerError(EndpointName, message.GetType().Name, payload, ex);
                         }
                     }
@@ -295,7 +294,7 @@ internal sealed class McpSession : IDisposable
         }
 
         _logger.RequestHandlerCalled(EndpointName, request.Method);
-        var result = await handler(request, cancellationToken).ConfigureAwait(false);
+        JsonNode? result = await handler(request, cancellationToken).ConfigureAwait(false);
         _logger.RequestHandlerCompleted(EndpointName, request.Method);
         await _transport.SendMessageAsync(new JsonRpcResponse
         {
@@ -306,15 +305,14 @@ internal sealed class McpSession : IDisposable
     }
 
     /// <summary>
-    /// Sends a generic JSON-RPC request to the server.
+    /// Sends a JSON-RPC request to the server.
     /// It is strongly recommended use the capability-specific methods instead of this one.
     /// Use this method for custom requests or those not yet covered explicitly by the endpoint implementation.
     /// </summary>
-    /// <typeparam name="TResult">The expected response type.</typeparam>
     /// <param name="request">The JSON-RPC request to send.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task containing the server's response.</returns>
-    public async Task<TResult> SendRequestAsync<TResult>(JsonRpcRequest request, CancellationToken cancellationToken) where TResult : class
+    public async Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken)
     {
         if (!_transport.IsConnected)
         {
@@ -352,7 +350,7 @@ internal sealed class McpSession : IDisposable
             // Expensive logging, use the logging framework to check if the logger is enabled
             if (_logger.IsEnabled(LogLevel.Debug))
             {
-                _logger.SendingRequestPayload(EndpointName, JsonSerializer.Serialize(request, _jsonOptions.GetTypeInfo<JsonRpcRequest>()));
+                _logger.SendingRequestPayload(EndpointName, JsonSerializer.Serialize(request, McpJsonUtilities.JsonContext.Default.JsonRpcRequest));
             }
 
             // Less expensive information logging
@@ -371,22 +369,10 @@ internal sealed class McpSession : IDisposable
 
             if (response is JsonRpcResponse success)
             {
-                // Convert the Result object to JSON and back to get our strongly-typed result
-                var resultJson = JsonSerializer.Serialize(success.Result, _jsonOptions.GetTypeInfo<object?>());
-                var resultObject = JsonSerializer.Deserialize(resultJson, _jsonOptions.GetTypeInfo<TResult>());
-
                 // Not expensive logging because we're already converting to JSON in order to get the result object
-                _logger.RequestResponseReceivedPayload(EndpointName, resultJson);
+                _logger.RequestResponseReceivedPayload(EndpointName, success.Result?.ToJsonString() ?? "null");
                 _logger.RequestResponseReceived(EndpointName, request.Method);
-
-                if (resultObject != null)
-                {
-                    return resultObject;
-                }
-
-                // Result object was null, this is unexpected
-                _logger.RequestResponseTypeConversionError(EndpointName, request.Method, typeof(TResult));
-                throw new McpClientException($"Unexpected response type {JsonSerializer.Serialize(success.Result, _jsonOptions.GetTypeInfo<TResult>())}, expected {typeof(TResult)}");
+                return success;
             }
 
             // Unexpected response type
@@ -435,7 +421,7 @@ internal sealed class McpSession : IDisposable
 
             if (_logger.IsEnabled(LogLevel.Debug))
             {
-                _logger.SendingMessage(EndpointName, JsonSerializer.Serialize(message, _jsonOptions.GetTypeInfo<IJsonRpcMessage>()));
+                _logger.SendingMessage(EndpointName, JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.IJsonRpcMessage));
             }
 
             await _transport.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
@@ -461,26 +447,11 @@ internal sealed class McpSession : IDisposable
         }
     }
 
-    private static CancelledNotification? GetCancelledNotificationParams(object? notificationParams)
+    private static CancelledNotification? GetCancelledNotificationParams(JsonNode? notificationParams)
     {
         try
         {
-            switch (notificationParams)
-            {
-                case null:
-                    return null;
-
-                case CancelledNotification cn:
-                    return cn;
-
-                case JsonElement je:
-                    return JsonSerializer.Deserialize(je, McpJsonUtilities.DefaultOptions.GetTypeInfo<CancelledNotification>());
-
-                default:
-                    return JsonSerializer.Deserialize(
-                        JsonSerializer.Serialize(notificationParams, McpJsonUtilities.DefaultOptions.GetTypeInfo<object?>()),
-                        McpJsonUtilities.DefaultOptions.GetTypeInfo<CancelledNotification>());
-            }
+            return JsonSerializer.Deserialize(notificationParams, McpJsonUtilities.JsonContext.Default.CancelledNotification);
         }
         catch
         {
@@ -515,15 +486,15 @@ internal sealed class McpSession : IDisposable
     {
         tags.Add("rpc.jsonrpc.request_id", request.Id.ToString());
 
-        if (request.Params is JsonElement je)
+        if (request.Params is JsonObject paramsObj)
         {
             switch (request.Method)
             {
                 case RequestMethods.ToolsCall:
                 case RequestMethods.PromptsGet:
-                    if (je.TryGetProperty("name", out var prop) && prop.ValueKind == JsonValueKind.String)
+                    if (paramsObj.TryGetPropertyValue("name", out var prop) && prop?.GetValueKind() is JsonValueKind.String)
                     {
-                        string name = prop.GetString()!;
+                        string name = prop.GetValue<string>();
                         tags.Add("mcp.request.params.name", name);
                         if (activity is not null)
                         {
@@ -533,9 +504,9 @@ internal sealed class McpSession : IDisposable
                     break;
 
                 case RequestMethods.ResourcesRead:
-                    if (je.TryGetProperty("uri", out prop) && prop.ValueKind == JsonValueKind.String)
+                    if (paramsObj.TryGetPropertyValue("uri", out prop) && prop?.GetValueKind() is JsonValueKind.String)
                     {
-                        string uri = prop.GetString()!;
+                        string uri = prop.GetValue<string>();
                         tags.Add("mcp.request.params.uri", uri);
                         if (activity is not null)
                         {

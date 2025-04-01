@@ -24,7 +24,7 @@ public class LoggingMessageNotificationParams
     public string? Logger { get; init; }
 
     /// <summary>
-    /// The data to be logged, such as a string message or an object. Any JSON serializable type is allowed here.
+    /// The data to be logged, such as a string message or an object.
     /// </summary>
     [JsonPropertyName("data")]
     public JsonElement? Data { get; init; }

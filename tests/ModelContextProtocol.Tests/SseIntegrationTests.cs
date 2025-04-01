@@ -3,7 +3,6 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Tests.Utils;
-using System.Text.Json;
 
 namespace ModelContextProtocol.Tests;
 
@@ -41,7 +40,7 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
         await server.WaitForConnectionAsync(TimeSpan.FromSeconds(10));
 
         // Send a test message through POST endpoint
-        await client.SendNotificationAsync("test/message", new { message = "Hello, SSE!" }, TestContext.Current.CancellationToken);
+        await client.SendNotificationAsync("test/message", new { message = "Hello, SSE!" }, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(true);
@@ -145,7 +144,7 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
             {
                 ["prompt"] = "Test prompt",
                 ["maxTokens"] = 100
-            }, TestContext.Current.CancellationToken);
+            }, cancellationToken: TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(result);
@@ -188,7 +187,7 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
         await server.WaitForConnectionAsync(TimeSpan.FromSeconds(10));
 
         // Send a test message through POST endpoint
-        await client.SendNotificationAsync("test/message", new { message = "Hello, SSE!" }, TestContext.Current.CancellationToken);
+        await client.SendNotificationAsync("test/message", new { message = "Hello, SSE!" }, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(true);
@@ -229,7 +228,7 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
         var receivedNotification = new TaskCompletionSource<string?>();
         client.AddNotificationHandler("test/notification", (args) =>
             {
-                var msg = ((JsonElement?)args.Params)?.GetProperty("message").GetString();
+                var msg = args.Params?["message"]?.GetValue<string>();
                 receivedNotification.SetResult(msg);
 
                 return Task.CompletedTask;

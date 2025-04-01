@@ -88,7 +88,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
             {
                 ["message"] = "Hello MCP!"
             },
-            TestContext.Current.CancellationToken
+            cancellationToken: TestContext.Current.CancellationToken
         );
 
         // assert
@@ -140,7 +140,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
 
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
-        var result = await client.GetPromptAsync("simple_prompt", null, TestContext.Current.CancellationToken);
+        var result = await client.GetPromptAsync("simple_prompt", null, cancellationToken: TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(result);
@@ -160,7 +160,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
             { "temperature", "0.7" },
             { "style", "formal" }
         };
-        var result = await client.GetPromptAsync("complex_prompt", arguments, TestContext.Current.CancellationToken);
+        var result = await client.GetPromptAsync("complex_prompt", arguments, cancellationToken: TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(result);
@@ -176,7 +176,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
         await Assert.ThrowsAsync<McpClientException>(() =>
-            client.GetPromptAsync("non_existent_prompt", null, TestContext.Current.CancellationToken));
+            client.GetPromptAsync("non_existent_prompt", null, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -259,7 +259,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         await using var client = await _fixture.CreateClientAsync(clientId);
         client.AddNotificationHandler(NotificationMethods.ResourceUpdatedNotification, (notification) =>
         {
-            var notificationParams = JsonSerializer.Deserialize<ResourceUpdatedNotificationParams>(notification.Params!.ToString() ?? string.Empty);
+            var notificationParams = JsonSerializer.Deserialize<ResourceUpdatedNotificationParams>(notification.Params);
             tcs.TrySetResult(true);
             return Task.CompletedTask;
         });
@@ -280,7 +280,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         await using var client = await _fixture.CreateClientAsync(clientId);
         client.AddNotificationHandler(NotificationMethods.ResourceUpdatedNotification, (notification) =>
         {
-            var notificationParams = JsonSerializer.Deserialize<ResourceUpdatedNotificationParams>(notification.Params!.ToString() ?? string.Empty);
+            var notificationParams = JsonSerializer.Deserialize<ResourceUpdatedNotificationParams>(notification.Params);
             receivedNotification.TrySetResult(true);
             return Task.CompletedTask;
         });
@@ -381,7 +381,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
                 ["prompt"] = "Test prompt",
                 ["maxTokens"] = 100
             },
-            TestContext.Current.CancellationToken);
+            cancellationToken: TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(result);
@@ -429,7 +429,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
 
         // Verify we can send notifications without errors
         await client.SendNotificationAsync(NotificationMethods.RootsUpdatedNotification, cancellationToken: TestContext.Current.CancellationToken);
-        await client.SendNotificationAsync("test/notification", new { test = true }, TestContext.Current.CancellationToken);
+        await client.SendNotificationAsync("test/notification", new { test = true }, cancellationToken: TestContext.Current.CancellationToken);
 
         // assert
         // no response to check, if no exception is thrown, it's a success
@@ -467,7 +467,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         var result = await client.CallToolAsync(
             "read_graph",
             new Dictionary<string, object?>(),
-            TestContext.Current.CancellationToken);
+            cancellationToken: TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(result);
@@ -529,7 +529,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         var result = await client.CallToolAsync("sampleLLM", new Dictionary<string, object?>()
         {
             ["prompt"] = "In just a few words, what is the most famous tower in Paris?",
-        }, TestContext.Current.CancellationToken);
+        }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
         Assert.NotEmpty(result.Content);
@@ -556,8 +556,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         await using var client = await _fixture.CreateClientAsync(clientId);
         client.AddNotificationHandler(NotificationMethods.LoggingMessageNotification, (notification) =>
         {
-            var loggingMessageNotificationParameters = JsonSerializer.Deserialize<LoggingMessageNotificationParams>(notification.Params!.ToString() ?? string.Empty,
-                jsonSerializerOptions);
+            var loggingMessageNotificationParameters = JsonSerializer.Deserialize<LoggingMessageNotificationParams>(notification.Params, jsonSerializerOptions);
             if (loggingMessageNotificationParameters is not null)
             {
                 receivedNotification.TrySetResult(true);

@@ -289,7 +289,7 @@ public sealed class InMemoryTestSseServer : IAsyncDisposable
         var jsonRpcResponse = new JsonRpcResponse()
         {
             Id = jsonRpcRequest.Id,
-            Result = new InitializeResult()
+            Result = JsonSerializer.SerializeToNode(new InitializeResult
             {
                 ProtocolVersion = "2024-11-05",
                 Capabilities = new(),
@@ -298,7 +298,7 @@ public sealed class InMemoryTestSseServer : IAsyncDisposable
                     Name = "ExampleServer",
                     Version = "1.0.0"
                 }
-            }
+            })
         };
 
         // Echo back to the HTTP response
@@ -369,7 +369,7 @@ public sealed class InMemoryTestSseServer : IAsyncDisposable
         {
             JsonRpc = "2.0",
             Method = "test/notification",
-            Params = new { message = content }
+            Params = JsonSerializer.SerializeToNode(new { message = content }),
         };
 
         var serialized = JsonSerializer.Serialize(notification);

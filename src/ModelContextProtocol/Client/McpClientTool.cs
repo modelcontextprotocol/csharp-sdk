@@ -39,7 +39,7 @@ public sealed class McpClientTool : AIFunction
             arguments as IReadOnlyDictionary<string, object?> ??
             arguments.ToDictionary();
 
-        CallToolResponse result = await _client.CallToolAsync(ProtocolTool.Name, argDict, cancellationToken).ConfigureAwait(false);
+        CallToolResponse result = await _client.CallToolAsync(ProtocolTool.Name, argDict, cancellationToken: cancellationToken).ConfigureAwait(false);
         return JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.CallToolResponse);
     }
 }
