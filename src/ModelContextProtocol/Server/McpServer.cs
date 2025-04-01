@@ -14,7 +14,7 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
     private readonly EventHandler? _toolsChangedDelegate;
     private readonly EventHandler? _promptsChangedDelegate;
 
-    private ITransport _sessionTransport;
+    private readonly ITransport _sessionTransport;
     private string _endpointName;
 
     /// <summary>

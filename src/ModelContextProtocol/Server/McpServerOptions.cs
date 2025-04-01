@@ -44,7 +44,7 @@ public class McpServerOptions
     public Func<RequestContext<CompleteRequestParams>, CancellationToken, Task<CompleteResult>>? GetCompletionHandler { get; set; }
 
     /// <summary>
-    /// Gets or sets the handler for get completion requests.
+    /// Gets or sets the handler for get notifications.
     /// </summary>
     [JsonIgnore]
     public IReadOnlyDictionary<string, List<Func<JsonRpcNotification, Task>>> NotificationHandlers { get; init; } = new NotificationHandlers();

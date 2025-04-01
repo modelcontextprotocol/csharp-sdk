@@ -141,15 +141,25 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         Dispose();
     }
 
-    private async Task<IMcpClient> CreateMcpClientForServer()
+    private async Task<IMcpClient> CreateMcpClientForServer(
+        IReadOnlyDictionary<string, List<Func<JsonRpcNotification, Task>>>? notificationHandlers = null)
     {
         return await McpClientFactory.CreateAsync(
-             new McpServerConfig()
-             {
-                 Id = "TestServer",
-                 Name = "TestServer",
-                 TransportType = "ignored",
-             },
+            new McpServerConfig()
+            {
+                Id = "TestServer",
+                Name = "TestServer",
+                TransportType = "ignored",
+            },
+            clientOptions: new()
+            {
+                ClientInfo = new()
+                {
+                    Name = "TestClient",
+                    Version = "1.0.0",
+                },
+                NotificationHandlers = notificationHandlers ?? new Dictionary<string, List<Func<JsonRpcNotification, Task>>>(),
+            },
             createTransportFunc: (_, _) => new StreamClientTransport(
                 serverInput: _clientToServerPipe.Writer.AsStream(),
                 _serverToClientPipe.Reader.AsStream(),
@@ -242,17 +252,21 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
     [Fact]
     public async Task Can_Be_Notified_Of_Tool_Changes()
     {
-        IMcpClient client = await CreateMcpClientForServer();
-
-        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(16, tools.Count);
-
         Channel<JsonRpcNotification> listChanged = Channel.CreateUnbounded<JsonRpcNotification>();
-        client.AddNotificationHandler(NotificationMethods.ToolListChangedNotification, notification =>
+        Task HandleListChangeNotification(JsonRpcNotification notification)
         {
             listChanged.Writer.TryWrite(notification);
             return Task.CompletedTask;
-        });
+        }
+        IMcpClient client = await CreateMcpClientForServer(
+            notificationHandlers: new Dictionary<string, List<Func<JsonRpcNotification, Task>>>()
+            {
+                [NotificationMethods.ToolListChangedNotification] = [HandleListChangeNotification],
+            }
+        );
+
+        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(16, tools.Count);
 
         var notificationRead = listChanged.Reader.ReadAsync(TestContext.Current.CancellationToken);
         Assert.False(notificationRead.IsCompleted);
@@ -607,17 +621,21 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
     [Fact]
     public async Task HandlesIProgressParameter()
     {
+        var token = TestContext.Current.CancellationToken;
         ConcurrentQueue<ProgressNotification> notifications = new();
-
-        IMcpClient client = await CreateMcpClientForServer();
-        client.AddNotificationHandler(NotificationMethods.ProgressNotification, notification =>
+        Task HandleProgressNotification(JsonRpcNotification notification)
         {
             ProgressNotification pn = JsonSerializer.Deserialize<ProgressNotification>((JsonElement)notification.Params!)!;
             notifications.Enqueue(pn);
             return Task.CompletedTask;
-        });
+        }
+        IMcpClient client = await CreateMcpClientForServer(
+            notificationHandlers: new Dictionary<string, List<Func<JsonRpcNotification, Task>>>()
+            {
+                [NotificationMethods.ProgressNotification] = [HandleProgressNotification],
+            });
 
-        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+        var tools = await client.ListToolsAsync(token);
         Assert.NotNull(tools);
         Assert.NotEmpty(tools);
 
@@ -631,7 +649,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
                 Name = progressTool.ProtocolTool.Name,
                 Meta = new() { ProgressToken = new("abc123") },
             },
-        }, TestContext.Current.CancellationToken);
+        }, token);
 
         Assert.Contains("done", JsonSerializer.Serialize(result));
         SpinWait.SpinUntil(() => notifications.Count == 10, TimeSpan.FromSeconds(10));

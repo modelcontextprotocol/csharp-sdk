@@ -59,6 +59,8 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
                 RequestMethods.RootsList,
                 (request, cancellationToken) => rootsHandler(request, cancellationToken));
         }
+
+        SetNotificationHandlers(options.NotificationHandlers);
     }
 
     /// <inheritdoc/>
@@ -138,6 +140,20 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
             _logger.ClientInitializationError(EndpointName, e);
             await DisposeAsync().ConfigureAwait(false);
             throw;
+        }
+    }
+
+    private void SetNotificationHandlers(
+        IReadOnlyDictionary<string, List<Func<JsonRpcNotification, Task>>> notificationHandlers)
+    {
+        foreach (var handlers in notificationHandlers)
+        {
+            var key = handlers.Key;
+            var list = handlers.Value;
+            foreach (var item in list)
+            {
+                AddNotificationHandler(key, item);
+            }
         }
     }
 

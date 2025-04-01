@@ -253,15 +253,26 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
     {
         // arrange
         var clientId = "test_server";
-
-        // act
         TaskCompletionSource<bool> tcs = new();
-        await using var client = await _fixture.CreateClientAsync(clientId);
-        client.AddNotificationHandler(NotificationMethods.ResourceUpdatedNotification, (notification) =>
+        Task HandleResourceUpdatedNotification(JsonRpcNotification notification)
         {
             var notificationParams = JsonSerializer.Deserialize<ResourceUpdatedNotificationParams>(notification.Params!.ToString() ?? string.Empty);
             tcs.TrySetResult(true);
             return Task.CompletedTask;
+        }
+
+        // act
+        await using var client = await _fixture.CreateClientAsync(clientId, new()
+        {
+            ClientInfo = new()
+            {
+                Name = "IntegrationTestClient",
+                Version = "1.0.0"
+            },
+            NotificationHandlers = new Dictionary<string, List<Func<JsonRpcNotification, Task>>>()
+            {
+                [NotificationMethods.ResourceUpdatedNotification] = [HandleResourceUpdatedNotification],
+            },
         });
         await client.SubscribeToResourceAsync("test://static/resource/1", TestContext.Current.CancellationToken);
 
@@ -274,15 +285,26 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
     {
         // arrange
         var clientId = "test_server";
-
-        // act
         TaskCompletionSource<bool> receivedNotification = new();
-        await using var client = await _fixture.CreateClientAsync(clientId);
-        client.AddNotificationHandler(NotificationMethods.ResourceUpdatedNotification, (notification) =>
+        Task HandleResourceUpdatedNotification(JsonRpcNotification notification)
         {
             var notificationParams = JsonSerializer.Deserialize<ResourceUpdatedNotificationParams>(notification.Params!.ToString() ?? string.Empty);
             receivedNotification.TrySetResult(true);
             return Task.CompletedTask;
+        }
+
+        // act
+        await using var client = await _fixture.CreateClientAsync(clientId, new()
+        {
+            ClientInfo = new()
+            {
+                Name = "IntegrationTestClient",
+                Version = "1.0.0"
+            },
+            NotificationHandlers = new Dictionary<string, List<Func<JsonRpcNotification, Task>>>()
+            {
+                [NotificationMethods.ResourceUpdatedNotification] = [HandleResourceUpdatedNotification],
+            },
         });
         await client.SubscribeToResourceAsync("test://static/resource/1", TestContext.Current.CancellationToken);
 
@@ -543,6 +565,16 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
     public async Task SetLoggingLevel_ReceivesLoggingMessages(string clientId)
     {
         // arrange
+        TaskCompletionSource<bool> receivedNotification = new();
+        Task HandleLoggingNotification(JsonRpcNotification notification)
+        {
+            var loggingMessageNotificationParameters = JsonSerializer.Deserialize<LoggingMessageNotificationParams>(notification.Params!.ToString() ?? string.Empty);
+            if (loggingMessageNotificationParameters is not null)
+            {
+                receivedNotification.TrySetResult(true);
+            }
+            return Task.CompletedTask;
+        }
         JsonSerializerOptions jsonSerializerOptions = new(JsonSerializerDefaults.Web)
         {
             TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
@@ -552,17 +584,17 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
             Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         };
 
-        TaskCompletionSource<bool> receivedNotification = new();
-        await using var client = await _fixture.CreateClientAsync(clientId);
-        client.AddNotificationHandler(NotificationMethods.LoggingMessageNotification, (notification) =>
+        await using var client = await _fixture.CreateClientAsync(clientId, new()
         {
-            var loggingMessageNotificationParameters = JsonSerializer.Deserialize<LoggingMessageNotificationParams>(notification.Params!.ToString() ?? string.Empty,
-                jsonSerializerOptions);
-            if (loggingMessageNotificationParameters is not null)
+            ClientInfo = new()
             {
-                receivedNotification.TrySetResult(true);
-            }
-            return Task.CompletedTask;
+                Name = "IntegrationTestClient",
+                Version = "1.0.0"
+            },
+            NotificationHandlers = new Dictionary<string, List<Func<JsonRpcNotification, Task>>>()
+            {
+                [NotificationMethods.LoggingMessageNotification] = [HandleLoggingNotification],
+            },
         });
 
         // act
