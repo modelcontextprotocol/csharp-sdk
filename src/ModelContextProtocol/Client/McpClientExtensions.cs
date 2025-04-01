@@ -188,6 +188,7 @@ public static class McpClientExtensions
         Throw.IfNull(client);
         Throw.IfNullOrWhiteSpace(name);
         serializerOptions ??= McpJsonUtilities.DefaultOptions;
+        McpJsonUtilities.ValidateSerializerOptions(serializerOptions);
         var parametersTypeInfo = serializerOptions.GetTypeInfo<IReadOnlyDictionary<string, object?>>();
 
         return client.SendRequestAsync(
@@ -454,6 +455,7 @@ public static class McpClientExtensions
         Throw.IfNull(client);
         Throw.IfNull(toolName);
         serializerOptions ??= McpJsonUtilities.DefaultOptions;
+        McpJsonUtilities.ValidateSerializerOptions(serializerOptions);
         var parametersTypeInfo = serializerOptions.GetTypeInfo<IReadOnlyDictionary<string, object?>>();
 
         return client.SendRequestAsync(

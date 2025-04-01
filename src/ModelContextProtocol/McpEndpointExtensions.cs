@@ -75,6 +75,7 @@ public static class McpEndpointExtensions
         where TResult : notnull
     {
         serializerOptions ??= McpJsonUtilities.DefaultOptions;
+        McpJsonUtilities.ValidateSerializerOptions(serializerOptions);
         JsonTypeInfo<TParameters> paramsTypeInfo = serializerOptions.GetTypeInfo<TParameters>();
         JsonTypeInfo<TResult> resultTypeInfo = serializerOptions.GetTypeInfo<TResult>();
         return SendRequestAsync(endpoint, method, parameters, paramsTypeInfo, resultTypeInfo, requestId, cancellationToken);
@@ -132,6 +133,7 @@ public static class McpEndpointExtensions
         CancellationToken cancellationToken = default)
     {
         serializerOptions ??= McpJsonUtilities.DefaultOptions;
+        McpJsonUtilities.ValidateSerializerOptions(serializerOptions);
         JsonTypeInfo<TParameters> parametersTypeInfo = serializerOptions.GetTypeInfo<TParameters>();
         return SendNotificationAsync(endpoint, method, parameters, parametersTypeInfo, cancellationToken);
     }
