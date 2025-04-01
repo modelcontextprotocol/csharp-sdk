@@ -32,19 +32,6 @@ public sealed class SseResponseStreamTransport(Stream sseResponseStream, string 
     /// <returns>A task representing the send loop that writes JSON-RPC messages to the SSE response stream.</returns>
     public Task RunAsync(CancellationToken cancellationToken)
     {
-        void WriteJsonRpcMessageToBuffer(SseItem<IJsonRpcMessage?> item, IBufferWriter<byte> writer)
-        {
-            if (item.EventType == "endpoint")
-            {
-                writer.Write(Encoding.UTF8.GetBytes(messageEndpoint));
-                return;
-            }
-
-            JsonSerializer.Serialize(GetUtf8JsonWriter(writer), item.Data, McpJsonUtilities.DefaultOptions.GetTypeInfo<IJsonRpcMessage?>());
-        }
-
-        IsConnected = true;
-
         // The very first SSE event isn't really an IJsonRpcMessage, but there's no API to write a single item of a different type,
         // so we fib and special-case the "endpoint" event type in the formatter.
         if (!_outgoingSseChannel.Writer.TryWrite(new SseItem<IJsonRpcMessage?>(null, "endpoint")))
@@ -52,8 +39,21 @@ public sealed class SseResponseStreamTransport(Stream sseResponseStream, string 
             throw new InvalidOperationException($"You must call ${nameof(RunAsync)} before calling ${nameof(SendMessageAsync)}.");
         }
 
+        IsConnected = true;
+
         var sseItems = _outgoingSseChannel.Reader.ReadAllAsync(cancellationToken);
         return _sseWriteTask = SseFormatter.WriteAsync(sseItems, sseResponseStream, WriteJsonRpcMessageToBuffer, cancellationToken);
+    }
+
+    private void WriteJsonRpcMessageToBuffer(SseItem<IJsonRpcMessage?> item, IBufferWriter<byte> writer)
+    {
+        if (item.EventType == "endpoint")
+        {
+            writer.Write(Encoding.UTF8.GetBytes(messageEndpoint));
+            return;
+        }
+
+        JsonSerializer.Serialize(GetUtf8JsonWriter(writer), item.Data, McpJsonUtilities.DefaultOptions.GetTypeInfo<IJsonRpcMessage?>());
     }
 
     /// <inheritdoc/>

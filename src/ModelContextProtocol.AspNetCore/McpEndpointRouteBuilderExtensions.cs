@@ -85,7 +85,7 @@ public static class McpEndpointRouteBuilderExtensions
 
             if (!_sessions.TryGetValue(sessionId.ToString(), out var transport))
             {
-                await Results.BadRequest($"Session {sessionId} not found.").ExecuteAsync(context);
+                await Results.BadRequest($"Session ID not found.").ExecuteAsync(context);
                 return;
             }
 
