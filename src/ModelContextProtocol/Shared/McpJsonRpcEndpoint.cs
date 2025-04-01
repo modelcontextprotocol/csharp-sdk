@@ -22,7 +22,6 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
 
     private McpSession? _session;
     private CancellationTokenSource? _sessionCts;
-    private int _started;
 
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private bool _disposed;
@@ -61,17 +60,14 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
     protected Task? MessageProcessingTask { get; set; }
 
     [MemberNotNull(nameof(MessageProcessingTask))]
-    protected void StartSession(ITransport sessionTransport, CancellationToken fullSessionCancellationToken = default)
+    protected void StartSession(ITransport sessionTransport)
     {
-        if (Interlocked.Exchange(ref _started, 1) != 0)
-        {
-            throw new InvalidOperationException("The MCP session has already stared.");
-        }
-
-        _sessionCts = CancellationTokenSource.CreateLinkedTokenSource(fullSessionCancellationToken);
+        _sessionCts = new CancellationTokenSource();
         _session = new McpSession(sessionTransport, EndpointName, _requestHandlers, _notificationHandlers, _logger);
         MessageProcessingTask = _session.ProcessMessagesAsync(_sessionCts.Token);
     }
+
+    protected void CancelSession() => _sessionCts?.Cancel();
 
     public async ValueTask DisposeAsync()
     {

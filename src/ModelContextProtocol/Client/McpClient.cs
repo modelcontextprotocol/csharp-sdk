@@ -82,9 +82,7 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
         {
             // Connect transport
             _sessionTransport = await _clientTransport.ConnectAsync(cancellationToken).ConfigureAwait(false);
-            // We don't want the ConnectAsync token to cancel the session after we've successfully connected.
-            // The base class handles cleaning up the session in DisposeAsync without our help.
-            StartSession(_sessionTransport, fullSessionCancellationToken: CancellationToken.None);
+            StartSession(_sessionTransport);
 
             // Perform initialization sequence
             using var initializationCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
