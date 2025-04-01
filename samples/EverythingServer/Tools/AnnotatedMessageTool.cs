@@ -4,7 +4,7 @@ using System.ComponentModel;
 namespace EverythingServer.Tools;
 
 [McpServerToolType]
-public static class AnnotatedMessageTool
+public class AnnotatedMessageTool
 {
     public enum MessageType
     {

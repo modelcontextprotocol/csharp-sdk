@@ -6,7 +6,7 @@ using System.ComponentModel;
 namespace EverythingServer.Tools;
 
 [McpServerToolType]
-public static class LongRunningTool
+public class LongRunningTool
 {
     [McpServerTool(Name = "longRunningOperation"), Description("Demonstrates a long running operation with progress updates")]
     public static async Task<string> LongRunningOperation(

@@ -1,11 +1,11 @@
-﻿using ModelContextProtocol;
-using Microsoft.Extensions.Hosting;
+﻿using Microsoft.Extensions.Hosting;
 using ModelContextProtocol.Protocol.Types;
-using EverythingServer.Tools;
 using EverythingServer;
 using ModelContextProtocol.Server;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using EverythingServer.Prompts;
+using EverythingServer.Tools;
 
 var builder = Host.CreateEmptyApplicationBuilder(settings: null);
 
@@ -14,41 +14,15 @@ HashSet<string> subscriptions = [];
 builder.Services
     .AddMcpServer()
     .WithStdioServerTransport()
-    .WithToolsFromAssembly()
-    .WithListPromptsHandler((ctx, ct) =>
-    {
-        return Task.FromResult(new ListPromptsResult
-        {
-            Prompts =
-            [
-                new Prompt { Name= "simple_prompt", Description = "A prompt without arguments" },
-                new Prompt { Name= "complex_prompt", Description = "A prompt with arguments", Arguments = [
-                    new PromptArgument { Name = "temperature", Description = "Temperature setting", Required = true },
-                    new PromptArgument { Name = "style", Description = "Output style", Required = false }
-                ]
-                }
-            ]
-        });
-    })
-    .WithGetPromptHandler((args, ct) =>
-    {
-        List<PromptMessage> messages = args.Params?.Name switch
-        {
-            "simple_prompt" => [new PromptMessage { Role = Role.User, Content = new Content { Type = "text", Text = "This is a simple prompt without arguments" } }],
-            "complex_prompt" => [
-                new PromptMessage { Role = Role.User, Content = new Content { Type = "text", Text = $"This is a complex prompt with arguments: temperature={args.Params?.Arguments?["temperature"]}, style={(args.Params?.Arguments?.ContainsKey("style") == true ? args.Params?.Arguments?["style"] : "")}" } },
-                new PromptMessage { Role = Role.Assistant, Content = new Content { Type = "text", Text = "I understand. You've provided a complex prompt with temperature and style arguments. How would you like me to proceed?" } },
-                new PromptMessage { Role = Role.User, Content = new Content { Type = "image", Data = TinyImageTool.MCP_TINY_IMAGE.Split(",").Last(), MimeType = "image/png" } }
-                ]
-            ,
-            _ => throw new NotSupportedException($"Unknown prompt name: {args.Params?.Name}")
-        };
-
-        return Task.FromResult(new GetPromptResult
-        {
-            Messages = messages
-        });
-    })
+    .WithTools<AddTool>()
+    .WithTools<AnnotatedMessageTool>()
+    .WithTools<EchoTool>()
+    .WithTools<LongRunningTool>()
+    .WithTools<PrintEnvTool>()
+    .WithTools<SampleLlmTool>()
+    .WithTools<TinyImageTool>()
+    .WithPrompts<ComplexPromptType>()
+    .WithPrompts<SimplePromptType>()
     .WithListResourceTemplatesHandler((ctx, ct) =>
     {
         return Task.FromResult(new ListResourceTemplatesResult

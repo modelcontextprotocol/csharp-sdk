@@ -1,12 +1,11 @@
 ﻿using ModelContextProtocol.Server;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Text.Json;
 
 namespace EverythingServer.Tools;
 
 [McpServerToolType]
-public static class PrintEnvTool
+public class PrintEnvTool
 {
     private static readonly JsonSerializerOptions options = new()
     {
@@ -14,10 +13,6 @@ public static class PrintEnvTool
     };
 
     [McpServerTool(Name = "printEnv"), Description("Prints all environment variables, helpful for debugging MCP server configuration")]
-    public static string PrintEnv()
-    {
-        Debugger.Launch();
-        var envVars = Environment.GetEnvironmentVariables();
-        return JsonSerializer.Serialize(envVars, options);
-    }
+    public static string PrintEnv() =>
+        JsonSerializer.Serialize(Environment.GetEnvironmentVariables(), options);
 }

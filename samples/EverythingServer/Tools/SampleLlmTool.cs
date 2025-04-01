@@ -5,18 +5,17 @@ using System.ComponentModel;
 namespace EverythingServer.Tools;
 
 [McpServerToolType]
-public class SampleLlmTool(IMcpServer server)
+public class SampleLlmTool
 {
-    private readonly IMcpServer _server = server ?? throw new ArgumentNullException(nameof(server));
-
     [McpServerTool(Name = "sampleLLM"), Description("Samples from an LLM using MCP's sampling feature")]
-    public async Task<string> SampleLLM(
+    public static async Task<string> SampleLLM(
+        IMcpServer server,
         [Description("The prompt to send to the LLM")] string prompt,
         [Description("Maximum number of tokens to generate")] int maxTokens,
         CancellationToken cancellationToken)
     {
         var samplingParams = CreateRequestSamplingParams(prompt ?? string.Empty, "sampleLLM", maxTokens);
-        var sampleResult = await _server.RequestSamplingAsync(samplingParams, cancellationToken);
+        var sampleResult = await server.RequestSamplingAsync(samplingParams, cancellationToken);
 
         return $"LLM sampling result: {sampleResult.Content.Text}";
     }
