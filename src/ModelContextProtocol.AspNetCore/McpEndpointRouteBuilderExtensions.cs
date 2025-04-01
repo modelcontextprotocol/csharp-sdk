@@ -47,11 +47,11 @@ public static class McpEndpointRouteBuilderExtensions
             {
                 throw new Exception($"Unreachable given good entropy! Session with ID '{sessionId}' has already been created.");
             }
-            await using var server = McpServerFactory.Create(transport, mcpServerOptions.Value, loggerFactory, endpoints.ServiceProvider);
 
             try
             {
                 var transportTask = transport.RunAsync(cancellationToken: requestAborted);
+                await using var server = McpServerFactory.Create(transport, mcpServerOptions.Value, loggerFactory, endpoints.ServiceProvider);
 
                 try
                 {
