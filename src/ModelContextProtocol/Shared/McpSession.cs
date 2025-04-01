@@ -14,7 +14,7 @@ namespace ModelContextProtocol.Shared;
 /// <summary>
 /// Class for managing an MCP JSON-RPC session. This covers both MCP clients and servers.
 /// </summary>
-internal sealed class McpSession : IDisposable
+internal sealed class McpSession : IMcpSession
 {
     private readonly ITransport _transport;
     private readonly RequestHandlers _requestHandlers;
