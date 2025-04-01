@@ -98,8 +98,8 @@ internal static partial class Log
     [LoggerMessage(Level = LogLevel.Information, Message = "Creating process for transport for {endpointName} with command {command}, arguments {arguments}, environment {environment}, working directory {workingDirectory}, shutdown timeout {shutdownTimeout}")]
     internal static partial void CreateProcessForTransport(this ILogger logger, string endpointName, string command, string? arguments, string environment, string workingDirectory, string shutdownTimeout);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "Transport for {endpointName} error: {data}")]
-    internal static partial void TransportError(this ILogger logger, string endpointName, string data);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Transport for {endpointName} received stderr log: {data}")]
+    internal static partial void ReadStderr(this ILogger logger, string endpointName, string data);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Transport process start failed for {endpointName}")]
     internal static partial void TransportProcessStartFailed(this ILogger logger, string endpointName);

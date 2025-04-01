@@ -85,7 +85,7 @@ public sealed class StdioClientTransport : IClientTransport
             process = new() { StartInfo = startInfo };
 
             // Set up error logging
-            process.ErrorDataReceived += (sender, args) => logger.TransportError(endpointName, args.Data ?? "(no data)");
+            process.ErrorDataReceived += (sender, args) => logger.ReadStderr(endpointName, args.Data ?? "(no data)");
 
             // We need both stdin and stdout to use a no-BOM UTF-8 encoding. On .NET Core,
             // we can use ProcessStartInfo.StandardOutputEncoding/StandardInputEncoding, but
