@@ -26,7 +26,11 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
     /// <param name="loggerFactory">Logger factory to use for logging</param>
     /// <param name="serviceProvider">Optional service provider to use for dependency injection</param>
     /// <exception cref="McpServerException"></exception>
-    public McpServer(ITransport transport, McpServerOptions options, ILoggerFactory? loggerFactory, IServiceProvider? serviceProvider)
+    public McpServer(
+        ITransport transport,
+        McpServerOptions options,
+        ILoggerFactory? loggerFactory,
+        IServiceProvider? serviceProvider)
         : base(loggerFactory)
     {
         Throw.IfNull(transport);
@@ -74,6 +78,7 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
         SetPromptsHandler(options);
         SetResourcesHandler(options);
         SetSetLoggingLevelHandler(options);
+        SetNotificationHandlers(options);
     }
 
     public ServerCapabilities? ServerCapabilities { get; set; }
@@ -381,5 +386,28 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
         }
 
         SetRequestHandler<SetLevelRequestParams, EmptyResult>(RequestMethods.LoggingSetLevel, (request, ct) => setLoggingLevelHandler(new(this, request), ct));
+    }
+
+    private void SetNotificationHandlers(McpServerOptions options)
+    {
+        if (options.NotificationHandlers is not { } handlers)
+        {
+            throw new McpServerException("Experimental capability was enabled, but NotificationHandlers were not specified.");
+        }
+
+        foreach (var handler in handlers)
+        {
+            var key = handler.Key;
+            var list = handler.Value;
+            foreach (var item in list)
+            {
+                SetNotificationHandler(key, item);
+            }
+        }
+    }
+
+    private void SetNotificationHandler(string method, Func<JsonRpcNotification, Task> handler)
+    {
+        AddNotificationHandler(method, handler);
     }
 }

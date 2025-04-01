@@ -31,20 +31,4 @@ public interface IMcpServer : IMcpSession
     /// Runs the server, listening for and handling client requests.
     /// </summary>
     Task RunAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Adds a handler for server notifications of a specific method.
-    /// </summary>
-    /// <param name="method">The notification method to handle.</param>
-    /// <param name="handler">The async handler function to process notifications.</param>
-    /// <remarks>
-    /// <para>
-    /// Each method may have multiple handlers. Adding a handler for a method that already has one
-    /// will not replace the existing handler.
-    /// </para>
-    /// <para>
-    /// <see cref="NotificationMethods"> provides constants for common notification methods.</see>
-    /// </para>
-    /// </remarks>
-    void AddNotificationHandler(string method, Func<JsonRpcNotification, Task> handler);
 }
