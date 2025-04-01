@@ -218,7 +218,7 @@ public class McpServerBuilderExtensionsPromptsTests : LoggedTest, IAsyncDisposab
         Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == nameof(MorePrompts.AnotherPrompt));
     }
 
-    [McpServerToolType]
+    [McpServerPromptType]
     public sealed class SimplePrompts(ObjectWithId? id = null)
     {
         [McpServerPrompt, Description("Returns chat messages")]
