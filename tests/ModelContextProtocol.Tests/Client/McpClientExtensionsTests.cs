@@ -171,4 +171,32 @@ public class McpClientExtensionsTests : LoggedTest
 
         await Assert.ThrowsAsync<NotSupportedException>(() => client.GetPromptAsync("Prompt", new Dictionary<string, object?> { ["i"] = 42 }, emptyOptions, cancellationToken: TestContext.Current.CancellationToken));
     }
+
+    [Fact]
+    public async Task WithName_ChangesToolName()
+    {
+        JsonSerializerOptions options = new(JsonSerializerOptions.Default);
+        IMcpClient client = await CreateMcpClientForServer();
+
+        var tool = (await client.ListToolsAsync(options, TestContext.Current.CancellationToken)).FirstOrDefault();
+        var originalName = tool?.Name;
+        var renamedTool = tool?.WithName("RenamedTool");
+
+        Assert.NotNull(renamedTool);
+        Assert.Equal("RenamedTool", renamedTool.Name);
+        Assert.Equal(originalName, tool?.Name);
+    }
+
+    [Fact]
+    public async Task WithDescription_ChangesToolDescription()
+    {
+        JsonSerializerOptions options = new(JsonSerializerOptions.Default);
+        IMcpClient client = await CreateMcpClientForServer();
+        var tool = (await client.ListToolsAsync(options, TestContext.Current.CancellationToken)).FirstOrDefault();
+        var originalDescription = tool?.Description;
+        var redescribedTool = tool?.WithDescription("ToolWithNewDescription");
+        Assert.NotNull(redescribedTool);
+        Assert.Equal("ToolWithNewDescription", redescribedTool.Description);
+        Assert.Equal(originalDescription, tool?.Description);
+    }
 }
