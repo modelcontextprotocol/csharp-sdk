@@ -19,30 +19,15 @@ namespace ModelContextProtocol.Shared;
 /// </summary>
 internal sealed class McpSession : IDisposable
 {
-    private static readonly ActivitySource s_activitySource = new("ModelContextProtocol");
+    private static readonly Histogram<double> s_clientSessionDuration = Diagnostics.Meter.CreateHistogram<double>(
+        "mcp.client.session.duration", "s", "Measures the duration of a client session.", advice: Diagnostics.LongSecondsBucketBoundaries);
+    private static readonly Histogram<double> s_serverSessionDuration = Diagnostics.Meter.CreateHistogram<double>(
+        "mcp.server.session.duration", "s", "Measures the duration of a server session.", advice: Diagnostics.LongSecondsBucketBoundaries);
 
-    private static readonly InstrumentAdvice<double> s_shortSecondsBucketBoundaries = new()
-    {
-        // Follows boundaries from http.server.request.duration/http.client.request.duration
-        HistogramBucketBoundaries = [0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10],
-    };
-
-    private static readonly InstrumentAdvice<double> s_longSecondsBucketBoundaries = new()
-    {
-        // Not based on a standard. Larger bucket sizes for longer lasting operations, e.g. HTTP connection duration.
-        // See https://github.com/open-telemetry/semantic-conventions/issues/336
-        HistogramBucketBoundaries = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 30, 60, 120, 300],
-    };
-
-    private static readonly Meter s_meter = new("ModelContextProtocol");
-    private static readonly Histogram<double> s_clientSessionDuration = s_meter.CreateHistogram<double>(
-        "mcp.client.session.duration", "s", "Measures the duration of a client session.", advice: s_longSecondsBucketBoundaries);
-    private static readonly Histogram<double> s_serverSessionDuration = s_meter.CreateHistogram<double>(
-        "mcp.server.session.duration", "s", "Measures the duration of a server session.", advice: s_longSecondsBucketBoundaries);
-    private static readonly Histogram<double> s_serverRequestDuration = s_meter.CreateHistogram<double>(
-        "rpc.server.duration", "s", "Measures the duration of inbound RPC.", advice: s_shortSecondsBucketBoundaries);
-    private static readonly Histogram<double> s_clientRequestDuration = s_meter.CreateHistogram<double>(
-        "rpc.client.duration", "s", "Measures the duration of outbound RPC.", advice: s_shortSecondsBucketBoundaries);
+    private static readonly Histogram<double> s_serverRequestDuration = Diagnostics.Meter.CreateHistogram<double>(
+        "rpc.server.duration", "s", "Measures the duration of inbound RPC.", advice: Diagnostics.ShortSecondsBucketBoundaries);
+    private static readonly Histogram<double> s_clientRequestDuration = Diagnostics.Meter.CreateHistogram<double>(
+        "rpc.client.duration", "s", "Measures the duration of outbound RPC.", advice: Diagnostics.ShortSecondsBucketBoundaries);
 
     private readonly bool _isServer;
     private readonly string _transportKind;
@@ -198,12 +183,12 @@ internal sealed class McpSession : IDisposable
         string method = GetMethodName(message);
 
         long? startingTimestamp = durationMetric.Enabled ? Stopwatch.GetTimestamp() : null;
-        Activity? activity = s_activitySource.HasListeners() ?
-            s_activitySource.StartActivity(CreateActivityName(method)) :
+        Activity? activity = Diagnostics.ActivitySource.HasListeners() ?
+            Diagnostics.ActivitySource.StartActivity(CreateActivityName(method)) :
             null;
 
         TagList tags = default;
-        bool addTags = activity is not null || startingTimestamp is not null;
+        bool addTags = activity is { IsAllDataRequested: true } || startingTimestamp is not null;
         try
         {
             if (addTags)
@@ -341,8 +326,8 @@ internal sealed class McpSession : IDisposable
         string method = request.Method;
 
         long? startingTimestamp = durationMetric.Enabled ? Stopwatch.GetTimestamp() : null;
-        using Activity? activity = s_activitySource.HasListeners() ?
-            s_activitySource.StartActivity(CreateActivityName(method)) :
+        using Activity? activity = Diagnostics.ActivitySource.HasListeners() ?
+            Diagnostics.ActivitySource.StartActivity(CreateActivityName(method)) :
             null;
 
         // Set request ID
@@ -352,7 +337,7 @@ internal sealed class McpSession : IDisposable
         }
 
         TagList tags = default;
-        bool addTags = activity is not null || startingTimestamp is not null;
+        bool addTags = activity is { IsAllDataRequested: true } || startingTimestamp is not null;
 
         var tcs = new TaskCompletionSource<IJsonRpcMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pendingRequests[request.Id] = tcs;
@@ -434,12 +419,12 @@ internal sealed class McpSession : IDisposable
         string method = GetMethodName(message);
 
         long? startingTimestamp = durationMetric.Enabled ? Stopwatch.GetTimestamp() : null;
-        using Activity? activity = s_activitySource.HasListeners() ?
-            s_activitySource.StartActivity(CreateActivityName(method)) :
+        using Activity? activity = Diagnostics.ActivitySource.HasListeners() ?
+            Diagnostics.ActivitySource.StartActivity(CreateActivityName(method)) :
             null;
 
         TagList tags = default;
-        bool addTags = activity is not null || startingTimestamp is not null;
+        bool addTags = activity is { IsAllDataRequested: true } || startingTimestamp is not null;
 
         try
         {
@@ -516,6 +501,7 @@ internal sealed class McpSession : IDisposable
 
     private void AddStandardTags(ref TagList tags, string method)
     {
+        tags.Add("session.id", _id);
         tags.Add("rpc.system", "jsonrpc");
         tags.Add("rpc.jsonrpc.version", "2.0");
         tags.Add("rpc.method", method);
@@ -581,7 +567,7 @@ internal sealed class McpSession : IDisposable
                 durationMetric.Record(GetElapsed(startingTimestamp.Value).TotalSeconds, tags);
             }
 
-            if (activity is not null)
+            if (activity is { IsAllDataRequested: true })
             {
                 foreach (var tag in tags)
                 {
@@ -600,7 +586,10 @@ internal sealed class McpSession : IDisposable
         Histogram<double> durationMetric = _isServer ? s_serverSessionDuration : s_clientSessionDuration;
         if (durationMetric.Enabled)
         {
-            durationMetric.Record(GetElapsed(_sessionStartingTimestamp).TotalSeconds);
+            TagList tags = default;
+            tags.Add("session.id", _id);
+            tags.Add("network.transport", _transportKind);
+            durationMetric.Record(GetElapsed(_sessionStartingTimestamp).TotalSeconds, tags);
         }
 
         // Complete all pending requests with cancellation
