@@ -1,4 +1,5 @@
-﻿using ModelContextProtocol.Protocol.Messages;
+﻿using ModelContextProtocol;
+using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
@@ -24,16 +25,12 @@ public class LongRunningTool
             
             if (progressToken is not null)
             {
-                await server.SendMessageAsync(new JsonRpcNotification
-                {
-                    Method = "notifications/progress",
-                    Params = new
+                await server.SendNotificationAsync("notifications/progress", new
                     {
                         Progress = i,
                         Total = steps,
                         progressToken
-                    }
-                });
+                    });
             }
         }
 

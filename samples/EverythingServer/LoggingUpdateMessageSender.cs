@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using ModelContextProtocol;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
@@ -28,19 +29,15 @@ public class LoggingUpdateMessageSender(IMcpServer server) : IHostedService
         {
             var newLevel = (LoggingLevel)Random.Shared.Next(_loggingLevelMap.Count);
 
-            var message = new JsonRpcNotification
-            {
-                Method = "notifications/message",
-                Params = new
+            var message = new
                 {
                     Level = newLevel.ToString().ToLower(),
                     Data = _loggingLevelMap[newLevel],
-                }
-            };
+                };
 
             if (newLevel > currentLevel())
             {
-                await server.SendMessageAsync(message, cancellationToken);
+                await server.SendNotificationAsync("notifications/message", message, cancellationToken: cancellationToken);
             }
 
             await Task.Delay(15000, cancellationToken);

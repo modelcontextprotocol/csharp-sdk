@@ -1,7 +1,6 @@
 ﻿using Microsoft.Extensions.Hosting;
-using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol;
 using ModelContextProtocol.Server;
-using ModelContextProtocol.Protocol.Messages;
 
 internal class SubscriptionMessageSender(IMcpServer server, HashSet<string> subscriptions) : IHostedService
 {
@@ -11,14 +10,11 @@ internal class SubscriptionMessageSender(IMcpServer server, HashSet<string> subs
         {
             foreach (var uri in subscriptions)
             {
-                await server.SendMessageAsync(new JsonRpcNotification
-                {
-                    Method = "notifications/resource/updated",
-                    Params = new ResourceUpdatedNotificationParams
+                await server.SendNotificationAsync("notifications/resource/updated",
+                    new
                     {
                         Uri = uri,
-                    }
-                }, cancellationToken);
+                    }, cancellationToken: cancellationToken);
             }
 
             await Task.Delay(5000, cancellationToken);

@@ -6,14 +6,9 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using EverythingServer.Prompts;
 using EverythingServer.Tools;
-using ModelContextProtocol.Protocol.Messages;
+using ModelContextProtocol;
 
 var builder = Host.CreateApplicationBuilder(args);
-builder.Logging.AddConsole(consoleLogOptions =>
-{
-    // Configure all logs to go to stderr
-    consoleLogOptions.LogToStandardErrorThreshold = LogLevel.Trace;
-});
 
 HashSet<string> subscriptions = [];
 var _minimumLoggingLevel = LoggingLevel.Debug;
@@ -174,16 +169,12 @@ builder.Services
 
         _minimumLoggingLevel = ctx.Params.Level;
 
-        await ctx.Server.SendMessageAsync(new JsonRpcNotification
-        {
-            Method = "notifications/message",
-            Params = new
+        await ctx.Server.SendNotificationAsync("notifications/message", new
             {
                 Level = "debug",
                 Logger = "test-server",
                 Data = $"Logging level set to {_minimumLoggingLevel}",
-            }
-        }, ct);
+            }, cancellationToken: ct);
 
         return new EmptyResult();
     })
