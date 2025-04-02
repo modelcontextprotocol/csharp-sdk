@@ -17,7 +17,7 @@ public class DiagnosticTests
         var activities = new List<Activity>();
 
         using (var tracerProvider = OpenTelemetry.Sdk.CreateTracerProviderBuilder()
-            .AddSource("ModelContextProtocol")
+            .AddSource("Experimental.ModelContextProtocol")
             .AddInMemoryExporter(activities)
             .Build())
         {

@@ -5,7 +5,7 @@ namespace ModelContextProtocol;
 
 internal static class Diagnostics
 {
-    internal static ActivitySource ActivitySource { get; } = new("ModelContextProtocol");
+    internal static ActivitySource ActivitySource { get; } = new("Exprimental.ModelContextProtocol");
 
     /// <summary>
     /// Follows boundaries from http.server.request.duration/http.client.request.duration
@@ -24,6 +24,6 @@ internal static class Diagnostics
         HistogramBucketBoundaries = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 30, 60, 120, 300],
     };
 
-    internal static Meter Meter { get; } = new("ModelContextProtocol");
+    internal static Meter Meter { get; } = new("Experimental.ModelContextProtocol");
 
 }
