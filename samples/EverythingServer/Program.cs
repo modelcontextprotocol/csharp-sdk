@@ -1,14 +1,20 @@
-﻿using Microsoft.Extensions.Hosting;
-using ModelContextProtocol.Protocol.Types;
-using EverythingServer;
-using ModelContextProtocol.Server;
-using Microsoft.Extensions.AI;
-using Microsoft.Extensions.DependencyInjection;
+﻿using EverythingServer;
 using EverythingServer.Prompts;
 using EverythingServer.Tools;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
+using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Server;
 
 var builder = Host.CreateApplicationBuilder(args);
+builder.Logging.AddConsole(consoleLogOptions =>
+{
+    // Configure all logs to go to stderr
+    consoleLogOptions.LogToStandardErrorThreshold = LogLevel.Trace;
+});
 
 HashSet<string> subscriptions = [];
 var _minimumLoggingLevel = LoggingLevel.Debug;

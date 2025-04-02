@@ -2,11 +2,11 @@
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
-internal class SubscriptionMessageSender(IMcpServer server, HashSet<string> subscriptions) : IHostedService
+internal class SubscriptionMessageSender(IMcpServer server, HashSet<string> subscriptions) : BackgroundService
 {
-    public async Task StartAsync(CancellationToken cancellationToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        while (!cancellationToken.IsCancellationRequested)
+        while (!stoppingToken.IsCancellationRequested)
         {
             foreach (var uri in subscriptions)
             {
@@ -14,15 +14,10 @@ internal class SubscriptionMessageSender(IMcpServer server, HashSet<string> subs
                     new
                     {
                         Uri = uri,
-                    }, cancellationToken: cancellationToken);
+                    }, cancellationToken: stoppingToken);
             }
 
-            await Task.Delay(5000, cancellationToken);
+            await Task.Delay(5000, stoppingToken);
         }
-    }
-
-    public Task StopAsync(CancellationToken cancellationToken)
-    {
-        return Task.CompletedTask;
     }
 }

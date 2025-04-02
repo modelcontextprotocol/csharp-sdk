@@ -1,13 +1,12 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using ModelContextProtocol;
-using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 
 namespace EverythingServer;
 
-public class LoggingUpdateMessageSender(IMcpServer server) : IHostedService
+public class LoggingUpdateMessageSender(IMcpServer server) : BackgroundService
 {
     readonly Dictionary<LoggingLevel, string> _loggingLevelMap = new()
     {
@@ -21,11 +20,11 @@ public class LoggingUpdateMessageSender(IMcpServer server) : IHostedService
         { LoggingLevel.Emergency, "Emergency-level message" }
     };
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var currentLevel = server.Services!.GetRequiredService<Func<LoggingLevel>>();
 
-        while (!cancellationToken.IsCancellationRequested)
+        while (!stoppingToken.IsCancellationRequested)
         {
             var newLevel = (LoggingLevel)Random.Shared.Next(_loggingLevelMap.Count);
 
@@ -37,15 +36,10 @@ public class LoggingUpdateMessageSender(IMcpServer server) : IHostedService
 
             if (newLevel > currentLevel())
             {
-                await server.SendNotificationAsync("notifications/message", message, cancellationToken: cancellationToken);
+                await server.SendNotificationAsync("notifications/message", message, cancellationToken: stoppingToken);
             }
 
-            await Task.Delay(15000, cancellationToken);
+            await Task.Delay(15000, stoppingToken);
         }
-    }
-
-    public Task StopAsync(CancellationToken cancellationToken)
-    {
-        return Task.CompletedTask;
     }
 }
