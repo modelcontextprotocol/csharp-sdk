@@ -1,9 +1,12 @@
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Transport;
+using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.IO.Pipelines;
+using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Tests.Client;
 
@@ -72,7 +75,7 @@ public class McpClientExtensionsTests : LoggedTest
     {
         IMcpClient client = await CreateMcpClientForServer();
 
-        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(12, tools.Count);
         var echo = tools.Single(t => t.Name == "Method4");
         var result = await echo.InvokeAsync(new Dictionary<string, object?>() { ["i"] = 42 }, TestContext.Current.CancellationToken);
@@ -98,7 +101,7 @@ public class McpClientExtensionsTests : LoggedTest
     {
         IMcpClient client = await CreateMcpClientForServer();
 
-        await foreach (var tool in client.EnumerateToolsAsync(TestContext.Current.CancellationToken))
+        await foreach (var tool in client.EnumerateToolsAsync(cancellationToken: TestContext.Current.CancellationToken))
         {
             if (tool.Name == "Method4")
             {
@@ -109,5 +112,63 @@ public class McpClientExtensionsTests : LoggedTest
         }
 
         Assert.Fail("Couldn't find target method");
+    }
+
+    [Fact]
+    public async Task EnumerateToolsAsync_FlowsJsonSerializerOptions()
+    {
+        JsonSerializerOptions options = new(JsonSerializerOptions.Default);
+        IMcpClient client = await CreateMcpClientForServer();
+        bool hasTools = false;
+
+        await foreach (var tool in client.EnumerateToolsAsync(options, TestContext.Current.CancellationToken))
+        {
+            Assert.Same(options, tool.JsonSerializerOptions);
+            hasTools = true;
+        }
+
+        foreach (var tool in await client.ListToolsAsync(options, TestContext.Current.CancellationToken))
+        {
+            Assert.Same(options, tool.JsonSerializerOptions);
+        }
+
+        Assert.True(hasTools);
+    }
+
+    [Fact]
+    public async Task EnumerateToolsAsync_HonorsJsonSerializerOptions()
+    {
+        JsonSerializerOptions emptyOptions = new() { TypeInfoResolver = JsonTypeInfoResolver.Combine() };
+        IMcpClient client = await CreateMcpClientForServer();
+
+        var tool = (await client.ListToolsAsync(emptyOptions, TestContext.Current.CancellationToken)).First();
+        await Assert.ThrowsAsync<NotSupportedException>(() => tool.InvokeAsync(new Dictionary<string, object?> { ["i"] = 42 }, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task SendRequestAsync_HonorsJsonSerializerOptions()
+    {
+        JsonSerializerOptions emptyOptions = new() { TypeInfoResolver = JsonTypeInfoResolver.Combine() };
+        IMcpClient client = await CreateMcpClientForServer();
+
+        await Assert.ThrowsAsync<NotSupportedException>(() => client.SendRequestAsync<CallToolRequestParams, CallToolResponse>("Method4", new() { Name = "tool" }, emptyOptions, cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task SendNotificationAsync_HonorsJsonSerializerOptions()
+    {
+        JsonSerializerOptions emptyOptions = new() { TypeInfoResolver = JsonTypeInfoResolver.Combine() };
+        IMcpClient client = await CreateMcpClientForServer();
+
+        await Assert.ThrowsAsync<NotSupportedException>(() => client.SendNotificationAsync("Method4", new { Value = 42 }, emptyOptions, cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task GetPromptsAsync_HonorsJsonSerializerOptions()
+    {
+        JsonSerializerOptions emptyOptions = new() { TypeInfoResolver = JsonTypeInfoResolver.Combine() };
+        IMcpClient client = await CreateMcpClientForServer();
+
+        await Assert.ThrowsAsync<NotSupportedException>(() => client.GetPromptAsync("Prompt", new Dictionary<string, object?> { ["i"] = 42 }, emptyOptions, cancellationToken: TestContext.Current.CancellationToken));
     }
 }

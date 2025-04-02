@@ -3,8 +3,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
+using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils;
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Shared;
 
@@ -37,14 +39,19 @@ internal abstract class McpEndpoint : IAsyncDisposable
         _logger = loggerFactory?.CreateLogger(GetType()) ?? NullLogger.Instance;
     }
 
-    protected void SetRequestHandler<TRequest, TResponse>(string method, Func<TRequest?, CancellationToken, Task<TResponse>> handler)
-        => _requestHandlers.Set(method, handler);
+    protected void SetRequestHandler<TRequest, TResponse>(
+        string method,
+        Func<TRequest?, CancellationToken, Task<TResponse>> handler,
+        JsonTypeInfo<TRequest> requestTypeInfo,
+        JsonTypeInfo<TResponse> responseTypeInfo)
+
+        => _requestHandlers.Set(method, handler, requestTypeInfo, responseTypeInfo);
 
     public void AddNotificationHandler(string method, Func<JsonRpcNotification, Task> handler)
         => _notificationHandlers.Add(method, handler);
 
-    public Task<TResult> SendRequestAsync<TResult>(JsonRpcRequest request, CancellationToken cancellationToken = default) where TResult : class
-        => GetSessionOrThrow().SendRequestAsync<TResult>(request, cancellationToken);
+    public Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default)
+        => GetSessionOrThrow().SendRequestAsync(request, cancellationToken);
 
     public Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
         => GetSessionOrThrow().SendMessageAsync(message, cancellationToken);
@@ -63,7 +70,7 @@ internal abstract class McpEndpoint : IAsyncDisposable
     protected void StartSession(ITransport sessionTransport)
     {
         _sessionCts = new CancellationTokenSource();
-        _session = new McpSession(sessionTransport, EndpointName, _requestHandlers, _notificationHandlers, _logger);
+        _session = new McpSession(this is IMcpServer, sessionTransport, EndpointName, _requestHandlers, _notificationHandlers, _logger);
         MessageProcessingTask = _session.ProcessMessagesAsync(_sessionCts.Token);
     }
 

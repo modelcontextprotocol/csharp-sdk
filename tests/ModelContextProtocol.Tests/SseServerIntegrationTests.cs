@@ -71,7 +71,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
 
         // act
         await using var client = await GetClientAsync();
-        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(tools);
@@ -90,7 +90,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
             {
                 ["message"] = "Hello MCP!"
             },
-            TestContext.Current.CancellationToken
+            cancellationToken: TestContext.Current.CancellationToken
         );
 
         // assert
@@ -176,7 +176,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
 
         // act
         await using var client = await GetClientAsync();
-        var result = await client.GetPromptAsync("simple_prompt", null, TestContext.Current.CancellationToken);
+        var result = await client.GetPromptAsync("simple_prompt", null, cancellationToken: TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(result);
@@ -195,7 +195,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
             { "temperature", "0.7" },
             { "style", "formal" }
         };
-        var result = await client.GetPromptAsync("complex_prompt", arguments, TestContext.Current.CancellationToken);
+        var result = await client.GetPromptAsync("complex_prompt", arguments, cancellationToken: TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(result);
@@ -210,7 +210,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
         // act
         await using var client = await GetClientAsync();
         await Assert.ThrowsAsync<McpClientException>(() =>
-            client.GetPromptAsync("non_existent_prompt", null, TestContext.Current.CancellationToken));
+            client.GetPromptAsync("non_existent_prompt", null, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -246,7 +246,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
                 ["prompt"] = "Test prompt",
                 ["maxTokens"] = 100
             },
-            TestContext.Current.CancellationToken);
+            cancellationToken: TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(result);
@@ -270,7 +270,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
                 {
                     ["message"] = $"Hello MCP! {i}"
                 },
-                TestContext.Current.CancellationToken
+                cancellationToken: TestContext.Current.CancellationToken
             );
 
             Assert.NotNull(result);

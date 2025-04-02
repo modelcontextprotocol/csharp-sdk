@@ -10,10 +10,11 @@ public sealed class McpClientTool : AIFunction
 {
     private readonly IMcpClient _client;
 
-    internal McpClientTool(IMcpClient client, Tool tool)
+    internal McpClientTool(IMcpClient client, Tool tool, JsonSerializerOptions serializerOptions)
     {
         _client = client;
         ProtocolTool = tool;
+        JsonSerializerOptions = serializerOptions;
     }
 
     /// <summary>Gets the protocol <see cref="Tool"/> type for this instance.</summary>
@@ -29,7 +30,7 @@ public sealed class McpClientTool : AIFunction
     public override JsonElement JsonSchema => ProtocolTool.InputSchema;
 
     /// <inheritdoc/>
-    public override JsonSerializerOptions JsonSerializerOptions => McpJsonUtilities.DefaultOptions;
+    public override JsonSerializerOptions JsonSerializerOptions { get; }
 
     /// <inheritdoc/>
     protected async override Task<object?> InvokeCoreAsync(
@@ -39,7 +40,7 @@ public sealed class McpClientTool : AIFunction
             arguments as IReadOnlyDictionary<string, object?> ??
             arguments.ToDictionary();
 
-        CallToolResponse result = await _client.CallToolAsync(ProtocolTool.Name, argDict, cancellationToken).ConfigureAwait(false);
+        CallToolResponse result = await _client.CallToolAsync(ProtocolTool.Name, argDict, JsonSerializerOptions, cancellationToken: cancellationToken).ConfigureAwait(false);
         return JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.CallToolResponse);
     }
 }

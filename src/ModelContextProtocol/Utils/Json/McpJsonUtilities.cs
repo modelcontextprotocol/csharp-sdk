@@ -75,6 +75,7 @@ public static partial class McpJsonUtilities
         (JsonTypeInfo<T>)options.GetTypeInfo(typeof(T));
 
     internal static JsonElement DefaultMcpToolSchema { get; } = ParseJsonElement("""{"type":"object"}"""u8);
+    internal static object? AsObject(this JsonElement element) => element.ValueKind is JsonValueKind.Null ? null : element;
 
     internal static bool IsValidMcpToolSchema(JsonElement element)
     {
@@ -151,6 +152,7 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(SubscribeRequestParams))]
     [JsonSerializable(typeof(UnsubscribeFromResourceRequestParams))]
     [JsonSerializable(typeof(UnsubscribeRequestParams))]
+    [JsonSerializable(typeof(IReadOnlyDictionary<string, object>))]
 
     [ExcludeFromCodeCoverage]
     internal sealed partial class JsonContext : JsonSerializerContext;
