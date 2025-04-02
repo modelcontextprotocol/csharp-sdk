@@ -9,8 +9,8 @@ namespace ModelContextProtocol.Client;
 public sealed class McpClientTool : AIFunction
 {
     private readonly IMcpClient _client;
-    private readonly string? _name;
-    private readonly string? _description;
+    private readonly string _name;
+    private readonly string _description;
 
     internal McpClientTool(IMcpClient client, Tool tool, string? name = null, string? description = null)
     {
