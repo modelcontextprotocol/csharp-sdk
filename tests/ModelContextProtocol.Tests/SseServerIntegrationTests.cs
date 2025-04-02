@@ -1,6 +1,8 @@
 ﻿using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Tests.Utils;
+using System.Net;
+using System.Text;
 
 namespace ModelContextProtocol.Tests;
 
@@ -29,6 +31,12 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
     }
+
+    private HttpClient GetHttpClient() =>
+        new()
+        {
+            BaseAddress = new(_fixture.DefaultConfig.Location!),
+        };
 
     [Fact]
     public async Task ConnectAndPing_Sse_TestServer()
@@ -270,5 +278,47 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
             var textContent = Assert.Single(result.Content, c => c.Type == "text");
             Assert.Equal($"Echo: Hello MCP! {i}", textContent.Text);
         }
+    }
+
+    [Fact]
+    public async Task EventSourceStream_Includes_MessageEventType()
+    {
+        // Simulate our own MCP client handshake using a plain HttpClient so we can look for "event: message"
+        // in the raw SSE response stream which is not exposed by the real MCP client.
+        using var httpClient = GetHttpClient();
+        await using var sseResponse = await httpClient.GetStreamAsync("", TestContext.Current.CancellationToken);
+        using var streamReader = new StreamReader(sseResponse);
+
+        // read event stream from the server
+        var endpointEvent = await streamReader.ReadLineAsync(TestContext.Current.CancellationToken);
+        Assert.Equal("event: endpoint", endpointEvent);
+
+        var endpointData = await streamReader.ReadLineAsync(TestContext.Current.CancellationToken);
+        Assert.NotNull(endpointData);
+        Assert.StartsWith("data: ", endpointData);
+        var messageEndpoint = endpointData["data: ".Length..];
+
+        const string initializeRequest = """
+            {"jsonrpc":"2.0","id":"1","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"IntegrationTestClient","version":"1.0.0"}}}
+            """;
+        using (var initializeRequestBody = new StringContent(initializeRequest, Encoding.UTF8, "application/json"))
+        {
+            var response = await httpClient.PostAsync(messageEndpoint, initializeRequestBody, TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        }
+
+        const string initializeNotification = """
+            {"jsonrpc":"2.0","method":"notifications/initialized"}
+            """;
+        using (var initializeNotificationBody = new StringContent(initializeNotification, Encoding.UTF8, "application/json"))
+        {
+            var response = await httpClient.PostAsync(messageEndpoint, initializeNotificationBody, TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        }
+
+        // read event stream from the server
+        Assert.Equal("", await streamReader.ReadLineAsync(TestContext.Current.CancellationToken));
+        var messageEvent = await streamReader.ReadLineAsync(TestContext.Current.CancellationToken);
+        Assert.Equal("event: message", messageEvent);
     }
 }
