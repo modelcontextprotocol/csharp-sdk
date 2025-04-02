@@ -369,7 +369,6 @@ internal sealed class McpSession : IDisposable
 
             if (response is JsonRpcResponse success)
             {
-                // Not expensive logging because we're already converting to JSON in order to get the result object
                 _logger.RequestResponseReceivedPayload(EndpointName, success.Result?.ToJsonString() ?? "null");
                 _logger.RequestResponseReceived(EndpointName, request.Method);
                 return success;
