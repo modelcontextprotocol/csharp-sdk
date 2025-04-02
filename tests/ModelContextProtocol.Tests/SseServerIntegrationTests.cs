@@ -289,7 +289,6 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
         await using var sseResponse = await httpClient.GetStreamAsync("", TestContext.Current.CancellationToken);
         using var streamReader = new StreamReader(sseResponse);
 
-        // read event stream from the server
         var endpointEvent = await streamReader.ReadLineAsync(TestContext.Current.CancellationToken);
         Assert.Equal("event: endpoint", endpointEvent);
 
@@ -307,16 +306,15 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
             Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         }
 
-        const string initializeNotification = """
+        const string initializedNotification = """
             {"jsonrpc":"2.0","method":"notifications/initialized"}
             """;
-        using (var initializeNotificationBody = new StringContent(initializeNotification, Encoding.UTF8, "application/json"))
+        using (var initializedNotificationBody = new StringContent(initializedNotification, Encoding.UTF8, "application/json"))
         {
-            var response = await httpClient.PostAsync(messageEndpoint, initializeNotificationBody, TestContext.Current.CancellationToken);
+            var response = await httpClient.PostAsync(messageEndpoint, initializedNotificationBody, TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         }
 
-        // read event stream from the server
         Assert.Equal("", await streamReader.ReadLineAsync(TestContext.Current.CancellationToken));
         var messageEvent = await streamReader.ReadLineAsync(TestContext.Current.CancellationToken);
         Assert.Equal("event: message", messageEvent);
