@@ -35,7 +35,7 @@ internal static class Program
     private static async Task Main(string[] args)
     {
         Log.Logger.Information("Starting server...");
-
+        IMcpServer? server = null;
         McpServerOptions options = new()
         {
             ServerInfo = new Implementation() { Name = "TestServer", Version = "1.0.0" },
@@ -48,12 +48,20 @@ internal static class Program
             },
             ProtocolVersion = "2024-11-05",
             ServerInstructions = "This is a test server with only stub functionality",
-            GetCompletionHandler = ConfigureCompletion(),
+            RequestHandlers = {
+                [RequestMethods.CompletionComplete] = async (request, ct) =>
+                {
+                    var completion = ConfigureCompletion();
+                    var requestParams = request.Params as CompleteRequestParams;
+                    RequestContext<CompleteRequestParams> context = new(server!, requestParams);
+                    return await completion(context, ct);
+                },
+            }
         };
 
         using var loggerFactory = CreateLoggerFactory();
-        await using var stdioTransport = new StdioServerTransport("TestServer", loggerFactory);
-        await using IMcpServer server = McpServerFactory.Create(stdioTransport, options, loggerFactory);
+        await using StdioServerTransport stdioTransport = new("TestServer", loggerFactory);
+        server = McpServerFactory.Create(stdioTransport, options, loggerFactory);
 
         Log.Logger.Information("Server running...");
 
@@ -61,6 +69,7 @@ internal static class Program
         _ = RunBackgroundLoop(server);
 
         await server.RunAsync();
+        await server.DisposeAsync();
     }
 
     private static async Task RunBackgroundLoop(IMcpServer server, CancellationToken cancellationToken = default)

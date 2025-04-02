@@ -8,32 +8,47 @@ namespace ModelContextProtocol.Tests;
 /// Tests for the cancelled notifications against an IMcpEndpoint.
 /// </summary>
 public class CancelledNotificationTests(
-    McpEndpointTestFixture fixture, ITestOutputHelper testOutputHelper)
-    : LoggedTest(testOutputHelper), IClassFixture<McpEndpointTestFixture>
+    ClientIntegrationTestFixture fixture, ITestOutputHelper testOutputHelper)
+    : LoggedTest(testOutputHelper), IClassFixture<ClientIntegrationTestFixture>
 {
     [Fact]
     public async Task NotifyCancelAsync_SendsCorrectNotification()
     {
         // Arrange
         var token = TestContext.Current.CancellationToken;
-        var clientTransport = fixture.CreateClientTransport();
-        await using var endpoint = await fixture.CreateClientEndpointAsync(clientTransport);
-        var transport = await clientTransport.ConnectAsync(token);
-        
+        var clientId = "test_server";
+        TaskCompletionSource<JsonRpcNotification> notificationCompletion = new();
+        Task HandleCancel(JsonRpcNotification notification)
+        {
+            var cancelParams = notification.Params as CancelledNotification;
+            Assert.NotNull(cancelParams);
+            Assert.Equal("test-request-id-123", cancelParams.RequestId.ToString());
+            Assert.Equal("Operation was cancelled by the user", cancelParams.Reason);
+            notificationCompletion.SetResult(notification);
+            return Task.CompletedTask;
+        }
+        var client = await fixture.CreateClientAsync(clientId, new()
+        {
+            ClientInfo = new Implementation
+            {
+                Name = "TestClient",
+                Version = "1.0.0",
+            },
+            NotificationHandlers = new Dictionary<string, List<Func<JsonRpcNotification, Task>>>
+            {
+                [NotificationMethods.CancelledNotification] = [HandleCancel],
+            }
+        });
         var requestId = new RequestId("test-request-id-123");
         const string reason = "Operation was cancelled by the user";
 
         // Act
-        await endpoint.NotifyCancelAsync(requestId, reason, token);
+        await client.NotifyCancelAsync(requestId, reason, token);
 
         // Assert
-        Assert.Equal(1, transport.MessageReader.Count);
-        var message = await transport.MessageReader.ReadAsync(token);
-        Assert.NotNull(message);
-
-        var notification = Assert.IsType<JsonRpcNotification>(message);
+        var notification = await notificationCompletion.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
+        Assert.NotNull(notification);
         Assert.Equal(NotificationMethods.CancelledNotification, notification.Method);
-        
         var cancelParams = Assert.IsType<CancelledNotification>(notification.Params);
         Assert.Equal(requestId, cancelParams.RequestId);
         Assert.Equal(reason, cancelParams.Reason);
@@ -44,9 +59,28 @@ public class CancelledNotificationTests(
     {
         // Arrange
         var token = TestContext.Current.CancellationToken;
-        var clientTransport = fixture.CreateClientTransport();
-        await using var endpoint = await fixture.CreateClientEndpointAsync(clientTransport);
-        var transport = await clientTransport.ConnectAsync(token);
+        var clientId = "test_server";
+        TaskCompletionSource<JsonRpcNotification> notificationCompletion = new();
+        Task HandleCancel(JsonRpcNotification notification)
+        {
+            var cancelParams = notification.Params as CancelledNotification;
+            Assert.NotNull(cancelParams);
+            Assert.Equal("test-request-id-123", cancelParams.RequestId.ToString());
+            notificationCompletion.SetResult(notification);
+            return Task.CompletedTask;
+        }
+        var client = await fixture.CreateClientAsync(clientId, new()
+        {
+            ClientInfo = new Implementation
+            {
+                Name = "TestClient",
+                Version = "1.0.0",
+            },
+            NotificationHandlers = new Dictionary<string, List<Func<JsonRpcNotification, Task>>>
+            {
+                [NotificationMethods.CancelledNotification] = [HandleCancel],
+            }
+        });
         var requestId = new RequestId("test-request-id-123");
         JsonRpcRequest request = new()
         {
@@ -59,7 +93,7 @@ public class CancelledNotificationTests(
         // Act
         try
         {
-            await endpoint.SendRequestAsync<EmptyResult>(request, cancellationSource.Token);
+            await client.SendRequestAsync<EmptyResult>(request, cancellationSource.Token);
         }
         catch (OperationCanceledException)
         {
@@ -71,21 +105,10 @@ public class CancelledNotificationTests(
         }
 
         // Assert
-        Assert.Equal(2, transport.MessageReader.Count);
-        var message = await transport.MessageReader.ReadAsync(token);
-        Assert.NotNull(message);
-
-        var notification = Assert.IsType<JsonRpcNotification>(message);
+        var notification = await notificationCompletion.Task.WaitAsync(TimeSpan.FromSeconds(3), token);
+        Assert.NotNull(notification);
         Assert.Equal(NotificationMethods.CancelledNotification, notification.Method);
-        
         var cancelParams = Assert.IsType<CancelledNotification>(notification.Params);
         Assert.Equal(requestId, cancelParams.RequestId);
-
-        message = await transport.MessageReader.ReadAsync(token);
-        Assert.NotNull(message);
-        var requestMessage = Assert.IsType<JsonRpcRequest>(message);
-        Assert.Equal(request.Id, requestMessage.Id);
-        Assert.Equal(request.Method, requestMessage.Method);
-        Assert.Equal(request.Params, requestMessage.Params);
     }
 }

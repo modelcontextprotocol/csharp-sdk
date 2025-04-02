@@ -113,7 +113,5 @@ public sealed class McpServerHandlers
         options.Capabilities.Prompts = promptsCapability;
         options.Capabilities.Resources = resourcesCapability;
         options.Capabilities.Tools = toolsCapability;
-
-        options.GetCompletionHandler = GetCompletionHandler ?? options.GetCompletionHandler;
     }
 }

@@ -26,16 +26,16 @@ public class McpServerTests : LoggedTest
 
     private static McpServerOptions CreateOptions(
         ServerCapabilities? capabilities = null,
-        IReadOnlyDictionary<string, List<Func<JsonRpcNotification, Task>>>? notificationHandlers = null)
+        Dictionary<string, List<Func<JsonRpcNotification, Task>>>? notificationHandlers = null)
     {
-        notificationHandlers ??= new Dictionary<string, List<Func<JsonRpcNotification, Task>>>();
+        notificationHandlers ??= [];
         return new McpServerOptions
         {
             ServerInfo = new Implementation { Name = "TestServer", Version = "1.0" },
             ProtocolVersion = "2024",
             InitializationTimeout = TimeSpan.FromSeconds(30),
             Capabilities = capabilities,
-            NotificationHandlers = notificationHandlers,
+            NotificationHandlers = new(notificationHandlers),
         };
     }
 
@@ -229,8 +229,8 @@ public class McpServerTests : LoggedTest
             method: RequestMethods.CompletionComplete,
             configureOptions: options =>
             {
-                options.GetCompletionHandler = (request, ct) =>
-                    Task.FromResult(new CompleteResult
+                options.RequestHandlers[RequestMethods.CompletionComplete] =
+                    async (request, ct) => await Task.FromResult(new CompleteResult
                     {
                         Completion = new()
                         {

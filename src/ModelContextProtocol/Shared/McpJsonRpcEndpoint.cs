@@ -17,9 +17,6 @@ namespace ModelContextProtocol.Shared;
 /// </summary>
 internal abstract class McpJsonRpcEndpoint : IMcpSession
 {
-    private readonly RequestHandlers _requestHandlers = [];
-    private readonly NotificationHandlers _notificationHandlers = [];
-
     private McpSession? _session;
     private CancellationTokenSource? _sessionCts;
     private int _started;
@@ -32,32 +29,24 @@ internal abstract class McpJsonRpcEndpoint : IMcpSession
     /// </summary>
     protected readonly ILogger _logger;
 
+    private readonly RequestHandlers _requestHandlers;
+    private readonly NotificationHandlers _notificationHandlers;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="McpJsonRpcEndpoint"/> class.
     /// </summary>
     /// <param name="loggerFactory">The logger factory.</param>
-    protected McpJsonRpcEndpoint(ILoggerFactory? loggerFactory = null)
+    /// <param name="requestHandlers">The request handlers.</param>
+    /// <param name="notificationHandlers">The notification handlers.</param>
+    protected McpJsonRpcEndpoint(
+        ILoggerFactory? loggerFactory = null,
+        RequestHandlers? requestHandlers = null,
+        NotificationHandlers? notificationHandlers = null)
     {
         _logger = loggerFactory?.CreateLogger(GetType()) ?? NullLogger.Instance;
+        _requestHandlers = requestHandlers ?? [];
+        _notificationHandlers = notificationHandlers ?? [];
     }
-
-    /// <summary>
-    /// Sets the request handler for a specific method.
-    /// </summary>
-    /// <typeparam name="TRequest">The MCP Request type</typeparam>
-    /// <typeparam name="TResponse">The MCP Response type</typeparam>
-    /// <param name="method">The method name.</param>
-    /// <param name="handler">The handler function.</param>
-    protected void SetRequestHandler<TRequest, TResponse>(string method, Func<TRequest?, CancellationToken, Task<TResponse>> handler)
-        => _requestHandlers.Set(method, handler);
-
-    /// <summary>
-    /// Sets the request handler for a specific method.
-    /// </summary>
-    /// <param name="method">The method name.</param>
-    /// <param name="handler">The handler function.</param>
-    public void AddNotificationHandler(string method, Func<JsonRpcNotification, Task> handler)
-        => _notificationHandlers.Add(method, handler);
 
     /// <summary>
     /// Sends a request over the protocol
@@ -103,7 +92,7 @@ internal abstract class McpJsonRpcEndpoint : IMcpSession
         }
 
         _sessionCts = CancellationTokenSource.CreateLinkedTokenSource(fullSessionCancellationToken);
-        _session = new McpSession(sessionTransport, EndpointName, _requestHandlers, _notificationHandlers, _logger);
+        _session = new McpSession(sessionTransport, EndpointName, [], [], _logger);
         MessageProcessingTask = _session.ProcessMessagesAsync(_sessionCts.Token);
     }
 

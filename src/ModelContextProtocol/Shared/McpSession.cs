@@ -422,9 +422,4 @@ internal sealed class McpSession : IMcpSession, IAsyncDisposable
             disposableTransport.Dispose();
         }
     }
-
-    public void AddNotificationHandler(string method, Func<JsonRpcNotification, Task> handler)
-    {
-        _notificationHandlers.Add(method, handler);
-    }
 }
