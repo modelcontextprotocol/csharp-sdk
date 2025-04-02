@@ -63,7 +63,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
 
         // act
         await using var client = await GetClientAsync();
-        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(tools);

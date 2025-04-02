@@ -172,7 +172,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
     {
         IMcpClient client = await CreateMcpClientForServer();
 
-        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(16, tools.Count);
 
         McpClientTool echoTool = tools.First(t => t.Name == "Echo");
@@ -217,7 +217,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
                 loggerFactory: LoggerFactory,
                 cancellationToken: TestContext.Current.CancellationToken))
             {
-                var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+                var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
                 Assert.Equal(16, tools.Count);
 
                 McpClientTool echoTool = tools.First(t => t.Name == "Echo");
@@ -244,7 +244,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
     {
         IMcpClient client = await CreateMcpClientForServer();
 
-        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(16, tools.Count);
 
         Channel<JsonRpcNotification> listChanged = Channel.CreateUnbounded<JsonRpcNotification>();
@@ -265,7 +265,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         serverTools.Add(newTool);
         await notificationRead;
 
-        tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+        tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(17, tools.Count);
         Assert.Contains(tools, t => t.Name == "NewTool");
 
@@ -274,7 +274,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         serverTools.Remove(newTool);
         await notificationRead;
 
-        tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+        tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(16, tools.Count);
         Assert.DoesNotContain(tools, t => t.Name == "NewTool");
     }
@@ -536,7 +536,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
     {
         IMcpClient client = await CreateMcpClientForServer();
 
-        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(tools);
         Assert.NotEmpty(tools);
@@ -617,7 +617,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
             return Task.CompletedTask;
         });
 
-        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(tools);
         Assert.NotEmpty(tools);
 
@@ -651,7 +651,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
     {
         IMcpClient client = await CreateMcpClientForServer();
 
-        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(tools);
         Assert.NotEmpty(tools);
         McpClientTool cancelableTool = tools.First(t => t.Name == nameof(EchoTool.InfiniteCancelableOperation));

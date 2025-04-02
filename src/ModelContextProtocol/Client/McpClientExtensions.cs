@@ -33,12 +33,18 @@ public static class McpClientExtensions
     /// Retrieves a list of available tools from the server.
     /// </summary>
     /// <param name="client">The client.</param>
+    /// <param name="serializerOptions">The serializer options governing tool parameter serialization.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A list of all available tools.</returns>
     public static async Task<IList<McpClientTool>> ListToolsAsync(
-        this IMcpClient client, CancellationToken cancellationToken = default)
+        this IMcpClient client,
+        JsonSerializerOptions? serializerOptions = null,
+        CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
+
+        serializerOptions ??= McpJsonUtilities.DefaultOptions;
+        serializerOptions.MakeReadOnly();
 
         List<McpClientTool>? tools = null;
         string? cursor = null;
@@ -54,7 +60,7 @@ public static class McpClientExtensions
             tools ??= new List<McpClientTool>(toolResults.Tools.Count);
             foreach (var tool in toolResults.Tools)
             {
-                tools.Add(new McpClientTool(client, tool));
+                tools.Add(new McpClientTool(client, tool, serializerOptions));
             }
 
             cursor = toolResults.NextCursor;
@@ -68,6 +74,7 @@ public static class McpClientExtensions
     /// Creates an enumerable for asynchronously enumerating all available tools from the server.
     /// </summary>
     /// <param name="client">The client.</param>
+    /// <param name="serializerOptions">The serializer options governing tool parameter serialization.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>An asynchronous sequence of all available tools.</returns>
     /// <remarks>
@@ -75,9 +82,14 @@ public static class McpClientExtensions
     /// will result in requerying the server and yielding the sequence of available tools.
     /// </remarks>
     public static async IAsyncEnumerable<McpClientTool> EnumerateToolsAsync(
-        this IMcpClient client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        this IMcpClient client,
+        JsonSerializerOptions? serializerOptions = null,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
+
+        serializerOptions ??= McpJsonUtilities.DefaultOptions;
+        serializerOptions.MakeReadOnly();
 
         string? cursor = null;
         do
@@ -91,7 +103,7 @@ public static class McpClientExtensions
 
             foreach (var tool in toolResults.Tools)
             {
-                yield return new McpClientTool(client, tool);
+                yield return new McpClientTool(client, tool, serializerOptions);
             }
 
             cursor = toolResults.NextCursor;
@@ -188,7 +200,8 @@ public static class McpClientExtensions
         Throw.IfNull(client);
         Throw.IfNullOrWhiteSpace(name);
         serializerOptions ??= McpJsonUtilities.DefaultOptions;
-        McpJsonUtilities.ValidateSerializerOptions(serializerOptions);
+        serializerOptions.MakeReadOnly();
+
         var parametersTypeInfo = serializerOptions.GetTypeInfo<IReadOnlyDictionary<string, object?>>();
 
         return client.SendRequestAsync(
@@ -455,7 +468,8 @@ public static class McpClientExtensions
         Throw.IfNull(client);
         Throw.IfNull(toolName);
         serializerOptions ??= McpJsonUtilities.DefaultOptions;
-        McpJsonUtilities.ValidateSerializerOptions(serializerOptions);
+        serializerOptions.MakeReadOnly();
+
         var parametersTypeInfo = serializerOptions.GetTypeInfo<IReadOnlyDictionary<string, object?>>();
 
         return client.SendRequestAsync(

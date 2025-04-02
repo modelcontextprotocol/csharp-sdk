@@ -68,7 +68,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
 
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
-        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotEmpty(tools);
@@ -106,7 +106,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
 
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
-        var aiFunctions = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+        var aiFunctions = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         var echo = aiFunctions.Single(t => t.Name == "echo");
         var result = await echo.InvokeAsync([new KeyValuePair<string, object?>("message", "Hello MCP!")], TestContext.Current.CancellationToken);
 
@@ -485,7 +485,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
             _fixture.EverythingServerConfig, 
             _fixture.DefaultOptions, 
             cancellationToken: TestContext.Current.CancellationToken);
-        var mappedTools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+        var mappedTools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Create the chat client.
         using IChatClient chatClient = new OpenAIClient(s_openAIKey).AsChatClient("gpt-4o-mini")

@@ -18,12 +18,41 @@ public static class McpEndpointExtensions
     /// <param name="endpoint">The MCP client or server instance.</param>
     /// <param name="method">The JSON-RPC method name to invoke.</param>
     /// <param name="parameters">Object representing the request parameters.</param>
+    /// <param name="requestId">The request id for the request.</param>
+    /// <param name="serializerOptions">The options governing request serialization.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains the deserialized result.</returns>
+    public static Task<TResult> SendRequestAsync<TParameters, TResult>(
+        this IMcpEndpoint endpoint,
+        string method,
+        TParameters parameters,
+        JsonSerializerOptions? serializerOptions = null,
+        RequestId? requestId = null,
+        CancellationToken cancellationToken = default)
+        where TResult : notnull
+    {
+        serializerOptions ??= McpJsonUtilities.DefaultOptions;
+        serializerOptions.MakeReadOnly();
+
+        JsonTypeInfo<TParameters> paramsTypeInfo = serializerOptions.GetTypeInfo<TParameters>();
+        JsonTypeInfo<TResult> resultTypeInfo = serializerOptions.GetTypeInfo<TResult>();
+        return SendRequestAsync(endpoint, method, parameters, paramsTypeInfo, resultTypeInfo, requestId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends a JSON-RPC request and attempts to deserialize the result to <typeparamref name="TResult"/>.
+    /// </summary>
+    /// <typeparam name="TParameters">The type of the request parameters to serialize from.</typeparam>
+    /// <typeparam name="TResult">The type of the result to deserialize to.</typeparam>
+    /// <param name="endpoint">The MCP client or server instance.</param>
+    /// <param name="method">The JSON-RPC method name to invoke.</param>
+    /// <param name="parameters">Object representing the request parameters.</param>
     /// <param name="parametersTypeInfo">The type information for request parameter serialization.</param>
     /// <param name="resultTypeInfo">The type information for request parameter deserialization.</param>
     /// <param name="requestId">The request id for the request.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task that represents the asynchronous operation. The task result contains the deserialized result.</returns>
-    public static async Task<TResult> SendRequestAsync<TParameters, TResult>(
+    internal static async Task<TResult> SendRequestAsync<TParameters, TResult>(
         this IMcpEndpoint endpoint,
         string method,
         TParameters parameters,
@@ -54,34 +83,6 @@ public static class McpEndpointExtensions
     }
 
     /// <summary>
-    /// Sends a JSON-RPC request and attempts to deserialize the result to <typeparamref name="TResult"/>.
-    /// </summary>
-    /// <typeparam name="TParameters">The type of the request parameters to serialize from.</typeparam>
-    /// <typeparam name="TResult">The type of the result to deserialize to.</typeparam>
-    /// <param name="endpoint">The MCP client or server instance.</param>
-    /// <param name="method">The JSON-RPC method name to invoke.</param>
-    /// <param name="parameters">Object representing the request parameters.</param>
-    /// <param name="serializerOptions">The options governing request serialization.</param>
-    /// <param name="requestId">The request id for the request.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result contains the deserialized result.</returns>
-    public static Task<TResult> SendRequestAsync<TParameters, TResult>(
-        this IMcpEndpoint endpoint,
-        string method,
-        TParameters parameters,
-        JsonSerializerOptions? serializerOptions = null,
-        RequestId? requestId = null,
-        CancellationToken cancellationToken = default)
-        where TResult : notnull
-    {
-        serializerOptions ??= McpJsonUtilities.DefaultOptions;
-        McpJsonUtilities.ValidateSerializerOptions(serializerOptions);
-        JsonTypeInfo<TParameters> paramsTypeInfo = serializerOptions.GetTypeInfo<TParameters>();
-        JsonTypeInfo<TResult> resultTypeInfo = serializerOptions.GetTypeInfo<TResult>();
-        return SendRequestAsync(endpoint, method, parameters, paramsTypeInfo, resultTypeInfo, requestId, cancellationToken);
-    }
-
-    /// <summary>
     /// Sends a notification to the server with parameters.
     /// </summary>
     /// <param name="client">The client.</param>
@@ -100,9 +101,31 @@ public static class McpEndpointExtensions
     /// <param name="endpoint">The MCP client or server instance.</param>
     /// <param name="method">The JSON-RPC method name to invoke.</param>
     /// <param name="parameters">Object representing the request parameters.</param>
-    /// <param name="parametersTypeInfo">The type information for request parameter serialization.</param>
+    /// <param name="serializerOptions">The options governing request serialization.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     public static Task SendNotificationAsync<TParameters>(
+        this IMcpEndpoint endpoint,
+        string method,
+        TParameters parameters,
+        JsonSerializerOptions? serializerOptions = null,
+        CancellationToken cancellationToken = default)
+    {
+        serializerOptions ??= McpJsonUtilities.DefaultOptions;
+        serializerOptions.MakeReadOnly();
+
+        JsonTypeInfo<TParameters> parametersTypeInfo = serializerOptions.GetTypeInfo<TParameters>();
+        return SendNotificationAsync(endpoint, method, parameters, parametersTypeInfo, cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends a notification to the server with parameters.
+    /// </summary>
+    /// <param name="endpoint">The MCP client or server instance.</param>
+    /// <param name="method">The JSON-RPC method name to invoke.</param>
+    /// <param name="parameters">Object representing the request parameters.</param>
+    /// <param name="parametersTypeInfo">The type information for request parameter serialization.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    internal static Task SendNotificationAsync<TParameters>(
         this IMcpEndpoint endpoint,
         string method,
         TParameters parameters,
@@ -115,27 +138,6 @@ public static class McpEndpointExtensions
 
         JsonNode? parametersJson = JsonSerializer.SerializeToNode(parameters, parametersTypeInfo);
         return endpoint.SendMessageAsync(new JsonRpcNotification { Method = method, Params = parametersJson }, cancellationToken);
-    }
-
-    /// <summary>
-    /// Sends a notification to the server with parameters.
-    /// </summary>
-    /// <param name="endpoint">The MCP client or server instance.</param>
-    /// <param name="method">The JSON-RPC method name to invoke.</param>
-    /// <param name="parameters">Object representing the request parameters.</param>
-    /// <param name="serializerOptions">The options governing request serialization.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
-    public static Task SendNotificationAsync<TParameters>(
-        this IMcpEndpoint endpoint,
-        string method,
-        TParameters parameters,
-        JsonSerializerOptions? serializerOptions = null,
-        CancellationToken cancellationToken = default)
-    {
-        serializerOptions ??= McpJsonUtilities.DefaultOptions;
-        McpJsonUtilities.ValidateSerializerOptions(serializerOptions);
-        JsonTypeInfo<TParameters> parametersTypeInfo = serializerOptions.GetTypeInfo<TParameters>();
-        return SendNotificationAsync(endpoint, method, parameters, parametersTypeInfo, cancellationToken);
     }
 
     /// <summary>Notifies the connected endpoint of progress.</summary>

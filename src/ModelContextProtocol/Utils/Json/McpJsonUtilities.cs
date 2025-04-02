@@ -74,16 +74,6 @@ public static partial class McpJsonUtilities
     internal static JsonTypeInfo<T> GetTypeInfo<T>(this JsonSerializerOptions options) =>
         (JsonTypeInfo<T>)options.GetTypeInfo(typeof(T));
 
-    internal static void ValidateSerializerOptions(JsonSerializerOptions options)
-    {
-        if (options.WriteIndented)
-        {
-            throw new InvalidOperationException("JsonSerializerOptions.WriteIndented is not supported for JSON-RPC workloads.");
-        }
-
-        options.MakeReadOnly();
-    }
-
     internal static JsonElement DefaultMcpToolSchema { get; } = ParseJsonElement("""{"type":"object"}"""u8);
     internal static object? AsObject(this JsonElement element) => element.ValueKind is JsonValueKind.Null ? null : element;
 
