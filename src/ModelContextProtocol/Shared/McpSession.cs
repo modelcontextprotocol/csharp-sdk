@@ -29,7 +29,7 @@ internal sealed class McpSession : IDisposable
     private readonly ConcurrentDictionary<RequestId, CancellationTokenSource> _handlingRequests = new();
     private readonly JsonSerializerOptions _jsonOptions;
     private readonly ILogger _logger;
-    
+
     private readonly string _id = Guid.NewGuid().ToString("N");
     private long _nextRequestId;
 
@@ -371,7 +371,7 @@ internal sealed class McpSession : IDisposable
                 default:
                     return JsonSerializer.Deserialize(
                         JsonSerializer.Serialize(notificationParams, McpJsonUtilities.DefaultOptions.GetTypeInfo<object?>()),
-                        McpJsonUtilities.DefaultOptions.GetTypeInfo<CancelledNotification>());
+                            McpJsonUtilities.DefaultOptions.GetTypeInfo<CancelledNotification>());
             }
         }
         catch
