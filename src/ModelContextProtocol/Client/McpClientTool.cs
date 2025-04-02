@@ -13,7 +13,7 @@ public sealed class McpClientTool : AIFunction
     private readonly string _name;
     private readonly string _description;
 
-    internal McpClientTool(IMcpClient client, Tool tool, JsonSerializerOptions serializerOptions,string? name = null, string? description = null)
+    internal McpClientTool(IMcpClient client, Tool tool, JsonSerializerOptions serializerOptions, string? name = null, string? description = null)
     {
         _client = client;
         ProtocolTool = tool;
@@ -31,7 +31,6 @@ public sealed class McpClientTool : AIFunction
     /// <returns>Copy of this McpClientTool with the provided name</returns>
     public McpClientTool WithName(string name)
     {
-        Throw.IfNull(name);
         return new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, name, _description);
     }
 
