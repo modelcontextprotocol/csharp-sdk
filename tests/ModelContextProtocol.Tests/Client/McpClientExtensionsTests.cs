@@ -178,9 +178,9 @@ public class McpClientExtensionsTests : LoggedTest
         JsonSerializerOptions options = new(JsonSerializerOptions.Default);
         IMcpClient client = await CreateMcpClientForServer();
 
-        var tool = (await client.ListToolsAsync(options, TestContext.Current.CancellationToken)).FirstOrDefault();
-        var originalName = tool?.Name;
-        var renamedTool = tool?.WithName("RenamedTool");
+        var tool = (await client.ListToolsAsync(options, TestContext.Current.CancellationToken)).First();
+        var originalName = tool.Name;
+        var renamedTool = tool.WithName("RenamedTool");
 
         Assert.NotNull(renamedTool);
         Assert.Equal("RenamedTool", renamedTool.Name);
