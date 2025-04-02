@@ -36,7 +36,7 @@ public readonly struct RequestId : IEquatable<RequestId>
 
     /// <inheritdoc />
     public override string ToString() =>
-        _id is string stringValue ? $"\"{stringValue}\"" :
+        _id is string stringValue ? stringValue :
         _id is long longValue ? longValue.ToString(CultureInfo.InvariantCulture) :
         string.Empty;
 

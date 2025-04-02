@@ -35,7 +35,7 @@ public class DiagnosticTests
         Assert.NotEmpty(activities);
 
         Activity toolCallActivity = activities.First(a =>
-            a.Tags.Any(t => t.Key == "mcp.request.method" && t.Value == "tools/call"));
+            a.Tags.Any(t => t.Key == "rpc.method" && t.Value == "tools/call"));
         Assert.Equal("DoubleValue", toolCallActivity.Tags.First(t => t.Key == "mcp.request.params.name").Value);
     }
 

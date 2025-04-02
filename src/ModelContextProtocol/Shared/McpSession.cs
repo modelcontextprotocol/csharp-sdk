@@ -4,6 +4,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
+using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
 using System.Collections.Concurrent;
@@ -19,15 +20,36 @@ namespace ModelContextProtocol.Shared;
 internal sealed class McpSession : IDisposable
 {
     private static readonly ActivitySource s_activitySource = new("ModelContextProtocol");
-    private static readonly Meter s_meter = new("ModelContextProtocol");
-    private static readonly Histogram<double> s_operationDurationHistogram = s_meter.CreateHistogram<double>(
-        "modelcontextprotocol.operation.duration",
-        "s",
-        "Measures the duration of an operation in seconds.");
 
+    private static readonly InstrumentAdvice<double> s_shortSecondsBucketBoundaries = new()
+    {
+        // Follows boundaries from http.server.request.duration/http.client.request.duration
+        HistogramBucketBoundaries = [0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10],
+    };
+
+    private static readonly InstrumentAdvice<double> s_longSecondsBucketBoundaries = new()
+    {
+        // Not based on a standard. Larger bucket sizes for longer lasting operations, e.g. HTTP connection duration.
+        // See https://github.com/open-telemetry/semantic-conventions/issues/336
+        HistogramBucketBoundaries = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 30, 60, 120, 300],
+    };
+
+    private static readonly Meter s_meter = new("ModelContextProtocol");
+    private static readonly Histogram<double> s_clientSessionDuration = s_meter.CreateHistogram<double>(
+        "mcp.client.session.duration", "s", "Measures the duration of a client session.", advice: s_longSecondsBucketBoundaries);
+    private static readonly Histogram<double> s_serverSessionDuration = s_meter.CreateHistogram<double>(
+        "mcp.server.session.duration", "s", "Measures the duration of a server session.", advice: s_longSecondsBucketBoundaries);
+    private static readonly Histogram<double> s_serverRequestDuration = s_meter.CreateHistogram<double>(
+        "rpc.server.duration", "s", "Measures the duration of inbound RPC.", advice: s_shortSecondsBucketBoundaries);
+    private static readonly Histogram<double> s_clientRequestDuration = s_meter.CreateHistogram<double>(
+        "rpc.client.duration", "s", "Measures the duration of outbound RPC.", advice: s_shortSecondsBucketBoundaries);
+
+    private readonly bool _isServer;
+    private readonly string _transportKind;
     private readonly ITransport _transport;
     private readonly RequestHandlers _requestHandlers;
     private readonly NotificationHandlers _notificationHandlers;
+    private readonly long _sessionStartingTimestamp = Stopwatch.GetTimestamp();
 
     /// <summary>Collection of requests sent on this session and waiting for responses.</summary>
     private readonly ConcurrentDictionary<RequestId, TaskCompletionSource<IJsonRpcMessage>> _pendingRequests = [];
@@ -45,12 +67,14 @@ internal sealed class McpSession : IDisposable
     /// <summary>
     /// Initializes a new instance of the <see cref="McpSession"/> class.
     /// </summary>
+    /// <param name="isServer">true if this is a server; false if it's a client.</param>
     /// <param name="transport">An MCP transport implementation.</param>
     /// <param name="endpointName">The name of the endpoint for logging and debug purposes.</param>
     /// <param name="requestHandlers">A collection of request handlers.</param>
     /// <param name="notificationHandlers">A collection of notification handlers.</param>
     /// <param name="logger">The logger.</param>
     public McpSession(
+        bool isServer,
         ITransport transport,
         string endpointName,
         RequestHandlers requestHandlers,
@@ -59,6 +83,15 @@ internal sealed class McpSession : IDisposable
     {
         Throw.IfNull(transport);
 
+        _transportKind = transport switch
+        {
+            StdioClientSessionTransport or StdioServerTransport => "stdio",
+            StreamClientSessionTransport or StreamServerTransport => "stream",
+            SseClientSessionTransport or SseResponseStreamTransport => "sse",
+            _ => "unknownTransport"
+        };
+
+        _isServer = isServer;
         _transport = transport;
         EndpointName = endpointName;
         _requestHandlers = requestHandlers;
@@ -130,7 +163,7 @@ internal sealed class McpSession : IDisposable
                                 JsonRpc = "2.0",
                                 Error = new JsonRpcErrorDetail
                                 {
-                                    Code = ErrorCodes.InternalError,
+                                    Code = (ex as McpServerException)?.ErrorCode ?? ErrorCodes.InternalError,
                                     Message = ex.Message
                                 }
                             }, cancellationToken).ConfigureAwait(false);
@@ -161,17 +194,21 @@ internal sealed class McpSession : IDisposable
 
     private async Task HandleMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken)
     {
-        using Activity? activity = s_activitySource.StartActivity("HandlingMessage");
+        Histogram<double> durationMetric = _isServer ? s_serverRequestDuration : s_clientRequestDuration;
+        string method = GetMethodName(message);
+
+        long? startingTimestamp = durationMetric.Enabled ? Stopwatch.GetTimestamp() : null;
+        Activity? activity = s_activitySource.HasListeners() ?
+            s_activitySource.StartActivity(CreateActivityName(method)) :
+            null;
+
         TagList tags = default;
-
-        Stopwatch? measuring = s_operationDurationHistogram.Enabled ? Stopwatch.StartNew() : null;
-        bool addTags = activity is not null || measuring is not null;
-
+        bool addTags = activity is not null || startingTimestamp is not null;
         try
         {
             if (addTags)
             {
-                tags.Add("mcp.session.id", _id);
+                AddStandardTags(ref tags, method);
             }
 
             switch (message)
@@ -179,40 +216,13 @@ internal sealed class McpSession : IDisposable
                 case JsonRpcRequest request:
                     if (addTags)
                     {
-                        tags.Add("mcp.request.id", request.Id.ToString());
-                        tags.Add("mcp.request.method", request.Method);
-
-                        if (request.Params is JsonElement je)
-                        {
-                            switch (request.Method)
-                            {
-                                case RequestMethods.ToolsCall:
-                                case RequestMethods.PromptsGet:
-                                    if (je.TryGetProperty("name", out var prop) && prop.ValueKind == JsonValueKind.String)
-                                    {
-                                        tags.Add("mcp.request.params.name", prop.GetString());
-                                    }
-                                    break;
-
-                                case RequestMethods.ResourcesRead:
-                                    if (je.TryGetProperty("uri", out prop) && prop.ValueKind == JsonValueKind.String)
-                                    {
-                                        tags.Add("mcp.request.params.uri", prop.GetString());
-                                    }
-                                    break;
-                            }
-                        }
+                        AddRpcRequestTags(ref tags, activity, request);
                     }
 
                     await HandleRequest(request, cancellationToken).ConfigureAwait(false);
                     break;
 
                 case JsonRpcNotification notification:
-                    if (addTags)
-                    {
-                        tags.Add("mcp.notification.method", notification.Method);
-                    }
-
                     await HandleNotification(notification).ConfigureAwait(false);
                     break;
 
@@ -227,23 +237,12 @@ internal sealed class McpSession : IDisposable
         }
         catch (Exception e) when (addTags)
         {
-            tags.Add("error.type", e.GetType().FullName);
+            AddExceptionTags(ref tags, e);
             throw;
         }
         finally
         {
-            if (activity is not null)
-            {
-                foreach (var tag in tags)
-                {
-                    activity.AddTag(tag.Key, tag.Value);
-                }
-            }
-
-            if (measuring is not null)
-            {
-                s_operationDurationHistogram.Record(measuring.Elapsed.TotalSeconds, tags);
-            }
+            FinalizeDiagnostics(activity, startingTimestamp, durationMetric, ref tags);
         }
     }
 
@@ -304,22 +303,21 @@ internal sealed class McpSession : IDisposable
 
     private async Task HandleRequest(JsonRpcRequest request, CancellationToken cancellationToken)
     {
-        if (_requestHandlers.TryGetValue(request.Method, out var handler))
-        {
-            _logger.RequestHandlerCalled(EndpointName, request.Method);
-            var result = await handler(request, cancellationToken).ConfigureAwait(false);
-            _logger.RequestHandlerCompleted(EndpointName, request.Method);
-            await _transport.SendMessageAsync(new JsonRpcResponse
-            {
-                Id = request.Id,
-                JsonRpc = "2.0",
-                Result = result
-            }, cancellationToken).ConfigureAwait(false);
-        }
-        else
+        if (!_requestHandlers.TryGetValue(request.Method, out var handler))
         {
             _logger.NoHandlerFoundForRequest(EndpointName, request.Method);
+            throw new McpServerException("The method does not exist or is not available.", ErrorCodes.MethodNotFound);
         }
+
+        _logger.RequestHandlerCalled(EndpointName, request.Method);
+        var result = await handler(request, cancellationToken).ConfigureAwait(false);
+        _logger.RequestHandlerCompleted(EndpointName, request.Method);
+        await _transport.SendMessageAsync(new JsonRpcResponse
+        {
+            Id = request.Id,
+            JsonRpc = "2.0",
+            Result = result
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -339,7 +337,13 @@ internal sealed class McpSession : IDisposable
             throw new McpClientException("Transport is not connected");
         }
 
-        using Activity? activity = s_activitySource.StartActivity("SendingRequest");
+        Histogram<double> durationMetric = _isServer ? s_serverRequestDuration : s_clientRequestDuration;
+        string method = request.Method;
+
+        long? startingTimestamp = durationMetric.Enabled ? Stopwatch.GetTimestamp() : null;
+        using Activity? activity = s_activitySource.HasListeners() ?
+            s_activitySource.StartActivity(CreateActivityName(method)) :
+            null;
 
         // Set request ID
         if (request.Id.IsDefault)
@@ -347,17 +351,19 @@ internal sealed class McpSession : IDisposable
             request.Id = new RequestId($"{_id}-{Interlocked.Increment(ref _nextRequestId)}");
         }
 
-        if (activity is not null)
-        {
-            activity.SetTag("mcp.request.id", request.Id.ToString());
-            activity.SetTag("mcp.request.method", request.Method);
-        }
+        TagList tags = default;
+        bool addTags = activity is not null || startingTimestamp is not null;
 
         var tcs = new TaskCompletionSource<IJsonRpcMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pendingRequests[request.Id] = tcs;
-
         try
         {
+            if (addTags)
+            {
+                AddStandardTags(ref tags, method);
+                AddRpcRequestTags(ref tags, activity, request);
+            }
+
             // Expensive logging, use the logging framework to check if the logger is enabled
             if (_logger.IsEnabled(LogLevel.Debug))
             {
@@ -402,14 +408,15 @@ internal sealed class McpSession : IDisposable
             _logger.RequestInvalidResponseType(EndpointName, request.Method);
             throw new McpClientException("Invalid response type");
         }
-        catch (Exception ex) when (activity is not null)
+        catch (Exception ex) when (addTags)
         {
-            activity.AddTag("error.type", ex.GetType().FullName);
+            AddExceptionTags(ref tags, ex);
             throw;
         }
         finally
         {
             _pendingRequests.TryRemove(request.Id, out _);
+            FinalizeDiagnostics(activity, startingTimestamp, durationMetric, ref tags);
         }
     }
 
@@ -423,23 +430,49 @@ internal sealed class McpSession : IDisposable
             throw new McpClientException("Transport is not connected");
         }
 
-        using Activity? activity = s_activitySource.StartActivity("SendingMessage");
+        Histogram<double> durationMetric = _isServer ? s_serverRequestDuration : s_clientRequestDuration;
+        string method = GetMethodName(message);
 
-        if (_logger.IsEnabled(LogLevel.Debug))
+        long? startingTimestamp = durationMetric.Enabled ? Stopwatch.GetTimestamp() : null;
+        using Activity? activity = s_activitySource.HasListeners() ?
+            s_activitySource.StartActivity(CreateActivityName(method)) :
+            null;
+
+        TagList tags = default;
+        bool addTags = activity is not null || startingTimestamp is not null;
+
+        try
         {
-            _logger.SendingMessage(EndpointName, JsonSerializer.Serialize(message, _jsonOptions.GetTypeInfo<IJsonRpcMessage>()));
+            if (addTags)
+            {
+                AddStandardTags(ref tags, method);
+            }
+
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.SendingMessage(EndpointName, JsonSerializer.Serialize(message, _jsonOptions.GetTypeInfo<IJsonRpcMessage>()));
+            }
+
+            await _transport.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
+
+            // If the sent notification was a cancellation notification, cancel the pending request's await, as either the
+            // server won't be sending a response, or per the specification, the response should be ignored. There are inherent
+            // race conditions here, so it's possible and allowed for the operation to complete before we get to this point.
+            if (message is JsonRpcNotification { Method: NotificationMethods.CancelledNotification } notification &&
+                GetCancelledNotificationParams(notification.Params) is CancelledNotification cn &&
+                _pendingRequests.TryRemove(cn.RequestId, out var tcs))
+            {
+                tcs.TrySetCanceled(default);
+            }
         }
-
-        await _transport.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
-
-        // If the sent notification was a cancellation notification, cancel the pending request's await, as either the
-        // server won't be sending a response, or per the specification, the response should be ignored. There are inherent
-        // race conditions here, so it's possible and allowed for the operation to complete before we get to this point.
-        if (message is JsonRpcNotification { Method: NotificationMethods.CancelledNotification } notification &&
-            GetCancelledNotificationParams(notification.Params) is CancelledNotification cn &&
-            _pendingRequests.TryRemove(cn.RequestId, out var tcs))
+        catch (Exception ex) when (addTags)
         {
-            tcs.TrySetCanceled(default);
+            AddExceptionTags(ref tags, ex);
+            throw;
+        }
+        finally
+        {
+            FinalizeDiagnostics(activity, startingTimestamp, durationMetric, ref tags);
         }
     }
 
@@ -470,13 +503,123 @@ internal sealed class McpSession : IDisposable
         }
     }
 
+    private string CreateActivityName(string method) =>
+        $"mcp.{(_isServer ? "server" : "client")}.{_transportKind}/{method}";
+
+    private string GetMethodName(IJsonRpcMessage message) =>
+        message switch
+        {
+            JsonRpcRequest request => request.Method,
+            JsonRpcNotification notification => notification.Method,
+            _ => "unknownMethod",
+        };
+
+    private void AddStandardTags(ref TagList tags, string method)
+    {
+        tags.Add("rpc.system", "jsonrpc");
+        tags.Add("rpc.jsonrpc.version", "2.0");
+        tags.Add("rpc.method", method);
+        tags.Add("network.transport", _transportKind);
+
+        // RPC spans convention also includes:
+        // server.address, server.port, client.address, client.port, network.peer.address, network.peer.port, network.type
+    }
+
+    private void AddRpcRequestTags(ref TagList tags, Activity? activity, JsonRpcRequest request)
+    {
+        tags.Add("rpc.jsonrpc.request_id", request.Id.ToString());
+
+        if (request.Params is JsonElement je)
+        {
+            switch (request.Method)
+            {
+                case RequestMethods.ToolsCall:
+                case RequestMethods.PromptsGet:
+                    if (je.TryGetProperty("name", out var prop) && prop.ValueKind == JsonValueKind.String)
+                    {
+                        string name = prop.GetString()!;
+                        tags.Add("mcp.request.params.name", name);
+                        if (activity is not null)
+                        {
+                            activity.DisplayName = $"{request.Method}({name})";
+                        }
+                    }
+                    break;
+
+                case RequestMethods.ResourcesRead:
+                    if (je.TryGetProperty("uri", out prop) && prop.ValueKind == JsonValueKind.String)
+                    {
+                        string uri = prop.GetString()!;
+                        tags.Add("mcp.request.params.uri", uri);
+                        if (activity is not null)
+                        {
+                            activity.DisplayName = $"{request.Method}({uri})";
+                        }
+                    }
+                    break;
+            }
+        }
+    }
+
+    private void AddExceptionTags(ref TagList tags, Exception e)
+    {
+        tags.Add("error.type", e.GetType().FullName);
+        tags.Add("rpc.jsonrpc.error_code",
+            (e as McpClientException)?.ErrorCode is int clientError ? clientError :
+            (e as McpServerException)?.ErrorCode is int serverError ? serverError :
+            e is JsonException ? ErrorCodes.ParseError :
+            ErrorCodes.InternalError);
+    }
+
+    private static void FinalizeDiagnostics(
+        Activity? activity, long? startingTimestamp, Histogram<double> durationMetric, ref TagList tags)
+    {
+        try
+        {
+            if (startingTimestamp is not null)
+            {
+                durationMetric.Record(GetElapsed(startingTimestamp.Value).TotalSeconds, tags);
+            }
+
+            if (activity is not null)
+            {
+                foreach (var tag in tags)
+                {
+                    activity.AddTag(tag.Key, tag.Value);
+                }
+            }
+        }
+        finally
+        {
+            activity?.Dispose();
+        }
+    }
+
     public void Dispose()
     {
+        Histogram<double> durationMetric = _isServer ? s_serverSessionDuration : s_clientSessionDuration;
+        if (durationMetric.Enabled)
+        {
+            durationMetric.Record(GetElapsed(_sessionStartingTimestamp).TotalSeconds);
+        }
+
         // Complete all pending requests with cancellation
         foreach (var entry in _pendingRequests)
         {
             entry.Value.TrySetCanceled();
         }
+
         _pendingRequests.Clear();
     }
+
+#if !NET
+    private static readonly double s_timestampToTicks = TimeSpan.TicksPerSecond / (double)Stopwatch.Frequency;
+#endif
+
+    private static TimeSpan GetElapsed(long startingTimestamp) =>
+#if NET
+        Stopwatch.GetElapsedTime(startingTimestamp);
+#else
+        new((long)(s_timestampToTicks * (Stopwatch.GetTimestamp() - startingTimestamp)));
+#endif
 }

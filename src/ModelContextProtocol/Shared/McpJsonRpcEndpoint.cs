@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
+using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils;
 using System.Diagnostics.CodeAnalysis;
 
@@ -63,7 +64,7 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
     protected void StartSession(ITransport sessionTransport)
     {
         _sessionCts = new CancellationTokenSource();
-        _session = new McpSession(sessionTransport, EndpointName, _requestHandlers, _notificationHandlers, _logger);
+        _session = new McpSession(this is IMcpServer, sessionTransport, EndpointName, _requestHandlers, _notificationHandlers, _logger);
         MessageProcessingTask = _session.ProcessMessagesAsync(_sessionCts.Token);
     }
 
