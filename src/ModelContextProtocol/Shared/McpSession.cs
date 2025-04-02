@@ -45,7 +45,7 @@ internal sealed class McpSession : IDisposable
     /// </summary>
     private readonly ConcurrentDictionary<RequestId, CancellationTokenSource> _handlingRequests = new();
     private readonly ILogger _logger;
-    
+
     private readonly string _id = Guid.NewGuid().ToString("N");
     private long _nextRequestId;
 

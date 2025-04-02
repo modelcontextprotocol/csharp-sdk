@@ -9,7 +9,7 @@ using ModelContextProtocol.Utils.Json;
 namespace ModelContextProtocol.Server;
 
 /// <inheritdoc />
-internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
+internal sealed class McpServer : McpEndpoint, IMcpServer
 {
     private readonly EventHandler? _toolsChangedDelegate;
     private readonly EventHandler? _promptsChangedDelegate;

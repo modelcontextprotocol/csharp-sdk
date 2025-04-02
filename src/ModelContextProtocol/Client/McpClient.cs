@@ -10,7 +10,7 @@ using System.Text.Json;
 namespace ModelContextProtocol.Client;
 
 /// <inheritdoc/>
-internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
+internal sealed class McpClient : McpEndpoint, IMcpClient
 {
     private readonly IClientTransport _clientTransport;
     private readonly McpClientOptions _options;

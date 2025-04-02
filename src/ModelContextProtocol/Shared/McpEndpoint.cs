@@ -17,7 +17,7 @@ namespace ModelContextProtocol.Shared;
 /// This is especially true as a client represents a connection to one and only one server, and vice versa.
 /// Any multi-client or multi-server functionality should be implemented at a higher level of abstraction.
 /// </summary>
-internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
+internal abstract class McpEndpoint : IAsyncDisposable
 {
     private readonly RequestHandlers _requestHandlers = [];
     private readonly NotificationHandlers _notificationHandlers = [];
@@ -31,10 +31,10 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
     protected readonly ILogger _logger;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="McpJsonRpcEndpoint"/> class.
+    /// Initializes a new instance of the <see cref="McpEndpoint"/> class.
     /// </summary>
     /// <param name="loggerFactory">The logger factory.</param>
-    protected McpJsonRpcEndpoint(ILoggerFactory? loggerFactory = null)
+    protected McpEndpoint(ILoggerFactory? loggerFactory = null)
     {
         _logger = loggerFactory?.CreateLogger(GetType()) ?? NullLogger.Instance;
     }
@@ -64,7 +64,7 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
     /// <summary>
     /// Task that processes incoming messages from the transport.
     /// </summary>
-    protected Task? MessageProcessingTask { get; set; }
+    protected Task? MessageProcessingTask { get; private set; }
 
     [MemberNotNull(nameof(MessageProcessingTask))]
     protected void StartSession(ITransport sessionTransport)

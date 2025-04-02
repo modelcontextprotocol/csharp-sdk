@@ -28,11 +28,6 @@ public record McpServerConfig
     public string? Location { get; set; }
 
     /// <summary>
-    /// Arguments (if any) to pass to the executable.
-    /// </summary>
-    public string[]? Arguments { get; init; }
-
-    /// <summary>
     /// Additional transport-specific configuration.
     /// </summary>
     public Dictionary<string, string>? TransportOptions { get; init; }
