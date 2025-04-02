@@ -26,24 +26,33 @@ public static class McpEndpointRouteBuilderExtensions
     /// </summary>
     /// <param name="endpoints">The web application to attach MCP HTTP endpoints.</param>
     /// <param name="pattern">The route pattern prefix to map to.</param>
-    /// <param name="runSession">Provides an optional asynchronous callback for handling new MCP sessions.</param>
+    /// <param name="runSessionAsync">Provides an optional asynchronous callback for handling new MCP sessions.</param>
+    /// <param name="configureOptionsAsync">Configure per-session options.</param>
     /// <returns>Returns a builder for configuring additional endpoint conventions like authorization policies.</returns>
-    public static IEndpointConventionBuilder MapMcp(this IEndpointRouteBuilder endpoints, [StringSyntax("Route")] string pattern = "", Func<HttpContext, IMcpServer, CancellationToken, Task>? runSession = null)
-        => endpoints.MapMcp(RoutePatternFactory.Parse(pattern), runSession);
+    public static IEndpointConventionBuilder MapMcp(
+        this IEndpointRouteBuilder endpoints,
+        [StringSyntax("Route")] string pattern = "",
+        Func<HttpContext, IMcpServer, CancellationToken, Task>? runSessionAsync = null,
+        Func<HttpContext, McpServerOptions, CancellationToken, Task>? configureOptionsAsync = null)
+        => endpoints.MapMcp(RoutePatternFactory.Parse(pattern), runSessionAsync, configureOptionsAsync);
 
     /// <summary>
     /// Sets up endpoints for handling MCP HTTP Streaming transport.
     /// </summary>
     /// <param name="endpoints">The web application to attach MCP HTTP endpoints.</param>
     /// <param name="pattern">The route pattern prefix to map to.</param>
-    /// <param name="runSession">Provides an optional asynchronous callback for handling new MCP sessions.</param>
+    /// <param name="runSessionAsync">Provides an optional asynchronous callback for handling new MCP sessions.</param>
+    /// <param name="configureOptionsAsync">Configure per-session options.</param>
     /// <returns>Returns a builder for configuring additional endpoint conventions like authorization policies.</returns>
-    public static IEndpointConventionBuilder MapMcp(this IEndpointRouteBuilder endpoints, RoutePattern pattern, Func<HttpContext, IMcpServer, CancellationToken, Task>? runSession = null)
+    public static IEndpointConventionBuilder MapMcp(this IEndpointRouteBuilder endpoints, RoutePattern pattern,
+        Func<HttpContext, IMcpServer, CancellationToken, Task>? runSessionAsync = null,
+        Func<HttpContext, McpServerOptions, CancellationToken, Task>? configureOptionsAsync = null)
     {
         ConcurrentDictionary<string, SseResponseStreamTransport> _sessions = new(StringComparer.Ordinal);
 
         var loggerFactory = endpoints.ServiceProvider.GetRequiredService<ILoggerFactory>();
-        var mcpServerOptions = endpoints.ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>();
+        var optionsSnapshot = endpoints.ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>();
+        var optionsFactory = endpoints.ServiceProvider.GetRequiredService<IOptionsFactory<McpServerOptions>>();
 
         var routeGroup = endpoints.MapGroup(pattern);
 
@@ -62,6 +71,13 @@ public static class McpEndpointRouteBuilderExtensions
                 throw new Exception($"Unreachable given good entropy! Session with ID '{sessionId}' has already been created.");
             }
 
+            var options = optionsSnapshot.Value;
+            if (configureOptionsAsync is not null)
+            {
+                options = optionsFactory.Create(Options.DefaultName);
+                await configureOptionsAsync.Invoke(context, options, requestAborted);
+            }
+
             try
             {
                 // Make sure we disable all response buffering for SSE
@@ -69,12 +85,12 @@ public static class McpEndpointRouteBuilderExtensions
                 context.Features.GetRequiredFeature<IHttpResponseBodyFeature>().DisableBuffering();
 
                 var transportTask = transport.RunAsync(cancellationToken: requestAborted);
-                await using var server = McpServerFactory.Create(transport, mcpServerOptions.Value, loggerFactory, endpoints.ServiceProvider);
+                await using var server = McpServerFactory.Create(transport, options, loggerFactory, endpoints.ServiceProvider);
 
                 try
                 {
-                    runSession ??= RunSession;
-                    await runSession(context, server, requestAborted);
+                    runSessionAsync ??= RunSession;
+                    await runSessionAsync(context, server, requestAborted);
                 }
                 finally
                 {
