@@ -271,7 +271,7 @@ internal sealed class McpSession : IDisposable
 
     private void HandleMessageWithId(IJsonRpcMessage message, IJsonRpcMessageWithId messageWithId)
     {
-        if (messageWithId.Id.IsDefault)
+        if (messageWithId.Id.Id is null)
         {
             _logger.RequestHasInvalidId(EndpointName);
         }
@@ -331,7 +331,7 @@ internal sealed class McpSession : IDisposable
             null;
 
         // Set request ID
-        if (request.Id.IsDefault)
+        if (request.Id.Id is null)
         {
             request.Id = new RequestId($"{_id}-{Interlocked.Increment(ref _nextRequestId)}");
         }
@@ -491,7 +491,7 @@ internal sealed class McpSession : IDisposable
     private string CreateActivityName(string method) =>
         $"mcp.{(_isServer ? "server" : "client")}.{_transportKind}/{method}";
 
-    private string GetMethodName(IJsonRpcMessage message) =>
+    private static string GetMethodName(IJsonRpcMessage message) =>
         message switch
         {
             JsonRpcRequest request => request.Method,
@@ -511,7 +511,7 @@ internal sealed class McpSession : IDisposable
         // server.address, server.port, client.address, client.port, network.peer.address, network.peer.port, network.type
     }
 
-    private void AddRpcRequestTags(ref TagList tags, Activity? activity, JsonRpcRequest request)
+    private static void AddRpcRequestTags(ref TagList tags, Activity? activity, JsonRpcRequest request)
     {
         tags.Add("rpc.jsonrpc.request_id", request.Id.ToString());
 
@@ -547,7 +547,7 @@ internal sealed class McpSession : IDisposable
         }
     }
 
-    private void AddExceptionTags(ref TagList tags, Exception e)
+    private static void AddExceptionTags(ref TagList tags, Exception e)
     {
         tags.Add("error.type", e.GetType().FullName);
         tags.Add("rpc.jsonrpc.error_code",

@@ -31,9 +31,6 @@ public readonly struct RequestId : IEquatable<RequestId>
         _id = value;
     }
 
-    /// <summary>Gets whether the identifier is uninitialized.</summary>
-    public bool IsDefault => _id is null;
-
     /// <summary>Gets the underlying object for this id.</summary>
     /// <remarks>This will either be a <see cref="string"/>, a boxed <see cref="long"/>, or <see langword="null"/>.</remarks>
     public object? Id => _id;

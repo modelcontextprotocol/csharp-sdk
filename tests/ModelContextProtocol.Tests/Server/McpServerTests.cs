@@ -684,7 +684,7 @@ public class McpServerTests : LoggedTest
 
         var notification = await notificationReceived.Task;
         var progress = (ProgressNotification)notification.Params!;
-        Assert.Equal("\"abc\"", progress.ProgressToken.ToString());
+        Assert.Equal("abc", progress.ProgressToken.ToString());
         Assert.Equal(50, progress.Progress.Progress);
         Assert.Equal(100, progress.Progress.Total);
         Assert.Equal("Progress message", progress.Progress.Message);

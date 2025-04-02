@@ -640,7 +640,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         Assert.Equal(10, array.Length);
         for (int i = 0; i < array.Length; i++)
         {
-            Assert.Equal("\"abc123\"", array[i].ProgressToken.ToString());
+            Assert.Equal("abc123", array[i].ProgressToken.ToString());
             Assert.Equal(i, array[i].Progress.Progress);
             Assert.Equal(10, array[i].Progress.Total);
             Assert.Equal($"Progress {i}", array[i].Progress.Message);
