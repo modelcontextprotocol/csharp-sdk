@@ -12,15 +12,15 @@ namespace ModelContextProtocol.Protocol.Messages;
 [JsonConverter(typeof(Converter))]
 public readonly struct ProgressToken : IEquatable<ProgressToken>
 {
-    /// <summary>The id, either a string or a boxed long or null.</summary>
-    private readonly object? _id;
+    /// <summary>The token, either a string or a boxed long or null.</summary>
+    private readonly object? _token;
 
     /// <summary>Initializes a new instance of the <see cref="ProgressToken"/> with a specified value.</summary>
     /// <param name="value">The required ID value.</param>
     public ProgressToken(string value)
     {
         Throw.IfNull(value);
-        _id = value;
+        _token = value;
     }
 
     /// <summary>Initializes a new instance of the <see cref="ProgressToken"/> with a specified value.</summary>
@@ -28,28 +28,29 @@ public readonly struct ProgressToken : IEquatable<ProgressToken>
     public ProgressToken(long value)
     {
         // Box the long. Progress tokens are almost always strings in practice, so this should be rare.
-        _id = value;
+        _token = value;
     }
 
-    /// <summary>Gets whether the identifier is uninitialized.</summary>
-    public bool IsDefault => _id is null;
+    /// <summary>Gets the underlying object for this token.</summary>
+    /// <remarks>This will either be a <see cref="string"/>, a boxed <see cref="long"/>, or <see langword="null"/>.</remarks>
+    public object? Token => _token;
 
     /// <inheritdoc />
     public override string? ToString() =>
-        _id is string stringValue ? $"\"{stringValue}\"" :
-        _id is long longValue ? longValue.ToString(CultureInfo.InvariantCulture) :
+        _token is string stringValue ? $"{stringValue}" :
+        _token is long longValue ? longValue.ToString(CultureInfo.InvariantCulture) :
         null;
 
     /// <summary>
     /// Compares this ProgressToken to another ProgressToken.
     /// </summary>
-    public bool Equals(ProgressToken other) => Equals(_id, other._id);
+    public bool Equals(ProgressToken other) => Equals(_token, other._token);
 
     /// <inheritdoc />
     public override bool Equals(object? obj) => obj is ProgressToken other && Equals(other);
 
     /// <inheritdoc />
-    public override int GetHashCode() => _id?.GetHashCode() ?? 0;
+    public override int GetHashCode() => _token?.GetHashCode() ?? 0;
 
     /// <summary>
     /// Compares two ProgressTokens for equality.
@@ -83,7 +84,7 @@ public readonly struct ProgressToken : IEquatable<ProgressToken>
         {
             Throw.IfNull(writer);
 
-            switch (value._id)
+            switch (value._token)
             {
                 case string str:
                     writer.WriteStringValue(str);

@@ -8,9 +8,7 @@ using System.Runtime.CompilerServices;
 
 namespace ModelContextProtocol.Client;
 
-/// <summary>
-/// Provides extensions for operating on MCP clients.
-/// </summary>
+/// <summary>Provides extension methods for interacting with an <see cref="IMcpClient"/>.</summary>
 public static class McpClientExtensions
 {
     /// <summary>
@@ -531,17 +529,33 @@ public static class McpClientExtensions
     /// </summary>
     /// <param name="chatClient">The <see cref="IChatClient"/> with which to satisfy sampling requests.</param>
     /// <returns>The created handler delegate.</returns>
-    public static Func<CreateMessageRequestParams?, CancellationToken, Task<CreateMessageResult>> CreateSamplingHandler(this IChatClient chatClient)
+    public static Func<CreateMessageRequestParams?, IProgress<ProgressNotificationValue>, CancellationToken, Task<CreateMessageResult>> CreateSamplingHandler(
+        this IChatClient chatClient)
     {
         Throw.IfNull(chatClient);
 
-        return async (requestParams, cancellationToken) =>
+        return async (requestParams, progress, cancellationToken) =>
         {
             Throw.IfNull(requestParams);
 
             var (messages, options) = requestParams.ToChatClientArguments();
-            var response = await chatClient.GetResponseAsync(messages, options, cancellationToken).ConfigureAwait(false);
-            return response.ToCreateMessageResult();
+            var progressToken = requestParams.Meta?.ProgressToken;
+
+            List<ChatResponseUpdate> updates = [];
+            await foreach (var update in chatClient.GetStreamingResponseAsync(messages, options, cancellationToken))
+            {
+                updates.Add(update);
+
+                if (progressToken is not null)
+                {
+                    progress.Report(new()
+                    {
+                        Progress = updates.Count,
+                    });
+                }
+            }
+
+            return updates.ToChatResponse().ToCreateMessageResult();
         };
     }
 

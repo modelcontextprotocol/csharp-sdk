@@ -68,6 +68,9 @@ internal static partial class Log
     [LoggerMessage(Level = LogLevel.Error, Message = "Request failed for {endpointName} with method {method}: {message} ({code})")]
     internal static partial void RequestFailed(this ILogger logger, string endpointName, string method, string message, int code);
 
+    [LoggerMessage(Level = LogLevel.Information, Message = "Request '{requestId}' canceled via client notification with reason '{Reason}'.")]
+    internal static partial void RequestCanceled(this ILogger logger, RequestId requestId, string? reason);
+
     [LoggerMessage(Level = LogLevel.Information, Message = "Request response received payload for {endpointName}: {payload}")]
     internal static partial void RequestResponseReceivedPayload(this ILogger logger, string endpointName, string payload);
 
@@ -95,8 +98,8 @@ internal static partial class Log
     [LoggerMessage(Level = LogLevel.Information, Message = "Creating process for transport for {endpointName} with command {command}, arguments {arguments}, environment {environment}, working directory {workingDirectory}, shutdown timeout {shutdownTimeout}")]
     internal static partial void CreateProcessForTransport(this ILogger logger, string endpointName, string command, string? arguments, string environment, string workingDirectory, string shutdownTimeout);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "Transport for {endpointName} error: {data}")]
-    internal static partial void TransportError(this ILogger logger, string endpointName, string data);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Transport for {endpointName} received stderr log: {data}")]
+    internal static partial void ReadStderr(this ILogger logger, string endpointName, string data);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Transport process start failed for {endpointName}")]
     internal static partial void TransportProcessStartFailed(this ILogger logger, string endpointName);

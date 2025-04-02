@@ -1,5 +1,4 @@
 ﻿using Microsoft.Extensions.Logging;
-using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
@@ -12,29 +11,11 @@ namespace ModelContextProtocol.Server;
 /// <inheritdoc />
 internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
 {
-    private readonly IServerTransport? _serverTransport;
     private readonly EventHandler? _toolsChangedDelegate;
     private readonly EventHandler? _promptsChangedDelegate;
 
-    private ITransport? _sessionTransport;
     private string _endpointName;
-
-    /// <summary>
-    /// Creates a new instance of <see cref="McpServer"/>.
-    /// </summary>
-    /// <param name="serverTransport">Transport to use for the server that is ready to accept new sessions asynchronously.</param>
-    /// <param name="options">Configuration options for this server, including capabilities.
-    /// Make sure to accurately reflect exactly what capabilities the server supports and does not support.</param>
-    /// <param name="loggerFactory">Logger factory to use for logging</param>
-    /// <param name="serviceProvider">Optional service provider to use for dependency injection</param>
-    /// <exception cref="McpServerException"></exception>
-    public McpServer(IServerTransport serverTransport, McpServerOptions options, ILoggerFactory? loggerFactory, IServiceProvider? serviceProvider)
-        : this(options, loggerFactory, serviceProvider)
-    {
-        Throw.IfNull(serverTransport);
-
-        _serverTransport = serverTransport;
-    }
+    private int _started;
 
     /// <summary>
     /// Creates a new instance of <see cref="McpServer"/>.
@@ -46,25 +27,9 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
     /// <param name="serviceProvider">Optional service provider to use for dependency injection</param>
     /// <exception cref="McpServerException"></exception>
     public McpServer(ITransport transport, McpServerOptions options, ILoggerFactory? loggerFactory, IServiceProvider? serviceProvider)
-        : this(options, loggerFactory, serviceProvider)
-    {
-        Throw.IfNull(transport);
-
-        _sessionTransport = transport;
-        InitializeSession(transport);
-    }
-
-    /// <summary>
-    /// Creates a new instance of <see cref="McpServer"/>.
-    /// </summary>
-    /// <param name="options">Configuration options for this server, including capabilities. 
-    /// Make sure to accurately reflect exactly what capabilities the server supports and does not support.</param>
-    /// <param name="loggerFactory">Logger factory to use for logging</param>
-    /// <param name="serviceProvider">Optional service provider to use for dependency injection</param>
-    /// <exception cref="McpServerException"></exception>
-    private McpServer(McpServerOptions options, ILoggerFactory? loggerFactory, IServiceProvider? serviceProvider)
         : base(loggerFactory)
     {
+        Throw.IfNull(transport);
         Throw.IfNull(options);
 
         ServerOptions = options;
@@ -102,13 +67,14 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
         });
 
         SetToolsHandler(options);
-
         SetInitializeHandler(options);
         SetCompletionHandler(options);
         SetPingHandler();
         SetPromptsHandler(options);
         SetResourcesHandler(options);
         SetSetLoggingLevelHandler(options);
+
+        StartSession(transport);
     }
 
     public ServerCapabilities? ServerCapabilities { get; set; }
@@ -128,37 +94,19 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
     /// <inheritdoc />
     public override string EndpointName => _endpointName;
 
-    public async Task AcceptSessionAsync(CancellationToken cancellationToken = default)
-    {
-        // Below is effectively an assertion. The McpServerFactory should only use this with the IServerTransport constructor.
-        Throw.IfNull(_serverTransport);
-
-        try
-        {
-            _sessionTransport = await _serverTransport.AcceptAsync(cancellationToken).ConfigureAwait(false);
-
-            if (_sessionTransport is null)
-            {
-                throw new McpServerException("The server transport closed before a client started a new session.");
-            }
-
-            InitializeSession(_sessionTransport);
-        }
-        catch (Exception e)
-        {
-            _logger.ServerInitializationError(EndpointName, e);
-            throw;
-        }
-    }
-
     /// <inheritdoc />
     public async Task RunAsync(CancellationToken cancellationToken = default)
     {
+        if (Interlocked.Exchange(ref _started, 1) != 0)
+        {
+            throw new InvalidOperationException($"{nameof(RunAsync)} must only be called once.");
+        }
+
         try
         {
-            // Start processing messages
-            StartSession(fullSessionCancellationToken: cancellationToken);
-            await MessageProcessingTask.ConfigureAwait(false);
+            using var _ = cancellationToken.Register(static s => ((McpServer)s!).CancelSession(), this);
+            // The McpServer ctor always calls StartSession, so MessageProcessingTask is always set.
+            await MessageProcessingTask!.ConfigureAwait(false);
         }
         finally
         {
@@ -178,18 +126,7 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
             prompts.Changed -= _promptsChangedDelegate;
         }
 
-        try
-        {
-            await base.DisposeUnsynchronizedAsync().ConfigureAwait(false);
-        }
-        finally
-        {
-            if (_serverTransport is not null && _sessionTransport is not null)
-            {
-                // We created the _sessionTransport from the _serverTransport, so we own it.
-                await _sessionTransport.DisposeAsync().ConfigureAwait(false);
-            }
-        }
+        await base.DisposeUnsynchronizedAsync().ConfigureAwait(false);
     }
 
     private void SetPingHandler()
@@ -208,7 +145,7 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
 
                 // Use the ClientInfo to update the session EndpointName for logging.
                 _endpointName = $"{_endpointName}, Client ({ClientInfo?.Name} {ClientInfo?.Version})";
-                GetSessionOrThrow().EndpointName = EndpointName;
+                GetSessionOrThrow().EndpointName = _endpointName;
 
                 return Task.FromResult(new InitializeResult()
                 {
@@ -281,41 +218,26 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
             throw new McpServerException("ListPrompts and GetPrompt handlers should be specified together.");
         }
 
-        // Handle tools provided via DI.
+        // Handle prompts provided via DI.
         if (prompts is { IsEmpty: false })
         {
+            // Synthesize the handlers, making sure a PromptsCapability is specified.
             var originalListPromptsHandler = listPromptsHandler;
-            var originalGetPromptHandler = getPromptHandler;
-
-            // Synthesize the handlers, making sure a ToolsCapability is specified.
             listPromptsHandler = async (request, cancellationToken) =>
             {
-                ListPromptsResult result = new();
-                foreach (McpServerPrompt prompt in prompts)
-                {
-                    result.Prompts.Add(prompt.ProtocolPrompt);
-                }
+                ListPromptsResult result = originalListPromptsHandler is not null ?
+                    await originalListPromptsHandler(request, cancellationToken).ConfigureAwait(false) :
+                    new();
 
-                if (originalListPromptsHandler is not null)
+                if (request.Params?.Cursor is null)
                 {
-                    string? nextCursor = null;
-                    do
-                    {
-                        ListPromptsResult extraResults = await originalListPromptsHandler(request, cancellationToken).ConfigureAwait(false);
-                        result.Prompts.AddRange(extraResults.Prompts);
-
-                        nextCursor = extraResults.NextCursor;
-                        if (nextCursor is not null)
-                        {
-                            request = request with { Params = new() { Cursor = nextCursor } };
-                        }
-                    }
-                    while (nextCursor is not null);
+                    result.Prompts.AddRange(prompts.Select(t => t.ProtocolPrompt));
                 }
 
                 return result;
             };
 
+            var originalGetPromptHandler = getPromptHandler;
             getPromptHandler = (request, cancellationToken) =>
             {
                 if (request.Params is null ||
@@ -383,38 +305,23 @@ internal sealed class McpServer : McpJsonRpcEndpoint, IMcpServer
         // Handle tools provided via DI.
         if (tools is { IsEmpty: false })
         {
-            var originalListToolsHandler = listToolsHandler;
-            var originalCallToolHandler = callToolHandler;
-
             // Synthesize the handlers, making sure a ToolsCapability is specified.
+            var originalListToolsHandler = listToolsHandler;
             listToolsHandler = async (request, cancellationToken) =>
             {
-                ListToolsResult result = new();
-                foreach (McpServerTool tool in tools)
-                {
-                    result.Tools.Add(tool.ProtocolTool);
-                }
+                ListToolsResult result = originalListToolsHandler is not null ?
+                    await originalListToolsHandler(request, cancellationToken).ConfigureAwait(false) :
+                    new();
 
-                if (originalListToolsHandler is not null)
+                if (request.Params?.Cursor is null)
                 {
-                    string? nextCursor = null;
-                    do
-                    {
-                        ListToolsResult extraResults = await originalListToolsHandler(request, cancellationToken).ConfigureAwait(false);
-                        result.Tools.AddRange(extraResults.Tools);
-
-                        nextCursor = extraResults.NextCursor;
-                        if (nextCursor is not null)
-                        {
-                            request = request with { Params = new() { Cursor = nextCursor } };
-                        }
-                    }
-                    while (nextCursor is not null);
+                    result.Tools.AddRange(tools.Select(t => t.ProtocolTool));
                 }
 
                 return result;
             };
 
+            var originalCallToolHandler = callToolHandler;
             callToolHandler = (request, cancellationToken) =>
             {
                 if (request.Params is null ||

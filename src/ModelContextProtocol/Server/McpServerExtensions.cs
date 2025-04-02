@@ -7,7 +7,7 @@ using System.Text;
 
 namespace ModelContextProtocol.Server;
 
-/// <inheritdoc />
+/// <summary>Provides extension methods for interacting with an <see cref="IMcpServer"/>.</summary>
 public static class McpServerExtensions
 {
     /// <summary>

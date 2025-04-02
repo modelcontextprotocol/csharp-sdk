@@ -2,7 +2,6 @@ using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Server;
-using ModelContextProtocol.Tests.Transport;
 using ModelContextProtocol.Tests.Utils;
 using System.IO.Pipelines;
 
@@ -23,7 +22,7 @@ public class McpClientExtensionsTests : LoggedTest
         sc.AddSingleton(LoggerFactory);
         sc.AddMcpServer().WithStdioServerTransport();
         // Call WithStdioServerTransport to get the IMcpServer registration, then overwrite default transport with a pipe transport.
-        sc.AddSingleton<ITransport>(new StdioServerTransport("TestServer", _clientToServerPipe.Reader.AsStream(), _serverToClientPipe.Writer.AsStream()));
+        sc.AddSingleton<ITransport>(new StreamServerTransport(_clientToServerPipe.Reader.AsStream(), _serverToClientPipe.Writer.AsStream()));
         for (int f = 0; f < 10; f++)
         {
             string name = $"Method{f}";
@@ -53,19 +52,17 @@ public class McpClientExtensionsTests : LoggedTest
 
     private async Task<IMcpClient> CreateMcpClientForServer()
     {
-        var serverStdinWriter = new StreamWriter(_clientToServerPipe.Writer.AsStream());
-        var serverStdoutReader = new StreamReader(_serverToClientPipe.Reader.AsStream());
-
-        var serverConfig = new McpServerConfig()
-        {
-            Id = "TestServer",
-            Name = "TestServer",
-            TransportType = "ignored",
-        };
-
         return await McpClientFactory.CreateAsync(
-            serverConfig,
-            createTransportFunc: (_, _) => new StreamClientTransport(serverStdinWriter, serverStdoutReader, LoggerFactory),
+            new McpServerConfig()
+            {
+                Id = "TestServer",
+                Name = "TestServer",
+                TransportType = "ignored",
+            },
+            createTransportFunc: (_, _) => new StreamClientTransport(
+                serverInput: _clientToServerPipe.Writer.AsStream(),
+                serverOutput: _serverToClientPipe.Reader.AsStream(),
+                LoggerFactory),
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
     }

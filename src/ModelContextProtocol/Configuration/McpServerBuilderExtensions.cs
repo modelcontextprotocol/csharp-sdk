@@ -176,7 +176,7 @@ public static partial class McpServerBuilderExtensions
     }
 
     /// <summary>
-    /// Adds types marked with the <see cref="McpServerToolTypeAttribute"/> attribute from the given assembly as prompts to the server.
+    /// Adds types marked with the <see cref="McpServerPromptTypeAttribute"/> attribute from the given assembly as prompts to the server.
     /// </summary>
     /// <param name="builder">The builder instance.</param>
     /// <param name="promptAssembly">The assembly to load the types from. Null to get the current assembly</param>
@@ -190,7 +190,7 @@ public static partial class McpServerBuilderExtensions
 
         return builder.WithPrompts(
             from t in promptAssembly.GetTypes()
-            where t.GetCustomAttribute<McpServerToolTypeAttribute>() is not null
+            where t.GetCustomAttribute<McpServerPromptTypeAttribute>() is not null
             select t);
     }
     #endregion
@@ -337,7 +337,7 @@ public static partial class McpServerBuilderExtensions
         Throw.IfNull(builder);
 
         builder.Services.AddSingleton<ITransport, StdioServerTransport>();
-        builder.Services.AddHostedService<McpServerSingleSessionHostedService>();
+        builder.Services.AddHostedService<StdioMcpServerHostedService>();
 
         builder.Services.AddSingleton(services =>
         {
@@ -348,19 +348,6 @@ public static partial class McpServerBuilderExtensions
             return McpServerFactory.Create(serverTransport, options.Value, loggerFactory, services);
         });
 
-        return builder;
-    }
-
-    /// <summary>
-    /// Adds a server transport that uses SSE via a HttpListener for communication.
-    /// </summary>
-    /// <param name="builder">The builder instance.</param>
-    public static IMcpServerBuilder WithHttpListenerSseServerTransport(this IMcpServerBuilder builder)
-    {
-        Throw.IfNull(builder);
-
-        builder.Services.AddSingleton<IServerTransport, HttpListenerSseServerTransport>();
-        builder.Services.AddHostedService<McpServerMultiSessionHostedService>();
         return builder;
     }
     #endregion

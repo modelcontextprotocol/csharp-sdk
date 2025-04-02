@@ -33,6 +33,8 @@
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="$(MicrosoftExtensionsVersion)" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageVersion Include="Moq" Version="4.20.72" />
+    <PackageVersion Include="OpenTelemetry" Version="1.11.2" />
+    <PackageVersion Include="OpenTelemetry.Exporter.InMemory" Version="1.11.2" />
     <PackageVersion Include="Serilog.Extensions.Hosting" Version="9.0.0" />
     <PackageVersion Include="Serilog.Extensions.Logging" Version="9.0.0" />
     <PackageVersion Include="Serilog.Sinks.Console" Version="6.0.0" />

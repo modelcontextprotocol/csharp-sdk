@@ -50,6 +50,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QuickstartWeatherServer", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QuickstartClient", "samples\QuickstartClient\QuickstartClient.csproj", "{0D1552DC-E6ED-4AAC-5562-12F8352F46AA}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModelContextProtocol.AspNetCore", "src\ModelContextProtocol.AspNetCore\ModelContextProtocol.AspNetCore.csproj", "{37B6A5E0-9995-497D-8B43-3BC6870CC716}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -92,6 +94,10 @@ Global
 		{0D1552DC-E6ED-4AAC-5562-12F8352F46AA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0D1552DC-E6ED-4AAC-5562-12F8352F46AA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0D1552DC-E6ED-4AAC-5562-12F8352F46AA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{37B6A5E0-9995-497D-8B43-3BC6870CC716}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{37B6A5E0-9995-497D-8B43-3BC6870CC716}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{37B6A5E0-9995-497D-8B43-3BC6870CC716}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{37B6A5E0-9995-497D-8B43-3BC6870CC716}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -107,6 +113,7 @@ Global
 		{0C6D0512-D26D-63D3-5019-C5F7A657B28C} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{4653EB0C-8FC0-98F4-E9C8-220EDA7A69DF} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{0D1552DC-E6ED-4AAC-5562-12F8352F46AA} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{37B6A5E0-9995-497D-8B43-3BC6870CC716} = {A2F1F52A-9107-4BF8-8C3F-2F6670E7D0AD}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {384A3888-751F-4D75-9AE5-587330582D89}

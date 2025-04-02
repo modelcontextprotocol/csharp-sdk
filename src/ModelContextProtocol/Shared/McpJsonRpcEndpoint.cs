@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
+using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils;
 using System.Diagnostics.CodeAnalysis;
 
@@ -22,7 +23,6 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
 
     private McpSession? _session;
     private CancellationTokenSource? _sessionCts;
-    private int _started;
 
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private bool _disposed;
@@ -60,22 +60,15 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
     /// </summary>
     protected Task? MessageProcessingTask { get; set; }
 
-    protected void InitializeSession(ITransport sessionTransport)
-    {
-        _session = new McpSession(sessionTransport, EndpointName, _requestHandlers, _notificationHandlers, _logger);
-    }
-
     [MemberNotNull(nameof(MessageProcessingTask))]
-    protected void StartSession(CancellationToken fullSessionCancellationToken = default)
+    protected void StartSession(ITransport sessionTransport)
     {
-        if (Interlocked.Exchange(ref _started, 1) != 0)
-        {
-            throw new InvalidOperationException("The MCP session has already stared.");
-        }
-
-        _sessionCts = CancellationTokenSource.CreateLinkedTokenSource(fullSessionCancellationToken);
-        MessageProcessingTask = GetSessionOrThrow().ProcessMessagesAsync(_sessionCts.Token);
+        _sessionCts = new CancellationTokenSource();
+        _session = new McpSession(this is IMcpServer, sessionTransport, EndpointName, _requestHandlers, _notificationHandlers, _logger);
+        MessageProcessingTask = _session.ProcessMessagesAsync(_sessionCts.Token);
     }
+
+    protected void CancelSession() => _sessionCts?.Cancel();
 
     public async ValueTask DisposeAsync()
     {
@@ -98,29 +91,34 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
     {
         _logger.CleaningUpEndpoint(EndpointName);
 
-        if (_sessionCts is not null)
+        try
         {
-            await _sessionCts.CancelAsync().ConfigureAwait(false);
-        }
+            if (_sessionCts is not null)
+            {
+                await _sessionCts.CancelAsync().ConfigureAwait(false);
+            }
 
-        if (MessageProcessingTask is not null)
+            if (MessageProcessingTask is not null)
+            {
+                try
+                {
+                    await MessageProcessingTask.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Ignore cancellation
+                }
+            }
+        }
+        finally
         {
-            try
-            {
-                await MessageProcessingTask.ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                // Ignore cancellation
-            }
+            _session?.Dispose();
+            _sessionCts?.Dispose();
         }
-
-        _session?.Dispose();
-        _sessionCts?.Dispose();
 
         _logger.EndpointCleanedUp(EndpointName);
     }
 
     protected McpSession GetSessionOrThrow()
-        => _session ?? throw new InvalidOperationException($"This should be unreachable from public API! Call {nameof(InitializeSession)} before sending messages.");
+        => _session ?? throw new InvalidOperationException($"This should be unreachable from public API! Call {nameof(StartSession)} before sending messages.");
 }

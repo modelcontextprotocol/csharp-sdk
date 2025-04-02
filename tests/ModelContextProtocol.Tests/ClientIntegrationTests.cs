@@ -1,20 +1,20 @@
-﻿using ModelContextProtocol.Client;
-using Microsoft.Extensions.AI;
-using OpenAI;
-using ModelContextProtocol.Protocol.Types;
+﻿using Microsoft.Extensions.AI;
+using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Messages;
-using System.Text.Json;
 using ModelContextProtocol.Protocol.Transport;
+using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Tests.Utils;
+using OpenAI;
 using System.Text.Encodings.Web;
-using System.Text.Json.Serialization.Metadata;
+using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Tests;
 
 public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegrationTestFixture>
 {
-    private static readonly string? s_openAIKey = Environment.GetEnvironmentVariable("AI:OpenAI:ApiKey")!;
+    private static readonly string? s_openAIKey = Environment.GetEnvironmentVariable("AI:OpenAI:ApiKey");
 
     public static bool NoOpenAIKeySet => string.IsNullOrWhiteSpace(s_openAIKey);
 
@@ -355,7 +355,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
             {
                 Sampling = new()
                 {
-                    SamplingHandler = (_, _) =>
+                    SamplingHandler = (_, _, _) =>
                     {
                         samplingHandlerCalls++;
                         return Task.FromResult(new CreateMessageResult
@@ -511,6 +511,9 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
     [Fact(Skip = "Requires OpenAI API Key", SkipWhen = nameof(NoOpenAIKeySet))]
     public async Task SamplingViaChatClient_RequestResponseProperlyPropagated()
     {
+        var samplingHandler = new OpenAIClient(s_openAIKey)
+            .AsChatClient("gpt-4o-mini")
+            .CreateSamplingHandler();
         await using var client = await McpClientFactory.CreateAsync(_fixture.EverythingServerConfig, new()
         {
             ClientInfo = new() { Name = nameof(SamplingViaChatClient_RequestResponseProperlyPropagated), Version = "1.0.0" },
@@ -518,7 +521,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
             {
                 Sampling = new()
                 {
-                    SamplingHandler = new OpenAIClient(s_openAIKey).AsChatClient("gpt-4o-mini").CreateSamplingHandler(),
+                    SamplingHandler = samplingHandler,
                 },
             },
         }, cancellationToken: TestContext.Current.CancellationToken);
