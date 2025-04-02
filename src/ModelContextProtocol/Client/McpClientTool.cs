@@ -29,6 +29,7 @@ public sealed class McpClientTool : AIFunction
     /// <returns>Copy of this McpClientTool with the provided name</returns>
     public McpClientTool WithName(string name)
     {
+        Throw.IfNull(name);
         return new McpClientTool(_client, ProtocolTool, name, _description);
     }
 
