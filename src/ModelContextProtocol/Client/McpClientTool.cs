@@ -1,5 +1,6 @@
 ﻿using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Utils.Json;
+using ModelContextProtocol.Utils;
 using Microsoft.Extensions.AI;
 using System.Text.Json;
 
@@ -17,7 +18,7 @@ public sealed class McpClientTool : AIFunction
         _client = client;
         ProtocolTool = tool;
         _name = name ?? tool.Name;
-        _description = description ?? tool.Description;
+        _description = description ?? tool.Description ?? string.Empty;
     }
 
     /// <summary>
@@ -50,10 +51,10 @@ public sealed class McpClientTool : AIFunction
     public Tool ProtocolTool { get; }
 
     /// <inheritdoc/>
-    public override string Name => _name!;
+    public override string Name => _name;
 
     /// <inheritdoc/>
-    public override string Description => _description ?? string.Empty;
+    public override string Description => _description;
 
     /// <inheritdoc/>
     public override JsonElement JsonSchema => ProtocolTool.InputSchema;
