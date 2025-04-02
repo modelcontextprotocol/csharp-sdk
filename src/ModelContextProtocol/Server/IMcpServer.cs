@@ -1,11 +1,13 @@
 ﻿using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Shared;
+using ModelContextProtocol.Protocol.Messages;
 
 namespace ModelContextProtocol.Server;
 
 /// <summary>
 /// Represents a server that can communicate with a client using the MCP protocol.
 /// </summary>
-public interface IMcpServer : IMcpEndpoint
+public interface IMcpServer : IMcpSession
 {
     /// <summary>
     /// Gets the capabilities supported by the client.

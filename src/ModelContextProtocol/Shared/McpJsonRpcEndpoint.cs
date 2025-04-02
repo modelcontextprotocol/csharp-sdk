@@ -15,11 +15,8 @@ namespace ModelContextProtocol.Shared;
 /// This is especially true as a client represents a connection to one and only one server, and vice versa.
 /// Any multi-client or multi-server functionality should be implemented at a higher level of abstraction.
 /// </summary>
-internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
+internal abstract class McpJsonRpcEndpoint : IMcpSession
 {
-    private readonly RequestHandlers _requestHandlers = [];
-    private readonly NotificationHandlers _notificationHandlers = [];
-
     private McpSession? _session;
     private CancellationTokenSource? _sessionCts;
     private int _started;
@@ -27,26 +24,46 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private bool _disposed;
 
+    /// <summary>
+    /// The logger for this endpoint.
+    /// </summary>
     protected readonly ILogger _logger;
+
+    private readonly RequestHandlers _requestHandlers;
+    private readonly NotificationHandlers _notificationHandlers;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="McpJsonRpcEndpoint"/> class.
     /// </summary>
     /// <param name="loggerFactory">The logger factory.</param>
-    protected McpJsonRpcEndpoint(ILoggerFactory? loggerFactory = null)
+    /// <param name="requestHandlers">The request handlers.</param>
+    /// <param name="notificationHandlers">The notification handlers.</param>
+    protected McpJsonRpcEndpoint(
+        ILoggerFactory? loggerFactory = null,
+        RequestHandlers? requestHandlers = null,
+        NotificationHandlers? notificationHandlers = null)
     {
         _logger = loggerFactory?.CreateLogger(GetType()) ?? NullLogger.Instance;
+        _requestHandlers = requestHandlers ?? [];
+        _notificationHandlers = notificationHandlers ?? [];
     }
 
-    protected void SetRequestHandler<TRequest, TResponse>(string method, Func<TRequest?, CancellationToken, Task<TResponse>> handler)
-        => _requestHandlers.Set(method, handler);
-
-    public void AddNotificationHandler(string method, Func<JsonRpcNotification, Task> handler)
-        => _notificationHandlers.Add(method, handler);
-
+    /// <summary>
+    /// Sends a request over the protocol
+    /// </summary>
+    /// <typeparam name="TResult">The MCP Response type.</typeparam>
+    /// <param name="request">The request instance</param>
+    /// <param name="cancellationToken">The token for cancellation.</param>
+    /// <returns>The MCP response.</returns>
     public Task<TResult> SendRequestAsync<TResult>(JsonRpcRequest request, CancellationToken cancellationToken = default) where TResult : class
         => GetSessionOrThrow().SendRequestAsync<TResult>(request, cancellationToken);
 
+    /// <summary>
+    /// Sends a notification over the protocol.
+    /// </summary>
+    /// <param name="message">The message to send.</param>
+    /// <param name="cancellationToken">The token for cancellation.</param>
+    /// <returns>A task representing the completion of the operation.</returns>
     public Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
         => GetSessionOrThrow().SendMessageAsync(message, cancellationToken);
 
@@ -60,6 +77,12 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
     /// </summary>
     protected Task? MessageProcessingTask { get; set; }
 
+    /// <summary>
+    /// Starts the session with the given transport.
+    /// </summary>
+    /// <param name="sessionTransport">The transport to use for the session.</param>
+    /// <param name="fullSessionCancellationToken">A cancellation token for the full session.</param>
+    /// <exception cref="InvalidOperationException">Thrown if the session has already started.</exception>
     [MemberNotNull(nameof(MessageProcessingTask))]
     protected void StartSession(ITransport sessionTransport, CancellationToken fullSessionCancellationToken = default)
     {
@@ -69,10 +92,14 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
         }
 
         _sessionCts = CancellationTokenSource.CreateLinkedTokenSource(fullSessionCancellationToken);
-        _session = new McpSession(sessionTransport, EndpointName, _requestHandlers, _notificationHandlers, _logger);
+        _session = new McpSession(sessionTransport, EndpointName, [], [], _logger);
         MessageProcessingTask = _session.ProcessMessagesAsync(_sessionCts.Token);
     }
 
+    /// <summary>
+    /// Disposes the endpoint and releases resources.
+    /// </summary>
+    /// <returns>A task representing the completion of the operation.</returns>
     public async ValueTask DisposeAsync()
     {
         using var _ = await _disposeLock.LockAsync().ConfigureAwait(false);
@@ -115,13 +142,19 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
         }
         finally
         {
-            _session?.Dispose();
+            var valueTask = _session?.DisposeAsync().ConfigureAwait(false);
+            if (valueTask is not null) await valueTask.Value;
             _sessionCts?.Dispose();
         }
 
         _logger.EndpointCleanedUp(EndpointName);
     }
 
+    /// <summary>
+    /// Gets the current session.
+    /// </summary>
+    /// <returns>The current session.</returns>
+    /// <exception cref="InvalidOperationException">Thrown if the session is not started.</exception>
     protected McpSession GetSessionOrThrow()
         => _session ?? throw new InvalidOperationException($"This should be unreachable from public API! Call {nameof(StartSession)} before sending messages.");
 }

@@ -14,7 +14,7 @@ namespace ModelContextProtocol.Shared;
 /// <summary>
 /// Class for managing an MCP JSON-RPC session. This covers both MCP clients and servers.
 /// </summary>
-internal sealed class McpSession : IDisposable
+internal sealed class McpSession : IMcpSession, IAsyncDisposable
 {
     private readonly ITransport _transport;
     private readonly RequestHandlers _requestHandlers;
@@ -258,6 +258,18 @@ internal sealed class McpSession : IDisposable
     /// <returns>A task containing the server's response.</returns>
     public async Task<TResult> SendRequestAsync<TResult>(JsonRpcRequest request, CancellationToken cancellationToken) where TResult : class
     {
+        using var registration = cancellationToken.Register(async () =>
+        {
+            try
+            {
+                await this.NotifyCancelAsync(request.Id).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "An error occurred while notifying cancellation for request {RequestId}.", request.Id);
+            }
+        });
+
         if (!_transport.IsConnected)
         {
             _logger.EndpointNotConnected(EndpointName);
@@ -380,7 +392,11 @@ internal sealed class McpSession : IDisposable
         }
     }
 
-    public void Dispose()
+    /// <summary>
+    /// Asynchronously releases resources used by the session.
+    /// </summary>
+    /// <returns>A task that represents the asynchronous dispose operation.</returns>
+    public async ValueTask DisposeAsync()
     {
         // Complete all pending requests with cancellation
         foreach (var entry in _pendingRequests)
@@ -388,5 +404,22 @@ internal sealed class McpSession : IDisposable
             entry.Value.TrySetCanceled();
         }
         _pendingRequests.Clear();
+
+        // Dispose any remaining cancellation token sources
+        foreach (var cts in _handlingRequests.Values)
+        {
+            cts.Dispose();
+        }
+        _handlingRequests.Clear();
+        
+        // Asynchronously dispose the transport if it's IAsyncDisposable
+        if (_transport is IAsyncDisposable asyncDisposableTransport)
+        {
+            await asyncDisposableTransport.DisposeAsync().ConfigureAwait(false);
+        }
+        else if (_transport is IDisposable disposableTransport)
+        {
+            disposableTransport.Dispose();
+        }
     }
 }

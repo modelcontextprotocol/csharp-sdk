@@ -3,6 +3,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Tests.Utils;
+using ModelContextProtocol.Protocol.Messages;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Tests;
@@ -198,13 +199,23 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
     public async Task ConnectAndReceiveNotification_InMemoryServer()
     {
         // Arrange
+        TaskCompletionSource<string?> receivedNotification = new();
+        Task HandleTestNotification(JsonRpcNotification args)
+        {
+            var msg = ((JsonElement?)args.Params)?.GetProperty("message").GetString();
+            receivedNotification.SetResult(msg);
+            return Task.CompletedTask;
+        }
         await using InMemoryTestSseServer server = new(logger: LoggerFactory.CreateLogger<InMemoryTestSseServer>());
         await server.StartAsync();
 
-
         var defaultOptions = new McpClientOptions
         {
-            ClientInfo = new() { Name = "IntegrationTestClient", Version = "1.0.0" }
+            ClientInfo = new() { Name = "IntegrationTestClient", Version = "1.0.0" },
+            NotificationHandlers = new Dictionary<string, List<Func<JsonRpcNotification, Task>>>()
+            {
+                ["test/notification"] = [HandleTestNotification],
+            }
         };
 
         var defaultConfig = new McpServerConfig
@@ -225,15 +236,6 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
 
         // Wait for SSE connection to be established
         await server.WaitForConnectionAsync(TimeSpan.FromSeconds(10));
-
-        var receivedNotification = new TaskCompletionSource<string?>();
-        client.AddNotificationHandler("test/notification", (args) =>
-            {
-                var msg = ((JsonElement?)args.Params)?.GetProperty("message").GetString();
-                receivedNotification.SetResult(msg);
-
-                return Task.CompletedTask;
-            });
 
         // Act
         await server.SendTestNotificationAsync("Hello from server!");

@@ -1,11 +1,12 @@
 ﻿using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Shared;
 
 namespace ModelContextProtocol.Client;
 
 /// <summary>
 /// Represents an instance of an MCP client connecting to a specific server.
 /// </summary>
-public interface IMcpClient : IMcpEndpoint
+public interface IMcpClient : IMcpSession
 {
     /// <summary>
     /// Gets the capabilities supported by the server.

@@ -24,14 +24,18 @@ public class McpServerTests : LoggedTest
         _serviceProvider = new ServiceCollection().BuildServiceProvider();
     }
 
-    private static McpServerOptions CreateOptions(ServerCapabilities? capabilities = null)
+    private static McpServerOptions CreateOptions(
+        ServerCapabilities? capabilities = null,
+        Dictionary<string, List<Func<JsonRpcNotification, Task>>>? notificationHandlers = null)
     {
+        notificationHandlers ??= [];
         return new McpServerOptions
         {
             ServerInfo = new Implementation { Name = "TestServer", Version = "1.0" },
             ProtocolVersion = "2024",
             InitializationTimeout = TimeSpan.FromSeconds(30),
             Capabilities = capabilities,
+            NotificationHandlers = new(notificationHandlers),
         };
     }
 
@@ -225,8 +229,8 @@ public class McpServerTests : LoggedTest
             method: RequestMethods.CompletionComplete,
             configureOptions: options =>
             {
-                options.GetCompletionHandler = (request, ct) =>
-                    Task.FromResult(new CompleteResult
+                options.RequestHandlers[RequestMethods.CompletionComplete] =
+                    async (request, ct) => await Task.FromResult(new CompleteResult
                     {
                         Completion = new()
                         {
@@ -640,18 +644,20 @@ public class McpServerTests : LoggedTest
     public async Task NotifyProgress_Should_Be_Handled()
     {
         await using TestServerTransport transport = new();
-        var options = CreateOptions();
-
-        var notificationReceived = new TaskCompletionSource<JsonRpcNotification>();
-
-        var server = McpServerFactory.Create(transport, options, LoggerFactory, _serviceProvider);
-        server.AddNotificationHandler(NotificationMethods.ProgressNotification, notification =>
+        TaskCompletionSource<JsonRpcNotification> notificationReceived = new();
+        var token = TestContext.Current.CancellationToken;
+        
+        Task SetNotificationHandler(JsonRpcNotification notification)
         {
             notificationReceived.SetResult(notification);
             return Task.CompletedTask;
+        }
+        var options = CreateOptions(notificationHandlers: new Dictionary<string, List<Func<JsonRpcNotification, Task>>>()
+        {
+            { NotificationMethods.ProgressNotification, [SetNotificationHandler] },
         });
-
-        Task serverTask = server.RunAsync(TestContext.Current.CancellationToken);
+        var server = McpServerFactory.Create(transport, options, LoggerFactory, _serviceProvider);
+        Task serverTask = server.RunAsync(token);
 
         await transport.SendMessageAsync(new JsonRpcNotification
         {
@@ -666,14 +672,16 @@ public class McpServerTests : LoggedTest
                     Message = "Progress message",
                 },
             },
-        }, TestContext.Current.CancellationToken);
+        }, token);
 
         var notification = await notificationReceived.Task;
         var progress = (ProgressNotification)notification.Params!;
         Assert.Equal("\"abc\"", progress.ProgressToken.ToString());
-        Assert.Equal(50, progress.Progress.Progress);
-        Assert.Equal(100, progress.Progress.Total);
-        Assert.Equal("Progress message", progress.Progress.Message);
+
+        var progressValue = progress.Progress;
+        Assert.Equal(50, progressValue.Progress);
+        Assert.Equal(100, progressValue.Total);
+        Assert.Equal("Progress message", progressValue.Message);
 
         await server.DisposeAsync();
         await serverTask;

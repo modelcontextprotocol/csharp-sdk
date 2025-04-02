@@ -1,6 +1,8 @@
-﻿
-using ModelContextProtocol.Protocol.Types;
+﻿using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol.Messages;
 using System.Text.Json.Serialization;
+using ModelContextProtocol.Shared;
+using System.Collections.Concurrent;
 
 namespace ModelContextProtocol.Server;
 
@@ -37,8 +39,14 @@ public class McpServerOptions
     public string ServerInstructions { get; set; } = string.Empty;
 
     /// <summary>
-    /// Gets or sets the handler for get completion requests.
+    /// Gets or sets the handler for get notifications.
     /// </summary>
     [JsonIgnore]
-    public Func<RequestContext<CompleteRequestParams>, CancellationToken, Task<CompleteResult>>? GetCompletionHandler { get; set; }
+    public ConcurrentDictionary<string, List<Func<JsonRpcNotification, Task>>> NotificationHandlers { get; init; } = new NotificationHandlers();
+
+    /// <summary>
+    /// Gets or sets the handler for get requests.
+    /// </summary>
+    [JsonIgnore]
+    public Dictionary<string, Func<JsonRpcRequest, CancellationToken, Task<object?>>> RequestHandlers { get; init; } = new RequestHandlers();
 }

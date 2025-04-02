@@ -1,4 +1,7 @@
-﻿using ModelContextProtocol.Protocol.Types;
+﻿using System.Text.Json.Serialization;
+using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol.Messages;
+using ModelContextProtocol.Shared;
 
 namespace ModelContextProtocol.Client;
 
@@ -28,4 +31,11 @@ public class McpClientOptions
     /// Timeout for initialization sequence.
     /// </summary>
     public TimeSpan InitializationTimeout { get; set; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// Gets or sets the handler for get notifications.
+    /// </summary>
+    [JsonIgnore]
+    public IReadOnlyDictionary<string, List<Func<JsonRpcNotification, Task>>> NotificationHandlers { get; init; } = new NotificationHandlers();
+
 }

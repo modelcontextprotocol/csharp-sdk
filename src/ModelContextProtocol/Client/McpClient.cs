@@ -25,13 +25,48 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
     /// <param name="options">Options for the client, defining protocol version and capabilities.</param>
     /// <param name="serverConfig">The server configuration.</param>
     /// <param name="loggerFactory">The logger factory.</param>
-    public McpClient(IClientTransport clientTransport, McpClientOptions options, McpServerConfig serverConfig, ILoggerFactory? loggerFactory)
-        : base(loggerFactory)
+    /// <param name="requestHandlers">The request handlers.</param>
+    /// <param name="notificationHandlers">The notification handlers.</param>
+    public McpClient(
+        IClientTransport clientTransport,
+        McpClientOptions options,
+        McpServerConfig serverConfig,
+        ILoggerFactory? loggerFactory,
+        RequestHandlers? requestHandlers = null,
+        NotificationHandlers? notificationHandlers = null)
+        : base(loggerFactory, requestHandlers, notificationHandlers)
     {
         _clientTransport = clientTransport;
         _options = options;
+        requestHandlers ??= [];
+        notificationHandlers ??= [];
 
         EndpointName = $"Client ({serverConfig.Id}: {serverConfig.Name})";
+        
+        void SetRequestHandler<TParams, TResult>(
+            string method,
+            Func<TParams, CancellationToken, Task<TResult>> handler)
+            where TParams : class
+            where TResult : class
+        {
+            requestHandlers.Add(method, async (request, cancellationToken)
+                => request.Params is not TParams { } parameters
+                    ? throw new InvalidOperationException($"Request {method} was sent with invalid parameters.")
+                    : await handler(parameters, cancellationToken).ConfigureAwait(false));
+        }
+        
+        void SetNotificationHandlers(IReadOnlyDictionary<string, List<Func<JsonRpcNotification, Task>>> handlers)
+        {
+            foreach (var pairs in handlers)
+            {
+                var key = pairs.Key;
+                var list = pairs.Value;
+                foreach (var item in list)
+                {
+                    notificationHandlers.Add(key, item);
+                }
+            }
+        }
 
         if (options.Capabilities?.Sampling is { } samplingCapability)
         {
@@ -39,7 +74,6 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
             {
                 throw new InvalidOperationException($"Sampling capability was set but it did not provide a handler.");
             }
-
             SetRequestHandler<CreateMessageRequestParams, CreateMessageResult>(
                 RequestMethods.SamplingCreateMessage,
                 (request, cancellationToken) => samplingHandler(
@@ -59,6 +93,8 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
                 RequestMethods.RootsList,
                 (request, cancellationToken) => rootsHandler(request, cancellationToken));
         }
+
+        SetNotificationHandlers(options.NotificationHandlers);
     }
 
     /// <inheritdoc/>
@@ -90,21 +126,21 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
             using var initializationCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             initializationCts.CancelAfter(_options.InitializationTimeout);
 
-        try
-        {
-            // Send initialize request
-            var initializeResponse = await SendRequestAsync<InitializeResult>(
-                new JsonRpcRequest
-                {
-                    Method = RequestMethods.Initialize,
-                    Params = new InitializeRequestParams()
+            try
+            {
+                // Send initialize request
+                var initializeResponse = await SendRequestAsync<InitializeResult>(
+                    new JsonRpcRequest
                     {
-                        ProtocolVersion = _options.ProtocolVersion,
-                        Capabilities = _options.Capabilities ?? new ClientCapabilities(),
-                        ClientInfo = _options.ClientInfo
-                    }
-                },
-                initializationCts.Token).ConfigureAwait(false);
+                        Method = RequestMethods.Initialize,
+                        Params = new InitializeRequestParams()
+                        {
+                            ProtocolVersion = _options.ProtocolVersion,
+                            Capabilities = _options.Capabilities ?? new ClientCapabilities(),
+                            ClientInfo = _options.ClientInfo
+                        }
+                    },
+                    initializationCts.Token).ConfigureAwait(false);
 
                 // Store server information
                 _logger.ServerCapabilitiesReceived(EndpointName,

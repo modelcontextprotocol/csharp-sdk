@@ -11,7 +11,7 @@ public sealed class CancelledNotification
     /// The ID of the request to cancel.
     /// </summary>
     [JsonPropertyName("requestId")]
-    public RequestId RequestId { get; set; }
+    public required RequestId RequestId { get; set; }
 
     /// <summary>
     /// An optional string describing the reason for the cancellation.
