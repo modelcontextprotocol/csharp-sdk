@@ -25,9 +25,9 @@ public sealed class McpClientTool : AIFunction
     /// This is useful for optimizing the tool name for specific models or for prefixing the tool name with a (usually server-derived) namespace to avoid conflicts.
     /// The server will still be called with the original tool name, so no mapping is required.
     /// </summary>
-    /// <param name="name">The model-facing name to give the tool. Pass null to clear the name override and to use the MCP Tool name again.</param>
+    /// <param name="name">The model-facing name to give the tool.</param>
     /// <returns>Copy of this McpClientTool with the provided name</returns>
-    public McpClientTool WithName(string? name)
+    public McpClientTool WithName(string name)
     {
         return new McpClientTool(_client, ProtocolTool, name, _description);
     }
@@ -38,9 +38,9 @@ public sealed class McpClientTool : AIFunction
     /// This will in general require a hard-coded mapping in the client. 
     /// It is not recommended to use this without running evaluations to ensure the model actually benefits from the custom description.
     /// </summary>
-    /// <param name="description">The description to give the tool. Pass null to clear the description override and to use the MCP Tool description again.</param>
+    /// <param name="description">The description to give the tool.</param>
     /// <returns>Copy of this McpClientTool with the provided description</returns>
-    public McpClientTool WithDescription(string? description)
+    public McpClientTool WithDescription(string description)
     {
         return new McpClientTool(_client, ProtocolTool, _name, description);
     }
