@@ -15,6 +15,7 @@
     <ItemGroup>
         <PackageReference Include="Anthropic.SDK" />
         <PackageReference Include="Microsoft.Extensions.Hosting" />
+        <PackageReference Include="Microsoft.Extensions.AI" />
     </ItemGroup>
 
 </Project>

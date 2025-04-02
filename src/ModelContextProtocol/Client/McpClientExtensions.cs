@@ -24,7 +24,7 @@ public static class McpClientExtensions
         return client.SendRequestAsync(
             RequestMethods.Ping, 
             parameters: null,
-            McpJsonUtilities.JsonContext.Default.Object,
+            McpJsonUtilities.JsonContext.Default.Object!,
             McpJsonUtilities.JsonContext.Default.Object,
             cancellationToken: cancellationToken);
     }
@@ -52,7 +52,7 @@ public static class McpClientExtensions
         {
             var toolResults = await client.SendRequestAsync(
                 RequestMethods.ToolsList, 
-                CreateCursorDictionary(cursor),
+                CreateCursorDictionary(cursor)!,
                 McpJsonUtilities.JsonContext.Default.DictionaryStringObject,
                 McpJsonUtilities.JsonContext.Default.ListToolsResult,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -96,7 +96,7 @@ public static class McpClientExtensions
         {
             var toolResults = await client.SendRequestAsync(
                 RequestMethods.ToolsList, 
-                CreateCursorDictionary(cursor),
+                CreateCursorDictionary(cursor)!,
                 McpJsonUtilities.JsonContext.Default.DictionaryStringObject,
                 McpJsonUtilities.JsonContext.Default.ListToolsResult,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -128,7 +128,7 @@ public static class McpClientExtensions
         {
             var promptResults = await client.SendRequestAsync(
                 RequestMethods.PromptsList, 
-                CreateCursorDictionary(cursor),
+                CreateCursorDictionary(cursor)!,
                 McpJsonUtilities.JsonContext.Default.DictionaryStringObject,
                 McpJsonUtilities.JsonContext.Default.ListPromptsResult,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -166,7 +166,7 @@ public static class McpClientExtensions
         {
             var promptResults = await client.SendRequestAsync(
                 RequestMethods.PromptsList,
-                CreateCursorDictionary(cursor),
+                CreateCursorDictionary(cursor)!,
                 McpJsonUtilities.JsonContext.Default.DictionaryStringObject,
                 McpJsonUtilities.JsonContext.Default.ListPromptsResult,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -230,7 +230,7 @@ public static class McpClientExtensions
         {
             var templateResults = await client.SendRequestAsync(
                 RequestMethods.ResourcesTemplatesList, 
-                CreateCursorDictionary(cursor),
+                CreateCursorDictionary(cursor)!,
                 McpJsonUtilities.JsonContext.Default.DictionaryStringObject,
                 McpJsonUtilities.JsonContext.Default.ListResourceTemplatesResult,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -271,7 +271,7 @@ public static class McpClientExtensions
         {
             var templateResults = await client.SendRequestAsync(
                 RequestMethods.ResourcesTemplatesList, 
-                CreateCursorDictionary(cursor),
+                CreateCursorDictionary(cursor)!,
                 McpJsonUtilities.JsonContext.Default.DictionaryStringObject,
                 McpJsonUtilities.JsonContext.Default.ListResourceTemplatesResult,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -304,7 +304,7 @@ public static class McpClientExtensions
         {
             var resourceResults = await client.SendRequestAsync(
                 RequestMethods.ResourcesList, 
-                CreateCursorDictionary(cursor),
+                CreateCursorDictionary(cursor)!,
                 McpJsonUtilities.JsonContext.Default.DictionaryStringObject,
                 McpJsonUtilities.JsonContext.Default.ListResourcesResult,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -345,7 +345,7 @@ public static class McpClientExtensions
         {
             var resourceResults = await client.SendRequestAsync(
                 RequestMethods.ResourcesList, 
-                CreateCursorDictionary(cursor),
+                CreateCursorDictionary(cursor)!,
                 McpJsonUtilities.JsonContext.Default.DictionaryStringObject,
                 McpJsonUtilities.JsonContext.Default.ListResourcesResult,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -374,7 +374,7 @@ public static class McpClientExtensions
 
         return client.SendRequestAsync(
             RequestMethods.ResourcesRead, 
-            new Dictionary<string, object?> { ["uri"] = uri },
+            new Dictionary<string, object> { ["uri"] = uri },
             McpJsonUtilities.JsonContext.Default.DictionaryStringObject,
             McpJsonUtilities.JsonContext.Default.ReadResourceResult,
             cancellationToken: cancellationToken);
@@ -401,7 +401,7 @@ public static class McpClientExtensions
 
         return client.SendRequestAsync(
             RequestMethods.CompletionComplete, 
-            new Dictionary<string, object?>
+            new Dictionary<string, object>
             {
                 ["ref"] = reference,
                 ["argument"] = new Argument { Name = argumentName, Value = argumentValue }
@@ -424,7 +424,7 @@ public static class McpClientExtensions
 
         return client.SendRequestAsync(
             RequestMethods.ResourcesSubscribe, 
-            new Dictionary<string, object?> { ["uri"] = uri },
+            new Dictionary<string, object> { ["uri"] = uri },
             McpJsonUtilities.JsonContext.Default.DictionaryStringObject,
             McpJsonUtilities.JsonContext.Default.EmptyResult,
             cancellationToken: cancellationToken);
@@ -443,7 +443,7 @@ public static class McpClientExtensions
 
         return client.SendRequestAsync(
             RequestMethods.ResourcesUnsubscribe,
-            new Dictionary<string, object?> { ["uri"] = uri },
+            new Dictionary<string, object> { ["uri"] = uri },
             McpJsonUtilities.JsonContext.Default.DictionaryStringObject,
             McpJsonUtilities.JsonContext.Default.EmptyResult,
             cancellationToken: cancellationToken);
@@ -629,7 +629,7 @@ public static class McpClientExtensions
 
         return client.SendRequestAsync(
             RequestMethods.LoggingSetLevel,
-            new Dictionary<string, object?> { ["level"] = level },
+            new Dictionary<string, object> { ["level"] = level },
             McpJsonUtilities.JsonContext.Default.DictionaryStringObject,
             McpJsonUtilities.JsonContext.Default.EmptyResult,
             cancellationToken: cancellationToken);

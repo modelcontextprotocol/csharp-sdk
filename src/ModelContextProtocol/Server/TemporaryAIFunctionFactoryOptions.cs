@@ -72,7 +72,7 @@ internal sealed class TemporaryAIFunctionFactoryOptions
     /// <summary>Gets or sets a delegate used to determine the <see cref="object"/> returned by <see cref="AIFunction.InvokeAsync"/>.</summary>
     /// <remarks>
     /// <para>
-    /// By default, the return value of invoking the method wrapped into an <see cref="AIFunction"/> by <see cref="AIFunctionFactory"/>
+    /// By default, the return value of invoking the method wrapped into an <see cref="AIFunction"/> by <see cref="TemporaryAIFunctionFactory"/>
     /// is then JSON serialized, with the resulting <see cref="JsonElement"/> returned from the <see cref="AIFunction.InvokeAsync"/> method.
     /// This default behavior is ideal for the common case where the result will be passed back to an AI service. However, if the caller
     /// requires more control over the result's marshaling, the <see cref="MarshalResult"/> property may be set to a delegate that is
@@ -82,7 +82,7 @@ internal sealed class TemporaryAIFunctionFactoryOptions
     /// <para>
     /// When set, the delegate is invoked even for <see langword="void"/>-returning methods, in which case it is invoked with
     /// a <see langword="null"/> argument. By default, <see langword="null"/> is returned from the <see cref="AIFunction.InvokeAsync"/>
-    /// method for <see cref="AIFunction"/> instances produced by <see cref="AIFunctionFactory"/> to wrap
+    /// method for <see cref="AIFunction"/> instances produced by <see cref="TemporaryAIFunctionFactory"/> to wrap
     /// <see langword="void"/>-returning methods).
     /// </para>
     /// <para>

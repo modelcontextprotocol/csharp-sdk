@@ -542,21 +542,11 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
     [MemberData(nameof(GetClients))]
     public async Task SetLoggingLevel_ReceivesLoggingMessages(string clientId)
     {
-        // arrange
-        JsonSerializerOptions jsonSerializerOptions = new(JsonSerializerDefaults.Web)
-        {
-            TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
-            Converters = { new JsonStringEnumConverter() },
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-            NumberHandling = JsonNumberHandling.AllowReadingFromString,
-            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        };
-
         TaskCompletionSource<bool> receivedNotification = new();
         await using var client = await _fixture.CreateClientAsync(clientId);
         client.AddNotificationHandler(NotificationMethods.LoggingMessageNotification, (notification) =>
         {
-            var loggingMessageNotificationParameters = JsonSerializer.Deserialize<LoggingMessageNotificationParams>(notification.Params, jsonSerializerOptions);
+            var loggingMessageNotificationParameters = JsonSerializer.Deserialize<LoggingMessageNotificationParams>(notification.Params);
             if (loggingMessageNotificationParameters is not null)
             {
                 receivedNotification.TrySetResult(true);
