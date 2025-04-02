@@ -32,7 +32,7 @@ public sealed class McpClientTool : AIFunction
     public McpClientTool WithName(string name)
     {
         Throw.IfNull(name);
-        return new McpClientTool(_client, ProtocolTool, name, _description);
+        return new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, name, _description);
     }
 
     /// <summary>
@@ -45,7 +45,7 @@ public sealed class McpClientTool : AIFunction
     /// <returns>Copy of this McpClientTool with the provided description</returns>
     public McpClientTool WithDescription(string description)
     {
-        return new McpClientTool(_client, ProtocolTool, _name, description);
+        return new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, _name, description);
     }
 
     /// <summary>Gets the protocol <see cref="Tool"/> type for this instance.</summary>
