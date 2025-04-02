@@ -5,7 +5,7 @@ namespace ModelContextProtocol;
 
 internal static class Diagnostics
 {
-    internal static ActivitySource ActivitySource { get; } = new("Exprimental.ModelContextProtocol");
+    internal static ActivitySource ActivitySource { get; } = new("Experimental.ModelContextProtocol");
 
     /// <summary>
     /// Follows boundaries from http.server.request.duration/http.client.request.duration
