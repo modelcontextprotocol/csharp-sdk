@@ -1,8 +1,9 @@
-using System.Threading.Channels;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
+using System.Text.Json;
+using System.Threading.Channels;
 
 namespace ModelContextProtocol.Tests.Client;
 
@@ -206,16 +207,16 @@ public class McpClientFactoryTests
                     _channel.Writer.TryWrite(new JsonRpcResponse
                     {
                         Id = ((JsonRpcRequest)message).Id,
-                        Result = new InitializeResult()
+                        Result = JsonSerializer.SerializeToNode(new InitializeResult
                         {
                             Capabilities = new ServerCapabilities(),
                             ProtocolVersion = "2024-11-05",
-                            ServerInfo = new Implementation()
+                            ServerInfo = new Implementation
                             {
                                 Name = "NopTransport",
                                 Version = "1.0.0"
                             },
-                        }
+                        }),
                     });
                     break;
             }

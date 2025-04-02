@@ -13,10 +13,11 @@ public sealed class McpClientTool : AIFunction
     private readonly string _name;
     private readonly string _description;
 
-    internal McpClientTool(IMcpClient client, Tool tool, string? name = null, string? description = null)
+    internal McpClientTool(IMcpClient client, Tool tool, JsonSerializerOptions serializerOptions,string? name = null, string? description = null)
     {
         _client = client;
         ProtocolTool = tool;
+        JsonSerializerOptions = serializerOptions;
         _name = name ?? tool.Name;
         _description = description ?? tool.Description ?? string.Empty;
     }
@@ -60,7 +61,7 @@ public sealed class McpClientTool : AIFunction
     public override JsonElement JsonSchema => ProtocolTool.InputSchema;
 
     /// <inheritdoc/>
-    public override JsonSerializerOptions JsonSerializerOptions => McpJsonUtilities.DefaultOptions;
+    public override JsonSerializerOptions JsonSerializerOptions { get; }
 
     /// <inheritdoc/>
     protected async override Task<object?> InvokeCoreAsync(
@@ -70,7 +71,7 @@ public sealed class McpClientTool : AIFunction
             arguments as IReadOnlyDictionary<string, object?> ??
             arguments.ToDictionary();
 
-        CallToolResponse result = await _client.CallToolAsync(ProtocolTool.Name, argDict, cancellationToken).ConfigureAwait(false);
+        CallToolResponse result = await _client.CallToolAsync(ProtocolTool.Name, argDict, JsonSerializerOptions, cancellationToken: cancellationToken).ConfigureAwait(false);
         return JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.CallToolResponse);
     }
 }

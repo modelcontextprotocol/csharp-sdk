@@ -40,12 +40,14 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
                 throw new InvalidOperationException($"Sampling capability was set but it did not provide a handler.");
             }
 
-            SetRequestHandler<CreateMessageRequestParams, CreateMessageResult>(
+            SetRequestHandler(
                 RequestMethods.SamplingCreateMessage,
                 (request, cancellationToken) => samplingHandler(
                     request,
                     request?.Meta?.ProgressToken is { } token ? new TokenProgress(this, token) : NullProgress.Instance,
-                    cancellationToken));
+                    cancellationToken),
+                McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams,
+                McpJsonUtilities.JsonContext.Default.CreateMessageResult);
         }
 
         if (options.Capabilities?.Roots is { } rootsCapability)
@@ -55,9 +57,11 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
                 throw new InvalidOperationException($"Roots capability was set but it did not provide a handler.");
             }
 
-            SetRequestHandler<ListRootsRequestParams, ListRootsResult>(
+            SetRequestHandler(
                 RequestMethods.RootsList,
-                (request, cancellationToken) => rootsHandler(request, cancellationToken));
+                rootsHandler,
+                McpJsonUtilities.JsonContext.Default.ListRootsRequestParams,
+                McpJsonUtilities.JsonContext.Default.ListRootsResult);
         }
     }
 
@@ -88,21 +92,20 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
             using var initializationCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             initializationCts.CancelAfter(_options.InitializationTimeout);
 
-            try
-            {
-                // Send initialize request
-                var initializeResponse = await SendRequestAsync<InitializeResult>(
-                    new JsonRpcRequest
-                    {
-                        Method = RequestMethods.Initialize,
-                        Params = new InitializeRequestParams()
-                        {
-                            ProtocolVersion = _options.ProtocolVersion,
-                            Capabilities = _options.Capabilities ?? new ClientCapabilities(),
-                            ClientInfo = _options.ClientInfo
-                        }
-                    },
-                    initializationCts.Token).ConfigureAwait(false);
+        try
+        {
+            // Send initialize request
+            var initializeResponse = await this.SendRequestAsync(
+                RequestMethods.Initialize,
+                new InitializeRequestParams
+                {
+                    ProtocolVersion = _options.ProtocolVersion,
+                    Capabilities = _options.Capabilities ?? new ClientCapabilities(),
+                    ClientInfo = _options.ClientInfo
+                },
+                McpJsonUtilities.JsonContext.Default.InitializeRequestParams,
+                McpJsonUtilities.JsonContext.Default.InitializeResult,
+                cancellationToken: initializationCts.Token).ConfigureAwait(false);
 
                 // Store server information
                 _logger.ServerCapabilitiesReceived(EndpointName,

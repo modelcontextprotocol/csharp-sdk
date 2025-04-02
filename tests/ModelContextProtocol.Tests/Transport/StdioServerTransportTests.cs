@@ -8,6 +8,7 @@ using ModelContextProtocol.Utils.Json;
 using System.IO.Pipelines;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Tests.Transport;
 
@@ -153,10 +154,10 @@ public class StdioServerTransportTests : LoggedTest
         {
             Method = "test",
             Id = new RequestId(44),
-            Params = new Dictionary<string, JsonElement>
+            Params = new JsonObject
             {
-                ["text"] = JsonSerializer.SerializeToElement(chineseText)
-            }
+                ["text"] = chineseText
+            },
         };
 
         // Clear output and send message
@@ -175,10 +176,10 @@ public class StdioServerTransportTests : LoggedTest
         {
             Method = "test",
             Id = new RequestId(45),
-            Params = new Dictionary<string, JsonElement>
+            Params = new JsonObject
             {
-                ["text"] = JsonSerializer.SerializeToElement(emojiText)
-            }
+                ["text"] = emojiText
+            },
         };
 
         // Clear output and send message

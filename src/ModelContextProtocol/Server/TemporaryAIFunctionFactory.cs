@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils;
+using ModelContextProtocol.Utils.Json;
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -476,7 +477,7 @@ internal static partial class TemporaryAIFunctionFactory
                     description: parameter.GetCustomAttribute<DescriptionAttribute>(inherit: true)?.Description,
                     hasDefaultValue: parameter.HasDefaultValue,
                     defaultValue: parameter.HasDefaultValue ? parameter.DefaultValue : null,
-                    serializerOptions), AIJsonUtilities.DefaultOptions.GetTypeInfo<JsonElement>());
+                    serializerOptions), McpJsonUtilities.JsonContext.Default.JsonElement);
 
                 parameterSchemas.Add(parameter.Name, parameterSchema);
                 if (!parameter.IsOptional)

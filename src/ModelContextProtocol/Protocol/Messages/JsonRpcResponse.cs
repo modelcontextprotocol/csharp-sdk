@@ -1,4 +1,4 @@
-﻿
+﻿using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol.Messages;
@@ -23,5 +23,5 @@ public record JsonRpcResponse : IJsonRpcMessageWithId
     /// The result of the method invocation.
     /// </summary>
     [JsonPropertyName("result")]
-    public required object? Result { get; init; }
+    public required JsonNode? Result { get; init; }
 }

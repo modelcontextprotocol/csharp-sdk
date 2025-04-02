@@ -23,7 +23,7 @@ public class DiagnosticTests
         {
             await RunConnected(async (client, server) =>
             {
-                var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+                var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
                 Assert.NotNull(tools);
                 Assert.NotEmpty(tools);
 
