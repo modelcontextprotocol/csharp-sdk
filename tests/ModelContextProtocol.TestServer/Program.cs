@@ -24,6 +24,10 @@ internal static class Program
 
         return LoggerFactory.Create(builder =>
         {
+            builder.AddConsole(options =>
+            {
+                options.LogToStandardErrorThreshold = LogLevel.Trace;
+            });
             builder.AddSerilog();
         });
     }
@@ -75,11 +79,11 @@ internal static class Program
                     await server.SendMessageAsync(new JsonRpcNotification()
                     {
                         Method = NotificationMethods.LoggingMessageNotification,
-                        Params = new LoggingMessageNotificationParams
+                        Params = JsonSerializer.SerializeToNode(new LoggingMessageNotificationParams
                         {
                             Level = logLevel,
                             Data = JsonSerializer.Deserialize<JsonElement>("\"Random log message\"")
-                        }
+                        })
                     }, cancellationToken);
                 }
 
@@ -87,10 +91,10 @@ internal static class Program
                 foreach (var resource in _subscribedResources)
                 {
                     ResourceUpdatedNotificationParams notificationParams = new() { Uri = resource.Key };
-                    await server.SendMessageAsync(new JsonRpcNotification()
+                    await server.SendMessageAsync(new JsonRpcNotification
                     {
                         Method = NotificationMethods.ResourceUpdatedNotification,
-                        Params = notificationParams
+                        Params = JsonSerializer.SerializeToNode(notificationParams),
                     }, cancellationToken);
                 }
             }
@@ -164,7 +168,7 @@ internal static class Program
                     }
                     return new CallToolResponse()
                     {
-                        Content = [new Content() { Text = "Echo: " + message?.ToString(), Type = "text" }]
+                        Content = [new Content() { Text = "Echo: " + message.ToString(), Type = "text" }]
                     };
                 }
                 else if (request.Params?.Name == "sampleLLM")
@@ -175,7 +179,7 @@ internal static class Program
                     {
                         throw new McpServerException("Missing required arguments 'prompt' and 'maxTokens'");
                     }
-                    var sampleResult = await request.Server.RequestSamplingAsync(CreateRequestSamplingParams(prompt?.ToString() ?? "", "sampleLLM", Convert.ToInt32(maxTokens?.ToString())),
+                    var sampleResult = await request.Server.RequestSamplingAsync(CreateRequestSamplingParams(prompt.ToString(), "sampleLLM", Convert.ToInt32(maxTokens.GetRawText())),
                         cancellationToken);
 
                     return new CallToolResponse()

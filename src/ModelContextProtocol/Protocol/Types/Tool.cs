@@ -38,7 +38,7 @@ public class Tool
         {
             if (!McpJsonUtilities.IsValidMcpToolSchema(value))
             {
-                throw new ArgumentException("The specified document is not a valid MPC tool JSON schema.", nameof(InputSchema));
+                throw new ArgumentException("The specified document is not a valid MCP tool JSON schema.", nameof(InputSchema));
             }
 
             _inputSchema = value;

@@ -1,4 +1,6 @@
-﻿namespace ModelContextProtocol.Protocol.Types;
+﻿using System.Text.Json;
+
+namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
 /// Used by the client to invoke a tool provided by the server.
@@ -16,5 +18,5 @@ public class CallToolRequestParams : RequestParams
     /// Optional arguments to pass to the tool.
     /// </summary>
     [System.Text.Json.Serialization.JsonPropertyName("arguments")]
-    public Dictionary<string,object>? Arguments { get; init; }
+    public Dictionary<string, JsonElement>? Arguments { get; init; }
 }

@@ -1,7 +1,6 @@
 ﻿using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol.Types;
-using ModelContextProtocol.Shared;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
 using System.Diagnostics.CodeAnalysis;
@@ -256,8 +255,8 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
         cancellationToken.ThrowIfCancellationRequested();
 
         // TODO: Once we shift to the real AIFunctionFactory, the request should be passed via AIFunctionArguments.Context.
-        Dictionary<string, object?> arguments = request.Params?.Arguments is IDictionary<string, object?> existingArgs ?
-            new(existingArgs) :
+        Dictionary<string, object?> arguments = request.Params?.Arguments is { } paramArgs ?
+            paramArgs.ToDictionary(entry => entry.Key, entry => entry.Value.AsObject()) :
             [];
         arguments[RequestContextKey] = request;
 

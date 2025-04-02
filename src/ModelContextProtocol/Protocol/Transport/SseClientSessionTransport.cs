@@ -24,7 +24,6 @@ internal sealed class SseClientSessionTransport : TransportBase
     private Task? _receiveTask;
     private readonly ILogger _logger;
     private readonly McpServerConfig _serverConfig;
-    private readonly JsonSerializerOptions _jsonOptions;
     private readonly TaskCompletionSource<bool> _connectionEstablished;
 
     private string EndpointName => $"Client (SSE) for ({_serverConfig.Id}: {_serverConfig.Name})";
@@ -50,7 +49,6 @@ internal sealed class SseClientSessionTransport : TransportBase
         _httpClient = httpClient;
         _connectionCts = new CancellationTokenSource();
         _logger = (ILogger?)loggerFactory?.CreateLogger<SseClientTransport>() ?? NullLogger.Instance;
-        _jsonOptions = McpJsonUtilities.DefaultOptions;
         _connectionEstablished = new TaskCompletionSource<bool>();
     }
 
@@ -94,7 +92,7 @@ internal sealed class SseClientSessionTransport : TransportBase
             throw new InvalidOperationException("Transport not connected");
 
         using var content = new StringContent(
-            JsonSerializer.Serialize(message, _jsonOptions.GetTypeInfo<IJsonRpcMessage>()),
+            JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.IJsonRpcMessage),
             Encoding.UTF8,
             "application/json"
         );
@@ -127,7 +125,7 @@ internal sealed class SseClientSessionTransport : TransportBase
             }
             else
             {
-                JsonRpcResponse initializeResponse = JsonSerializer.Deserialize(responseContent, _jsonOptions.GetTypeInfo<JsonRpcResponse>()) ??
+                JsonRpcResponse initializeResponse = JsonSerializer.Deserialize(responseContent, McpJsonUtilities.JsonContext.Default.JsonRpcResponse) ??
                     throw new McpTransportException("Failed to initialize client");
 
                 _logger.TransportReceivedMessageParsed(EndpointName, messageId);
@@ -259,7 +257,7 @@ internal sealed class SseClientSessionTransport : TransportBase
 
         try
         {
-            var message = JsonSerializer.Deserialize(data, _jsonOptions.GetTypeInfo<IJsonRpcMessage>());
+            var message = JsonSerializer.Deserialize(data, McpJsonUtilities.JsonContext.Default.IJsonRpcMessage);
             if (message == null)
             {
                 _logger.TransportMessageParseUnexpectedType(EndpointName, data);

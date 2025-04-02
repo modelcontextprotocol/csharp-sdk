@@ -5,7 +5,7 @@ using Microsoft.Extensions.Hosting;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Transport;
 
-var builder = Host.CreateEmptyApplicationBuilder(settings: null);
+var builder = Host.CreateApplicationBuilder(args);
 
 builder.Configuration
     .AddEnvironmentVariables()

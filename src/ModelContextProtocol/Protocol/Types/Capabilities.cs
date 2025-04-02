@@ -55,7 +55,7 @@ public class SamplingCapability
 
     /// <summary>Gets or sets the handler for sampling requests.</summary>
     [JsonIgnore]
-    public Func<CreateMessageRequestParams?, CancellationToken, Task<CreateMessageResult>>? SamplingHandler { get; set; }
+    public Func<CreateMessageRequestParams?, IProgress<ProgressNotificationValue>, CancellationToken, Task<CreateMessageResult>>? SamplingHandler { get; set; }
 }
 
 /// <summary>

@@ -1,6 +1,8 @@
 ﻿using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Tests.Utils;
+using System.Net;
+using System.Text;
 
 namespace ModelContextProtocol.Tests;
 
@@ -29,6 +31,12 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
     }
+
+    private HttpClient GetHttpClient() =>
+        new()
+        {
+            BaseAddress = new(_fixture.DefaultConfig.Location!),
+        };
 
     [Fact]
     public async Task ConnectAndPing_Sse_TestServer()
@@ -63,7 +71,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
 
         // act
         await using var client = await GetClientAsync();
-        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(tools);
@@ -82,7 +90,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
             {
                 ["message"] = "Hello MCP!"
             },
-            TestContext.Current.CancellationToken
+            cancellationToken: TestContext.Current.CancellationToken
         );
 
         // assert
@@ -168,7 +176,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
 
         // act
         await using var client = await GetClientAsync();
-        var result = await client.GetPromptAsync("simple_prompt", null, TestContext.Current.CancellationToken);
+        var result = await client.GetPromptAsync("simple_prompt", null, cancellationToken: TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(result);
@@ -187,7 +195,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
             { "temperature", "0.7" },
             { "style", "formal" }
         };
-        var result = await client.GetPromptAsync("complex_prompt", arguments, TestContext.Current.CancellationToken);
+        var result = await client.GetPromptAsync("complex_prompt", arguments, cancellationToken: TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(result);
@@ -202,7 +210,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
         // act
         await using var client = await GetClientAsync();
         await Assert.ThrowsAsync<McpClientException>(() =>
-            client.GetPromptAsync("non_existent_prompt", null, TestContext.Current.CancellationToken));
+            client.GetPromptAsync("non_existent_prompt", null, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -215,7 +223,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
         var options = SseServerIntegrationTestFixture.CreateDefaultClientOptions();
         options.Capabilities ??= new();
         options.Capabilities.Sampling ??= new();
-        options.Capabilities.Sampling.SamplingHandler = async (_, _) =>
+        options.Capabilities.Sampling.SamplingHandler = async (_, _, _) =>
         {
             samplingHandlerCalls++;
             return new CreateMessageResult
@@ -238,7 +246,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
                 ["prompt"] = "Test prompt",
                 ["maxTokens"] = 100
             },
-            TestContext.Current.CancellationToken);
+            cancellationToken: TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(result);
@@ -262,7 +270,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
                 {
                     ["message"] = $"Hello MCP! {i}"
                 },
-                TestContext.Current.CancellationToken
+                cancellationToken: TestContext.Current.CancellationToken
             );
 
             Assert.NotNull(result);
@@ -270,5 +278,45 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
             var textContent = Assert.Single(result.Content, c => c.Type == "text");
             Assert.Equal($"Echo: Hello MCP! {i}", textContent.Text);
         }
+    }
+
+    [Fact]
+    public async Task EventSourceStream_Includes_MessageEventType()
+    {
+        // Simulate our own MCP client handshake using a plain HttpClient so we can look for "event: message"
+        // in the raw SSE response stream which is not exposed by the real MCP client.
+        using var httpClient = GetHttpClient();
+        await using var sseResponse = await httpClient.GetStreamAsync("", TestContext.Current.CancellationToken);
+        using var streamReader = new StreamReader(sseResponse);
+
+        var endpointEvent = await streamReader.ReadLineAsync(TestContext.Current.CancellationToken);
+        Assert.Equal("event: endpoint", endpointEvent);
+
+        var endpointData = await streamReader.ReadLineAsync(TestContext.Current.CancellationToken);
+        Assert.NotNull(endpointData);
+        Assert.StartsWith("data: ", endpointData);
+        var messageEndpoint = endpointData["data: ".Length..];
+
+        const string initializeRequest = """
+            {"jsonrpc":"2.0","id":"1","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"IntegrationTestClient","version":"1.0.0"}}}
+            """;
+        using (var initializeRequestBody = new StringContent(initializeRequest, Encoding.UTF8, "application/json"))
+        {
+            var response = await httpClient.PostAsync(messageEndpoint, initializeRequestBody, TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        }
+
+        const string initializedNotification = """
+            {"jsonrpc":"2.0","method":"notifications/initialized"}
+            """;
+        using (var initializedNotificationBody = new StringContent(initializedNotification, Encoding.UTF8, "application/json"))
+        {
+            var response = await httpClient.PostAsync(messageEndpoint, initializedNotificationBody, TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        }
+
+        Assert.Equal("", await streamReader.ReadLineAsync(TestContext.Current.CancellationToken));
+        var messageEvent = await streamReader.ReadLineAsync(TestContext.Current.CancellationToken);
+        Assert.Equal("event: message", messageEvent);
     }
 }
