@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Routing.Patterns;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -10,6 +11,7 @@ using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils.Json;
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 
 namespace Microsoft.AspNetCore.Builder;
@@ -23,16 +25,27 @@ public static class McpEndpointRouteBuilderExtensions
     /// Sets up endpoints for handling MCP HTTP Streaming transport.
     /// </summary>
     /// <param name="endpoints">The web application to attach MCP HTTP endpoints.</param>
+    /// <param name="pattern">The route pattern prefix to map to.</param>
     /// <param name="runSession">Provides an optional asynchronous callback for handling new MCP sessions.</param>
     /// <returns>Returns a builder for configuring additional endpoint conventions like authorization policies.</returns>
-    public static IEndpointConventionBuilder MapMcp(this IEndpointRouteBuilder endpoints, Func<HttpContext, IMcpServer, CancellationToken, Task>? runSession = null)
+    public static IEndpointConventionBuilder MapMcp(this IEndpointRouteBuilder endpoints, [StringSyntax("Route")] string pattern = "", Func<HttpContext, IMcpServer, CancellationToken, Task>? runSession = null)
+        => endpoints.MapMcp(RoutePatternFactory.Parse(pattern), runSession);
+
+    /// <summary>
+    /// Sets up endpoints for handling MCP HTTP Streaming transport.
+    /// </summary>
+    /// <param name="endpoints">The web application to attach MCP HTTP endpoints.</param>
+    /// <param name="pattern">The route pattern prefix to map to.</param>
+    /// <param name="runSession">Provides an optional asynchronous callback for handling new MCP sessions.</param>
+    /// <returns>Returns a builder for configuring additional endpoint conventions like authorization policies.</returns>
+    public static IEndpointConventionBuilder MapMcp(this IEndpointRouteBuilder endpoints, RoutePattern pattern, Func<HttpContext, IMcpServer, CancellationToken, Task>? runSession = null)
     {
         ConcurrentDictionary<string, SseResponseStreamTransport> _sessions = new(StringComparer.Ordinal);
 
         var loggerFactory = endpoints.ServiceProvider.GetRequiredService<ILoggerFactory>();
         var mcpServerOptions = endpoints.ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>();
 
-        var routeGroup = endpoints.MapGroup("");
+        var routeGroup = endpoints.MapGroup(pattern);
 
         routeGroup.MapGet("/sse", async context =>
         {
