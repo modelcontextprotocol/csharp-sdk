@@ -77,7 +77,7 @@ public sealed class SseResponseStreamTransport(Stream sseResponseStream, string 
         }
 
         // Emit redundant "event: message" lines for better compatibility with other SDKs.
-        await _outgoingSseChannel.Writer.WriteAsync(new SseItem<IJsonRpcMessage?>(message, "message"), cancellationToken);
+        await _outgoingSseChannel.Writer.WriteAsync(new SseItem<IJsonRpcMessage?>(message, SseParser.EventTypeDefault), cancellationToken);
     }
 
     /// <summary>
