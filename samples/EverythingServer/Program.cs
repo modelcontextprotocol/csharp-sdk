@@ -8,7 +8,12 @@ using EverythingServer.Prompts;
 using EverythingServer.Tools;
 using ModelContextProtocol.Protocol.Messages;
 
-var builder = Host.CreateEmptyApplicationBuilder(settings: null);
+var builder = Host.CreateApplicationBuilder(args);
+builder.Logging.AddConsole(consoleLogOptions =>
+{
+    // Configure all logs to go to stderr
+    consoleLogOptions.LogToStandardErrorThreshold = LogLevel.Trace;
+});
 
 HashSet<string> subscriptions = [];
 var _minimumLoggingLevel = LoggingLevel.Debug;
@@ -184,18 +189,10 @@ builder.Services
     })
     ;
 
-builder.Services.AddHostedService(sp =>
-{
-    var server = sp.GetRequiredService<IMcpServer>();
-    return new SubscriptionMessageSender(server, subscriptions);
-});
+builder.Services.AddSingleton(subscriptions);
+builder.Services.AddHostedService<SubscriptionMessageSender>();
+builder.Services.AddHostedService<LoggingUpdateMessageSender>();
 
-builder.Services.AddHostedService(sp =>
-{
-    var server = sp.GetRequiredService<IMcpServer>();
-    return new LoggingUpdateMessageSender(server);
-});
-
-builder.Services.AddScoped<Func<LoggingLevel>>(_ => () => _minimumLoggingLevel);
+builder.Services.AddSingleton<Func<LoggingLevel>>(_ => () => _minimumLoggingLevel);
 
 await builder.Build().RunAsync();

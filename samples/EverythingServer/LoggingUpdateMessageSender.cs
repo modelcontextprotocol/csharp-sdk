@@ -26,7 +26,7 @@ public class LoggingUpdateMessageSender(IMcpServer server) : IHostedService
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            var newLevel = (LoggingLevel)Enum.GetValues<LoggingLevel>().GetValue(new Random().Next(0, Enum.GetValues(typeof(LoggingLevel)).Length))!;
+            var newLevel = (LoggingLevel)Random.Shared.Next(_loggingLevelMap.Count);
 
             var message = new JsonRpcNotification
             {
