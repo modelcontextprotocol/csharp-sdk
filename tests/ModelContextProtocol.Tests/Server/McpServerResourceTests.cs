@@ -3,6 +3,7 @@ using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Tests.Server;
+
 public class McpServerResourceTests
 {
     [Fact]

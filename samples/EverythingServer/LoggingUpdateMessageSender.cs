@@ -6,7 +6,7 @@ using ModelContextProtocol.Server;
 
 namespace EverythingServer;
 
-public class LoggingUpdateMessageSender(IMcpServer server) : BackgroundService
+public class LoggingUpdateMessageSender(IMcpServer server, Func<LoggingLevel> currentLevel) : BackgroundService
 {
     readonly Dictionary<LoggingLevel, string> _loggingLevelMap = new()
     {
@@ -22,8 +22,6 @@ public class LoggingUpdateMessageSender(IMcpServer server) : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var currentLevel = server.Services!.GetRequiredService<Func<LoggingLevel>>();
-
         while (!stoppingToken.IsCancellationRequested)
         {
             var newLevel = (LoggingLevel)Random.Shared.Next(_loggingLevelMap.Count);
