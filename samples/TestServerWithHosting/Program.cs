@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
+using TestServerWithHosting.Tools;
 
 Log.Logger = new LoggerConfiguration()
            .MinimumLevel.Verbose() // Capture all log levels
@@ -19,7 +20,8 @@ try
     builder.Services.AddSerilog();
     builder.Services.AddMcpServer()
         .WithStdioServerTransport()
-        .WithToolsFromAssembly();
+        .WithTools<EchoTool>()
+        .WithTools<SampleLlmTool>();
 
     var app = builder.Build();
 

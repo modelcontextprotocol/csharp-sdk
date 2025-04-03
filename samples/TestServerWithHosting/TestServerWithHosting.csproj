@@ -5,6 +5,10 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!--
+    Serilog AOT support regressed
+    <PublishAot>true</PublishAot>
+    -->
   </PropertyGroup>
 
   <ItemGroup>
@@ -13,6 +17,9 @@
     <PackageReference Include="Serilog.Sinks.Console" />
     <PackageReference Include="Serilog.Sinks.Debug" />
     <PackageReference Include="Serilog.Sinks.File" />
+    <RuntimeHostConfigurationOption
+      Include="Serilog.IsCompilerGeneratedCodeSupported"
+      Value="false" Trim="true" />
   </ItemGroup>
 
   <ItemGroup>

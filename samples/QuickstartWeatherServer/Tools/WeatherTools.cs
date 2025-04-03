@@ -1,3 +1,4 @@
+using ModelContextProtocol;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
 using System.Net.Http.Json;
@@ -6,14 +7,15 @@ using System.Text.Json;
 namespace QuickstartWeatherServer.Tools;
 
 [McpServerToolType]
-public static class WeatherTools
+public sealed class WeatherTools
 {
     [McpServerTool, Description("Get weather alerts for a US state.")]
     public static async Task<string> GetAlerts(
         HttpClient client,
         [Description("The US state to get alerts for.")] string state)
     {
-        var jsonElement = await client.GetFromJsonAsync<JsonElement>($"/alerts/active/area/{state}");
+        using var jsonDocument = await client.ReadJsonDocument($"/alerts/active/area/{state}");
+        var jsonElement = jsonDocument.RootElement;
         var alerts = jsonElement.GetProperty("features").EnumerateArray();
 
         if (!alerts.Any())
@@ -40,7 +42,8 @@ public static class WeatherTools
         [Description("Latitude of the location.")] double latitude,
         [Description("Longitude of the location.")] double longitude)
     {
-        var jsonElement = await client.GetFromJsonAsync<JsonElement>($"/points/{latitude},{longitude}");
+        using var jsonDocument = await client.ReadJsonDocument($"/points/{latitude},{longitude}");
+        var jsonElement = jsonDocument.RootElement;
         var periods = jsonElement.GetProperty("properties").GetProperty("periods").EnumerateArray();
 
         return string.Join("\n---\n", periods.Select(period => $"""
