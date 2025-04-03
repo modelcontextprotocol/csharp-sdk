@@ -19,4 +19,17 @@ public class McpServerBuilderExtensionsTransportsTests
         Assert.NotNull(transportType);
         Assert.Equal(typeof(StdioServerTransport), transportType.ImplementationType);
     }
+    [Fact]
+    public void WithTcpServerTransport_Sets_Transport()
+    {
+        var services = new ServiceCollection();
+        var builder = new Mock<IMcpServerBuilder>();
+        builder.SetupGet(b => b.Services).Returns(services);
+
+        builder.Object.WithTcpServerTransport();
+
+        var transportType = services.FirstOrDefault(s => s.ServiceType == typeof(ITransport));
+        Assert.NotNull(transportType);
+        Assert.Equal(typeof(TcpServerTransport), transportType.ImplementationType);
+    }
 }
