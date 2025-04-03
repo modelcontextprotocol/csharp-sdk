@@ -4,7 +4,7 @@ using ModelContextProtocol.Server;
 namespace ModelContextProtocol.Hosting;
 
 /// <summary>
-/// Hosted service for a single-session (i.e stdio) MCP server.
+/// Hosted service for a single-session (i.e TCP) MCP server.
 /// </summary>
 internal sealed class TcpMcpServerHostedService(IMcpServer session) : BackgroundService
 {

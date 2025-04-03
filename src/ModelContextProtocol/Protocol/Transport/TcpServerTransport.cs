@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
+using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
 using System.Net;
@@ -34,18 +35,17 @@ public class TcpServerTransport : TransportBase, ITransport
     /// <summary>
     /// Initializes a new instance of the <see cref="TcpServerTransport"/> class.
     /// </summary>
-    /// <param name="port">The port to listen on.</param>
-    /// <param name="serverName">Optional name of the server, used for diagnostic purposes, like logging.</param>
+    /// <param name="options">Configuration options for the transport.</param>
     /// <param name="loggerFactory">Optional logger factory used for logging employed by the transport.</param>
-    public TcpServerTransport(int port, string? serverName = null, ILoggerFactory? loggerFactory = null)
+    public TcpServerTransport(McpServerTcpTransportOptions options, ILoggerFactory? loggerFactory = null)
         : base(loggerFactory)
     {
         _logger = loggerFactory?.CreateLogger(GetType()) ?? NullLogger.Instance;
 
-        _tcpListener = new TcpListener(IPAddress.Any, port);
+        _tcpListener = new TcpListener(options.IpAddress, options.Port);
         _tcpListener.Start();
 
-        _endpointName = serverName is not null ? $"Server (TCP) ({serverName})" : "Server (TCP)";
+        _endpointName = $"Server (TCP) ({options.IpAddress})";
         _readLoopCompleted = Task.Run(AcceptAndReadMessagesAsync, _shutdownCts.Token);
     }
 
