@@ -29,9 +29,16 @@ internal class StreamClientSessionTransport : TransportBase
         _serverInput = serverInput;
         EndpointName = endpointName;
 
-        // Start reading messages in the background
+        // Start reading messages in the background. We use the rarer pattern of new Task + Start
+        // in order to ensure that the body of the task will always see _readTask initialized.
+        // It is then able to reliably null it out on completion.
         Logger.TransportReadingMessages(endpointName);
-        _readTask = Task.Run(() => ReadMessagesAsync(_shutdownCts.Token), CancellationToken.None);
+        var readTask = new Task<Task>(
+            thisRef => ((StreamClientSessionTransport)thisRef!).ReadMessagesAsync(_shutdownCts.Token), 
+            this,
+            TaskCreationOptions.DenyChildAttach);
+        _readTask = readTask.Unwrap();
+        readTask.Start();
 
         SetConnected(true);
     }
@@ -117,6 +124,7 @@ internal class StreamClientSessionTransport : TransportBase
         }
         finally
         {
+            _readTask = null;
             await CleanupAsync(cancellationToken).ConfigureAwait(false);
         }
     }
