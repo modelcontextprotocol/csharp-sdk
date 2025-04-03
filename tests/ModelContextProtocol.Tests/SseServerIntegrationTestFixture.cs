@@ -17,16 +17,19 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
 
     public SseServerIntegrationTestFixture()
     {
+        // Ensure that test suites running against different TFMs and possibly concurrently use different port numbers.
+        int port = 3001 + Environment.Version.Major;
+
         DefaultConfig = new McpServerConfig
         {
             Id = "test_server",
             Name = "TestServer",
             TransportType = TransportTypes.Sse,
             TransportOptions = [],
-            Location = "http://localhost:3001/sse"
+            Location = $"http://localhost:{port}/sse"
         };
 
-        _serverTask = Program.MainAsync([], new XunitLoggerProvider(_delegatingTestOutputHelper), _stopCts.Token);
+        _serverTask = Program.MainAsync([port.ToString()], new XunitLoggerProvider(_delegatingTestOutputHelper), _stopCts.Token);
     }
 
     public static McpClientOptions CreateDefaultClientOptions() => new()
