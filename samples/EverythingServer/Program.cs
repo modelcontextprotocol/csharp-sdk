@@ -124,14 +124,13 @@ builder.Services
             { "resourceId", ["1", "2", "3", "4", "5"] }
         };
 
-        var @ref = ctx.Params?.Ref;
-
-        if (@ref is null)
+        if (ctx.Params is not { } params)
         {
-            throw new NotSupportedException($"Reference is required.");
+            throw new NotSupportedException($"Params are required.");
         }
-
-        var argument = ctx.Params!.Argument;
+        
+        var @ref = params.Ref;
+        var argument = params.Argument;
 
         if (@ref.Type == "ref/resource")
         {
