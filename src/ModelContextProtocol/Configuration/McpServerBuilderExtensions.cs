@@ -350,5 +350,27 @@ public static partial class McpServerBuilderExtensions
 
         return builder;
     }
+    /// <summary>
+    /// Adds a server transport that uses stdin/stdout for communication.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    public static IMcpServerBuilder WithTcpServerTransport(this IMcpServerBuilder builder)
+    {
+        Throw.IfNull(builder);
+
+        builder.Services.AddSingleton<ITransport, TcpServerTransport>();
+        builder.Services.AddHostedService<TcpMcpServerHostedService>();
+
+        builder.Services.AddSingleton(services =>
+        {
+            ITransport serverTransport = services.GetRequiredService<ITransport>();
+            IOptions<McpServerOptions> options = services.GetRequiredService<IOptions<McpServerOptions>>();
+            ILoggerFactory? loggerFactory = services.GetService<ILoggerFactory>();
+
+            return McpServerFactory.Create(serverTransport, options.Value, loggerFactory, services);
+        });
+
+        return builder;
+    }
     #endregion
 }
