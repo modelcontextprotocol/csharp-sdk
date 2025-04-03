@@ -508,20 +508,33 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void WithToolsFromAssembly_Parameters_Satisfiable_From_DI(bool parameterInServices)
+    [InlineData(ServiceLifetime.Singleton)]
+    [InlineData(ServiceLifetime.Scoped)]
+    [InlineData(ServiceLifetime.Transient)]
+    [InlineData(null)]
+    public void WithToolsFromAssembly_Parameters_Satisfiable_From_DI(ServiceLifetime? lifetime)
     {
         ServiceCollection sc = new();
-        if (parameterInServices)
+        switch (lifetime)
         {
-            sc.AddSingleton(new ComplexObject());
+            case ServiceLifetime.Singleton:
+                sc.AddSingleton(new ComplexObject());
+                break;
+
+            case ServiceLifetime.Scoped:
+                sc.AddScoped(_ => new ComplexObject());
+                break;
+
+            case ServiceLifetime.Transient:
+                sc.AddTransient(_ => new ComplexObject());
+                break;
         }
+
         sc.AddMcpServer().WithToolsFromAssembly();
         IServiceProvider services = sc.BuildServiceProvider();
 
         McpServerTool tool = services.GetServices<McpServerTool>().First(t => t.ProtocolTool.Name == "EchoComplex");
-        if (parameterInServices)
+        if (lifetime is not null)
         {
             Assert.DoesNotContain("\"complex\"", JsonSerializer.Serialize(tool.ProtocolTool.InputSchema));
         }
