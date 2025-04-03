@@ -53,7 +53,7 @@ public sealed class SseResponseStreamTransport(Stream sseResponseStream, string 
             return;
         }
 
-        JsonSerializer.Serialize(GetUtf8JsonWriter(writer), item.Data, McpJsonUtilities.JsonContext.Default.IJsonRpcMessage);
+        JsonSerializer.Serialize(GetUtf8JsonWriter(writer), item.Data, McpJsonUtilities.JsonContext.Default.IJsonRpcMessage!);
     }
 
     /// <inheritdoc/>
