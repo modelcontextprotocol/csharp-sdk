@@ -354,18 +354,15 @@ public static partial class McpServerBuilderExtensions
     /// Adds a server transport that uses TCP connection for communication.
     /// </summary>
     /// <param name="builder">The builder instance.</param>
-    /// <param name="options">The options to configure the transport.</param>
-    public static IMcpServerBuilder WithTcpServerTransport(this IMcpServerBuilder builder, McpServerTcpTransportOptions? options = null)
+    /// <param name="configureOptions">The options to configure the transport.</param>
+    public static IMcpServerBuilder WithTcpServerTransport(this IMcpServerBuilder builder, Action<McpServerTcpTransportOptions>? configureOptions = null)
     {
         Throw.IfNull(builder);
 
-        options ??= McpServerTcpTransportOptions.Default;
-
-        builder.Services.Configure<McpServerTcpTransportOptions>(opts =>
+        if (configureOptions != null)
         {
-            opts.IpAddress = options.IpAddress;
-            opts.Port = options.Port;
-        });
+            builder.Services.Configure(configureOptions);
+        }
 
         builder.Services.AddSingleton<ITransport, TcpServerTransport>(services =>
         {
