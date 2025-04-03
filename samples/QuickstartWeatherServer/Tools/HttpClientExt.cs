@@ -1,11 +1,10 @@
-
 using System.Text.Json;
 
 namespace ModelContextProtocol;
 
 internal static class HttpClientExt
 {
-    public static async Task<JsonDocument> ReadJsonDocument(this HttpClient client, string requestUri)
+    public static async Task<JsonDocument> ReadJsonDocumentAsync(this HttpClient client, string requestUri)
     {
         using var response = await client.GetAsync(requestUri);
         response.EnsureSuccessStatusCode();

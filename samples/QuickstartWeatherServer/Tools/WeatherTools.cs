@@ -14,7 +14,7 @@ public sealed class WeatherTools
         HttpClient client,
         [Description("The US state to get alerts for.")] string state)
     {
-        using var jsonDocument = await client.ReadJsonDocument($"/alerts/active/area/{state}");
+        using var jsonDocument = await client.ReadJsonDocumentAsync($"/alerts/active/area/{state}");
         var jsonElement = jsonDocument.RootElement;
         var alerts = jsonElement.GetProperty("features").EnumerateArray();
 
@@ -42,7 +42,7 @@ public sealed class WeatherTools
         [Description("Latitude of the location.")] double latitude,
         [Description("Longitude of the location.")] double longitude)
     {
-        using var jsonDocument = await client.ReadJsonDocument($"/points/{latitude},{longitude}");
+        using var jsonDocument = await client.ReadJsonDocumentAsync($"/points/{latitude},{longitude}");
         var jsonElement = jsonDocument.RootElement;
         var periods = jsonElement.GetProperty("properties").GetProperty("periods").EnumerateArray();
 
