@@ -175,7 +175,7 @@ public class Program
                         {
                             throw new McpServerException("Missing required arguments 'prompt' and 'maxTokens'");
                         }
-                        var sampleResult = await request.Server.RequestSamplingAsync(CreateRequestSamplingParams(prompt?.ToString() ?? "", "sampleLLM", Convert.ToInt32(maxTokens?.ToString())),
+                        var sampleResult = await request.Server.RequestSamplingAsync(CreateRequestSamplingParams(prompt.ToString(), "sampleLLM", Convert.ToInt32(maxTokens.ToString())),
                             cancellationToken);
 
                         return new CallToolResponse()
@@ -377,10 +377,12 @@ public class Program
     {
         Console.WriteLine("Starting server...");
 
+        int port = args.Length > 0 &&  uint.TryParse(args[0], out var parsedPort) ? (int)parsedPort : 3001;
+
         var builder = WebApplication.CreateSlimBuilder(args);
         builder.WebHost.ConfigureKestrel(options =>
         {
-            options.ListenLocalhost(3001);
+            options.ListenLocalhost(port);
         });
 
         ConfigureSerilog(builder.Logging);

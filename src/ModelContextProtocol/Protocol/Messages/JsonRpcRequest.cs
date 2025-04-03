@@ -1,4 +1,5 @@
-﻿using System.Text.Json.Serialization;
+﻿using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol.Messages;
 
@@ -29,5 +30,5 @@ public record JsonRpcRequest : IJsonRpcMessageWithId
     /// Optional parameters for the method.
     /// </summary>
     [JsonPropertyName("params")]
-    public object? Params { get; init; }
+    public JsonNode? Params { get; init; }
 }

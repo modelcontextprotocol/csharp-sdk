@@ -154,7 +154,7 @@ public class McpServerBuilderExtensionsPromptsTests : LoggedTest, IAsyncDisposab
         var prompt = prompts.First(t => t.Name == nameof(SimplePrompts.ReturnsChatMessages));
         Assert.Equal("Returns chat messages", prompt.Description);
 
-        var result = await prompt.GetAsync(new Dictionary<string, object?>() { ["message"] = "hello" }, TestContext.Current.CancellationToken);
+        var result = await prompt.GetAsync(new Dictionary<string, object?>() { ["message"] = "hello" }, cancellationToken: TestContext.Current.CancellationToken);
         var chatMessages = result.ToChatMessages();
 
         Assert.NotNull(chatMessages);

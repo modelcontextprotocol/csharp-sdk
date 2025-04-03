@@ -1,7 +1,9 @@
-﻿using ModelContextProtocol.Protocol.Messages;
+﻿using Microsoft.Extensions.AI;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Utils;
-using Microsoft.Extensions.AI;
+using ModelContextProtocol.Utils.Json;
 using System.Runtime.CompilerServices;
 using System.Text;
 
@@ -25,9 +27,12 @@ public static class McpServerExtensions
             throw new ArgumentException("Client connected to the server does not support sampling.", nameof(server));
         }
 
-        return server.SendRequestAsync<CreateMessageResult>(
-            new JsonRpcRequest { Method = RequestMethods.SamplingCreateMessage, Params = request },
-            cancellationToken);
+        return server.SendRequestAsync(
+            RequestMethods.SamplingCreateMessage,
+            request, 
+            McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams,
+            McpJsonUtilities.JsonContext.Default.CreateMessageResult,
+            cancellationToken: cancellationToken);
     }
 
     /// <summary>
@@ -164,9 +169,12 @@ public static class McpServerExtensions
             throw new ArgumentException("Client connected to the server does not support roots.", nameof(server));
         }
 
-        return server.SendRequestAsync<ListRootsResult>(
-            new JsonRpcRequest { Method = RequestMethods.RootsList, Params = request },
-            cancellationToken);
+        return server.SendRequestAsync(
+            RequestMethods.RootsList,
+            request,
+            McpJsonUtilities.JsonContext.Default.ListRootsRequestParams,
+            McpJsonUtilities.JsonContext.Default.ListRootsResult,
+            cancellationToken: cancellationToken);
     }
 
     /// <summary>Provides an <see cref="IChatClient"/> implementation that's implemented via client sampling.</summary>

@@ -3,7 +3,6 @@ using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Types;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 
@@ -35,36 +34,12 @@ public static partial class McpJsonUtilities
     /// Creates default options to use for MCP-related serialization.
     /// </summary>
     /// <returns>The configured options.</returns>
-    [UnconditionalSuppressMessage("AotAnalysis", "IL3050", Justification = "DefaultJsonTypeInfoResolver is only used when reflection-based serialization is enabled")]
-    [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026", Justification = "DefaultJsonTypeInfoResolver is only used when reflection-based serialization is enabled")]
     private static JsonSerializerOptions CreateDefaultOptions()
     {
-        // If reflection-based serialization is enabled by default, use it, as it's the most permissive in terms of what it can serialize,
-        // and we want to be flexible in terms of what can be put into the various collections in the object model.
-        // Otherwise, use the source-generated options to enable trimming and Native AOT.
-        JsonSerializerOptions options;
+        // Copy the configuration from the source generated context.
+        JsonSerializerOptions options = new(JsonContext.Default.Options);
 
-        if (JsonSerializer.IsReflectionEnabledByDefault)
-        {
-            // Keep in sync with the JsonSourceGenerationOptions attribute on JsonContext below.
-            options = new(JsonSerializerDefaults.Web)
-            {
-                TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
-                Converters = { new JsonStringEnumConverter() },
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-                NumberHandling = JsonNumberHandling.AllowReadingFromString,
-            };
-        }
-        else
-        {
-            // Keep in sync with any additional settings above beyond what's in JsonContext below.
-            options = new(JsonContext.Default.Options)
-            {
-            };
-        }
-
-        // Include all types from AIJsonUtilities, so that anything default usable as part of an AIFunction
-        // is also usable as part of an McpServerTool.
+        // Chain with all supported types from MEAI
         options.TypeInfoResolverChain.Add(AIJsonUtilities.DefaultOptions.TypeInfoResolver!);
 
         options.MakeReadOnly();
@@ -75,6 +50,7 @@ public static partial class McpJsonUtilities
         (JsonTypeInfo<T>)options.GetTypeInfo(typeof(T));
 
     internal static JsonElement DefaultMcpToolSchema { get; } = ParseJsonElement("""{"type":"object"}"""u8);
+    internal static object? AsObject(this JsonElement element) => element.ValueKind is JsonValueKind.Null ? null : element;
 
     internal static bool IsValidMcpToolSchema(JsonElement element)
     {
@@ -102,14 +78,8 @@ public static partial class McpJsonUtilities
 
     // Keep in sync with CreateDefaultOptions above.
     [JsonSourceGenerationOptions(JsonSerializerDefaults.Web,
-        UseStringEnumConverter = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         NumberHandling = JsonNumberHandling.AllowReadingFromString)]
-
-    // JSON
-    [JsonSerializable(typeof(JsonDocument))]
-    [JsonSerializable(typeof(JsonElement))]
-    [JsonSerializable(typeof(JsonNode))]
     
     // JSON-RPC
     [JsonSerializable(typeof(IJsonRpcMessage))]
@@ -151,6 +121,7 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(SubscribeRequestParams))]
     [JsonSerializable(typeof(UnsubscribeFromResourceRequestParams))]
     [JsonSerializable(typeof(UnsubscribeRequestParams))]
+    [JsonSerializable(typeof(IReadOnlyDictionary<string, object>))]
 
     [ExcludeFromCodeCoverage]
     internal sealed partial class JsonContext : JsonSerializerContext;

@@ -3,8 +3,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
+using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils;
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Shared;
 
@@ -15,14 +17,13 @@ namespace ModelContextProtocol.Shared;
 /// This is especially true as a client represents a connection to one and only one server, and vice versa.
 /// Any multi-client or multi-server functionality should be implemented at a higher level of abstraction.
 /// </summary>
-internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
+internal abstract class McpEndpoint : IAsyncDisposable
 {
     private readonly RequestHandlers _requestHandlers = [];
     private readonly NotificationHandlers _notificationHandlers = [];
 
     private McpSession? _session;
     private CancellationTokenSource? _sessionCts;
-    private int _started;
 
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private bool _disposed;
@@ -30,22 +31,27 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
     protected readonly ILogger _logger;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="McpJsonRpcEndpoint"/> class.
+    /// Initializes a new instance of the <see cref="McpEndpoint"/> class.
     /// </summary>
     /// <param name="loggerFactory">The logger factory.</param>
-    protected McpJsonRpcEndpoint(ILoggerFactory? loggerFactory = null)
+    protected McpEndpoint(ILoggerFactory? loggerFactory = null)
     {
         _logger = loggerFactory?.CreateLogger(GetType()) ?? NullLogger.Instance;
     }
 
-    protected void SetRequestHandler<TRequest, TResponse>(string method, Func<TRequest?, CancellationToken, Task<TResponse>> handler)
-        => _requestHandlers.Set(method, handler);
+    protected void SetRequestHandler<TRequest, TResponse>(
+        string method,
+        Func<TRequest?, CancellationToken, Task<TResponse>> handler,
+        JsonTypeInfo<TRequest> requestTypeInfo,
+        JsonTypeInfo<TResponse> responseTypeInfo)
+
+        => _requestHandlers.Set(method, handler, requestTypeInfo, responseTypeInfo);
 
     public void AddNotificationHandler(string method, Func<JsonRpcNotification, Task> handler)
         => _notificationHandlers.Add(method, handler);
 
-    public Task<TResult> SendRequestAsync<TResult>(JsonRpcRequest request, CancellationToken cancellationToken = default) where TResult : class
-        => GetSessionOrThrow().SendRequestAsync<TResult>(request, cancellationToken);
+    public Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default)
+        => GetSessionOrThrow().SendRequestAsync(request, cancellationToken);
 
     public Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
         => GetSessionOrThrow().SendMessageAsync(message, cancellationToken);
@@ -58,20 +64,17 @@ internal abstract class McpJsonRpcEndpoint : IAsyncDisposable
     /// <summary>
     /// Task that processes incoming messages from the transport.
     /// </summary>
-    protected Task? MessageProcessingTask { get; set; }
+    protected Task? MessageProcessingTask { get; private set; }
 
     [MemberNotNull(nameof(MessageProcessingTask))]
-    protected void StartSession(ITransport sessionTransport, CancellationToken fullSessionCancellationToken = default)
+    protected void StartSession(ITransport sessionTransport)
     {
-        if (Interlocked.Exchange(ref _started, 1) != 0)
-        {
-            throw new InvalidOperationException("The MCP session has already stared.");
-        }
-
-        _sessionCts = CancellationTokenSource.CreateLinkedTokenSource(fullSessionCancellationToken);
-        _session = new McpSession(sessionTransport, EndpointName, _requestHandlers, _notificationHandlers, _logger);
+        _sessionCts = new CancellationTokenSource();
+        _session = new McpSession(this is IMcpServer, sessionTransport, EndpointName, _requestHandlers, _notificationHandlers, _logger);
         MessageProcessingTask = _session.ProcessMessagesAsync(_sessionCts.Token);
     }
+
+    protected void CancelSession() => _sessionCts?.Cancel();
 
     public async ValueTask DisposeAsync()
     {

@@ -3,17 +3,30 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Tests.Utils;
-using System.Text.Json;
 
 namespace ModelContextProtocol.Tests;
 
 public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(outputHelper)
 {
+    /// <summary>Port number to be grabbed by the next test.</summary>
+    private static int s_nextPort = 3000;
+
+    // If the tests run concurrently against different versions of the runtime, tests can conflict with
+    // each other in the ports set up for interacting with containers. Ensure that such suites running
+    // against different TFMs use different port numbers.
+    private static readonly int s_portOffset = 1000 * (Environment.Version.Major switch
+    {
+        int v when v >= 8 => Environment.Version.Major - 7,
+        _ => 0,
+    });
+
+    private static int CreatePortNumber() => Interlocked.Increment(ref s_nextPort) + s_portOffset;
+
     [Fact]
     public async Task ConnectAndReceiveMessage_InMemoryServer()
     {
         // Arrange
-        await using InMemoryTestSseServer server = new(logger: LoggerFactory.CreateLogger<InMemoryTestSseServer>());
+        await using InMemoryTestSseServer server = new(CreatePortNumber(), LoggerFactory.CreateLogger<InMemoryTestSseServer>());
         await server.StartAsync();
 
         var defaultOptions = new McpClientOptions
@@ -27,7 +40,7 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
             Name = "In-memory Test Server",
             TransportType = TransportTypes.Sse,
             TransportOptions = [],
-            Location = "http://localhost:5000/sse"
+            Location = $"http://localhost:{server.Port}/sse"
         };
 
         // Act
@@ -41,7 +54,7 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
         await server.WaitForConnectionAsync(TimeSpan.FromSeconds(10));
 
         // Send a test message through POST endpoint
-        await client.SendNotificationAsync("test/message", new { message = "Hello, SSE!" }, TestContext.Current.CancellationToken);
+        await client.SendNotificationAsync("test/message", new { message = "Hello, SSE!" }, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(true);
@@ -53,7 +66,7 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
     {
         Assert.SkipWhen(!EverythingSseServerFixture.IsDockerAvailable, "docker is not available");
 
-        int port = 3001;
+        int port = CreatePortNumber();
 
         await using var fixture = new EverythingSseServerFixture(port);
         await fixture.StartAsync();
@@ -78,7 +91,7 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
             defaultOptions, 
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
-        var tools = await client.ListToolsAsync(TestContext.Current.CancellationToken);
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotEmpty(tools);
@@ -90,7 +103,7 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
     {
         Assert.SkipWhen(!EverythingSseServerFixture.IsDockerAvailable, "docker is not available");
 
-        int port = 3002;
+        int port = CreatePortNumber();
 
         await using var fixture = new EverythingSseServerFixture(port);
         await fixture.StartAsync();
@@ -145,7 +158,7 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
             {
                 ["prompt"] = "Test prompt",
                 ["maxTokens"] = 100
-            }, TestContext.Current.CancellationToken);
+            }, cancellationToken: TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(result);
@@ -158,10 +171,9 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
     public async Task ConnectAndReceiveMessage_InMemoryServer_WithFullEndpointEventUri()
     {
         // Arrange
-        await using InMemoryTestSseServer server = new(logger: LoggerFactory.CreateLogger<InMemoryTestSseServer>());
+        await using InMemoryTestSseServer server = new(CreatePortNumber(), LoggerFactory.CreateLogger<InMemoryTestSseServer>());
         server.UseFullUrlForEndpointEvent = true;
         await server.StartAsync();
-
 
         var defaultOptions = new McpClientOptions
         {
@@ -174,7 +186,7 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
             Name = "In-memory Test Server",
             TransportType = TransportTypes.Sse,
             TransportOptions = [],
-            Location = "http://localhost:5000/sse"
+            Location = $"http://localhost:{server.Port}/sse"
         };
 
         // Act
@@ -188,7 +200,7 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
         await server.WaitForConnectionAsync(TimeSpan.FromSeconds(10));
 
         // Send a test message through POST endpoint
-        await client.SendNotificationAsync("test/message", new { message = "Hello, SSE!" }, TestContext.Current.CancellationToken);
+        await client.SendNotificationAsync("test/message", new { message = "Hello, SSE!" }, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(true);
@@ -198,7 +210,7 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
     public async Task ConnectAndReceiveNotification_InMemoryServer()
     {
         // Arrange
-        await using InMemoryTestSseServer server = new(logger: LoggerFactory.CreateLogger<InMemoryTestSseServer>());
+        await using InMemoryTestSseServer server = new(CreatePortNumber(), LoggerFactory.CreateLogger<InMemoryTestSseServer>());
         await server.StartAsync();
 
 
@@ -213,7 +225,7 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
             Name = "In-memory Test Server",
             TransportType = TransportTypes.Sse,
             TransportOptions = [],
-            Location = "http://localhost:5000/sse"
+            Location = $"http://localhost:{server.Port}/sse"
         };
 
         // Act
@@ -229,7 +241,7 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
         var receivedNotification = new TaskCompletionSource<string?>();
         client.AddNotificationHandler("test/notification", (args) =>
             {
-                var msg = ((JsonElement?)args.Params)?.GetProperty("message").GetString();
+                var msg = args.Params?["message"]?.GetValue<string>();
                 receivedNotification.SetResult(msg);
 
                 return Task.CompletedTask;

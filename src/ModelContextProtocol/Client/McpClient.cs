@@ -10,7 +10,7 @@ using System.Text.Json;
 namespace ModelContextProtocol.Client;
 
 /// <inheritdoc/>
-internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
+internal sealed class McpClient : McpEndpoint, IMcpClient
 {
     private readonly IClientTransport _clientTransport;
     private readonly McpClientOptions _options;
@@ -40,12 +40,14 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
                 throw new InvalidOperationException($"Sampling capability was set but it did not provide a handler.");
             }
 
-            SetRequestHandler<CreateMessageRequestParams, CreateMessageResult>(
+            SetRequestHandler(
                 RequestMethods.SamplingCreateMessage,
                 (request, cancellationToken) => samplingHandler(
                     request,
                     request?.Meta?.ProgressToken is { } token ? new TokenProgress(this, token) : NullProgress.Instance,
-                    cancellationToken));
+                    cancellationToken),
+                McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams,
+                McpJsonUtilities.JsonContext.Default.CreateMessageResult);
         }
 
         if (options.Capabilities?.Roots is { } rootsCapability)
@@ -55,9 +57,11 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
                 throw new InvalidOperationException($"Roots capability was set but it did not provide a handler.");
             }
 
-            SetRequestHandler<ListRootsRequestParams, ListRootsResult>(
+            SetRequestHandler(
                 RequestMethods.RootsList,
-                (request, cancellationToken) => rootsHandler(request, cancellationToken));
+                rootsHandler,
+                McpJsonUtilities.JsonContext.Default.ListRootsRequestParams,
+                McpJsonUtilities.JsonContext.Default.ListRootsResult);
         }
     }
 
@@ -82,9 +86,7 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
         {
             // Connect transport
             _sessionTransport = await _clientTransport.ConnectAsync(cancellationToken).ConfigureAwait(false);
-            // We don't want the ConnectAsync token to cancel the session after we've successfully connected.
-            // The base class handles cleaning up the session in DisposeAsync without our help.
-            StartSession(_sessionTransport, fullSessionCancellationToken: CancellationToken.None);
+            StartSession(_sessionTransport);
 
             // Perform initialization sequence
             using var initializationCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -93,18 +95,17 @@ internal sealed class McpClient : McpJsonRpcEndpoint, IMcpClient
         try
         {
             // Send initialize request
-            var initializeResponse = await SendRequestAsync<InitializeResult>(
-                new JsonRpcRequest
+            var initializeResponse = await this.SendRequestAsync(
+                RequestMethods.Initialize,
+                new InitializeRequestParams
                 {
-                    Method = RequestMethods.Initialize,
-                    Params = new InitializeRequestParams()
-                    {
-                        ProtocolVersion = _options.ProtocolVersion,
-                        Capabilities = _options.Capabilities ?? new ClientCapabilities(),
-                        ClientInfo = _options.ClientInfo
-                    }
+                    ProtocolVersion = _options.ProtocolVersion,
+                    Capabilities = _options.Capabilities ?? new ClientCapabilities(),
+                    ClientInfo = _options.ClientInfo
                 },
-                initializationCts.Token).ConfigureAwait(false);
+                McpJsonUtilities.JsonContext.Default.InitializeRequestParams,
+                McpJsonUtilities.JsonContext.Default.InitializeResult,
+                cancellationToken: initializationCts.Token).ConfigureAwait(false);
 
                 // Store server information
                 _logger.ServerCapabilitiesReceived(EndpointName,

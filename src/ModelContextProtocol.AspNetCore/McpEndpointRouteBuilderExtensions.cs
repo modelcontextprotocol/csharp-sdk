@@ -47,11 +47,11 @@ public static class McpEndpointRouteBuilderExtensions
             {
                 throw new Exception($"Unreachable given good entropy! Session with ID '{sessionId}' has already been created.");
             }
-            await using var server = McpServerFactory.Create(transport, mcpServerOptions.Value, loggerFactory, endpoints.ServiceProvider);
 
             try
             {
                 var transportTask = transport.RunAsync(cancellationToken: requestAborted);
+                await using var server = McpServerFactory.Create(transport, mcpServerOptions.Value, loggerFactory, endpoints.ServiceProvider);
 
                 try
                 {
@@ -85,7 +85,7 @@ public static class McpEndpointRouteBuilderExtensions
 
             if (!_sessions.TryGetValue(sessionId.ToString(), out var transport))
             {
-                await Results.BadRequest($"Session {sessionId} not found.").ExecuteAsync(context);
+                await Results.BadRequest($"Session ID not found.").ExecuteAsync(context);
                 return;
             }
 

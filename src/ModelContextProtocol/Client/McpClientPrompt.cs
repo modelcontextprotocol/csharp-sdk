@@ -1,4 +1,5 @@
 ﻿using ModelContextProtocol.Protocol.Types;
+using System.Text.Json;
 
 namespace ModelContextProtocol.Client;
 
@@ -20,17 +21,19 @@ public sealed class McpClientPrompt
     /// Retrieves a specific prompt with optional arguments.
     /// </summary>
     /// <param name="arguments">Optional arguments for the prompt</param>
+    /// <param name="serializerOptions">The serialization options governing argument serialization.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task containing the prompt's content and messages.</returns>
     public async ValueTask<GetPromptResult> GetAsync(
         IEnumerable<KeyValuePair<string, object?>>? arguments = null,
+        JsonSerializerOptions? serializerOptions = null,
         CancellationToken cancellationToken = default)
     {
         IReadOnlyDictionary<string, object?>? argDict =
             arguments as IReadOnlyDictionary<string, object?> ??
             arguments?.ToDictionary();
 
-        return await _client.GetPromptAsync(ProtocolPrompt.Name, argDict, cancellationToken).ConfigureAwait(false);
+        return await _client.GetPromptAsync(ProtocolPrompt.Name, argDict, serializerOptions, cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Gets the name of the prompt.</summary>

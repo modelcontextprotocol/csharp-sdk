@@ -61,6 +61,8 @@ public abstract class ResourceContents
                 }
 
                 string? propertyName = reader.GetString();
+                bool success = reader.Read();
+                Debug.Assert(success, "STJ must have buffered the entire object for us.");
 
                 switch (propertyName)
                 {
