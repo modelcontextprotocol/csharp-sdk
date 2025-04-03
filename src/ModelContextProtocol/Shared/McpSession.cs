@@ -174,6 +174,14 @@ internal sealed class McpSession : IDisposable
             // Normal shutdown
             _logger.EndpointMessageProcessingCancelled(EndpointName);
         }
+        finally
+        {
+            // Fail any pending requests, as they'll never be satisfied.
+            foreach (var entry in _pendingRequests)
+            {
+                entry.Value.TrySetException(new InvalidOperationException("The server shut down unexpectedly."));
+            }
+        }
     }
 
     private async Task HandleMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken)
