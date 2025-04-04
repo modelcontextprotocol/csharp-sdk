@@ -41,7 +41,7 @@ public static class McpServerExtensions
     /// <param name="server">The server issueing the request.</param>
     /// <param name="messages">The messages to send as part of the request.</param>
     /// <param name="options">The options to use for the request.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task containing the response from the client.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="server"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="messages"/> is <see langword="null"/>.</exception>

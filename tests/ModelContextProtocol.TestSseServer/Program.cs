@@ -154,13 +154,13 @@ public class Program
                 {
                     if (request.Params is null)
                     {
-                        throw new McpServerException("Missing required parameter 'name'");
+                        throw new McpException("Missing required parameter 'name'");
                     }
                     if (request.Params.Name == "echo")
                     {
                         if (request.Params.Arguments is null || !request.Params.Arguments.TryGetValue("message", out var message))
                         {
-                            throw new McpServerException("Missing required argument 'message'");
+                            throw new McpException("Missing required argument 'message'");
                         }
                         return new CallToolResponse()
                         {
@@ -173,7 +173,7 @@ public class Program
                             !request.Params.Arguments.TryGetValue("prompt", out var prompt) || 
                             !request.Params.Arguments.TryGetValue("maxTokens", out var maxTokens))
                         {
-                            throw new McpServerException("Missing required arguments 'prompt' and 'maxTokens'");
+                            throw new McpException("Missing required arguments 'prompt' and 'maxTokens'");
                         }
                         var sampleResult = await request.Server.RequestSamplingAsync(CreateRequestSamplingParams(prompt.ToString(), "sampleLLM", Convert.ToInt32(maxTokens.ToString())),
                             cancellationToken);
@@ -185,7 +185,7 @@ public class Program
                     }
                     else
                     {
-                        throw new McpServerException($"Unknown tool: {request.Params.Name}");
+                        throw new McpException($"Unknown tool: {request.Params.Name}");
                     }
                 }
             },
@@ -219,7 +219,7 @@ public class Program
                         }
                         catch
                         {
-                            throw new McpServerException("Invalid cursor");
+                            throw new McpException("Invalid cursor");
                         }
                     }
                     
@@ -240,7 +240,7 @@ public class Program
                 {
                     if (request.Params?.Uri is null)
                     {
-                        throw new McpServerException("Missing required argument 'uri'");
+                        throw new McpException("Missing required argument 'uri'");
                     }
 
                     if (request.Params.Uri.StartsWith("test://dynamic/resource/"))
@@ -248,7 +248,7 @@ public class Program
                         var id = request.Params.Uri.Split('/').LastOrDefault();
                         if (string.IsNullOrEmpty(id))
                         {
-                            throw new McpServerException("Invalid resource URI");
+                            throw new McpException("Invalid resource URI");
                         }
                         return Task.FromResult(new ReadResourceResult()
                         {
@@ -264,7 +264,7 @@ public class Program
                     }
 
                     ResourceContents? contents = resourceContents.FirstOrDefault(r => r.Uri == request.Params.Uri) ?? 
-                        throw new McpServerException("Resource not found");
+                        throw new McpException("Resource not found");
                     
                     return Task.FromResult(new ReadResourceResult()
                     {
@@ -311,7 +311,7 @@ public class Program
                 {
                     if (request.Params is null)
                     {
-                        throw new McpServerException("Missing required parameter 'name'");
+                        throw new McpException("Missing required parameter 'name'");
                     }
                     List<PromptMessage> messages = new();
                     if (request.Params.Name == "simple_prompt")
@@ -361,7 +361,7 @@ public class Program
                     }
                     else
                     {
-                        throw new McpServerException($"Unknown prompt: {request.Params.Name}");
+                        throw new McpException($"Unknown prompt: {request.Params.Name}");
                     }
 
                     return Task.FromResult(new GetPromptResult()

@@ -18,6 +18,10 @@ internal sealed class McpClient : McpEndpoint, IMcpClient
     private ITransport? _sessionTransport;
     private CancellationTokenSource? _connectCts;
 
+    private ServerCapabilities? _serverCapabilities;
+    private Implementation? _serverInfo;
+    private string? _serverInstructions;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="McpClient"/> class.
     /// </summary>
@@ -66,13 +70,13 @@ internal sealed class McpClient : McpEndpoint, IMcpClient
     }
 
     /// <inheritdoc/>
-    public ServerCapabilities? ServerCapabilities { get; private set; }
+    public ServerCapabilities ServerCapabilities => _serverCapabilities ?? throw new InvalidOperationException("The client is not connected.");
 
     /// <inheritdoc/>
-    public Implementation? ServerInfo { get; private set; }
+    public Implementation ServerInfo => _serverInfo ?? throw new InvalidOperationException("The client is not connected.");
 
     /// <inheritdoc/>
-    public string? ServerInstructions { get; private set; }
+    public string? ServerInstructions => _serverInstructions;
 
     /// <inheritdoc/>
     public override string EndpointName { get; }
@@ -112,15 +116,15 @@ internal sealed class McpClient : McpEndpoint, IMcpClient
                     capabilities: JsonSerializer.Serialize(initializeResponse.Capabilities, McpJsonUtilities.JsonContext.Default.ServerCapabilities),
                     serverInfo: JsonSerializer.Serialize(initializeResponse.ServerInfo, McpJsonUtilities.JsonContext.Default.Implementation));
 
-                ServerCapabilities = initializeResponse.Capabilities;
-                ServerInfo = initializeResponse.ServerInfo;
-                ServerInstructions = initializeResponse.Instructions;
+                _serverCapabilities = initializeResponse.Capabilities;
+                _serverInfo = initializeResponse.ServerInfo;
+                _serverInstructions = initializeResponse.Instructions;
 
                 // Validate protocol version
                 if (initializeResponse.ProtocolVersion != _options.ProtocolVersion)
                 {
                     _logger.ServerProtocolVersionMismatch(EndpointName, _options.ProtocolVersion, initializeResponse.ProtocolVersion);
-                    throw new McpClientException($"Server protocol version mismatch. Expected {_options.ProtocolVersion}, got {initializeResponse.ProtocolVersion}");
+                    throw new McpException($"Server protocol version mismatch. Expected {_options.ProtocolVersion}, got {initializeResponse.ProtocolVersion}");
                 }
 
                 // Send initialized notification
@@ -128,10 +132,10 @@ internal sealed class McpClient : McpEndpoint, IMcpClient
                     new JsonRpcNotification { Method = NotificationMethods.InitializedNotification },
                     initializationCts.Token).ConfigureAwait(false);
             }
-            catch (OperationCanceledException) when (initializationCts.IsCancellationRequested)
+            catch (OperationCanceledException oce) when (initializationCts.IsCancellationRequested)
             {
                 _logger.ClientInitializationTimeout(EndpointName);
-                throw new McpClientException("Initialization timed out");
+                throw new McpException("Initialization timed out", oce);
             }
         }
         catch (Exception e)

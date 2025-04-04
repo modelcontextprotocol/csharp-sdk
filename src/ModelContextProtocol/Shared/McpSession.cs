@@ -1,6 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using ModelContextProtocol.Client;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
@@ -147,7 +146,7 @@ internal sealed class McpSession : IDisposable
                                 JsonRpc = "2.0",
                                 Error = new JsonRpcErrorDetail
                                 {
-                                    Code = (ex as McpServerException)?.ErrorCode ?? ErrorCodes.InternalError,
+                                    Code = (ex as McpException)?.ErrorCode ?? ErrorCodes.InternalError,
                                     Message = ex.Message
                                 }
                             }, cancellationToken).ConfigureAwait(false);
@@ -298,7 +297,7 @@ internal sealed class McpSession : IDisposable
         if (!_requestHandlers.TryGetValue(request.Method, out var handler))
         {
             _logger.NoHandlerFoundForRequest(EndpointName, request.Method);
-            throw new McpServerException("The method does not exist or is not available.", ErrorCodes.MethodNotFound);
+            throw new McpException("The method does not exist or is not available.", ErrorCodes.MethodNotFound);
         }
 
         _logger.RequestHandlerCalled(EndpointName, request.Method);
@@ -318,14 +317,14 @@ internal sealed class McpSession : IDisposable
     /// Use this method for custom requests or those not yet covered explicitly by the endpoint implementation.
     /// </summary>
     /// <param name="request">The JSON-RPC request to send.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task containing the server's response.</returns>
     public async Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken)
     {
         if (!_transport.IsConnected)
         {
             _logger.EndpointNotConnected(EndpointName);
-            throw new McpClientException("Transport is not connected");
+            throw new McpException("Transport is not connected");
         }
 
         Histogram<double> durationMetric = _isServer ? s_serverRequestDuration : s_clientRequestDuration;
@@ -372,7 +371,7 @@ internal sealed class McpSession : IDisposable
             if (response is JsonRpcError error)
             {
                 _logger.RequestFailed(EndpointName, request.Method, error.Error.Message, error.Error.Code);
-                throw new McpClientException($"Request failed (server side): {error.Error.Message}", error.Error.Code);
+                throw new McpException($"Request failed (server side): {error.Error.Message}", error.Error.Code);
             }
 
             if (response is JsonRpcResponse success)
@@ -384,7 +383,7 @@ internal sealed class McpSession : IDisposable
 
             // Unexpected response type
             _logger.RequestInvalidResponseType(EndpointName, request.Method);
-            throw new McpClientException("Invalid response type");
+            throw new McpException("Invalid response type");
         }
         catch (Exception ex) when (addTags)
         {
@@ -405,7 +404,7 @@ internal sealed class McpSession : IDisposable
         if (!_transport.IsConnected)
         {
             _logger.ClientNotConnected(EndpointName);
-            throw new McpClientException("Transport is not connected");
+            throw new McpException("Transport is not connected");
         }
 
         Histogram<double> durationMetric = _isServer ? s_serverRequestDuration : s_clientRequestDuration;
@@ -529,8 +528,7 @@ internal sealed class McpSession : IDisposable
     {
         tags.Add("error.type", e.GetType().FullName);
         tags.Add("rpc.jsonrpc.error_code",
-            (e as McpClientException)?.ErrorCode is int clientError ? clientError :
-            (e as McpServerException)?.ErrorCode is int serverError ? serverError :
+            (e as McpException)?.ErrorCode is int errorCode ? errorCode :
             e is JsonException ? ErrorCodes.ParseError :
             ErrorCodes.InternalError);
     }

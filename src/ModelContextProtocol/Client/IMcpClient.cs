@@ -8,19 +8,21 @@ namespace ModelContextProtocol.Client;
 public interface IMcpClient : IMcpEndpoint
 {
     /// <summary>
-    /// Gets the capabilities supported by the server.
+    /// Gets the capabilities supported by the connected server.
     /// </summary>
-    ServerCapabilities? ServerCapabilities { get; }
+    ServerCapabilities ServerCapabilities { get; }
 
     /// <summary>
-    /// Gets the version and implementation information of the server.
+    /// Gets the implementation information of the connected server.
     /// </summary>
-    Implementation? ServerInfo { get; }
+    Implementation ServerInfo { get; }
 
     /// <summary>
-    /// Instructions describing how to use the server and its features.
-    /// This can be used by clients to improve the LLM's understanding of available tools, resources, etc. 
-    /// It can be thought of like a "hint" to the model. For example, this information MAY be added to the system prompt.
+    /// Gets any instructions describing how to use the connected server and its features.
     /// </summary>
+    /// <remarks>
+    /// This can be used by clients to improve an LLM's understanding of available tools, prompts, and resources. 
+    /// It can be thought of like a "hint" to the model and may be added to a system prompt.
+    /// </remarks>
     string? ServerInstructions { get; }
 }

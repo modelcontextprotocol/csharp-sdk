@@ -37,7 +37,7 @@ public static class McpClientFactory
     /// </param>
     /// <param name="createTransportFunc">An optional factory method which returns transport implementations based on a server configuration.</param>
     /// <param name="loggerFactory">A logger factory for creating loggers for clients.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>An <see cref="IMcpClient"/> that's connected to the specified server.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="serverConfig"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="clientOptions"/> is <see langword="null"/>.</exception>

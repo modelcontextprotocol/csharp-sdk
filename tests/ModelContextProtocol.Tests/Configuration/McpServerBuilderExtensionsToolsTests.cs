@@ -435,7 +435,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
     {
         IMcpClient client = await CreateMcpClientForServer();
 
-        var e = await Assert.ThrowsAsync<McpClientException>(async () => await client.CallToolAsync(
+        var e = await Assert.ThrowsAsync<McpException>(async () => await client.CallToolAsync(
             "NotRegisteredTool",
             cancellationToken: TestContext.Current.CancellationToken));
 

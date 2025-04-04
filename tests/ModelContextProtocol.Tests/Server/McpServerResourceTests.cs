@@ -95,6 +95,6 @@ public class McpServerResourceTests
                 });
             });
         var sp = services.BuildServiceProvider();
-        Assert.Throws<McpServerException>(() => sp.GetRequiredService<IMcpServer>());
+        Assert.Throws<McpException>(() => sp.GetRequiredService<IMcpServer>());
     }
 }

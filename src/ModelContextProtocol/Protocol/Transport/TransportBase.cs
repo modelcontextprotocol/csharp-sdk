@@ -45,7 +45,7 @@ public abstract class TransportBase : ITransport
     /// Writes a message to the message channel.
     /// </summary>
     /// <param name="message">The message to write.</param>
-    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     protected async Task WriteMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         if (!_isConnected)

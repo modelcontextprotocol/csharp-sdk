@@ -209,7 +209,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
 
         // act
         await using var client = await GetClientAsync();
-        await Assert.ThrowsAsync<McpClientException>(() =>
+        await Assert.ThrowsAsync<McpException>(() =>
             client.GetPromptAsync("non_existent_prompt", null, cancellationToken: TestContext.Current.CancellationToken));
     }
 

@@ -15,7 +15,7 @@ public static class McpClientExtensions
     /// Sends a ping request to verify server connectivity.
     /// </summary>
     /// <param name="client">The client.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that completes when the ping is successful.</returns>
     public static Task PingAsync(this IMcpClient client, CancellationToken cancellationToken = default)
     {
@@ -34,7 +34,7 @@ public static class McpClientExtensions
     /// </summary>
     /// <param name="client">The client.</param>
     /// <param name="serializerOptions">The serializer options governing tool parameter serialization.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A list of all available tools.</returns>
     public static async Task<IList<McpClientTool>> ListToolsAsync(
         this IMcpClient client,
@@ -75,7 +75,7 @@ public static class McpClientExtensions
     /// </summary>
     /// <param name="client">The client.</param>
     /// <param name="serializerOptions">The serializer options governing tool parameter serialization.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>An asynchronous sequence of all available tools.</returns>
     /// <remarks>
     /// Every iteration through the returned <see cref="IAsyncEnumerable{McpClientTool}"/>
@@ -115,7 +115,7 @@ public static class McpClientExtensions
     /// Retrieves a list of available prompts from the server.
     /// </summary>
     /// <param name="client">The client.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A list of all available prompts.</returns>
     public static async Task<IList<McpClientPrompt>> ListPromptsAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
@@ -150,7 +150,7 @@ public static class McpClientExtensions
     /// Creates an enumerable for asynchronously enumerating all available prompts from the server.
     /// </summary>
     /// <param name="client">The client.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>An asynchronous sequence of all available prompts.</returns>
     /// <remarks>
     /// Every iteration through the returned <see cref="IAsyncEnumerable{Prompt}"/>
@@ -188,7 +188,7 @@ public static class McpClientExtensions
     /// <param name="name">The name of the prompt to retrieve</param>
     /// <param name="arguments">Optional arguments for the prompt</param>
     /// <param name="serializerOptions">The serialization options governing argument serialization.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task containing the prompt's content and messages.</returns>
     public static Task<GetPromptResult> GetPromptAsync(
         this IMcpClient client,
@@ -216,7 +216,7 @@ public static class McpClientExtensions
     /// Retrieves a list of available resource templates from the server.
     /// </summary>
     /// <param name="client">The client.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A list of all available resource templates.</returns>
     public static async Task<IList<ResourceTemplate>> ListResourceTemplatesAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
@@ -255,7 +255,7 @@ public static class McpClientExtensions
     /// Creates an enumerable for asynchronously enumerating all available resource templates from the server.
     /// </summary>
     /// <param name="client">The client.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>An asynchronous sequence of all available resource templates.</returns>
     /// <remarks>
     /// Every iteration through the returned <see cref="IAsyncEnumerable{ResourceTemplate}"/>
@@ -290,7 +290,7 @@ public static class McpClientExtensions
     /// Retrieves a list of available resources from the server.
     /// </summary>
     /// <param name="client">The client.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A list of all available resources.</returns>
     public static async Task<IList<Resource>> ListResourcesAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
@@ -329,7 +329,7 @@ public static class McpClientExtensions
     /// Creates an enumerable for asynchronously enumerating all available resources from the server.
     /// </summary>
     /// <param name="client">The client.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>An asynchronous sequence of all available resources.</returns>
     /// <remarks>
     /// Every iteration through the returned <see cref="IAsyncEnumerable{Resource}"/>
@@ -365,7 +365,7 @@ public static class McpClientExtensions
     /// </summary>
     /// <param name="client">The client.</param>
     /// <param name="uri">The uri of the resource.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     public static Task<ReadResourceResult> ReadResourceAsync(
         this IMcpClient client, string uri, CancellationToken cancellationToken = default)
     {
@@ -387,7 +387,7 @@ public static class McpClientExtensions
     /// <param name="reference">A resource (uri) or prompt (name) reference</param>
     /// <param name="argumentName">Name of argument. Must be non-null and non-empty.</param>
     /// <param name="argumentValue">Value of argument. Must be non-null.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     public static Task<CompleteResult> GetCompletionAsync(this IMcpClient client, Reference reference, string argumentName, string argumentValue, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
@@ -416,7 +416,7 @@ public static class McpClientExtensions
     /// </summary>
     /// <param name="client">The client.</param>
     /// <param name="uri">The uri of the resource.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     public static Task SubscribeToResourceAsync(this IMcpClient client, string uri, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
@@ -435,7 +435,7 @@ public static class McpClientExtensions
     /// </summary>
     /// <param name="client">The client.</param>
     /// <param name="uri">The uri of the resource.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     public static Task UnsubscribeFromResourceAsync(this IMcpClient client, string uri, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
@@ -456,7 +456,7 @@ public static class McpClientExtensions
     /// <param name="toolName">The name of the tool to call.</param>
     /// <param name="arguments">Optional arguments for the tool.</param>
     /// <param name="serializerOptions">The serialization options governing argument serialization.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task containing the tool's response.</returns>
     public static Task<CallToolResponse> CallToolAsync(
         this IMcpClient client,
@@ -622,7 +622,7 @@ public static class McpClientExtensions
     /// </summary>
     /// <param name="client">The client.</param>
     /// <param name="level">The minimum log level of messages to be generated.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     public static Task SetLoggingLevel(this IMcpClient client, LoggingLevel level, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);

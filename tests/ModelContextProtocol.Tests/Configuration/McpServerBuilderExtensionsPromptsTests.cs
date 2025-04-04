@@ -217,7 +217,7 @@ public class McpServerBuilderExtensionsPromptsTests : LoggedTest, IAsyncDisposab
     {
         IMcpClient client = await CreateMcpClientForServer();
 
-        await Assert.ThrowsAsync<McpClientException>(async () => await client.GetPromptAsync(
+        await Assert.ThrowsAsync<McpException>(async () => await client.GetPromptAsync(
             nameof(SimplePrompts.ThrowsException),
             cancellationToken: TestContext.Current.CancellationToken));
     }
@@ -227,7 +227,7 @@ public class McpServerBuilderExtensionsPromptsTests : LoggedTest, IAsyncDisposab
     {
         IMcpClient client = await CreateMcpClientForServer();
 
-        var e = await Assert.ThrowsAsync<McpClientException>(async () => await client.GetPromptAsync(
+        var e = await Assert.ThrowsAsync<McpException>(async () => await client.GetPromptAsync(
             "NotRegisteredPrompt",
             cancellationToken: TestContext.Current.CancellationToken));
 
@@ -239,7 +239,7 @@ public class McpServerBuilderExtensionsPromptsTests : LoggedTest, IAsyncDisposab
     {
         IMcpClient client = await CreateMcpClientForServer();
 
-        var e = await Assert.ThrowsAsync<McpClientException>(async () => await client.GetPromptAsync(
+        var e = await Assert.ThrowsAsync<McpException>(async () => await client.GetPromptAsync(
             nameof(SimplePrompts.ReturnsChatMessages),
             cancellationToken: TestContext.Current.CancellationToken));
 

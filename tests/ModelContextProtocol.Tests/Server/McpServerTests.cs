@@ -95,7 +95,7 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
-    public async Task RequestSamplingAsync_Should_Throw_McpServerException_If_Client_Does_Not_Support_Sampling()
+    public async Task RequestSamplingAsync_Should_Throw_McpException_If_Client_Does_Not_Support_Sampling()
     {
         // Arrange
         await using var transport = new TestServerTransport();
@@ -131,7 +131,7 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
-    public async Task RequestRootsAsync_Should_Throw_McpServerException_If_Client_Does_Not_Support_Roots()
+    public async Task RequestRootsAsync_Should_Throw_McpException_If_Client_Does_Not_Support_Roots()
     {
         // Arrange
         await using var transport = new TestServerTransport();
@@ -523,7 +523,7 @@ public class McpServerTests : LoggedTest
         await using var transport = new TestServerTransport();
         var options = CreateOptions(serverCapabilities);
 
-        Assert.Throws<McpServerException>(() => McpServerFactory.Create(transport, options, LoggerFactory));
+        Assert.Throws<McpException>(() => McpServerFactory.Create(transport, options, LoggerFactory));
     }
 
     [Fact]

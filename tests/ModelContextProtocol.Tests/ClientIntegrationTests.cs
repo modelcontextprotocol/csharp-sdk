@@ -175,7 +175,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
 
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
-        await Assert.ThrowsAsync<McpClientException>(() =>
+        await Assert.ThrowsAsync<McpException>(() =>
             client.GetPromptAsync("non_existent_prompt", null, cancellationToken: TestContext.Current.CancellationToken));
     }
 
