@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
@@ -39,7 +40,7 @@ public static class McpEndpointRouteBuilderExtensions
             var requestAborted = context.RequestAborted;
 
             response.Headers.ContentType = "text/event-stream";
-            response.Headers.CacheControl = "no-store";
+            response.Headers.CacheControl = "no-cache,no-store";
 
             var sessionId = MakeNewSessionId();
             await using var transport = new SseResponseStreamTransport(response.Body, $"/message?sessionId={sessionId}");
@@ -50,6 +51,10 @@ public static class McpEndpointRouteBuilderExtensions
 
             try
             {
+                // Make sure we disable all response buffering for SSE
+                context.Response.Headers.ContentEncoding = "identity";
+                context.Features.GetRequiredFeature<IHttpResponseBodyFeature>().DisableBuffering();
+
                 var transportTask = transport.RunAsync(cancellationToken: requestAborted);
                 await using var server = McpServerFactory.Create(transport, mcpServerOptions.Value, loggerFactory, endpoints.ServiceProvider);
 

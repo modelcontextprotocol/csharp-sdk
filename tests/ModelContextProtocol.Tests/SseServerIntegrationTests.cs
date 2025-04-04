@@ -281,6 +281,21 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
     }
 
     [Fact]
+    public async Task EventSourceResponse_Includes_ExpectedHeaders()
+    {
+        using var httpClient = GetHttpClient();
+        using var sseResponse = await httpClient.GetAsync("", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+
+        sseResponse.EnsureSuccessStatusCode();
+
+        Assert.Equal("text/event-stream", sseResponse.Content.Headers.ContentType?.MediaType);
+        Assert.Equal("identity", sseResponse.Content.Headers.ContentEncoding.ToString());
+        Assert.NotNull(sseResponse.Headers.CacheControl);
+        Assert.True(sseResponse.Headers.CacheControl.NoStore);
+        Assert.True(sseResponse.Headers.CacheControl.NoCache);
+    }
+
+    [Fact]
     public async Task EventSourceStream_Includes_MessageEventType()
     {
         // Simulate our own MCP client handshake using a plain HttpClient so we can look for "event: message"
