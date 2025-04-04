@@ -1,7 +1,9 @@
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
+using Moq;
 using System.Text.Json;
 using System.Threading.Channels;
 
@@ -187,7 +189,68 @@ public class McpClientFactoryTests
         await Assert.ThrowsAsync<ArgumentException>(() => McpClientFactory.CreateAsync(config, _defaultOptions, cancellationToken: TestContext.Current.CancellationToken));
     }
 
-    private sealed class NopTransport : ITransport, IClientTransport
+    [Theory]
+    [InlineData(typeof(NopTransport))]
+    [InlineData(typeof(FailureTransport))]
+    public async Task CreateAsync_WithCapabilitiesOptions(Type transportType)
+    {
+        // Arrange
+        var serverConfig = new McpServerConfig
+        {
+            Id = "TestServer",
+            Name = "TestServer",
+            TransportType = "stdio",
+            Location = "test-location"
+        };
+
+        var clientOptions = new McpClientOptions
+        {
+            ClientInfo = new Implementation 
+            {
+                Name = "TestClient", 
+                Version = "1.0.0.0"
+            },
+            Capabilities = new ClientCapabilities
+            {
+                Sampling = new SamplingCapability
+                {
+                    SamplingHandler = (c, p, t) => Task.FromResult(
+                        new CreateMessageResult { 
+                            Content = new Content { Text = "result" }, 
+                            Model = "test-model", 
+                            Role = "test-role", 
+                            StopReason = "endTurn" 
+                    }),
+                },
+                Roots = new RootsCapability
+                {
+                    ListChanged = true,
+                    RootsHandler = (t, r) => Task.FromResult(new ListRootsResult { Roots = [] }),
+                }
+            }
+        };
+
+        var clientTransport = (IClientTransport?)Activator.CreateInstance(transportType);
+        IMcpClient? client = null;
+
+        var actionTask = McpClientFactory.CreateAsync(serverConfig, clientOptions, (config, logger) => clientTransport ?? new NopTransport(), new Mock<ILoggerFactory>().Object, CancellationToken.None);
+
+        // Act
+        if (clientTransport is FailureTransport)
+        {
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(async() => await actionTask);
+            Assert.Equal(FailureTransport.ExpectedMessage, exception.Message);
+        }
+        else
+        {
+            client = await actionTask;
+
+            // Assert
+            Assert.NotNull(client);
+        }        
+    }
+
+    private class NopTransport : ITransport, IClientTransport
     {
         private readonly Channel<IJsonRpcMessage> _channel = Channel.CreateUnbounded<IJsonRpcMessage>();
 
@@ -199,7 +262,7 @@ public class McpClientFactoryTests
 
         public ValueTask DisposeAsync() => default;
 
-        public Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
+        public virtual Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
         {
             switch (message)
             {
@@ -222,6 +285,16 @@ public class McpClientFactoryTests
             }
 
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class FailureTransport : NopTransport 
+    {
+        public const string ExpectedMessage = "Something failed";
+
+        public override Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
+        {
+            throw new InvalidOperationException(ExpectedMessage);
         }
     }
 }

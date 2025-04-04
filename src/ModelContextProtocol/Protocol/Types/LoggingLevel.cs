@@ -7,7 +7,7 @@ namespace ModelContextProtocol.Protocol.Types;
 /// These map to syslog message severities, as specified in RFC-5424:
 /// https://datatracker.ietf.org/doc/html/rfc5424#section-6.2.1
 /// </summary>
-[JsonConverter(typeof(JsonStringEnumConverter<LoggingLevel>))]
+[JsonConverter(typeof(CustomizableJsonStringEnumConverter<LoggingLevel>))]
 public enum LoggingLevel
 {
     /// <summary>Detailed debug information, typically only valuable to developers.</summary>

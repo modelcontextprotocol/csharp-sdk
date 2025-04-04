@@ -8,7 +8,7 @@ namespace TestServerWithHosting.Tools;
 /// This tool uses dependency injection and async method
 /// </summary>
 [McpServerToolType]
-public static class SampleLlmTool
+public sealed class SampleLlmTool
 {
     [McpServerTool(Name = "sampleLLM"), Description("Samples from an LLM using MCP's sampling feature")]
     public static async Task<string> SampleLLM(

@@ -26,6 +26,8 @@ public sealed class InMemoryTestSseServer : IAsyncDisposable
 
     public InMemoryTestSseServer(int port = 5000, ILogger<InMemoryTestSseServer>? logger = null)
     {
+        Port = port;
+
         _listener = new HttpListener();
         _listener.Prefixes.Add($"http://localhost:{port}/");
         _cts = new CancellationTokenSource();
@@ -34,6 +36,8 @@ public sealed class InMemoryTestSseServer : IAsyncDisposable
         _endpointPath = "/sse";
         _messagePath = "/message";
     }
+
+    public int Port { get; }
 
     /// <summary>
     /// This is to be able to use the full URL for the endpoint event.

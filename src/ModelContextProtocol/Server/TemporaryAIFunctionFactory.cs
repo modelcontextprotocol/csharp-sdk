@@ -133,9 +133,9 @@ internal static partial class TemporaryAIFunctionFactory
     /// <remarks>
     /// <para>
     /// Return values are serialized to <see cref="JsonElement"/> using <paramref name="options"/>'s
-    /// <see cref="AIFunctionFactoryOptions.SerializerOptions"/>. Arguments that are not already of the expected type are
+    /// <see cref="TemporaryAIFunctionFactoryOptions.SerializerOptions"/>. Arguments that are not already of the expected type are
     /// marshaled to the expected type via JSON and using <paramref name="options"/>'s
-    /// <see cref="AIFunctionFactoryOptions.SerializerOptions"/>. If the argument is a <see cref="JsonElement"/>,
+    /// <see cref="TemporaryAIFunctionFactoryOptions.SerializerOptions"/>. If the argument is a <see cref="JsonElement"/>,
     /// <see cref="JsonDocument"/>, or <see cref="JsonNode"/>, it is deserialized directly. If the argument is anything else unknown,
     /// it is round-tripped through JSON, serializing the object as JSON and then deserializing it to the expected type.
     /// </para>

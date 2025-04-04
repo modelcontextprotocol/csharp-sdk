@@ -6,6 +6,10 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <UserSecretsId>a4e20a70-5009-4b81-b5b6-780b6d43e78e</UserSecretsId>
+        <!--
+        Anthropic SDK isn't AOT compatible yet
+        <PublishAot>true</PublishAot>
+        -->
     </PropertyGroup>
 
     <ItemGroup>
@@ -15,6 +19,7 @@
     <ItemGroup>
         <PackageReference Include="Anthropic.SDK" />
         <PackageReference Include="Microsoft.Extensions.Hosting" />
+        <PackageReference Include="Microsoft.Extensions.AI" />
     </ItemGroup>
 
 </Project>

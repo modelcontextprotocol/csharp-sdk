@@ -12,6 +12,7 @@ using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Threading.Channels;
 
 namespace ModelContextProtocol.Shared;
 
@@ -20,15 +21,14 @@ namespace ModelContextProtocol.Shared;
 /// </summary>
 internal sealed class McpSession : IDisposable
 {
-    private static readonly Histogram<double> s_clientSessionDuration = Diagnostics.Meter.CreateHistogram<double>(
-        "mcp.client.session.duration", "s", "Measures the duration of a client session.", advice: Diagnostics.LongSecondsBucketBoundaries);
-    private static readonly Histogram<double> s_serverSessionDuration = Diagnostics.Meter.CreateHistogram<double>(
-        "mcp.server.session.duration", "s", "Measures the duration of a server session.", advice: Diagnostics.LongSecondsBucketBoundaries);
-
-    private static readonly Histogram<double> s_serverRequestDuration = Diagnostics.Meter.CreateHistogram<double>(
-        "rpc.server.duration", "s", "Measures the duration of inbound RPC.", advice: Diagnostics.ShortSecondsBucketBoundaries);
-    private static readonly Histogram<double> s_clientRequestDuration = Diagnostics.Meter.CreateHistogram<double>(
-        "rpc.client.duration", "s", "Measures the duration of outbound RPC.", advice: Diagnostics.ShortSecondsBucketBoundaries);
+    private static readonly Histogram<double> s_clientSessionDuration = Diagnostics.CreateDurationHistogram(
+        "mcp.client.session.duration", "Measures the duration of a client session.", longBuckets: true);
+    private static readonly Histogram<double> s_serverSessionDuration = Diagnostics.CreateDurationHistogram(
+        "mcp.server.session.duration", "Measures the duration of a server session.", longBuckets: true);
+    private static readonly Histogram<double> s_clientRequestDuration = Diagnostics.CreateDurationHistogram(
+        "rpc.client.duration", "Measures the duration of outbound RPC.", longBuckets: false);
+    private static readonly Histogram<double> s_serverRequestDuration = Diagnostics.CreateDurationHistogram(
+        "rpc.server.duration", "Measures the duration of inbound RPC.", longBuckets: false);
 
     private readonly bool _isServer;
     private readonly string _transportKind;
@@ -173,6 +173,14 @@ internal sealed class McpSession : IDisposable
         {
             // Normal shutdown
             _logger.EndpointMessageProcessingCancelled(EndpointName);
+        }
+        finally
+        {
+            // Fail any pending requests, as they'll never be satisfied.
+            foreach (var entry in _pendingRequests)
+            {
+                entry.Value.TrySetException(new InvalidOperationException("The server shut down unexpectedly."));
+            }
         }
     }
 
