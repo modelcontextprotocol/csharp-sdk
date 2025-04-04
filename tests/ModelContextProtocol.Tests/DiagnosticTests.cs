@@ -1,6 +1,5 @@
 ﻿using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Transport;
-using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using OpenTelemetry.Trace;
 using System.Diagnostics;
@@ -49,7 +48,6 @@ public class DiagnosticTests
 
         await using (IMcpServer server = McpServerFactory.Create(serverTransport, new()
             {
-                ServerInfo = new Implementation { Name = "TestServer", Version = "1.0.0" },
                 Capabilities = new()
                 {
                     Tools = new()

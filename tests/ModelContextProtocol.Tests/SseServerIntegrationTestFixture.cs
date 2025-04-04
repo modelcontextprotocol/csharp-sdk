@@ -1,5 +1,4 @@
-﻿using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol.Transport;
+﻿using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Test.Utils;
 using ModelContextProtocol.Tests.Utils;
 using ModelContextProtocol.TestSseServer;
@@ -31,11 +30,6 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
 
         _serverTask = Program.MainAsync([port.ToString()], new XunitLoggerProvider(_delegatingTestOutputHelper), _stopCts.Token);
     }
-
-    public static McpClientOptions CreateDefaultClientOptions() => new()
-    {
-        ClientInfo = new() { Name = "IntegrationTestClient", Version = "1.0.0" },
-    };
 
     public void Initialize(ITestOutputHelper output)
     {

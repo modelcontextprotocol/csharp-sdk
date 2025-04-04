@@ -14,7 +14,7 @@ public class McpServerOptions
     /// <summary>
     /// Information about this server implementation.
     /// </summary>
-    public required Implementation ServerInfo { get; set; }
+    public Implementation? ServerInfo { get; set; }
 
     /// <summary>
     /// Server capabilities to advertise to the server.

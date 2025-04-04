@@ -11,6 +11,12 @@ namespace ModelContextProtocol.Server;
 /// <inheritdoc />
 internal sealed class McpServer : McpEndpoint, IMcpServer
 {
+    internal static Implementation DefaultImplementation { get; } = new()
+    {
+        Name = DefaultAssemblyName.Name ?? nameof(McpServer),
+        Version = DefaultAssemblyName.Version?.ToString() ?? "1.0.0",
+    };
+
     private readonly EventHandler? _toolsChangedDelegate;
     private readonly EventHandler? _promptsChangedDelegate;
 
@@ -32,9 +38,11 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         Throw.IfNull(transport);
         Throw.IfNull(options);
 
+        options ??= new();
+
         ServerOptions = options;
         Services = serviceProvider;
-        _endpointName = $"Server ({options.ServerInfo.Name} {options.ServerInfo.Version})";
+        _endpointName = $"Server ({options.ServerInfo?.Name ?? DefaultImplementation.Name} {options.ServerInfo?.Version ?? DefaultImplementation.Version})";
 
         _toolsChangedDelegate = delegate
         {
@@ -158,7 +166,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
                 {
                     ProtocolVersion = options.ProtocolVersion,
                     Instructions = options.ServerInstructions,
-                    ServerInfo = options.ServerInfo,
+                    ServerInfo = options.ServerInfo ?? DefaultImplementation,
                     Capabilities = ServerCapabilities ?? new(),
                 });
             },

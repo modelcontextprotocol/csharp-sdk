@@ -25,7 +25,6 @@ public class Program
 
     private static void ConfigureOptions(McpServerOptions options)
     {
-        options.ServerInfo = new Implementation() { Name = "TestServer", Version = "1.0.0" };
         options.Capabilities = new ServerCapabilities()
         {
             Tools = new(),

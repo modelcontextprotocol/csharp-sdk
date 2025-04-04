@@ -28,14 +28,4 @@ public class McpClientOptions
     /// Timeout for initialization sequence.
     /// </summary>
     public TimeSpan InitializationTimeout { get; set; } = TimeSpan.FromSeconds(60);
-
-    /// <summary>Creates a shallow clone of the options.</summary>
-    internal McpClientOptions Clone() =>
-        new()
-        {
-            ClientInfo = ClientInfo,
-            Capabilities = Capabilities,
-            ProtocolVersion = ProtocolVersion,
-            InitializationTimeout = InitializationTimeout
-        };
 }

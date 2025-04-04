@@ -24,7 +24,6 @@ public class McpServerTests : LoggedTest
     {
         return new McpServerOptions
         {
-            ServerInfo = new Implementation { Name = "TestServer", Version = "1.0" },
             ProtocolVersion = "2024",
             InitializationTimeout = TimeSpan.FromSeconds(30),
             Capabilities = capabilities,
@@ -189,8 +188,8 @@ public class McpServerTests : LoggedTest
             {
                 var result = JsonSerializer.Deserialize<InitializeResult>(response);
                 Assert.NotNull(result);
-                Assert.Equal("TestServer", result.ServerInfo.Name);
-                Assert.Equal("1.0", result.ServerInfo.Version);
+                Assert.Equal("ModelContextProtocol.Tests", result.ServerInfo.Name);
+                Assert.Equal("1.0.0.0", result.ServerInfo.Version);
                 Assert.Equal("2024", result.ProtocolVersion);
             });
     }

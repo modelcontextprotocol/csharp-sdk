@@ -1,5 +1,4 @@
 ﻿using Microsoft.Extensions.AI;
-using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Utils;

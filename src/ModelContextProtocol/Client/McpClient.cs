@@ -5,8 +5,6 @@ using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Shared;
 using ModelContextProtocol.Utils.Json;
-using System.Diagnostics;
-using System.Reflection;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Client;
@@ -14,8 +12,11 @@ namespace ModelContextProtocol.Client;
 /// <inheritdoc/>
 internal sealed class McpClient : McpEndpoint, IMcpClient
 {
-    /// <summary>Cached naming information used for client name/version when none is specified.</summary>
-    private static readonly AssemblyName s_asmName = (Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly()).GetName();
+    private static Implementation DefaultImplementation { get; } = new()
+    {
+        Name = DefaultAssemblyName.Name ?? nameof(McpClient),
+        Version = DefaultAssemblyName.Version?.ToString() ?? "1.0.0",
+    };
 
     private readonly IClientTransport _clientTransport;
     private readonly McpClientOptions _options;
@@ -37,17 +38,9 @@ internal sealed class McpClient : McpEndpoint, IMcpClient
     public McpClient(IClientTransport clientTransport, McpClientOptions? options, McpServerConfig serverConfig, ILoggerFactory? loggerFactory)
         : base(loggerFactory)
     {
-        _clientTransport = clientTransport;
+        options ??= new();
 
-        if (options?.ClientInfo is null)
-        {
-            options = options?.Clone() ?? new();
-            options.ClientInfo = new()
-            {
-                Name = s_asmName.Name ?? nameof(McpClient),
-                Version = s_asmName.Version?.ToString() ?? "1.0.0",
-            };
-        }
+        _clientTransport = clientTransport;
         _options = options;
 
         EndpointName = $"Client ({serverConfig.Id}: {serverConfig.Name})";
@@ -122,14 +115,13 @@ internal sealed class McpClient : McpEndpoint, IMcpClient
             try
             {
                 // Send initialize request
-                Debug.Assert(_options.ClientInfo is not null, "ClientInfo should be set by the constructor");
                 var initializeResponse = await this.SendRequestAsync(
                     RequestMethods.Initialize,
                     new InitializeRequestParams
                     {
                         ProtocolVersion = _options.ProtocolVersion,
                         Capabilities = _options.Capabilities ?? new ClientCapabilities(),
-                        ClientInfo = _options.ClientInfo!
+                        ClientInfo = _options.ClientInfo ?? DefaultImplementation,
                     },
                     McpJsonUtilities.JsonContext.Default.InitializeRequestParams,
                     McpJsonUtilities.JsonContext.Default.InitializeResult,

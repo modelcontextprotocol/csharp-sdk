@@ -5,7 +5,6 @@ using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Utils;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using System.Reflection;
 
 namespace ModelContextProtocol.Client;
 

@@ -11,29 +11,24 @@ namespace ModelContextProtocol.Tests.Client;
 
 public class McpClientFactoryTests
 {
-    private readonly McpClientOptions _defaultOptions = new()
-    {
-        ClientInfo = new() { Name = "TestClient", Version = "1.0.0" }
-    };
-
     [Fact]
     public async Task CreateAsync_WithInvalidArgs_Throws()
     {
-        await Assert.ThrowsAsync<ArgumentNullException>("serverConfig", () => McpClientFactory.CreateAsync((McpServerConfig)null!, _defaultOptions, cancellationToken: TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<ArgumentNullException>("serverConfig", () => McpClientFactory.CreateAsync((McpServerConfig)null!, cancellationToken: TestContext.Current.CancellationToken));
 
         await Assert.ThrowsAsync<ArgumentException>("serverConfig", () => McpClientFactory.CreateAsync(new McpServerConfig()
             {
                 Name = "name",
                 Id = "id",
                 TransportType = "somethingunsupported",
-            }, _defaultOptions, cancellationToken: TestContext.Current.CancellationToken));
+            }, cancellationToken: TestContext.Current.CancellationToken));
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => McpClientFactory.CreateAsync(new McpServerConfig()
             {
                 Name = "name",
                 Id = "id",
                 TransportType = TransportTypes.StdIo,
-            }, _defaultOptions, (_, __) => null!, cancellationToken: TestContext.Current.CancellationToken));
+            }, createTransportFunc: (_, __) => null!, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -78,8 +73,7 @@ public class McpClientFactoryTests
         // Act
         await using var client = await McpClientFactory.CreateAsync(
             serverConfig,
-            _defaultOptions,
-            (_, __) => new NopTransport(),
+            createTransportFunc: (_, __) => new NopTransport(),
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
@@ -102,8 +96,7 @@ public class McpClientFactoryTests
         // Act
         await using var client = await McpClientFactory.CreateAsync(
             serverConfig,
-            _defaultOptions,
-            (_, __) => new NopTransport(),
+            createTransportFunc: (_, __) => new NopTransport(),
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
@@ -126,8 +119,7 @@ public class McpClientFactoryTests
         // Act
         await using var client = await McpClientFactory.CreateAsync(
             serverConfig,
-            _defaultOptions,
-            (_, __) => new NopTransport(),
+            createTransportFunc: (_, __) => new NopTransport(),
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
@@ -157,8 +149,7 @@ public class McpClientFactoryTests
         // Act
         await using var client = await McpClientFactory.CreateAsync(
             serverConfig,
-            _defaultOptions,
-            (_, __) => new NopTransport(),
+            createTransportFunc: (_, __) => new NopTransport(),
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
@@ -186,7 +177,7 @@ public class McpClientFactoryTests
         };
 
         // act & assert
-        await Assert.ThrowsAsync<ArgumentException>(() => McpClientFactory.CreateAsync(config, _defaultOptions, cancellationToken: TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<ArgumentException>(() => McpClientFactory.CreateAsync(config, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -205,11 +196,6 @@ public class McpClientFactoryTests
 
         var clientOptions = new McpClientOptions
         {
-            ClientInfo = new Implementation 
-            {
-                Name = "TestClient", 
-                Version = "1.0.0.0"
-            },
             Capabilities = new ClientCapabilities
             {
                 Sampling = new SamplingCapability

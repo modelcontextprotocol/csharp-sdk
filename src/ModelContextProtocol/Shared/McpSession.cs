@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
-using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
 using System.Collections.Concurrent;

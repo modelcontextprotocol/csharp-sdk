@@ -70,9 +70,7 @@ public sealed class StdioServerTransport : StreamServerTransport
     private static string GetServerName(McpServerOptions serverOptions)
     {
         Throw.IfNull(serverOptions);
-        Throw.IfNull(serverOptions.ServerInfo);
-        Throw.IfNull(serverOptions.ServerInfo.Name);
 
-        return serverOptions.ServerInfo.Name;
+        return serverOptions.ServerInfo?.Name ?? McpServer.DefaultImplementation.Name;
     }
 }

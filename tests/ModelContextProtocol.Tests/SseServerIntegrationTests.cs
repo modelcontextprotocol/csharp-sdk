@@ -27,7 +27,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
     {
         return McpClientFactory.CreateAsync(
             _fixture.DefaultConfig,
-            options ?? SseServerIntegrationTestFixture.CreateDefaultClientOptions(),
+            options,
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
     }
@@ -220,8 +220,8 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
         // Set up the sampling handler
         int samplingHandlerCalls = 0;
 #pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
-        var options = SseServerIntegrationTestFixture.CreateDefaultClientOptions();
-        options.Capabilities ??= new();
+        McpClientOptions options = new();
+        options.Capabilities = new();
         options.Capabilities.Sampling ??= new();
         options.Capabilities.Sampling.SamplingHandler = async (_, _, _) =>
         {

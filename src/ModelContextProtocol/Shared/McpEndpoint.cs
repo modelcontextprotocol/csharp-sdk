@@ -6,7 +6,7 @@ using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils;
 using System.Diagnostics.CodeAnalysis;
-using System.Text.Json.Serialization.Metadata;
+using System.Reflection;
 
 namespace ModelContextProtocol.Shared;
 
@@ -19,6 +19,9 @@ namespace ModelContextProtocol.Shared;
 /// </summary>
 internal abstract class McpEndpoint : IAsyncDisposable
 {
+    /// <summary>Cached naming information used for name/version when none is specified.</summary>
+    internal static AssemblyName DefaultAssemblyName { get; } = (Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly()).GetName();
+
     private McpSession? _session;
     private CancellationTokenSource? _sessionCts;
 

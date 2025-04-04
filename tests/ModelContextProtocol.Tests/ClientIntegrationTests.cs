@@ -5,10 +5,7 @@ using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Tests.Utils;
 using OpenAI;
-using System.Text.Encodings.Web;
 using System.Text.Json;
-using System.Text.Json.Serialization;
-using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Tests;
 
@@ -367,7 +364,6 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         int samplingHandlerCalls = 0;
         await using var client = await _fixture.CreateClientAsync(clientId, new()
         {
-            ClientInfo = new() { Name = "Sampling_Stdio", Version = "1.0.0" },
             Capabilities = new()
             {
                 Sampling = new()
@@ -532,7 +528,6 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
             .CreateSamplingHandler();
         await using var client = await McpClientFactory.CreateAsync(_fixture.EverythingServerConfig, new()
         {
-            ClientInfo = new() { Name = nameof(SamplingViaChatClient_RequestResponseProperlyPropagated), Version = "1.0.0" },
             Capabilities = new()
             {
                 Sampling = new()
