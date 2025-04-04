@@ -19,9 +19,6 @@ namespace ModelContextProtocol.Shared;
 /// </summary>
 internal abstract class McpEndpoint : IAsyncDisposable
 {
-    private readonly RequestHandlers _requestHandlers = [];
-    private readonly NotificationHandlers _notificationHandlers = [];
-
     private McpSession? _session;
     private CancellationTokenSource? _sessionCts;
 
@@ -39,16 +36,9 @@ internal abstract class McpEndpoint : IAsyncDisposable
         _logger = loggerFactory?.CreateLogger(GetType()) ?? NullLogger.Instance;
     }
 
-    protected void SetRequestHandler<TRequest, TResponse>(
-        string method,
-        Func<TRequest?, CancellationToken, Task<TResponse>> handler,
-        JsonTypeInfo<TRequest> requestTypeInfo,
-        JsonTypeInfo<TResponse> responseTypeInfo)
+    protected RequestHandlers RequestHandlers { get; } = [];
 
-        => _requestHandlers.Set(method, handler, requestTypeInfo, responseTypeInfo);
-
-    public void AddNotificationHandler(string method, Func<JsonRpcNotification, Task> handler)
-        => _notificationHandlers.Add(method, handler);
+    protected NotificationHandlers NotificationHandlers { get; } = [];
 
     public Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default)
         => GetSessionOrThrow().SendRequestAsync(request, cancellationToken);
@@ -70,7 +60,7 @@ internal abstract class McpEndpoint : IAsyncDisposable
     protected void StartSession(ITransport sessionTransport)
     {
         _sessionCts = new CancellationTokenSource();
-        _session = new McpSession(this is IMcpServer, sessionTransport, EndpointName, _requestHandlers, _notificationHandlers, _logger);
+        _session = new McpSession(this is IMcpServer, sessionTransport, EndpointName, RequestHandlers, NotificationHandlers, _logger);
         MessageProcessingTask = _session.ProcessMessagesAsync(_sessionCts.Token);
     }
 

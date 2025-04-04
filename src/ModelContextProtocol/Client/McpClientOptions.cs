@@ -12,7 +12,7 @@ public class McpClientOptions
     /// <summary>
     /// Information about this client implementation.
     /// </summary>
-    public required Implementation ClientInfo { get; set; }
+    public Implementation? ClientInfo { get; set; }
 
     /// <summary>
     /// Client capabilities to advertise to the server.
@@ -28,4 +28,14 @@ public class McpClientOptions
     /// Timeout for initialization sequence.
     /// </summary>
     public TimeSpan InitializationTimeout { get; set; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>Creates a shallow clone of the options.</summary>
+    internal McpClientOptions Clone() =>
+        new()
+        {
+            ClientInfo = ClientInfo,
+            Capabilities = Capabilities,
+            ProtocolVersion = ProtocolVersion,
+            InitializationTimeout = InitializationTimeout
+        };
 }

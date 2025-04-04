@@ -12,23 +12,6 @@ namespace ModelContextProtocol.Client;
 /// <summary>Provides factory methods for creating MCP clients.</summary>
 public static class McpClientFactory
 {
-    /// <summary>Default client options to use when none are supplied.</summary>
-    private static readonly McpClientOptions s_defaultClientOptions = CreateDefaultClientOptions();
-
-    /// <summary>Creates default client options to use when no options are supplied.</summary>
-    private static McpClientOptions CreateDefaultClientOptions()
-    {
-        var asmName = (Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly()).GetName();
-        return new()
-        {
-            ClientInfo = new()
-            {
-                Name = asmName.Name ?? "McpClient",
-                Version = asmName.Version?.ToString() ?? "1.0.0",
-            },
-        };
-    }
-
     /// <summary>Creates an <see cref="IMcpClient"/>, connecting it to the specified server.</summary>
     /// <param name="serverConfig">Configuration for the target server to which the client should connect.</param>
     /// <param name="clientOptions">
@@ -52,7 +35,6 @@ public static class McpClientFactory
     {
         Throw.IfNull(serverConfig);
 
-        clientOptions ??= s_defaultClientOptions;
         createTransportFunc ??= CreateTransport;
         
         string endpointName = $"Client ({serverConfig.Id}: {serverConfig.Name})";

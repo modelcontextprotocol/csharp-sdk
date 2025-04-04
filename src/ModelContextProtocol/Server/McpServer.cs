@@ -51,7 +51,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             });
         };
 
-        AddNotificationHandler(NotificationMethods.InitializedNotification, _ =>
+        NotificationHandlers.Add(NotificationMethods.InitializedNotification, _ =>
         {
             if (ServerOptions.Capabilities?.Tools?.ToolCollection is { } tools)
             {
@@ -65,6 +65,11 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
             return Task.CompletedTask;
         });
+
+        if (options.Capabilities?.NotificationHandlers is { } notificationHandlers)
+        {
+            NotificationHandlers.AddRange(notificationHandlers);
+        }
 
         SetToolsHandler(options);
         SetInitializeHandler(options);
@@ -131,7 +136,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
     private void SetPingHandler()
     {
-        SetRequestHandler(RequestMethods.Ping,
+        RequestHandlers.Set(RequestMethods.Ping,
             (request, _) => Task.FromResult(new PingResult()),
             McpJsonUtilities.JsonContext.Default.JsonNode,
             McpJsonUtilities.JsonContext.Default.PingResult);
@@ -139,7 +144,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
     private void SetInitializeHandler(McpServerOptions options)
     {
-        SetRequestHandler(RequestMethods.Initialize,
+        RequestHandlers.Set(RequestMethods.Initialize,
             (request, _) =>
             {
                 ClientCapabilities = request?.Capabilities ?? new();
@@ -164,7 +169,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
     private void SetCompletionHandler(McpServerOptions options)
     {
         // This capability is not optional, so return an empty result if there is no handler.
-        SetRequestHandler(RequestMethods.CompletionComplete,
+        RequestHandlers.Set(RequestMethods.CompletionComplete,
             options.GetCompletionHandler is { } handler ?
                 (request, ct) => handler(new(this, request), ct) :
                 (request, ct) => Task.FromResult(new CompleteResult() { Completion = new() { Values = [], Total = 0, HasMore = false } }),
@@ -190,20 +195,20 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
         listResourcesHandler ??= (static (_, _) => Task.FromResult(new ListResourcesResult()));
 
-        SetRequestHandler(
+        RequestHandlers.Set(
             RequestMethods.ResourcesList,
             (request, ct) => listResourcesHandler(new(this, request), ct),
             McpJsonUtilities.JsonContext.Default.ListResourcesRequestParams,
             McpJsonUtilities.JsonContext.Default.ListResourcesResult);
 
-        SetRequestHandler(
+        RequestHandlers.Set(
             RequestMethods.ResourcesRead,
             (request, ct) => readResourceHandler(new(this, request), ct),
             McpJsonUtilities.JsonContext.Default.ReadResourceRequestParams,
             McpJsonUtilities.JsonContext.Default.ReadResourceResult);
 
         listResourceTemplatesHandler ??= (static (_, _) => Task.FromResult(new ListResourceTemplatesResult()));
-        SetRequestHandler(
+        RequestHandlers.Set(
             RequestMethods.ResourcesTemplatesList,
             (request, ct) => listResourceTemplatesHandler(new(this, request), ct),
             McpJsonUtilities.JsonContext.Default.ListResourceTemplatesRequestParams,
@@ -221,13 +226,13 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             throw new McpException("Resources capability was enabled with subscribe support, but SubscribeToResources and/or UnsubscribeFromResources handlers were not specified.");
         }
 
-        SetRequestHandler(
+        RequestHandlers.Set(
             RequestMethods.ResourcesSubscribe,
             (request, ct) => subscribeHandler(new(this, request), ct),
             McpJsonUtilities.JsonContext.Default.SubscribeRequestParams,
             McpJsonUtilities.JsonContext.Default.EmptyResult);
 
-        SetRequestHandler(
+        RequestHandlers.Set(
             RequestMethods.ResourcesUnsubscribe,
             (request, ct) => unsubscribeHandler(new(this, request), ct),
             McpJsonUtilities.JsonContext.Default.UnsubscribeRequestParams,
@@ -314,13 +319,13 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             }
         }
 
-        SetRequestHandler(
+        RequestHandlers.Set(
             RequestMethods.PromptsList,
             (request, ct) => listPromptsHandler(new(this, request), ct),
             McpJsonUtilities.JsonContext.Default.ListPromptsRequestParams,
             McpJsonUtilities.JsonContext.Default.ListPromptsResult);
 
-        SetRequestHandler(
+        RequestHandlers.Set(
             RequestMethods.PromptsGet,
             (request, ct) => getPromptHandler(new(this, request), ct),
             McpJsonUtilities.JsonContext.Default.GetPromptRequestParams,
@@ -407,13 +412,13 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             }
         }
 
-        SetRequestHandler(
+        RequestHandlers.Set(
             RequestMethods.ToolsList,
             (request, ct) => listToolsHandler(new(this, request), ct),
             McpJsonUtilities.JsonContext.Default.ListToolsRequestParams,
             McpJsonUtilities.JsonContext.Default.ListToolsResult);
 
-        SetRequestHandler(
+        RequestHandlers.Set(
             RequestMethods.ToolsCall,
             (request, ct) => callToolHandler(new(this, request), ct),
             McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
@@ -432,7 +437,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             throw new McpException("Logging capability was enabled, but SetLoggingLevelHandler was not specified.");
         }
 
-        SetRequestHandler(
+        RequestHandlers.Set(
             RequestMethods.LoggingSetLevel,
             (request, ct) => setLoggingLevelHandler(new(this, request), ct),
             McpJsonUtilities.JsonContext.Default.SetLevelRequestParams,

@@ -1,16 +1,28 @@
 ﻿using ModelContextProtocol.Protocol.Messages;
-using System.Collections.Concurrent;
 
 namespace ModelContextProtocol.Shared;
 
-internal sealed class NotificationHandlers : ConcurrentDictionary<string, List<Func<JsonRpcNotification, Task>>>
+internal sealed class NotificationHandlers : Dictionary<string, List<Func<JsonRpcNotification, Task>>>
 {
+    /// <summary>Adds a notification handler as part of configuring the endpoint.</summary>
+    /// <remarks>This method is not thread-safe and should only be used serially as part of configuring the instance.</remarks>
     public void Add(string method, Func<JsonRpcNotification, Task> handler)
     {
-        var handlers = GetOrAdd(method, _ => []);
-        lock (handlers)
+        if (!TryGetValue(method, out var handlers))
         {
-            handlers.Add(handler);
+            this[method] = handlers = [];
+        }
+
+        handlers.Add(handler);
+    }
+
+    /// <summary>Adds notification handlers as part of configuring the endpoint.</summary>
+    /// <remarks>This method is not thread-safe and should only be used serially as part of configuring the instance.</remarks>
+    public void AddRange(IEnumerable<KeyValuePair<string, Func<JsonRpcNotification, Task>>> handlers)
+    {
+        foreach (var handler in handlers)
+        {
+            Add(handler.Key, handler.Value);
         }
     }
 }

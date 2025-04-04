@@ -1,4 +1,5 @@
-﻿using ModelContextProtocol.Server;
+﻿using ModelContextProtocol.Protocol.Messages;
+using ModelContextProtocol.Server;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol.Types;
@@ -26,6 +27,14 @@ public class ClientCapabilities
     /// </summary>
     [JsonPropertyName("sampling")]
     public SamplingCapability? Sampling { get; set; }
+
+    /// <summary>Gets or sets notification handlers to register with the client.</summary>
+    /// <remarks>
+    /// When constructed, the client will enumerate these handlers, which may contain multiple handlers per key.
+    /// The client will not re-enumerate the sequence.
+    /// </remarks>
+    [JsonIgnore]
+    public IEnumerable<KeyValuePair<string, Func<JsonRpcNotification, Task>>>? NotificationHandlers { get; set; }
 }
 
 /// <summary>

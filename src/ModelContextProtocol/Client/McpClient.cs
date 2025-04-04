@@ -5,6 +5,8 @@ using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Shared;
 using ModelContextProtocol.Utils.Json;
+using System.Diagnostics;
+using System.Reflection;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Client;
@@ -12,6 +14,9 @@ namespace ModelContextProtocol.Client;
 /// <inheritdoc/>
 internal sealed class McpClient : McpEndpoint, IMcpClient
 {
+    /// <summary>Cached naming information used for client name/version when none is specified.</summary>
+    private static readonly AssemblyName s_asmName = (Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly()).GetName();
+
     private readonly IClientTransport _clientTransport;
     private readonly McpClientOptions _options;
 
@@ -29,43 +34,61 @@ internal sealed class McpClient : McpEndpoint, IMcpClient
     /// <param name="options">Options for the client, defining protocol version and capabilities.</param>
     /// <param name="serverConfig">The server configuration.</param>
     /// <param name="loggerFactory">The logger factory.</param>
-    public McpClient(IClientTransport clientTransport, McpClientOptions options, McpServerConfig serverConfig, ILoggerFactory? loggerFactory)
+    public McpClient(IClientTransport clientTransport, McpClientOptions? options, McpServerConfig serverConfig, ILoggerFactory? loggerFactory)
         : base(loggerFactory)
     {
         _clientTransport = clientTransport;
+
+        if (options?.ClientInfo is null)
+        {
+            options = options?.Clone() ?? new();
+            options.ClientInfo = new()
+            {
+                Name = s_asmName.Name ?? nameof(McpClient),
+                Version = s_asmName.Version?.ToString() ?? "1.0.0",
+            };
+        }
         _options = options;
 
         EndpointName = $"Client ({serverConfig.Id}: {serverConfig.Name})";
 
-        if (options.Capabilities?.Sampling is { } samplingCapability)
+        if (options.Capabilities is { } capabilities)
         {
-            if (samplingCapability.SamplingHandler is not { } samplingHandler)
+            if (capabilities.NotificationHandlers is { } notificationHandlers)
             {
-                throw new InvalidOperationException($"Sampling capability was set but it did not provide a handler.");
+                NotificationHandlers.AddRange(notificationHandlers);
             }
 
-            SetRequestHandler(
-                RequestMethods.SamplingCreateMessage,
-                (request, cancellationToken) => samplingHandler(
-                    request,
-                    request?.Meta?.ProgressToken is { } token ? new TokenProgress(this, token) : NullProgress.Instance,
-                    cancellationToken),
-                McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams,
-                McpJsonUtilities.JsonContext.Default.CreateMessageResult);
-        }
-
-        if (options.Capabilities?.Roots is { } rootsCapability)
-        {
-            if (rootsCapability.RootsHandler is not { } rootsHandler)
+            if (capabilities.Sampling is { } samplingCapability)
             {
-                throw new InvalidOperationException($"Roots capability was set but it did not provide a handler.");
+                if (samplingCapability.SamplingHandler is not { } samplingHandler)
+                {
+                    throw new InvalidOperationException($"Sampling capability was set but it did not provide a handler.");
+                }
+
+                RequestHandlers.Set(
+                    RequestMethods.SamplingCreateMessage,
+                    (request, cancellationToken) => samplingHandler(
+                        request,
+                        request?.Meta?.ProgressToken is { } token ? new TokenProgress(this, token) : NullProgress.Instance,
+                        cancellationToken),
+                    McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams,
+                    McpJsonUtilities.JsonContext.Default.CreateMessageResult);
             }
 
-            SetRequestHandler(
-                RequestMethods.RootsList,
-                rootsHandler,
-                McpJsonUtilities.JsonContext.Default.ListRootsRequestParams,
-                McpJsonUtilities.JsonContext.Default.ListRootsResult);
+            if (capabilities.Roots is { } rootsCapability)
+            {
+                if (rootsCapability.RootsHandler is not { } rootsHandler)
+                {
+                    throw new InvalidOperationException($"Roots capability was set but it did not provide a handler.");
+                }
+
+                RequestHandlers.Set(
+                    RequestMethods.RootsList,
+                    rootsHandler,
+                    McpJsonUtilities.JsonContext.Default.ListRootsRequestParams,
+                    McpJsonUtilities.JsonContext.Default.ListRootsResult);
+            }
         }
     }
 
@@ -96,20 +119,21 @@ internal sealed class McpClient : McpEndpoint, IMcpClient
             using var initializationCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             initializationCts.CancelAfter(_options.InitializationTimeout);
 
-        try
-        {
-            // Send initialize request
-            var initializeResponse = await this.SendRequestAsync(
-                RequestMethods.Initialize,
-                new InitializeRequestParams
-                {
-                    ProtocolVersion = _options.ProtocolVersion,
-                    Capabilities = _options.Capabilities ?? new ClientCapabilities(),
-                    ClientInfo = _options.ClientInfo
-                },
-                McpJsonUtilities.JsonContext.Default.InitializeRequestParams,
-                McpJsonUtilities.JsonContext.Default.InitializeResult,
-                cancellationToken: initializationCts.Token).ConfigureAwait(false);
+            try
+            {
+                // Send initialize request
+                Debug.Assert(_options.ClientInfo is not null, "ClientInfo should be set by the constructor");
+                var initializeResponse = await this.SendRequestAsync(
+                    RequestMethods.Initialize,
+                    new InitializeRequestParams
+                    {
+                        ProtocolVersion = _options.ProtocolVersion,
+                        Capabilities = _options.Capabilities ?? new ClientCapabilities(),
+                        ClientInfo = _options.ClientInfo!
+                    },
+                    McpJsonUtilities.JsonContext.Default.InitializeRequestParams,
+                    McpJsonUtilities.JsonContext.Default.InitializeResult,
+                    cancellationToken: initializationCts.Token).ConfigureAwait(false);
 
                 // Store server information
                 _logger.ServerCapabilitiesReceived(EndpointName,

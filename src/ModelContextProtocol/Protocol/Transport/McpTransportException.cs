@@ -30,7 +30,7 @@ public class McpTransportException : Exception
     /// </summary>
     /// <param name="message">The message that describes the error.</param>
     /// <param name="innerException">The exception that is the cause of the current exception.</param>
-    public McpTransportException(string message, Exception innerException)
+    public McpTransportException(string message, Exception? innerException)
         : base(message, innerException)
     {
     }

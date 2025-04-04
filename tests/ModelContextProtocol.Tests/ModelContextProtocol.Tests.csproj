@@ -11,6 +11,13 @@
     <RootNamespace>ModelContextProtocol.Tests</RootNamespace>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <!-- Without this, tests are currently not showing results until all tests complete
+         https://xunit.net/docs/getting-started/v3/microsoft-testing-platform
+    -->
+    <DisableTestingPlatformServerCapability>true</DisableTestingPlatformServerCapability>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="coverlet.collector">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

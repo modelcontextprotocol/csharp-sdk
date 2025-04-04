@@ -21,10 +21,22 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
     /// <inheritdoc/>
     public override async Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
     {
-        if (_process.HasExited)
+        Exception? processException = null;
+        bool hasExited = false;
+        try
+        {
+            hasExited = _process.HasExited;
+        }
+        catch (Exception e)
+        {
+            processException = e;
+            hasExited = true;
+        }
+
+        if (hasExited)
         {
             Logger.TransportNotConnected(EndpointName);
-            throw new McpTransportException("Transport is not connected");
+            throw new McpTransportException("Transport is not connected", processException);
         }
 
         await base.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
@@ -33,7 +45,7 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
     /// <inheritdoc/>
     protected override ValueTask CleanupAsync(CancellationToken cancellationToken)
     {
-        StdioClientTransport.DisposeProcess(_process, processStarted: true, Logger, _options.ShutdownTimeout, EndpointName);
+        StdioClientTransport.DisposeProcess(_process, processRunning: true, Logger, _options.ShutdownTimeout, EndpointName);
 
         return base.CleanupAsync(cancellationToken);
     }

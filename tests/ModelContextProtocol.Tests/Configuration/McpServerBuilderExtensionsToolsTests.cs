@@ -141,15 +141,16 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         Dispose();
     }
 
-    private async Task<IMcpClient> CreateMcpClientForServer()
+    private async Task<IMcpClient> CreateMcpClientForServer(McpClientOptions? options = null)
     {
         return await McpClientFactory.CreateAsync(
-             new McpServerConfig()
-             {
-                 Id = "TestServer",
-                 Name = "TestServer",
-                 TransportType = "ignored",
-             },
+            new McpServerConfig()
+            {
+                Id = "TestServer",
+                Name = "TestServer",
+                TransportType = "ignored",
+            },
+            options,
             createTransportFunc: (_, _) => new StreamClientTransport(
                 serverInput: _clientToServerPipe.Writer.AsStream(),
                 _serverToClientPipe.Reader.AsStream(),
@@ -242,17 +243,22 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
     [Fact]
     public async Task Can_Be_Notified_Of_Tool_Changes()
     {
-        IMcpClient client = await CreateMcpClientForServer();
+        Channel<JsonRpcNotification> listChanged = Channel.CreateUnbounded<JsonRpcNotification>();
+
+        IMcpClient client = await CreateMcpClientForServer(new()
+        {
+            Capabilities = new()
+            {
+                NotificationHandlers = [new(NotificationMethods.ToolListChangedNotification, notification =>
+                {
+                    listChanged.Writer.TryWrite(notification);
+                    return Task.CompletedTask;
+                })],
+            },
+        });
 
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(16, tools.Count);
-
-        Channel<JsonRpcNotification> listChanged = Channel.CreateUnbounded<JsonRpcNotification>();
-        client.AddNotificationHandler(NotificationMethods.ToolListChangedNotification, notification =>
-        {
-            listChanged.Writer.TryWrite(notification);
-            return Task.CompletedTask;
-        });
 
         var notificationRead = listChanged.Reader.ReadAsync(TestContext.Current.CancellationToken);
         Assert.False(notificationRead.IsCompleted);
@@ -622,12 +628,17 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
     {
         ConcurrentQueue<ProgressNotification> notifications = new();
 
-        IMcpClient client = await CreateMcpClientForServer();
-        client.AddNotificationHandler(NotificationMethods.ProgressNotification, notification =>
+        IMcpClient client = await CreateMcpClientForServer(new()
         {
-            ProgressNotification pn = JsonSerializer.Deserialize<ProgressNotification>(notification.Params)!;
-            notifications.Enqueue(pn);
-            return Task.CompletedTask;
+            Capabilities = new()
+            {
+                NotificationHandlers = [new(NotificationMethods.ProgressNotification, notification =>
+                {
+                    ProgressNotification pn = JsonSerializer.Deserialize<ProgressNotification>(notification.Params)!;
+                    notifications.Enqueue(pn);
+                    return Task.CompletedTask;
+                })],
+            },
         });
 
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);

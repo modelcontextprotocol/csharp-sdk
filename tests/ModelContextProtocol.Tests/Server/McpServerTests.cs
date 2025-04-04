@@ -634,8 +634,6 @@ public class McpServerTests : LoggedTest
         public Implementation? ClientInfo => throw new NotImplementedException();
         public McpServerOptions ServerOptions => throw new NotImplementedException();
         public IServiceProvider? Services => throw new NotImplementedException();
-        public void AddNotificationHandler(string method, Func<JsonRpcNotification, Task> handler) => 
-            throw new NotImplementedException();
         public Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
         public Task RunAsync(CancellationToken cancellationToken = default) =>
@@ -649,13 +647,16 @@ public class McpServerTests : LoggedTest
         var options = CreateOptions();
 
         var notificationReceived = new TaskCompletionSource<JsonRpcNotification>();
+        options.Capabilities = new()
+        {
+            NotificationHandlers = [new(NotificationMethods.ProgressNotification, notification =>
+            {
+                notificationReceived.TrySetResult(notification);
+                return Task.CompletedTask;
+            })],
+        };
 
         var server = McpServerFactory.Create(transport, options, LoggerFactory);
-        server.AddNotificationHandler(NotificationMethods.ProgressNotification, notification =>
-        {
-            notificationReceived.SetResult(notification);
-            return Task.CompletedTask;
-        });
 
         Task serverTask = server.RunAsync(TestContext.Current.CancellationToken);
 
