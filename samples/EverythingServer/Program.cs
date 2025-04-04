@@ -169,7 +169,7 @@ builder.Services
     {
         if (ctx.Params?.Level is null)
         {
-            throw new McpServerException("Missing required argument 'level'");
+            throw new McpException("Missing required argument 'level'");
         }
 
         _minimumLoggingLevel = ctx.Params.Level;
