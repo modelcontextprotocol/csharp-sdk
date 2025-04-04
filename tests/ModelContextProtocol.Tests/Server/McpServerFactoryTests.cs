@@ -1,5 +1,4 @@
-﻿using ModelContextProtocol.Protocol.Types;
-using ModelContextProtocol.Server;
+﻿using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 
 namespace ModelContextProtocol.Tests.Server;
@@ -13,7 +12,6 @@ public class McpServerFactoryTests : LoggedTest
     {
         _options = new McpServerOptions
         {
-            ServerInfo = new Implementation { Name = "TestServer", Version = "1.0" },
             ProtocolVersion = "1.0",
             InitializationTimeout = TimeSpan.FromSeconds(30)
         };

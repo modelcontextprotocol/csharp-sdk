@@ -1,5 +1,4 @@
-﻿using System.Reflection;
-using ModelContextProtocol.Server;
+﻿using ModelContextProtocol.Server;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Utils;
 
@@ -24,18 +23,6 @@ internal sealed class McpServerOptionsSetup(
     public void Configure(McpServerOptions options)
     {
         Throw.IfNull(options);
-
-        // Configure the option's server information based on the current process,
-        // if it otherwise lacks server information.
-        if (options.ServerInfo is not { } serverInfo)
-        {
-            var assemblyName = Assembly.GetEntryAssembly()?.GetName();
-            options.ServerInfo = new()
-            {
-                Name = assemblyName?.Name ?? "McpServer",
-                Version = assemblyName?.Version?.ToString() ?? "1.0.0",
-            };
-        }
 
         // Collect all of the provided tools into a tools collection. If the options already has
         // a collection, add to it, otherwise create a new one. We want to maintain the identity

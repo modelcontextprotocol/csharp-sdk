@@ -1,7 +1,6 @@
 ﻿using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
-using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using ModelContextProtocol.Utils.Json;
@@ -21,11 +20,6 @@ public class StdioServerTransportTests : LoggedTest
     {
         _serverOptions = new McpServerOptions
         {
-            ServerInfo = new Implementation
-            {
-                Name = "Test Server",
-                Version = "1.0"
-            },
             ProtocolVersion = "2.0",
             InitializationTimeout = TimeSpan.FromSeconds(10),
             ServerInstructions = "Test Instructions"
@@ -49,8 +43,6 @@ public class StdioServerTransportTests : LoggedTest
 
         Assert.Throws<ArgumentNullException>("serverOptions", () => new StdioServerTransport((IOptions<McpServerOptions>)null!));
         Assert.Throws<ArgumentNullException>("serverOptions", () => new StdioServerTransport((McpServerOptions)null!));
-        Assert.Throws<ArgumentNullException>("serverOptions.ServerInfo", () => new StdioServerTransport(new McpServerOptions() { ServerInfo = null! }));
-        Assert.Throws<ArgumentNullException>("serverOptions.ServerInfo.Name", () => new StdioServerTransport(new McpServerOptions() { ServerInfo = new() { Name = null!, Version = "" } }));
     }
 
     [Fact]

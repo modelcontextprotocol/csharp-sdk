@@ -12,7 +12,7 @@ public class McpClientOptions
     /// <summary>
     /// Information about this client implementation.
     /// </summary>
-    public required Implementation ClientInfo { get; set; }
+    public Implementation? ClientInfo { get; set; }
 
     /// <summary>
     /// Client capabilities to advertise to the server.

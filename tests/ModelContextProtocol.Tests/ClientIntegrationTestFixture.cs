@@ -8,7 +8,6 @@ public class ClientIntegrationTestFixture
 {
     private ILoggerFactory? _loggerFactory;
 
-    public McpClientOptions DefaultOptions { get; }
     public McpServerConfig EverythingServerConfig { get; }
     public McpServerConfig TestServerConfig { get; }
 
@@ -16,11 +15,6 @@ public class ClientIntegrationTestFixture
 
     public ClientIntegrationTestFixture()
     {
-        DefaultOptions = new()
-        {
-            ClientInfo = new() { Name = "IntegrationTestClient", Version = "1.0.0" },
-        };
-
         EverythingServerConfig = new()
         {
             Id = "everything",
@@ -63,5 +57,5 @@ public class ClientIntegrationTestFixture
             "everything" => EverythingServerConfig,
             "test_server" => TestServerConfig,
             _ => throw new ArgumentException($"Unknown client ID: {clientId}")
-        }, clientOptions ?? DefaultOptions, loggerFactory: _loggerFactory);
+        }, clientOptions, loggerFactory: _loggerFactory);
 }

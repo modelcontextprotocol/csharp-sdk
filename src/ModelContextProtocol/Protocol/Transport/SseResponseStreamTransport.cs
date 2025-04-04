@@ -28,7 +28,7 @@ public sealed class SseResponseStreamTransport(Stream sseResponseStream, string 
     /// Starts the transport and writes the JSON-RPC messages sent via <see cref="SendMessageAsync(IJsonRpcMessage, CancellationToken)"/>
     /// to the SSE response stream until cancelled or disposed.
     /// </summary>
-    /// <param name="cancellationToken">A token to cancel writing to the SSE response stream.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task representing the send loop that writes JSON-RPC messages to the SSE response stream.</returns>
     public Task RunAsync(CancellationToken cancellationToken)
     {
@@ -84,7 +84,7 @@ public sealed class SseResponseStreamTransport(Stream sseResponseStream, string 
     /// Handles incoming JSON-RPC messages received on the /message endpoint.
     /// </summary>
     /// <param name="message">The JSON-RPC message received.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task representing the potentially asynchronous operation to buffer or process the JSON-RPC message.</returns>
     /// <exception cref="InvalidOperationException">Thrown when there is an attempt to process a message before calling <see cref="RunAsync(CancellationToken)"/>.</exception>
     public async Task OnMessageReceivedAsync(IJsonRpcMessage message, CancellationToken cancellationToken)

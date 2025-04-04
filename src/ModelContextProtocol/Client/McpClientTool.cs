@@ -1,6 +1,5 @@
 ﻿using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Utils.Json;
-using ModelContextProtocol.Utils;
 using Microsoft.Extensions.AI;
 using System.Text.Json;
 

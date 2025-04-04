@@ -29,11 +29,6 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
         await using InMemoryTestSseServer server = new(CreatePortNumber(), LoggerFactory.CreateLogger<InMemoryTestSseServer>());
         await server.StartAsync();
 
-        var defaultOptions = new McpClientOptions
-        {
-            ClientInfo = new() { Name = "IntegrationTestClient", Version = "1.0.0" }
-        };
-
         var defaultConfig = new McpServerConfig
         {
             Id = "test_server",
@@ -46,7 +41,6 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
         // Act
         await using var client = await McpClientFactory.CreateAsync(
             defaultConfig, 
-            defaultOptions,
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
 
@@ -120,11 +114,6 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
         int samplingHandlerCalls = 0;
         var defaultOptions = new McpClientOptions
         {
-            ClientInfo = new()
-            {
-                Name = "IntegrationTestClient",
-                Version = "1.0.0"
-            },
             Capabilities = new()
             {
                 Sampling = new()
@@ -175,11 +164,6 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
         server.UseFullUrlForEndpointEvent = true;
         await server.StartAsync();
 
-        var defaultOptions = new McpClientOptions
-        {
-            ClientInfo = new() { Name = "IntegrationTestClient", Version = "1.0.0" }
-        };
-
         var defaultConfig = new McpServerConfig
         {
             Id = "test_server",
@@ -192,7 +176,6 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
         // Act
         await using var client = await McpClientFactory.CreateAsync(
             defaultConfig,
-            defaultOptions,
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
 
@@ -213,12 +196,6 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
         await using InMemoryTestSseServer server = new(CreatePortNumber(), LoggerFactory.CreateLogger<InMemoryTestSseServer>());
         await server.StartAsync();
 
-
-        var defaultOptions = new McpClientOptions
-        {
-            ClientInfo = new() { Name = "IntegrationTestClient", Version = "1.0.0" }
-        };
-
         var defaultConfig = new McpServerConfig
         {
             Id = "test_server",
@@ -229,23 +206,27 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
         };
 
         // Act
+        var receivedNotification = new TaskCompletionSource<string?>();
         await using var client = await McpClientFactory.CreateAsync(
             defaultConfig, 
-            defaultOptions, 
+            new()
+            {
+                Capabilities = new()
+                {
+                    NotificationHandlers = [new("test/notification", args =>
+                    {
+                        var msg = args.Params?["message"]?.GetValue<string>();
+                        receivedNotification.SetResult(msg);
+
+                        return Task.CompletedTask;
+                    })],
+                },
+            }, 
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Wait for SSE connection to be established
         await server.WaitForConnectionAsync(TimeSpan.FromSeconds(10));
-
-        var receivedNotification = new TaskCompletionSource<string?>();
-        client.AddNotificationHandler("test/notification", (args) =>
-            {
-                var msg = args.Params?["message"]?.GetValue<string>();
-                receivedNotification.SetResult(msg);
-
-                return Task.CompletedTask;
-            });
 
         // Act
         await server.SendTestNotificationAsync("Hello from server!");

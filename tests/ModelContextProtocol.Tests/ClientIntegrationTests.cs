@@ -5,10 +5,7 @@ using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Tests.Utils;
 using OpenAI;
-using System.Text.Encodings.Web;
 using System.Text.Json;
-using System.Text.Json.Serialization;
-using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Tests;
 
@@ -175,7 +172,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
 
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
-        await Assert.ThrowsAsync<McpClientException>(() =>
+        await Assert.ThrowsAsync<McpException>(() =>
             client.GetPromptAsync("non_existent_prompt", null, cancellationToken: TestContext.Current.CancellationToken));
     }
 
@@ -256,13 +253,22 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
 
         // act
         TaskCompletionSource<bool> tcs = new();
-        await using var client = await _fixture.CreateClientAsync(clientId);
-        client.AddNotificationHandler(NotificationMethods.ResourceUpdatedNotification, (notification) =>
+        await using var client = await _fixture.CreateClientAsync(clientId, new()
         {
-            var notificationParams = JsonSerializer.Deserialize<ResourceUpdatedNotificationParams>(notification.Params);
-            tcs.TrySetResult(true);
-            return Task.CompletedTask;
+            Capabilities = new()
+            {
+                NotificationHandlers =
+                [
+                    new(NotificationMethods.ResourceUpdatedNotification, notification =>
+                    {
+                        var notificationParams = JsonSerializer.Deserialize<ResourceUpdatedNotificationParams>(notification.Params);
+                        tcs.TrySetResult(true);
+                        return Task.CompletedTask;
+                    })
+                ]
+            }
         });
+
         await client.SubscribeToResourceAsync("test://static/resource/1", TestContext.Current.CancellationToken);
 
         await tcs.Task;
@@ -277,12 +283,20 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
 
         // act
         TaskCompletionSource<bool> receivedNotification = new();
-        await using var client = await _fixture.CreateClientAsync(clientId);
-        client.AddNotificationHandler(NotificationMethods.ResourceUpdatedNotification, (notification) =>
+        await using var client = await _fixture.CreateClientAsync(clientId, new()
         {
-            var notificationParams = JsonSerializer.Deserialize<ResourceUpdatedNotificationParams>(notification.Params);
-            receivedNotification.TrySetResult(true);
-            return Task.CompletedTask;
+            Capabilities = new()
+            {
+                NotificationHandlers =
+                [
+                    new(NotificationMethods.ResourceUpdatedNotification, (notification) =>
+                    {
+                        var notificationParams = JsonSerializer.Deserialize<ResourceUpdatedNotificationParams>(notification.Params);
+                        receivedNotification.TrySetResult(true);
+                        return Task.CompletedTask;
+                    })
+                ]
+            }
         });
         await client.SubscribeToResourceAsync("test://static/resource/1", TestContext.Current.CancellationToken);
 
@@ -350,7 +364,6 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         int samplingHandlerCalls = 0;
         await using var client = await _fixture.CreateClientAsync(clientId, new()
         {
-            ClientInfo = new() { Name = "Sampling_Stdio", Version = "1.0.0" },
             Capabilities = new()
             {
                 Sampling = new()
@@ -483,7 +496,6 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         // Get the MCP client and tools from it.
         await using var client = await McpClientFactory.CreateAsync(
             _fixture.EverythingServerConfig, 
-            _fixture.DefaultOptions, 
             cancellationToken: TestContext.Current.CancellationToken);
         var mappedTools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
@@ -516,7 +528,6 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
             .CreateSamplingHandler();
         await using var client = await McpClientFactory.CreateAsync(_fixture.EverythingServerConfig, new()
         {
-            ClientInfo = new() { Name = nameof(SamplingViaChatClient_RequestResponseProperlyPropagated), Version = "1.0.0" },
             Capabilities = new()
             {
                 Sampling = new()
@@ -543,15 +554,23 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
     public async Task SetLoggingLevel_ReceivesLoggingMessages(string clientId)
     {
         TaskCompletionSource<bool> receivedNotification = new();
-        await using var client = await _fixture.CreateClientAsync(clientId);
-        client.AddNotificationHandler(NotificationMethods.LoggingMessageNotification, (notification) =>
+        await using var client = await _fixture.CreateClientAsync(clientId, new()
         {
-            var loggingMessageNotificationParameters = JsonSerializer.Deserialize<LoggingMessageNotificationParams>(notification.Params);
-            if (loggingMessageNotificationParameters is not null)
+            Capabilities = new()
             {
-                receivedNotification.TrySetResult(true);
+                NotificationHandlers =
+                [
+                    new(NotificationMethods.LoggingMessageNotification, (notification) =>
+                    {
+                        var loggingMessageNotificationParameters = JsonSerializer.Deserialize<LoggingMessageNotificationParams>(notification.Params);
+                        if (loggingMessageNotificationParameters is not null)
+                        {
+                            receivedNotification.TrySetResult(true);
+                        }
+                        return Task.CompletedTask;
+                    })
+                ]
             }
-            return Task.CompletedTask;
         });
 
         // act

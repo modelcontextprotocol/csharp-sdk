@@ -129,13 +129,25 @@ public sealed class StdioClientTransport : IClientTransport
     }
 
     internal static void DisposeProcess(
-        Process? process, bool processStarted, ILogger logger, TimeSpan shutdownTimeout, string endpointName)
+        Process? process, bool processRunning, ILogger logger, TimeSpan shutdownTimeout, string endpointName)
     {
         if (process is not null)
         {
+            if (processRunning)
+            {
+                try
+                {
+                    processRunning = !process.HasExited;
+                }
+                catch
+                {
+                    processRunning = false;
+                }
+            }
+
             try
             {
-                if (processStarted && !process.HasExited)
+                if (processRunning)
                 {
                     // Wait for the process to exit.
                     // Kill the while process tree because the process may spawn child processes

@@ -22,6 +22,6 @@ public interface ITransport : IAsyncDisposable
     /// Sends a message through the transport.
     /// </summary>
     /// <param name="message">The message to send.</param>
-    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default);
 }

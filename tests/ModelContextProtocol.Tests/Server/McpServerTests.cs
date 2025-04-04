@@ -24,7 +24,6 @@ public class McpServerTests : LoggedTest
     {
         return new McpServerOptions
         {
-            ServerInfo = new Implementation { Name = "TestServer", Version = "1.0" },
             ProtocolVersion = "2024",
             InitializationTimeout = TimeSpan.FromSeconds(30),
             Capabilities = capabilities,
@@ -95,7 +94,7 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
-    public async Task RequestSamplingAsync_Should_Throw_McpServerException_If_Client_Does_Not_Support_Sampling()
+    public async Task RequestSamplingAsync_Should_Throw_McpException_If_Client_Does_Not_Support_Sampling()
     {
         // Arrange
         await using var transport = new TestServerTransport();
@@ -131,7 +130,7 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
-    public async Task RequestRootsAsync_Should_Throw_McpServerException_If_Client_Does_Not_Support_Roots()
+    public async Task RequestRootsAsync_Should_Throw_McpException_If_Client_Does_Not_Support_Roots()
     {
         // Arrange
         await using var transport = new TestServerTransport();
@@ -189,8 +188,8 @@ public class McpServerTests : LoggedTest
             {
                 var result = JsonSerializer.Deserialize<InitializeResult>(response);
                 Assert.NotNull(result);
-                Assert.Equal("TestServer", result.ServerInfo.Name);
-                Assert.Equal("1.0", result.ServerInfo.Version);
+                Assert.Equal("ModelContextProtocol.Tests", result.ServerInfo.Name);
+                Assert.Equal("1.0.0.0", result.ServerInfo.Version);
                 Assert.Equal("2024", result.ProtocolVersion);
             });
     }
@@ -523,7 +522,7 @@ public class McpServerTests : LoggedTest
         await using var transport = new TestServerTransport();
         var options = CreateOptions(serverCapabilities);
 
-        Assert.Throws<McpServerException>(() => McpServerFactory.Create(transport, options, LoggerFactory));
+        Assert.Throws<McpException>(() => McpServerFactory.Create(transport, options, LoggerFactory));
     }
 
     [Fact]
@@ -634,8 +633,6 @@ public class McpServerTests : LoggedTest
         public Implementation? ClientInfo => throw new NotImplementedException();
         public McpServerOptions ServerOptions => throw new NotImplementedException();
         public IServiceProvider? Services => throw new NotImplementedException();
-        public void AddNotificationHandler(string method, Func<JsonRpcNotification, Task> handler) => 
-            throw new NotImplementedException();
         public Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
         public Task RunAsync(CancellationToken cancellationToken = default) =>
@@ -649,13 +646,16 @@ public class McpServerTests : LoggedTest
         var options = CreateOptions();
 
         var notificationReceived = new TaskCompletionSource<JsonRpcNotification>();
+        options.Capabilities = new()
+        {
+            NotificationHandlers = [new(NotificationMethods.ProgressNotification, notification =>
+            {
+                notificationReceived.TrySetResult(notification);
+                return Task.CompletedTask;
+            })],
+        };
 
         var server = McpServerFactory.Create(transport, options, LoggerFactory);
-        server.AddNotificationHandler(NotificationMethods.ProgressNotification, notification =>
-        {
-            notificationReceived.SetResult(notification);
-            return Task.CompletedTask;
-        });
 
         Task serverTask = server.RunAsync(TestContext.Current.CancellationToken);
 

@@ -1,4 +1,5 @@
-﻿using System.Text.Json.Serialization;
+﻿using ModelContextProtocol.Protocol.Messages;
+using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol.Types;
 
@@ -37,4 +38,12 @@ public class ServerCapabilities
     /// </summary>
     [JsonPropertyName("tools")]
     public ToolsCapability? Tools { get; set; }
+
+    /// <summary>Gets or sets notification handlers to register with the server.</summary>
+    /// <remarks>
+    /// When constructed, the server will enumerate these handlers, which may contain multiple handlers per key.
+    /// The server will not re-enumerate the sequence.
+    /// </remarks>
+    [JsonIgnore]
+    public IEnumerable<KeyValuePair<string, Func<JsonRpcNotification, Task>>>? NotificationHandlers { get; set; }
 }

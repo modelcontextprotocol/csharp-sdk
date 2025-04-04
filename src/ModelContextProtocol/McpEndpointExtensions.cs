@@ -20,7 +20,7 @@ public static class McpEndpointExtensions
     /// <param name="parameters">Object representing the request parameters.</param>
     /// <param name="requestId">The request id for the request.</param>
     /// <param name="serializerOptions">The options governing request serialization.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous operation. The task result contains the deserialized result.</returns>
     public static Task<TResult> SendRequestAsync<TParameters, TResult>(
         this IMcpEndpoint endpoint,
@@ -50,7 +50,7 @@ public static class McpEndpointExtensions
     /// <param name="parametersTypeInfo">The type information for request parameter serialization.</param>
     /// <param name="resultTypeInfo">The type information for request parameter deserialization.</param>
     /// <param name="requestId">The request id for the request.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous operation. The task result contains the deserialized result.</returns>
     internal static async Task<TResult> SendRequestAsync<TParameters, TResult>(
         this IMcpEndpoint endpoint,
@@ -87,7 +87,7 @@ public static class McpEndpointExtensions
     /// </summary>
     /// <param name="client">The client.</param>
     /// <param name="method">The notification method name.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     public static Task SendNotificationAsync(this IMcpEndpoint client, string method, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
@@ -102,7 +102,7 @@ public static class McpEndpointExtensions
     /// <param name="method">The JSON-RPC method name to invoke.</param>
     /// <param name="parameters">Object representing the request parameters.</param>
     /// <param name="serializerOptions">The options governing request serialization.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     public static Task SendNotificationAsync<TParameters>(
         this IMcpEndpoint endpoint,
         string method,
@@ -124,7 +124,7 @@ public static class McpEndpointExtensions
     /// <param name="method">The JSON-RPC method name to invoke.</param>
     /// <param name="parameters">Object representing the request parameters.</param>
     /// <param name="parametersTypeInfo">The type information for request parameter serialization.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     internal static Task SendNotificationAsync<TParameters>(
         this IMcpEndpoint endpoint,
         string method,
@@ -144,7 +144,7 @@ public static class McpEndpointExtensions
     /// <param name="endpoint">The endpoint issuing the notification.</param>
     /// <param name="progressToken">The <see cref="ProgressToken"/> identifying the operation.</param>
     /// <param name="progress">The progress update to send.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task representing the completion of the operation.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="endpoint"/> is <see langword="null"/>.</exception>
     public static Task NotifyProgressAsync(
