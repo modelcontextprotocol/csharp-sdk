@@ -568,9 +568,7 @@ internal static partial class TemporaryAIFunctionFactory
                 throw new ArgumentException("Parameter is missing a name.", nameof(parameter));
             }
 
-            // Resolve the contract used to marshal the value from JSON -- can throw if not supported or not found.
             Type parameterType = parameter.ParameterType;
-            JsonTypeInfo typeInfo = serializerOptions.GetTypeInfo(parameterType);
 
             // For CancellationToken parameters, we always bind to the token passed directly to InvokeAsync.
             if (parameterType == typeof(CancellationToken))
@@ -606,6 +604,8 @@ internal static partial class TemporaryAIFunctionFactory
             }
 
             // For all other parameters, create a marshaller that tries to extract the value from the arguments dictionary.
+            // Resolve the contract used to marshal the value from JSON -- can throw if not supported or not found.
+            JsonTypeInfo typeInfo = serializerOptions.GetTypeInfo(parameterType);
             return (arguments, _) =>
             {
                 // If the parameter has an argument specified in the dictionary, return that argument.
