@@ -377,11 +377,14 @@ public class Program
     {
         Console.WriteLine("Starting server...");
 
-        var builder = WebApplication.CreateSlimBuilder(args);
+        var builder = WebApplication.CreateEmptyBuilder(new()
+        {
+            Args = args,
+        });
 
         if (kestrelTransport is null)
         {
-            int port = args.Length > 0 &&  uint.TryParse(args[0], out var parsedPort) ? (int)parsedPort : 3001;
+            int port = args.Length > 0 && uint.TryParse(args[0], out var parsedPort) ? (int)parsedPort : 3001;
             builder.WebHost.ConfigureKestrel(options =>
             {
                 options.ListenLocalhost(port);
@@ -389,9 +392,15 @@ public class Program
         }
         else
         {
+            // Add passed-in transport before calling UseKestrelCore() to avoid the SocketsHttpHandler getting added.
             builder.Services.AddSingleton(kestrelTransport);
         }
 
+        builder.WebHost.UseKestrelCore();
+        builder.Services.AddLogging();
+        builder.Services.AddRoutingCore();
+
+        builder.Logging.AddConsole();
         ConfigureSerilog(builder.Logging);
         if (loggerProvider is not null)
         {
@@ -401,6 +410,8 @@ public class Program
         builder.Services.AddMcpServer(ConfigureOptions);
 
         var app = builder.Build();
+        app.UseRouting();
+        app.UseEndpoints(_ => { });
 
         app.MapMcp();
 
