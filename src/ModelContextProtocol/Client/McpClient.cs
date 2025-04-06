@@ -49,7 +49,7 @@ internal sealed class McpClient : McpEndpoint, IMcpClient
         {
             if (capabilities.NotificationHandlers is { } notificationHandlers)
             {
-                NotificationHandlers.AddRange(notificationHandlers);
+                NotificationHandlers.RegisterRange(notificationHandlers);
             }
 
             if (capabilities.Sampling is { } samplingCapability)

@@ -637,6 +637,8 @@ public class McpServerTests : LoggedTest
             throw new NotImplementedException();
         public Task RunAsync(CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
+        public IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, Task> handler) =>
+            throw new NotImplementedException();
     }
 
     [Fact]
@@ -648,7 +650,7 @@ public class McpServerTests : LoggedTest
         var notificationReceived = new TaskCompletionSource<JsonRpcNotification>();
         options.Capabilities = new()
         {
-            NotificationHandlers = [new(NotificationMethods.ProgressNotification, notification =>
+            NotificationHandlers = [new(NotificationMethods.ProgressNotification, (notification, cancellationToken) =>
             {
                 notificationReceived.TrySetResult(notification);
                 return Task.CompletedTask;

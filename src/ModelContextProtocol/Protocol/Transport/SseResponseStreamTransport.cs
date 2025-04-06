@@ -77,7 +77,7 @@ public sealed class SseResponseStreamTransport(Stream sseResponseStream, string 
         }
 
         // Emit redundant "event: message" lines for better compatibility with other SDKs.
-        await _outgoingSseChannel.Writer.WriteAsync(new SseItem<IJsonRpcMessage?>(message, SseParser.EventTypeDefault), cancellationToken);
+        await _outgoingSseChannel.Writer.WriteAsync(new SseItem<IJsonRpcMessage?>(message, SseParser.EventTypeDefault), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -94,7 +94,7 @@ public sealed class SseResponseStreamTransport(Stream sseResponseStream, string 
             throw new InvalidOperationException($"Transport is not connected. Make sure to call {nameof(RunAsync)} first.");
         }
 
-        await _incomingChannel.Writer.WriteAsync(message, cancellationToken);
+        await _incomingChannel.Writer.WriteAsync(message, cancellationToken).ConfigureAwait(false);
     }
 
     private static Channel<T> CreateBoundedChannel<T>(int capacity = 1) =>

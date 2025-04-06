@@ -5,6 +5,7 @@ using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Shared;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
+using System.Diagnostics;
 
 namespace ModelContextProtocol.Server;
 
@@ -44,49 +45,43 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         Services = serviceProvider;
         _endpointName = $"Server ({options.ServerInfo?.Name ?? DefaultImplementation.Name} {options.ServerInfo?.Version ?? DefaultImplementation.Version})";
 
-        _toolsChangedDelegate = delegate
-        {
-            _ = SendMessageAsync(new JsonRpcNotification()
-            {
-                Method = NotificationMethods.ToolListChangedNotification,
-            });
-        };
-        _promptsChangedDelegate = delegate
-        {
-            _ = SendMessageAsync(new JsonRpcNotification()
-            {
-                Method = NotificationMethods.PromptListChangedNotification,
-            });
-        };
-
-        NotificationHandlers.Add(NotificationMethods.InitializedNotification, _ =>
-        {
-            if (ServerOptions.Capabilities?.Tools?.ToolCollection is { } tools)
-            {
-                tools.Changed += _toolsChangedDelegate;
-            }
-
-            if (ServerOptions.Capabilities?.Prompts?.PromptCollection is { } prompts)
-            {
-                prompts.Changed += _promptsChangedDelegate;
-            }
-
-            return Task.CompletedTask;
-        });
-
-        if (options.Capabilities?.NotificationHandlers is { } notificationHandlers)
-        {
-            NotificationHandlers.AddRange(notificationHandlers);
-        }
-
-        SetToolsHandler(options);
+        // Configure all request handlers based on the supplied options.
         SetInitializeHandler(options);
-        SetCompletionHandler(options);
-        SetPingHandler();
+        SetToolsHandler(options);
         SetPromptsHandler(options);
         SetResourcesHandler(options);
         SetSetLoggingLevelHandler(options);
+        SetCompletionHandler(options);
+        SetPingHandler();
 
+        // Register any notification handlers that were provided.
+        if (options.Capabilities?.NotificationHandlers is { } notificationHandlers)
+        {
+            NotificationHandlers.RegisterRange(notificationHandlers);
+        }
+
+        // Now that everything has been configured, subscribe to any necessary notifications.
+        if (ServerOptions.Capabilities?.Tools?.ToolCollection is { } tools)
+        {
+            _toolsChangedDelegate = delegate
+            {
+                _ = SendMessageAsync(new JsonRpcNotification() { Method = NotificationMethods.ToolListChangedNotification });
+            };
+
+            tools.Changed += _toolsChangedDelegate;
+        }
+
+        if (ServerOptions.Capabilities?.Prompts?.PromptCollection is { } prompts)
+        {
+            _promptsChangedDelegate = delegate
+            {
+                _ = SendMessageAsync(new JsonRpcNotification() { Method = NotificationMethods.PromptListChangedNotification });
+            };
+
+            prompts.Changed += _promptsChangedDelegate;
+        }
+
+        // And start the session.
         StartSession(transport);
     }
 
@@ -129,12 +124,14 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
     public override async ValueTask DisposeUnsynchronizedAsync()
     {
-        if (ServerOptions.Capabilities?.Tools?.ToolCollection is { } tools)
+        if (_toolsChangedDelegate is not null &&
+            ServerOptions.Capabilities?.Tools?.ToolCollection is { } tools)
         {
             tools.Changed -= _toolsChangedDelegate;
         }
 
-        if (ServerOptions.Capabilities?.Prompts?.PromptCollection is { } prompts)
+        if (_promptsChangedDelegate is not null &&
+            ServerOptions.Capabilities?.Prompts?.PromptCollection is { } prompts)
         {
             prompts.Changed -= _promptsChangedDelegate;
         }
@@ -179,8 +176,8 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         // This capability is not optional, so return an empty result if there is no handler.
         RequestHandlers.Set(RequestMethods.CompletionComplete,
             options.GetCompletionHandler is { } handler ?
-                (request, ct) => handler(new(this, request), ct) :
-                (request, ct) => Task.FromResult(new CompleteResult() { Completion = new() { Values = [], Total = 0, HasMore = false } }),
+                (request, cancellationToken) => handler(new(this, request), cancellationToken) :
+                (request, cancellationToken) => Task.FromResult(new CompleteResult() { Completion = new() { Values = [], Total = 0, HasMore = false } }),
             McpJsonUtilities.JsonContext.Default.CompleteRequestParams,
             McpJsonUtilities.JsonContext.Default.CompleteResult);
     }
@@ -205,20 +202,20 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
         RequestHandlers.Set(
             RequestMethods.ResourcesList,
-            (request, ct) => listResourcesHandler(new(this, request), ct),
+            (request, cancellationToken) => listResourcesHandler(new(this, request), cancellationToken),
             McpJsonUtilities.JsonContext.Default.ListResourcesRequestParams,
             McpJsonUtilities.JsonContext.Default.ListResourcesResult);
 
         RequestHandlers.Set(
             RequestMethods.ResourcesRead,
-            (request, ct) => readResourceHandler(new(this, request), ct),
+            (request, cancellationToken) => readResourceHandler(new(this, request), cancellationToken),
             McpJsonUtilities.JsonContext.Default.ReadResourceRequestParams,
             McpJsonUtilities.JsonContext.Default.ReadResourceResult);
 
         listResourceTemplatesHandler ??= (static (_, _) => Task.FromResult(new ListResourceTemplatesResult()));
         RequestHandlers.Set(
             RequestMethods.ResourcesTemplatesList,
-            (request, ct) => listResourceTemplatesHandler(new(this, request), ct),
+            (request, cancellationToken) => listResourceTemplatesHandler(new(this, request), cancellationToken),
             McpJsonUtilities.JsonContext.Default.ListResourceTemplatesRequestParams,
             McpJsonUtilities.JsonContext.Default.ListResourceTemplatesResult);
 
@@ -236,13 +233,13 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
         RequestHandlers.Set(
             RequestMethods.ResourcesSubscribe,
-            (request, ct) => subscribeHandler(new(this, request), ct),
+            (request, cancellationToken) => subscribeHandler(new(this, request), cancellationToken),
             McpJsonUtilities.JsonContext.Default.SubscribeRequestParams,
             McpJsonUtilities.JsonContext.Default.EmptyResult);
 
         RequestHandlers.Set(
             RequestMethods.ResourcesUnsubscribe,
-            (request, ct) => unsubscribeHandler(new(this, request), ct),
+            (request, cancellationToken) => unsubscribeHandler(new(this, request), cancellationToken),
             McpJsonUtilities.JsonContext.Default.UnsubscribeRequestParams,
             McpJsonUtilities.JsonContext.Default.EmptyResult);
     }
@@ -329,13 +326,13 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
         RequestHandlers.Set(
             RequestMethods.PromptsList,
-            (request, ct) => listPromptsHandler(new(this, request), ct),
+            (request, cancellationToken) => listPromptsHandler(new(this, request), cancellationToken),
             McpJsonUtilities.JsonContext.Default.ListPromptsRequestParams,
             McpJsonUtilities.JsonContext.Default.ListPromptsResult);
 
         RequestHandlers.Set(
             RequestMethods.PromptsGet,
-            (request, ct) => getPromptHandler(new(this, request), ct),
+            (request, cancellationToken) => getPromptHandler(new(this, request), cancellationToken),
             McpJsonUtilities.JsonContext.Default.GetPromptRequestParams,
             McpJsonUtilities.JsonContext.Default.GetPromptResult);
     }
@@ -422,13 +419,13 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
         RequestHandlers.Set(
             RequestMethods.ToolsList,
-            (request, ct) => listToolsHandler(new(this, request), ct),
+            (request, cancellationToken) => listToolsHandler(new(this, request), cancellationToken),
             McpJsonUtilities.JsonContext.Default.ListToolsRequestParams,
             McpJsonUtilities.JsonContext.Default.ListToolsResult);
 
         RequestHandlers.Set(
             RequestMethods.ToolsCall,
-            (request, ct) => callToolHandler(new(this, request), ct),
+            (request, cancellationToken) => callToolHandler(new(this, request), cancellationToken),
             McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
             McpJsonUtilities.JsonContext.Default.CallToolResponse);
     }
@@ -447,7 +444,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
         RequestHandlers.Set(
             RequestMethods.LoggingSetLevel,
-            (request, ct) => setLoggingLevelHandler(new(this, request), ct),
+            (request, cancellationToken) => setLoggingLevelHandler(new(this, request), cancellationToken),
             McpJsonUtilities.JsonContext.Default.SetLevelRequestParams,
             McpJsonUtilities.JsonContext.Default.EmptyResult);
     }

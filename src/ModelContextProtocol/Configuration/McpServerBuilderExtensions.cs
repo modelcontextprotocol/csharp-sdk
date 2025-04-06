@@ -349,7 +349,37 @@ public static partial class McpServerBuilderExtensions
         Throw.IfNull(builder);
 
         builder.Services.AddSingleton<ITransport, StdioServerTransport>();
-        builder.Services.AddHostedService<StdioMcpServerHostedService>();
+        builder.Services.AddHostedService<SingleSessionMcpServerHostedService>();
+
+        builder.Services.AddSingleton(services =>
+        {
+            ITransport serverTransport = services.GetRequiredService<ITransport>();
+            IOptions<McpServerOptions> options = services.GetRequiredService<IOptions<McpServerOptions>>();
+            ILoggerFactory? loggerFactory = services.GetService<ILoggerFactory>();
+
+            return McpServerFactory.Create(serverTransport, options.Value, loggerFactory, services);
+        });
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds a server transport that uses the specified input and output streams for communication.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="inputStream">The input <see cref="Stream"/> to use as standard input.</param>
+    /// <param name="outputStream">The output <see cref="Stream"/> to use as standard output.</param>
+    public static IMcpServerBuilder WithStreamServerTransport(
+        this IMcpServerBuilder builder,
+        Stream inputStream,
+        Stream outputStream)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(inputStream);
+        Throw.IfNull(outputStream);
+
+        builder.Services.AddSingleton<ITransport>(new StreamServerTransport(inputStream, outputStream));
+        builder.Services.AddHostedService<SingleSessionMcpServerHostedService>();
 
         builder.Services.AddSingleton(services =>
         {

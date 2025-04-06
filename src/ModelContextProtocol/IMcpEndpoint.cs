@@ -15,4 +15,10 @@ public interface IMcpEndpoint : IAsyncDisposable
     /// <param name="message">The message.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default);
+
+    /// <summary>Registers a handler to be invoked when a notification for the specified method is received.</summary>
+    /// <param name="method">The notification method.</param>
+    /// <param name="handler">The handler to be invoked.</param>
+    /// <returns>An <see cref="IDisposable"/> that will remove the registered handler when disposed.</returns>
+    IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, Task> handler);
 }

@@ -34,7 +34,7 @@ public class ClientCapabilities
     /// The client will not re-enumerate the sequence.
     /// </remarks>
     [JsonIgnore]
-    public IEnumerable<KeyValuePair<string, Func<JsonRpcNotification, Task>>>? NotificationHandlers { get; set; }
+    public IEnumerable<KeyValuePair<string, Func<JsonRpcNotification, CancellationToken, Task>>>? NotificationHandlers { get; set; }
 }
 
 /// <summary>

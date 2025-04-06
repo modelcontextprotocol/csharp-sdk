@@ -26,9 +26,7 @@ public class McpClientExtensionsTests : LoggedTest
     {
         ServiceCollection sc = new();
         sc.AddSingleton(LoggerFactory);
-        sc.AddMcpServer().WithStdioServerTransport();
-        // Call WithStdioServerTransport to get the IMcpServer registration, then overwrite default transport with a pipe transport.
-        sc.AddSingleton<ITransport>(new StreamServerTransport(_clientToServerPipe.Reader.AsStream(), _serverToClientPipe.Writer.AsStream()));
+        sc.AddMcpServer().WithStreamServerTransport(_clientToServerPipe.Reader.AsStream(), _serverToClientPipe.Writer.AsStream());
         for (int f = 0; f < 10; f++)
         {
             string name = $"Method{f}";

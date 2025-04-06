@@ -41,13 +41,16 @@ internal abstract class McpEndpoint : IAsyncDisposable
 
     protected RequestHandlers RequestHandlers { get; } = [];
 
-    protected NotificationHandlers NotificationHandlers { get; } = [];
+    protected NotificationHandlers NotificationHandlers { get; } = new();
 
     public Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default)
         => GetSessionOrThrow().SendRequestAsync(request, cancellationToken);
 
     public Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
         => GetSessionOrThrow().SendMessageAsync(message, cancellationToken);
+
+    public IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, Task> handler) =>
+        GetSessionOrThrow().RegisterNotificationHandler(method, handler);
 
     /// <summary>
     /// Gets the name of the endpoint for logging and debug purposes.

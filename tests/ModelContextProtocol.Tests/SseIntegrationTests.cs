@@ -213,9 +213,9 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : LoggedTest(ou
             {
                 Capabilities = new()
                 {
-                    NotificationHandlers = [new("test/notification", args =>
+                    NotificationHandlers = [new("test/notification", (notification, cancellationToken) =>
                     {
-                        var msg = args.Params?["message"]?.GetValue<string>();
+                        var msg = notification.Params?["message"]?.GetValue<string>();
                         receivedNotification.SetResult(msg);
 
                         return Task.CompletedTask;
