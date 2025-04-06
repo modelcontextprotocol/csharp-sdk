@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Routing.Patterns;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol.Messages;
@@ -54,14 +55,18 @@ public static class McpEndpointRouteBuilderExtensions
         var loggerFactory = endpoints.ServiceProvider.GetRequiredService<ILoggerFactory>();
         var optionsSnapshot = endpoints.ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>();
         var optionsFactory = endpoints.ServiceProvider.GetRequiredService<IOptionsFactory<McpServerOptions>>();
+        var hostApplicationLifetime = endpoints.ServiceProvider.GetRequiredService<IHostApplicationLifetime>();
 
         var routeGroup = endpoints.MapGroup(pattern);
 
         routeGroup.MapGet("/sse", async context =>
         {
-            var response = context.Response;
-            var requestAborted = context.RequestAborted;
+            // If the server is shutting down, we need to cancel all SSE connections immediately without waiting for HostOptions.ShutdownTimeout
+            // which defaults to 30 seconds.
+            using var sseCts = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, hostApplicationLifetime.ApplicationStopping);
+            var cancellationToken = sseCts.Token;
 
+            var response = context.Response;
             response.Headers.ContentType = "text/event-stream";
             response.Headers.CacheControl = "no-cache,no-store";
 
@@ -80,12 +85,12 @@ public static class McpEndpointRouteBuilderExtensions
             if (configureOptionsAsync is not null)
             {
                 options = optionsFactory.Create(Options.DefaultName);
-                await configureOptionsAsync.Invoke(context, options, requestAborted);
+                await configureOptionsAsync.Invoke(context, options, cancellationToken);
             }
 
             try
             {
-                var transportTask = transport.RunAsync(cancellationToken: requestAborted);
+                var transportTask = transport.RunAsync(cancellationToken);
                 await using var mcpServer = McpServerFactory.Create(transport, options, loggerFactory, endpoints.ServiceProvider);
 
                 context.Features.Set(mcpServer);
@@ -93,7 +98,7 @@ public static class McpEndpointRouteBuilderExtensions
                 try
                 {
                     runSessionAsync ??= RunSession;
-                    await runSessionAsync(context, mcpServer, requestAborted);
+                    await runSessionAsync(context, mcpServer, cancellationToken);
                 }
                 finally
                 {
@@ -101,7 +106,7 @@ public static class McpEndpointRouteBuilderExtensions
                     await transportTask;
                 }
             }
-            catch (OperationCanceledException) when (requestAborted.IsCancellationRequested)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 // RequestAborted always triggers when the client disconnects before a complete response body is written,
                 // but this is how SSE connections are typically closed.
