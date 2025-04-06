@@ -151,16 +151,14 @@ internal sealed class SseClientSessionTransport : TransportBase
     {
         try
         {
-            if (!_connectionCts.IsCancellationRequested)
-            {
-                await _connectionCts.CancelAsync().ConfigureAwait(false);
-                _connectionCts.Dispose();
-            }
+            await _connectionCts.CancelAsync().ConfigureAwait(false);
 
             if (_receiveTask != null)
             {
                 await _receiveTask.ConfigureAwait(false);
             }
+
+            _connectionCts.Dispose();
         }
         finally
         {
@@ -206,8 +204,15 @@ internal sealed class SseClientSessionTransport : TransportBase
 
                 using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
 
-                await foreach (SseItem<string> sseEvent in SseParser.Create(stream).EnumerateAsync(cancellationToken).ConfigureAwait(false))
+                // A lot of methods in HttpClient, including HttpConnection.FillAsync, do not currently respect any
+                // cancellation tokens so we have to cancel awaiting ourselves.
+                // I tried disposing the HttpRequestMessage and HttpResponseMessage instead, but neither of these canceled
+                // the ongoing body read, and we don't want to dispose an HttpClient we may not own.
+                var sseEventEnumerator = SseParser.Create(stream).EnumerateAsync(cancellationToken).GetAsyncEnumerator();
+                while (await sseEventEnumerator.MoveNextAsync().AsTask().WaitAsync(cancellationToken).ConfigureAwait(false))
                 {
+                    SseItem<string> sseEvent = sseEventEnumerator.Current;
+
                     switch (sseEvent.EventType)
                     {
                         case "endpoint":

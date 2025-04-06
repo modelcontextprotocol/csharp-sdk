@@ -1,4 +1,5 @@
-﻿using ModelContextProtocol.Protocol.Types;
+﻿using Microsoft.AspNetCore.Connections;
+using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using Serilog;
 using System.Text;
@@ -372,17 +373,24 @@ public class Program
         };
     }
 
-    public static async Task MainAsync(string[] args, ILoggerProvider? loggerProvider = null, CancellationToken cancellationToken = default)
+    public static async Task MainAsync(string[] args, ILoggerProvider? loggerProvider = null, IConnectionListenerFactory? kestrelTransport = null, CancellationToken cancellationToken = default)
     {
         Console.WriteLine("Starting server...");
 
-        int port = args.Length > 0 &&  uint.TryParse(args[0], out var parsedPort) ? (int)parsedPort : 3001;
-
         var builder = WebApplication.CreateSlimBuilder(args);
-        builder.WebHost.ConfigureKestrel(options =>
+
+        if (kestrelTransport is null)
         {
-            options.ListenLocalhost(port);
-        });
+            int port = args.Length > 0 &&  uint.TryParse(args[0], out var parsedPort) ? (int)parsedPort : 3001;
+            builder.WebHost.ConfigureKestrel(options =>
+            {
+                options.ListenLocalhost(port);
+            });
+        }
+        else
+        {
+            builder.Services.AddSingleton(kestrelTransport);
+        }
 
         ConfigureSerilog(builder.Logging);
         if (loggerProvider is not null)

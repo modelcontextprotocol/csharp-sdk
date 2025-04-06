@@ -25,18 +25,8 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
 
     private Task<IMcpClient> GetClientAsync(McpClientOptions? options = null)
     {
-        return McpClientFactory.CreateAsync(
-            _fixture.DefaultConfig,
-            options,
-            loggerFactory: LoggerFactory,
-            cancellationToken: TestContext.Current.CancellationToken);
+        return _fixture.ConnectMcpClientAsync(options, LoggerFactory);
     }
-
-    private HttpClient GetHttpClient() =>
-        new()
-        {
-            BaseAddress = new(_fixture.DefaultConfig.Location!),
-        };
 
     [Fact]
     public async Task ConnectAndPing_Sse_TestServer()
@@ -283,8 +273,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
     [Fact]
     public async Task EventSourceResponse_Includes_ExpectedHeaders()
     {
-        using var httpClient = GetHttpClient();
-        using var sseResponse = await httpClient.GetAsync("", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+        using var sseResponse = await _fixture.HttpClient.GetAsync("", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
 
         sseResponse.EnsureSuccessStatusCode();
 
@@ -300,8 +289,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
     {
         // Simulate our own MCP client handshake using a plain HttpClient so we can look for "event: message"
         // in the raw SSE response stream which is not exposed by the real MCP client.
-        using var httpClient = GetHttpClient();
-        await using var sseResponse = await httpClient.GetStreamAsync("", TestContext.Current.CancellationToken);
+        await using var sseResponse = await _fixture.HttpClient.GetStreamAsync("", TestContext.Current.CancellationToken);
         using var streamReader = new StreamReader(sseResponse);
 
         var endpointEvent = await streamReader.ReadLineAsync(TestContext.Current.CancellationToken);
@@ -317,7 +305,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
             """;
         using (var initializeRequestBody = new StringContent(initializeRequest, Encoding.UTF8, "application/json"))
         {
-            var response = await httpClient.PostAsync(messageEndpoint, initializeRequestBody, TestContext.Current.CancellationToken);
+            var response = await _fixture.HttpClient.PostAsync(messageEndpoint, initializeRequestBody, TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         }
 
@@ -326,7 +314,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
             """;
         using (var initializedNotificationBody = new StringContent(initializedNotification, Encoding.UTF8, "application/json"))
         {
-            var response = await httpClient.PostAsync(messageEndpoint, initializedNotificationBody, TestContext.Current.CancellationToken);
+            var response = await _fixture.HttpClient.PostAsync(messageEndpoint, initializedNotificationBody, TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         }
 
