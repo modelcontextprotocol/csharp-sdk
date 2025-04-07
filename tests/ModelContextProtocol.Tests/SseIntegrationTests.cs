@@ -77,8 +77,7 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : KestrelInMemo
             mcpServer.RegisterNotificationHandler("test/notification", async (notification, cancellationToken) =>
             {
                 Assert.Equal("Hello from client!", notification.Params?["message"]?.GetValue<string>());
-                var server = httpContext.Features.GetRequiredFeature<IMcpServer>();
-                await server.SendNotificationAsync("test/notification", new { message = "Hello from server!" }, cancellationToken: cancellationToken);
+                await mcpServer.SendNotificationAsync("test/notification", new { message = "Hello from server!" }, cancellationToken: cancellationToken);
             });
             return mcpServer.RunAsync(cancellationToken);
         });
