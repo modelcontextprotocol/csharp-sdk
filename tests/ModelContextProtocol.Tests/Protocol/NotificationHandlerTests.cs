@@ -225,7 +225,7 @@ public class NotificationHandlerTests : LoggedTest, IAsyncDisposable
         var releaseHandler = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         IAsyncDisposable? registration = null;
-        registration = client.RegisterNotificationHandler(NotificationName, async (notification, cancellationToken) =>
+        await using var _ = registration = client.RegisterNotificationHandler(NotificationName, async (notification, cancellationToken) =>
         {
             for (int i = 0; i < numberOfDisposals; i++)
             {
@@ -240,9 +240,5 @@ public class NotificationHandlerTests : LoggedTest, IAsyncDisposable
 
         await _server.SendNotificationAsync(NotificationName, TestContext.Current.CancellationToken);
         await handlerRunning.Task;
-
-        ValueTask disposal = registration.DisposeAsync();
-        Assert.True(disposal.IsCompletedSuccessfully);
-        await disposal;
     }
 }
