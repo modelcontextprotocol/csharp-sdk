@@ -91,12 +91,12 @@ public static class McpEndpointRouteBuilderExtensions
             try
             {
                 var transportTask = transport.RunAsync(cancellationToken);
-                await using var mcpServer = McpServerFactory.Create(transport, options, loggerFactory, endpoints.ServiceProvider);
-
-                context.Features.Set(mcpServer);
 
                 try
                 {
+                    await using var mcpServer = McpServerFactory.Create(transport, options, loggerFactory, endpoints.ServiceProvider);
+                    context.Features.Set(mcpServer);
+
                     runSessionAsync ??= RunSession;
                     await runSessionAsync(context, mcpServer, cancellationToken);
                 }
