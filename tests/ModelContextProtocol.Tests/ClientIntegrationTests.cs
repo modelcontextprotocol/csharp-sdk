@@ -259,7 +259,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
             {
                 NotificationHandlers =
                 [
-                    new(NotificationMethods.ResourceUpdatedNotification, notification =>
+                    new(NotificationMethods.ResourceUpdatedNotification, (notification, cancellationToken) =>
                     {
                         var notificationParams = JsonSerializer.Deserialize<ResourceUpdatedNotificationParams>(notification.Params);
                         tcs.TrySetResult(true);
@@ -289,7 +289,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
             {
                 NotificationHandlers =
                 [
-                    new(NotificationMethods.ResourceUpdatedNotification, (notification) =>
+                    new(NotificationMethods.ResourceUpdatedNotification, (notification, cancellationToken) =>
                     {
                         var notificationParams = JsonSerializer.Deserialize<ResourceUpdatedNotificationParams>(notification.Params);
                         receivedNotification.TrySetResult(true);
@@ -560,7 +560,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
             {
                 NotificationHandlers =
                 [
-                    new(NotificationMethods.LoggingMessageNotification, (notification) =>
+                    new(NotificationMethods.LoggingMessageNotification, (notification, cancellationToken) =>
                     {
                         var loggingMessageNotificationParameters = JsonSerializer.Deserialize<LoggingMessageNotificationParams>(notification.Params);
                         if (loggingMessageNotificationParameters is not null)

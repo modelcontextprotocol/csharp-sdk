@@ -31,7 +31,7 @@ public class McpServerBuilderExtensionsPromptsTests : LoggedTest, IAsyncDisposab
         sc.AddSingleton(LoggerFactory);
         _builder = sc
             .AddMcpServer()
-            .WithStdioServerTransport()
+            .WithStreamServerTransport(_clientToServerPipe.Reader.AsStream(), _serverToClientPipe.Writer.AsStream())
             .WithListPromptsHandler(async (request, cancellationToken) =>
             {
                 var cursor = request.Params?.Cursor;
@@ -93,8 +93,6 @@ public class McpServerBuilderExtensionsPromptsTests : LoggedTest, IAsyncDisposab
             .WithPrompts<SimplePrompts>();
 
 
-        // Call WithStdioServerTransport to get the IMcpServer registration, then overwrite default transport with a pipe transport.
-        sc.AddSingleton<ITransport>(new StreamServerTransport(_clientToServerPipe.Reader.AsStream(), _serverToClientPipe.Writer.AsStream(), loggerFactory: LoggerFactory));
         sc.AddSingleton(new ObjectWithId());
         _serviceProvider = sc.BuildServiceProvider();
 
@@ -176,23 +174,12 @@ public class McpServerBuilderExtensionsPromptsTests : LoggedTest, IAsyncDisposab
     [Fact]
     public async Task Can_Be_Notified_Of_Prompt_Changes()
     {
-        Channel<JsonRpcNotification> listChanged = Channel.CreateUnbounded<JsonRpcNotification>();
-
-        IMcpClient client = await CreateMcpClientForServer(new()
-        {
-            Capabilities = new()
-            {
-                NotificationHandlers = [new("notifications/prompts/list_changed", notification =>
-                {
-                    listChanged.Writer.TryWrite(notification);
-                    return Task.CompletedTask;
-                })],
-            },
-        });
+        IMcpClient client = await CreateMcpClientForServer();
 
         var prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
         Assert.Equal(6, prompts.Count);
 
+        Channel<JsonRpcNotification> listChanged = Channel.CreateUnbounded<JsonRpcNotification>();
         var notificationRead = listChanged.Reader.ReadAsync(TestContext.Current.CancellationToken);
         Assert.False(notificationRead.IsCompleted);
 
@@ -201,17 +188,24 @@ public class McpServerBuilderExtensionsPromptsTests : LoggedTest, IAsyncDisposab
         Assert.NotNull(serverPrompts);
 
         var newPrompt = McpServerPrompt.Create([McpServerPrompt(Name = "NewPrompt")] () => "42");
-        serverPrompts.Add(newPrompt);
-        await notificationRead;
+        await using (client.RegisterNotificationHandler("notifications/prompts/list_changed", (notification, cancellationToken) =>
+            {
+                listChanged.Writer.TryWrite(notification);
+                return Task.CompletedTask;
+            }))
+        {
+            serverPrompts.Add(newPrompt);
+            await notificationRead;
 
-        prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(7, prompts.Count);
-        Assert.Contains(prompts, t => t.Name == "NewPrompt");
+            prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
+            Assert.Equal(7, prompts.Count);
+            Assert.Contains(prompts, t => t.Name == "NewPrompt");
 
-        notificationRead = listChanged.Reader.ReadAsync(TestContext.Current.CancellationToken);
-        Assert.False(notificationRead.IsCompleted);
-        serverPrompts.Remove(newPrompt);
-        await notificationRead;
+            notificationRead = listChanged.Reader.ReadAsync(TestContext.Current.CancellationToken);
+            Assert.False(notificationRead.IsCompleted);
+            serverPrompts.Remove(newPrompt);
+            await notificationRead;
+        }
 
         prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
         Assert.Equal(6, prompts.Count);

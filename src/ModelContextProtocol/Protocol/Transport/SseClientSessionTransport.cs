@@ -171,7 +171,7 @@ internal sealed class SseClientSessionTransport : TransportBase
     {
         try
         {
-            await CloseAsync();
+            await CloseAsync().ConfigureAwait(false);
         }
         catch (Exception)
         {

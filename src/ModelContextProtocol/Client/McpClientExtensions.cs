@@ -600,7 +600,7 @@ public static class McpClientExtensions
             var progressToken = requestParams.Meta?.ProgressToken;
 
             List<ChatResponseUpdate> updates = [];
-            await foreach (var update in chatClient.GetStreamingResponseAsync(messages, options, cancellationToken))
+            await foreach (var update in chatClient.GetStreamingResponseAsync(messages, options, cancellationToken).ConfigureAwait(false))
             {
                 updates.Add(update);
 

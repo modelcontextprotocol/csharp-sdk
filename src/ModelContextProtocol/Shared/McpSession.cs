@@ -213,7 +213,7 @@ internal sealed class McpSession : IDisposable
                     break;
 
                 case JsonRpcNotification notification:
-                    await HandleNotification(notification).ConfigureAwait(false);
+                    await HandleNotification(notification, cancellationToken).ConfigureAwait(false);
                     break;
 
                 case IJsonRpcMessageWithId messageWithId:
@@ -236,7 +236,7 @@ internal sealed class McpSession : IDisposable
         }
     }
 
-    private async Task HandleNotification(JsonRpcNotification notification)
+    private async Task HandleNotification(JsonRpcNotification notification, CancellationToken cancellationToken)
     {
         // Special-case cancellation to cancel a pending operation. (We'll still subsequently invoke a user-specified handler if one exists.)
         if (notification.Method == NotificationMethods.CancelledNotification)
@@ -257,21 +257,7 @@ internal sealed class McpSession : IDisposable
         }
 
         // Handle user-defined notifications.
-        if (_notificationHandlers.TryGetValue(notification.Method, out var handlers))
-        {
-            foreach (var notificationHandler in handlers)
-            {
-                try
-                {
-                    await notificationHandler(notification).ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    // Log handler error but continue processing
-                    _logger.NotificationHandlerError(EndpointName, notification.Method, ex);
-                }
-            }
-        }
+        await _notificationHandlers.InvokeHandlers(notification.Method, notification, cancellationToken).ConfigureAwait(false);
     }
 
     private void HandleMessageWithId(IJsonRpcMessage message, IJsonRpcMessageWithId messageWithId)
@@ -308,6 +294,14 @@ internal sealed class McpSession : IDisposable
             JsonRpc = "2.0",
             Result = result
         }, cancellationToken).ConfigureAwait(false);
+    }
+
+    public IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, Task> handler)
+    {
+        Throw.IfNullOrWhiteSpace(method);
+        Throw.IfNull(handler);
+
+        return _notificationHandlers.Register(method, handler);
     }
 
     /// <summary>
@@ -525,6 +519,11 @@ internal sealed class McpSession : IDisposable
 
     private static void AddExceptionTags(ref TagList tags, Exception e)
     {
+        if (e is AggregateException ae && ae.InnerException is not null and not AggregateException)
+        {
+            e = ae.InnerException;
+        }
+
         tags.Add("error.type", e.GetType().FullName);
         tags.Add("rpc.jsonrpc.error_code",
             (e as McpException)?.ErrorCode is int errorCode ? errorCode :
