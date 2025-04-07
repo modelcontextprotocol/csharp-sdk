@@ -25,6 +25,9 @@ public interface IMcpServer : IMcpEndpoint
     /// </summary>
     IServiceProvider? Services { get; }
 
+    /// <summary>Gets the last logging level set by the client, or <see langword="null"/> if it's never been set.</summary>
+    LoggingLevel? LoggingLevel { get; }
+
     /// <summary>
     /// Runs the server, listening for and handling client requests.
     /// </summary>

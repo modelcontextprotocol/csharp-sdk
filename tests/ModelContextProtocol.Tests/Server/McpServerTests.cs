@@ -618,6 +618,7 @@ public class McpServerTests : LoggedTest
         public Implementation? ClientInfo => throw new NotImplementedException();
         public McpServerOptions ServerOptions => throw new NotImplementedException();
         public IServiceProvider? Services => throw new NotImplementedException();
+        public LoggingLevel? LoggingLevel => throw new NotImplementedException();
         public Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
         public Task RunAsync(CancellationToken cancellationToken = default) =>

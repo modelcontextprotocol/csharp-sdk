@@ -1,4 +1,6 @@
-﻿namespace ModelContextProtocol.Protocol.Types;
+﻿using System.Text.Json.Serialization;
+
+namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
 /// An empty result object.
@@ -6,5 +8,6 @@
 /// </summary>
 public class EmptyResult
 {
-
+    [JsonIgnore]
+    internal static Task<EmptyResult> CompletedTask { get; } = Task.FromResult(new EmptyResult());
 }

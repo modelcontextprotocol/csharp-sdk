@@ -83,7 +83,7 @@ public static class McpEndpointExtensions
     }
 
     /// <summary>
-    /// Sends a notification to the server with parameters.
+    /// Sends a notification to the server with no parameters.
     /// </summary>
     /// <param name="client">The client.</param>
     /// <param name="method">The notification method name.</param>

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
@@ -10,6 +11,7 @@ using Moq;
 using System.IO.Pipelines;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using System.Threading.Channels;
 
 namespace ModelContextProtocol.Tests.Client;
 
@@ -19,6 +21,7 @@ public class McpClientExtensionsTests : LoggedTest
     private readonly Pipe _serverToClientPipe = new();
     private readonly ServiceProvider _serviceProvider;
     private readonly CancellationTokenSource _cts;
+    private readonly IMcpServer _server;
     private readonly Task _serverTask;
 
     public McpClientExtensionsTests(ITestOutputHelper outputHelper)
@@ -36,9 +39,9 @@ public class McpClientExtensionsTests : LoggedTest
         sc.AddSingleton(McpServerTool.Create([McpServerTool(Destructive = false, OpenWorld = true)](string i) => $"{i} Result", new() { Name = "ValuesSetViaOptions", Destructive = true, OpenWorld = false, ReadOnly = true }));
         _serviceProvider = sc.BuildServiceProvider();
 
-        var server = _serviceProvider.GetRequiredService<IMcpServer>();
+        _server = _serviceProvider.GetRequiredService<IMcpServer>();
         _cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-        _serverTask = server.RunAsync(cancellationToken: _cts.Token);
+        _serverTask = _server.RunAsync(cancellationToken: _cts.Token);
     }
 
     [Theory]
@@ -373,5 +376,80 @@ public class McpClientExtensionsTests : LoggedTest
         Assert.NotNull(redescribedTool);
         Assert.Equal("ToolWithNewDescription", redescribedTool.Description);
         Assert.Equal(originalDescription, tool?.Description);
+    }
+
+    [Fact]
+    public async Task AsClientLogger_MessagesSentToClient()
+    {
+        IMcpClient client = await CreateMcpClientForServer();
+
+        ILogger logger = _server.AsClientLogger();
+        Assert.Null(logger.BeginScope(""));
+
+        Assert.Null(_server.LoggingLevel);
+        Assert.False(logger.IsEnabled(LogLevel.Trace));
+        Assert.False(logger.IsEnabled(LogLevel.Debug));
+        Assert.False(logger.IsEnabled(LogLevel.Information));
+        Assert.False(logger.IsEnabled(LogLevel.Warning));
+        Assert.False(logger.IsEnabled(LogLevel.Error));
+        Assert.False(logger.IsEnabled(LogLevel.Critical));
+
+        await client.SetLoggingLevel(LoggingLevel.Info, TestContext.Current.CancellationToken);
+
+        DateTime start = DateTime.UtcNow;
+        while (_server.LoggingLevel is null)
+        {
+            await Task.Delay(1, TestContext.Current.CancellationToken);
+            Assert.True(DateTime.UtcNow - start < TimeSpan.FromSeconds(10), "Timed out waiting for logging level to be set");
+        }
+
+        Assert.Equal(LoggingLevel.Info, _server.LoggingLevel);
+        Assert.False(logger.IsEnabled(LogLevel.Trace));
+        Assert.False(logger.IsEnabled(LogLevel.Debug));
+        Assert.True(logger.IsEnabled(LogLevel.Information));
+        Assert.True(logger.IsEnabled(LogLevel.Warning));
+        Assert.True(logger.IsEnabled(LogLevel.Error));
+        Assert.True(logger.IsEnabled(LogLevel.Critical));
+
+        List<string> data = [];
+        var channel = Channel.CreateUnbounded<LoggingMessageNotificationParams?>();
+
+        await using (client.RegisterNotificationHandler(NotificationMethods.LoggingMessageNotification,
+            (notification, cancellationToken) =>
+            {
+                Assert.True(channel.Writer.TryWrite(JsonSerializer.Deserialize<LoggingMessageNotificationParams>(notification.Params)));
+                return Task.CompletedTask;
+            }))
+        {
+            logger.LogTrace("Trace {Message}", "message");
+            logger.LogDebug("Debug {Message}", "message");
+            logger.LogInformation("Information {Message}", "message");
+            logger.LogWarning("Warning {Message}", "message");
+            logger.LogError("Error {Message}", "message");
+            logger.LogCritical("Critical {Message}", "message");
+
+            for (int i = 0; i < 4; i++)
+            {
+                var m = await channel.Reader.ReadAsync(TestContext.Current.CancellationToken);
+                Assert.NotNull(m);
+                Assert.NotNull(m.Data);
+                
+                string? s = JsonSerializer.Deserialize<string>(m.Data.Value);
+                Assert.NotNull(s);
+                data.Add(s);
+            }
+
+            channel.Writer.Complete();
+        }
+
+        Assert.False(await channel.Reader.WaitToReadAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(
+            [
+                "Critical message",
+                "Error message",
+                "Information message",
+                "Warning message",
+            ], 
+            data.OrderBy(s => s));
     }
 }

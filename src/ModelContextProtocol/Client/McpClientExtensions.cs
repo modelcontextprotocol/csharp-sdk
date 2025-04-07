@@ -1,6 +1,8 @@
 ﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
 using System.Runtime.CompilerServices;
@@ -630,6 +632,15 @@ public static class McpClientExtensions
             McpJsonUtilities.JsonContext.Default.EmptyResult,
             cancellationToken: cancellationToken);
     }
+
+    /// <summary>
+    /// Configures the minimum logging level for the server.
+    /// </summary>
+    /// <param name="client">The client.</param>
+    /// <param name="level">The minimum log level of messages to be generated.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    public static Task SetLoggingLevel(this IMcpClient client, LogLevel level, CancellationToken cancellationToken = default) =>
+        SetLoggingLevel(client, McpServer.ToLoggingLevel(level), cancellationToken);
 
     /// <summary>Convers a dictionary with <see cref="object"/> values to a dictionary with <see cref="JsonElement"/> values.</summary>
     private static IReadOnlyDictionary<string, JsonElement>? ToArgumentsDictionary(

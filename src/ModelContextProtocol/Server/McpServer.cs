@@ -5,7 +5,7 @@ using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Shared;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
-using System.Diagnostics;
+using System.Runtime.CompilerServices;
 
 namespace ModelContextProtocol.Server;
 
@@ -25,6 +25,13 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
     private string _endpointName;
     private int _started;
+
+    /// <summary>Holds a boxed <see cref="LoggingLevel"/> value for the server.</summary>
+    /// <remarks>
+    /// Initialized to non-null the first time SetLevel is used. This is stored as a strong box
+    /// rather than a nullable to be able to manipulate it atomically.
+    /// </remarks>
+    private StrongBox<LoggingLevel>? _loggingLevel;
 
     /// <summary>
     /// Creates a new instance of <see cref="McpServer"/>.
@@ -104,6 +111,9 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
     /// <inheritdoc />
     public override string EndpointName => _endpointName;
+
+    /// <inheritdoc />
+    public LoggingLevel? LoggingLevel => _loggingLevel?.Value;
 
     /// <inheritdoc />
     public async Task RunAsync(CancellationToken cancellationToken = default)
@@ -441,20 +451,48 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
     private void SetSetLoggingLevelHandler(McpServerOptions options)
     {
-        if (options.Capabilities?.Logging is not { } loggingCapability)
-        {
-            return;
-        }
-
-        if (loggingCapability.SetLoggingLevelHandler is not { } setLoggingLevelHandler)
-        {
-            throw new McpException("Logging capability was enabled, but SetLoggingLevelHandler was not specified.");
-        }
+        // We don't require that the handler be provided, as we always store the provided
+        // log level to the server.
+        var setLoggingLevelHandler = options.Capabilities?.Logging?.SetLoggingLevelHandler;
 
         RequestHandlers.Set(
             RequestMethods.LoggingSetLevel,
-            (request, cancellationToken) => setLoggingLevelHandler(new(this, request), cancellationToken),
+            (request, cancellationToken) =>
+            {
+                // Store the provided level.
+                if (request is not null)
+                {
+                    if (_loggingLevel is null)
+                    {
+                        Interlocked.CompareExchange(ref _loggingLevel, new(request.Level), null);
+                    }
+
+                    _loggingLevel.Value = request.Level;
+                }
+
+                // If a handler was provided, now delegate to it.
+                if (setLoggingLevelHandler is not null)
+                {
+                    return setLoggingLevelHandler(new(this, request), cancellationToken);
+                }
+
+                // Otherwise, consider it handled.
+                return EmptyResult.CompletedTask;
+            },
             McpJsonUtilities.JsonContext.Default.SetLevelRequestParams,
             McpJsonUtilities.JsonContext.Default.EmptyResult);
     }
+
+    /// <summary>Maps a <see cref="LogLevel"/> to a <see cref="LoggingLevel"/>.</summary>
+    internal static LoggingLevel ToLoggingLevel(LogLevel level) =>
+        level switch
+        {
+            LogLevel.Trace => Protocol.Types.LoggingLevel.Debug,
+            LogLevel.Debug => Protocol.Types.LoggingLevel.Debug,
+            LogLevel.Warning => Protocol.Types.LoggingLevel.Warning,
+            LogLevel.Error => Protocol.Types.LoggingLevel.Error,
+            LogLevel.Critical => Protocol.Types.LoggingLevel.Critical,
+            LogLevel.Information => Protocol.Types.LoggingLevel.Info,
+            _ => Protocol.Types.LoggingLevel.Debug,
+        };
 }

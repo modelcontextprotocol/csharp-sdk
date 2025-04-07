@@ -1,10 +1,12 @@
 ﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.Json;
 
 namespace ModelContextProtocol.Server;
 
@@ -28,7 +30,7 @@ public static class McpServerExtensions
 
         return server.SendRequestAsync(
             RequestMethods.SamplingCreateMessage,
-            request, 
+            request,
             McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams,
             McpJsonUtilities.JsonContext.Default.CreateMessageResult,
             cancellationToken: cancellationToken);
@@ -46,7 +48,7 @@ public static class McpServerExtensions
     /// <exception cref="ArgumentNullException"><paramref name="messages"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">The client does not support sampling.</exception>
     public static async Task<ChatResponse> RequestSamplingAsync(
-        this IMcpServer server, 
+        this IMcpServer server,
         IEnumerable<ChatMessage> messages, ChatOptions? options = default, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(server);
@@ -153,6 +155,16 @@ public static class McpServerExtensions
         return new SamplingChatClient(server);
     }
 
+    /// <summary>Gets an <see cref="ILogger"/> on which logged messages will be sent as notifications to the client.</summary>
+    /// <param name="server">The server to wrap as an <see cref="ILogger"/>.</param>
+    /// <returns>An <see cref="ILogger"/> that can be used to log to the client..</returns>
+    public static ILogger AsClientLogger(this IMcpServer server)
+    {
+        Throw.IfNull(server);
+
+        return new ClientLogger(server);
+    }
+
     /// <summary>
     /// Requests the client to list the roots it exposes.
     /// </summary>
@@ -209,5 +221,44 @@ public static class McpServerExtensions
 
         /// <inheritdoc/>
         void IDisposable.Dispose() { } // nop
+    }
+
+    /// <summary>
+    /// Provides an <see cref="ILogger"/> implementation for sending logging message notifications
+    /// to the client for logged messages.
+    /// </summary>
+    private sealed class ClientLogger(IMcpServer server) : ILogger
+    {
+        /// <inheritdoc />
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull =>
+            null;
+
+        /// <inheritdoc />
+        public bool IsEnabled(LogLevel logLevel) =>
+            server?.LoggingLevel is { } loggingLevel &&
+            McpServer.ToLoggingLevel(logLevel) >= loggingLevel;
+
+        /// <inheritdoc />
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (!IsEnabled(logLevel))
+            {
+                return;
+            }
+
+            Throw.IfNull(formatter);
+
+            Log(logLevel, formatter(state, exception));
+
+            void Log(LogLevel logLevel, string message)
+            {
+                _ = server.SendNotificationAsync(NotificationMethods.LoggingMessageNotification, new LoggingMessageNotificationParams()
+                {
+                    Level = McpServer.ToLoggingLevel(logLevel),
+                    Data = JsonSerializer.SerializeToElement(message, McpJsonUtilities.JsonContext.Default.String),
+                    Logger = eventId.Name,
+                });
+            }
+        }
     }
 }
