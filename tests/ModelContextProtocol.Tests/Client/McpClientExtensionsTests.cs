@@ -379,11 +379,16 @@ public class McpClientExtensionsTests : LoggedTest
     }
 
     [Fact]
-    public async Task AsClientLogger_MessagesSentToClient()
+    public async Task AsClientLoggerProvider_MessagesSentToClient()
     {
         IMcpClient client = await CreateMcpClientForServer();
 
-        ILogger logger = _server.AsClientLogger();
+        ILoggerProvider loggerProvider = _server.AsClientLoggerProvider();
+        Assert.Throws<ArgumentNullException>("categoryName", () => loggerProvider.CreateLogger(null!));
+
+        ILogger logger = loggerProvider.CreateLogger("TestLogger");
+        Assert.NotNull(logger);
+
         Assert.Null(logger.BeginScope(""));
 
         Assert.Null(_server.LoggingLevel);
@@ -433,9 +438,29 @@ public class McpClientExtensionsTests : LoggedTest
                 var m = await channel.Reader.ReadAsync(TestContext.Current.CancellationToken);
                 Assert.NotNull(m);
                 Assert.NotNull(m.Data);
-                
-                string? s = JsonSerializer.Deserialize<string>(m.Data.Value);
+
+                Assert.Equal("TestLogger", m.Logger);
+
+                string ? s = JsonSerializer.Deserialize<string>(m.Data.Value);
                 Assert.NotNull(s);
+
+                if (s.Contains("Information"))
+                {
+                    Assert.Equal(LoggingLevel.Info, m.Level);
+                }
+                else if (s.Contains("Warning"))
+                {
+                    Assert.Equal(LoggingLevel.Warning, m.Level);
+                }
+                else if (s.Contains("Error"))
+                {
+                    Assert.Equal(LoggingLevel.Error, m.Level);
+                }
+                else if (s.Contains("Critical"))
+                {
+                    Assert.Equal(LoggingLevel.Critical, m.Level);
+                }
+
                 data.Add(s);
             }
 

@@ -158,11 +158,11 @@ public static class McpServerExtensions
     /// <summary>Gets an <see cref="ILogger"/> on which logged messages will be sent as notifications to the client.</summary>
     /// <param name="server">The server to wrap as an <see cref="ILogger"/>.</param>
     /// <returns>An <see cref="ILogger"/> that can be used to log to the client..</returns>
-    public static ILogger AsClientLogger(this IMcpServer server)
+    public static ILoggerProvider AsClientLoggerProvider(this IMcpServer server)
     {
         Throw.IfNull(server);
 
-        return new ClientLogger(server);
+        return new ClientLoggerProvider(server);
     }
 
     /// <summary>
@@ -224,40 +224,54 @@ public static class McpServerExtensions
     }
 
     /// <summary>
-    /// Provides an <see cref="ILogger"/> implementation for sending logging message notifications
-    /// to the client for logged messages.
+    /// Provides an <see cref="ILoggerProvider"/> implementation for creating loggers
+    /// that send logging message notifications to the client for logged messages.
     /// </summary>
-    private sealed class ClientLogger(IMcpServer server) : ILogger
+    private sealed class ClientLoggerProvider(IMcpServer server) : ILoggerProvider
     {
         /// <inheritdoc />
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull =>
-            null;
-
-        /// <inheritdoc />
-        public bool IsEnabled(LogLevel logLevel) =>
-            server?.LoggingLevel is { } loggingLevel &&
-            McpServer.ToLoggingLevel(logLevel) >= loggingLevel;
-
-        /// <inheritdoc />
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        public ILogger CreateLogger(string categoryName)
         {
-            if (!IsEnabled(logLevel))
+            Throw.IfNull(categoryName);
+
+            return new ClientLogger(server, categoryName);
+        }
+
+        /// <inheritdoc />
+        void IDisposable.Dispose() { }
+
+        private sealed class ClientLogger(IMcpServer server, string categoryName) : ILogger
+        {
+            /// <inheritdoc />
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull =>
+                null;
+
+            /// <inheritdoc />
+            public bool IsEnabled(LogLevel logLevel) =>
+                server?.LoggingLevel is { } loggingLevel &&
+                McpServer.ToLoggingLevel(logLevel) >= loggingLevel;
+
+            /// <inheritdoc />
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
             {
-                return;
-            }
-
-            Throw.IfNull(formatter);
-
-            Log(logLevel, formatter(state, exception));
-
-            void Log(LogLevel logLevel, string message)
-            {
-                _ = server.SendNotificationAsync(NotificationMethods.LoggingMessageNotification, new LoggingMessageNotificationParams()
+                if (!IsEnabled(logLevel))
                 {
-                    Level = McpServer.ToLoggingLevel(logLevel),
-                    Data = JsonSerializer.SerializeToElement(message, McpJsonUtilities.JsonContext.Default.String),
-                    Logger = eventId.Name,
-                });
+                    return;
+                }
+
+                Throw.IfNull(formatter);
+
+                Log(logLevel, formatter(state, exception));
+
+                void Log(LogLevel logLevel, string message)
+                {
+                    _ = server.SendNotificationAsync(NotificationMethods.LoggingMessageNotification, new LoggingMessageNotificationParams()
+                    {
+                        Level = McpServer.ToLoggingLevel(logLevel),
+                        Data = JsonSerializer.SerializeToElement(message, McpJsonUtilities.JsonContext.Default.String),
+                        Logger = categoryName,
+                    });
+                }
             }
         }
     }

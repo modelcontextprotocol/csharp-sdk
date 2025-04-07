@@ -489,10 +489,10 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         {
             LogLevel.Trace => Protocol.Types.LoggingLevel.Debug,
             LogLevel.Debug => Protocol.Types.LoggingLevel.Debug,
+            LogLevel.Information => Protocol.Types.LoggingLevel.Info,
             LogLevel.Warning => Protocol.Types.LoggingLevel.Warning,
             LogLevel.Error => Protocol.Types.LoggingLevel.Error,
             LogLevel.Critical => Protocol.Types.LoggingLevel.Critical,
-            LogLevel.Information => Protocol.Types.LoggingLevel.Info,
-            _ => Protocol.Types.LoggingLevel.Debug,
+            _ => Protocol.Types.LoggingLevel.Emergency,
         };
 }
