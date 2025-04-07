@@ -6,7 +6,11 @@ namespace ModelContextProtocol.Hosting;
 /// <summary>
 /// Hosted service for a single-session (e.g. stdio) MCP server.
 /// </summary>
-internal sealed class SingleSessionMcpServerHostedService(IMcpServer session, IHostApplicationLifetime lifetime) : BackgroundService
+/// <param name="session">The server representing the session being hosted.</param>
+/// <param name="lifetime">
+/// The host's application lifetime. If available, it will have termination requested when the session's run completes.
+/// </param>
+internal sealed class SingleSessionMcpServerHostedService(IMcpServer session, IHostApplicationLifetime? lifetime = null) : BackgroundService
 {
     /// <inheritdoc />
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -17,7 +21,7 @@ internal sealed class SingleSessionMcpServerHostedService(IMcpServer session, IH
         }
         finally
         {
-            lifetime.StopApplication();
+            lifetime?.StopApplication();
         }
     }
 }
