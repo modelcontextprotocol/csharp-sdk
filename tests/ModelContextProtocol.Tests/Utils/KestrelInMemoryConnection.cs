@@ -77,13 +77,12 @@ public sealed class KestrelInMemoryConnection : ConnectionContext
         public override Task FlushAsync(CancellationToken cancellationToken)
             => _writeStream.FlushAsync(cancellationToken);
 
-        public override async ValueTask DisposeAsync()
+        protected override void Dispose(bool disposing)
         {
             // Signal to the server the the client has closed the connection, and dispose the client-half of the Pipes.
-            await connectionClosedCts.CancelAsync();
+            connectionClosedCts.Cancel();
             duplexPipe.Input.Complete();
             duplexPipe.Output.Complete();
-            await base.DisposeAsync();
         }
 
         // Unsupported stuff
