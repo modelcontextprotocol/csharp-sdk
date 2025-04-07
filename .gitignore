@@ -77,3 +77,7 @@ nCrunchTemp_*
 # Auto-generated documentation
 docs/_site
 docs/api
+
+# Rider
+.idea/
+.idea_modules/
