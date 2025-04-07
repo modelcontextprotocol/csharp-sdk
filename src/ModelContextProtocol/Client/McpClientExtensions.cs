@@ -22,7 +22,7 @@ public static class McpClientExtensions
         Throw.IfNull(client);
 
         return client.SendRequestAsync(
-            RequestMethods.Ping, 
+            RequestMethods.Ping,
             parameters: null,
             McpJsonUtilities.JsonContext.Default.Object!,
             McpJsonUtilities.JsonContext.Default.Object,
@@ -51,9 +51,9 @@ public static class McpClientExtensions
         do
         {
             var toolResults = await client.SendRequestAsync(
-                RequestMethods.ToolsList, 
-                CreateCursorDictionary(cursor)!,
-                McpJsonUtilities.JsonContext.Default.DictionaryStringObject,
+                RequestMethods.ToolsList,
+                new() { Cursor = cursor },
+                McpJsonUtilities.JsonContext.Default.ListToolsRequestParams,
                 McpJsonUtilities.JsonContext.Default.ListToolsResult,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
@@ -95,9 +95,9 @@ public static class McpClientExtensions
         do
         {
             var toolResults = await client.SendRequestAsync(
-                RequestMethods.ToolsList, 
-                CreateCursorDictionary(cursor)!,
-                McpJsonUtilities.JsonContext.Default.DictionaryStringObject,
+                RequestMethods.ToolsList,
+                new() { Cursor = cursor },
+                McpJsonUtilities.JsonContext.Default.ListToolsRequestParams,
                 McpJsonUtilities.JsonContext.Default.ListToolsResult,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
@@ -127,9 +127,9 @@ public static class McpClientExtensions
         do
         {
             var promptResults = await client.SendRequestAsync(
-                RequestMethods.PromptsList, 
-                CreateCursorDictionary(cursor)!,
-                McpJsonUtilities.JsonContext.Default.DictionaryStringObject,
+                RequestMethods.PromptsList,
+                new() { Cursor = cursor },
+                McpJsonUtilities.JsonContext.Default.ListPromptsRequestParams,
                 McpJsonUtilities.JsonContext.Default.ListPromptsResult,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
@@ -166,8 +166,8 @@ public static class McpClientExtensions
         {
             var promptResults = await client.SendRequestAsync(
                 RequestMethods.PromptsList,
-                CreateCursorDictionary(cursor)!,
-                McpJsonUtilities.JsonContext.Default.DictionaryStringObject,
+                new() { Cursor = cursor },
+                McpJsonUtilities.JsonContext.Default.ListPromptsRequestParams,
                 McpJsonUtilities.JsonContext.Default.ListPromptsResult,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
@@ -202,12 +202,10 @@ public static class McpClientExtensions
         serializerOptions ??= McpJsonUtilities.DefaultOptions;
         serializerOptions.MakeReadOnly();
 
-        var parametersTypeInfo = serializerOptions.GetTypeInfo<IReadOnlyDictionary<string, object?>>();
-
         return client.SendRequestAsync(
             RequestMethods.PromptsGet,
-            CreateParametersDictionary(name, arguments),
-            parametersTypeInfo,
+            new() { Name = name, Arguments = ToArgumentsDictionary(arguments, serializerOptions) },
+            McpJsonUtilities.JsonContext.Default.GetPromptRequestParams,
             McpJsonUtilities.JsonContext.Default.GetPromptResult,
             cancellationToken: cancellationToken);
     }
@@ -229,9 +227,9 @@ public static class McpClientExtensions
         do
         {
             var templateResults = await client.SendRequestAsync(
-                RequestMethods.ResourcesTemplatesList, 
-                CreateCursorDictionary(cursor)!,
-                McpJsonUtilities.JsonContext.Default.DictionaryStringObject,
+                RequestMethods.ResourcesTemplatesList,
+                new() { Cursor = cursor },
+                McpJsonUtilities.JsonContext.Default.ListResourceTemplatesRequestParams,
                 McpJsonUtilities.JsonContext.Default.ListResourceTemplatesResult,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
@@ -270,9 +268,9 @@ public static class McpClientExtensions
         do
         {
             var templateResults = await client.SendRequestAsync(
-                RequestMethods.ResourcesTemplatesList, 
-                CreateCursorDictionary(cursor)!,
-                McpJsonUtilities.JsonContext.Default.DictionaryStringObject,
+                RequestMethods.ResourcesTemplatesList,
+                new() { Cursor = cursor },
+                McpJsonUtilities.JsonContext.Default.ListResourceTemplatesRequestParams,
                 McpJsonUtilities.JsonContext.Default.ListResourceTemplatesResult,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
@@ -303,9 +301,9 @@ public static class McpClientExtensions
         do
         {
             var resourceResults = await client.SendRequestAsync(
-                RequestMethods.ResourcesList, 
-                CreateCursorDictionary(cursor)!,
-                McpJsonUtilities.JsonContext.Default.DictionaryStringObject,
+                RequestMethods.ResourcesList,
+                new() { Cursor = cursor },
+                McpJsonUtilities.JsonContext.Default.ListResourcesRequestParams,
                 McpJsonUtilities.JsonContext.Default.ListResourcesResult,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
@@ -344,9 +342,9 @@ public static class McpClientExtensions
         do
         {
             var resourceResults = await client.SendRequestAsync(
-                RequestMethods.ResourcesList, 
-                CreateCursorDictionary(cursor)!,
-                McpJsonUtilities.JsonContext.Default.DictionaryStringObject,
+                RequestMethods.ResourcesList,
+                new() { Cursor = cursor },
+                McpJsonUtilities.JsonContext.Default.ListResourcesRequestParams,
                 McpJsonUtilities.JsonContext.Default.ListResourcesResult,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
@@ -373,9 +371,9 @@ public static class McpClientExtensions
         Throw.IfNullOrWhiteSpace(uri);
 
         return client.SendRequestAsync(
-            RequestMethods.ResourcesRead, 
-            new Dictionary<string, object> { ["uri"] = uri },
-            McpJsonUtilities.JsonContext.Default.DictionaryStringObject,
+            RequestMethods.ResourcesRead,
+            new() { Uri = uri },
+            McpJsonUtilities.JsonContext.Default.ReadResourceRequestParams,
             McpJsonUtilities.JsonContext.Default.ReadResourceResult,
             cancellationToken: cancellationToken);
     }
@@ -400,13 +398,13 @@ public static class McpClientExtensions
         }
 
         return client.SendRequestAsync(
-            RequestMethods.CompletionComplete, 
-            new Dictionary<string, object>
+            RequestMethods.CompletionComplete,
+            new()
             {
-                ["ref"] = reference,
-                ["argument"] = new Argument { Name = argumentName, Value = argumentValue }
+                Ref = reference,
+                Argument = new Argument { Name = argumentName, Value = argumentValue }
             },
-            McpJsonUtilities.JsonContext.Default.DictionaryStringObject,
+            McpJsonUtilities.JsonContext.Default.CompleteRequestParams,
             McpJsonUtilities.JsonContext.Default.CompleteResult,
             cancellationToken: cancellationToken);
     }
@@ -423,9 +421,9 @@ public static class McpClientExtensions
         Throw.IfNullOrWhiteSpace(uri);
 
         return client.SendRequestAsync(
-            RequestMethods.ResourcesSubscribe, 
-            new Dictionary<string, object> { ["uri"] = uri },
-            McpJsonUtilities.JsonContext.Default.DictionaryStringObject,
+            RequestMethods.ResourcesSubscribe,
+            new() { Uri = uri },
+            McpJsonUtilities.JsonContext.Default.SubscribeRequestParams,
             McpJsonUtilities.JsonContext.Default.EmptyResult,
             cancellationToken: cancellationToken);
     }
@@ -443,8 +441,8 @@ public static class McpClientExtensions
 
         return client.SendRequestAsync(
             RequestMethods.ResourcesUnsubscribe,
-            new Dictionary<string, object> { ["uri"] = uri },
-            McpJsonUtilities.JsonContext.Default.DictionaryStringObject,
+            new() { Uri = uri },
+            McpJsonUtilities.JsonContext.Default.UnsubscribeRequestParams,
             McpJsonUtilities.JsonContext.Default.EmptyResult,
             cancellationToken: cancellationToken);
     }
@@ -470,12 +468,10 @@ public static class McpClientExtensions
         serializerOptions ??= McpJsonUtilities.DefaultOptions;
         serializerOptions.MakeReadOnly();
 
-        var parametersTypeInfo = serializerOptions.GetTypeInfo<IReadOnlyDictionary<string, object?>>();
-
         return client.SendRequestAsync(
-            RequestMethods.ToolsCall, 
-            CreateParametersDictionary(toolName, arguments),
-            parametersTypeInfo,
+            RequestMethods.ToolsCall,
+            new() { Name = toolName, Arguments = ToArgumentsDictionary(arguments, serializerOptions) },
+            McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
             McpJsonUtilities.JsonContext.Default.CallToolResponse,
             cancellationToken: cancellationToken);
     }
@@ -629,28 +625,28 @@ public static class McpClientExtensions
 
         return client.SendRequestAsync(
             RequestMethods.LoggingSetLevel,
-            new Dictionary<string, object> { ["level"] = level },
-            McpJsonUtilities.JsonContext.Default.DictionaryStringObject,
+            new() { Level = level },
+            McpJsonUtilities.JsonContext.Default.SetLevelRequestParams,
             McpJsonUtilities.JsonContext.Default.EmptyResult,
             cancellationToken: cancellationToken);
     }
 
-    private static Dictionary<string, object?>? CreateCursorDictionary(string? cursor) =>
-        cursor != null ? new() { ["cursor"] = cursor } : null;
-
-    private static Dictionary<string, object?> CreateParametersDictionary(
-        string nameParameter, IReadOnlyDictionary<string, object?>? arguments)
+    /// <summary>Convers a dictionary with <see cref="object"/> values to a dictionary with <see cref="JsonElement"/> values.</summary>
+    private static IReadOnlyDictionary<string, JsonElement>? ToArgumentsDictionary(
+        IReadOnlyDictionary<string, object?>? arguments, JsonSerializerOptions options)
     {
-        Dictionary<string, object?> parameters = new()
-        {
-            ["name"] = nameParameter
-        };
+        var typeInfo = options.GetTypeInfo<object?>();
 
-        if (arguments != null)
+        Dictionary<string, JsonElement>? result = null;
+        if (arguments is not null)
         {
-            parameters["arguments"] = arguments;
+            result = new(arguments.Count);
+            foreach (var kvp in arguments)
+            {
+                result.Add(kvp.Key, kvp.Value is JsonElement je ? je : JsonSerializer.SerializeToElement(kvp.Value, typeInfo));
+            }
         }
 
-        return parameters;
+        return result;
     }
 }

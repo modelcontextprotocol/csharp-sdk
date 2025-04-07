@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol.Types;
 
@@ -11,12 +12,12 @@ public class CallToolRequestParams : RequestParams
     /// <summary>
     /// Tool name.
     /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("name")]
+    [JsonPropertyName("name")]
     public required string Name { get; init; }
 
     /// <summary>
     /// Optional arguments to pass to the tool.
     /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("arguments")]
-    public Dictionary<string, JsonElement>? Arguments { get; init; }
+    [JsonPropertyName("arguments")]
+    public IReadOnlyDictionary<string, JsonElement>? Arguments { get; init; }
 }

@@ -249,8 +249,8 @@ internal static class Program
                 }
                 else if (request.Params?.Name == "complex_prompt")
                 {
-                    string temperature = request.Params.Arguments?["temperature"]?.ToString() ?? "unknown";
-                    string style = request.Params.Arguments?["style"]?.ToString() ?? "unknown";
+                    string temperature = request.Params.Arguments?["temperature"].ToString() ?? "unknown";
+                    string style = request.Params.Arguments?["style"].ToString() ?? "unknown";
                     messages.Add(new PromptMessage()
                     {
                         Role = Role.User,
