@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Hosting;
 using ModelContextProtocol.Protocol.Transport;
@@ -348,17 +349,8 @@ public static partial class McpServerBuilderExtensions
     {
         Throw.IfNull(builder);
 
+        AddSingleSessionServerDependencies(builder.Services);
         builder.Services.AddSingleton<ITransport, StdioServerTransport>();
-        builder.Services.AddHostedService<SingleSessionMcpServerHostedService>();
-
-        builder.Services.AddSingleton(services =>
-        {
-            ITransport serverTransport = services.GetRequiredService<ITransport>();
-            IOptions<McpServerOptions> options = services.GetRequiredService<IOptions<McpServerOptions>>();
-            ILoggerFactory? loggerFactory = services.GetService<ILoggerFactory>();
-
-            return McpServerFactory.Create(serverTransport, options.Value, loggerFactory, services);
-        });
 
         return builder;
     }
@@ -378,19 +370,22 @@ public static partial class McpServerBuilderExtensions
         Throw.IfNull(inputStream);
         Throw.IfNull(outputStream);
 
+        AddSingleSessionServerDependencies(builder.Services);
         builder.Services.AddSingleton<ITransport>(new StreamServerTransport(inputStream, outputStream));
-        builder.Services.AddHostedService<SingleSessionMcpServerHostedService>();
 
-        builder.Services.AddSingleton(services =>
+        return builder;
+    }
+
+    private static void AddSingleSessionServerDependencies(IServiceCollection services)
+    {
+        services.AddHostedService<SingleSessionMcpServerHostedService>();
+        services.TryAddSingleton(services =>
         {
             ITransport serverTransport = services.GetRequiredService<ITransport>();
             IOptions<McpServerOptions> options = services.GetRequiredService<IOptions<McpServerOptions>>();
             ILoggerFactory? loggerFactory = services.GetService<ILoggerFactory>();
-
             return McpServerFactory.Create(serverTransport, options.Value, loggerFactory, services);
         });
-
-        return builder;
     }
     #endregion
 }

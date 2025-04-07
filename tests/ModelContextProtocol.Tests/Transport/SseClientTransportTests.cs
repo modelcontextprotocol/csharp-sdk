@@ -148,7 +148,7 @@ public class SseClientTransportTests : LoggedTest
 
         var eventSourcePipe = new Pipe();
         var eventSourceData = "event: endpoint\r\ndata: /sseendpoint\r\n\r\n"u8;
-        Assert.True(eventSourceData.TryCopyTo(eventSourcePipe.Writer.GetSpan()));
+        eventSourceData.CopyTo(eventSourcePipe.Writer.GetSpan(eventSourceData.Length));
         eventSourcePipe.Writer.Advance(eventSourceData.Length);
         await eventSourcePipe.Writer.FlushAsync(TestContext.Current.CancellationToken);
 
