@@ -43,9 +43,10 @@ public sealed class KestrelInMemoryConnection : ConnectionContext
         // completes the other half of these pipes.
         _serverToClientPipe.Writer.Complete();
         _serverToClientPipe.Reader.Complete();
-        // Disposing the CTS without waiting for the client would be problematic
-        // except we always dispose the HttpClient before Kestrel in our tests.
-        _connectionClosedCts.Dispose();
+
+        // Don't bother disposing the _connectionClosedCts, since this is just for testing,
+        // and it's annoying to synchronize with DuplexStream.
+
         return base.DisposeAsync();
     }
 
