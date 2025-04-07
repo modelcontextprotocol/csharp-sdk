@@ -72,56 +72,26 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : KestrelInMemo
         var receivedNotification = new TaskCompletionSource<string?>();
 
         await using var app = Builder.Build();
-        app.MapMcp(configureOptionsAsync: (httpContext, mcpServerOptions, CancellationToken) =>
+        app.MapMcp(runSessionAsync: (httpContext, mcpServer, cancellationToken) =>
         {
-            mcpServerOptions.Capabilities = new()
+            mcpServer.RegisterNotificationHandler("test/notification", async (notification, cancellationToken) =>
             {
-                NotificationHandlers =
-                [
-                    new("test/notification", async notification =>
-                    {
-                        Assert.Equal("Hello from client!", notification.Params?["message"]?.GetValue<string>());
-
-                        var server = httpContext.Features.GetRequiredFeature<IMcpServer>();
-
-                        // REVIEW: Where is the CancellationToken for notification handlers?
-                        // The httpContext.RequestAborted trick will not always work once we fully support the HTTP streaming spec.
-                        await server.SendNotificationAsync("test/notification", new { message = "Hello from server!" }, cancellationToken: httpContext.RequestAborted);
-                    }),
-                ],
-            };
-
-            return Task.CompletedTask;
+                Assert.Equal("Hello from client!", notification.Params?["message"]?.GetValue<string>());
+                var server = httpContext.Features.GetRequiredFeature<IMcpServer>();
+                await server.SendNotificationAsync("test/notification", new { message = "Hello from server!" }, cancellationToken: cancellationToken);
+            });
+            return mcpServer.RunAsync(cancellationToken);
         });
         await app.StartAsync(TestContext.Current.CancellationToken);
 
         using var httpClient = CreateHttpClient();
-        await using var mcpClient = await ConnectMcpClient(httpClient, new()
+        await using var mcpClient = await ConnectMcpClient(httpClient);
+
+        mcpClient.RegisterNotificationHandler("test/notification", (args, ca) =>
         {
-            Capabilities = new()
-            {
-                NotificationHandlers = [new("test/notification", args =>
-                {
-                    var msg = args.Params?["message"]?.GetValue<string>();
-                    receivedNotification.SetResult(msg);
-
-                    return Task.CompletedTask;
-                })],
-            },
-        });
-
-        await using var mcpClient2 = await ConnectMcpClient(httpClient, new()
-        {
-            Capabilities = new()
-            {
-                NotificationHandlers = [new("test/notification", args =>
-                {
-                    var msg = args.Params?["message"]?.GetValue<string>();
-                    receivedNotification.SetResult(msg);
-
-                    return Task.CompletedTask;
-                })],
-            },
+            var msg = args.Params?["message"]?.GetValue<string>();
+            receivedNotification.SetResult(msg);
+            return Task.CompletedTask;
         });
 
         // Send a test message through POST endpoint
