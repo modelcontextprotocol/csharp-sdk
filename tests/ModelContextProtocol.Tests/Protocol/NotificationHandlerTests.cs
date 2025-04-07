@@ -50,14 +50,7 @@ public class NotificationHandlerTests : LoggedTest, IAsyncDisposable
     private async Task<IMcpClient> CreateMcpClientForServer(McpClientOptions? options = null)
     {
         return await McpClientFactory.CreateAsync(
-            new McpServerConfig()
-            {
-                Id = "TestServer",
-                Name = "TestServer",
-                TransportType = "ignored",
-            },
-            options,
-            createTransportFunc: (_, _) => new StreamClientTransport(
+            new StreamClientTransport(
                 serverInput: _clientToServerPipe.Writer.AsStream(),
                 _serverToClientPipe.Reader.AsStream(),
                 LoggerFactory),

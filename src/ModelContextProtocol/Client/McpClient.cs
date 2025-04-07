@@ -33,9 +33,8 @@ internal sealed class McpClient : McpEndpoint, IMcpClient
     /// </summary>
     /// <param name="clientTransport">The transport to use for communication with the server.</param>
     /// <param name="options">Options for the client, defining protocol version and capabilities.</param>
-    /// <param name="serverConfig">The server configuration.</param>
     /// <param name="loggerFactory">The logger factory.</param>
-    public McpClient(IClientTransport clientTransport, McpClientOptions? options, McpServerConfig serverConfig, ILoggerFactory? loggerFactory)
+    public McpClient(IClientTransport clientTransport, McpClientOptions? options, ILoggerFactory? loggerFactory)
         : base(loggerFactory)
     {
         options ??= new();
@@ -43,7 +42,7 @@ internal sealed class McpClient : McpEndpoint, IMcpClient
         _clientTransport = clientTransport;
         _options = options;
 
-        EndpointName = $"Client ({serverConfig.Id}: {serverConfig.Name})";
+        EndpointName = clientTransport.EndpointName;
 
         if (options.Capabilities is { } capabilities)
         {

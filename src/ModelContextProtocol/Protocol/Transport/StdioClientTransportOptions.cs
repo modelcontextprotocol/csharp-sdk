@@ -1,5 +1,4 @@
-﻿// Protocol/Transport/StdioTransport.cs
-namespace ModelContextProtocol.Protocol.Transport;
+﻿namespace ModelContextProtocol.Protocol.Transport;
 
 /// <summary>
 /// Represents configuration options for the stdio transport.
@@ -12,9 +11,31 @@ public record StdioClientTransportOptions
     public static readonly TimeSpan DefaultShutdownTimeout = TimeSpan.FromSeconds(5);
 
     /// <summary>
+    /// Unique identifier for this server configuration.
+    /// </summary>
+    public required string Id { get; set; }
+
+    /// <summary>
+    /// Display name for the server.
+    /// </summary>
+    public required string Name { get; set; }
+
+    /// <summary>
     /// The command to execute to start the server process.
     /// </summary>
-    public required string Command { get; set; }
+    public required string Command
+    {
+        get;
+        set
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                throw new ArgumentException("Command cannot be null or empty.", nameof(value));
+            }
+
+            field = value;
+        }
+    }
 
     /// <summary>
     /// Arguments to pass to the server process.

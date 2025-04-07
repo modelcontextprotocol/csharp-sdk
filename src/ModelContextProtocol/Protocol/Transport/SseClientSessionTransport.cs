@@ -23,29 +23,25 @@ internal sealed class SseClientSessionTransport : TransportBase
     private readonly CancellationTokenSource _connectionCts;
     private Task? _receiveTask;
     private readonly ILogger _logger;
-    private readonly McpServerConfig _serverConfig;
     private readonly TaskCompletionSource<bool> _connectionEstablished;
 
-    private string EndpointName => $"Client (SSE) for ({_serverConfig.Id}: {_serverConfig.Name})";
+    private string EndpointName => $"Client (SSE) for ({_options.Id}: {_options.Name})";
 
     /// <summary>
     /// SSE transport for client endpoints. Unlike stdio it does not launch a process, but connects to an existing server.
     /// The HTTP server can be local or remote, and must support the SSE protocol.
     /// </summary>
     /// <param name="transportOptions">Configuration options for the transport.</param>
-    /// <param name="serverConfig">The configuration object indicating which server to connect to.</param>
     /// <param name="httpClient">The HTTP client instance used for requests.</param>
     /// <param name="loggerFactory">Logger factory for creating loggers.</param>
-    public SseClientSessionTransport(SseClientTransportOptions transportOptions, McpServerConfig serverConfig, HttpClient httpClient, ILoggerFactory? loggerFactory)
+    public SseClientSessionTransport(SseClientTransportOptions transportOptions, HttpClient httpClient, ILoggerFactory? loggerFactory)
         : base(loggerFactory)
     {
         Throw.IfNull(transportOptions);
-        Throw.IfNull(serverConfig);
         Throw.IfNull(httpClient);
 
         _options = transportOptions;
-        _serverConfig = serverConfig;
-        _sseEndpoint = new Uri(serverConfig.Location!);
+        _sseEndpoint = transportOptions.Endpoint;
         _httpClient = httpClient;
         _connectionCts = new CancellationTokenSource();
         _logger = (ILogger?)loggerFactory?.CreateLogger<SseClientTransport>() ?? NullLogger.Instance;

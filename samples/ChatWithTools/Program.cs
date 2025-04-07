@@ -6,16 +6,13 @@ using OpenAI;
 // Connect to an MCP server
 Console.WriteLine("Connecting client to MCP 'everything' server");
 var mcpClient = await McpClientFactory.CreateAsync(
-    new()
+    new StdioClientTransport(new()
     {
         Id = "everything",
         Name = "Everything",
-        TransportType = TransportTypes.StdIo,
-        TransportOptions = new()
-        {
-            ["command"] = "npx", ["arguments"] = "-y @modelcontextprotocol/server-everything",
-        }
-    });
+        Command = "npx",
+        Arguments = "-y --verbose @modelcontextprotocol/server-everything",
+    }));
 
 // Get all available tools
 Console.WriteLine("Tools available:");

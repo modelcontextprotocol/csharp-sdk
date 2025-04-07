@@ -234,13 +234,7 @@ public class McpClientExtensionsTests : LoggedTest
     private async Task<IMcpClient> CreateMcpClientForServer()
     {
         return await McpClientFactory.CreateAsync(
-            new McpServerConfig()
-            {
-                Id = "TestServer",
-                Name = "TestServer",
-                TransportType = "ignored",
-            },
-            createTransportFunc: (_, _) => new StreamClientTransport(
+            new StreamClientTransport(
                 serverInput: _clientToServerPipe.Writer.AsStream(),
                 serverOutput: _serverToClientPipe.Reader.AsStream(),
                 LoggerFactory),

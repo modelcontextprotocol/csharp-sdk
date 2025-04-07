@@ -36,6 +36,10 @@ public sealed class StreamClientTransport : IClientTransport
     }
 
     /// <inheritdoc />
+    public string EndpointName => $"Client (in-memory stream)";
+
+
+    /// <inheritdoc />
     public Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default)
     {
         return Task.FromResult<ITransport>(new StreamClientSessionTransport(

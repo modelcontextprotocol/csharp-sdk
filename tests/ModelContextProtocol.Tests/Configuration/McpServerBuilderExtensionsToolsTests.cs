@@ -142,14 +142,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
     private async Task<IMcpClient> CreateMcpClientForServer(McpClientOptions? options = null)
     {
         return await McpClientFactory.CreateAsync(
-            new McpServerConfig()
-            {
-                Id = "TestServer",
-                Name = "TestServer",
-                TransportType = "ignored",
-            },
-            options,
-            createTransportFunc: (_, _) => new StreamClientTransport(
+            new StreamClientTransport(
                 serverInput: _clientToServerPipe.Writer.AsStream(),
                 _serverToClientPipe.Reader.AsStream(),
                 LoggerFactory),
@@ -203,13 +196,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
             var serverRunTask = server.RunAsync(TestContext.Current.CancellationToken);
 
             await using (var client = await McpClientFactory.CreateAsync(
-                 new McpServerConfig()
-                 {
-                     Id = $"TestServer_{i}",
-                     Name = $"TestServer_{i}",
-                     TransportType = "ignored",
-                 },
-                createTransportFunc: (_, _) => new StreamClientTransport(
+                 new StreamClientTransport(
                     serverInput: stdinPipe.Writer.AsStream(), 
                     serverOutput: stdoutPipe.Reader.AsStream(), 
                     LoggerFactory),
