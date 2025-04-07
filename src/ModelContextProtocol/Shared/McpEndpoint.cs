@@ -5,6 +5,7 @@ using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 
@@ -62,12 +63,16 @@ internal abstract class McpEndpoint : IAsyncDisposable
     /// </summary>
     protected Task? MessageProcessingTask { get; private set; }
 
-    [MemberNotNull(nameof(MessageProcessingTask))]
-    protected void StartSession(ITransport sessionTransport)
+    protected void InitializeSession(ITransport sessionTransport)
     {
-        _sessionCts = new CancellationTokenSource();
         _session = new McpSession(this is IMcpServer, sessionTransport, EndpointName, RequestHandlers, NotificationHandlers, _logger);
-        MessageProcessingTask = _session.ProcessMessagesAsync(_sessionCts.Token);
+    }
+
+    [MemberNotNull(nameof(MessageProcessingTask))]
+    protected void StartSession(ITransport sessionTransport, CancellationToken fullSessionCancellationToken)
+    {
+        _sessionCts = CancellationTokenSource.CreateLinkedTokenSource(fullSessionCancellationToken);
+        MessageProcessingTask = GetSessionOrThrow().ProcessMessagesAsync(_sessionCts.Token);
     }
 
     protected void CancelSession() => _sessionCts?.Cancel();
@@ -122,5 +127,5 @@ internal abstract class McpEndpoint : IAsyncDisposable
     }
 
     protected McpSession GetSessionOrThrow()
-        => _session ?? throw new InvalidOperationException($"This should be unreachable from public API! Call {nameof(StartSession)} before sending messages.");
+        => _session ?? throw new InvalidOperationException($"This should be unreachable from public API! Call {nameof(InitializeSession)} before sending messages.");
 }

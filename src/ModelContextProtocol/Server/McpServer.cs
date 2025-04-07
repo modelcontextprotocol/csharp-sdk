@@ -18,6 +18,8 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         Version = DefaultAssemblyName.Version?.ToString() ?? "1.0.0",
     };
 
+    private readonly ITransport _sessionTransport;
+
     private readonly EventHandler? _toolsChangedDelegate;
     private readonly EventHandler? _promptsChangedDelegate;
 
@@ -41,6 +43,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
         options ??= new();
 
+        _sessionTransport = transport;
         ServerOptions = options;
         Services = serviceProvider;
         _endpointName = $"Server ({options.ServerInfo?.Name ?? DefaultImplementation.Name} {options.ServerInfo?.Version ?? DefaultImplementation.Version})";
@@ -81,8 +84,8 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             prompts.Changed += _promptsChangedDelegate;
         }
 
-        // And start the session.
-        StartSession(transport);
+        // And initialize the session.
+        InitializeSession(transport);
     }
 
     public ServerCapabilities? ServerCapabilities { get; set; }
@@ -112,9 +115,8 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
         try
         {
-            using var _ = cancellationToken.Register(static s => ((McpServer)s!).CancelSession(), this);
-            // The McpServer ctor always calls StartSession, so MessageProcessingTask is always set.
-            await MessageProcessingTask!.ConfigureAwait(false);
+            StartSession(_sessionTransport, fullSessionCancellationToken: cancellationToken);
+            await MessageProcessingTask.ConfigureAwait(false);
         }
         finally
         {
