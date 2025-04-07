@@ -386,7 +386,7 @@ public static class McpClientExtensions
     /// <param name="argumentName">Name of argument. Must be non-null and non-empty.</param>
     /// <param name="argumentValue">Value of argument. Must be non-null.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    public static Task<CompleteResult> GetCompletionAsync(this IMcpClient client, Reference reference, string argumentName, string argumentValue, CancellationToken cancellationToken = default)
+    public static Task<CompleteResult> CompleteAsync(this IMcpClient client, Reference reference, string argumentName, string argumentValue, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
         Throw.IfNull(reference);

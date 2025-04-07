@@ -110,16 +110,16 @@ public class McpServerBuilderExtensionsHandlerTests
     }
 
     [Fact]
-    public void WithGetCompletionHandler_Sets_Handler()
+    public void WithCompleteHandler_Sets_Handler()
     {
         Func<RequestContext<CompleteRequestParams>, CancellationToken, Task<CompleteResult>> handler = (context, token) => Task.FromResult(new CompleteResult());
 
-        _builder.Object.WithGetCompletionHandler(handler);
+        _builder.Object.WithCompleteHandler(handler);
 
         var serviceProvider = _services.BuildServiceProvider();
         var options = serviceProvider.GetRequiredService<IOptions<McpServerHandlers>>().Value;
 
-        Assert.Equal(handler, options.GetCompletionHandler);
+        Assert.Equal(handler, options.CompleteHandler);
     }
 
     [Fact]

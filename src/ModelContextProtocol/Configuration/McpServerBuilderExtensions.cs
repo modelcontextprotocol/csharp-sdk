@@ -288,15 +288,15 @@ public static partial class McpServerBuilderExtensions
     }
 
     /// <summary>
-    /// Sets the handler for get completion requests.
+    /// Sets the handler for completion complete requests.
     /// </summary>
     /// <param name="builder">The builder instance.</param>
     /// <param name="handler">The handler.</param>
-    public static IMcpServerBuilder WithGetCompletionHandler(this IMcpServerBuilder builder, Func<RequestContext<CompleteRequestParams>, CancellationToken, Task<CompleteResult>> handler)
+    public static IMcpServerBuilder WithCompleteHandler(this IMcpServerBuilder builder, Func<RequestContext<CompleteRequestParams>, CancellationToken, Task<CompleteResult>> handler)
     {
         Throw.IfNull(builder);
 
-        builder.Services.Configure<McpServerHandlers>(s => s.GetCompletionHandler = handler);
+        builder.Services.Configure<McpServerHandlers>(s => s.CompleteHandler = handler);
         return builder;
     }
 

@@ -43,11 +43,11 @@ internal static class Program
                 Tools = ConfigureTools(),
                 Resources = ConfigureResources(),
                 Prompts = ConfigurePrompts(),
-                Logging = ConfigureLogging()
+                Logging = ConfigureLogging(),
+                Completions = ConfigureCompletions(),
             },
             ProtocolVersion = "2024-11-05",
             ServerInstructions = "This is a test server with only stub functionality",
-            GetCompletionHandler = ConfigureCompletion(),
         };
 
         using var loggerFactory = CreateLoggerFactory();
@@ -477,7 +477,7 @@ internal static class Program
         };
     }
 
-    private static Func<RequestContext<CompleteRequestParams>, CancellationToken, Task<CompleteResult>> ConfigureCompletion()
+    private static CompletionsCapability ConfigureCompletions()
     {
         List<string> sampleResourceIds = ["1", "2", "3", "4", "5"];
         Dictionary<string, List<string>> exampleCompletions = new()
@@ -486,7 +486,7 @@ internal static class Program
             {"temperature", ["0", "0.5", "0.7", "1.0"]},
         };
 
-        return (request, cancellationToken) =>
+        Func<RequestContext<CompleteRequestParams>, CancellationToken, Task<CompleteResult>> handler = (request, cancellationToken) =>
         {
             if (request.Params?.Ref?.Type == "ref/resource")
             {
@@ -512,6 +512,8 @@ internal static class Program
 
             throw new McpException($"Unknown reference type: {request.Params?.Ref.Type}");
         };
+
+        return new() { CompleteHandler = handler };
     }
 
     static CreateMessageRequestParams CreateRequestSamplingParams(string context, string uri, int maxTokens = 100)

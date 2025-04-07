@@ -175,11 +175,18 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
     private void SetCompletionHandler(McpServerOptions options)
     {
+        if (options.Capabilities?.Completions is not { } completionsCapability)
+        {
+            return;
+        }
+
+        var completeHandler = completionsCapability.CompleteHandler ?? 
+            throw new McpException("Completions capability was enabled, but Complete handler was not specified.");
+
         // This capability is not optional, so return an empty result if there is no handler.
-        RequestHandlers.Set(RequestMethods.CompletionComplete,
-            options.GetCompletionHandler is { } handler ?
-                (request, cancellationToken) => handler(new(this, request), cancellationToken) :
-                (request, cancellationToken) => Task.FromResult(new CompleteResult() { Completion = new() { Values = [], Total = 0, HasMore = false } }),
+        RequestHandlers.Set(
+            RequestMethods.CompletionComplete,
+            (request, cancellationToken) => completeHandler(new(this, request), cancellationToken),
             McpJsonUtilities.JsonContext.Default.CompleteRequestParams,
             McpJsonUtilities.JsonContext.Default.CompleteResult);
     }

@@ -43,9 +43,9 @@ public sealed class McpServerHandlers
     public Func<RequestContext<ReadResourceRequestParams>, CancellationToken, Task<ReadResourceResult>>? ReadResourceHandler { get; set; }
 
     /// <summary>
-    /// Gets or sets the handler for get completion requests.
+    /// Gets or sets the handler for completion complete requests.
     /// </summary>
-    public Func<RequestContext<CompleteRequestParams>, CancellationToken, Task<CompleteResult>>? GetCompletionHandler { get; set; }
+    public Func<RequestContext<CompleteRequestParams>, CancellationToken, Task<CompleteResult>>? CompleteHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for subscribe to resources messages.
@@ -109,12 +109,18 @@ public sealed class McpServerHandlers
             loggingCapability.SetLoggingLevelHandler = SetLoggingLevelHandler;
         }
 
+        CompletionsCapability? completionsCapability = options.Capabilities?.Completions;
+        if (CompleteHandler is not null)
+        {
+            completionsCapability ??= new();
+            completionsCapability.CompleteHandler = CompleteHandler;
+        }
+
         options.Capabilities ??= new();
         options.Capabilities.Prompts = promptsCapability;
         options.Capabilities.Resources = resourcesCapability;
         options.Capabilities.Tools = toolsCapability;
         options.Capabilities.Logging = loggingCapability;
-
-        options.GetCompletionHandler = GetCompletionHandler ?? options.GetCompletionHandler;
+        options.Capabilities.Completions = completionsCapability;
     }
 }

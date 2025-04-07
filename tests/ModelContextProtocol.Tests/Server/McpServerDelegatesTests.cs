@@ -17,7 +17,7 @@ public class McpServerHandlerTests
         Assert.Null(handlers.ListResourceTemplatesHandler);
         Assert.Null(handlers.ListResourcesHandler);
         Assert.Null(handlers.ReadResourceHandler);
-        Assert.Null(handlers.GetCompletionHandler);
+        Assert.Null(handlers.CompleteHandler);
         Assert.Null(handlers.SubscribeToResourcesHandler);
         Assert.Null(handlers.UnsubscribeFromResourcesHandler);
 
@@ -28,7 +28,7 @@ public class McpServerHandlerTests
         handlers.ListResourceTemplatesHandler = (p, c) => Task.FromResult(new ListResourceTemplatesResult());
         handlers.ListResourcesHandler = (p, c) => Task.FromResult(new ListResourcesResult());
         handlers.ReadResourceHandler = (p, c) => Task.FromResult(new ReadResourceResult());
-        handlers.GetCompletionHandler = (p, c) => Task.FromResult(new CompleteResult());
+        handlers.CompleteHandler = (p, c) => Task.FromResult(new CompleteResult());
         handlers.SubscribeToResourcesHandler = (s, c) => Task.FromResult(new EmptyResult());
         handlers.UnsubscribeFromResourcesHandler = (s, c) => Task.FromResult(new EmptyResult());
 
@@ -39,7 +39,7 @@ public class McpServerHandlerTests
         Assert.NotNull(handlers.ListResourceTemplatesHandler);
         Assert.NotNull(handlers.ListResourcesHandler);
         Assert.NotNull(handlers.ReadResourceHandler);
-        Assert.NotNull(handlers.GetCompletionHandler);
+        Assert.NotNull(handlers.CompleteHandler);
         Assert.NotNull(handlers.SubscribeToResourcesHandler);
         Assert.NotNull(handlers.UnsubscribeFromResourcesHandler);
     }

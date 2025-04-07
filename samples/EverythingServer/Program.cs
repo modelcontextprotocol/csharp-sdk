@@ -115,7 +115,7 @@ builder.Services
         }
         return Task.FromResult(new EmptyResult());
     })
-    .WithGetCompletionHandler((ctx, ct) =>
+    .WithCompleteHandler((ctx, ct) =>
     {
         var exampleCompletions = new Dictionary<string, IEnumerable<string>>
         {

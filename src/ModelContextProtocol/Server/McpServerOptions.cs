@@ -35,10 +35,4 @@ public class McpServerOptions
     /// Optional server instructions to send to clients
     /// </summary>
     public string ServerInstructions { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Gets or sets the handler for get completion requests.
-    /// </summary>
-    [JsonIgnore]
-    public Func<RequestContext<CompleteRequestParams>, CancellationToken, Task<CompleteResult>>? GetCompletionHandler { get; set; }
 }

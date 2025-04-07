@@ -198,44 +198,29 @@ public class McpServerTests : LoggedTest
     public async Task Can_Handle_Completion_Requests()
     {
         await Can_Handle_Requests(
-            serverCapabilities: null,
+            new()
+            {
+                Completions = new()
+                {
+                    CompleteHandler = (request, ct) =>
+                        Task.FromResult(new CompleteResult
+                        {
+                            Completion = new()
+                            {
+                                Values = ["test"],
+                                Total = 2,
+                                HasMore = true
+                            }
+                        })
+                }
+            },
             method: RequestMethods.CompletionComplete,
             configureOptions: null,
             assertResult: response =>
             {
                 var result = JsonSerializer.Deserialize<CompleteResult>(response);
                 Assert.NotNull(result?.Completion);
-                Assert.Empty(result.Completion.Values);
-                Assert.Equal(0, result.Completion.Total);
-                Assert.False(result.Completion.HasMore);
-            });
-    }
-
-    [Fact]
-    public async Task Can_Handle_Completion_Requests_With_Handler()
-    {
-        await Can_Handle_Requests(
-            serverCapabilities: null,
-            method: RequestMethods.CompletionComplete,
-            configureOptions: options =>
-            {
-                options.GetCompletionHandler = (request, ct) =>
-                    Task.FromResult(new CompleteResult
-                    {
-                        Completion = new()
-                        {
-                            Values = ["test"],
-                            Total = 2,
-                            HasMore = true
-                        }
-                    });
-            },
-            assertResult: response =>
-            {
-                CompleteResult? result = JsonSerializer.Deserialize<CompleteResult>(response);
-                Assert.NotNull(result?.Completion);
-                Assert.NotEmpty(result.Completion.Values);
-                Assert.Equal("test", result.Completion.Values[0]);
+                Assert.Equal(["test"], result.Completion.Values);
                 Assert.Equal(2, result.Completion.Total);
                 Assert.True(result.Completion.HasMore);
             });

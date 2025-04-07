@@ -39,6 +39,12 @@ public class ServerCapabilities
     [JsonPropertyName("tools")]
     public ToolsCapability? Tools { get; set; }
 
+    /// <summary>
+    /// Present if the server supports argument autocompletion suggestions.
+    /// </summary>
+    [JsonPropertyName("completions")]
+    public CompletionsCapability? Completions { get; set; }
+
     /// <summary>Gets or sets notification handlers to register with the server.</summary>
     /// <remarks>
     /// When constructed, the server will enumerate these handlers, which may contain multiple handlers per key.
