@@ -8,8 +8,8 @@ public sealed class KestrelInMemoryConnection : ConnectionContext
 {
     private readonly Pipe _clientToServerPipe = new();
     private readonly Pipe _serverToClientPipe = new();
-    private readonly CancellationTokenSource _connectionClosedCts = new CancellationTokenSource();
-    private readonly IFeatureCollection _features = new FeatureCollection();
+    private readonly CancellationTokenSource _connectionClosedCts = new();
+    private readonly FeatureCollection _features = new();
 
     public KestrelInMemoryConnection()
     {
@@ -37,17 +37,17 @@ public sealed class KestrelInMemoryConnection : ConnectionContext
 
     public override IDictionary<object, object?> Items { get; set; } = new Dictionary<object, object?>();
 
-    public override ValueTask DisposeAsync()
+    public override async ValueTask DisposeAsync()
     {
         // This is called by Kestrel. The client should dispose the DuplexStream which
         // completes the other half of these pipes.
-        _serverToClientPipe.Writer.Complete();
-        _serverToClientPipe.Reader.Complete();
+        await _serverToClientPipe.Writer.CompleteAsync();
+        await _serverToClientPipe.Reader.CompleteAsync();
 
         // Don't bother disposing the _connectionClosedCts, since this is just for testing,
         // and it's annoying to synchronize with DuplexStream.
 
-        return base.DisposeAsync();
+        await base.DisposeAsync();
     }
 
     private class DuplexPipe : IDuplexPipe
