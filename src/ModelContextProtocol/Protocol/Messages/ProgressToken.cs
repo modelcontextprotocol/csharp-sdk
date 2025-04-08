@@ -1,4 +1,4 @@
-﻿using ModelContextProtocol.Utils;
+using ModelContextProtocol.Utils;
 using System.ComponentModel;
 using System.Globalization;
 using System.Text.Json;
@@ -42,14 +42,29 @@ public readonly struct ProgressToken : IEquatable<ProgressToken>
         null;
 
     /// <summary>
-    /// Compares this ProgressToken to another ProgressToken.
+    /// Determines whether the specified <see cref="ProgressToken"/> is equal to the current <see cref="ProgressToken"/>.
     /// </summary>
+    /// <param name="other">The <see cref="ProgressToken"/> to compare with the current object.</param>
+    /// <returns><see langword="true"/> if the specified object is equal to the current object; otherwise, <see langword="false"/>.</returns>
+    /// <remarks>
+    /// The equality comparison is based on the underlying token value, which can be a string, a long, or null.
+    /// </remarks>
     public bool Equals(ProgressToken other) => Equals(_token, other._token);
 
     /// <inheritdoc />
     public override bool Equals(object? obj) => obj is ProgressToken other && Equals(other);
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Returns a hash code for the current <see cref="ProgressToken"/> instance.
+    /// </summary>
+    /// <returns>
+    /// A hash code for the current <see cref="ProgressToken"/> instance, calculated from the underlying token value.
+    /// Returns the hash code of the token if it's not null, or 0 if the token is null.
+    /// </returns>
+    /// <remarks>
+    /// This implementation ensures that tokens with the same underlying value will produce the same hash code,
+    /// which is consistent with the equality comparison behavior defined in the <see cref="Equals(ProgressToken)"/> method.
+    /// </remarks>
     public override int GetHashCode() => _token?.GetHashCode() ?? 0;
 
     /// <summary>

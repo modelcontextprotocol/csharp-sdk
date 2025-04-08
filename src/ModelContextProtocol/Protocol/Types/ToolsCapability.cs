@@ -1,4 +1,4 @@
-﻿using ModelContextProtocol.Server;
+using ModelContextProtocol.Server;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol.Types;
@@ -11,19 +11,41 @@ public class ToolsCapability
 {
     /// <summary>
     /// Gets or sets whether this server supports notifications for changes to the tool list.
+    /// When set to <see langword="true"/>, the server will send notifications using 
+    /// <see cref="NotificationMethods.ToolListChangedNotification"/> when tools are added, 
+    /// removed, or modified. Clients can register handlers for these notifications to
+    /// refresh their tool cache.
     /// </summary>
+    /// <remarks>
+    /// This capability enables clients to stay synchronized with server-side changes to available tools.
+    /// The server will broadcast the <c>notifications/tools/list_changed</c> notification when tools change.
+    /// </remarks>
     [JsonPropertyName("listChanged")]
     public bool? ListChanged { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for list tools requests.
     /// </summary>
+    /// <remarks>
+    /// The handler should return a list of available tools when requested by a client.
+    /// It supports pagination through the cursor mechanism, where the client can make
+    /// repeated calls with the cursor returned by the previous call to retrieve more tools.
+    /// 
+    /// When used in conjunction with <see cref="ToolCollection"/>, both the tools from this handler
+    /// and the tools from the collection will be combined to form the complete list of available tools.
+    /// </remarks>
     [JsonIgnore]
     public Func<RequestContext<ListToolsRequestParams>, CancellationToken, Task<ListToolsResult>>? ListToolsHandler { get; set; }
 
     /// <summary>
-    /// Gets or sets the handler for call tool requests.
+    /// Gets or sets the handler for call tool requests. This handler is invoked when a client makes a call to a tool
+    /// that isn't found in the <see cref="ToolCollection"/>.
     /// </summary>
+    /// <remarks>
+    /// The handler should implement logic to execute the requested tool and return appropriate results. 
+    /// It receives a <see cref="RequestContext{CallToolRequestParams}"/> containing information about the tool 
+    /// being called and its arguments, and should return a <see cref="CallToolResponse"/> with the execution results.
+    /// </remarks>
     [JsonIgnore]
     public Func<RequestContext<CallToolRequestParams>, CancellationToken, Task<CallToolResponse>>? CallToolHandler { get; set; }
 

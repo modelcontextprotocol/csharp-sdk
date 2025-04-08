@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using System.Diagnostics;
@@ -19,6 +19,20 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// <para>
+    /// For stdio-based transports, this implementation first verifies that the underlying process 
+    /// is still running before attempting to send the message. If the process has exited or cannot
+    /// be accessed, a <see cref="McpTransportException"/> is thrown with details about the failure.
+    /// </para>
+    /// <para>
+    /// After verifying the process state, this method delegates to the base class implementation
+    /// to handle the actual message serialization and transmission to the process's standard input stream.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="McpTransportException">
+    /// Thrown when the underlying process has exited or cannot be accessed.
+    /// </exception>
     public override async Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         Exception? processException = null;

@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
@@ -11,8 +11,24 @@ using System.Text.Json;
 namespace ModelContextProtocol.Protocol.Transport;
 
 /// <summary>
-/// Provides a server MCP transport implemented around a pair of input/output streams.
+/// Provides a server-side MCP transport implementation using a pair of input and output streams.
 /// </summary>
+/// <remarks>
+/// <para>
+/// The <see cref="StreamServerTransport"/> class implements bidirectional JSON-RPC messaging over arbitrary
+/// streams, allowing MCP communication with clients through various I/O channels such as network sockets,
+/// memory streams, or file streams.
+/// </para>
+/// <para>
+/// This transport reads JSON-RPC messages from the input stream and writes responses to the output stream,
+/// with each message separated by a newline character. It handles connection management, message parsing,
+/// and serialization automatically.
+/// </para>
+/// <para>
+/// This implementation is commonly used for server-side handling of MCP connections where the protocol
+/// doesn't dictate a specific transport mechanism, or when integrating with existing stream-based systems.
+/// </para>
+/// </remarks>
 public class StreamServerTransport : TransportBase, ITransport
 {
     private static readonly byte[] s_newlineBytes = "\n"u8.ToArray();
@@ -56,6 +72,23 @@ public class StreamServerTransport : TransportBase, ITransport
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// <para>
+    /// This server-side stream implementation serializes the JSON-RPC message to the underlying
+    /// output stream in a thread-safe manner using a semaphore lock. The serialization format uses 
+    /// the LSP (Language Server Protocol) style with Content-Length headers:
+    /// <list type="bullet">
+    ///   <item>A Content-Length header that specifies the byte length of the JSON message</item>
+    ///   <item>A blank line separator</item>
+    ///   <item>The UTF-8 encoded JSON representation of the message</item>
+    /// </list>
+    /// </para>
+    /// <para>
+    /// The method includes proper error handling for disconnected transports and serialization errors,
+    /// and logs the message details at appropriate log levels for debugging purposes.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="McpTransportException">Thrown when the transport is not connected.</exception>
     public override async Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         if (!IsConnected)
@@ -158,6 +191,18 @@ public class StreamServerTransport : TransportBase, ITransport
     }
 
     /// <inheritdoc />
+    /// <summary>
+    /// Asynchronously releases all resources used by the stream server transport.
+    /// </summary>
+    /// <returns>A task that represents the asynchronous dispose operation.</returns>
+    /// <remarks>
+    /// This method cancels ongoing operations, disposes the input/output streams, 
+    /// and waits for the read task to complete. Multiple calls to this method will only
+    /// dispose the resources once.
+    /// 
+    /// After disposal, <see cref="IsConnected"/> will return false and any attempt 
+    /// to send messages will throw an <see cref="McpTransportException"/>.
+    /// </remarks>
     public override async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)

@@ -1,4 +1,4 @@
-﻿namespace ModelContextProtocol.Protocol.Types;
+namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
 /// Hints to use for model selection.
@@ -6,6 +6,25 @@
 /// to the client to interpret.
 /// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
 /// </summary>
+/// <remarks>
+/// When multiple hints are specified in <see cref="ModelPreferences.Hints"/>, they are evaluated in order,
+/// with the first match taking precedence. Clients should prioritize these hints over numeric priorities.
+/// </remarks>
+/// <example>
+/// <code>
+/// // Example of using ModelHint within ModelPreferences
+/// var preferences = new ModelPreferences
+/// {
+///     Hints = new List&lt;ModelHint&gt;
+///     {
+///         new ModelHint { Name = "claude-3-5-sonnet" }, // Prefer this specific model family
+///         new ModelHint { Name = "gpt-4" },             // Fall back to this model family
+///     },
+///     IntelligencePriority = 0.8f,
+///     SpeedPriority = 0.4f
+/// };
+/// </code>
+/// </example>
 public class ModelHint
 {
     /// <summary>

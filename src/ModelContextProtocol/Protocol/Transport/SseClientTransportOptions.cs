@@ -1,4 +1,4 @@
-﻿namespace ModelContextProtocol.Protocol.Transport;
+namespace ModelContextProtocol.Protocol.Transport;
 
 /// <summary>
 /// Options for configuring the SSE transport.
@@ -38,20 +38,100 @@ public record SseClientTransportOptions
     /// <summary>
     /// Timeout for initial connection and endpoint event.
     /// </summary>
+    /// <remarks>
+    /// This timeout controls how long the client waits for:
+    /// <list type="bullet">
+    ///   <item><description>The initial HTTP connection to be established with the SSE server</description></item>
+    ///   <item><description>The endpoint event to be received, which indicates the message endpoint URL</description></item>
+    /// </list>
+    /// If the timeout expires before the connection is established, a <see cref="System.TimeoutException"/> will be thrown.
+    /// 
+    /// When configuring through <see cref="McpServerConfig"/>, this can be specified using the "connectionTimeout" 
+    /// key in <see cref="McpServerConfig.TransportOptions"/> as the number of seconds.
+    /// </remarks>
     public TimeSpan ConnectionTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    /// Number of reconnection attempts for SSE connection.
+    /// Maximum number of reconnection attempts for the SSE connection before giving up.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This property controls how many times the client will attempt to reconnect to the SSE server
+    /// after a connection failure occurs. If all reconnection attempts fail, a 
+    /// <see cref="McpTransportException"/> with the message "Exceeded reconnect limit" will be thrown.
+    /// </para>
+    /// <para>
+    /// Between each reconnection attempt, the client will wait for the duration specified by <see cref="ReconnectDelay"/>.
+    /// </para>
+    /// <para>
+    /// When configuring through <see cref="McpServerConfig"/>, this can be specified using the "maxReconnectAttempts" 
+    /// key in <see cref="McpServerConfig.TransportOptions"/> as an integer value.
+    /// </para>
+    /// </remarks>
+    /// <example>
+    /// Configuration through <see cref="McpServerConfig"/>:
+    /// <code>
+    /// var serverConfig = new McpServerConfig
+    /// {
+    ///     TransportType = TransportTypes.Sse,
+    ///     Location = "http://localhost:8080",
+    ///     TransportOptions = new Dictionary&lt;string, string&gt;
+    ///     {
+    ///         ["maxReconnectAttempts"] = "5"
+    ///     }
+    /// };
+    /// </code>
+    /// </example>
     public int MaxReconnectAttempts { get; init; } = 3;
 
     /// <summary>
-    /// Delay between reconnection attempts.
+    /// Delay between reconnection attempts when the SSE connection fails.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When a connection to the SSE server is lost or fails, the client will wait for this duration
+    /// before attempting to reconnect. This helps prevent excessive reconnection attempts in quick succession
+    /// which could overload the server or network.
+    /// </para>
+    /// <para>
+    /// The reconnection process continues until either a successful connection is established or
+    /// the maximum number of reconnection attempts (<see cref="MaxReconnectAttempts"/>) is reached.
+    /// </para>
+    /// <para>
+    /// When configuring through <see cref="McpServerConfig"/>, this can be specified using the "reconnectDelay" 
+    /// key in <see cref="McpServerConfig.TransportOptions"/> as the number of seconds.
+    /// </para>
+    /// </remarks>
+    /// <example>
+    /// Configuration through <see cref="McpServerConfig"/>:
+    /// <code>
+    /// var serverConfig = new McpServerConfig
+    /// {
+    ///     TransportType = TransportTypes.Sse,
+    ///     Location = "http://localhost:8080",
+    ///     TransportOptions = new Dictionary&lt;string, string&gt;
+    ///     {
+    ///         ["reconnectDelay"] = "10"  // 10 seconds between reconnection attempts
+    ///     }
+    /// };
+    /// </code>
+    /// </example>
     public TimeSpan ReconnectDelay { get; init; } = TimeSpan.FromSeconds(5);
 
     /// <summary>
-    /// Headers to include in HTTP requests.
+    /// Custom HTTP headers to include in requests to the SSE server.
     /// </summary>
+    /// <remarks>
+    /// Use this property to specify custom HTTP headers that should be sent with each request to the server.
+    /// Common use cases include:
+    /// <list type="bullet">
+    ///   <item><description>Authentication headers (e.g., "Authorization")</description></item>
+    ///   <item><description>API keys or access tokens</description></item>
+    ///   <item><description>Custom headers required by specific server implementations</description></item>
+    ///   <item><description>Content negotiation preferences</description></item>
+    /// </list>
+    /// When configuring through <see cref="McpServerConfig"/>, headers can be specified by adding entries 
+    /// with keys prefixed with "header." (e.g., "header.Authorization").
+    /// </remarks>
     public Dictionary<string, string>? AdditionalHeaders { get; init; }
 }

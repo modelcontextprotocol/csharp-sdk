@@ -1,8 +1,41 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 
 namespace ModelContextProtocol.Server;
 
-/// <summary>Provides options for controlling the creation of an <see cref="McpServerPrompt"/>.</summary>
+/// <summary>
+/// Provides options for controlling the creation of an <see cref="McpServerPrompt"/>.
+/// </summary>
+/// <remarks>
+/// <para>
+/// These options allow for customizing the behavior and metadata of prompts created with
+/// <see cref="McpServerPrompt.Create"/>. They provide control over naming, description,
+/// and dependency injection integration.
+/// </para>
+/// <para>
+/// When creating prompts programmatically rather than using attributes, these options
+/// provide the same level of configuration flexibility.
+/// </para>
+/// <para>
+/// Example usage:
+/// <code>
+/// // Create a prompt with custom options
+/// var promptOptions = new McpServerPromptCreateOptions
+/// {
+///     Name = "weather-inquiry",
+///     Description = "A prompt that asks about the weather in a specific city",
+///     Services = serviceProvider // For dependency injection
+/// };
+/// 
+/// // Create a prompt with the options
+/// var prompt = McpServerPrompt.Create(
+///     () => "What is the weather like in Paris today?",
+///     promptOptions);
+///     
+/// // Add to server options
+/// serverOptions.Capabilities.Prompts.PromptCollection.Add(prompt);
+/// </code>
+/// </para>
+/// </remarks>
 public sealed class McpServerPromptCreateOptions
 {
     /// <summary>

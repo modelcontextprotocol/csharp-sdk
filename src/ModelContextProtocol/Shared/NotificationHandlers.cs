@@ -1,4 +1,4 @@
-﻿using ModelContextProtocol.Protocol.Messages;
+using ModelContextProtocol.Protocol.Messages;
 using System.Diagnostics;
 
 namespace ModelContextProtocol.Shared;
@@ -12,10 +12,31 @@ internal sealed class NotificationHandlers
     /// <summary>Gets the object to be used for all synchronization.</summary>
     private object SyncObj => _handlers;
 
-    /// <summary>Registers all of the specified handlers.</summary>
-    /// <param name="handlers">The handlers to register.</param>
+    /// <summary>
+    /// Registers a collection of notification handlers at once.
+    /// </summary>
+    /// <param name="handlers">
+    /// A collection of notification method names paired with their corresponding handler functions.
+    /// Each key in the collection is a notification method name, and each value is a handler function
+    /// that will be invoked when a notification with that method name is received.
+    /// </param>
     /// <remarks>
-    /// Registrations completed with this method are non-removable.
+    /// <para>
+    /// This method is typically used during client or server initialization to register
+    /// all notification handlers provided in capabilities.
+    /// </para>
+    /// <para>
+    /// Registrations completed with this method are permanent and non-removable.
+    /// This differs from handlers registered with <see cref="Register"/> which can be temporary.
+    /// </para>
+    /// <para>
+    /// When multiple handlers are registered for the same method, all handlers will be invoked
+    /// in reverse order of registration (newest first) when a notification is received.
+    /// </para>
+    /// <para>
+    /// The registered handlers will be invoked by <see cref="InvokeHandlers"/> when a notification
+    /// with the corresponding method name is received.
+    /// </para>
     /// </remarks>
     public void RegisterRange(IEnumerable<KeyValuePair<string, Func<JsonRpcNotification, CancellationToken, Task>>> handlers)
     {
@@ -25,7 +46,9 @@ internal sealed class NotificationHandlers
         }
     }
 
-    /// <summary>Adds a notification handler as part of configuring the endpoint.</summary>
+    /// <summary>
+    /// Adds a notification handler as part of configuring the endpoint.
+    /// </summary>
     /// <param name="method">The notification method for which the handler is being registered.</param>
     /// <param name="handler">The handler being registered.</param>
     /// <param name="temporary">
@@ -33,6 +56,13 @@ internal sealed class NotificationHandlers
     /// If <see langword="false"/>, the registration will be permanent: calling <see cref="IAsyncDisposable.DisposeAsync"/>
     /// on the returned instance will not unregister the handler.
     /// </param>
+    /// <returns>
+    /// An <see cref="IAsyncDisposable"/> that when disposed will unregister the handler if <paramref name="temporary"/> is <see langword="true"/>.
+    /// </returns>
+    /// <remarks>
+    /// Multiple handlers can be registered for the same method. When a notification for that method is received,
+    /// all registered handlers will be invoked in reverse order of registration (newest first).
+    /// </remarks>
     public IAsyncDisposable Register(
         string method, Func<JsonRpcNotification, CancellationToken, Task> handler, bool temporary = true)
     {
@@ -59,6 +89,17 @@ internal sealed class NotificationHandlers
         return reg;
     }
 
+    /// <summary>
+    /// Invokes all registered handlers for the specified notification method.
+    /// </summary>
+    /// <param name="method">The notification method name to invoke handlers for.</param>
+    /// <param name="notification">The notification object to pass to each handler.</param>
+    /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
+    /// <remarks>
+    /// Handlers are invoked in reverse order of registration (newest first).
+    /// If any handler throws an exception, all handlers will still be invoked, and an <see cref="AggregateException"/> 
+    /// containing all exceptions will be thrown after all handlers have been invoked.
+    /// </remarks>
     public async Task InvokeHandlers(string method, JsonRpcNotification notification, CancellationToken cancellationToken)
     {
         // If there are no handlers registered for this method, we're done.
@@ -157,7 +198,10 @@ internal sealed class NotificationHandlers
 
         /// <summary>The next registration in the linked list.</summary>
         public Registration? Next;
-        /// <summary>The previous registration in the linked list.</summary>
+        /// <summary>
+        /// The previous registration in the linked list of handlers for a specific notification method.
+        /// Used to maintain the bidirectional linked list when handlers are added or removed.
+        /// </summary>
         public Registration? Prev;
 
         /// <summary>Removes the registration.</summary>

@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Utils;
@@ -14,6 +14,34 @@ namespace ModelContextProtocol.Protocol.Transport;
 /// <summary>
 /// Provides a client MCP transport implemented via "stdio" (standard input/output).
 /// </summary>
+/// <remarks>
+/// This transport launches an external process and communicates with it through standard input and output streams.
+/// It's commonly used to connect to language-specific MCP servers that are launched as child processes.
+/// 
+/// <para>
+/// The transport manages the entire lifecycle of the process: starting it with specified command-line arguments
+/// and environment variables, handling standard error output, and properly terminating the process when the 
+/// transport is closed.
+/// </para>
+/// 
+/// <example>
+/// <code>
+/// // Create an MCP client with stdio transport through McpClientFactory
+/// await using var mcpClient = await McpClientFactory.CreateAsync(new McpServerConfig
+/// {
+///     Id = "server-id",
+///     Name = "Server Name",
+///     TransportType = TransportTypes.StdIo,
+///     TransportOptions = new()
+///     {
+///         ["command"] = "python",
+///         ["arguments"] = "-m my_mcp_server",
+///         ["workingDirectory"] = "/path/to/server"
+///     }
+/// });
+/// </code>
+/// </example>
+/// </remarks>
 public sealed class StdioClientTransport : IClientTransport
 {
     private readonly StdioClientTransportOptions _options;
@@ -22,8 +50,21 @@ public sealed class StdioClientTransport : IClientTransport
     /// <summary>
     /// Initializes a new instance of the <see cref="StdioClientTransport"/> class.
     /// </summary>
-    /// <param name="options">Configuration options for the transport.</param>
-    /// <param name="loggerFactory">A logger factory for creating loggers.</param>
+    /// <param name="options">Configuration options for the transport, including the command to execute, arguments, working directory, and environment variables.</param>
+    /// <param name="serverConfig">The server configuration, used to identify the server in logs and diagnostics.</param>
+    /// <param name="loggerFactory">A logger factory for creating loggers to track transport operations. If null, 
+    /// a NullLogger will be used which produces no output. Logging is important for diagnosing process startup 
+    /// issues and capturing standard error output from the child process.</param>
+    /// <remarks>
+    /// The transport will launch a new process based on the provided options and establish communication
+    /// with it through standard input/output streams. The process is automatically shut down when the transport
+    /// is disposed or the connection is closed.
+    /// 
+    /// <para>
+    /// Standard error output from the process is captured and logged, which can be useful for debugging
+    /// server-side issues.
+    /// </para>
+    /// </remarks>
     public StdioClientTransport(StdioClientTransportOptions options, ILoggerFactory? loggerFactory = null)
     {
         Throw.IfNull(options);

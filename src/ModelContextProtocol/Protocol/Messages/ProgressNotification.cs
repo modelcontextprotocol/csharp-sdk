@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -12,8 +12,34 @@ namespace ModelContextProtocol.Protocol.Messages;
 public class ProgressNotification
 {
     /// <summary>
-    /// The progress token which was given in the initial request, used to associate this notification with the request that is proceeding.
+    /// The progress token which was given in the initial request, used to associate this notification with 
+    /// the request that is proceeding. This token acts as a correlation identifier that links progress 
+    /// updates to their corresponding request.
     /// </summary>
+    /// <remarks>
+    /// When a client initiates a request with a <see cref="ProgressToken"/> in its metadata, 
+    /// the server can send progress notifications using this same token. This allows both sides to 
+    /// correlate the notifications with the original request.
+    /// 
+    /// <example>
+    /// Server-side usage example:
+    /// <code>
+    /// // From a server method handling a long-running operation
+    /// var progressToken = context.Params?.Meta?.ProgressToken;
+    /// 
+    /// // Send a progress update during operation
+    /// if (progressToken is not null)
+    /// {
+    ///     await server.SendNotificationAsync("notifications/progress", new
+    ///     {
+    ///         Progress = currentStep,
+    ///         Total = totalSteps,
+    ///         ProgressToken = progressToken
+    ///     });
+    /// }
+    /// </code>
+    /// </example>
+    /// </remarks>
     public required ProgressToken ProgressToken { get; init; }
 
     /// <summary>
@@ -21,7 +47,14 @@ public class ProgressNotification
     /// </summary>
     public required ProgressNotificationValue Progress { get; init; }
 
-    /// <summary>Provides a <see cref="JsonConverter"/> for <see cref="ProgressNotification"/>.</summary>
+    /// <summary>
+    /// Provides a <see cref="JsonConverter"/> for <see cref="ProgressNotification"/>.
+    /// </summary>
+    /// <remarks>
+    /// This converter handles the serialization and deserialization of progress notifications,
+    /// extracting the progress token, progress value, total (optional), and message (optional)
+    /// from the JSON representation.
+    /// </remarks>
     [EditorBrowsable(EditorBrowsableState.Never)]
     public sealed class Converter : JsonConverter<ProgressNotification>
     {

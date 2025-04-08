@@ -1,4 +1,4 @@
-﻿namespace ModelContextProtocol.Protocol.Types;
+namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
 /// The server's response to a tool call.
@@ -22,7 +22,20 @@ public class CallToolResponse
     public List<Content> Content { get; set; } = [];
 
     /// <summary>
-    /// Whether the tool call was unsuccessful. If true, the call was unsuccessful.
+    /// Indicates whether the tool call was unsuccessful.
+    /// <para>
+    /// When set to <c>true</c>, it signifies that the tool execution failed, which can happen due to:
+    /// <list type="bullet">
+    ///   <item><description>Exceptions thrown during tool execution</description></item>
+    ///   <item><description>Missing required parameters</description></item>
+    ///   <item><description>Invalid parameter values</description></item>
+    /// </list>
+    /// </para>
+    /// <para>
+    /// Tool errors are reported with this property set to <c>true</c> and details in the <see cref="Content"/>
+    /// property, rather than as protocol-level errors. This allows LLMs to see that an error occurred
+    /// and potentially self-correct in subsequent requests.
+    /// </para>
     /// </summary>
     [System.Text.Json.Serialization.JsonPropertyName("isError")]
     public bool IsError { get; set; }

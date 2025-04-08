@@ -9,8 +9,22 @@ namespace ModelContextProtocol.Protocol.Types;
 public abstract class RequestParams
 {
     /// <summary>
-    /// Metadata related to the tool invocation.
+    /// Metadata related to the request that provides additional protocol-level information.
+    /// This can include progress tracking tokens and other protocol-specific properties
+    /// that are not part of the primary request parameters.
     /// </summary>
+    /// <example>
+    /// <code>
+    /// var requestParams = new CallToolRequestParams
+    /// {
+    ///     Name = "myTool",
+    ///     Meta = new RequestParamsMetadata
+    ///     {
+    ///         ProgressToken = new ProgressToken("abc123"),
+    ///     }
+    /// };
+    /// </code>
+    /// </example>
     [JsonPropertyName("_meta")]
     public RequestParamsMetadata? Meta { get; init; }
 }

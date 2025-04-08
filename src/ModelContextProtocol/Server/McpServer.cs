@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
@@ -39,9 +39,13 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
     /// <param name="transport">Transport to use for the server representing an already-established session.</param>
     /// <param name="options">Configuration options for this server, including capabilities.
     /// Make sure to accurately reflect exactly what capabilities the server supports and does not support.</param>
-    /// <param name="loggerFactory">Logger factory to use for logging</param>
+    /// <param name="loggerFactory">Logger factory to use for logging. Provides logging capabilities to the server
+    /// for diagnostic and troubleshooting purposes. If null, a NullLogger will be used with no output.</param>
     /// <param name="serviceProvider">Optional service provider to use for dependency injection</param>
     /// <exception cref="McpException">The server was incorrectly configured.</exception>
+    /// <remarks>
+    /// This constructor is internal. Use <see cref="McpServerFactory.Create"/> to create a server instance.
+    /// </remarks>
     public McpServer(ITransport transport, McpServerOptions options, ILoggerFactory? loggerFactory, IServiceProvider? serviceProvider)
         : base(loggerFactory)
     {
@@ -95,6 +99,22 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         InitializeSession(transport);
     }
 
+    /// <summary>
+    /// Gets or sets the capabilities supported by this server.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// These capabilities are advertised to the client during the initialize handshake.
+    /// </para>
+    /// <para>
+    /// The server capabilities define what features the server supports, such as tools,
+    /// prompts, resources, logging, completions, and other protocol-specific functionality.
+    /// </para>
+    /// <para>
+    /// This property is typically set during server initialization based on the
+    /// configured <see cref="McpServerOptions.Capabilities"/>.
+    /// </para>
+    /// </remarks>
     public ServerCapabilities? ServerCapabilities { get; set; }
 
     /// <inheritdoc />
@@ -110,6 +130,17 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
     public IServiceProvider? Services { get; }
 
     /// <inheritdoc />
+    /// <inheritdoc/>
+    /// <remarks>
+    /// <para>
+    /// For servers, the endpoint name is formatted as "Server ({ServerInfo.Name} {ServerInfo.Version})".
+    /// </para>
+    /// <para>
+    /// This property returns the internal <see cref="_endpointName"/> field, which is initialized during construction
+    /// and may be updated if client information becomes available during the session.
+    /// It's used in all logging operations to identify this specific server endpoint.
+    /// </para>
+    /// </remarks>
     public override string EndpointName => _endpointName;
 
     /// <inheritdoc />
@@ -134,6 +165,18 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         }
     }
 
+    /// <inheritdoc/>
+    /// <summary>
+    /// Asynchronously releases resources used by the MCP server without any synchronization.
+    /// </summary>
+    /// <returns>A task that represents the asynchronous dispose operation.</returns>
+    /// <remarks>
+    /// This method:
+    /// <list type="bullet">
+    /// <item><description>Unregisters tool and prompt collection change event handlers</description></item>
+    /// <item><description>Calls the base class implementation to clean up common endpoint resources</description></item>
+    /// </list>
+    /// </remarks>
     public override async ValueTask DisposeUnsynchronizedAsync()
     {
         if (_toolsChangedDelegate is not null &&

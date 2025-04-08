@@ -1,4 +1,4 @@
-﻿using ModelContextProtocol.Protocol.Messages;
+using ModelContextProtocol.Protocol.Messages;
 using System.ComponentModel;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -8,6 +8,40 @@ namespace ModelContextProtocol.Utils.Json;
 /// <summary>
 /// JSON converter for IJsonRpcMessage that handles polymorphic deserialization of different message types.
 /// </summary>
+/// <remarks>
+/// This converter is responsible for correctly deserializing JSON-RPC messages into their appropriate
+/// concrete types based on the message structure. It analyzes the JSON payload and determines if it
+/// represents a request, notification, successful response, or error response.
+/// 
+/// The type determination rules follow the JSON-RPC 2.0 specification:
+/// - Messages with "method" and "id" properties are deserialized as <see cref="JsonRpcRequest"/>
+/// - Messages with "method" but no "id" property are deserialized as <see cref="JsonRpcNotification"/>
+/// - Messages with "id" and "result" properties are deserialized as <see cref="JsonRpcResponse"/>
+/// - Messages with "id" and "error" properties are deserialized as <see cref="JsonRpcError"/>
+/// 
+/// This converter is automatically applied to <see cref="IJsonRpcMessage"/> instances through the
+/// [JsonConverter] attribute on the interface.
+/// </remarks>
+/// <example>
+/// The converter is applied automatically when deserializing JSON-RPC messages:
+/// <code>
+/// // Deserialize a message from JSON
+/// string json = @"{
+///     ""jsonrpc"": ""2.0"",
+///     ""id"": 1,
+///     ""method"": ""getWeather"",
+///     ""params"": {""location"": ""Seattle""}
+/// }";
+/// // The JsonRpcMessageConverter will automatically convert this to a JsonRpcRequest
+/// IJsonRpcMessage message = JsonSerializer.Deserialize&lt;IJsonRpcMessage&gt;(json);
+/// 
+/// // We can check the concrete type and cast appropriately
+/// if (message is JsonRpcRequest request)
+/// {
+///     Console.WriteLine($"Request method: {request.Method}");
+/// }
+/// </code>
+/// </example>
 [EditorBrowsable(EditorBrowsableState.Never)]
 public sealed class JsonRpcMessageConverter : JsonConverter<IJsonRpcMessage>
 {

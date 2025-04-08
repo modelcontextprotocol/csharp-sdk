@@ -1,4 +1,4 @@
-﻿using ModelContextProtocol.Protocol.Messages;
+using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Utils;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -9,14 +9,34 @@ namespace ModelContextProtocol.Shared;
 internal sealed class RequestHandlers : Dictionary<string, Func<JsonRpcRequest, CancellationToken, Task<JsonNode?>>>
 {
     /// <summary>
-    /// Registers a handler for incoming requests of a specific method.
+    /// Registers a handler for incoming requests of a specific method in the MCP protocol.
     /// </summary>
-    /// <typeparam name="TRequest">Type of request payload</typeparam>
-    /// <typeparam name="TResponse">Type of response payload (not full RPC response</typeparam>
-    /// <param name="method">Method identifier to register for</param>
-    /// <param name="handler">Handler to be called when a request with specified method identifier is received</param>
-    /// <param name="requestTypeInfo">The JSON contract governing request serialization.</param>
-    /// <param name="responseTypeInfo">The JSON contract governing response serialization.</param>
+    /// <typeparam name="TRequest">Type of request payload that will be deserialized from incoming JSON</typeparam>
+    /// <typeparam name="TResponse">Type of response payload that will be serialized to JSON (not full RPC response)</typeparam>
+    /// <param name="method">Method identifier to register for (e.g., "tools/list", "logging/setLevel")</param>
+    /// <param name="handler">Handler function to be called when a request with the specified method identifier is received</param>
+    /// <param name="requestTypeInfo">The JSON contract governing request parameter deserialization</param>
+    /// <param name="responseTypeInfo">The JSON contract governing response serialization</param>
+    /// <remarks>
+    /// <para>
+    /// This method is used internally by the MCP infrastructure to register handlers for various protocol methods.
+    /// When an incoming request matches the specified method, the registered handler will be invoked with the
+    /// deserialized request parameters.
+    /// </para>
+    /// <para>
+    /// The handler function receives the deserialized request object and a cancellation token, and should return
+    /// a response object that will be serialized back to the client.
+    /// </para>
+    /// </remarks>
+    /// <example>
+    /// <code>
+    /// RequestHandlers.Set(
+    ///     RequestMethods.LoggingSetLevel,        // Method name from protocol
+    ///     MyLoggingLevelHandler,                 // Handler function
+    ///     JsonContext.Default.SetLevelRequestParams,    // Request type info
+    ///     JsonContext.Default.EmptyResult);      // Response type info
+    /// </code>
+    /// </example>
     public void Set<TRequest, TResponse>(
         string method,
         Func<TRequest?, CancellationToken, Task<TResponse>> handler,
