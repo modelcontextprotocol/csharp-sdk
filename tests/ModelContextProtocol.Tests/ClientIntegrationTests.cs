@@ -455,10 +455,9 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         // arrange
         StdioClientTransportOptions stdioOptions = new()
         {
-            Id = "memory",
-            Name = "memory",
             Command = "npx",
-            Arguments = "-y @modelcontextprotocol/server-memory",
+            Arguments = ["-y", "@modelcontextprotocol/server-memory"],
+            Description = "memory",
         };
 
         McpClientOptions clientOptions = new()
@@ -491,7 +490,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
     {
         // Get the MCP client and tools from it.
         await using var client = await McpClientFactory.CreateAsync(
-            new StdioClientTransport(_fixture.EverythingServerConfig),
+            new StdioClientTransport(_fixture.EverythingServerTransportOptions),
             cancellationToken: TestContext.Current.CancellationToken);
         var mappedTools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
@@ -522,7 +521,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         var samplingHandler = new OpenAIClient(s_openAIKey)
             .AsChatClient("gpt-4o-mini")
             .CreateSamplingHandler();
-        await using var client = await McpClientFactory.CreateAsync(new StdioClientTransport(_fixture.EverythingServerConfig), new()
+        await using var client = await McpClientFactory.CreateAsync(new StdioClientTransport(_fixture.EverythingServerTransportOptions), new()
         {
             Capabilities = new()
             {

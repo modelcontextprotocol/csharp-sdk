@@ -8,10 +8,9 @@ Console.WriteLine("Connecting client to MCP 'everything' server");
 var mcpClient = await McpClientFactory.CreateAsync(
     new StdioClientTransport(new()
     {
-        Id = "everything",
-        Name = "Everything",
         Command = "npx",
-        Arguments = "-y --verbose @modelcontextprotocol/server-everything",
+        Arguments = ["-y", "--verbose", "@modelcontextprotocol/server-everything"],
+        Description = "Everything",
     }));
 
 // Get all available tools

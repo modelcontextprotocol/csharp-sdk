@@ -39,9 +39,8 @@ public class DockerEverythingServerTests(ITestOutputHelper testOutputHelper) : L
 
         var defaultConfig = new SseClientTransportOptions
         {
-            Id = "everything",
-            Name = "Everything",
             Endpoint = new Uri($"http://localhost:{port}/sse"),
+            Description = "Everything",
         };
 
         // Create client and run tests
@@ -67,9 +66,8 @@ public class DockerEverythingServerTests(ITestOutputHelper testOutputHelper) : L
 
         var defaultConfig = new SseClientTransportOptions
         {
-            Id = "everything",
-            Name = "Everything",
             Endpoint = new Uri($"http://localhost:{port}/sse"),
+            Description = "Everything",
         };
 
         int samplingHandlerCalls = 0;

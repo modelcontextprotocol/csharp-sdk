@@ -29,10 +29,11 @@ public sealed class StdioClientTransport : IClientTransport
 
         _options = options;
         _loggerFactory = loggerFactory;
+        EndpointName = $"Client (stdio) for ({options.Description ?? options.Command})";
     }
 
     /// <inheritdoc />
-    public string EndpointName => $"Client (stdio) for ({_options.Id}: {_options.Name})";
+    public string EndpointName { get; }
 
     /// <inheritdoc />
     public async Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default)
@@ -43,15 +44,13 @@ public sealed class StdioClientTransport : IClientTransport
         bool processStarted = false;
 
         string command = _options.Command;
-        string? arguments = _options.Arguments;
+        IList<string>? arguments = _options.Arguments;
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) &&
             !string.Equals(Path.GetFileName(command), "cmd.exe", StringComparison.OrdinalIgnoreCase))
         {
             // On Windows, for stdio, we need to wrap non-shell commands with cmd.exe /c {command} (usually npx or uvicorn).
             // The stdio transport will not work correctly if the command is not run in a shell.
-            arguments = string.IsNullOrWhiteSpace(arguments) ?
-                $"/c {command}" :
-                $"/c {command} {arguments}";
+            arguments = arguments is null or [] ? ["/c", command] : ["/c", command, ..arguments];
             command = "cmd.exe";
         }
 
@@ -78,9 +77,22 @@ public sealed class StdioClientTransport : IClientTransport
 #endif
             };
 
-            if (!string.IsNullOrWhiteSpace(arguments))
+            if (arguments is not null)
             {
-                startInfo.Arguments = arguments;
+#if NET
+                foreach (var arg in arguments)
+                {
+                    startInfo.ArgumentList.Add(arg);
+                }
+#else
+                StringBuilder argsBuilder = new();
+                foreach (var arg in arguments)
+                {
+                    PasteArguments.AppendArgument(argsBuilder, arg);
+                }
+
+                startInfo.Arguments = argsBuilder.ToString();
+#endif
             }
 
             if (_options.EnvironmentVariables != null)

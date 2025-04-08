@@ -34,31 +34,16 @@ public static class McpClientFactory
         var logger = loggerFactory?.CreateLogger(typeof(McpClientFactory)) ?? NullLogger.Instance;
         logger.CreatingClient(endpointName);
 
+        McpClient client = new(clientTransport, clientOptions, loggerFactory);
         try
         {
-            McpClient client = new(clientTransport, clientOptions, loggerFactory);
-            try
-            {
-                await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
-                logger.ClientCreated(endpointName);
-                return client;
-            }
-            catch
-            {
-                await client.DisposeAsync().ConfigureAwait(false);
-                throw;
-            }
+            await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
+            logger.ClientCreated(endpointName);
+            return client;
         }
         catch
         {
-            if (clientTransport is IAsyncDisposable asyncDisposableTransport)
-            {
-                await asyncDisposableTransport.DisposeAsync().ConfigureAwait(false);
-            }
-            else if (clientTransport is IDisposable disposableTransport)
-            {
-                disposableTransport.Dispose();
-            }
+            await client.DisposeAsync().ConfigureAwait(false);
             throw;
         }
     }

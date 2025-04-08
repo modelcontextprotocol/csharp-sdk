@@ -16,16 +16,15 @@ namespace ModelContextProtocol.Tests;
 
 public class SseIntegrationTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper)
 {
-    private SseClientTransportOptions DefaultServerConfig = new()
+    private SseClientTransportOptions DefaultTransportOptions = new()
     {
-        Id = "test_server",
-        Name = "In-memory Test Server",
         Endpoint = new Uri("http://localhost/sse"),
+        Description = "In-memory Test Server",
     };
 
     private Task<IMcpClient> ConnectMcpClient(HttpClient httpClient, McpClientOptions? clientOptions = null)
         => McpClientFactory.CreateAsync(
-            new SseClientTransport(DefaultServerConfig, httpClient, LoggerFactory),
+            new SseClientTransport(DefaultTransportOptions, httpClient, LoggerFactory),
             clientOptions,
             LoggerFactory,
             TestContext.Current.CancellationToken);

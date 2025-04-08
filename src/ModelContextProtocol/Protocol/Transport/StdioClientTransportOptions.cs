@@ -11,16 +11,6 @@ public record StdioClientTransportOptions
     public static readonly TimeSpan DefaultShutdownTimeout = TimeSpan.FromSeconds(5);
 
     /// <summary>
-    /// Unique identifier for this server configuration.
-    /// </summary>
-    public required string Id { get; set; }
-
-    /// <summary>
-    /// Display name for the server.
-    /// </summary>
-    public required string Name { get; set; }
-
-    /// <summary>
     /// The command to execute to start the server process.
     /// </summary>
     public required string Command
@@ -40,7 +30,12 @@ public record StdioClientTransportOptions
     /// <summary>
     /// Arguments to pass to the server process.
     /// </summary>
-    public string? Arguments { get; set; }
+    public IList<string>? Arguments { get; set; }
+
+    /// <summary>
+    /// Description of the server process used for logging purposes.
+    /// </summary>
+    public string? Description { get; set; }
 
     /// <summary>
     /// The working directory for the server process.

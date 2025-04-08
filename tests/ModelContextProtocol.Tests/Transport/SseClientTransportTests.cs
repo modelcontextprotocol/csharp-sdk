@@ -15,12 +15,11 @@ public class SseClientTransportTests : LoggedTest
     {
         _transportOptions = new SseClientTransportOptions
         {
-            Id = "test-server",
-            Name = "Test Server",
             Endpoint = new Uri("http://localhost:8080"),
             ConnectionTimeout = TimeSpan.FromSeconds(2),
             MaxReconnectAttempts = 3,
             ReconnectDelay = TimeSpan.FromMilliseconds(50),
+            Description = "Test Server",
             AdditionalHeaders = new Dictionary<string, string>
             {
                 ["test"] = "header"

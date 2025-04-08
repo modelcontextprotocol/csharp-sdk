@@ -41,15 +41,16 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
         _httpClient = httpClient;
         _loggerFactory = loggerFactory;
         _ownsHttpClient = ownsHttpClient;
+        EndpointName = $"Client (SSE) for ({transportOptions.Description ?? transportOptions.Endpoint.ToString()})";
     }
 
     /// <inheritdoc />
-    public string EndpointName => $"Client (SSE) for ({_options.Id}: {_options.Name})";
+    public string EndpointName { get; }
 
     /// <inheritdoc />
     public async Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default)
     {
-        var sessionTransport = new SseClientSessionTransport(_options, _httpClient, _loggerFactory);
+        var sessionTransport = new SseClientSessionTransport(_options, _httpClient, _loggerFactory, EndpointName);
 
         try
         {

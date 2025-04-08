@@ -6,16 +6,6 @@
 public record SseClientTransportOptions
 {
     /// <summary>
-    /// Unique identifier for this server configuration.
-    /// </summary>
-    public required string Id { get; init; }
-
-    /// <summary>
-    /// Display name for the server.
-    /// </summary>
-    public required string Name { get; init; }
-
-    /// <summary>
     /// The base address of the server for SSE connections.
     /// </summary>
     public required Uri Endpoint
@@ -39,6 +29,11 @@ public record SseClientTransportOptions
             field = value;
         }
     }
+
+    /// <summary>
+    /// Description of the server process used for logging purposes.
+    /// </summary>
+    public string? Description { get; init; }
 
     /// <summary>
     /// Timeout for initial connection and endpoint event.
