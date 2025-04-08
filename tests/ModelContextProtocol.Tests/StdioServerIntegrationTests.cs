@@ -34,15 +34,8 @@ public class StdioServerIntegrationTests(ITestOutputHelper testOutputHelper) : L
             process.StandardInput.BaseStream,
             serverName: "TestServerWithHosting");
 
-        var serverConfig = new McpServerConfig()
-        {
-            Id = "test-server-with-hosting",
-            Name = "TestServerWithHosting",
-            TransportType = TransportTypes.StdIo,
-        };
-
-        await using var client = await McpClientFactory.CreateAsync(serverConfig,
-            createTransportFunc: (_, _) => new TestClientTransport(streamServerTransport),
+        await using var client = await McpClientFactory.CreateAsync(
+            new TestClientTransport(streamServerTransport),
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
 
@@ -65,6 +58,8 @@ public class StdioServerIntegrationTests(ITestOutputHelper testOutputHelper) : L
 
     private sealed class TestClientTransport(ITransport sessionTransport) : IClientTransport
     {
+        public string Name => nameof(TestClientTransport);
+
         public Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(sessionTransport);
     }
