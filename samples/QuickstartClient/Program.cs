@@ -13,12 +13,14 @@ builder.Configuration
 
 var (command, arguments) = GetCommandAndArguments(args);
 
-await using var mcpClient = await McpClientFactory.CreateAsync(new StdioClientTransport(new()
+var clientTransport = new StdioClientTransport(new()
 {
+    Name = "Demo Server",
     Command = command,
     Arguments = arguments,
-    Name = "Demo Server",
-}));
+});
+
+await using var mcpClient = await McpClientFactory.CreateAsync(clientTransport);
 
 var tools = await mcpClient.ListToolsAsync();
 foreach (var tool in tools)
