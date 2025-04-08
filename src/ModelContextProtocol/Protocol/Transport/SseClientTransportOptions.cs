@@ -6,6 +6,36 @@
 public record SseClientTransportOptions
 {
     /// <summary>
+    /// The base address of the server for SSE connections.
+    /// </summary>
+    public required Uri Endpoint
+    {
+        get;
+        init
+        {
+            if (value is null)
+            {
+                throw new ArgumentNullException(nameof(value), "Endpoint cannot be null.");
+            }
+            if (!value.IsAbsoluteUri)
+            {
+                throw new ArgumentException("Endpoint must be an absolute URI.", nameof(value));
+            }
+            if (value.Scheme != Uri.UriSchemeHttp && value.Scheme != Uri.UriSchemeHttps)
+            {
+                throw new ArgumentException("Endpoint must use HTTP or HTTPS scheme.", nameof(value));
+            }
+
+            field = value;
+        }
+    }
+
+    /// <summary>
+    /// Specifies a transport identifier used for logging purposes.
+    /// </summary>
+    public string? Name { get; init; }
+
+    /// <summary>
     /// Timeout for initial connection and endpoint event.
     /// </summary>
     public TimeSpan ConnectionTimeout { get; init; } = TimeSpan.FromSeconds(30);

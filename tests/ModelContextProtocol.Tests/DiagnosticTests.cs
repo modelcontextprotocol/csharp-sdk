@@ -59,13 +59,8 @@ public class DiagnosticTests
         {
             serverTask = server.RunAsync(TestContext.Current.CancellationToken);
 
-            await using (IMcpClient client = await McpClientFactory.CreateAsync(new()
-                {
-                    Id = "TestServer",
-                    Name = "TestServer",
-                    TransportType = TransportTypes.StdIo,
-                },
-                createTransportFunc: (_, __) => clientTransport,
+            await using (IMcpClient client = await McpClientFactory.CreateAsync(
+                clientTransport,
                 cancellationToken: TestContext.Current.CancellationToken))
             {
                 await action(client, server);

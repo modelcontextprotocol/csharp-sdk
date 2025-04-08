@@ -9,7 +9,6 @@ namespace ModelContextProtocol.Protocol.Transport;
 public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
 {
     private readonly SseClientTransportOptions _options;
-    private readonly McpServerConfig _serverConfig;
     private readonly HttpClient _httpClient;
     private readonly ILoggerFactory? _loggerFactory;
     private readonly bool _ownsHttpClient;
@@ -19,10 +18,9 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
     /// The HTTP server can be local or remote, and must support the SSE protocol.
     /// </summary>
     /// <param name="transportOptions">Configuration options for the transport.</param>
-    /// <param name="serverConfig">The configuration object indicating which server to connect to.</param>
     /// <param name="loggerFactory">Logger factory for creating loggers.</param>
-    public SseClientTransport(SseClientTransportOptions transportOptions, McpServerConfig serverConfig, ILoggerFactory? loggerFactory)
-        : this(transportOptions, serverConfig, new HttpClient(), loggerFactory, true)
+    public SseClientTransport(SseClientTransportOptions transportOptions, ILoggerFactory? loggerFactory = null)
+        : this(transportOptions, new HttpClient(), loggerFactory, true)
     {
     }
 
@@ -31,27 +29,28 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
     /// The HTTP server can be local or remote, and must support the SSE protocol.
     /// </summary>
     /// <param name="transportOptions">Configuration options for the transport.</param>
-    /// <param name="serverConfig">The configuration object indicating which server to connect to.</param>
     /// <param name="httpClient">The HTTP client instance used for requests.</param>
     /// <param name="loggerFactory">Logger factory for creating loggers.</param>
     /// <param name="ownsHttpClient">True to dispose HTTP client on close connection.</param>
-    public SseClientTransport(SseClientTransportOptions transportOptions, McpServerConfig serverConfig, HttpClient httpClient, ILoggerFactory? loggerFactory, bool ownsHttpClient = false)
+    public SseClientTransport(SseClientTransportOptions transportOptions, HttpClient httpClient, ILoggerFactory? loggerFactory = null, bool ownsHttpClient = false)
     {
         Throw.IfNull(transportOptions);
-        Throw.IfNull(serverConfig);
         Throw.IfNull(httpClient);
 
         _options = transportOptions;
-        _serverConfig = serverConfig;
         _httpClient = httpClient;
         _loggerFactory = loggerFactory;
         _ownsHttpClient = ownsHttpClient;
+        Name = transportOptions.Name ?? transportOptions.Endpoint.ToString();
     }
+
+    /// <inheritdoc />
+    public string Name { get; }
 
     /// <inheritdoc />
     public async Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default)
     {
-        var sessionTransport = new SseClientSessionTransport(_options, _serverConfig, _httpClient, _loggerFactory);
+        var sessionTransport = new SseClientSessionTransport(_options, _httpClient, _loggerFactory, Name);
 
         try
         {

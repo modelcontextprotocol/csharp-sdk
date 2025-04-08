@@ -18,13 +18,10 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
     // multiple tests, so this dispatches the output to the current test.
     private readonly DelegatingTestOutputHelper _delegatingTestOutputHelper = new();
 
-    private McpServerConfig DefaultServerConfig { get; } = new McpServerConfig
+    private SseClientTransportOptions DefaultTransportOptions { get; } = new()
     {
-        Id = "test_server",
+        Endpoint = new Uri("http://localhost/sse"),
         Name = "TestServer",
-        TransportType = TransportTypes.Sse,
-        TransportOptions = [],
-        Location = $"http://localhost/sse"
     };
 
     public SseServerIntegrationTestFixture()
@@ -40,7 +37,7 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
 
         HttpClient = new HttpClient(socketsHttpHandler)
         {
-            BaseAddress = new Uri(DefaultServerConfig.Location),
+            BaseAddress = DefaultTransportOptions.Endpoint,
         };
         _serverTask = Program.MainAsync([], new XunitLoggerProvider(_delegatingTestOutputHelper), _inMemoryTransport, _stopCts.Token);
     }
@@ -50,9 +47,8 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
     public Task<IMcpClient> ConnectMcpClientAsync(McpClientOptions? options, ILoggerFactory loggerFactory)
     {
         return McpClientFactory.CreateAsync(
-            DefaultServerConfig,
+            new SseClientTransport(DefaultTransportOptions, HttpClient, loggerFactory),
             options,
-            (_, _) => new SseClientTransport(new(), DefaultServerConfig, HttpClient, loggerFactory),
             loggerFactory,
             TestContext.Current.CancellationToken);
     }

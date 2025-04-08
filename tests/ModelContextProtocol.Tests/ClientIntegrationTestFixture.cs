@@ -8,41 +8,31 @@ public class ClientIntegrationTestFixture
 {
     private ILoggerFactory? _loggerFactory;
 
-    public McpServerConfig EverythingServerConfig { get; }
-    public McpServerConfig TestServerConfig { get; }
+    public StdioClientTransportOptions EverythingServerTransportOptions { get; }
+    public StdioClientTransportOptions TestServerTransportOptions { get; }
 
     public static IEnumerable<string> ClientIds => ["everything", "test_server"];
 
     public ClientIntegrationTestFixture()
     {
-        EverythingServerConfig = new()
+        EverythingServerTransportOptions = new()
         {
-            Id = "everything",
+            Command = "npx",
+            // Change to Arguments = ["mcp-server-everything"] if you want to run the server locally after creating a symlink
+            Arguments = ["-y", "--verbose", "@modelcontextprotocol/server-everything"],
             Name = "Everything",
-            TransportType = TransportTypes.StdIo,
-            TransportOptions = new Dictionary<string, string>
-            {
-                ["command"] = "npx",
-                // Change to ["arguments"] = "mcp-server-everything" if you want to run the server locally after creating a symlink
-                ["arguments"] = "-y --verbose @modelcontextprotocol/server-everything"
-            }
         };
 
-        TestServerConfig = new()
+        TestServerTransportOptions = new()
         {
-            Id = "test_server",
+            Command = OperatingSystem.IsWindows() ? "TestServer.exe" : "dotnet",
             Name = "TestServer",
-            TransportType = TransportTypes.StdIo,
-            TransportOptions = new Dictionary<string, string>
-            {
-                ["command"] = OperatingSystem.IsWindows() ? "TestServer.exe" : "dotnet",
-                // Change to ["arguments"] = "mcp-server-everything" if you want to run the server locally after creating a symlink
-            }
         };
 
         if (!OperatingSystem.IsWindows())
         {
-            TestServerConfig.TransportOptions["arguments"] = "TestServer.dll";
+            // Change to Arguments to "mcp-server-everything" if you want to run the server locally after creating a symlink
+            TestServerTransportOptions.Arguments = ["TestServer.dll"];
         }
     }
 
@@ -52,10 +42,10 @@ public class ClientIntegrationTestFixture
     }
 
     public Task<IMcpClient> CreateClientAsync(string clientId, McpClientOptions? clientOptions = null) =>
-        McpClientFactory.CreateAsync(clientId switch
+        McpClientFactory.CreateAsync(new StdioClientTransport(clientId switch
         {
-            "everything" => EverythingServerConfig,
-            "test_server" => TestServerConfig,
+            "everything" => EverythingServerTransportOptions,
+            "test_server" => TestServerTransportOptions,
             _ => throw new ArgumentException($"Unknown client ID: {clientId}")
-        }, clientOptions, loggerFactory: _loggerFactory);
+        }), clientOptions, loggerFactory: _loggerFactory);
 }

@@ -453,16 +453,11 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
     public async Task CallTool_Stdio_MemoryServer()
     {
         // arrange
-        McpServerConfig serverConfig = new()
+        StdioClientTransportOptions stdioOptions = new()
         {
-            Id = "memory",
+            Command = "npx",
+            Arguments = ["-y", "@modelcontextprotocol/server-memory"],
             Name = "memory",
-            TransportType = TransportTypes.StdIo,
-            TransportOptions = new Dictionary<string, string>
-            {
-                ["command"] = "npx",
-                ["arguments"] = "-y @modelcontextprotocol/server-memory"
-            }
         };
 
         McpClientOptions clientOptions = new()
@@ -471,7 +466,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         };
 
         await using var client = await McpClientFactory.CreateAsync(
-            serverConfig, 
+            new StdioClientTransport(stdioOptions),
             clientOptions, 
             loggerFactory: LoggerFactory, 
             cancellationToken: TestContext.Current.CancellationToken);
@@ -495,7 +490,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
     {
         // Get the MCP client and tools from it.
         await using var client = await McpClientFactory.CreateAsync(
-            _fixture.EverythingServerConfig, 
+            new StdioClientTransport(_fixture.EverythingServerTransportOptions),
             cancellationToken: TestContext.Current.CancellationToken);
         var mappedTools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
@@ -526,7 +521,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         var samplingHandler = new OpenAIClient(s_openAIKey)
             .AsChatClient("gpt-4o-mini")
             .CreateSamplingHandler();
-        await using var client = await McpClientFactory.CreateAsync(_fixture.EverythingServerConfig, new()
+        await using var client = await McpClientFactory.CreateAsync(new StdioClientTransport(_fixture.EverythingServerTransportOptions), new()
         {
             Capabilities = new()
             {

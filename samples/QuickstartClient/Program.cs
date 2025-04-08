@@ -13,17 +13,14 @@ builder.Configuration
 
 var (command, arguments) = GetCommandAndArguments(args);
 
-await using var mcpClient = await McpClientFactory.CreateAsync(new()
+var clientTransport = new StdioClientTransport(new()
 {
-    Id = "demo-server",
     Name = "Demo Server",
-    TransportType = TransportTypes.StdIo,
-    TransportOptions = new()
-    {
-        ["command"] = command,
-        ["arguments"] = arguments,
-    }
+    Command = command,
+    Arguments = arguments,
 });
+
+await using var mcpClient = await McpClientFactory.CreateAsync(clientTransport);
 
 var tools = await mcpClient.ListToolsAsync();
 foreach (var tool in tools)
@@ -86,13 +83,13 @@ static void PromptForInput()
 /// 
 /// This method would only be required if you're creating a generic client, such as we use for the quickstart.
 /// </remarks>
-static (string command, string arguments) GetCommandAndArguments(string[] args)
+static (string command, string[] arguments) GetCommandAndArguments(string[] args)
 {
     return args switch
     {
-        [var script] when script.EndsWith(".py") => ("python", script),
-        [var script] when script.EndsWith(".js") => ("node", script),
-        [var script] when Directory.Exists(script) || (File.Exists(script) && script.EndsWith(".csproj")) => ("dotnet", $"run --project {script} --no-build"),
-        _ => ("dotnet", "run --project ../../../../QuickstartWeatherServer --no-build")
+        [var script] when script.EndsWith(".py") => ("python", args),
+        [var script] when script.EndsWith(".js") => ("node", args),
+        [var script] when Directory.Exists(script) || (File.Exists(script) && script.EndsWith(".csproj")) => ("dotnet", ["run", "--project", script, "--no-build"]),
+        _ => ("dotnet", ["run", "--project", "../../../../QuickstartWeatherServer", "--no-build"])
     };
 }

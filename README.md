@@ -31,17 +31,14 @@ To get started writing a client, the `McpClientFactory.CreateAsync` method is us
 to a server. Once you have an `IMcpClient`, you can interact with it, such as to enumerate all available tools and invoke tools.
 
 ```csharp
-var client = await McpClientFactory.CreateAsync(new()
+var clientTransport = new StdioClientTransport(new()
 {
-    Id = "everything",
     Name = "Everything",
-    TransportType = TransportTypes.StdIo,
-    TransportOptions = new()
-    {
-        ["command"] = "npx",
-        ["arguments"] = "-y @modelcontextprotocol/server-everything",
-    }
+    Command = "npx",
+    Arguments = ["-y", "@modelcontextprotocol/server-everything"],
 });
+
+var client = await McpClientFactory.CreateAsync(clientTransport);
 
 // Print the list of tools available from the server.
 foreach (var tool in await client.ListToolsAsync())

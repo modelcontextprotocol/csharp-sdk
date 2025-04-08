@@ -14,170 +14,18 @@ public class McpClientFactoryTests
     [Fact]
     public async Task CreateAsync_WithInvalidArgs_Throws()
     {
-        await Assert.ThrowsAsync<ArgumentNullException>("serverConfig", () => McpClientFactory.CreateAsync((McpServerConfig)null!, cancellationToken: TestContext.Current.CancellationToken));
-
-        await Assert.ThrowsAsync<ArgumentException>("serverConfig", () => McpClientFactory.CreateAsync(new McpServerConfig()
-            {
-                Name = "name",
-                Id = "id",
-                TransportType = "somethingunsupported",
-            }, cancellationToken: TestContext.Current.CancellationToken));
-
-        await Assert.ThrowsAsync<InvalidOperationException>(() => McpClientFactory.CreateAsync(new McpServerConfig()
-            {
-                Name = "name",
-                Id = "id",
-                TransportType = TransportTypes.StdIo,
-            }, createTransportFunc: (_, __) => null!, cancellationToken: TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<ArgumentNullException>("clientTransport", () => McpClientFactory.CreateAsync(null!, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
-    public async Task CreateAsync_NullOptions_EntryAssemblyInferred()
+    public async Task CreateAsync_NopTransport_ReturnsClient()
     {
-        // Arrange
-        var serverConfig = new McpServerConfig
-        {
-            Id = "test-server",
-            Name = "Test Server",
-            TransportType = TransportTypes.StdIo,
-            Location = "/path/to/server",
-        };
-
         // Act
         await using var client = await McpClientFactory.CreateAsync(
-            serverConfig,
-            null,
-            (_, __) => new NopTransport(),
+            new NopTransport(),
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(client);
-    }
-
-    [Fact]
-    public async Task CreateAsync_WithValidStdioConfig_CreatesNewClient()
-    {
-        // Arrange
-        var serverConfig = new McpServerConfig
-        {
-            Id = "test-server",
-            Name = "Test Server",
-            TransportType = TransportTypes.StdIo,
-            Location = "/path/to/server",
-            TransportOptions = new Dictionary<string, string>
-            {
-                ["arguments"] = "--test arg",
-                ["workingDirectory"] = "/working/dir"
-            }
-        };
-
-        // Act
-        await using var client = await McpClientFactory.CreateAsync(
-            serverConfig,
-            createTransportFunc: (_, __) => new NopTransport(),
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        // Assert
-        Assert.NotNull(client);
-        // We could add more assertions here about the client's configuration
-    }
-
-    [Fact]
-    public async Task CreateAsync_WithNoTransportOptions_CreatesNewClient()
-    {
-        // Arrange
-        var serverConfig = new McpServerConfig
-        {
-            Id = "test-server",
-            Name = "Test Server",
-            TransportType = TransportTypes.StdIo,
-            Location = "/path/to/server",
-        };
-
-        // Act
-        await using var client = await McpClientFactory.CreateAsync(
-            serverConfig,
-            createTransportFunc: (_, __) => new NopTransport(),
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        // Assert
-        Assert.NotNull(client);
-        // We could add more assertions here about the client's configuration
-    }
-
-    [Fact]
-    public async Task CreateAsync_WithValidSseConfig_CreatesNewClient()
-    {
-        // Arrange
-        var serverConfig = new McpServerConfig
-        {
-            Id = "test-server",
-            Name = "Test Server",
-            TransportType = TransportTypes.Sse,
-            Location = "http://localhost:8080"
-        };
-
-        // Act
-        await using var client = await McpClientFactory.CreateAsync(
-            serverConfig,
-            createTransportFunc: (_, __) => new NopTransport(),
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        // Assert
-        Assert.NotNull(client);
-        // We could add more assertions here about the client's configuration
-    }
-
-    [Fact]
-    public async Task CreateAsync_WithSse_CreatesCorrectTransportOptions()
-    {
-        // Arrange
-        var serverConfig = new McpServerConfig
-        {
-            Id = "test-server",
-            Name = "Test Server",
-            TransportType = TransportTypes.Sse,
-            Location = "http://localhost:8080",
-            TransportOptions = new Dictionary<string, string>
-            {
-                ["connectionTimeout"] = "10",
-                ["maxReconnectAttempts"] = "2",
-                ["reconnectDelay"] = "5",
-                ["header.test"] = "the_header_value"
-            }
-        };
-
-        // Act
-        await using var client = await McpClientFactory.CreateAsync(
-            serverConfig,
-            createTransportFunc: (_, __) => new NopTransport(),
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        // Assert
-        Assert.NotNull(client);
-        // We could add more assertions here about the client's configuration
-    }
-
-    [Theory]
-    [InlineData("connectionTimeout", "not_a_number")]
-    [InlineData("maxReconnectAttempts", "invalid")]
-    [InlineData("reconnectDelay", "bad_value")]
-    public async Task McpFactory_WithInvalidTransportOptions_ThrowsFormatException(string key, string value)
-    {
-        // arrange
-        var config = new McpServerConfig
-        {
-            Id = "test-server",
-            Name = "Test Server",
-            TransportType = TransportTypes.Sse,
-            Location = "http://localhost:8080",
-            TransportOptions = new Dictionary<string, string>
-            {
-                [key] = value
-            }
-        };
-
-        // act & assert
-        await Assert.ThrowsAsync<ArgumentException>(() => McpClientFactory.CreateAsync(config, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -186,14 +34,6 @@ public class McpClientFactoryTests
     public async Task CreateAsync_WithCapabilitiesOptions(Type transportType)
     {
         // Arrange
-        var serverConfig = new McpServerConfig
-        {
-            Id = "TestServer",
-            Name = "TestServer",
-            TransportType = "stdio",
-            Location = "test-location"
-        };
-
         var clientOptions = new McpClientOptions
         {
             Capabilities = new ClientCapabilities
@@ -216,10 +56,10 @@ public class McpClientFactoryTests
             }
         };
 
-        var clientTransport = (IClientTransport?)Activator.CreateInstance(transportType);
+        var clientTransport = (IClientTransport)Activator.CreateInstance(transportType)!;
         IMcpClient? client = null;
 
-        var actionTask = McpClientFactory.CreateAsync(serverConfig, clientOptions, (config, logger) => clientTransport ?? new NopTransport(), new Mock<ILoggerFactory>().Object, CancellationToken.None);
+        var actionTask = McpClientFactory.CreateAsync(clientTransport, clientOptions, new Mock<ILoggerFactory>().Object, CancellationToken.None);
 
         // Act
         if (clientTransport is FailureTransport)
@@ -247,6 +87,8 @@ public class McpClientFactoryTests
         public Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default) => Task.FromResult<ITransport>(this);
 
         public ValueTask DisposeAsync() => default;
+
+        public string Name => "Test Nop Transport";
 
         public virtual Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
         {

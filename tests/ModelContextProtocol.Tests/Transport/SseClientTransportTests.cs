@@ -8,25 +8,18 @@ namespace ModelContextProtocol.Tests.Transport;
 
 public class SseClientTransportTests : LoggedTest
 {
-    private readonly McpServerConfig _serverConfig;
     private readonly SseClientTransportOptions _transportOptions;
 
     public SseClientTransportTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
     {
-        _serverConfig = new McpServerConfig
-        {
-            Id = "test-server",
-            Name = "Test Server",
-            TransportType = TransportTypes.Sse,
-            Location = "http://localhost:8080"
-        };
-
         _transportOptions = new SseClientTransportOptions
         {
+            Endpoint = new Uri("http://localhost:8080"),
             ConnectionTimeout = TimeSpan.FromSeconds(2),
             MaxReconnectAttempts = 3,
             ReconnectDelay = TimeSpan.FromMilliseconds(50),
+            Name = "Test Server",
             AdditionalHeaders = new Dictionary<string, string>
             {
                 ["test"] = "header"
@@ -37,21 +30,14 @@ public class SseClientTransportTests : LoggedTest
     [Fact]
     public void Constructor_Throws_For_Null_Options()
     {
-        var exception = Assert.Throws<ArgumentNullException>(() => new SseClientTransport(null!, _serverConfig, LoggerFactory));
+        var exception = Assert.Throws<ArgumentNullException>(() => new SseClientTransport(null!, LoggerFactory));
         Assert.Equal("transportOptions", exception.ParamName);
     }
 
     [Fact]
-    public void Constructor_Throws_For_Null_Config()
+    public void Constructor_Throws_For_Null_HttpClient()
     {
         var exception = Assert.Throws<ArgumentNullException>(() => new SseClientTransport(_transportOptions, null!, LoggerFactory));
-        Assert.Equal("serverConfig", exception.ParamName);
-    }
-
-    [Fact]
-    public void Constructor_Throws_For_Null_HttpClientg()
-    {
-        var exception = Assert.Throws<ArgumentNullException>(() => new SseClientTransport(_transportOptions, _serverConfig, null!, LoggerFactory));
         Assert.Equal("httpClient", exception.ParamName);
     }
 
@@ -60,7 +46,7 @@ public class SseClientTransportTests : LoggedTest
     {
         using var mockHttpHandler = new MockHttpHandler();
         using var httpClient = new HttpClient(mockHttpHandler);
-        await using var transport = new SseClientTransport(_transportOptions, _serverConfig, httpClient, LoggerFactory);
+        await using var transport = new SseClientTransport(_transportOptions, httpClient, LoggerFactory);
 
         bool firstCall = true;
 
@@ -84,7 +70,7 @@ public class SseClientTransportTests : LoggedTest
     {
         using var mockHttpHandler = new MockHttpHandler();
         using var httpClient = new HttpClient(mockHttpHandler);
-        await using var transport = new SseClientTransport(_transportOptions, _serverConfig, httpClient, LoggerFactory);
+        await using var transport = new SseClientTransport(_transportOptions, httpClient, LoggerFactory);
 
         var retries = 0;
         mockHttpHandler.RequestHandler = (request) =>
@@ -106,7 +92,7 @@ public class SseClientTransportTests : LoggedTest
     {
         using var mockHttpHandler = new MockHttpHandler();
         using var httpClient = new HttpClient(mockHttpHandler);
-        await using var transport = new SseClientTransport(_transportOptions, _serverConfig, httpClient, LoggerFactory);
+        await using var transport = new SseClientTransport(_transportOptions, httpClient, LoggerFactory);
 
         var firstCall = true;
         mockHttpHandler.RequestHandler = (request) =>
@@ -144,7 +130,7 @@ public class SseClientTransportTests : LoggedTest
     {
         using var mockHttpHandler = new MockHttpHandler();
         using var httpClient = new HttpClient(mockHttpHandler);
-        await using var transport = new SseClientTransport(_transportOptions, _serverConfig, httpClient, LoggerFactory);
+        await using var transport = new SseClientTransport(_transportOptions, httpClient, LoggerFactory);
 
         var eventSourcePipe = new Pipe();
         var eventSourceData = "event: endpoint\r\ndata: /sseendpoint\r\n\r\n"u8;
@@ -190,7 +176,7 @@ public class SseClientTransportTests : LoggedTest
     {
         using var mockHttpHandler = new MockHttpHandler();
         using var httpClient = new HttpClient(mockHttpHandler);
-        await using var transport = new SseClientTransport(_transportOptions, _serverConfig, httpClient, LoggerFactory);
+        await using var transport = new SseClientTransport(_transportOptions, httpClient, LoggerFactory);
 
         var callIndex = 0;
         mockHttpHandler.RequestHandler = (request) =>
@@ -230,7 +216,7 @@ public class SseClientTransportTests : LoggedTest
             });
         };
 
-        await using var transport = new SseClientTransport(_transportOptions, _serverConfig, httpClient, LoggerFactory);
+        await using var transport = new SseClientTransport(_transportOptions, httpClient, LoggerFactory);
         await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
 
         await session.DisposeAsync();

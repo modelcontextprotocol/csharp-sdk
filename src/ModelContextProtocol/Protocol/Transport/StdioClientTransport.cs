@@ -3,7 +3,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Utils;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 
 #pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
 
@@ -15,32 +17,43 @@ namespace ModelContextProtocol.Protocol.Transport;
 public sealed class StdioClientTransport : IClientTransport
 {
     private readonly StdioClientTransportOptions _options;
-    private readonly McpServerConfig _serverConfig;
     private readonly ILoggerFactory? _loggerFactory;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="StdioClientTransport"/> class.
     /// </summary>
     /// <param name="options">Configuration options for the transport.</param>
-    /// <param name="serverConfig">The server configuration for the transport.</param>
     /// <param name="loggerFactory">A logger factory for creating loggers.</param>
-    public StdioClientTransport(StdioClientTransportOptions options, McpServerConfig serverConfig, ILoggerFactory? loggerFactory = null)
+    public StdioClientTransport(StdioClientTransportOptions options, ILoggerFactory? loggerFactory = null)
     {
         Throw.IfNull(options);
-        Throw.IfNull(serverConfig);
 
         _options = options;
-        _serverConfig = serverConfig;
         _loggerFactory = loggerFactory;
+        Name = options.Name ?? $"stdio-{Regex.Replace(Path.GetFileName(options.Command), @"[\s\.]+", "-")}";
     }
+
+    /// <inheritdoc />
+    public string Name { get; }
 
     /// <inheritdoc />
     public async Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default)
     {
-        string endpointName = $"Client (stdio) for ({_serverConfig.Id}: {_serverConfig.Name})";
+        string endpointName = Name;
 
         Process? process = null;
         bool processStarted = false;
+
+        string command = _options.Command;
+        IList<string>? arguments = _options.Arguments;
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) &&
+            !string.Equals(Path.GetFileName(command), "cmd.exe", StringComparison.OrdinalIgnoreCase))
+        {
+            // On Windows, for stdio, we need to wrap non-shell commands with cmd.exe /c {command} (usually npx or uvicorn).
+            // The stdio transport will not work correctly if the command is not run in a shell.
+            arguments = arguments is null or [] ? ["/c", command] : ["/c", command, ..arguments];
+            command = "cmd.exe";
+        }
 
         ILogger logger = (ILogger?)_loggerFactory?.CreateLogger<StdioClientTransport>() ?? NullLogger.Instance;
         try
@@ -51,7 +64,7 @@ public sealed class StdioClientTransport : IClientTransport
 
             ProcessStartInfo startInfo = new()
             {
-                FileName = _options.Command,
+                FileName = command,
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -65,9 +78,22 @@ public sealed class StdioClientTransport : IClientTransport
 #endif
             };
 
-            if (!string.IsNullOrWhiteSpace(_options.Arguments))
+            if (arguments is not null) 
             {
-                startInfo.Arguments = _options.Arguments;
+#if NET
+                foreach (string arg in arguments)
+                {
+                    startInfo.ArgumentList.Add(arg);
+                }
+#else
+                StringBuilder argsBuilder = new();
+                foreach (string arg in arguments)
+                {
+                    PasteArguments.AppendArgument(argsBuilder, arg);
+                }
+
+                startInfo.Arguments = argsBuilder.ToString();
+#endif
             }
 
             if (_options.EnvironmentVariables != null)
