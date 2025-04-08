@@ -60,7 +60,7 @@ public sealed class StdioServerTransport : StreamServerTransport
     /// </para>
     /// </remarks>
     public StdioServerTransport(string serverName, ILoggerFactory? loggerFactory = null)
-        : base(Console.OpenStandardInput(),
+        : base(new CancellableStdinStream(Console.OpenStandardInput()),
                new BufferedStream(Console.OpenStandardOutput()),
                serverName ?? throw new ArgumentNullException(nameof(serverName)),
                loggerFactory)
@@ -72,5 +72,33 @@ public sealed class StdioServerTransport : StreamServerTransport
         Throw.IfNull(serverOptions);
 
         return serverOptions.ServerInfo?.Name ?? McpServer.DefaultImplementation.Name;
+    }
+
+    // Neither WindowsConsoleStream nor UnixConsoleStream respect CancellationTokens or cancel any I/O on Dispose.
+    // WindowsConsoleStream will return an EOS on Ctrl-C, but that is not the only reason the shutdownToken may fire.
+    private sealed class CancellableStdinStream(Stream stdinStream) : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            => stdinStream.ReadAsync(buffer, offset, count, cancellationToken).WaitAsync(cancellationToken);
+
+#if NET
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+            => new(stdinStream.ReadAsync(buffer, cancellationToken).AsTask().WaitAsync(cancellationToken));
+#endif
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override void Flush() => throw new NotSupportedException();
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 }
