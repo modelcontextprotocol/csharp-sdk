@@ -31,9 +31,9 @@ public record SseClientTransportOptions
     }
 
     /// <summary>
-    /// Description of the server process used for logging purposes.
+    /// Specifies a transport identifier used for logging purposes.
     /// </summary>
-    public string? Description { get; init; }
+    public string? Name { get; init; }
 
     /// <summary>
     /// Timeout for initial connection and endpoint event.

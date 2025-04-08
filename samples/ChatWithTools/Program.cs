@@ -10,7 +10,7 @@ var mcpClient = await McpClientFactory.CreateAsync(
     {
         Command = "npx",
         Arguments = ["-y", "--verbose", "@modelcontextprotocol/server-everything"],
-        Description = "Everything",
+        Name = "Everything",
     }));
 
 // Get all available tools

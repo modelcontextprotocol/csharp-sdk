@@ -19,7 +19,7 @@ public class SseClientTransportTests : LoggedTest
             ConnectionTimeout = TimeSpan.FromSeconds(2),
             MaxReconnectAttempts = 3,
             ReconnectDelay = TimeSpan.FromMilliseconds(50),
-            Description = "Test Server",
+            Name = "Test Server",
             AdditionalHeaders = new Dictionary<string, string>
             {
                 ["test"] = "header"

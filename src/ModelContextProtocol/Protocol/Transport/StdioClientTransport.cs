@@ -5,6 +5,7 @@ using ModelContextProtocol.Utils;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 
 #pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
 
@@ -29,16 +30,16 @@ public sealed class StdioClientTransport : IClientTransport
 
         _options = options;
         _loggerFactory = loggerFactory;
-        EndpointName = $"Client (stdio) for ({options.Description ?? options.Command})";
+        Name = options.Name ?? $"stdio-{Regex.Replace(Path.GetFileName(options.Command), @"[\s\.]+", "-")}";
     }
 
     /// <inheritdoc />
-    public string EndpointName { get; }
+    public string Name { get; }
 
     /// <inheritdoc />
     public async Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default)
     {
-        string endpointName = EndpointName;
+        string endpointName = Name;
 
         Process? process = null;
         bool processStarted = false;
@@ -77,16 +78,16 @@ public sealed class StdioClientTransport : IClientTransport
 #endif
             };
 
-            if (arguments is not null)
+            if (arguments is not null) 
             {
 #if NET
-                foreach (var arg in arguments)
+                foreach (string arg in arguments)
                 {
                     startInfo.ArgumentList.Add(arg);
                 }
 #else
                 StringBuilder argsBuilder = new();
-                foreach (var arg in arguments)
+                foreach (string arg in arguments)
                 {
                     PasteArguments.AppendArgument(argsBuilder, arg);
                 }

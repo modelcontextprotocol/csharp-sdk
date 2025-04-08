@@ -33,9 +33,9 @@ public record StdioClientTransportOptions
     public IList<string>? Arguments { get; set; }
 
     /// <summary>
-    /// Description of the server process used for logging purposes.
+    /// Specifies a transport identifier used for logging purposes.
     /// </summary>
-    public string? Description { get; set; }
+    public string? Name { get; set; }
 
     /// <summary>
     /// The working directory for the server process.

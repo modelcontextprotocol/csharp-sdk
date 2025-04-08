@@ -17,7 +17,7 @@ await using var mcpClient = await McpClientFactory.CreateAsync(new StdioClientTr
 {
     Command = command,
     Arguments = arguments,
-    Description = "Demo Server",
+    Name = "Demo Server",
 }));
 
 var tools = await mcpClient.ListToolsAsync();

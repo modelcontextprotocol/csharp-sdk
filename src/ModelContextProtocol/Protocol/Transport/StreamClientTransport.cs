@@ -36,7 +36,7 @@ public sealed class StreamClientTransport : IClientTransport
     }
 
     /// <inheritdoc />
-    public string EndpointName => $"Client (in-memory stream)";
+    public string Name => $"in-memory-stream";
 
 
     /// <inheritdoc />

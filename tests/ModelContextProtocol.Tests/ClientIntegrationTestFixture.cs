@@ -20,13 +20,13 @@ public class ClientIntegrationTestFixture
             Command = "npx",
             // Change to Arguments = ["mcp-server-everything"] if you want to run the server locally after creating a symlink
             Arguments = ["-y", "--verbose", "@modelcontextprotocol/server-everything"],
-            Description = "Everything",
+            Name = "Everything",
         };
 
         TestServerTransportOptions = new()
         {
             Command = OperatingSystem.IsWindows() ? "TestServer.exe" : "dotnet",
-            Description = "TestServer",
+            Name = "TestServer",
         };
 
         if (!OperatingSystem.IsWindows())

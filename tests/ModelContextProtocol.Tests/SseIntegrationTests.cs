@@ -19,7 +19,7 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : KestrelInMemo
     private SseClientTransportOptions DefaultTransportOptions = new()
     {
         Endpoint = new Uri("http://localhost/sse"),
-        Description = "In-memory Test Server",
+        Name = "In-memory Test Server",
     };
 
     private Task<IMcpClient> ConnectMcpClient(HttpClient httpClient, McpClientOptions? clientOptions = null)

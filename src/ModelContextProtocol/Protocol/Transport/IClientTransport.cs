@@ -6,9 +6,9 @@
 public interface IClientTransport
 {
     /// <summary>
-    /// Gets a description of the endpoint the client is connecting to.
+    /// Specifies a transport identifier used for logging purposes.
     /// </summary>
-    string EndpointName { get; }
+    string Name { get; }
 
     /// <summary>
     /// Asynchronously establishes a transport session with an MCP server and returns an interface for the duplex JSON-RPC message stream.

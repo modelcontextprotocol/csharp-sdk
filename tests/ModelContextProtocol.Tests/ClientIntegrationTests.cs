@@ -457,7 +457,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         {
             Command = "npx",
             Arguments = ["-y", "@modelcontextprotocol/server-memory"],
-            Description = "memory",
+            Name = "memory",
         };
 
         McpClientOptions clientOptions = new()

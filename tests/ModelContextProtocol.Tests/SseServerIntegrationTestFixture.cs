@@ -21,7 +21,7 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
     private SseClientTransportOptions DefaultTransportOptions { get; } = new()
     {
         Endpoint = new Uri("http://localhost/sse"),
-        Description = "TestServer",
+        Name = "TestServer",
     };
 
     public SseServerIntegrationTestFixture()

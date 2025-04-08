@@ -88,7 +88,7 @@ public class McpClientFactoryTests
 
         public ValueTask DisposeAsync() => default;
 
-        public string EndpointName => "Test Nop Transport";
+        public string Name => "Test Nop Transport";
 
         public virtual Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
         {

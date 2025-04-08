@@ -30,7 +30,7 @@ public static class McpClientFactory
     {
         Throw.IfNull(clientTransport);
 
-        string endpointName = clientTransport.EndpointName;
+        string endpointName = clientTransport.Name;
         var logger = loggerFactory?.CreateLogger(typeof(McpClientFactory)) ?? NullLogger.Instance;
         logger.CreatingClient(endpointName);
 

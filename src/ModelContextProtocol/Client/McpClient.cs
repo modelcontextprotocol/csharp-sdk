@@ -42,7 +42,7 @@ internal sealed class McpClient : McpEndpoint, IMcpClient
         _clientTransport = clientTransport;
         _options = options;
 
-        EndpointName = clientTransport.EndpointName;
+        EndpointName = clientTransport.Name;
 
         if (options.Capabilities is { } capabilities)
         {
