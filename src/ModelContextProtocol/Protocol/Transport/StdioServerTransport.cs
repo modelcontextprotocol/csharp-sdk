@@ -87,14 +87,19 @@ public sealed class StdioServerTransport : StreamServerTransport
 
 #if NET
         public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
-            => new(stdinStream.ReadAsync(buffer, cancellationToken).AsTask().WaitAsync(cancellationToken));
+        {
+            ValueTask<int> vt = stdinStream.ReadAsync(buffer, cancellationToken);
+            return vt.IsCompletedSuccessfully ? vt : new(vt.AsTask().WaitAsync(cancellationToken));
+        }
 #endif
+
+        // The McpServer shouldn't call flush on the stdin Stream, but it doesn't need to throw just in case.
+        public override void Flush() { }
 
         public override long Length => throw new NotSupportedException();
 
         public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
 
-        public override void Flush() => throw new NotSupportedException();
         public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
         public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
 
