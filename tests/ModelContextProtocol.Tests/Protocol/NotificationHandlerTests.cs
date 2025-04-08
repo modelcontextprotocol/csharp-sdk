@@ -1,61 +1,12 @@
-﻿using Microsoft.Extensions.AI;
-using Microsoft.Extensions.DependencyInjection;
-using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol.Transport;
-using ModelContextProtocol.Server;
-using ModelContextProtocol.Tests.Utils;
-using System.IO.Pipelines;
+﻿using ModelContextProtocol.Client;
 
 namespace ModelContextProtocol.Tests;
 
-public class NotificationHandlerTests : LoggedTest, IAsyncDisposable
+public class NotificationHandlerTests : ClientServerTestBase
 {
-    private readonly Pipe _clientToServerPipe = new();
-    private readonly Pipe _serverToClientPipe = new();
-    private readonly ServiceProvider _serviceProvider;
-    private readonly IMcpServerBuilder _builder;
-    private readonly CancellationTokenSource _cts;
-    private readonly Task _serverTask;
-    private readonly IMcpServer _server;
-
     public NotificationHandlerTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
     {
-        ServiceCollection sc = new();
-        sc.AddSingleton(LoggerFactory);
-        _builder = sc
-            .AddMcpServer()
-            .WithStreamServerTransport(_clientToServerPipe.Reader.AsStream(), _serverToClientPipe.Writer.AsStream());
-        _serviceProvider = sc.BuildServiceProvider();
-
-        _cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-        _server = _serviceProvider.GetRequiredService<IMcpServer>();
-        _serverTask = _server.RunAsync(_cts.Token);
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        await _cts.CancelAsync();
-
-        _clientToServerPipe.Writer.Complete();
-        _serverToClientPipe.Writer.Complete();
-
-        await _serverTask;
-
-        await _serviceProvider.DisposeAsync();
-        _cts.Dispose();
-        Dispose();
-    }
-
-    private async Task<IMcpClient> CreateMcpClientForServer(McpClientOptions? options = null)
-    {
-        return await McpClientFactory.CreateAsync(
-            new StreamClientTransport(
-                serverInput: _clientToServerPipe.Writer.AsStream(),
-                _serverToClientPipe.Reader.AsStream(),
-                LoggerFactory),
-            loggerFactory: LoggerFactory,
-            cancellationToken: TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -77,7 +28,7 @@ public class NotificationHandlerTests : LoggedTest, IAsyncDisposable
                     return Task.CompletedTask;
                 }))
             {
-                await _server.SendNotificationAsync(NotificationName, TestContext.Current.CancellationToken);
+                await Server.SendNotificationAsync(NotificationName, TestContext.Current.CancellationToken);
                 await tcs.Task;
             }
         }
@@ -113,7 +64,7 @@ public class NotificationHandlerTests : LoggedTest, IAsyncDisposable
 
         try
         {
-            await _server.SendNotificationAsync(NotificationName, TestContext.Current.CancellationToken);
+            await Server.SendNotificationAsync(NotificationName, TestContext.Current.CancellationToken);
             await tcs.Task;
         }
         finally
@@ -153,7 +104,7 @@ public class NotificationHandlerTests : LoggedTest, IAsyncDisposable
 
         try
         {
-            await _server.SendNotificationAsync(NotificationName, TestContext.Current.CancellationToken);
+            await Server.SendNotificationAsync(NotificationName, TestContext.Current.CancellationToken);
             await tcs.Task;
         }
         finally
@@ -182,7 +133,7 @@ public class NotificationHandlerTests : LoggedTest, IAsyncDisposable
             await releaseHandler.Task;
         });
 
-        await _server.SendNotificationAsync(NotificationName, TestContext.Current.CancellationToken);
+        await Server.SendNotificationAsync(NotificationName, TestContext.Current.CancellationToken);
         await handlerRunning.Task;
 
         var disposals = new ValueTask[numberOfDisposals];
@@ -231,7 +182,7 @@ public class NotificationHandlerTests : LoggedTest, IAsyncDisposable
             handlerRunning.SetResult(true);
         });
 
-        await _server.SendNotificationAsync(NotificationName, TestContext.Current.CancellationToken);
+        await Server.SendNotificationAsync(NotificationName, TestContext.Current.CancellationToken);
         await handlerRunning.Task;
     }
 }

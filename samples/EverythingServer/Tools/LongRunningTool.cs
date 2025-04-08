@@ -1,5 +1,4 @@
 ﻿using ModelContextProtocol;
-using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using System.ComponentModel;

@@ -338,6 +338,8 @@ internal sealed class McpSession : IDisposable
             throw new McpException("Transport is not connected");
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
+
         Histogram<double> durationMetric = _isServer ? s_serverRequestDuration : s_clientRequestDuration;
         string method = request.Method;
 
@@ -424,6 +426,8 @@ internal sealed class McpSession : IDisposable
             _logger.ClientNotConnected(EndpointName);
             throw new McpException("Transport is not connected");
         }
+
+        cancellationToken.ThrowIfCancellationRequested();
 
         Histogram<double> durationMetric = _isServer ? s_serverRequestDuration : s_clientRequestDuration;
         string method = GetMethodName(message);

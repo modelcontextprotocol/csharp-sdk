@@ -1,6 +1,5 @@
 ﻿
 using ModelContextProtocol.Protocol.Types;
-using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Server;
 

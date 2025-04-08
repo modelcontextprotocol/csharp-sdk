@@ -3,45 +3,32 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
-using ModelContextProtocol.Tests.Utils;
 using Moq;
-using System.IO.Pipelines;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading.Channels;
 
 namespace ModelContextProtocol.Tests.Client;
 
-public class McpClientExtensionsTests : LoggedTest
+public class McpClientExtensionsTests : ClientServerTestBase
 {
-    private readonly Pipe _clientToServerPipe = new();
-    private readonly Pipe _serverToClientPipe = new();
-    private readonly ServiceProvider _serviceProvider;
-    private readonly CancellationTokenSource _cts;
-    private readonly IMcpServer _server;
-    private readonly Task _serverTask;
-
     public McpClientExtensionsTests(ITestOutputHelper outputHelper)
         : base(outputHelper)
     {
-        ServiceCollection sc = new();
-        sc.AddSingleton(LoggerFactory);
-        sc.AddMcpServer().WithStreamServerTransport(_clientToServerPipe.Reader.AsStream(), _serverToClientPipe.Writer.AsStream());
+    }
+
+    protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
+    {
         for (int f = 0; f < 10; f++)
         {
             string name = $"Method{f}";
-            sc.AddSingleton(McpServerTool.Create((int i) => $"{name} Result {i}", new() { Name = name }));
+            services.AddSingleton(McpServerTool.Create((int i) => $"{name} Result {i}", new() { Name = name }));
         }
-        sc.AddSingleton(McpServerTool.Create([McpServerTool(Destructive = false, OpenWorld = true)](string i) => $"{i} Result", new() { Name = "ValuesSetViaAttr" }));
-        sc.AddSingleton(McpServerTool.Create([McpServerTool(Destructive = false, OpenWorld = true)](string i) => $"{i} Result", new() { Name = "ValuesSetViaOptions", Destructive = true, OpenWorld = false, ReadOnly = true }));
-        _serviceProvider = sc.BuildServiceProvider();
+        services.AddSingleton(McpServerTool.Create([McpServerTool(Destructive = false, OpenWorld = true)] (string i) => $"{i} Result", new() { Name = "ValuesSetViaAttr" }));
+        services.AddSingleton(McpServerTool.Create([McpServerTool(Destructive = false, OpenWorld = true)] (string i) => $"{i} Result", new() { Name = "ValuesSetViaOptions", Destructive = true, OpenWorld = false, ReadOnly = true }));
 
-        _server = _serviceProvider.GetRequiredService<IMcpServer>();
-        _cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-        _serverTask = _server.RunAsync(cancellationToken: _cts.Token);
     }
 
     [Theory]
@@ -218,30 +205,6 @@ public class McpClientExtensionsTests : LoggedTest
         Assert.Equal("endTurn", result.StopReason);
     }
 
-    public async ValueTask DisposeAsync()
-    {
-        await _cts.CancelAsync();
-
-        _clientToServerPipe.Writer.Complete();
-        _serverToClientPipe.Writer.Complete();
-
-        await _serverTask;
-
-        await _serviceProvider.DisposeAsync();
-        _cts.Dispose();
-    }
-
-    private async Task<IMcpClient> CreateMcpClientForServer()
-    {
-        return await McpClientFactory.CreateAsync(
-            new StreamClientTransport(
-                serverInput: _clientToServerPipe.Writer.AsStream(),
-                serverOutput: _serverToClientPipe.Reader.AsStream(),
-                LoggerFactory),
-            loggerFactory: LoggerFactory,
-            cancellationToken: TestContext.Current.CancellationToken);
-    }
-
     [Fact]
     public async Task ListToolsAsync_AllToolsReturned()
     {
@@ -377,7 +340,7 @@ public class McpClientExtensionsTests : LoggedTest
     {
         IMcpClient client = await CreateMcpClientForServer();
 
-        ILoggerProvider loggerProvider = _server.AsClientLoggerProvider();
+        ILoggerProvider loggerProvider = Server.AsClientLoggerProvider();
         Assert.Throws<ArgumentNullException>("categoryName", () => loggerProvider.CreateLogger(null!));
 
         ILogger logger = loggerProvider.CreateLogger("TestLogger");
@@ -385,7 +348,7 @@ public class McpClientExtensionsTests : LoggedTest
 
         Assert.Null(logger.BeginScope(""));
 
-        Assert.Null(_server.LoggingLevel);
+        Assert.Null(Server.LoggingLevel);
         Assert.False(logger.IsEnabled(LogLevel.Trace));
         Assert.False(logger.IsEnabled(LogLevel.Debug));
         Assert.False(logger.IsEnabled(LogLevel.Information));
@@ -396,13 +359,13 @@ public class McpClientExtensionsTests : LoggedTest
         await client.SetLoggingLevel(LoggingLevel.Info, TestContext.Current.CancellationToken);
 
         DateTime start = DateTime.UtcNow;
-        while (_server.LoggingLevel is null)
+        while (Server.LoggingLevel is null)
         {
             await Task.Delay(1, TestContext.Current.CancellationToken);
             Assert.True(DateTime.UtcNow - start < TimeSpan.FromSeconds(10), "Timed out waiting for logging level to be set");
         }
 
-        Assert.Equal(LoggingLevel.Info, _server.LoggingLevel);
+        Assert.Equal(LoggingLevel.Info, Server.LoggingLevel);
         Assert.False(logger.IsEnabled(LogLevel.Trace));
         Assert.False(logger.IsEnabled(LogLevel.Debug));
         Assert.True(logger.IsEnabled(LogLevel.Information));

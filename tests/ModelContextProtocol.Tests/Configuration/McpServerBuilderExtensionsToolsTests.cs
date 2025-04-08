@@ -7,7 +7,6 @@ using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
-using ModelContextProtocol.Tests.Utils;
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.IO.Pipelines;
@@ -19,23 +18,16 @@ using System.Threading.Channels;
 
 namespace ModelContextProtocol.Tests.Configuration;
 
-public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
+public class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
 {
-    private readonly Pipe _clientToServerPipe = new();
-    private readonly Pipe _serverToClientPipe = new();
-    private readonly ServiceProvider _serviceProvider;
-    private readonly IMcpServerBuilder _builder;
-    private readonly CancellationTokenSource _cts;
-    private readonly Task _serverTask;
-
     public McpServerBuilderExtensionsToolsTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
     {
-        ServiceCollection sc = new();
-        sc.AddSingleton(LoggerFactory);
-        _builder = sc
-            .AddMcpServer()
-            .WithStreamServerTransport(_clientToServerPipe.Reader.AsStream(), _serverToClientPipe.Writer.AsStream())
+    }
+
+    protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
+    {
+        mcpServerBuilder
             .WithListToolsHandler(async (request, cancellationToken) =>
             {
                 var cursor = request.Params?.Cursor;
@@ -46,17 +38,17 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
                         {
                             NextCursor = "abc",
                             Tools = [new()
-                            {
-                                Name = "FirstCustomTool",
-                                Description = "First tool returned by custom handler",
-                                InputSchema = JsonSerializer.Deserialize<JsonElement>("""
-                                    {
-                                      "type": "object",
-                                      "properties": {},
-                                      "required": []
-                                    }
-                                    """),
-                            }],
+                                {
+                                    Name = "FirstCustomTool",
+                                    Description = "First tool returned by custom handler",
+                                    InputSchema = JsonSerializer.Deserialize<JsonElement>("""
+                                        {
+                                          "type": "object",
+                                          "properties": {},
+                                          "required": []
+                                        }
+                                        """),
+                                }],
                         };
 
                     case "abc":
@@ -64,17 +56,17 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
                         {
                             NextCursor = "def",
                             Tools = [new()
-                            {
-                                Name = "SecondCustomTool",
-                                Description = "Second tool returned by custom handler",
-                                InputSchema = JsonSerializer.Deserialize<JsonElement>("""
-                                    {
-                                      "type": "object",
-                                      "properties": {},
-                                      "required": []
-                                    }
-                                    """),
-                            }],
+                                {
+                                    Name = "SecondCustomTool",
+                                    Description = "Second tool returned by custom handler",
+                                    InputSchema = JsonSerializer.Deserialize<JsonElement>("""
+                                        {
+                                          "type": "object",
+                                          "properties": {},
+                                          "required": []
+                                        }
+                                        """),
+                                }],
                         };
 
                     case "def":
@@ -82,17 +74,17 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
                         {
                             NextCursor = null,
                             Tools = [new()
-                            {
-                                Name = "FinalCustomTool",
-                                Description = "Third tool returned by custom handler",
-                                InputSchema = JsonSerializer.Deserialize<JsonElement>("""
-                                    {
-                                      "type": "object",
-                                      "properties": {},
-                                      "required": []
-                                    }
-                                    """),
-                            }],
+                                {
+                                    Name = "FinalCustomTool",
+                                    Description = "Third tool returned by custom handler",
+                                    InputSchema = JsonSerializer.Deserialize<JsonElement>("""
+                                        {
+                                          "type": "object",
+                                          "properties": {},
+                                          "required": []
+                                        }
+                                        """),
+                                }],
                         };
 
                     default:
@@ -117,43 +109,13 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
             })
             .WithTools<EchoTool>();
 
-        sc.AddSingleton(new ObjectWithId());
-        _serviceProvider = sc.BuildServiceProvider();
-
-        var server = _serviceProvider.GetRequiredService<IMcpServer>();
-        _cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-        _serverTask = server.RunAsync(cancellationToken: _cts.Token);
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        await _cts.CancelAsync();
-
-        _clientToServerPipe.Writer.Complete();
-        _serverToClientPipe.Writer.Complete();
-
-        await _serverTask;
-
-        await _serviceProvider.DisposeAsync();
-        _cts.Dispose();
-        Dispose();
-    }
-
-    private async Task<IMcpClient> CreateMcpClientForServer(McpClientOptions? options = null)
-    {
-        return await McpClientFactory.CreateAsync(
-            new StreamClientTransport(
-                serverInput: _clientToServerPipe.Writer.AsStream(),
-                _serverToClientPipe.Reader.AsStream(),
-                LoggerFactory),
-            loggerFactory: LoggerFactory,
-            cancellationToken: TestContext.Current.CancellationToken);
+        services.AddSingleton(new ObjectWithId());
     }
 
     [Fact]
     public void Adds_Tools_To_Server()
     {
-        var serverOptions = _serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+        var serverOptions = ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
         var tools = serverOptions.Capabilities?.Tools?.ToolCollection;
         Assert.NotNull(tools);
         Assert.NotEmpty(tools);
@@ -183,8 +145,8 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
     [Fact]
     public async Task Can_Create_Multiple_Servers_From_Options_And_List_Registered_Tools()
     {
-        var options = _serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
-        var loggerFactory = _serviceProvider.GetRequiredService<ILoggerFactory>();
+        var options = ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+        var loggerFactory = ServiceProvider.GetRequiredService<ILoggerFactory>();
 
         for (int i = 0; i < 2; i++)
         {
@@ -192,7 +154,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
             var stdoutPipe = new Pipe();
 
             await using var transport = new StreamServerTransport(stdinPipe.Reader.AsStream(), stdoutPipe.Writer.AsStream());
-            await using var server = McpServerFactory.Create(transport, options, loggerFactory, _serviceProvider);
+            await using var server = McpServerFactory.Create(transport, options, loggerFactory, ServiceProvider);
             var serverRunTask = server.RunAsync(TestContext.Current.CancellationToken);
 
             await using (var client = await McpClientFactory.CreateAsync(
@@ -237,7 +199,7 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
         var notificationRead = listChanged.Reader.ReadAsync(TestContext.Current.CancellationToken);
         Assert.False(notificationRead.IsCompleted);
 
-        var serverOptions = _serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+        var serverOptions = ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
         var serverTools = serverOptions.Capabilities?.Tools?.ToolCollection;
         Assert.NotNull(serverTools);
 
@@ -444,7 +406,9 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
     [Fact]
     public void WithTools_InvalidArgs_Throws()
     {
-        Assert.Throws<ArgumentNullException>("toolTypes", () => _builder.WithTools((IEnumerable<Type>)null!));
+        IMcpServerBuilder builder = new ServiceCollection().AddMcpServer();
+
+        Assert.Throws<ArgumentNullException>("toolTypes", () => builder.WithTools((IEnumerable<Type>)null!));
 
         IMcpServerBuilder nullBuilder = null!;
         Assert.Throws<ArgumentNullException>("builder", () => nullBuilder.WithTools<object>());
@@ -455,9 +419,11 @@ public class McpServerBuilderExtensionsToolsTests : LoggedTest, IAsyncDisposable
     [Fact]
     public void Empty_Enumerables_Is_Allowed()
     {
-        _builder.WithTools(toolTypes: []); // no exception
-        _builder.WithTools<object>(); // no exception even though no tools exposed
-        _builder.WithToolsFromAssembly(typeof(AIFunction).Assembly); // no exception even though no tools exposed
+        IMcpServerBuilder builder = new ServiceCollection().AddMcpServer();
+
+        builder.WithTools(toolTypes: []); // no exception
+        builder.WithTools<object>(); // no exception even though no tools exposed
+        builder.WithToolsFromAssembly(typeof(AIFunction).Assembly); // no exception even though no tools exposed
     }
 
     [Fact]

@@ -3,133 +3,92 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
-using ModelContextProtocol.Tests.Utils;
 using System.ComponentModel;
-using System.IO.Pipelines;
 using System.Threading.Channels;
 
 #pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
 
 namespace ModelContextProtocol.Tests.Configuration;
 
-public class McpServerBuilderExtensionsPromptsTests : LoggedTest, IAsyncDisposable
+public class McpServerBuilderExtensionsPromptsTests : ClientServerTestBase
 {
-    private readonly Pipe _clientToServerPipe = new();
-    private readonly Pipe _serverToClientPipe = new();
-    private readonly ServiceProvider _serviceProvider;
-    private readonly IMcpServerBuilder _builder;
-    private readonly CancellationTokenSource _cts;
-    private readonly Task _serverTask;
-
     public McpServerBuilderExtensionsPromptsTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
     {
-        ServiceCollection sc = new();
-        sc.AddSingleton(LoggerFactory);
-        _builder = sc
-            .AddMcpServer()
-            .WithStreamServerTransport(_clientToServerPipe.Reader.AsStream(), _serverToClientPipe.Writer.AsStream())
-            .WithListPromptsHandler(async (request, cancellationToken) =>
-            {
-                var cursor = request.Params?.Cursor;
-                switch (cursor)
-                {
-                    case null:
-                        return new()
-                        {
-                            NextCursor = "abc",
-                            Prompts = [new()
-                            {
-                                Name = "FirstCustomPrompt",
-                                Description = "First prompt returned by custom handler",
-                            }],
-                        };
-
-                    case "abc":
-                        return new()
-                        {
-                            NextCursor = "def",
-                            Prompts = [new()
-                            {
-                                Name = "SecondCustomPrompt",
-                                Description = "Second prompt returned by custom handler",
-                            }],
-                        };
-
-                    case "def":
-                        return new()
-                        {
-                            NextCursor = null,
-                            Prompts = [new()
-                            {
-                                Name = "FinalCustomPrompt",
-                                Description = "Final prompt returned by custom handler",
-                            }],
-                        };
-
-                    default:
-                        throw new Exception("Unexpected cursor");
-                }
-            })
-            .WithGetPromptHandler(async (request, cancellationToken) =>
-            {
-                switch (request.Params?.Name)
-                {
-                    case "FirstCustomPrompt":
-                    case "SecondCustomPrompt":
-                    case "FinalCustomPrompt":
-                        return new GetPromptResult()
-                        {
-                            Messages = [new() { Role = Role.User, Content = new() { Text = $"hello from {request.Params.Name}", Type = "text" } }],
-                        };
-
-                    default:
-                        throw new Exception($"Unknown prompt '{request.Params?.Name}'");
-                }
-            })
-            .WithPrompts<SimplePrompts>();
-
-
-        sc.AddSingleton(new ObjectWithId());
-        _serviceProvider = sc.BuildServiceProvider();
-
-        var server = _serviceProvider.GetRequiredService<IMcpServer>();
-        _cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-        _serverTask = server.RunAsync(cancellationToken: _cts.Token);
     }
 
-    public async ValueTask DisposeAsync()
+    protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
-        await _cts.CancelAsync();
+        mcpServerBuilder
+                .WithListPromptsHandler(async (request, cancellationToken) =>
+                    {
+                        var cursor = request.Params?.Cursor;
+                        switch (cursor)
+                        {
+                            case null:
+                                return new()
+                                {
+                                    NextCursor = "abc",
+                                    Prompts = [new()
+                        {
+                            Name = "FirstCustomPrompt",
+                            Description = "First prompt returned by custom handler",
+                        }],
+                                };
 
-        _clientToServerPipe.Writer.Complete();
-        _serverToClientPipe.Writer.Complete();
+                            case "abc":
+                                return new()
+                                {
+                                    NextCursor = "def",
+                                    Prompts = [new()
+                        {
+                            Name = "SecondCustomPrompt",
+                            Description = "Second prompt returned by custom handler",
+                        }],
+                                };
 
-        await _serverTask;
+                            case "def":
+                                return new()
+                                {
+                                    NextCursor = null,
+                                    Prompts = [new()
+                        {
+                            Name = "FinalCustomPrompt",
+                            Description = "Final prompt returned by custom handler",
+                        }],
+                                };
 
-        await _serviceProvider.DisposeAsync();
-        _cts.Dispose();
-        Dispose();
-    }
+                            default:
+                                throw new Exception("Unexpected cursor");
+                        }
+                    })
+        .WithGetPromptHandler(async (request, cancellationToken) =>
+        {
+            switch (request.Params?.Name)
+            {
+                case "FirstCustomPrompt":
+                case "SecondCustomPrompt":
+                case "FinalCustomPrompt":
+                    return new GetPromptResult()
+                    {
+                        Messages = [new() { Role = Role.User, Content = new() { Text = $"hello from {request.Params.Name}", Type = "text" } }],
+                    };
 
-    private async Task<IMcpClient> CreateMcpClientForServer(McpClientOptions? options = null)
-    {
-        return await McpClientFactory.CreateAsync(
-            new StreamClientTransport(
-                serverInput: _clientToServerPipe.Writer.AsStream(),
-                serverOutput: _serverToClientPipe.Reader.AsStream(),
-                LoggerFactory),
-            loggerFactory: LoggerFactory,
-            cancellationToken: TestContext.Current.CancellationToken);
+                default:
+                    throw new Exception($"Unknown prompt '{request.Params?.Name}'");
+            }
+        })
+        .WithPrompts<SimplePrompts>();
+
+        services.AddSingleton(new ObjectWithId());
     }
 
     [Fact]
     public void Adds_Prompts_To_Server()
     {
-        var serverOptions = _serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+        var serverOptions = ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
         var prompts = serverOptions?.Capabilities?.Prompts?.PromptCollection;
         Assert.NotNull(prompts);
         Assert.NotEmpty(prompts);
@@ -176,7 +135,7 @@ public class McpServerBuilderExtensionsPromptsTests : LoggedTest, IAsyncDisposab
         var notificationRead = listChanged.Reader.ReadAsync(TestContext.Current.CancellationToken);
         Assert.False(notificationRead.IsCompleted);
 
-        var serverOptions = _serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+        var serverOptions = ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
         var serverPrompts = serverOptions.Capabilities?.Prompts?.PromptCollection;
         Assert.NotNull(serverPrompts);
 
@@ -242,7 +201,9 @@ public class McpServerBuilderExtensionsPromptsTests : LoggedTest, IAsyncDisposab
     [Fact]
     public void WithPrompts_InvalidArgs_Throws()
     {
-        Assert.Throws<ArgumentNullException>("promptTypes", () => _builder.WithPrompts((IEnumerable<Type>)null!));
+        IMcpServerBuilder builder = new ServiceCollection().AddMcpServer();
+
+        Assert.Throws<ArgumentNullException>("promptTypes", () => builder.WithPrompts((IEnumerable<Type>)null!));
 
         IMcpServerBuilder nullBuilder = null!;
         Assert.Throws<ArgumentNullException>("builder", () => nullBuilder.WithPrompts<object>());
@@ -253,9 +214,11 @@ public class McpServerBuilderExtensionsPromptsTests : LoggedTest, IAsyncDisposab
     [Fact]
     public void Empty_Enumerables_Is_Allowed()
     {
-        _builder.WithPrompts(promptTypes: []); // no exception
-        _builder.WithPrompts<object>(); // no exception even though no prompts exposed
-        _builder.WithPromptsFromAssembly(typeof(AIFunction).Assembly); // no exception even though no prompts exposed
+        IMcpServerBuilder builder = new ServiceCollection().AddMcpServer();
+
+        builder.WithPrompts(promptTypes: []); // no exception
+        builder.WithPrompts<object>(); // no exception even though no prompts exposed
+        builder.WithPromptsFromAssembly(typeof(AIFunction).Assembly); // no exception even though no prompts exposed
     }
 
     [Fact]
