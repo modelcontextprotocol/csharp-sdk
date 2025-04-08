@@ -155,14 +155,14 @@ public static class McpEndpointExtensions
     {
         Throw.IfNull(endpoint);
 
-        return endpoint.SendMessageAsync(new JsonRpcNotification()
-        {
-            Method = NotificationMethods.ProgressNotification,
-            Params = JsonSerializer.SerializeToNode(new ProgressNotification
+        return endpoint.SendNotificationAsync(
+            NotificationMethods.ProgressNotification,
+            new ProgressNotification
             {
                 ProgressToken = progressToken,
                 Progress = progress,
-            }, McpJsonUtilities.JsonContext.Default.ProgressNotification),
-        }, cancellationToken);
+            },
+            McpJsonUtilities.JsonContext.Default.ProgressNotification,
+            cancellationToken);
     }
 }
