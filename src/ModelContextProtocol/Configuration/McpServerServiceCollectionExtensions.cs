@@ -1,5 +1,6 @@
 ﻿using ModelContextProtocol.Server;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Microsoft.Extensions.DependencyInjection;
 
@@ -17,7 +18,7 @@ public static class McpServerServiceCollectionExtensions
     public static IMcpServerBuilder AddMcpServer(this IServiceCollection services, Action<McpServerOptions>? configureOptions = null)
     {
         services.AddOptions();
-        services.AddTransient<IConfigureOptions<McpServerOptions>, McpServerOptionsSetup>();
+        services.TryAddEnumerable(ServiceDescriptor.Transient<IConfigureOptions<McpServerOptions>, McpServerOptionsSetup>());
         if (configureOptions is not null)
         {
             services.Configure(configureOptions);
