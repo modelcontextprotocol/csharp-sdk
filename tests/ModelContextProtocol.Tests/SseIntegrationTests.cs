@@ -99,18 +99,18 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : KestrelInMemo
     [Fact]
     public async Task AddMcpServer_CanBeCalled_MultipleTimes()
     {
-        var firstOptionsCallbackCalled = false;
-        var secondOptionsCallbackCalled = false;
+        var firstOptionsCallbackCallCount = 0;
+        var secondOptionsCallbackCallCount = 0;
 
         Builder.Services.AddMcpServer(options =>
             {
-                firstOptionsCallbackCalled = true;
+                Interlocked.Increment(ref firstOptionsCallbackCallCount);
             })
             .WithTools<EchoTool>();
 
         Builder.Services.AddMcpServer(options =>
             {
-                secondOptionsCallbackCalled = true;
+                Interlocked.Increment(ref secondOptionsCallbackCallCount);
             })
             .WithTools<SampleLlmTool>();
 
@@ -123,8 +123,10 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : KestrelInMemo
         await using var mcpClient = await ConnectMcpClient(httpClient);
 
         // Options can be lazily initialized, but they must be instantiated by the time an MCP client can finish connecting.
-        Assert.True(firstOptionsCallbackCalled);
-        Assert.True(secondOptionsCallbackCalled);
+        // Callbacks can be called multiple times if configureOptionsAsync is configured, because that uses the IOptionsFactory,
+        // but that's not the case in this test.
+        Assert.Equal(1, firstOptionsCallbackCallCount);
+        Assert.Equal(1, secondOptionsCallbackCallCount);
 
         var tools = await mcpClient.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
