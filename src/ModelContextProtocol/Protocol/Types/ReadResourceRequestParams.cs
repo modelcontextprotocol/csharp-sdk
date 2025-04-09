@@ -10,5 +10,5 @@ public class ReadResourceRequestParams : RequestParams
     /// The URI of the resource to read. The URI can use any protocol; it is up to the server how to interpret it.
     /// </summary>
     [System.Text.Json.Serialization.JsonPropertyName("uri")]
-    public string? Uri { get; init; }
+    public required string Uri { get; init; }
 }

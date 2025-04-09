@@ -50,8 +50,8 @@ public class McpServerBuilderExtensionsResourcesTests(ITestOutputHelper testOutp
         var resources = serverOptions?.Capabilities?.Resources?.ResourceCollection;
         Assert.NotNull(resources);
         Assert.Equal(2, resources.Count);
-        Assert.Equal("test.txt", resources["test"].Name);
-        Assert.Equal("test2.txt", resources["test2"].Name);
+        Assert.Equal("test", resources["test"].Name);
+        Assert.Equal("test2", resources["test2"].Name);
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public class McpServerBuilderExtensionsResourcesTests(ITestOutputHelper testOutp
             .GetRequiredService<IOptions<McpServerOptions>>()
             .Value;
         TaskCompletionSource<JsonRpcNotification> changeReceived = new();
-        client.RegisterNotificationHandler(
+        await using var _ = client.RegisterNotificationHandler(
             NotificationMethods.ResourceListChangedNotification,
             (notification, token) =>
             {

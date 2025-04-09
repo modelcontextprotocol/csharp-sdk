@@ -71,7 +71,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         
         RegisterListChange(capabilities?.Tools, NotificationMethods.ToolListChangedNotification);
         RegisterListChange(capabilities?.Prompts, NotificationMethods.PromptListChangedNotification);
-        RegisterListChange(capabilities?.Resources, RequestMethods.ResourcesList);
+        RegisterListChange(capabilities?.Resources, NotificationMethods.ResourceListChangedNotification);
 
         // And initialize the session.
         InitializeSession(transport);
@@ -185,13 +185,8 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
         var listResourcesHandler = resourcesCapability.ListResourcesHandler;
         var listResourceTemplatesHandler = resourcesCapability.ListResourceTemplatesHandler;
+        var readResourceHandler = resourcesCapability.ReadResourceHandler;
         var resourceCollection = resourcesCapability.ResourceCollection;
-
-        if ((listResourcesHandler is not { } && listResourceTemplatesHandler is not { }) ||
-            resourcesCapability.ReadResourceHandler is not { } readResourceHandler)
-        {
-            throw new McpException("Resources capability was enabled, but ListResources and/or ReadResource handlers were not specified.");
-        }
 
         var originalListResourcesHandler = listResourcesHandler;
         listResourcesHandler = async (request, cancellationToken) =>
@@ -208,12 +203,19 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             return result;
         };
 
+        var isMissingListResourceHandlers = originalListResourcesHandler is not { } && listResourceTemplatesHandler is not { };
+        if (resourceCollection is not { IsEmpty: false } && (isMissingListResourceHandlers || readResourceHandler is not { }))
+        {
+            throw new McpException("Resources capability was enabled, but ListResources, ListResourceTemplates, and/or ReadResource handlers were not specified.");
+        }
+
         RequestHandlers.Set(
             RequestMethods.ResourcesList,
             (request, cancellationToken) => listResourcesHandler(new(this, request), cancellationToken),
             McpJsonUtilities.JsonContext.Default.ListResourcesRequestParams,
             McpJsonUtilities.JsonContext.Default.ListResourcesResult);
 
+        readResourceHandler ??= static (_, _) => Task.FromResult(new ReadResourceResult());
         RequestHandlers.Set(
             RequestMethods.ResourcesRead,
             (request, cancellationToken) => readResourceHandler(new(this, request), cancellationToken),
