@@ -185,6 +185,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
         var listResourcesHandler = resourcesCapability.ListResourcesHandler;
         var listResourceTemplatesHandler = resourcesCapability.ListResourceTemplatesHandler;
+        var resourceCollection = resourcesCapability.ResourceCollection;
 
         if ((listResourcesHandler is not { } && listResourceTemplatesHandler is not { }) ||
             resourcesCapability.ReadResourceHandler is not { } readResourceHandler)
@@ -192,7 +193,20 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             throw new McpException("Resources capability was enabled, but ListResources and/or ReadResource handlers were not specified.");
         }
 
-        listResourcesHandler ??= (static (_, _) => Task.FromResult(new ListResourcesResult()));
+        var originalListResourcesHandler = listResourcesHandler;
+        listResourcesHandler = async (request, cancellationToken) =>
+        {
+            ListResourcesResult result = originalListResourcesHandler is not null ?
+                await originalListResourcesHandler(request, cancellationToken).ConfigureAwait(false) :
+                new();
+
+            if (request.Params?.Cursor is null && resourceCollection is not null)
+            {
+                result.Resources.AddRange(resourceCollection.Select(t => t.ProtocolResource));
+            }
+
+            return result;
+        };
 
         RequestHandlers.Set(
             RequestMethods.ResourcesList,
