@@ -115,7 +115,7 @@ internal sealed class SseClientSessionTransport : TransportBase
         if (message is JsonRpcRequest request && request.Method == RequestMethods.Initialize)
         {
             // If the response is not a JSON-RPC response, it is an SSE message
-            if (responseContent.Equals("accepted", StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrEmpty(responseContent) || responseContent.Equals("accepted", StringComparison.OrdinalIgnoreCase))
             {
                 _logger.SSETransportPostAccepted(_endpointName, messageId);
                 // The response will arrive as an SSE message
@@ -133,7 +133,7 @@ internal sealed class SseClientSessionTransport : TransportBase
         }
 
         // Otherwise, check if the response was accepted (the response will come as an SSE message)
-        if (responseContent.Equals("accepted", StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrEmpty(responseContent) || responseContent.Equals("accepted", StringComparison.OrdinalIgnoreCase))
         {
             _logger.SSETransportPostAccepted(_endpointName, messageId);
         }
@@ -294,13 +294,16 @@ internal sealed class SseClientSessionTransport : TransportBase
             else
             {
                 // If the endpoint is a relative URI, we need to combine it with the relative path of the SSE endpoint
-                var hostUrl = _sseEndpoint.AbsoluteUri;
-                if (hostUrl.EndsWith("/sse", StringComparison.Ordinal))
-                    hostUrl = hostUrl[..^4];
+                var baseUriBuilder = new UriBuilder(_sseEndpoint);
 
-                var endpointUri = $"{hostUrl.TrimEnd('/')}/{data.TrimStart('/')}";
+                // Check that paths end in "/sse" and remove if needed
+                if (baseUriBuilder.Path.EndsWith("/sse", StringComparison.Ordinal))
+                {
+                    baseUriBuilder.Path = baseUriBuilder.Path[..^4];
+                }
 
-                _messageEndpoint = new Uri(endpointUri);
+                // Instead of manually concatenating strings, use the Uri class's composition capabilities
+                _messageEndpoint = new Uri(baseUriBuilder.Uri, data);
             }
 
             // Set connected state
