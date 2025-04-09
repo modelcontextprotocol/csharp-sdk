@@ -30,14 +30,10 @@
   <!-- Dependencies needed by all -->
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.AI" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="System.Net.ServerSentEvents" />
-
-    <!-- Temporarily removed until new version can be picked up that
-         has reduced dependencies:
-         <PackageReference Include="Microsoft.Extensions.AI" />
-    -->
   </ItemGroup>
 
   <ItemGroup>

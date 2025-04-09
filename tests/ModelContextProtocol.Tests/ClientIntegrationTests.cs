@@ -105,7 +105,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         await using var client = await _fixture.CreateClientAsync(clientId);
         var aiFunctions = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         var echo = aiFunctions.Single(t => t.Name == "echo");
-        var result = await echo.InvokeAsync([new KeyValuePair<string, object?>("message", "Hello MCP!")], TestContext.Current.CancellationToken);
+        var result = await echo.InvokeAsync(new() { ["message"] = "Hello MCP!" }, TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(result);
@@ -495,7 +495,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         var mappedTools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Create the chat client.
-        using IChatClient chatClient = new OpenAIClient(s_openAIKey).AsChatClient("gpt-4o-mini")
+        using IChatClient chatClient = new OpenAIClient(s_openAIKey).GetChatClient("gpt-4o-mini").AsIChatClient()
             .AsBuilder()
             .UseFunctionInvocation()
             .Build();
@@ -518,8 +518,8 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
     [Fact(Skip = "Requires OpenAI API Key", SkipWhen = nameof(NoOpenAIKeySet))]
     public async Task SamplingViaChatClient_RequestResponseProperlyPropagated()
     {
-        var samplingHandler = new OpenAIClient(s_openAIKey)
-            .AsChatClient("gpt-4o-mini")
+        var samplingHandler = new OpenAIClient(s_openAIKey).GetChatClient("gpt-4o-mini")
+            .AsIChatClient()
             .CreateSamplingHandler();
         await using var client = await McpClientFactory.CreateAsync(new StdioClientTransport(_fixture.EverythingServerTransportOptions), new()
         {

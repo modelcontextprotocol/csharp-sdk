@@ -2,12 +2,20 @@
 using ModelContextProtocol.Utils.Json;
 using Microsoft.Extensions.AI;
 using System.Text.Json;
+using System.Collections.ObjectModel;
 
 namespace ModelContextProtocol.Client;
 
 /// <summary>Provides an AI function that calls a tool through <see cref="IMcpClient"/>.</summary>
 public sealed class McpClientTool : AIFunction
 {
+    /// <summary>Additional properties exposed from tools.</summary>
+    private static readonly ReadOnlyDictionary<string, object?> s_additionalProperties =
+        new(new Dictionary<string, object?>()
+        {
+            ["Strict"] = false, // some MCP schemas may not meet "strict" requirements
+        });
+
     private readonly IMcpClient _client;
     private readonly string _name;
     private readonly string _description;
@@ -62,14 +70,13 @@ public sealed class McpClientTool : AIFunction
     public override JsonSerializerOptions JsonSerializerOptions { get; }
 
     /// <inheritdoc/>
-    protected async override Task<object?> InvokeCoreAsync(
-        IEnumerable<KeyValuePair<string, object?>> arguments, CancellationToken cancellationToken)
-    {
-        IReadOnlyDictionary<string, object?> argDict =
-            arguments as IReadOnlyDictionary<string, object?> ??
-            arguments.ToDictionary();
+    public override IReadOnlyDictionary<string, object?> AdditionalProperties => s_additionalProperties;
 
-        CallToolResponse result = await _client.CallToolAsync(ProtocolTool.Name, argDict, JsonSerializerOptions, cancellationToken: cancellationToken).ConfigureAwait(false);
+    /// <inheritdoc/>
+    protected async override ValueTask<object?> InvokeCoreAsync(
+        AIFunctionArguments arguments, CancellationToken cancellationToken)
+    {
+        CallToolResponse result = await _client.CallToolAsync(ProtocolTool.Name, arguments, JsonSerializerOptions, cancellationToken: cancellationToken).ConfigureAwait(false);
         return JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.CallToolResponse);
     }
 }

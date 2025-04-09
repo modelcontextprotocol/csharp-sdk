@@ -12,10 +12,6 @@ namespace ModelContextProtocol.Server;
 /// <summary>Provides an <see cref="McpServerTool"/> that's implemented via an <see cref="AIFunction"/>.</summary>
 internal sealed class AIFunctionMcpServerTool : McpServerTool
 {
-    /// <summary>Key used temporarily for flowing request context into an AIFunction.</summary>
-    /// <remarks>This will be replaced with use of AIFunctionArguments.Context.</remarks>
-    internal const string RequestContextKey = "__temporary_RequestContext";
-
     /// <summary>
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
     /// </summary>
@@ -40,17 +36,10 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
     {
         Throw.IfNull(method);
 
-        // TODO: Once this repo consumes a new build of Microsoft.Extensions.AI containing
-        // https://github.com/dotnet/extensions/pull/6158,
-        // https://github.com/dotnet/extensions/pull/6162, and
-        // https://github.com/dotnet/extensions/pull/6175, switch over to using the real
-        // AIFunctionFactory, delete the TemporaryXx types, and fix-up the mechanism by
-        // which the arguments are passed.
-
         options = DeriveOptions(method, options);
 
         return Create(
-            TemporaryAIFunctionFactory.Create(method, target, CreateAIFunctionFactoryOptions(method, options)),
+            AIFunctionFactory.Create(method, target, CreateAIFunctionFactoryOptions(method, options)),
             options);
     }
 
@@ -67,17 +56,17 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
         options = DeriveOptions(method, options);
 
         return Create(
-            TemporaryAIFunctionFactory.Create(method, targetType, CreateAIFunctionFactoryOptions(method, options)),
+            AIFunctionFactory.Create(method, targetType, CreateAIFunctionFactoryOptions(method, options)),
             options);
     }
 
-    private static TemporaryAIFunctionFactoryOptions CreateAIFunctionFactoryOptions(
+    private static AIFunctionFactoryOptions CreateAIFunctionFactoryOptions(
         MethodInfo method, McpServerToolCreateOptions? options) =>
         new()
         {
             Name = options?.Name ?? method.GetCustomAttribute<McpServerToolAttribute>()?.Name,
             Description = options?.Description,
-            MarshalResult = static (result, _, cancellationToken) => Task.FromResult(result),
+            MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
             ConfigureParameterBinding = pi =>
             {
                 if (pi.ParameterType == typeof(RequestContext<CallToolRequestParams>))
@@ -150,9 +139,9 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
 
                 return default;
 
-                static RequestContext<CallToolRequestParams>? GetRequestContext(IReadOnlyDictionary<string, object?> args)
+                static RequestContext<CallToolRequestParams>? GetRequestContext(AIFunctionArguments args)
                 {
-                    if (args.TryGetValue(RequestContextKey, out var orc) &&
+                    if (args.Context?.TryGetValue(typeof(RequestContext<CallToolRequestParams>), out var orc) is true &&
                         orc is RequestContext<CallToolRequestParams> requestContext)
                     {
                         return requestContext;
@@ -251,14 +240,22 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
         RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(request);
-
         cancellationToken.ThrowIfCancellationRequested();
 
-        // TODO: Once we shift to the real AIFunctionFactory, the request should be passed via AIFunctionArguments.Context.
-        Dictionary<string, object?> arguments = request.Params?.Arguments is { } paramArgs ?
-            paramArgs.ToDictionary(entry => entry.Key, entry => entry.Value.AsObject()) :
-            [];
-        arguments[RequestContextKey] = request;
+        AIFunctionArguments arguments = new()
+        {
+            Services = request.Server?.Services,
+            Context = new Dictionary<object, object?>() { [typeof(RequestContext<CallToolRequestParams>)] = request }
+        };
+
+        var argDict = request.Params?.Arguments;
+        if (argDict is not null)
+        {
+            foreach (var kvp in argDict)
+            {
+                arguments[kvp.Key] = kvp.Value;
+            }
+        }
 
         object? result;
         try
@@ -313,8 +310,6 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             
             CallToolResponse callToolResponse => callToolResponse,
 
-            // TODO https://github.com/modelcontextprotocol/csharp-sdk/issues/69:
-            // Add specialization for annotations.
             _ => new()
             {
                 Content = [new()

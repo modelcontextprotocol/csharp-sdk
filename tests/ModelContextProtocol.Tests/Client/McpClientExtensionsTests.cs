@@ -213,7 +213,7 @@ public class McpClientExtensionsTests : ClientServerTestBase
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(12, tools.Count);
         var echo = tools.Single(t => t.Name == "Method4");
-        var result = await echo.InvokeAsync(new Dictionary<string, object?>() { ["i"] = 42 }, TestContext.Current.CancellationToken);
+        var result = await echo.InvokeAsync(new() { ["i"] = 42 }, TestContext.Current.CancellationToken);
         Assert.Contains("Method4 Result 42", result?.ToString());
 
         var valuesSetViaAttr = tools.Single(t => t.Name == "ValuesSetViaAttr");
@@ -240,7 +240,7 @@ public class McpClientExtensionsTests : ClientServerTestBase
         {
             if (tool.Name == "Method4")
             {
-                var result = await tool.InvokeAsync(new Dictionary<string, object?>() { ["i"] = 42 }, TestContext.Current.CancellationToken);
+                var result = await tool.InvokeAsync(new() { ["i"] = 42 }, TestContext.Current.CancellationToken);
                 Assert.Contains("Method4 Result 42", result?.ToString());
                 return;
             }
@@ -277,7 +277,7 @@ public class McpClientExtensionsTests : ClientServerTestBase
         IMcpClient client = await CreateMcpClientForServer();
 
         var tool = (await client.ListToolsAsync(emptyOptions, TestContext.Current.CancellationToken)).First();
-        await Assert.ThrowsAsync<NotSupportedException>(() => tool.InvokeAsync(new Dictionary<string, object?> { ["i"] = 42 }, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<NotSupportedException>(async () => await tool.InvokeAsync(new() { ["i"] = 42 }, TestContext.Current.CancellationToken));
     }
 
     [Fact]

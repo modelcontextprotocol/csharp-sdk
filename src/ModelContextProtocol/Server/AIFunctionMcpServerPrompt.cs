@@ -2,7 +2,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Utils;
-using ModelContextProtocol.Utils.Json;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text.Json;
@@ -12,10 +11,6 @@ namespace ModelContextProtocol.Server;
 /// <summary>Provides an <see cref="McpServerPrompt"/> that's implemented via an <see cref="AIFunction"/>.</summary>
 internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
 {
-    /// <summary>Key used temporarily for flowing request context into an AIFunction.</summary>
-    /// <remarks>This will be replaced with use of AIFunctionArguments.Context.</remarks>
-    internal const string RequestContextKey = "__temporary_RequestContext";
-
     /// <summary>
     /// Creates an <see cref="McpServerPrompt"/> instance for a method, specified via a <see cref="Delegate"/> instance.
     /// </summary>
@@ -40,17 +35,10 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
     {
         Throw.IfNull(method);
 
-        // TODO: Once this repo consumes a new build of Microsoft.Extensions.AI containing
-        // https://github.com/dotnet/extensions/pull/6158,
-        // https://github.com/dotnet/extensions/pull/6162, and
-        // https://github.com/dotnet/extensions/pull/6175, switch over to using the real
-        // AIFunctionFactory, delete the TemporaryXx types, and fix-up the mechanism by
-        // which the arguments are passed.
-
         options = DeriveOptions(method, options);
 
         return Create(
-            TemporaryAIFunctionFactory.Create(method, target, CreateAIFunctionFactoryOptions(method, options)),
+            AIFunctionFactory.Create(method, target, CreateAIFunctionFactoryOptions(method, options)),
             options);
     }
 
@@ -67,17 +55,17 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
         options = DeriveOptions(method, options);
 
         return Create(
-            TemporaryAIFunctionFactory.Create(method, targetType, CreateAIFunctionFactoryOptions(method, options)),
+            AIFunctionFactory.Create(method, targetType, CreateAIFunctionFactoryOptions(method, options)),
             options);
     }
 
-    private static TemporaryAIFunctionFactoryOptions CreateAIFunctionFactoryOptions(
+    private static AIFunctionFactoryOptions CreateAIFunctionFactoryOptions(
         MethodInfo method, McpServerPromptCreateOptions? options) =>
         new()
         {
             Name = options?.Name ?? method.GetCustomAttribute<McpServerPromptAttribute>()?.Name,
             Description = options?.Description,
-            MarshalResult = static (result, _, cancellationToken) => Task.FromResult(result),
+            MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
             ConfigureParameterBinding = pi =>
             {
                 if (pi.ParameterType == typeof(RequestContext<GetPromptRequestParams>))
@@ -129,9 +117,9 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
 
                 return default;
 
-                static RequestContext<GetPromptRequestParams>? GetRequestContext(IReadOnlyDictionary<string, object?> args)
+                static RequestContext<GetPromptRequestParams>? GetRequestContext(AIFunctionArguments args)
                 {
-                    if (args.TryGetValue(RequestContextKey, out var orc) &&
+                    if (args.Context?.TryGetValue(typeof(RequestContext<GetPromptRequestParams>), out var orc) is true &&
                         orc is RequestContext<GetPromptRequestParams> requestContext)
                     {
                         return requestContext;
@@ -204,14 +192,22 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
         RequestContext<GetPromptRequestParams> request, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(request);
-
         cancellationToken.ThrowIfCancellationRequested();
 
-        // TODO: Once we shift to the real AIFunctionFactory, the request should be passed via AIFunctionArguments.Context.
-        Dictionary<string, object?> arguments = request.Params?.Arguments is { } paramArgs ?
-            paramArgs.ToDictionary(entry => entry.Key, entry => entry.Value.AsObject()) :
-            [];
-        arguments[RequestContextKey] = request;
+        AIFunctionArguments arguments = new()
+        {
+            Services = request.Server?.Services,
+            Context = new Dictionary<object, object?>() { [typeof(RequestContext<GetPromptRequestParams>)] = request }
+        };
+
+        var argDict = request.Params?.Arguments;
+        if (argDict is not null)
+        {
+            foreach (var kvp in argDict)
+            {
+                arguments[kvp.Key] = kvp.Value;
+            }
+        }
 
         object? result = await AIFunction.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false);
 

@@ -27,7 +27,7 @@ public class DiagnosticTests
                 Assert.NotEmpty(tools);
 
                 var tool = tools.First(t => t.Name == "DoubleValue");
-                await tool.InvokeAsync(new Dictionary<string, object?>() { ["amount"] = 42 }, TestContext.Current.CancellationToken);
+                await tool.InvokeAsync(new() { ["amount"] = 42 }, TestContext.Current.CancellationToken);
             });
         }
 
