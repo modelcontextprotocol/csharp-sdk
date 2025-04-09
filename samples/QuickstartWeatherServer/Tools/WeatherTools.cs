@@ -1,6 +1,7 @@
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
+using System.Globalization;
 using System.Text.Json;
 
 namespace QuickstartWeatherServer.Tools;
@@ -41,7 +42,8 @@ public sealed class WeatherTools
         [Description("Latitude of the location.")] double latitude,
         [Description("Longitude of the location.")] double longitude)
     {
-        using var jsonDocument = await client.ReadJsonDocumentAsync($"/points/{latitude},{longitude}");
+        var pointUrl = string.Format(CultureInfo.InvariantCulture, "points/{0},{1}", latitude, longitude);
+        using var jsonDocument = await client.ReadJsonDocumentAsync(pointUrl);
         var forecastUrl = jsonDocument.RootElement.GetProperty("properties").GetProperty("forecast").GetString()
             ?? throw new Exception($"No forecast URL provided by {client.BaseAddress}points/{latitude},{longitude}");
 
