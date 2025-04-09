@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+
 namespace ModelContextProtocol.Server;
 
 /// <summary>

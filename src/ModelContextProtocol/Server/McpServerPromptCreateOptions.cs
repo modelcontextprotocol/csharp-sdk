@@ -8,7 +8,7 @@ namespace ModelContextProtocol.Server;
 /// <remarks>
 /// <para>
 /// These options allow for customizing the behavior and metadata of prompts created with
-/// <see cref="McpServerPrompt.Create"/>. They provide control over naming, description,
+/// <see cref="M:McpServerPrompt.Create"/>. They provide control over naming, description,
 /// and dependency injection integration.
 /// </para>
 /// <para>

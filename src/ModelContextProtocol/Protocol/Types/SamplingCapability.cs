@@ -1,3 +1,5 @@
+using Microsoft.Extensions.AI;
+using ModelContextProtocol.Client;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol.Types;

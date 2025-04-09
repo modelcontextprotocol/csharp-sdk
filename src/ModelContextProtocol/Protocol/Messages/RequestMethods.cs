@@ -140,7 +140,7 @@ public static class RequestMethods
     /// var result = await client.ReadResourceAsync("resource://documents/12345");
     /// 
     /// // Process text resource contents
-    /// if (result.Contents.Count > 0 && result.Contents[0] is TextResourceContents textContent)
+    /// if (result.Contents.Count > 0 &amp;&amp; result.Contents[0] is TextResourceContents textContent)
     /// {
     ///     Console.WriteLine($"Resource content: {textContent.Text}");
     ///     Console.WriteLine($"MIME type: {textContent.MimeType}");
@@ -425,7 +425,6 @@ public static class RequestMethods
     /// <seealso cref="Types.CreateMessageRequestParams"/>
     /// <seealso cref="Types.CreateMessageResult"/>
     /// <seealso cref="Types.SamplingCapability"/>
-    /// <seealso cref="Server.McpServerExtensions.RequestSamplingAsync"/>
     public const string SamplingCreateMessage = "sampling/createMessage";
 
     /// <summary>

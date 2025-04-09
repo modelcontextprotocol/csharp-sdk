@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol.Types;
 
 namespace ModelContextProtocol.Server;
@@ -13,7 +14,7 @@ namespace ModelContextProtocol.Server;
 /// the behavior of the MCP server by providing implementations for the various protocol operations.
 /// </para>
 /// <para>
-/// Handlers can be configured individually using the extension methods in <see cref="Configuration.McpServerBuilderExtensions"/>
+/// Handlers can be configured individually using the extension methods in <see cref="McpServerBuilderExtensions"/>
 /// such as <c>WithListToolsHandler</c>, <c>WithCallToolHandler</c>, etc.
 /// </para>
 /// <para>
@@ -84,7 +85,7 @@ public sealed class McpServerHandlers
     /// The handler should implement logic to list all prompts available on the server. Results from this handler
     /// are combined with any prompts defined in <see cref="PromptsCapability.PromptCollection"/>. 
     /// The handler supports pagination through the cursor parameter in <see cref="ListPromptsRequestParams"/>.
-    /// When registered using <see cref="Configuration.McpServerBuilderExtensions.WithListPromptsHandler"/>, it enables 
+    /// When registered using <see cref="McpServerBuilderExtensions.WithListPromptsHandler"/>, it enables 
     /// support for listing prompts dynamically.
     /// </remarks>
     /// <example>

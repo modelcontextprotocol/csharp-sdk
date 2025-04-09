@@ -51,7 +51,6 @@ public sealed class StdioClientTransport : IClientTransport
     /// Initializes a new instance of the <see cref="StdioClientTransport"/> class.
     /// </summary>
     /// <param name="options">Configuration options for the transport, including the command to execute, arguments, working directory, and environment variables.</param>
-    /// <param name="serverConfig">The server configuration, used to identify the server in logs and diagnostics.</param>
     /// <param name="loggerFactory">A logger factory for creating loggers to track transport operations. If null, 
     /// a NullLogger will be used which produces no output. Logging is important for diagnosing process startup 
     /// issues and capturing standard error output from the child process.</param>

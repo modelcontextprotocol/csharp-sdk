@@ -1,3 +1,5 @@
+using ModelContextProtocol.Client;
+
 namespace ModelContextProtocol.Protocol.Transport;
 
 /// <summary>

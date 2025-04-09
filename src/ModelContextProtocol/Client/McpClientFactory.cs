@@ -33,7 +33,6 @@ public static class McpClientFactory
     /// <returns>An <see cref="IMcpClient"/> that's connected to the specified server.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="clientTransport"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="clientOptions"/> is <see langword="null"/>.</exception>
-    /// <exception cref="InvalidOperationException"><paramref name="createTransportFunc"/> returns an invalid transport.</exception>
     /// <example>
     /// <code>
     /// // Connect to an MCP server via StdIo transport

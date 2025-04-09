@@ -30,7 +30,6 @@ namespace ModelContextProtocol.Protocol.Types;
 /// <seealso cref="ListRootsRequestParams"/>
 /// <seealso cref="Root"/>
 /// <seealso cref="RootsCapability"/>
-/// <seealso cref="RequestMethods.RootsList"/>
 /// <seealso href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">Model Context Protocol schema for details</seealso>
 public class ListRootsResult
 {

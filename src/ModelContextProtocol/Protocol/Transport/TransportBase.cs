@@ -50,7 +50,6 @@ public abstract class TransportBase : ITransport
     /// <inheritdoc/>
     public ChannelReader<IJsonRpcMessage> MessageReader => _messageChannel.Reader;
 
-    /// <inheritdoc/>
     /// <summary>
     /// Sends a JSON-RPC message through the transport.
     /// </summary>
@@ -72,6 +71,7 @@ public abstract class TransportBase : ITransport
     /// </list>
     /// </para>
     /// </remarks>
+    public abstract Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default);
 
     /// <inheritdoc/>
     /// <summary>
@@ -108,25 +108,6 @@ public abstract class TransportBase : ITransport
     /// Sets the connected state of the transport.
     /// </summary>
     /// <param name="isConnected">Whether the transport is connected.</param>
-    /// <remarks>
-    /// <para>
-    /// This method is used by transport implementations to update their connection status.
-    /// When a transport connects to its communication channel, it should call <c>SetConnected(true)</c>.
-    /// When the connection is closed or lost, it should call <c>SetConnected(false)</c>.
-    /// </para>
-    /// <para>
-    /// When the connection state changes from connected to disconnected, the message channel writer
-    /// is completed, which allows consumers of the message channel to detect that no more messages
-    /// will be received.
-    /// </para>
-    /// <para>
-    /// Transport implementations should call this method at appropriate points in their lifecycle:
-    /// - When a connection is established (e.g., WebSocket connected)
-    /// - When a connection is terminated (e.g., stream closed)
-    /// - When handling errors that result in connection loss
-    /// - During disposal
-    /// </para>
-    /// </remarks>
     protected void SetConnected(bool isConnected)
     {
         var newIsConnected = isConnected ? 1 : 0;

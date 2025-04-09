@@ -17,22 +17,6 @@ namespace ModelContextProtocol.Shared;
 /// <summary>
 /// Class for managing an MCP JSON-RPC session. This covers both MCP clients and servers.
 /// </summary>
-/// <remarks>
-/// <para>
-/// The McpSession class provides core JSON-RPC communication functionality for the Model Context Protocol,
-/// handling message serialization, request/response correlation, notification delivery, error handling,
-/// and diagnostic metrics collection.
-/// </para>
-/// <para>
-/// It abstracts the underlying transport mechanism (whether stdio, stream, or HTTP-based SSE)
-/// and provides a consistent API for sending and receiving JSON-RPC messages in both
-/// client and server roles.
-/// </para>
-/// <para>
-/// This class is typically created by the <see cref="McpEndpoint"/> implementations and not
-/// directly instantiated by application code.
-/// </para>
-/// </remarks>
 internal sealed class McpSession : IDisposable
 {
     private static readonly Histogram<double> s_clientSessionDuration = Diagnostics.CreateDurationHistogram(
@@ -64,41 +48,14 @@ internal sealed class McpSession : IDisposable
     private long _nextRequestId;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="McpSession"/> class for managing JSON-RPC communication.
+    /// Initializes a new instance of the <see cref="McpSession"/> class.
     /// </summary>
-    /// <param name="isServer">
-    /// Specifies whether this session is serving as a server (true) or client (false).
-    /// This affects how messages are processed and metrics are collected.
-    /// </param>
-    /// <param name="transport">
-    /// The transport implementation that handles the underlying communication channel.
-    /// This can be stdio, stream, SSE or other implementations of <see cref="ITransport"/>.
-    /// </param>
-    /// <param name="endpointName">
-    /// A descriptive name for this endpoint used in logs and diagnostics to identify the session.
-    /// For clients, typically formatted as "Client ({ServerConfig.Id}: {ServerConfig.Name})".
-    /// For servers, typically formatted as "Server ({ServerInfo.Name} {ServerInfo.Version})".
-    /// </param>
-    /// <param name="requestHandlers">
-    /// A collection of handlers for processing incoming JSON-RPC requests by method name.
-    /// </param>
-    /// <param name="notificationHandlers">
-    /// A collection of handlers for processing incoming JSON-RPC notifications by method name.
-    /// </param>
-    /// <param name="logger">
-    /// The logger instance to use for recording diagnostic information about session activities.
-    /// If null, a <see cref="NullLogger"/> instance will be used.
-    /// </param>
-    /// <remarks>
-    /// <para>
-    /// The McpSession manages the lifecycle of a JSON-RPC connection, handling message 
-    /// serialization/deserialization, request tracking, notification delivery, and diagnostic metrics.
-    /// </para>
-    /// <para>
-    /// After creating a session, you typically need to call <see cref="ProcessMessagesAsync"/> 
-    /// to begin processing incoming messages, usually in a background task.
-    /// </para>
-    /// </remarks>
+    /// <param name="isServer">true if this is a server; false if it's a client.</param>
+    /// <param name="transport">An MCP transport implementation.</param>
+    /// <param name="endpointName">The name of the endpoint for logging and debug purposes.</param>
+    /// <param name="requestHandlers">A collection of request handlers.</param>
+    /// <param name="notificationHandlers">A collection of notification handlers.</param>
+    /// <param name="logger">The logger.</param>
     public McpSession(
         bool isServer,
         ITransport transport,
@@ -128,22 +85,6 @@ internal sealed class McpSession : IDisposable
     /// <summary>
     /// Gets and sets the name of the endpoint for logging and debug purposes.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// The endpoint name uniquely identifies a client or server connection in logs and diagnostics.
-    /// For clients, it's typically formatted as "Client ({ServerConfig.Id}: {ServerConfig.Name})".
-    /// For servers, it's typically formatted as "Server ({ServerInfo.Name} {ServerInfo.Version})".
-    /// </para>
-    /// <para>
-    /// Unlike <see cref="McpEndpoint.EndpointName"/>, this property can be modified after initialization,
-    /// which allows updating the session identifier if additional information becomes available during
-    /// the connection lifecycle.
-    /// </para>
-    /// <para>
-    /// This property is used extensively in log messages to provide context for session-related
-    /// events, errors, message processing activities, and request/response handling.
-    /// </para>
-    /// </remarks>
     public string EndpointName { get; set; }
 
     /// <summary>
@@ -476,31 +417,7 @@ internal sealed class McpSession : IDisposable
         }
     }
 
-    /// <summary>
-    /// Sends a JSON-RPC message to the remote endpoint through the transport layer.
-    /// </summary>
-    /// <param name="message">The JSON-RPC message to send. This can be a request, response, notification, or error.</param>
-    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>A task that represents the asynchronous send operation.</returns>
-    /// <exception cref="McpException">Thrown when the transport is not connected.</exception>
-    /// <exception cref="ArgumentNullException">Thrown when the message is null.</exception>
-    /// <remarks>
-    /// <para>
-    /// This method is the core mechanism for sending all types of JSON-RPC messages through the MCP session.
-    /// It performs several important tasks:
-    /// <list type="bullet">
-    ///   <item>Verifies the transport is connected</item>
-    ///   <item>Creates diagnostic activities and metrics for telemetry</item>
-    ///   <item>Logs message details at appropriate levels</item>
-    ///   <item>Delegates to the transport layer for actual message transmission</item>
-    /// </list>
-    /// </para>
-    /// <para>
-    /// While this method can be used directly, for requests specifically, consider using
-    /// <see cref="SendRequestAsync"/> which provides additional functionality such as waiting
-    /// for and matching the response message.
-    /// </para>
-    /// </remarks>
+    public async Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(message);
 
@@ -667,18 +584,6 @@ internal sealed class McpSession : IDisposable
         }
     }
 
-    /// <summary>
-    /// Releases all resources used by the MCP session.
-    /// </summary>
-    /// <remarks>
-    /// This method:
-    /// <list type="bullet">
-    /// <item><description>Records session duration metrics for diagnostic purposes</description></item>
-    /// <item><description>Cancels all pending requests</description></item>
-    /// <item><description>Clears the pending requests collection</description></item>
-    /// </list>
-    /// Implements the <see cref="IDisposable"/> interface.
-    /// </remarks>
     public void Dispose()
     {
         Histogram<double> durationMetric = _isServer ? s_serverSessionDuration : s_clientSessionDuration;

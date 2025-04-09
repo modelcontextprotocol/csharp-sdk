@@ -199,9 +199,6 @@ public class StreamServerTransport : TransportBase, ITransport
     /// This method cancels ongoing operations, disposes the input/output streams, 
     /// and waits for the read task to complete. Multiple calls to this method will only
     /// dispose the resources once.
-    /// 
-    /// After disposal, <see cref="IsConnected"/> will return false and any attempt 
-    /// to send messages will throw an <see cref="McpTransportException"/>.
     /// </remarks>
     public override async ValueTask DisposeAsync()
     {

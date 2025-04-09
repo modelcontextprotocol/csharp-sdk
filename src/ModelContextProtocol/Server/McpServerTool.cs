@@ -17,7 +17,7 @@ namespace ModelContextProtocol.Server;
 /// <para>
 /// Tools can be created in several ways:
 /// <list type="bullet">
-///   <item>Using the static <see cref="Create"/> methods with delegates or method references</item>
+///   <item>Using the static <see cref="M:Create"/> methods with delegates or method references</item>
 ///   <item>By creating classes marked with <see cref="McpServerToolTypeAttribute"/> containing methods marked with <see cref="McpServerToolAttribute"/></item>
 ///   <item>By inheriting from <see cref="McpServerTool"/> to create custom tool implementations</item>
 /// </list>

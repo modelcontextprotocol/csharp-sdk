@@ -38,11 +38,8 @@ public sealed class SseResponseStreamTransport(Stream sseResponseStream, string 
     /// <remarks>
     /// <para>
     /// This property is <c>true</c> after <see cref="RunAsync(CancellationToken)"/> is called and until the 
-    /// transport is disconnected. Methods like <see cref="SendMessageAsync(IJsonRpcMessage, CancellationToken)"/> and
-    /// <see cref="ReceiveMessageAsync(CancellationToken)"/> can only be used while the transport is connected.
-    /// </para>
-    /// </remarks>
-    /// and the transport is actively processing messages.
+    /// transport is disconnected. Methods like <see cref="SendMessageAsync(IJsonRpcMessage, CancellationToken)"/> 
+    /// can only be used while the transport is connected.
     /// </para>
     /// <para>
     /// It becomes <c>false</c> when the transport is disposed or encounters an error that

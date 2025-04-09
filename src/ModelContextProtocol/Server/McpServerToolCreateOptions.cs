@@ -8,7 +8,7 @@ namespace ModelContextProtocol.Server;
 /// <remarks>
 /// <para>
 /// These options allow for customizing the behavior and metadata of tools created with
-/// <see cref="McpServerTool.Create"/>. They provide control over naming, description,
+/// <see cref="M:McpServerTool.Create"/>. They provide control over naming, description,
 /// tool properties, and dependency injection integration.
 /// </para>
 /// <para>

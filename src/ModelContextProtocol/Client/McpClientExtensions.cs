@@ -1158,7 +1158,6 @@ public static class McpClientExtensions
     /// </para>
     /// <para>
     /// To receive all log messages, set the level to <see cref="LoggingLevel.Debug"/>.
-    /// To disable log messages completely, set the level to <see cref="LoggingLevel.Off"/>.
     /// </para>
     /// <para>
     /// The server must have the Logging capability enabled for this request to succeed. If the server

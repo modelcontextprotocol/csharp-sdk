@@ -274,7 +274,7 @@ public static class McpEndpointExtensions
     ///         cancellationToken);
     ///         
     ///     // Perform operation with intermediate progress updates
-    ///     for (int i = 1; i <= 10; i++)
+    ///     for (int i = 1; i &lt;= 10; i++)
     ///     {
     ///         // Do work...
     ///         await Task.Delay(1000, cancellationToken);

@@ -131,7 +131,7 @@ public static partial class McpServerBuilderExtensions
     /// </para>
     /// </example>
     /// <seealso cref="WithTools{TToolType}"/>
-    /// <seealso cref="WithTools(IMcpServerBuilder, IEnumerable{Type}[])"/>
+    /// <seealso cref="WithTools(IMcpServerBuilder, IEnumerable{Type})"/>
     /// <seealso cref="McpServerToolTypeAttribute"/>
     /// <seealso cref="McpServerToolAttribute"/>
     [RequiresUnreferencedCode(WithToolsRequiresUnreferencedCodeMessage)]
@@ -263,7 +263,7 @@ public static partial class McpServerBuilderExtensions
     /// </para>
     /// </example>
     /// <seealso cref="WithPrompts{TPromptType}"/>
-    /// <seealso cref="WithPrompts(IMcpServerBuilder, IEnumerable{Type}[])"/>
+    /// <seealso cref="WithPrompts(IMcpServerBuilder, IEnumerable{Type})"/>
     /// <seealso cref="McpServerPromptTypeAttribute"/>
     /// <seealso cref="McpServerPromptAttribute"/>
     [RequiresUnreferencedCode(WithPromptsRequiresUnreferencedCodeMessage)]
@@ -451,7 +451,7 @@ public static partial class McpServerBuilderExtensions
     /// 
     /// The handler should handle errors gracefully by either:
     /// <list type="bullet">
-    ///   <item>Throwing an <see cref="McpException"/> which will be properly communicated to the client</item>
+    ///   <item>Throwing an exception which will be properly communicated to the client</item>
     ///   <item>Returning a <see cref="CallToolResponse"/> with its <see cref="CallToolResponse.IsError"/> property set to true</item>
     /// </list>
     /// </remarks>
@@ -480,7 +480,7 @@ public static partial class McpServerBuilderExtensions
     ///                 "subtract" => a - b,
     ///                 "multiply" => a * b,
     ///                 "divide" => a / b,
-    ///                 _ => throw new McpException($"Unknown operation: {operation}")
+    ///                 _ => throw new Exception($"Unknown operation: {operation}")
     ///             };
     ///             
     ///             return new CallToolResponse()
@@ -489,7 +489,7 @@ public static partial class McpServerBuilderExtensions
     ///             };
     ///         }
     ///         
-    ///         throw new McpException($"Unknown tool: {request.Params?.Name}");
+    ///         throw new Exception($"Unknown tool: {request.Params?.Name}");
     ///     });
     /// </code>
     /// </example>
@@ -532,9 +532,6 @@ public static partial class McpServerBuilderExtensions
     /// Sets the handler for get prompt requests. This enables dynamic prompt resolution based on
     /// the prompt name and arguments provided in the request.
     /// </summary>
-    /// <param name="builder">The builder instance.</param>
-    /// <param name="handler">A function that handles the get prompt request, taking a request context and cancellation token,
-    /// and returning the prompt content. The handler is responsible for looking up or generating prompts based on the request parameters.</param>
     /// <returns>The builder instance for chaining.</returns>
     /// <example>
     /// <code>
@@ -560,7 +557,7 @@ public static partial class McpServerBuilderExtensions
     ///             };
     ///         }
     ///         
-    ///         throw new McpException($"Unknown prompt: {request.Params?.Name}");
+    ///         throw new Exception($"Unknown prompt: {request.Params?.Name}");
     ///     });
     /// </code>
     /// </example>
@@ -623,9 +620,6 @@ public static partial class McpServerBuilderExtensions
     }
 
     /// <summary>
-    /// Sets the handler for read resources requests. This handler is responsible for retrieving
-    /// the content of a specific resource identified by its URI in the Model Context Protocol.
-    /// <summary>
     /// Registers a handler that will be invoked when clients request to read a specific resource.
     /// This handler is responsible for locating and returning the contents of resources identified by URIs.
     /// </summary>
@@ -672,6 +666,9 @@ public static partial class McpServerBuilderExtensions
     ///         ]
     ///     });
     /// })
+    /// </code>
+    /// </example>
+    /// <seealso cref="WithListResourcesHandler"/>
     public static IMcpServerBuilder WithReadResourceHandler(this IMcpServerBuilder builder, Func<RequestContext<ReadResourceRequestParams>, CancellationToken, Task<ReadResourceResult>> handler)
     {
         Throw.IfNull(builder);
@@ -901,7 +898,7 @@ public static partial class McpServerBuilderExtensions
     /// </para>
     /// <para>
     /// This handler is required when the server has enabled the <see cref="LoggingCapability"/>. If the capability
-    /// is enabled but no handler is provided, a <see cref="McpException"/> will be thrown when the server starts.
+    /// is enabled but no handler is provided, a <see cref="Exception"/> will be thrown when the server starts.
     /// </para>
     /// <para>
     /// The handler receives a <see cref="RequestContext{SetLevelRequestParams}"/> containing the client's requested 

@@ -45,9 +45,6 @@ public record SseClientTransportOptions
     ///   <item><description>The endpoint event to be received, which indicates the message endpoint URL</description></item>
     /// </list>
     /// If the timeout expires before the connection is established, a <see cref="System.TimeoutException"/> will be thrown.
-    /// 
-    /// When configuring through <see cref="McpServerConfig"/>, this can be specified using the "connectionTimeout" 
-    /// key in <see cref="McpServerConfig.TransportOptions"/> as the number of seconds.
     /// </remarks>
     public TimeSpan ConnectionTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
@@ -63,25 +60,7 @@ public record SseClientTransportOptions
     /// <para>
     /// Between each reconnection attempt, the client will wait for the duration specified by <see cref="ReconnectDelay"/>.
     /// </para>
-    /// <para>
-    /// When configuring through <see cref="McpServerConfig"/>, this can be specified using the "maxReconnectAttempts" 
-    /// key in <see cref="McpServerConfig.TransportOptions"/> as an integer value.
-    /// </para>
     /// </remarks>
-    /// <example>
-    /// Configuration through <see cref="McpServerConfig"/>:
-    /// <code>
-    /// var serverConfig = new McpServerConfig
-    /// {
-    ///     TransportType = TransportTypes.Sse,
-    ///     Location = "http://localhost:8080",
-    ///     TransportOptions = new Dictionary&lt;string, string&gt;
-    ///     {
-    ///         ["maxReconnectAttempts"] = "5"
-    ///     }
-    /// };
-    /// </code>
-    /// </example>
     public int MaxReconnectAttempts { get; init; } = 3;
 
     /// <summary>
@@ -97,25 +76,7 @@ public record SseClientTransportOptions
     /// The reconnection process continues until either a successful connection is established or
     /// the maximum number of reconnection attempts (<see cref="MaxReconnectAttempts"/>) is reached.
     /// </para>
-    /// <para>
-    /// When configuring through <see cref="McpServerConfig"/>, this can be specified using the "reconnectDelay" 
-    /// key in <see cref="McpServerConfig.TransportOptions"/> as the number of seconds.
-    /// </para>
     /// </remarks>
-    /// <example>
-    /// Configuration through <see cref="McpServerConfig"/>:
-    /// <code>
-    /// var serverConfig = new McpServerConfig
-    /// {
-    ///     TransportType = TransportTypes.Sse,
-    ///     Location = "http://localhost:8080",
-    ///     TransportOptions = new Dictionary&lt;string, string&gt;
-    ///     {
-    ///         ["reconnectDelay"] = "10"  // 10 seconds between reconnection attempts
-    ///     }
-    /// };
-    /// </code>
-    /// </example>
     public TimeSpan ReconnectDelay { get; init; } = TimeSpan.FromSeconds(5);
 
     /// <summary>
@@ -130,8 +91,6 @@ public record SseClientTransportOptions
     ///   <item><description>Custom headers required by specific server implementations</description></item>
     ///   <item><description>Content negotiation preferences</description></item>
     /// </list>
-    /// When configuring through <see cref="McpServerConfig"/>, headers can be specified by adding entries 
-    /// with keys prefixed with "header." (e.g., "header.Authorization").
     /// </remarks>
     public Dictionary<string, string>? AdditionalHeaders { get; init; }
 }

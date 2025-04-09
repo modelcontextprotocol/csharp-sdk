@@ -19,7 +19,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
         McpServerPromptCreateOptions? options)
     {
         Throw.IfNull(method);
-        
+
         options = DeriveOptions(method.Method, options);
 
         return Create(method.Method, method.Target, options);
@@ -200,6 +200,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
     ///   <item><description><see cref="ChatMessage"/> objects are converted to prompt messages</description></item>
     /// </list>
     /// </remarks>
+    public override async Task<GetPromptResult> GetAsync(
         RequestContext<GetPromptRequestParams> request, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(request);

@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+
 namespace ModelContextProtocol.Server;
 
 /// <summary>
@@ -6,7 +8,7 @@ namespace ModelContextProtocol.Server;
 /// <remarks>
 /// <para>
 /// This attribute is applied to methods that should be exposed as tools in the Model Context Protocol. When a class 
-/// containing methods marked with this attribute is registered with <see cref="McpServerBuilderExtensions.WithTools{TToolType}"/>,
+/// containing methods marked with this attribute is registered with <see cref="McpServerBuilderExtensions"/>,
 /// these methods become available as tools that can be called by MCP clients.
 /// </para>
 /// <para>

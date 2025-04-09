@@ -16,41 +16,6 @@ internal static class ErrorCodes
     /// This is different from InvalidRequest which indicates that the JSON is valid but
     /// the request structure doesn't conform to the JSON-RPC specification.
     /// </remarks>
-    /// <example>
-    /// <code>
-    /// // Example 1: Creating a JSON-RPC error response for a parse error
-    /// var parseError = new JsonRpcError
-    /// {
-    ///     Id = null, // Usually the ID can't be determined from unparseable JSON
-    ///     Error = new JsonRpcErrorDetail
-    ///     {
-    ///         Code = ErrorCodes.ParseError,
-    ///         Message = "The request contains invalid JSON and cannot be parsed",
-    ///         Data = JsonNode.Parse($"{{\"receivedText\": \"{receivedText.Substring(0, Math.Min(100, receivedText.Length))}...\"}}")
-    ///     }
-    /// };
-    /// 
-    /// // Example 2: Catching a JSON exception and returning the appropriate error
-    /// try
-    /// {
-    ///     var request = JsonSerializer.Deserialize<JsonRpcRequest>(json);
-    ///     // Process request
-    /// }
-    /// catch (JsonException ex)
-    /// {
-    ///     // Handle invalid JSON
-    ///     return new JsonRpcError
-    ///     {
-    ///         Id = null,
-    ///         Error = new JsonRpcErrorDetail
-    ///         {
-    ///             Code = ErrorCodes.ParseError,
-    ///             Message = "Parse error: " + ex.Message
-    ///         }
-    ///     };
-    /// }
-    /// </code>
-    /// </example>
     public const int ParseError = -32700;
 
     /// <summary>

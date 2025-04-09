@@ -12,32 +12,8 @@ using System.Text.Json;
 namespace ModelContextProtocol.Protocol.Transport;
 
 /// <summary>
-/// Internal implementation of the Server-Sent Events (SSE) client transport session.
+/// The ServerSideEvents client transport implementation
 /// </summary>
-/// <remarks>
-/// <para>
-/// This class handles the active transport session between an MCP client and server using the SSE protocol.
-/// It establishes and maintains an HTTP connection to receive real-time messages from the server via SSE,
-/// while sending messages back to the server using HTTP POST requests.
-/// </para>
-/// <para>
-/// The transport operates in two phases:
-/// <list type="number">
-///   <item>
-///     <description>Connection establishment: Creates an SSE connection to the server and waits for an "endpoint" event
-///     that provides the URL for sending messages back to the server.</description>
-///   </item>
-///   <item>
-///     <description>Message exchange: Once connected, it receives messages through the SSE stream
-///     and sends messages via HTTP POST to the endpoint URL.</description>
-///   </item>
-/// </list>
-/// </para>
-/// <para>
-/// This transport implementation is typically created and managed by <see cref="SseClientTransport"/>,
-/// which handles the creation of transport sessions and connection lifecycle.
-/// </para>
-/// </remarks>
 internal sealed class SseClientSessionTransport : TransportBase
 {
     private readonly string _endpointName;
@@ -51,31 +27,13 @@ internal sealed class SseClientSessionTransport : TransportBase
     private readonly TaskCompletionSource<bool> _connectionEstablished;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="SseClientSessionTransport"/> class.
+    /// SSE transport for client endpoints. Unlike stdio it does not launch a process, but connects to an existing server.
+    /// The HTTP server can be local or remote, and must support the SSE protocol.
     /// </summary>
-    /// <param name="transportOptions">Configuration options for the transport, including connection timeout, 
-    /// reconnection policy, and HTTP headers.</param>
-    /// <param name="serverConfig">The configuration object indicating which server to connect to,
-    /// including the SSE endpoint URL.</param>
-    /// <param name="httpClient">The HTTP client instance used for requests. This client is used for both
-    /// establishing the SSE connection and sending messages to the server.</param>
-    /// <param name="loggerFactory">Logger factory for creating loggers. Used for diagnostic output during 
-    /// transport operations. If null, a NullLogger will be used.</param>
-    /// <remarks>
-    /// <para>
-    /// This constructor initializes the transport but does not establish a connection.
-    /// Call <see cref="ConnectAsync(CancellationToken)"/> to establish the connection to the server.
-    /// </para>
-    /// <para>
-    /// The transport uses the provided <paramref name="serverConfig"/>'s Location property
-    /// as the base URL for the SSE connection. The URL should point to an SSE-compatible endpoint
-    /// on the server.
-    /// </para>
-    /// <para>
-    /// The <paramref name="httpClient"/> instance is not owned by this class and will not be
-    /// disposed when the transport is disposed.
-    /// </para>
-    /// </remarks>
+    /// <param name="transportOptions">Configuration options for the transport.</param>
+    /// <param name="httpClient">The HTTP client instance used for requests.</param>
+    /// <param name="loggerFactory">Logger factory for creating loggers.</param>
+    /// <param name="endpointName">The endpoint name used for logging purposes.</param>
     public SseClientSessionTransport(SseClientTransportOptions transportOptions, HttpClient httpClient, ILoggerFactory? loggerFactory, string endpointName)
         : base(loggerFactory)
     {
@@ -123,27 +81,6 @@ internal sealed class SseClientSessionTransport : TransportBase
     }
 
     /// <inheritdoc/>
-    /// <remarks>
-    /// <para>
-    /// For SSE client session transports, this method sends the JSON-RPC message to the server
-    /// by making an HTTP POST request to the message endpoint established during connection.
-    /// </para>
-    /// <para>
-    /// This implementation:
-    /// <list type="bullet">
-    ///   <item>Verifies that the transport is connected and has a valid message endpoint</item>
-    ///   <item>Serializes the message to JSON</item>
-    ///   <item>Creates an HTTP request with the proper Content-Type</item>
-    ///   <item>Sends the request to the server and verifies the response status</item>
-    /// </list>
-    /// </para>
-    /// <para>
-    /// If the server returns a non-successful status code, this method throws a
-    /// <see cref="McpTransportException"/> with details about the error.
-    /// </para>
-    /// </remarks>
-    /// <exception cref="InvalidOperationException">Thrown when the transport is not connected.</exception>
-    /// <exception cref="McpTransportException">Thrown when the server returns a non-successful status code.</exception>
     public override async Task SendMessageAsync(
         IJsonRpcMessage message,
         CancellationToken cancellationToken = default)
