@@ -41,44 +41,23 @@ public readonly struct ProgressToken : IEquatable<ProgressToken>
         _token is long longValue ? longValue.ToString(CultureInfo.InvariantCulture) :
         null;
 
-    /// <summary>
-    /// Determines whether the specified <see cref="ProgressToken"/> is equal to the current <see cref="ProgressToken"/>.
-    /// </summary>
-    /// <param name="other">The <see cref="ProgressToken"/> to compare with the current object.</param>
-    /// <returns><see langword="true"/> if the specified object is equal to the current object; otherwise, <see langword="false"/>.</returns>
-    /// <remarks>
-    /// The equality comparison is based on the underlying token value, which can be a string, a long, or null.
-    /// </remarks>
+    /// <inheritdoc />
     public bool Equals(ProgressToken other) => Equals(_token, other._token);
 
     /// <inheritdoc />
     public override bool Equals(object? obj) => obj is ProgressToken other && Equals(other);
 
-    /// <summary>
-    /// Returns a hash code for the current <see cref="ProgressToken"/> instance.
-    /// </summary>
-    /// <returns>
-    /// A hash code for the current <see cref="ProgressToken"/> instance, calculated from the underlying token value.
-    /// Returns the hash code of the token if it's not null, or 0 if the token is null.
-    /// </returns>
-    /// <remarks>
-    /// This implementation ensures that tokens with the same underlying value will produce the same hash code,
-    /// which is consistent with the equality comparison behavior defined in the <see cref="Equals(ProgressToken)"/> method.
-    /// </remarks>
+    /// <inheritdoc />
     public override int GetHashCode() => _token?.GetHashCode() ?? 0;
 
-    /// <summary>
-    /// Compares two ProgressTokens for equality.
-    /// </summary>
+    /// <inheritdoc />
     public static bool operator ==(ProgressToken left, ProgressToken right) => left.Equals(right);
 
-    /// <summary>
-    /// Compares two ProgressTokens for inequality.
-    /// </summary>
+    /// <inheritdoc />
     public static bool operator !=(ProgressToken left, ProgressToken right) => !left.Equals(right);
 
     /// <summary>
-    /// JSON converter for ProgressToken that handles both string and number values.
+    /// Provides a <see cref="JsonConverter"/> for <see cref="ProgressToken"/> that handles both string and number values.
     /// </summary>
     [EditorBrowsable(EditorBrowsableState.Never)]
     public sealed class Converter : JsonConverter<ProgressToken>
