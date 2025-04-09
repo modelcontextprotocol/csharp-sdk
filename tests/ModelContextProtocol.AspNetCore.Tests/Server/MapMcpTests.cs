@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using ModelContextProtocol.Tests.Utils;
 
-namespace ModelContextProtocol.Tests.Server;
+namespace ModelContextProtocol.AspNetCore.Tests.Server;
 
 public class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelInMemoryTest(testOutputHelper)
 {

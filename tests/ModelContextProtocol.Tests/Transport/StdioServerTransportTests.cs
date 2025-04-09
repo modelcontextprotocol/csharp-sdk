@@ -187,12 +187,12 @@ public class StdioServerTransportTests : LoggedTest
         // Magnifying glass emoji: 🔍 (U+1F50D)
         bool magnifyingGlassFound =
             emojiResult.Contains("🔍") ||
-            emojiResult.Contains("\\ud83d\\udd0d", StringComparison.OrdinalIgnoreCase);
+            emojiResult.IndexOf("\\ud83d\\udd0d", StringComparison.OrdinalIgnoreCase) >= 0;
 
         // Rocket emoji: 🚀 (U+1F680)
         bool rocketFound =
             emojiResult.Contains("🚀") ||
-            emojiResult.Contains("\\ud83d\\ude80", StringComparison.OrdinalIgnoreCase);
+            emojiResult.IndexOf("\\ud83d\\ude80", StringComparison.OrdinalIgnoreCase) >= 0;
 
         Assert.True(magnifyingGlassFound, "Magnifying glass emoji not found in result");
         Assert.True(rocketFound, "Rocket emoji not found in result");

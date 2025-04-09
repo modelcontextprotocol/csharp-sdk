@@ -32,7 +32,7 @@ public class TestServerTransport : ITransport
     {
         _messageChannel.Writer.TryComplete();
         IsConnected = false;
-        return default;
+        return ValueTask.CompletedTask;
     }
 
     public async Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)

@@ -64,7 +64,8 @@ internal static class Program
 
     private static async Task RunBackgroundLoop(IMcpServer server, CancellationToken cancellationToken = default)
     {
-        var loggingLevels = Enum.GetValues<LoggingLevel>();
+        var loggingLevels = (LoggingLevel[])Enum.GetValues(typeof(LoggingLevel));
+        var random = new Random();
 
         while (true)
         {
@@ -74,7 +75,7 @@ internal static class Program
                 // Send random log messages every few seconds
                 if (_minimumLoggingLevel is not null)
                 {
-                    var logLevel = loggingLevels[Random.Shared.Next(loggingLevels.Length)];
+                    var logLevel = loggingLevels[random.Next(loggingLevels.Length)];
                     await server.SendMessageAsync(new JsonRpcNotification()
                     {
                         Method = NotificationMethods.LoggingMessageNotification,
@@ -468,7 +469,7 @@ internal static class Program
                     throw new McpException("Invalid resource URI");
                 }
 
-                _subscribedResources.Remove(request.Params.Uri, out _);
+                _subscribedResources.TryRemove(request.Params.Uri, out _);
 
                 return Task.FromResult(new EmptyResult());
             },
