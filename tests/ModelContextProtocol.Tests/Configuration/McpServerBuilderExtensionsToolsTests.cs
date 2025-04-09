@@ -376,7 +376,7 @@ public class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         Assert.True(result.IsError);
         Assert.NotNull(result.Content);
         Assert.NotEmpty(result.Content);
-        Assert.Contains("Test error", result.Content[0].Text);
+        Assert.Contains("An error occurred", result.Content[0].Text);
     }
 
     [Fact]

@@ -270,7 +270,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             return new CallToolResponse()
             {
                 IsError = true,
-                Content = [new() { Text = e.Message, Type = "text" }],
+                Content = [new() { Text = $"An error occurred invoking '{request.Params?.Name}'.", Type = "text" }],
             };
         }
 
