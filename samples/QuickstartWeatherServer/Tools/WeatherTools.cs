@@ -42,7 +42,7 @@ public sealed class WeatherTools
         [Description("Latitude of the location.")] double latitude,
         [Description("Longitude of the location.")] double longitude)
     {
-        var pointUrl = string.Format(CultureInfo.InvariantCulture, "points/{0},{1}", latitude, longitude);
+        var pointUrl = string.Create(CultureInfo.InvariantCulture, $"/points/{latitude},{longitude}");
         using var jsonDocument = await client.ReadJsonDocumentAsync(pointUrl);
         var forecastUrl = jsonDocument.RootElement.GetProperty("properties").GetProperty("forecast").GetString()
             ?? throw new Exception($"No forecast URL provided by {client.BaseAddress}points/{latitude},{longitude}");
