@@ -1,12 +1,12 @@
 namespace ModelContextProtocol.Protocol.Transport;
 
 /// <summary>
-/// Options for configuring the SSE transport.
+/// Provides options for configuring <see cref="SseClientTransport"/> instances.
 /// </summary>
 public record SseClientTransportOptions
 {
     /// <summary>
-    /// The base address of the server for SSE connections.
+    /// Gets the base address of the server for SSE connections.
     /// </summary>
     public required Uri Endpoint
     {
@@ -31,12 +31,12 @@ public record SseClientTransportOptions
     }
 
     /// <summary>
-    /// Specifies a transport identifier used for logging purposes.
+    /// Gets a transport identifier used for logging purposes.
     /// </summary>
     public string? Name { get; init; }
 
     /// <summary>
-    /// Timeout for initial connection and endpoint event.
+    /// Gets a timeout used to establish the initial connection to the SSE server.
     /// </summary>
     /// <remarks>
     /// This timeout controls how long the client waits for:
@@ -44,12 +44,12 @@ public record SseClientTransportOptions
     ///   <item><description>The initial HTTP connection to be established with the SSE server</description></item>
     ///   <item><description>The endpoint event to be received, which indicates the message endpoint URL</description></item>
     /// </list>
-    /// If the timeout expires before the connection is established, a <see cref="System.TimeoutException"/> will be thrown.
+    /// If the timeout expires before the connection is established, a <see cref="TimeoutException"/> will be thrown.
     /// </remarks>
     public TimeSpan ConnectionTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    /// Maximum number of reconnection attempts for the SSE connection before giving up.
+    /// Gets the maximum number of reconnection attempts for the SSE connection before giving up.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -64,7 +64,7 @@ public record SseClientTransportOptions
     public int MaxReconnectAttempts { get; init; } = 3;
 
     /// <summary>
-    /// Delay between reconnection attempts when the SSE connection fails.
+    /// Gets the delay to employ between reconnection attempts when the SSE connection fails.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -80,17 +80,10 @@ public record SseClientTransportOptions
     public TimeSpan ReconnectDelay { get; init; } = TimeSpan.FromSeconds(5);
 
     /// <summary>
-    /// Custom HTTP headers to include in requests to the SSE server.
+    /// Gets custom HTTP headers to include in requests to the SSE server.
     /// </summary>
     /// <remarks>
     /// Use this property to specify custom HTTP headers that should be sent with each request to the server.
-    /// Common use cases include:
-    /// <list type="bullet">
-    ///   <item><description>Authentication headers (e.g., "Authorization")</description></item>
-    ///   <item><description>API keys or access tokens</description></item>
-    ///   <item><description>Custom headers required by specific server implementations</description></item>
-    ///   <item><description>Content negotiation preferences</description></item>
-    /// </list>
     /// </remarks>
     public Dictionary<string, string>? AdditionalHeaders { get; init; }
 }

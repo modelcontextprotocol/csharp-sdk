@@ -1,7 +1,4 @@
-﻿// Protocol/Transport/IMcpTransport.cs
-namespace ModelContextProtocol.Protocol.Transport;
-
-// Protocol/Transport/McpTransportException.cs
+﻿namespace ModelContextProtocol.Protocol.Transport;
 
 /// <summary>
 /// Represents errors that occur in MCP transport operations.
@@ -9,14 +6,14 @@ namespace ModelContextProtocol.Protocol.Transport;
 public class McpTransportException : Exception
 {
     /// <summary>
-    /// Initializes a new instance of the McpTransportException class.
+    /// Initializes a new instance of the <see cref="McpTransportException"/> class.
     /// </summary>
     public McpTransportException()
     {
     }
 
     /// <summary>
-    /// Initializes a new instance of the McpTransportException class with a specified error message.
+    /// Initializes a new instance of the <see cref="McpTransportException"/> class with a specified error message.
     /// </summary>
     /// <param name="message">The message that describes the error.</param>
     public McpTransportException(string message)
@@ -25,7 +22,7 @@ public class McpTransportException : Exception
     }
 
     /// <summary>
-    /// Initializes a new instance of the McpTransportException class with a specified error message
+    /// Initializes a new instance of the <see cref="McpTransportException"/> class with a specified error message
     /// and a reference to the inner exception that is the cause of this exception.
     /// </summary>
     /// <param name="message">The message that describes the error.</param>
