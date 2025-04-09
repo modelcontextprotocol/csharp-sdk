@@ -19,17 +19,13 @@ namespace ModelContextProtocol.Client;
 /// such as pinging a server, listing and working with tools, prompts, and resources, and
 /// managing subscriptions to resources.
 /// </para>
-/// <para>
-/// These methods build on the core functionality provided by <see cref="IMcpClient"/> to offer
-/// a more convenient API for client applications.
-/// </para>
 /// </remarks>
 public static class McpClientExtensions
 {
     /// <summary>
     /// Sends a ping request to verify server connectivity.
     /// </summary>
-    /// <param name="client">The client.</param>
+    /// <param name="client">The client instance used to communicate with the MCP server.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that completes when the ping is successful.</returns>
     /// <remarks>
@@ -43,25 +39,8 @@ public static class McpClientExtensions
     /// of the task indicates that the server is operational and accessible.
     /// </para>
     /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     /// <exception cref="McpException">Thrown when the server cannot be reached or returns an error response.</exception>
-    /// <example>
-    /// <code>
-    /// // Check if the server is responsive
-    /// try
-    /// {
-    ///     await mcpClient.PingAsync();
-    ///     Console.WriteLine("Server is online and responding");
-    /// }
-    /// catch (McpException ex)
-    /// {
-    ///     Console.WriteLine($"Server is not responding: {ex.Message}");
-    /// }
-    /// 
-    /// // With cancellation token
-    /// using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-    /// await mcpClient.PingAsync(cts.Token);
-    /// </code>
-    /// </example>
     public static Task PingAsync(this IMcpClient client, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
@@ -84,15 +63,15 @@ public static class McpClientExtensions
     /// <remarks>
     /// <para>
     /// This method fetches all available tools from the MCP server and returns them as a complete list.
-    /// It automatically handles pagination with cursors if the server has many tools.
+    /// It automatically handles pagination with cursors if the server responds with only a portion per request.
     /// </para>
     /// <para>
-    /// For servers with a large number of tools, consider using <see cref="EnumerateToolsAsync"/> instead,
-    /// which streams tools as they arrive rather than loading them all into memory at once.
+    /// For servers with a large number of tools and that responds with paginated responses, consider using 
+    /// <see cref="EnumerateToolsAsync"/> instead, as it streams tools as they arrive rather than loading them all at once.
     /// </para>
     /// <para>
     /// The serializer options provided are flowed to each <see cref="McpClientTool"/> and will be used
-    /// when invoking tools with parameters.
+    /// when invoking tools in order to serialize any parameters.
     /// </para>
     /// </remarks>
     /// <example>
@@ -100,24 +79,19 @@ public static class McpClientExtensions
     /// // Get all tools available on the server
     /// var tools = await mcpClient.ListToolsAsync();
     /// 
-    /// // Display information about each tool
-    /// foreach (var tool in tools)
+    /// // Use tools with an AI client
+    /// ChatOptions chatOptions = new()
     /// {
-    ///     Console.WriteLine($"Tool: {tool.Name}");
-    ///     
-    ///     // Use tools with an AI client
-    ///     var chatOptions = new ChatOptions
-    ///     {
-    ///         Tools = [.. tools]
-    ///     };
-    ///     
-    ///     await foreach (var response in chatClient.GetStreamingResponseAsync(userMessage, chatOptions))
-    ///     {
-    ///         Console.Write(response);
-    ///     }
+    ///     Tools = [.. tools]
+    /// };
+    /// 
+    /// await foreach (var update in chatClient.GetStreamingResponseAsync(userMessage, chatOptions))
+    /// {
+    ///     Console.Write(update);
     /// }
     /// </code>
     /// </example>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     public static async Task<IList<McpClientTool>> ListToolsAsync(
         this IMcpClient client,
         JsonSerializerOptions? serializerOptions = null,
@@ -154,7 +128,6 @@ public static class McpClientExtensions
 
     /// <summary>
     /// Creates an enumerable for asynchronously enumerating all available tools from the server.
-    /// This method provides a streaming approach to access tools, yielding each tool as it's retrieved.
     /// </summary>
     /// <param name="client">The client instance used to communicate with the MCP server.</param>
     /// <param name="serializerOptions">The serializer options governing tool parameter serialization. If null, the default options will be used.</param>
@@ -162,20 +135,13 @@ public static class McpClientExtensions
     /// <returns>An asynchronous sequence of all available tools as <see cref="McpClientTool"/> instances.</returns>
     /// <remarks>
     /// <para>
-    /// This method uses async enumeration to retrieve tools from the server, which allows processing tools
-    /// as they arrive rather than waiting for all tools to be retrieved. This can be more memory-efficient
-    /// when dealing with servers that expose a large number of tools.
-    /// </para>
-    /// <para>
-    /// The method automatically handles pagination with cursors if the server has many tools.
-    /// </para>
-    /// <para>
-    /// Unlike <see cref="ListToolsAsync"/> which loads all tools into memory at once, this method yields
-    /// tools one at a time as they are received, allowing for better memory efficiency.
+    /// This method uses asynchronous enumeration to retrieve tools from the server, which allows processing tools
+    /// as they arrive rather than waiting for all tools to be retrieved. The method automatically handles pagination
+    /// with cursors if the server responds with tools split across multiple responses.
     /// </para>
     /// <para>
     /// The serializer options provided are flowed to each <see cref="McpClientTool"/> and will be used
-    /// when invoking tools with parameters.
+    /// when invoking tools in order to serialize any parameters.
     /// </para>
     /// <para>
     /// Every iteration through the returned <see cref="IAsyncEnumerable{McpClientTool}"/>
@@ -185,21 +151,13 @@ public static class McpClientExtensions
     /// <example>
     /// <code>
     /// // Enumerate all tools available on the server
-    /// await foreach (var tool in client.EnumerateToolsAsync(cancellationToken: CancellationToken.None))
+    /// await foreach (var tool in client.EnumerateToolsAsync())
     /// {
     ///     Console.WriteLine($"Tool: {tool.Name}");
-    ///     
-    ///     // Invoke a tool when you find the one you need
-    ///     if (tool.Name == "Calculator")
-    ///     {
-    ///         var result = await tool.InvokeAsync(
-    ///             new Dictionary&lt;string, object?&gt; { ["x"] = 10, ["y"] = 5 }, 
-    ///             CancellationToken.None);
-    ///         Console.WriteLine($"Result: {result}");
-    ///     }
     /// }
     /// </code>
     /// </example>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     public static async IAsyncEnumerable<McpClientTool> EnumerateToolsAsync(
         this IMcpClient client,
         JsonSerializerOptions? serializerOptions = null,
@@ -239,34 +197,14 @@ public static class McpClientExtensions
     /// <remarks>
     /// <para>
     /// This method fetches all available prompts from the MCP server and returns them as a complete list.
-    /// It automatically handles pagination with cursors if the server has many prompts.
+    /// It automatically handles pagination with cursors if the server responds with only a portion per request.
     /// </para>
     /// <para>
-    /// For servers with a large number of prompts, consider using <see cref="EnumeratePromptsAsync"/> instead,
-    /// which streams prompts as they arrive rather than loading them all into memory at once.
+    /// For servers with a large number of prompts and that responds with paginated responses, consider using 
+    /// <see cref="EnumeratePromptsAsync"/> instead, as it streams prompts as they arrive rather than loading them all at once.
     /// </para>
     /// </remarks>
-    /// <example>
-    /// <code>
-    /// // Get all prompts available on the server
-    /// var prompts = await client.ListPromptsAsync(cancellationToken);
-    /// 
-    /// // Display information about each prompt
-    /// foreach (var prompt in prompts)
-    /// {
-    ///     Console.WriteLine($"Prompt: {prompt.Name}");
-    ///     
-    ///     if (prompt.Arguments?.Count > 0)
-    ///     {
-    ///         Console.WriteLine("Arguments:");
-    ///         foreach (var arg in prompt.Arguments)
-    ///         {
-    ///             Console.WriteLine($"  - {arg.Name}: {arg.Description} (Required: {arg.Required})");
-    ///         }
-    ///     }
-    /// }
-    /// </code>
-    /// </example>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     public static async Task<IList<McpClientPrompt>> ListPromptsAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
     {
@@ -299,47 +237,31 @@ public static class McpClientExtensions
     /// <summary>
     /// Creates an enumerable for asynchronously enumerating all available prompts from the server.
     /// </summary>
-    /// <param name="client">The client.</param>
+    /// <param name="client">The client instance used to communicate with the MCP server.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>An asynchronous sequence of all available prompts.</returns>
+    /// <returns>An asynchronous sequence of all available prompts as <see cref="McpClientPrompt"/> instances.</returns>
     /// <remarks>
     /// <para>
-    /// This method provides a streaming approach to access all available prompts from the server using 
-    /// C#'s asynchronous enumeration pattern. It automatically handles pagination with cursors when the server 
-    /// has large numbers of prompts.
+    /// This method uses asynchronous enumeration to retrieve prompts from the server, which allows processing prompts
+    /// as they arrive rather than waiting for all prompts to be retrieved. The method automatically handles pagination
+    /// with cursors if the server responds with prompts split across multiple responses.
     /// </para>
     /// <para>
-    /// Unlike <see cref="ListPromptsAsync"/> which loads all prompts into memory at once, this method yields 
-    /// prompts as they are received, allowing for better memory efficiency when working with large collections.
-    /// </para>
-    /// <para>
-    /// Each <see cref="Prompt"/> in the returned sequence contains metadata such as the prompt's name, 
-    /// description, and any arguments it accepts for template customization.
-    /// </para>
-    /// <para>
-    /// Every iteration through the returned <see cref="IAsyncEnumerable{Prompt}"/>
+    /// Every iteration through the returned <see cref="IAsyncEnumerable{McpClientPrompt}"/>
     /// will result in requerying the server and yielding the sequence of available prompts.
     /// </para>
     /// </remarks>
     /// <example>
     /// <code>
     /// // Enumerate all prompts available on the server
-    /// await foreach (var prompt in client.EnumeratePromptsAsync(cancellationToken))
+    /// await foreach (var prompt in client.EnumeratePromptsAsync())
     /// {
     ///     Console.WriteLine($"Prompt: {prompt.Name}");
-    ///     
-    ///     if (prompt.Arguments?.Count > 0)
-    ///     {
-    ///         Console.WriteLine("Arguments:");
-    ///         foreach (var arg in prompt.Arguments)
-    ///         {
-    ///             Console.WriteLine($"  - {arg.Name}: {arg.Description} (Required: {arg.Required})");
-    ///         }
-    ///     }
     /// }
     /// </code>
     /// </example>
-    public static async IAsyncEnumerable<Prompt> EnumeratePromptsAsync(
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
+    public static async IAsyncEnumerable<McpClientPrompt> EnumeratePromptsAsync(
         this IMcpClient client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
@@ -356,7 +278,7 @@ public static class McpClientExtensions
 
             foreach (var prompt in promptResults.Prompts)
             {
-                yield return prompt;
+                yield return new(client, prompt);
             }
 
             cursor = promptResults.NextCursor;
@@ -365,18 +287,18 @@ public static class McpClientExtensions
     }
 
     /// <summary>
-    /// Retrieves a specific prompt with optional arguments from the MCP server.
+    /// Retrieves a specific prompt from the MCP server.
     /// </summary>
-    /// <param name="client">The client.</param>
+    /// <param name="client">The client instance used to communicate with the MCP server.</param>
     /// <param name="name">The name of the prompt to retrieve.</param>
-    /// <param name="arguments">Optional arguments for the prompt. Keys are argument names, and values are the argument values.</param>
+    /// <param name="arguments">Optional arguments for the prompt. Keys are parameter names, and values are the argument values.</param>
     /// <param name="serializerOptions">The serialization options governing argument serialization.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task containing the prompt's result with content and messages.</returns>
     /// <remarks>
     /// <para>
-    /// This method sends a request to the MCP server to execute the specified prompt with the provided arguments.
-    /// The server will process the prompt and return a result containing messages or other content.
+    /// This method sends a request to the MCP server to create the specified prompt with the provided arguments.
+    /// The server will process the arguments and return a prompt containing messages or other content.
     /// </para>
     /// <para>
     /// Arguments are serialized into JSON and passed to the server, where they may be used to customize the 
@@ -388,29 +310,7 @@ public static class McpClientExtensions
     /// </para>
     /// </remarks>
     /// <exception cref="McpException">Thrown when the prompt does not exist, when required arguments are missing, or when the server encounters an error processing the prompt.</exception>
-    /// <example>
-    /// <code>
-    /// // Get a simple prompt with no arguments
-    /// var result = await mcpClient.GetPromptAsync("simple_prompt");
-    /// 
-    /// // Get a prompt with arguments
-    /// var arguments = new Dictionary&lt;string, object?&gt;
-    /// {
-    ///     ["temperature"] = "0.7",
-    ///     ["style"] = "formal"
-    /// };
-    /// var result = await mcpClient.GetPromptAsync("complex_prompt", arguments);
-    /// 
-    /// // Access the prompt messages
-    /// foreach (var message in result.Messages)
-    /// {
-    ///     Console.WriteLine($"{message.Role}: {message.Content.Text}");
-    /// }
-    /// 
-    /// // Convert to ChatMessages for use with AI clients
-    /// var chatMessages = result.ToChatMessages();
-    /// </code>
-    /// </example>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     public static Task<GetPromptResult> GetPromptAsync(
         this IMcpClient client,
         string name,
@@ -420,6 +320,7 @@ public static class McpClientExtensions
     {
         Throw.IfNull(client);
         Throw.IfNullOrWhiteSpace(name);
+
         serializerOptions ??= McpJsonUtilities.DefaultOptions;
         serializerOptions.MakeReadOnly();
 
@@ -440,41 +341,14 @@ public static class McpClientExtensions
     /// <remarks>
     /// <para>
     /// This method fetches all available resource templates from the MCP server and returns them as a complete list.
-    /// It automatically handles pagination with cursors if the server has many resource templates.
+    /// It automatically handles pagination with cursors if the server responds with only a portion per request.
     /// </para>
     /// <para>
-    /// Each <see cref="ResourceTemplate"/> contains metadata about available resource templates on the server,
-    /// including template name, description, and schema information defining how resources of this template
-    /// type should be structured.
-    /// </para>
-    /// <para>
-    /// For servers with a large number of resource templates, consider using <see cref="EnumerateResourceTemplatesAsync"/> instead,
-    /// which streams templates as they arrive rather than loading them all into memory at once.
+    /// For servers with a large number of resource templates and that responds with paginated responses, consider using 
+    /// <see cref="EnumerateResourceTemplatesAsync"/> instead, as it streams templates as they arrive rather than loading them all at once.
     /// </para>
     /// </remarks>
-    /// <example>
-    /// <code>
-    /// // Get all resource templates available on the server
-    /// var resourceTemplates = await client.ListResourceTemplatesAsync(cancellationToken);
-    /// 
-    /// // Display information about each resource template
-    /// foreach (var template in resourceTemplates)
-    /// {
-    ///     Console.WriteLine($"Template Name: {template.Name}");
-    ///     
-    ///     if (template.Description != null)
-    ///     {
-    ///         Console.WriteLine($"Description: {template.Description}");
-    ///     }
-    ///     
-    ///     // Access template schema if available
-    ///     if (template.Schema != null)
-    ///     {
-    ///         Console.WriteLine("Template Schema Available");
-    ///     }
-    /// }
-    /// </code>
-    /// </example>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     public static async Task<IList<ResourceTemplate>> ListResourceTemplatesAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
     {
@@ -511,23 +385,14 @@ public static class McpClientExtensions
     /// <summary>
     /// Creates an enumerable for asynchronously enumerating all available resource templates from the server.
     /// </summary>
-    /// <param name="client">The client.</param>
+    /// <param name="client">The client instance used to communicate with the MCP server.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>An asynchronous sequence of all available resource templates.</returns>
+    /// <returns>An asynchronous sequence of all available resource templates as <see cref="ResourceTemplate"/> instances.</returns>
     /// <remarks>
     /// <para>
-    /// This method provides a streaming approach to access all available resource templates from the server using 
-    /// C#'s asynchronous enumeration pattern. It automatically handles pagination with cursors when the server 
-    /// has large numbers of resource templates.
-    /// </para>
-    /// <para>
-    /// Unlike <see cref="ListResourceTemplatesAsync"/> which loads all resource templates into memory at once, this method yields 
-    /// templates as they are received, allowing for better memory efficiency when working with large collections.
-    /// </para>
-    /// <para>
-    /// Each <see cref="ResourceTemplate"/> in the returned sequence contains metadata about available resource templates
-    /// on the server, including template name, description, and schema information defining how resources of this template type
-    /// should be structured.
+    /// This method uses asynchronous enumeration to retrieve resource templates from the server, which allows processing templates
+    /// as they arrive rather than waiting for all templates to be retrieved. The method automatically handles pagination
+    /// with cursors if the server responds with templates split across multiple responses.
     /// </para>
     /// <para>
     /// Every iteration through the returned <see cref="IAsyncEnumerable{ResourceTemplate}"/>
@@ -537,23 +402,13 @@ public static class McpClientExtensions
     /// <example>
     /// <code>
     /// // Enumerate all resource templates available on the server
-    /// await foreach (var template in client.EnumerateResourceTemplatesAsync(cancellationToken))
+    /// await foreach (var template in client.EnumerateResourceTemplatesAsync())
     /// {
-    ///     Console.WriteLine($"Template Name: {template.Name}");
-    ///     
-    ///     if (template.Description != null)
-    ///     {
-    ///         Console.WriteLine($"Description: {template.Description}");
-    ///     }
-    ///     
-    ///     // Access template schema if available
-    ///     if (template.Schema != null)
-    ///     {
-    ///         Console.WriteLine("Template Schema Available");
-    ///     }
+    ///     Console.WriteLine($"Template: {template.Name}");
     /// }
     /// </code>
     /// </example>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     public static async IAsyncEnumerable<ResourceTemplate> EnumerateResourceTemplatesAsync(
         this IMcpClient client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
@@ -588,36 +443,26 @@ public static class McpClientExtensions
     /// <remarks>
     /// <para>
     /// This method fetches all available resources from the MCP server and returns them as a complete list.
-    /// It automatically handles pagination with cursors if the server has many resources.
+    /// It automatically handles pagination with cursors if the server responds with only a portion per request.
     /// </para>
     /// <para>
-    /// For servers with a large number of resources, consider using <see cref="EnumerateResourcesAsync"/> instead,
-    /// which streams resources as they arrive rather than loading them all into memory at once.
+    /// For servers with a large number of resources and that responds with paginated responses, consider using 
+    /// <see cref="EnumerateResourcesAsync"/> instead, as it streams resources as they arrive rather than loading them all at once.
     /// </para>
     /// </remarks>
     /// <example>
     /// <code>
     /// // Get all resources available on the server
-    /// var resources = await client.ListResourcesAsync(cancellationToken);
+    /// var resources = await client.ListResourcesAsync();
     /// 
     /// // Display information about each resource
     /// foreach (var resource in resources)
     /// {
     ///     Console.WriteLine($"Resource URI: {resource.Uri}");
-    ///     Console.WriteLine($"Resource Type: {resource.Type}");
-    ///     
-    ///     // Access resource properties if available
-    ///     if (resource.Properties?.Count > 0)
-    ///     {
-    ///         Console.WriteLine("Resource Properties:");
-    ///         foreach (var prop in resource.Properties)
-    ///         {
-    ///             Console.WriteLine($"  - {prop.Key}: {prop.Value}");
-    ///         }
-    ///     }
     /// }
     /// </code>
     /// </example>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     public static async Task<IList<Resource>> ListResourcesAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
     {
@@ -654,22 +499,14 @@ public static class McpClientExtensions
     /// <summary>
     /// Creates an enumerable for asynchronously enumerating all available resources from the server.
     /// </summary>
-    /// <param name="client">The client.</param>
+    /// <param name="client">The client instance used to communicate with the MCP server.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>An asynchronous sequence of all available resources.</returns>
+    /// <returns>An asynchronous sequence of all available resources as <see cref="Resource"/> instances.</returns>
     /// <remarks>
     /// <para>
-    /// This method provides a streaming approach to access all available resources from the server using 
-    /// C#'s asynchronous enumeration pattern. It automatically handles pagination with cursors when the server 
-    /// has large numbers of resources.
-    /// </para>
-    /// <para>
-    /// Unlike <see cref="ListResourcesAsync"/> which loads all resources into memory at once, this method yields 
-    /// resources as they are received, allowing for better memory efficiency when working with large collections.
-    /// </para>
-    /// <para>
-    /// Each <see cref="Resource"/> in the returned sequence contains metadata such as the resource's URI, 
-    /// type, and any associated data or properties defined by the server.
+    /// This method uses asynchronous enumeration to retrieve resources from the server, which allows processing resources
+    /// as they arrive rather than waiting for all resources to be retrieved. The method automatically handles pagination
+    /// with cursors if the server responds with resources split across multiple responses.
     /// </para>
     /// <para>
     /// Every iteration through the returned <see cref="IAsyncEnumerable{Resource}"/>
@@ -679,23 +516,13 @@ public static class McpClientExtensions
     /// <example>
     /// <code>
     /// // Enumerate all resources available on the server
-    /// await foreach (var resource in client.EnumerateResourcesAsync(cancellationToken))
+    /// await foreach (var resource in client.EnumerateResourcesAsync())
     /// {
     ///     Console.WriteLine($"Resource URI: {resource.Uri}");
-    ///     Console.WriteLine($"Resource Type: {resource.Type}");
-    ///     
-    ///     // Access resource properties if available
-    ///     if (resource.Properties?.Count > 0)
-    ///     {
-    ///         Console.WriteLine("Resource Properties:");
-    ///         foreach (var prop in resource.Properties)
-    ///         {
-    ///             Console.WriteLine($"  - {prop.Key}: {prop.Value}");
-    ///         }
-    ///     }
     /// }
     /// </code>
     /// </example>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     public static async IAsyncEnumerable<Resource> EnumerateResourcesAsync(
         this IMcpClient client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
@@ -724,9 +551,12 @@ public static class McpClientExtensions
     /// <summary>
     /// Reads a resource from the server.
     /// </summary>
-    /// <param name="client">The client.</param>
+    /// <param name="client">The client instance used to communicate with the MCP server.</param>
     /// <param name="uri">The uri of the resource.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="uri"/> is empty or composed entirely of whitespace.</exception>
     public static Task<ReadResourceResult> ReadResourceAsync(
         this IMcpClient client, string uri, CancellationToken cancellationToken = default)
     {
@@ -742,10 +572,27 @@ public static class McpClientExtensions
     }
 
     /// <summary>
+    /// Reads a resource from the server.
+    /// </summary>
+    /// <param name="client">The client instance used to communicate with the MCP server.</param>
+    /// <param name="uri">The uri of the resource.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
+    public static Task<ReadResourceResult> ReadResourceAsync(
+        this IMcpClient client, Uri uri, CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(client);
+        Throw.IfNull(uri);
+
+        return ReadResourceAsync(client, uri.ToString(), cancellationToken);
+    }
+
+    /// <summary>
     /// Requests completion suggestions for a prompt argument or resource reference.
     /// </summary>
-    /// <param name="client">The client making the request.</param>
-    /// <param name="reference">The reference object specifying the type (e.g., "ref/prompt" or "ref/resource") and optional URI or name.</param>
+    /// <param name="client">The client instance used to communicate with the MCP server.</param>
+    /// <param name="reference">The reference object specifying the type and optional URI or name.</param>
     /// <param name="argumentName">The name of the argument for which completions are requested.</param>
     /// <param name="argumentValue">The current value of the argument, used to filter relevant completions.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
@@ -765,38 +612,11 @@ public static class McpClientExtensions
     /// resource URI.
     /// </para>
     /// </remarks>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="client"/> or <paramref name="reference"/> is null.</exception>
-    /// <exception cref="ArgumentException">Thrown when <paramref name="reference"/> is invalid or when <paramref name="argumentName"/> is null or whitespace.</exception>
-    /// <exception cref="McpException">Thrown when the server returns an error response.</exception>
-    /// <example>
-    /// <para>Request completions for a prompt argument:</para>
-    /// <code>
-    /// var result = await client.CompleteAsync(
-    ///     new Reference { Type = "ref/prompt", Name = "my_template" },
-    ///     argumentName: "style",
-    ///     argumentValue: "f", 
-    ///     cancellationToken: ct);
-    /// 
-    /// foreach (var value in result.Completion.Values)
-    /// {
-    ///     Console.WriteLine(value); // e.g. "formal", "friendly"
-    /// }
-    /// </code>
-    /// 
-    /// <para>Request completions for a resource reference:</para>
-    /// <code>
-    /// var result = await client.CompleteAsync(
-    ///     new Reference { Type = "ref/resource", Uri = "test://static/resource/1" },
-    ///     argumentName: "parameter",
-    ///     argumentValue: "1",
-    ///     cancellationToken: ct);
-    /// 
-    /// foreach (var value in result.Completion.Values)
-    /// {
-    ///     Console.WriteLine(value);
-    /// }
-    /// </code>
-    /// </example>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="reference"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="argumentName"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="argumentName"/> is empty or composed entirely of whitespace.</exception>
+    /// <exception cref="McpException">The server returned an error response.</exception>
     public static Task<CompleteResult> CompleteAsync(this IMcpClient client, Reference reference, string argumentName, string argumentValue, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
@@ -823,8 +643,8 @@ public static class McpClientExtensions
     /// <summary>
     /// Subscribes to a resource on the server to receive notifications when it changes.
     /// </summary>
-    /// <param name="client">The client.</param>
-    /// <param name="uri">The URI of the resource to subscribe to.</param>
+    /// <param name="client">The client instance used to communicate with the MCP server.</param>
+    /// <param name="uri">The URI of the resource to which to subscribe.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous operation.</returns>
     /// <remarks>
@@ -834,27 +654,17 @@ public static class McpClientExtensions
     /// updates without polling.
     /// </para>
     /// <para>
-    /// The subscription remains active until explicitly canceled using <see cref="UnsubscribeFromResourceAsync"/>
+    /// The subscription remains active until explicitly unsubscribed using <see cref="UnsubscribeFromResourceAsync"/>
     /// or until the client disconnects from the server.
     /// </para>
     /// <para>
-    /// To handle resource change notifications, register an event handler for the appropriate notification events
-    /// on your client implementation.
+    /// To handle resource change notifications, register an event handler for the appropriate notification events,
+    /// such as with <see cref="IMcpEndpoint.RegisterNotificationHandler"/>.
     /// </para>
     /// </remarks>
-    /// <example>
-    /// <code>
-    /// // Subscribe to a specific resource
-    /// await client.SubscribeToResourceAsync("resource://documents/123", cancellationToken);
-    /// 
-    /// // Set up notification handler (implementation depends on your client)
-    /// client.ResourceChanged += (sender, e) => 
-    /// {
-    ///     Console.WriteLine($"Resource {e.Uri} has changed");
-    ///     // Update your application state with the new resource information
-    /// };
-    /// </code>
-    /// </example>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="uri"/> is empty or composed entirely of whitespace.</exception>
     public static Task SubscribeToResourceAsync(this IMcpClient client, string uri, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
@@ -869,33 +679,61 @@ public static class McpClientExtensions
     }
 
     /// <summary>
+    /// Subscribes to a resource on the server to receive notifications when it changes.
+    /// </summary>
+    /// <param name="client">The client instance used to communicate with the MCP server.</param>
+    /// <param name="uri">The URI of the resource to which to subscribe.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    /// <remarks>
+    /// <para>
+    /// This method allows the client to register interest in a specific resource identified by its URI.
+    /// When the resource changes, the server will send notifications to the client, enabling real-time
+    /// updates without polling.
+    /// </para>
+    /// <para>
+    /// The subscription remains active until explicitly unsubscribed using <see cref="UnsubscribeFromResourceAsync"/>
+    /// or until the client disconnects from the server.
+    /// </para>
+    /// <para>
+    /// To handle resource change notifications, register an event handler for the appropriate notification events,
+    /// such as with <see cref="IMcpEndpoint.RegisterNotificationHandler"/>.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
+    public static Task SubscribeToResourceAsync(this IMcpClient client, Uri uri, CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(client);
+        Throw.IfNull(uri);
+
+        return SubscribeToResourceAsync(client, uri.ToString(), cancellationToken);
+    }
+
+    /// <summary>
     /// Unsubscribes from a resource on the server to stop receiving notifications about its changes.
     /// </summary>
-    /// <param name="client">The client.</param>
+    /// <param name="client">The client instance used to communicate with the MCP server.</param>
     /// <param name="uri">The URI of the resource to unsubscribe from.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous operation.</returns>
     /// <remarks>
     /// <para>
     /// This method cancels a previous subscription to a resource, stopping the client from receiving
-    /// notifications when that resource changes. This is useful for conserving resources and network
-    /// bandwidth when the client no longer needs to track changes to a particular resource.
+    /// notifications when that resource changes.
     /// </para>
     /// <para>
     /// The unsubscribe operation is idempotent, meaning it can be called multiple times for the same
     /// resource without causing errors, even if there is no active subscription.
     /// </para>
+    /// <para>
+    /// Due to the nature of the MCP protocol, it is possible the client may receive notifications after
+    /// unsubscribing if those notifications were issued by the server prior to the unsubscribe request being received.
+    /// </para>
     /// </remarks>
-    /// <example>
-    /// <code>
-    /// // First subscribe to a resource
-    /// await client.SubscribeToResourceAsync("resource://documents/123", cancellationToken);
-    /// 
-    /// // Later, when updates are no longer needed
-    /// await client.UnsubscribeFromResourceAsync("resource://documents/123", cancellationToken);
-    /// </code>
-    /// </example>
-    /// <seealso cref="SubscribeToResourceAsync"/>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="uri"/> is empty or composed entirely of whitespace.</exception>
     public static Task UnsubscribeFromResourceAsync(this IMcpClient client, string uri, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
@@ -910,22 +748,55 @@ public static class McpClientExtensions
     }
 
     /// <summary>
-    /// Invokes a tool on the server with optional arguments. This method calls a named tool on the MCP server
-    /// and passes arguments to it as a dictionary of name-value pairs. The server processes the request and
-    /// returns a response that contains the tool's output data.
+    /// Unsubscribes from a resource on the server to stop receiving notifications about its changes.
     /// </summary>
-    /// <param name="client">The MCP client instance used to send the request.</param>
-    /// <param name="toolName">The name of the tool to call on the server. The tool must be registered on the server-side.</param>
+    /// <param name="client">The client instance used to communicate with the MCP server.</param>
+    /// <param name="uri">The URI of the resource to unsubscribe from.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    /// <remarks>
+    /// <para>
+    /// This method cancels a previous subscription to a resource, stopping the client from receiving
+    /// notifications when that resource changes.
+    /// </para>
+    /// <para>
+    /// The unsubscribe operation is idempotent, meaning it can be called multiple times for the same
+    /// resource without causing errors, even if there is no active subscription.
+    /// </para>
+    /// <para>
+    /// Due to the nature of the MCP protocol, it is possible the client may receive notifications after
+    /// unsubscribing if those notifications were issued by the server prior to the unsubscribe request being received.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
+    public static Task UnsubscribeFromResourceAsync(this IMcpClient client, Uri uri, CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(client);
+        Throw.IfNull(uri);
+
+        return UnsubscribeFromResourceAsync(client, uri.ToString(), cancellationToken);
+    }
+
+    /// <summary>
+    /// Invokes a tool on the server
+    /// </summary>
+    /// <param name="client">The client instance used to communicate with the MCP server.</param>
+    /// <param name="toolName">The name of the tool to call on the server..</param>
     /// <param name="arguments">Optional dictionary of arguments to pass to the tool. Each key represents a parameter name,
-    /// and its associated value represents the parameter value. Pass null if the tool requires no arguments.</param>
-    /// <param name="serializerOptions">The JSON serialization options governing argument serialization. If null,
-    /// the default serialization options will be used.</param>
-    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.
-    /// The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>A task containing the <see cref="CallToolResponse"/> from the tool execution. The response includes
-    /// the tool's output content, which may be structured data, text, or an error message.</returns>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="client"/> or <paramref name="toolName"/> is null.</exception>
-    /// <exception cref="McpException">Thrown when the server cannot find the requested tool or when the server encounters an error while processing the request.</exception>
+    /// and its associated value represents the argument value.
+    /// </param>
+    /// <param name="serializerOptions">
+    /// The JSON serialization options governing argument serialization. If <see langword="null"/>, the default serialization options will be used.
+    /// </param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>
+    /// A task containing the <see cref="CallToolResponse"/> from the tool execution. The response includes
+    /// the tool's output content, which may be structured data, text, or an error message.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="toolName"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The server could not find the requested tool, or the server encountered an error while processing the request.</exception>
     /// <example>
     /// <code>
     /// // Call a simple echo tool with a string argument
@@ -934,15 +805,6 @@ public static class McpClientExtensions
     ///     new Dictionary&lt;string, object?&gt;
     ///     {
     ///         ["message"] = "Hello MCP!"
-    ///     });
-    /// 
-    /// // Call an LLM tool with multiple parameters
-    /// var result = await client.CallToolAsync(
-    ///     "sampleLLM", 
-    ///     new Dictionary&lt;string, object?&gt;
-    ///     {
-    ///         ["prompt"] = "What is the capital of France?",
-    ///         ["maxTokens"] = 100
     ///     });
     /// </code>
     /// </example>
@@ -973,6 +835,7 @@ public static class McpClientExtensions
     /// </summary>
     /// <param name="requestParams"></param>
     /// <returns>The created pair of messages and options.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
     internal static (IList<ChatMessage> Messages, ChatOptions? Options) ToChatClientArguments(
         this CreateMessageRequestParams requestParams)
     {
@@ -1025,6 +888,7 @@ public static class McpClientExtensions
     /// <summary>Converts the contents of a <see cref="ChatResponse"/> into a <see cref="CreateMessageResult"/>.</summary>
     /// <param name="chatResponse">The <see cref="ChatResponse"/> whose contents should be extracted.</param>
     /// <returns>The created <see cref="CreateMessageResult"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="chatResponse"/> is <see langword="null"/>.</exception>
     internal static CreateMessageResult ToCreateMessageResult(this ChatResponse chatResponse)
     {
         Throw.IfNull(chatResponse);
@@ -1079,35 +943,11 @@ public static class McpClientExtensions
     /// an MCP client to generate text or other content using an actual AI model via the provided chat client.
     /// </para>
     /// <para>
-    /// The returned function handles streaming responses from the chat client, converting them to the
-    /// proper MCP protocol format and supporting progress reporting during generation.
-    /// </para>
-    /// <para>
     /// The handler can process text messages, image messages, and resource messages as defined in the
     /// Model Context Protocol.
     /// </para>
     /// </remarks>
-    /// <example>
-    /// <code>
-    /// // Create an IChatClient using OpenAI or other provider
-    /// using IChatClient chatClient = new OpenAIClient(apiKey).AsChatClient("gpt-4");
-    /// 
-    /// // Create a sampling handler and assign it to the client options
-    /// var clientOptions = new McpClientOptions
-    /// {
-    ///     Capabilities = new ClientCapabilities
-    ///     {
-    ///         Sampling = new SamplingCapability
-    ///         {
-    ///             SamplingHandler = chatClient.CreateSamplingHandler()
-    ///         }
-    ///     }
-    /// };
-    /// 
-    /// // Use the options when creating the MCP client
-    /// var mcpClient = await McpClientFactory.CreateAsync(serverConfig, clientOptions);
-    /// </code>
-    /// </example>
+    /// <exception cref="ArgumentNullException"><paramref name="chatClient"/> is <see langword="null"/>.</exception>
     public static Func<CreateMessageRequestParams?, IProgress<ProgressNotificationValue>, CancellationToken, Task<CreateMessageResult>> CreateSamplingHandler(
         this IChatClient chatClient)
     {
@@ -1141,47 +981,27 @@ public static class McpClientExtensions
     /// <summary>
     /// Sets the logging level for the server to control which log messages are sent to the client.
     /// </summary>
-    /// <param name="client">The MCP client.</param>
+    /// <param name="client">The client instance used to communicate with the MCP server.</param>
     /// <param name="level">The minimum severity level of log messages to receive from the server.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     /// <remarks>
     /// <para>
     /// After this request is processed, the server will send log messages at or above the specified
     /// logging level as notifications to the client. For example, if <see cref="LoggingLevel.Warning"/> is set,
-    /// the client will receive Warning, Error, Critical, Alert, and Emergency level messages.
-    /// </para>
-    /// <para>
-    /// Log levels follow standard severity ordering where higher levels are more severe (fewer messages)
-    /// and lower levels are less severe (more messages):
-    /// Debug &lt; Info &lt; Notice &lt; Warning &lt; Error &lt; Critical &lt; Alert &lt; Emergency
+    /// the client will receive <see cref="LoggingLevel.Warning"/>, <see cref="LoggingLevel.Error"/>, 
+    /// <see cref="LoggingLevel.Critical"/>, <see cref="LoggingLevel.Alert"/>, and <see cref="LoggingLevel.Emergency"/>
+    /// level messages.
     /// </para>
     /// <para>
     /// To receive all log messages, set the level to <see cref="LoggingLevel.Debug"/>.
     /// </para>
     /// <para>
-    /// The server must have the Logging capability enabled for this request to succeed. If the server
-    /// does not support logging, a <see cref="McpException"/> will be thrown.
-    /// </para>
-    /// <para>
     /// Log messages are delivered as notifications to the client and can be captured by registering
-    /// appropriate event handlers with the client implementation.
+    /// appropriate event handlers with the client implementation, such as with <see cref="IMcpEndpoint.RegisterNotificationHandler"/>.
     /// </para>
     /// </remarks>
-    /// <example>
-    /// <code>
-    /// // Set the logging level to receive only warning and higher severity messages
-    /// await client.SetLoggingLevel(LoggingLevel.Warning);
-    /// 
-    /// // Later, to receive more detailed logs:
-    /// await client.SetLoggingLevel(LoggingLevel.Debug);
-    /// 
-    /// // Turn off logging completely
-    /// await client.SetLoggingLevel(LoggingLevel.Off);
-    /// </code>
-    /// </example>
-    /// <seealso cref="LoggingLevel"/>
-    /// <seealso cref="LoggingCapability"/>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     public static Task SetLoggingLevel(this IMcpClient client, LoggingLevel level, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
@@ -1195,11 +1015,28 @@ public static class McpClientExtensions
     }
 
     /// <summary>
-    /// Configures the minimum logging level for the server.
+    /// Sets the logging level for the server to control which log messages are sent to the client.
     /// </summary>
-    /// <param name="client">The client.</param>
-    /// <param name="level">The minimum log level of messages to be generated.</param>
+    /// <param name="client">The client instance used to communicate with the MCP server.</param>
+    /// <param name="level">The minimum severity level of log messages to receive from the server.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    /// <remarks>
+    /// <para>
+    /// After this request is processed, the server will send log messages at or above the specified
+    /// logging level as notifications to the client. For example, if <see cref="LogLevel.Warning"/> is set,
+    /// the client will receive <see cref="LogLevel.Warning"/>, <see cref="LogLevel.Error"/>, 
+    /// and <see cref="LogLevel.Critical"/> level messages.
+    /// </para>
+    /// <para>
+    /// To receive all log messages, set the level to <see cref="LogLevel.Trace"/>.
+    /// </para>
+    /// <para>
+    /// Log messages are delivered as notifications to the client and can be captured by registering
+    /// appropriate event handlers with the client implementation, such as with <see cref="IMcpEndpoint.RegisterNotificationHandler"/>.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     public static Task SetLoggingLevel(this IMcpClient client, LogLevel level, CancellationToken cancellationToken = default) =>
         SetLoggingLevel(client, McpServer.ToLoggingLevel(level), cancellationToken);
 

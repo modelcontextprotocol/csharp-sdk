@@ -94,25 +94,11 @@ internal sealed class McpClient : McpEndpoint, IMcpClient
     public string? ServerInstructions => _serverInstructions;
 
     /// <inheritdoc/>
-    /// <remarks>
-    /// <para>
-    /// For clients, the endpoint name is formatted as "Client ({ServerConfig.Id}: {ServerConfig.Name})".
-    /// </para>
-    /// <para>
-    /// This property is initialized during construction and remains constant throughout the client's lifetime.
-    /// It's used in all logging operations to identify this specific client connection.
-    /// </para>
-    /// </remarks>
     public override string EndpointName { get; }
 
     /// <summary>
     /// Asynchronously connects to an MCP server, establishes the transport connection, and completes the initialization handshake.
     /// </summary>
-    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>A task that represents the asynchronous connect operation.</returns>
-    /// <exception cref="McpException">Thrown when initialization fails, times out, or if the server's protocol version doesn't match the expected version.</exception>
-    /// <exception cref="McpTransportException">Thrown when the transport connection fails.</exception>
-    /// <exception cref="InvalidOperationException">Thrown when the client is already connected.</exception>
     public async Task ConnectAsync(CancellationToken cancellationToken = default)
     {
         _connectCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -182,18 +168,6 @@ internal sealed class McpClient : McpEndpoint, IMcpClient
     }
 
     /// <inheritdoc/>
-    /// <summary>
-    /// Asynchronously releases resources used by the MCP client without any synchronization.
-    /// </summary>
-    /// <returns>A task that represents the asynchronous dispose operation.</returns>
-    /// <remarks>
-    /// This method:
-    /// <list type="bullet">
-    /// <item><description>Cancels and disposes the connection cancellation token source</description></item>
-    /// <item><description>Calls the base class implementation to clean up common endpoint resources</description></item>
-    /// <item><description>Disposes the session transport</description></item>
-    /// </list>
-    /// </remarks>
     public override async ValueTask DisposeUnsynchronizedAsync()
     {
         try

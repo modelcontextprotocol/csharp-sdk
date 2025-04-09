@@ -16,38 +16,15 @@ namespace ModelContextProtocol.Client;
 /// </list>
 /// </para>
 /// <para>
-/// An IMcpClient instance is typically created using <see cref="McpClientFactory"/> and should be disposed properly when finished.
+/// An <see cref="IMcpClient"/> instance is typically created using <see cref="McpClientFactory"/> and should be disposed of properly when finished.
 /// </para>
-/// <example>
-/// <code>
-/// // Connect to an MCP server via StdIo transport
-/// await using var mcpClient = await McpClientFactory.CreateAsync(
-///     new()
-///     {
-///         Id = "demo-server",
-///         Name = "Demo Server",
-///         TransportType = TransportTypes.StdIo,
-///         TransportOptions = new()
-///         {
-///             ["command"] = "npx",
-///             ["arguments"] = "-y @modelcontextprotocol/server-everything",
-///         }
-///     });
-///     
-/// // List available tools from the server
-/// var tools = await mcpClient.ListToolsAsync();
-/// foreach (var tool in tools)
-/// {
-///     Console.WriteLine($"Connected to server with tool: {tool.Name}");
-/// }
-/// </code>
-/// </example>
 /// </remarks>
 public interface IMcpClient : IMcpEndpoint
 {
     /// <summary>
     /// Gets the capabilities supported by the connected server.
     /// </summary>
+    /// <exception cref="InvalidOperationException">The client is not connected.</exception>
     ServerCapabilities ServerCapabilities { get; }
 
     /// <summary>
@@ -62,26 +39,8 @@ public interface IMcpClient : IMcpEndpoint
     /// This information can be useful for logging, debugging, compatibility checks, and displaying server
     /// information to users.
     /// </para>
-    /// <para>
-    /// The property will throw an InvalidOperationException if accessed before a successful connection is established.
-    /// </para>
-    /// <para>
-    /// Example usage:
-    /// <code>
-    /// // Connect to the server
-    /// await mcpClient.ConnectAsync(cancellationToken);
-    /// 
-    /// // Access server information
-    /// Console.WriteLine($"Connected to {mcpClient.ServerInfo.Name} version {mcpClient.ServerInfo.Version}");
-    /// 
-    /// // Use server information for version compatibility checks
-    /// if (Version.TryParse(mcpClient.ServerInfo.Version, out var version) &amp;&amp; version.Major >= 2)
-    /// {
-    ///     // Use features only available in version 2.0+
-    /// }
-    /// </code>
-    /// </para>
     /// </remarks>
+    /// <exception cref="InvalidOperationException">The client is not connected.</exception>
     Implementation ServerInfo { get; }
 
     /// <summary>
@@ -96,16 +55,6 @@ public interface IMcpClient : IMcpEndpoint
     /// <para>
     /// This can be used by clients to improve an LLM's understanding of available tools, prompts, and resources. 
     /// It can be thought of like a "hint" to the model and may be added to a system prompt.
-    /// </para>
-    /// <para>
-    /// Example usage:
-    /// <code>
-    /// // Add server instructions to system messages if available
-    /// if (mcpClient.ServerInstructions is not null)
-    /// {
-    ///     messages.Add(new ChatMessage(ChatRole.System, mcpClient.ServerInstructions));
-    /// }
-    /// </code>
     /// </para>
     /// </remarks>
     string? ServerInstructions { get; }
