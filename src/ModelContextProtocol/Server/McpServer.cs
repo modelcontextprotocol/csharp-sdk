@@ -69,28 +69,8 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             NotificationHandlers.RegisterRange(notificationHandlers);
         }
         
-        // Now that everything has been configured, subscribe to any necessary notifications.
-        // TODO: Figure out why calling RegisterListChange here causes a crash.
-        IListCapability<McpServerTool>? toolsCapabilities = capabilities?.Tools;
-        if (toolsCapabilities?.Collection is { } tools)
-        {
-            void ChangedDelegate(object? sender, EventArgs e)
-                => _ = this.SendNotificationAsync(NotificationMethods.ToolListChangedNotification);
-
-            tools.Changed += ChangedDelegate;
-            _disposables.Add(new(() => tools.Changed -= ChangedDelegate));
-        }
-
-        // TODO: Figure out why calling RegisterListChange here causes a crash.
-        IListCapability<McpServerPrompt>? promptsCapabilities = capabilities?.Prompts;
-        if (promptsCapabilities?.Collection is { } prompts)
-        {
-            void ChangedDelegate(object? sender, EventArgs e)
-                => _ = this.SendNotificationAsync(NotificationMethods.PromptListChangedNotification);
-
-            prompts.Changed += ChangedDelegate;
-            _disposables.Add(new(() => prompts.Changed -= ChangedDelegate));
-        }
+        RegisterListChange(capabilities?.Tools, NotificationMethods.ToolListChangedNotification);
+        RegisterListChange(capabilities?.Prompts, NotificationMethods.PromptListChangedNotification);
         RegisterListChange(capabilities?.Resources, RequestMethods.ResourcesList);
 
         // And initialize the session.
@@ -486,10 +466,10 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         if (capability?.Collection is { } collection)
             //&& capability.ListChanged is true)
         {
-            void handler(object? sender, EventArgs e)
+            void ChangedDelegate(object? sender, EventArgs e)
                 => _ = this.SendNotificationAsync(methodName);
-            collection.Changed += handler;
-            _disposables.Add(new(() => collection.Changed -= handler));
+            collection.Changed += ChangedDelegate;
+            _disposables.Add(new(() => collection.Changed -= ChangedDelegate));
         }
     }
 
