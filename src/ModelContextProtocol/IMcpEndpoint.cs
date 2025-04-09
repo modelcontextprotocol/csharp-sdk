@@ -9,9 +9,9 @@ namespace ModelContextProtocol;
 /// <para>
 /// The MCP endpoint provides the core communication functionality used by both clients and servers:
 /// <list type="bullet">
-///   <li>Sending JSON-RPC requests and receiving responses</li>
-///   <li>Sending notifications to the connected endpoint</li>
-///   <li>Registering handlers for receiving notifications</li>
+///   <item>Sending JSON-RPC requests and receiving responses</item>
+///   <item>Sending notifications to the connected endpoint</item>
+///   <item>Registering handlers for receiving notifications</item>
 /// </list>
 /// </para>
 /// <para>

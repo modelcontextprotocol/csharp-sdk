@@ -11,9 +11,9 @@ namespace ModelContextProtocol.Protocol.Types;
 /// This is commonly used for:
 /// </para>
 /// <list type="bullet">
-///   <li>Resource ID completion</li>
-///   <li>Prompt argument value completion</li>
-///   <li>Other parameter value autocompletion</li>
+///   <item>Resource ID completion</item>
+///   <item>Prompt argument value completion</item>
+///   <item>Other parameter value autocompletion</item>
 /// </list>
 /// <para>
 /// The server will respond with a <see cref="CompleteResult"/> containing matching values.

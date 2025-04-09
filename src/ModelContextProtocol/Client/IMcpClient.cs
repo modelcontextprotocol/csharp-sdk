@@ -9,10 +9,10 @@ namespace ModelContextProtocol.Client;
 /// <para>
 /// The MCP client provides a standardized way to interact with AI tool servers, allowing applications to:
 /// <list type="bullet">
-///   <li>Connect to MCP-compliant servers</li>
-///   <li>Discover and use available tools, prompts, and resources</li>
-///   <li>Execute tool calls and prompt completions</li>
-///   <li>Subscribe to and receive notifications from resources</li>
+///   <item>Connect to MCP-compliant servers</item>
+///   <item>Discover and use available tools, prompts, and resources</item>
+///   <item>Execute tool calls and prompt completions</item>
+///   <item>Subscribe to and receive notifications from resources</item>
 /// </list>
 /// </para>
 /// <para>

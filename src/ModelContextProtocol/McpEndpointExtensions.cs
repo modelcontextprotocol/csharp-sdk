@@ -16,9 +16,9 @@ namespace ModelContextProtocol;
 /// simplifying JSON-RPC communication by handling serialization and deserialization of parameters and results.
 /// The extension methods offer:
 /// <list type="bullet">
-///   <li>Type-safe request sending with automatic JSON serialization/deserialization</li>
-///   <li>Simplified notification sending with parameter serialization</li>
-///   <li>Convenience methods for progress reporting</li>
+///   <item>Type-safe request sending with automatic JSON serialization/deserialization</item>
+///   <item>Simplified notification sending with parameter serialization</item>
+///   <item>Convenience methods for progress reporting</item>
 /// </list>
 /// </para>
 /// <para>
