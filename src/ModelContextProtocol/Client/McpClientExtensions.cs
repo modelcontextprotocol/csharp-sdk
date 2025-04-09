@@ -654,7 +654,7 @@ public static class McpClientExtensions
     /// updates without polling.
     /// </para>
     /// <para>
-    /// The subscription remains active until explicitly unsubscribed using <see cref="UnsubscribeFromResourceAsync"/>
+    /// The subscription remains active until explicitly unsubscribed using <see cref="M:UnsubscribeFromResourceAsync"/>
     /// or until the client disconnects from the server.
     /// </para>
     /// <para>
@@ -692,7 +692,7 @@ public static class McpClientExtensions
     /// updates without polling.
     /// </para>
     /// <para>
-    /// The subscription remains active until explicitly unsubscribed using <see cref="UnsubscribeFromResourceAsync"/>
+    /// The subscription remains active until explicitly unsubscribed using <see cref="M:UnsubscribeFromResourceAsync"/>
     /// or until the client disconnects from the server.
     /// </para>
     /// <para>
