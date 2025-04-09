@@ -13,7 +13,7 @@ public abstract class TransportBase : ITransport
 {
     private readonly Channel<IJsonRpcMessage> _messageChannel;
     private readonly ILogger _logger;
-    private bool _isConnected;
+    private int _isConnected;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="TransportBase"/> class.
@@ -30,7 +30,7 @@ public abstract class TransportBase : ITransport
     }
 
     /// <inheritdoc/>
-    public bool IsConnected => _isConnected;
+    public bool IsConnected => _isConnected == 1;
 
     /// <inheritdoc/>
     public ChannelReader<IJsonRpcMessage> MessageReader => _messageChannel.Reader;
@@ -48,7 +48,7 @@ public abstract class TransportBase : ITransport
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     protected async Task WriteMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
     {
-        if (!_isConnected)
+        if (!IsConnected)
         {
             throw new McpTransportException("Transport is not connected");
         }
@@ -64,12 +64,12 @@ public abstract class TransportBase : ITransport
     /// <param name="isConnected">Whether the transport is connected.</param>
     protected void SetConnected(bool isConnected)
     {
-        if (_isConnected == isConnected)
+        var newIsConnected = isConnected ? 1 : 0;
+        if (Interlocked.Exchange(ref _isConnected, newIsConnected) == newIsConnected)
         {
             return;
         }
 
-        _isConnected = isConnected;
         if (!isConnected)
         {
             _messageChannel.Writer.Complete();

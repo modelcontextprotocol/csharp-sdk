@@ -1,6 +1,7 @@
-﻿using ModelContextProtocol.Client;
+﻿using Microsoft.Extensions.Logging;
+using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Transport;
-using Microsoft.Extensions.Logging;
+using System.Runtime.InteropServices;
 
 namespace ModelContextProtocol.Tests;
 
@@ -25,11 +26,11 @@ public class ClientIntegrationTestFixture
 
         TestServerTransportOptions = new()
         {
-            Command = OperatingSystem.IsWindows() ? "TestServer.exe" : "dotnet",
+            Command = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "TestServer.exe" : "dotnet",
             Name = "TestServer",
         };
 
-        if (!OperatingSystem.IsWindows())
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             // Change to Arguments to "mcp-server-everything" if you want to run the server locally after creating a symlink
             TestServerTransportOptions.Arguments = ["TestServer.dll"];

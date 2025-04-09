@@ -14,6 +14,10 @@
     <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Compile Include="..\Common\Throw.cs" Link="Utils\Throw.cs" />
+  </ItemGroup>
+
   <!-- Dependencies only needed by netstandard2.0 -->
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
     <Compile Include="..\Common\Polyfills\**\*.cs" />

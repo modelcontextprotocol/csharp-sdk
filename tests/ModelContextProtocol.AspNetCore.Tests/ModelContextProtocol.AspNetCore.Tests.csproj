@@ -1,15 +1,13 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
     <TargetFrameworks>net9.0;net8.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>Latest</LangVersion>
-
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-    <RootNamespace>ModelContextProtocol.Tests</RootNamespace>
+    <RootNamespace>ModelContextProtocol.AspNetCore.Tests</RootNamespace>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -36,7 +34,7 @@
     <PackageReference Include="Moq" />
     <PackageReference Include="OpenTelemetry" />
     <PackageReference Include="OpenTelemetry.Exporter.InMemory" />
-    <PackageReference Include="System.Linq.AsyncEnumerable" />    
+    <PackageReference Include="System.Linq.AsyncEnumerable" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -45,31 +43,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\ModelContextProtocol\ModelContextProtocol.csproj" />
-    <ProjectReference Include="..\ModelContextProtocol.TestServer\ModelContextProtocol.TestServer.csproj" />
     <ProjectReference Include="..\..\samples\TestServerWithHosting\TestServerWithHosting.csproj" />
-  </ItemGroup>
-
-  <!-- Dependencies only needed by net472 -->
-  <ItemGroup Condition="'$(TargetFramework)' == 'net472'">
-    <Compile Include="..\..\src\Common\Throw.cs" Link="Utils\Throw.cs" />
-    <Compile Include="..\..\src\Common\Polyfills\**\*.cs" />
-    <PackageReference Include="System.Net.Http" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Content Condition="$([MSBuild]::IsOSPlatform('Windows'))" Include="$([System.IO.Path]::GetFullPath('$(ArtifactsBinDir)ModelContextProtocol.TestServer\$(Configuration)'))\$(TargetFramework)\TestServer.exe">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Condition="$([MSBuild]::IsOSPlatform('Linux'))" Include="$([System.IO.Path]::GetFullPath('$(ArtifactsBinDir)ModelContextProtocol.TestServer\$(Configuration)'))\$(TargetFramework)\TestServer.dll">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Condition="$([MSBuild]::IsOSPlatform('Windows'))" Include="$([System.IO.Path]::GetFullPath('$(ArtifactsBinDir)TestServerWithHosting\$(Configuration)'))\$(TargetFramework)\TestServerWithHosting.exe">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Condition="$([MSBuild]::IsOSPlatform('Linux'))" Include="$([System.IO.Path]::GetFullPath('$(ArtifactsBinDir)TestServerWithHosting\$(Configuration)'))\$(TargetFramework)\TestServerWithHosting.dll">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+    <ProjectReference Include="..\..\src\ModelContextProtocol\ModelContextProtocol.csproj" />
+    <ProjectReference Include="..\..\src\ModelContextProtocol.AspNetCore\ModelContextProtocol.AspNetCore.csproj" />
+    <ProjectReference Include="..\ModelContextProtocol.TestSseServer\ModelContextProtocol.TestSseServer.csproj" />
   </ItemGroup>
 
 </Project>

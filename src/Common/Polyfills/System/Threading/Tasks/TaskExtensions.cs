@@ -9,13 +9,18 @@ internal static class TaskExtensions
         return WaitAsync(task, Timeout.InfiniteTimeSpan, cancellationToken);
     }
 
-    public static async Task<T> WaitAsync<T>(this Task<T> task, CancellationToken cancellationToken)
+    public static Task<T> WaitAsync<T>(this Task<T> task, CancellationToken cancellationToken)
     {
-        await WaitAsync(task, Timeout.InfiniteTimeSpan, cancellationToken);
+        return WaitAsync(task, Timeout.InfiniteTimeSpan, cancellationToken);
+    }
+
+    public static async Task<T> WaitAsync<T>(this Task<T> task, TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        await WaitAsync((Task)task, timeout, cancellationToken).ConfigureAwait(false);
         return task.Result;
     }
 
-    public static async Task WaitAsync(this Task task, TimeSpan timeout, CancellationToken cancellationToken)
+    public static async Task WaitAsync(this Task task, TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(task);
 
