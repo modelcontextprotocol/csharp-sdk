@@ -67,5 +67,9 @@
     <PackageVersion Include="xunit.v3" Version="2.0.1" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.0.2" />
     <PackageVersion Include="System.Net.Http" Version="4.3.4" />
+	<PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.4" />
+	<PackageVersion Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="9.0.4" />
+	<PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="9.0.3" />
+	<PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.8.0" />
   </ItemGroup>
 </Project>
