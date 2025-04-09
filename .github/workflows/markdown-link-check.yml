@@ -17,4 +17,4 @@ jobs:
         uses: becheran/mlc@v0.21.0
         with:
           # Ignore external links that result in 403 errors during CI
-          args: --ignore-links "http*://www.anthropic.com/*,http*://hackerone.com/anthropic-vdp/*" ./
+          args: --ignore-links "https://www.anthropic.com/*,https://hackerone.com/anthropic-vdp/*" --do-not-warn-for-redirect-to "https://modelcontextprotocol.io/*,https://github.com/login?*" ./
