@@ -10,6 +10,7 @@ using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using ModelContextProtocol.Utils.Json;
+using TestServerWithHosting.Tools;
 
 namespace ModelContextProtocol.Tests;
 
@@ -93,6 +94,54 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : KestrelInMemo
 
         var message = await receivedNotification.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         Assert.Equal("Hello from server!", message);
+    }
+
+    [Fact]
+    public async Task AddMcpServer_CanBeCalled_MultipleTimes()
+    {
+        var firstOptionsCallbackCalled = false;
+        var secondOptionsCallbackCalled = false;
+
+        Builder.Services.AddMcpServer(options =>
+            {
+                firstOptionsCallbackCalled = true;
+            })
+            .WithTools<EchoTool>();
+
+        Builder.Services.AddMcpServer(options =>
+            {
+                secondOptionsCallbackCalled = true;
+            })
+            .WithTools<SampleLlmTool>();
+
+
+        await using var app = Builder.Build();
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        using var httpClient = CreateHttpClient();
+        await using var mcpClient = await ConnectMcpClient(httpClient);
+
+        // Options can be lazily initialized, but they must be instantiated by the time an MCP client can finish connecting.
+        Assert.True(firstOptionsCallbackCalled);
+        Assert.True(secondOptionsCallbackCalled);
+
+        var tools = await mcpClient.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, tools.Count);
+        Assert.Contains(tools, tools => tools.Name == "Echo");
+        Assert.Contains(tools, tools => tools.Name == "sampleLLM");
+
+        var echoResponse = await mcpClient.CallToolAsync(
+            "Echo",
+            new Dictionary<string, object?>
+            {
+                ["message"] = "from client!"
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+        var textContent = Assert.Single(echoResponse.Content, c => c.Type == "text");
+
+        Assert.Equal("hello from client!", textContent.Text);
     }
 
     private static void MapAbsoluteEndpointUriMcp(IEndpointRouteBuilder endpoints)
