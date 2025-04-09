@@ -14,7 +14,7 @@ jobs:
         uses: actions/checkout@main
 
       - name: Markup Link Checker (mlc)
-        uses: becheran/mlc@v0.15.4
+        uses: becheran/mlc@v0.21.0
         with:
           # Ignore external links that result in 403 errors during CI
           args: --ignore-links "http*://www.anthropic.com/*,http*://hackerone.com/anthropic-vdp/*" ./
