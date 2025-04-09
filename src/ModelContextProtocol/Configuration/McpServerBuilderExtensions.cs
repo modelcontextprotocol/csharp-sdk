@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Hosting;
@@ -194,6 +195,119 @@ public static partial class McpServerBuilderExtensions
             where t.GetCustomAttribute<McpServerPromptTypeAttribute>() is not null
             select t);
     }
+    #endregion
+
+    #region WithResources
+
+    private static McpServerResource ToResource(
+        this IFileInfo fileInfo)
+    {
+        Throw.IfNullOrWhiteSpace(fileInfo.PhysicalPath);
+
+        return new()
+        {
+            ProtocolResource = new()
+            {
+                Uri = fileInfo.PhysicalPath,
+                Name = fileInfo.Name,
+            },
+        };
+    }
+
+    private static IMcpServerBuilder AddResource(
+        this IMcpServerBuilder builder,
+        McpServerResource resource)
+    {
+        builder.Services.Configure<McpServerOptions>(s =>
+        {
+            var capabilities = s.Capabilities ??= new();
+            var resources = capabilities.Resources ??= new();
+            var collection = resources.ResourceCollection ??= [];
+            collection.Add(resource);
+        });
+
+        return builder;
+    }
+
+    private static IMcpServerBuilder AddResources(
+        this IMcpServerBuilder builder,
+        IEnumerable<McpServerResource> resources)
+    {
+        foreach (var resource in resources)
+        {
+            builder = builder.AddResource(resource);
+        }
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds a resource to the server's capabilities.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="resource">The resource to add.</param>
+    /// <returns>The <see cref="IMcpServerBuilder"/> instance.</returns>
+    public static IMcpServerBuilder WithResource(
+        this IMcpServerBuilder builder,
+        McpServerResource resource)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(resource);
+
+        return builder.AddResource(resource);
+    }
+
+    /// <summary>
+    /// Adds a resource to the server's capabilities.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="fileInfo">The file info of the resource.</param>
+    /// <returns>The <see cref="IMcpServerBuilder"/> instance.</returns>
+    public static IMcpServerBuilder WithResource(
+        this IMcpServerBuilder builder,
+        IFileInfo fileInfo)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(fileInfo);
+        
+        var resource = fileInfo.ToResource();
+        return builder.AddResource(resource);
+    }
+
+    /// <summary>
+    /// Adds a collection of resources to the server's capabilities.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="resources">The collection of the resources.</param>
+    /// <returns>The <see cref="IMcpServerBuilder"/> instance.</returns>
+    public static IMcpServerBuilder WithResources(
+        this IMcpServerBuilder builder,
+        params IEnumerable<McpServerResource> resources)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(resources);
+
+        return builder.AddResources(resources);
+    }
+
+    /// <summary>
+    /// Adds a collection of resources to the server's capabilities.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="fileInfos">The collection of the file info of the resources.</param>
+    /// <returns>The <see cref="IMcpServerBuilder"/> instance.</returns>
+    public static IMcpServerBuilder WithResources(
+        this IMcpServerBuilder builder,
+        params IEnumerable<IFileInfo> fileInfos)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(fileInfos);
+
+        return builder.AddResources(
+            from fileInfo in fileInfos
+            where fileInfo is not null
+            select fileInfo.ToResource());
+    }
+
     #endregion
 
     #region Handlers

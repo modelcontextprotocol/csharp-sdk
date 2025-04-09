@@ -7,7 +7,7 @@ namespace ModelContextProtocol.Protocol.Types;
 /// Represents the prompts capability configuration.
 /// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
 /// </summary>
-public class PromptsCapability
+public class PromptsCapability : IListCapability<McpServerPrompt>
 {
     /// <summary>
     /// Whether this server supports notifications for changes to the prompt list.
@@ -38,4 +38,10 @@ public class PromptsCapability
     /// </remarks>
     [JsonIgnore]
     public McpServerPrimitiveCollection<McpServerPrompt>? PromptCollection { get; set; }
+
+    McpServerPrimitiveCollection<McpServerPrompt>? IListCapability<McpServerPrompt>.Collection
+    {
+        get => PromptCollection;
+        set => PromptCollection = value;
+    }
 }

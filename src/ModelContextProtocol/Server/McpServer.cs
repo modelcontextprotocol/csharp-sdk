@@ -20,9 +20,6 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
     private readonly ITransport _sessionTransport;
 
-    private readonly EventHandler? _toolsChangedDelegate;
-    private readonly EventHandler? _promptsChangedDelegate;
-
     private string _endpointName;
     private int _started;
 
@@ -32,6 +29,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
     /// rather than a nullable to be able to manipulate it atomically.
     /// </remarks>
     private StrongBox<LoggingLevel>? _loggingLevel;
+    private readonly List<Disposable> _disposables = [];
 
     /// <summary>
     /// Creates a new instance of <see cref="McpServer"/>.
@@ -64,32 +62,36 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         SetCompletionHandler(options);
         SetPingHandler();
 
+        var capabilities = options.Capabilities;
         // Register any notification handlers that were provided.
-        if (options.Capabilities?.NotificationHandlers is { } notificationHandlers)
+        if (capabilities?.NotificationHandlers is { } notificationHandlers)
         {
             NotificationHandlers.RegisterRange(notificationHandlers);
         }
-
+        
         // Now that everything has been configured, subscribe to any necessary notifications.
-        if (ServerOptions.Capabilities?.Tools?.ToolCollection is { } tools)
+        // TODO: Figure out why calling RegisterListChange here causes a crash.
+        IListCapability<McpServerTool>? toolsCapabilities = capabilities?.Tools;
+        if (toolsCapabilities?.Collection is { } tools)
         {
-            _toolsChangedDelegate = delegate
-            {
-                _ = SendMessageAsync(new JsonRpcNotification() { Method = NotificationMethods.ToolListChangedNotification });
-            };
+            void ChangedDelegate(object? sender, EventArgs e)
+                => _ = this.SendNotificationAsync(NotificationMethods.ToolListChangedNotification);
 
-            tools.Changed += _toolsChangedDelegate;
+            tools.Changed += ChangedDelegate;
+            _disposables.Add(new(() => tools.Changed -= ChangedDelegate));
         }
 
-        if (ServerOptions.Capabilities?.Prompts?.PromptCollection is { } prompts)
+        // TODO: Figure out why calling RegisterListChange here causes a crash.
+        IListCapability<McpServerPrompt>? promptsCapabilities = capabilities?.Prompts;
+        if (promptsCapabilities?.Collection is { } prompts)
         {
-            _promptsChangedDelegate = delegate
-            {
-                _ = SendMessageAsync(new JsonRpcNotification() { Method = NotificationMethods.PromptListChangedNotification });
-            };
+            void ChangedDelegate(object? sender, EventArgs e)
+                => _ = this.SendNotificationAsync(NotificationMethods.PromptListChangedNotification);
 
-            prompts.Changed += _promptsChangedDelegate;
+            prompts.Changed += ChangedDelegate;
+            _disposables.Add(new(() => prompts.Changed -= ChangedDelegate));
         }
+        RegisterListChange(capabilities?.Resources, RequestMethods.ResourcesList);
 
         // And initialize the session.
         InitializeSession(transport);
@@ -136,18 +138,11 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
     public override async ValueTask DisposeUnsynchronizedAsync()
     {
-        if (_toolsChangedDelegate is not null &&
-            ServerOptions.Capabilities?.Tools?.ToolCollection is { } tools)
+        foreach (var disposable in _disposables)
         {
-            tools.Changed -= _toolsChangedDelegate;
+            disposable.Dispose();
         }
-
-        if (_promptsChangedDelegate is not null &&
-            ServerOptions.Capabilities?.Prompts?.PromptCollection is { } prompts)
-        {
-            prompts.Changed -= _promptsChangedDelegate;
-        }
-
+        _disposables.Clear();
         await base.DisposeUnsynchronizedAsync().ConfigureAwait(false);
     }
 
@@ -481,6 +476,21 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             },
             McpJsonUtilities.JsonContext.Default.SetLevelRequestParams,
             McpJsonUtilities.JsonContext.Default.EmptyResult);
+    }
+
+    private void RegisterListChange<T>(IListCapability<T>? capability, string methodName)
+        where T : IMcpServerPrimitive
+    {
+        // https://modelcontextprotocol.io/specification/2024-11-05/server/tools#capabilities
+        // Look to spec for guidance on ListChanged over collection existance.
+        if (capability?.Collection is { } collection)
+            //&& capability.ListChanged is true)
+        {
+            void handler(object? sender, EventArgs e)
+                => _ = this.SendNotificationAsync(methodName);
+            collection.Changed += handler;
+            _disposables.Add(new(() => collection.Changed -= handler));
+        }
     }
 
     /// <summary>Maps a <see cref="LogLevel"/> to a <see cref="LoggingLevel"/>.</summary>
