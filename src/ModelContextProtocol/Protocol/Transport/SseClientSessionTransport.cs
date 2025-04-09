@@ -296,11 +296,6 @@ internal sealed class SseClientSessionTransport : TransportBase
                 // If the endpoint is a relative URI, we need to combine it with the relative path of the SSE endpoint
                 var baseUriBuilder = new UriBuilder(_sseEndpoint);
 
-                // Check that paths end in "/sse" and remove if needed
-                if (baseUriBuilder.Path.EndsWith("/sse", StringComparison.Ordinal))
-                {
-                    baseUriBuilder.Path = baseUriBuilder.Path[..^4];
-                }
 
                 // Instead of manually concatenating strings, use the Uri class's composition capabilities
                 _messageEndpoint = new Uri(baseUriBuilder.Uri, data);
