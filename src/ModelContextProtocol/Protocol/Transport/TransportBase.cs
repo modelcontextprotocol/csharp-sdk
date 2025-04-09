@@ -48,7 +48,7 @@ public abstract class TransportBase : ITransport
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     protected async Task WriteMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
     {
-        if (IsConnected)
+        if (!IsConnected)
         {
             throw new McpTransportException("Transport is not connected");
         }
