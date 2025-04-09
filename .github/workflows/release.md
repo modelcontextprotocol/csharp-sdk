@@ -31,7 +31,7 @@ The following process is used when publishing new releases to NuGet.org:
 3. **Monitor the Release workflow**
     - After publishing the release, a workflow will begin for producing the release's build artifacts and publishing the NuGet package to NuGet.org
     - If the job fails, troubleshoot and re-run the workflow as needed
-    - Verify the package version becomes listed on at [https://nuget.org/packages/ModelContextProtocol](https://nuget.org/packages/ModelContextProtocol)
+    - Verify the package version becomes listed on at [https://nuget.org/packages/ModelContextProtocol](https://www.nuget.org/packages/ModelContextProtocol)
 
 4. **Update the source to increment the version number**
     - Immediately after publishing a new release, the [`/src/Directory.Build.Props`](../../src/Directory.Build.props) file needs to be updated to bump the version to the next expected release version
