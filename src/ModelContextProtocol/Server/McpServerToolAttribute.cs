@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace ModelContextProtocol.Server;
 
 /// <summary>
-/// Used to indicate that a method should be considered an MCP tool and describe it.
+/// Used to indicate that a method should be considered an <see cref="McpServerTool"/>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -12,19 +12,7 @@ namespace ModelContextProtocol.Server;
 /// these methods become available as tools that can be called by MCP clients.
 /// </para>
 /// <para>
-/// Example usage:
-/// <code>
-/// [McpServerToolType]
-/// public class CalculatorTools
-/// {
-///     [McpServerTool(Name = "add", ReadOnly = true)]
-///     [Description("Adds two numbers together.")]
-///     public static int Add(int a, int b)
-///     {
-///         return a + b;
-///     }
-/// }
-/// </code>
+/// When methods are provided directly to <see cref="M:McpServerTool.Create"/>, the attribute is not required.
 /// </para>
 /// </remarks>
 [AttributeUsage(AttributeTargets.Method)]
@@ -67,25 +55,21 @@ public sealed class McpServerToolAttribute : Attribute
     /// include spaces, special characters, and be phrased in a more natural language style.
     /// </para>
     /// </remarks>
-    /// <example>
-    /// <code>
-    /// [McpServerTool(Name = "getWeather", Title = "Weather Information", ReadOnly = true)]
-    /// public string GetWeather(string location)
-    /// {
-    ///     // Implementation...
-    ///     return $"The weather in {location} is sunny.";
-    /// }
-    /// </code>
-    /// </example>
     public string? Title { get; set; }
 
     /// <summary>
     /// Gets or sets whether the tool may perform destructive updates to its environment.
-    /// If true, the tool may perform destructive updates to its environment.
-    /// If false, the tool performs only additive updates.
-    /// This property is most relevant when the tool modifies its environment (ReadOnly = false).
-    /// Default: true.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// If <see langword="true"/>, the tool may perform destructive updates to its environment.
+    /// If <see langword="false"/>, the tool performs only additive updates.
+    /// This property is most relevant when the tool modifies its environment (ReadOnly = false).
+    /// </para>
+    /// <para>
+    /// The default is <see langword="true"/>.
+    /// </para>
+    /// </remarks>
     public bool Destructive 
     {
         get => _destructive ?? DestructiveDefault; 
@@ -93,10 +77,17 @@ public sealed class McpServerToolAttribute : Attribute
     }
 
     /// <summary>
-    /// Gets or sets whether calling the tool repeatedly with the same arguments will have no additional effect on its environment.
-    /// This property is most relevant when the tool modifies its environment (ReadOnly = false).
-    /// Default: false.
+    /// Gets or sets whether calling the tool repeatedly with the same arguments 
+    /// will have no additional effect on its environment.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This property is most relevant when the tool modifies its environment (ReadOnly = false).
+    /// </para>
+    /// <para>
+    /// The default is <see langword="false"/>.
+    /// </para>
+    /// </remarks>
     public bool Idempotent  
     {
         get => _idempotent ?? IdempotentDefault;
@@ -105,19 +96,14 @@ public sealed class McpServerToolAttribute : Attribute
 
     /// <summary>
     /// Gets or sets whether this tool may interact with an "open world" of external entities.
-    /// If true, the tool may interact with an unpredictable or dynamic set of entities (like web search).
-    /// If false, the tool's domain of interaction is closed and well-defined (like memory access).
-    /// Default: true.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Open world tools typically interact with external systems or data that may change independently
-    /// of the tool's operation, such as web searches, weather data, or stock prices.
+    /// If <see langword="true"/>, the tool may interact with an unpredictable or dynamic set of entities (like web search).
+    /// If <see langword="false"/>, the tool's domain of interaction is closed and well-defined (like memory access).
     /// </para>
     /// <para>
-    /// Closed world tools operate in a more controlled environment where the set of possible
-    /// interactions is well-defined and predictable, such as memory management, mathematical calculations,
-    /// or manipulating data structures that are fully contained within the system.
+    /// The default is <see langword="true"/>.
     /// </para>
     /// </remarks>
     public bool OpenWorld
@@ -127,35 +113,21 @@ public sealed class McpServerToolAttribute : Attribute
     }
 
     /// <summary>
-    /// Gets or sets whether the tool does not modify its environment.
-    /// If true, the tool only performs read operations without changing state.
-    /// If false, the tool may make modifications to its environment.
-    /// Default: false.
+    /// Gets or sets whether this tool does not modify its environment.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Read-only tools should not create, update, or delete data, and should have no side effects
-    /// beyond computational resource usage (CPU, memory, etc.).
+    /// If <see langword="true"/>, the tool only performs read operations without changing state.
+    /// If <see langword="false"/>, the tool may make modifications to its environment.
     /// </para>
     /// <para>
-    /// Examples of read-only tools include calculator functions, data retrieval operations,
-    /// and search functionality. Setting this property appropriately helps clients understand
-    /// the potential impact of calling the tool.
+    /// Read-only tools do not have side effects beyond computational resource usage.
+    /// They don't create, update, or delete data in any system.
+    /// </para>
+    /// <para>
+    /// The default is <see langword="false"/>.
     /// </para>
     /// </remarks>
-    /// <example>
-    /// <code>
-    /// [McpServerTool(Name = "calculateSum", ReadOnly = true)]
-    /// public int Add(int a, int b) => a + b;
-    /// 
-    /// [McpServerTool(Name = "createRecord", ReadOnly = false)]
-    /// public void CreateRecord(string id, string data) 
-    /// {
-    ///     // This modifies data, so ReadOnly = false
-    ///     _database.Insert(id, data);
-    /// }
-    /// </code>
-    /// </example>
     public bool ReadOnly  
     {
         get => _readOnly ?? ReadOnlyDefault; 

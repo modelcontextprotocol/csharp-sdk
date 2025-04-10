@@ -18,7 +18,7 @@ using System.Security.Cryptography;
 namespace Microsoft.AspNetCore.Builder;
 
 /// <summary>
-/// Extension methods for <see cref="IEndpointRouteBuilder"/> to add MCP endpoints.
+/// Provides extension methods for <see cref="IEndpointRouteBuilder"/> to add MCP endpoints.
 /// </summary>
 public static class McpEndpointRouteBuilderExtensions
 {

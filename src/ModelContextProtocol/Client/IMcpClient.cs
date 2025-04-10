@@ -5,20 +5,6 @@ namespace ModelContextProtocol.Client;
 /// <summary>
 /// Represents an instance of a Model Context Protocol (MCP) client that connects to and communicates with an MCP server.
 /// </summary>
-/// <remarks>
-/// <para>
-/// The MCP client provides a standardized way to interact with AI tool servers, allowing applications to:
-/// <list type="bullet">
-///   <item>Connect to MCP-compliant servers</item>
-///   <item>Discover and use available tools, prompts, and resources</item>
-///   <item>Execute tool calls and prompt completions</item>
-///   <item>Subscribe to and receive notifications from resources</item>
-/// </list>
-/// </para>
-/// <para>
-/// An <see cref="IMcpClient"/> instance is typically created using <see cref="McpClientFactory"/> and should be disposed of properly when finished.
-/// </para>
-/// </remarks>
 public interface IMcpClient : IMcpEndpoint
 {
     /// <summary>

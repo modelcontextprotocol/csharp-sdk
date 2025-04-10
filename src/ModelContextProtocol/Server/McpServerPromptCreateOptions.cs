@@ -15,26 +15,6 @@ namespace ModelContextProtocol.Server;
 /// When creating prompts programmatically rather than using attributes, these options
 /// provide the same level of configuration flexibility.
 /// </para>
-/// <para>
-/// Example usage:
-/// <code>
-/// // Create a prompt with custom options
-/// var promptOptions = new McpServerPromptCreateOptions
-/// {
-///     Name = "weather-inquiry",
-///     Description = "A prompt that asks about the weather in a specific city",
-///     Services = serviceProvider // For dependency injection
-/// };
-/// 
-/// // Create a prompt with the options
-/// var prompt = McpServerPrompt.Create(
-///     () => "What is the weather like in Paris today?",
-///     promptOptions);
-///     
-/// // Add to server options
-/// serverOptions.Capabilities.Prompts.PromptCollection.Add(prompt);
-/// </code>
-/// </para>
 /// </remarks>
 public sealed class McpServerPromptCreateOptions
 {
@@ -42,8 +22,8 @@ public sealed class McpServerPromptCreateOptions
     /// Gets or sets optional services used in the construction of the <see cref="McpServerPrompt"/>.
     /// </summary>
     /// <remarks>
-    /// These services will be used to determine which parameters should be satisifed from dependency injection; what services
-    /// are satisfied via this provider should match what's satisfied via the provider passed in at invocation time.
+    /// These services will be used to determine which parameters should be satisifed from dependency injection. As such,
+    /// what services are satisfied via this provider should match what's satisfied via the provider passed in at invocation time.
     /// </remarks>
     public IServiceProvider? Services { get; set; }
 

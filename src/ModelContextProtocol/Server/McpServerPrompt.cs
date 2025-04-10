@@ -15,45 +15,14 @@ public abstract class McpServerPrompt : IMcpServerPrimitive
 
     /// <summary>Gets the protocol <see cref="Prompt"/> type for this instance.</summary>
     /// <remarks>
-    /// <para>
     /// The ProtocolPrompt property represents the underlying prompt definition as defined in the
     /// Model Context Protocol specification. It contains metadata like the prompt's name,
     /// description, and acceptable arguments.
-    /// </para>
-    /// <para>
-    /// This property is used during protocol operations to expose the prompt's metadata to clients,
-    /// facilitate serialization/deserialization of prompt information, and provide consistent
-    /// access to prompt details across the MCP ecosystem.
-    /// </para>
-    /// <para>
-    /// When implementing a custom <see cref="McpServerPrompt"/>, you must provide a concrete
-    /// implementation of this property that returns a properly configured <see cref="Prompt"/>
-    /// instance with at minimum a unique Name value.
-    /// </para>
     /// </remarks>
-    /// <example>
-    /// <code>
-    /// public class MyCustomPrompt : McpServerPrompt
-    /// {
-    ///     public override Prompt ProtocolPrompt => new Prompt
-    ///     {
-    ///         Name = "custom_greeting",
-    ///         Description = "A customizable greeting template",
-    ///         Arguments = new List&lt;PromptArgument&gt;
-    ///         {
-    ///             new() { Name = "name", Description = "The user's name", Required = true },
-    ///             new() { Name = "style", Description = "Greeting style (formal, casual, etc.)" }
-    ///         }
-    ///     };
-    ///     
-    ///     // Implementation of GetAsync...
-    /// }
-    /// </code>
-    /// </example>
     public abstract Prompt ProtocolPrompt { get; }
 
     /// <summary>
-    /// Executes the prompt with the provided request parameters and returns the prompt result.
+    /// Gets the prompt, rendering it with the provided request parameters and returning the prompt result.
     /// </summary>
     /// <param name="request">
     /// The request context containing information about the prompt invocation, including any arguments
@@ -64,16 +33,10 @@ public abstract class McpServerPrompt : IMcpServerPrimitive
     /// </param>
     /// <returns>
     /// A <see cref="Task"/> representing the asynchronous operation, containing a <see cref="GetPromptResult"/> with
-    /// the prompt content and messages. This result typically contains a set of prompt messages (such as user and assistant messages)
-    /// that represent the content to be used in model interactions.
+    /// the prompt content and messages.
     /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is <see langword="null"/>.</exception>
-    /// <exception cref="InvalidOperationException">Thrown when the prompt implementation returns null or an unsupported result type.</exception>
-    /// <remarks>
-    /// Implementations of this method should process the provided request parameters, execute any required logic,
-    /// and return a properly structured GetPromptResult. The result can contain multiple messages with different roles
-    /// (e.g., system, user, assistant) to create a complete interaction context for AI models.
-    /// </remarks>
+    /// <exception cref="InvalidOperationException">The prompt implementation returns <see langword="null"/> or an unsupported result type.</exception>
     public abstract Task<GetPromptResult> GetAsync(
         RequestContext<GetPromptRequestParams> request,
         CancellationToken cancellationToken = default);

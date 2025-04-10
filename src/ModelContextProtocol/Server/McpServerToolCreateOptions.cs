@@ -15,29 +15,6 @@ namespace ModelContextProtocol.Server;
 /// When creating tools programmatically rather than using attributes, these options
 /// provide the same level of configuration flexibility.
 /// </para>
-/// <para>
-/// Example usage:
-/// <code>
-/// // Create a tool with custom options
-/// var toolOptions = new McpServerToolCreateOptions
-/// {
-///     Name = "getWeather",
-///     Description = "Gets the current weather for a specified city",
-///     Title = "Get Weather Information",
-///     ReadOnly = true,
-///     OpenWorld = true,
-///     Services = serviceProvider // For dependency injection
-/// };
-/// 
-/// // Create a tool with the options
-/// var weatherTool = McpServerTool.Create(
-///     (string city) => $"The weather in {city} is sunny with 72°F.",
-///     toolOptions);
-///     
-/// // Add to server options
-/// serverOptions.Capabilities.Tools.ToolCollection.Add(weatherTool);
-/// </code>
-/// </para>
 /// </remarks>
 public sealed class McpServerToolCreateOptions
 {
@@ -45,8 +22,8 @@ public sealed class McpServerToolCreateOptions
     /// Gets or sets optional services used in the construction of the <see cref="McpServerTool"/>.
     /// </summary>
     /// <remarks>
-    /// These services will be used to determine which parameters should be satisifed from dependency injection; what services
-    /// are satisfied via this provider should match what's satisfied via the provider passed in at invocation time.
+    /// These services will be used to determine which parameters should be satisifed from dependency injection. As such,
+    /// what services are satisfied via this provider should match what's satisfied via the provider passed in at invocation time.
     /// </remarks>
     public IServiceProvider? Services { get; set; }
 
@@ -82,93 +59,67 @@ public sealed class McpServerToolCreateOptions
     /// include spaces, special characters, and be phrased in a more natural language style.
     /// </para>
     /// </remarks>
-    /// <example>
-    /// <code>
-    /// // Create a tool with a descriptive title
-    /// var weatherTool = McpServerTool.Create(
-    ///     (string city) => $"The weather in {city} is sunny.",
-    ///     new McpServerToolCreateOptions { 
-    ///         Name = "getWeather", 
-    ///         Title = "Weather Information Service",
-    ///         ReadOnly = true 
-    ///     });
-    /// </code>
-    /// </example>
     public string? Title { get; set; }
 
     /// <summary>
     /// Gets or sets whether the tool may perform destructive updates to its environment.
-    /// If true, the tool may perform destructive updates to its environment.
-    /// If false, the tool performs only additive updates.
-    /// This property is most relevant when the tool modifies its environment (ReadOnly = false).
-    /// Default: true.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// If <see langword="true"/>, the tool may perform destructive updates to its environment.
+    /// If <see langword="false"/>, the tool performs only additive updates.
+    /// This property is most relevant when the tool modifies its environment (ReadOnly = false).
+    /// </para>
+    /// <para>
+    /// The default is <see langword="true"/>.
+    /// </para>
+    /// </remarks>
     public bool? Destructive { get; set; }
 
     /// <summary>
     /// Gets or sets whether calling the tool repeatedly with the same arguments 
     /// will have no additional effect on its environment.
-    /// This property is most relevant when the tool modifies its environment (ReadOnly = false).
-    /// Default: false.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This property is most relevant when the tool modifies its environment (ReadOnly = false).
+    /// </para>
+    /// <para>
+    /// The default is <see langword="false"/>.
+    /// </para>
+    /// </remarks>
     public bool? Idempotent { get; set; }
 
     /// <summary>
     /// Gets or sets whether this tool may interact with an "open world" of external entities.
-    /// If true, the tool may interact with an unpredictable or dynamic set of entities (like web search).
-    /// If false, the tool's domain of interaction is closed and well-defined (like memory access).
-    /// Default: true.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Open world tools typically interact with external systems or data that may change independently
-    /// of the tool's operation, such as web searches, weather data, or stock prices.
+    /// If <see langword="true"/>, the tool may interact with an unpredictable or dynamic set of entities (like web search).
+    /// If <see langword="false"/>, the tool's domain of interaction is closed and well-defined (like memory access).
     /// </para>
     /// <para>
-    /// Closed world tools operate in a more controlled environment where the set of possible
-    /// interactions is well-defined and predictable, such as memory management, mathematical calculations,
-    /// or manipulating data structures that are fully contained within the system.
+    /// The default is <see langword="true"/>.
     /// </para>
     /// </remarks>
     public bool? OpenWorld { get; set; }
 
     /// <summary>
     /// Gets or sets whether this tool does not modify its environment.
-    /// If true, the tool only performs read operations without changing state.
-    /// If false, the tool may make modifications to its environment.
-    /// Default: false.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Read-only tools are guaranteed not to have side effects beyond computational resource usage.
+    /// If <see langword="true"/>, the tool only performs read operations without changing state.
+    /// If <see langword="false"/>, the tool may make modifications to its environment.
+    /// </para>
+    /// <para>
+    /// Read-only tools do not have side effects beyond computational resource usage.
     /// They don't create, update, or delete data in any system.
     /// </para>
     /// <para>
-    /// Setting this property helps clients understand the safety profile of the tool. Read-only
-    /// tools can be called with minimal concerns about state changes or unintended consequences.
+    /// The default is <see langword="false"/>.
     /// </para>
     /// </remarks>
-    /// <example>
-    /// <code>
-    /// // Create a read-only tool for getting information
-    /// var weatherTool = McpServerTool.Create(
-    ///     (string city) => $"The weather in {city} is sunny.",
-    ///     new McpServerToolCreateOptions { 
-    ///         Name = "getWeather", 
-    ///         ReadOnly = true,
-    ///         OpenWorld = true
-    ///     });
-    ///     
-    /// // Create a tool that modifies data
-    /// var updateTool = McpServerTool.Create(
-    ///     (string id, string value) => _database.Update(id, value),
-    ///     new McpServerToolCreateOptions { 
-    ///         Name = "updateRecord", 
-    ///         ReadOnly = false,
-    ///         Destructive = true 
-    ///     });
-    /// </code>
-    /// </example>
     public bool? ReadOnly { get; set; }
 
     /// <summary>

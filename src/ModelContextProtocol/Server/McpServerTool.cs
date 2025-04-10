@@ -8,58 +8,6 @@ namespace ModelContextProtocol.Server;
 /// <summary>
 /// Represents an invocable tool used by Model Context Protocol clients and servers.
 /// </summary>
-/// <remarks>
-/// <para>
-/// In the Model Context Protocol (MCP), tools are functions that can be invoked by clients, typically 
-/// AI models or agents. They provide a way to extend model capabilities by allowing access to 
-/// external functionality, data sources, or services.
-/// </para>
-/// <para>
-/// Tools can be created in several ways:
-/// <list type="bullet">
-///   <item>Using the static <see cref="M:Create"/> methods with delegates or method references</item>
-///   <item>By creating classes marked with <see cref="McpServerToolTypeAttribute"/> containing methods marked with <see cref="McpServerToolAttribute"/></item>
-///   <item>By inheriting from <see cref="McpServerTool"/> to create custom tool implementations</item>
-/// </list>
-/// </para>
-/// <para>
-/// Example usage - creating and registering tools:
-/// <code>
-/// // Create a tool directly with a delegate
-/// var echoTool = McpServerTool.Create(
-///     (string message) => $"Echo: {message}",
-///     new McpServerToolCreateOptions
-///     {
-///         Name = "echo",
-///         Description = "Echoes the input back to the client."
-///     });
-///     
-/// // Register tools with the server
-/// builder.Services.AddMcpServer()
-///     .WithStdioServerTransport()
-///     .WithTool(echoTool)
-///     .WithTools&lt;WeatherTools&gt;(); // Register a class containing tool methods
-/// </code>
-/// </para>
-/// <para>
-/// Example using a class with tool methods:
-/// <code>
-/// [McpServerToolType]
-/// public class WeatherTools
-/// {
-///     [McpServerTool, Description("Get weather forecast for a location.")]
-///     public static async Task&lt;string&gt; GetForecast(
-///         HttpClient client,
-///         [Description("Latitude of the location.")] double latitude,
-///         [Description("Longitude of the location.")] double longitude)
-///     {
-///         // Implementation details...
-///         return forecast;
-///     }
-/// }
-/// </code>
-/// </para>
-/// </remarks>
 public abstract class McpServerTool : IMcpServerPrimitive
 {
     /// <summary>Initializes a new instance of the <see cref="McpServerTool"/> class.</summary>
