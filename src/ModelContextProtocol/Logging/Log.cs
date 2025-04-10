@@ -229,35 +229,6 @@ internal static partial class Log
         string data,
         Exception exception);
 
-    /// <summary>
-    /// Logs an error that occurred during JSON-RPC message handling.
-    /// </summary>
-    /// <param name="logger">The logger to write the error message to.</param>
-    /// <param name="endpointName">The name of the endpoint where the error occurred.</param>
-    /// <param name="messageType">The type name of the message that was being processed.</param>
-    /// <param name="payload">The serialized JSON content of the message for debugging.</param>
-    /// <param name="exception">The exception that was thrown during message handling.</param>
-    /// <remarks>
-    /// <para>
-    /// This method logs at Error level (EventId 7008) and captures details about unexpected exceptions
-    /// that occur during the processing of JSON-RPC messages that aren't handled by more specific
-    /// error logging methods.
-    /// </para>
-    /// <para>
-    /// Example usage:
-    /// </para>
-    /// <code>
-    /// try 
-    /// {
-    ///     await HandleMessageAsync(message, cancellationToken);
-    /// }
-    /// catch (Exception ex) when (ex is not OperationCanceledException)
-    /// {
-    ///     var payload = JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.IJsonRpcMessage);
-    ///     _logger.MessageHandlerError(EndpointName, message.GetType().Name, payload, ex);
-    /// }
-    /// </code>
-    /// </remarks>
     [LoggerMessage(
         EventId = 7008,
         Level = LogLevel.Error,
@@ -279,15 +250,6 @@ internal static partial class Log
         this ILogger logger,
         IJsonRpcMessage message);
 
-    /// <summary>
-    /// Logs when a message has been successfully written to a transport channel.
-    /// </summary>
-    /// <param name="logger">The logger to write the message to.</param>
-    /// <remarks>
-    /// This method logs at Trace level and is primarily used for debugging transport-level
-    /// message flow. The message contains no parameters and simply indicates that a message 
-    /// was written to the channel.
-    /// </remarks>
     [LoggerMessage(
         EventId = 7010,
         Level = LogLevel.Trace,
@@ -305,29 +267,6 @@ internal static partial class Log
         string endpointName,
         string messageType);
 
-    /// <summary>
-    /// Logs a warning when no handler is found for a JSON-RPC request method.
-    /// </summary>
-    /// <param name="logger">The logger to write the warning message to.</param>
-    /// <param name="endpointName">The name of the endpoint that received the request.</param>
-    /// <param name="method">The method name in the request that has no registered handler.</param>
-    /// <remarks>
-    /// <para>
-    /// This method logs at Warning level (EventId 7012) when a JSON-RPC request is received
-    /// but no handler has been registered for the requested method. This typically indicates
-    /// a client is requesting a capability that the server doesn't support.
-    /// </para>
-    /// <para>
-    /// Example usage:
-    /// </para>
-    /// <code>
-    /// if (!_requestHandlers.TryGetValue(request.Method, out var handler))
-    /// {
-    ///     _logger.NoHandlerFoundForRequest(EndpointName, request.Method);
-    ///     throw new McpException("The method does not exist or is not available.", ErrorCodes.MethodNotFound);
-    /// }
-    /// </code>
-    /// </remarks>
     [LoggerMessage(
         EventId = 7012,
         Level = LogLevel.Warning,
@@ -338,29 +277,6 @@ internal static partial class Log
         string endpointName,
         string method);
 
-    /// <summary>
-    /// Logs at trace level when a response message has been successfully matched to a pending request by its message ID.
-    /// </summary>
-    /// <param name="logger">The logger to write the trace message to.</param>
-    /// <param name="endpointName">The name of the endpoint that received the response message.</param>
-    /// <param name="messageId">The unique identifier of the message that was matched to a pending request.</param>
-    /// <remarks>
-    /// <para>
-    /// This method logs at Trace level (EventId 7013) when the JSON-RPC message correlation system 
-    /// successfully identifies a response message that corresponds to a previously sent request.
-    /// This is part of the request/response tracking mechanism in the MCP framework.
-    /// </para>
-    /// <para>
-    /// Example usage:
-    /// </para>
-    /// <code>
-    /// if (_pendingRequests.TryRemove(messageWithId.Id, out var tcs))
-    /// {
-    ///     _logger.ResponseMatchedPendingRequest(EndpointName, messageWithId.Id.ToString());
-    ///     tcs.TrySetResult(message);
-    /// }
-    /// </code>
-    /// </remarks>
     [LoggerMessage(
         EventId = 7013,
         Level = LogLevel.Trace,
@@ -371,14 +287,6 @@ internal static partial class Log
         string endpointName,
         string messageId);
 
-    /// <summary>
-    /// Logs a warning when an endpoint handler receives a message with an unexpected type.
-    /// This occurs when a message doesn't match any of the expected JSON-RPC message types
-    /// (request, notification, or message with ID).
-    /// </summary>
-    /// <param name="logger">The logger to use.</param>
-    /// <param name="endpointName">The name of the endpoint that received the message.</param>
-    /// <param name="messageType">The type name of the unexpected message.</param>
     [LoggerMessage(
         EventId = 7014,
         Level = LogLevel.Warning,
@@ -389,28 +297,6 @@ internal static partial class Log
         string endpointName,
         string messageType);
 
-    /// <summary>
-    /// Logs a debug message when a request has been sent and the system is waiting for a response.
-    /// </summary>
-    /// <param name="logger">The logger to write the message to.</param>
-    /// <param name="endpointName">The name of the endpoint the request was sent to.</param>
-    /// <param name="method">The method name in the request.</param>
-    /// <param name="id">The ID of the request being tracked.</param>
-    /// <remarks>
-    /// <para>
-    /// This method logs at Debug level and tracks that a request has been successfully sent through
-    /// the transport layer and the system is now awaiting a response.
-    /// </para>
-    /// <para>
-    /// Example usage:
-    /// </para>
-    /// <code>
-    /// await _transport.SendMessageAsync(request, cancellationToken).ConfigureAwait(false);
-    /// 
-    /// _logger.RequestSentAwaitingResponse(EndpointName, request.Method, request.Id.ToString());
-    /// var response = await tcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
-    /// </code>
-    /// </remarks>
     [LoggerMessage(
         EventId = 7015,
         Level = LogLevel.Debug,
@@ -422,35 +308,6 @@ internal static partial class Log
         string method,
         string id);
 
-    /// <summary>
-    /// Logs an error when a server initialization attempt is made while the server is already initializing.
-    /// </summary>
-    /// <param name="logger">The logger to write the error message to.</param>
-    /// <param name="endpointName">The name of the endpoint that is already initializing.</param>
-    /// <remarks>
-    /// <para>
-    /// This method logs at Error level (EventId 7016) when a second attempt is made to initialize
-    /// a server that is already in the initialization process. This typically occurs when multiple
-    /// initialization requests are sent to the same server endpoint concurrently.
-    /// </para>
-    /// <para>
-    /// During the initialization sequence, a server can only process one initialization request at a time.
-    /// Attempting to start initialization when it's already in progress indicates a potential race condition
-    /// or improper sequencing of client-server communication.
-    /// </para>
-    /// <para>
-    /// Example usage:
-    /// </para>
-    /// <code>
-    /// if (_isInitializing)
-    /// {
-    ///     _logger.ServerAlreadyInitializing(EndpointName);
-    ///     throw new McpException("Server is already initializing", ErrorCodes.ServerAlreadyInitialized);
-    /// }
-    /// 
-    /// _isInitializing = true;
-    /// </code>
-    /// </remarks>
     [LoggerMessage(
         EventId = 7016,
         Level = LogLevel.Error,
@@ -460,33 +317,6 @@ internal static partial class Log
         this ILogger logger,
         string endpointName);
 
-    /// <summary>
-    /// Logs an error that occurs during server initialization.
-    /// </summary>
-    /// <param name="logger">The logger to write the error message to.</param>
-    /// <param name="endpointName">The name of the endpoint where the initialization error occurred.</param>
-    /// <param name="e">The exception that was thrown during server initialization.</param>
-    /// <remarks>
-    /// <para>
-    /// This method logs at Error level (EventId 7017) when an error occurs during the initialization
-    /// of a server endpoint. This typically indicates a problem with establishing the initial connection
-    /// or handshake with the server component.
-    /// </para>
-    /// <para>
-    /// Example usage:
-    /// </para>
-    /// <code>
-    /// try
-    /// {
-    ///     await InitializeServerAsync(cancellationToken).ConfigureAwait(false);
-    /// }
-    /// catch (Exception ex) when (ex is not OperationCanceledException)
-    /// {
-    ///     _logger.ServerInitializationError(EndpointName, ex);
-    ///     throw;
-    /// }
-    /// </code>
-    /// </remarks>
     [LoggerMessage(
         EventId = 7017,
         Level = LogLevel.Error,
@@ -497,32 +327,6 @@ internal static partial class Log
         string endpointName,
         Exception e);
 
-    /// <summary>
-    /// Logs at debug level when a POST request to the SSE transport has been accepted by the server.
-    /// </summary>
-    /// <param name="logger">The logger to write the debug message to.</param>
-    /// <param name="endpointName">The name of the endpoint that sent the POST request.</param>
-    /// <param name="messageId">The unique identifier of the message that was accepted.</param>
-    /// <remarks>
-    /// <para>
-    /// This method logs at Debug level (EventId 7018) when a JSON-RPC message sent via HTTP POST 
-    /// to an SSE endpoint has been accepted by the server. The server responds with "accepted" 
-    /// to indicate that it has received the message and will process it asynchronously.
-    /// </para>
-    /// <para>
-    /// The actual response to the message will be delivered later via the Server-Sent Events (SSE) stream.
-    /// This logging helps track the asynchronous message flow in the SSE transport implementation.
-    /// </para>
-    /// <para>
-    /// Example usage:
-    /// </para>
-    /// <code>
-    /// if (responseContent.Equals("accepted", StringComparison.OrdinalIgnoreCase))
-    /// {
-    ///     _logger.SSETransportPostAccepted(EndpointName, messageId);
-    /// }
-    /// </code>
-    /// </remarks>
     [LoggerMessage(
         EventId = 7018,
         Level = LogLevel.Debug,

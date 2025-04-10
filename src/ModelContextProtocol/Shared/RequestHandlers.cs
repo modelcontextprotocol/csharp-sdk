@@ -28,15 +28,6 @@ internal sealed class RequestHandlers : Dictionary<string, Func<JsonRpcRequest, 
     /// a response object that will be serialized back to the client.
     /// </para>
     /// </remarks>
-    /// <example>
-    /// <code>
-    /// RequestHandlers.Set(
-    ///     RequestMethods.LoggingSetLevel,        // Method name from protocol
-    ///     MyLoggingLevelHandler,                 // Handler function
-    ///     JsonContext.Default.SetLevelRequestParams,    // Request type info
-    ///     JsonContext.Default.EmptyResult);      // Response type info
-    /// </code>
-    /// </example>
     public void Set<TRequest, TResponse>(
         string method,
         Func<TRequest?, CancellationToken, Task<TResponse>> handler,

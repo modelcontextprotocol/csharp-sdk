@@ -15,25 +15,12 @@ namespace System.Text.Json.Serialization;
 /// A JSON converter for enums that allows customizing the serialized string value of enum members
 /// using the <see cref="JsonStringEnumMemberNameAttribute"/>.
 /// </summary>
+/// <typeparam name="TEnum">The enum type to convert.</typeparam>
 /// <remarks>
 /// This is a temporary workaround for lack of System.Text.Json's JsonStringEnumConverter&lt;T&gt;
 /// 9.x support for custom enum member naming. It will be replaced by the built-in functionality
 /// once .NET 9 is fully adopted.
 /// </remarks>
-/// <typeparam name="TEnum">The enum type to convert.</typeparam>
-/// <example>
-/// <code>
-/// [JsonConverter(typeof(CustomizableJsonStringEnumConverter&lt;Role&gt;))]
-/// public enum Role
-/// {
-///     [JsonStringEnumMemberName("user")]
-///     User,
-///     
-///     [JsonStringEnumMemberName("assistant")]
-///     Assistant
-/// }
-/// </code>
-/// </example>
 internal sealed class CustomizableJsonStringEnumConverter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicFields)] TEnum> :
     JsonStringEnumConverter<TEnum> where TEnum : struct, Enum
 {
@@ -79,20 +66,6 @@ internal sealed class CustomizableJsonStringEnumConverter<[DynamicallyAccessedMe
 /// in versions prior to .NET 9. It works together with <see cref="CustomizableJsonStringEnumConverter{TEnum}"/>
 /// to provide customized string representations of enum values during JSON serialization and deserialization.
 /// </remarks>
-/// <example>
-/// <code>
-/// [JsonConverter(typeof(CustomizableJsonStringEnumConverter&lt;Role&gt;))]
-/// public enum Role
-/// {
-///     [JsonStringEnumMemberName("user")]
-///     User,
-///     
-///     [JsonStringEnumMemberName("assistant")]
-///     Assistant
-/// }
-/// </code>
-/// When serialized to JSON, the Role.User enum value will appear as "user" instead of "User".
-/// </example>
 [AttributeUsage(AttributeTargets.Field, AllowMultiple = false)]
 internal sealed class JsonStringEnumMemberNameAttribute : Attribute
 {

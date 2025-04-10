@@ -31,7 +31,7 @@ internal sealed class McpServerOptionsSetup(
         McpServerPrimitiveCollection<McpServerTool> toolCollection = options.Capabilities?.Tools?.ToolCollection ?? [];
         foreach (var tool in serverTools)
         {
-            toolCollection.TryAdd(tool); // Use TryAdd to avoid exceptions if a tool with the same name already exists
+            toolCollection.TryAdd(tool);
         }
 
         if (!toolCollection.IsEmpty)
@@ -48,7 +48,7 @@ internal sealed class McpServerOptionsSetup(
         McpServerPrimitiveCollection<McpServerPrompt> promptCollection = options.Capabilities?.Prompts?.PromptCollection ?? [];
         foreach (var prompt in serverPrompts)
         {
-            promptCollection.TryAdd(prompt); // Use TryAdd to avoid exceptions if a prompt with the same name already exists
+            promptCollection.TryAdd(prompt);
         }
 
         if (!promptCollection.IsEmpty)

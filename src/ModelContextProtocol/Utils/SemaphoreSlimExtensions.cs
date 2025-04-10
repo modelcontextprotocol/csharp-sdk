@@ -9,18 +9,8 @@ internal static class SynchronizationExtensions
     /// <param name="cancellationToken">A cancellation token to observe while waiting for the semaphore.</param>
     /// <returns>A disposable <see cref="Releaser"/> that releases the semaphore when disposed.</returns>
     /// <remarks>
-    /// <para>
     /// This extension method provides a convenient pattern for using a semaphore in asynchronous code,
     /// similar to how the `lock` statement is used in synchronous code.
-    /// </para>
-    /// <para>
-    /// Example usage:
-    /// <code>
-    /// using var _ = await _semaphore.LockAsync(cancellationToken).ConfigureAwait(false);
-    /// // Code here runs with the semaphore acquired
-    /// // The semaphore is automatically released when the using block ends
-    /// </code>
-    /// </para>
     /// </remarks>
     /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> was canceled.</exception>
     public static async ValueTask<Releaser> LockAsync(this SemaphoreSlim semaphore, CancellationToken cancellationToken = default)

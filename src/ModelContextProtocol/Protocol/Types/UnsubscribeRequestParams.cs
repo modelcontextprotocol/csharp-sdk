@@ -17,30 +17,6 @@ namespace ModelContextProtocol.Protocol.Types;
 /// for the same resource without causing errors, even if there is no active subscription.
 /// </para>
 /// </remarks>
-/// <example>
-/// <code>
-/// // First subscribe to a resource
-/// await client.SubscribeToResourceAsync("resource://documents/123", cancellationToken);
-/// 
-/// // When updates are no longer needed
-/// await client.UnsubscribeFromResourceAsync("resource://documents/123", cancellationToken);
-/// 
-/// // Server-side handler implementation
-/// server.WithUnsubscribeFromResourcesHandler((context, cancellationToken) =>
-/// {
-///     var resourceUri = context.Params?.Uri;
-///     if (!string.IsNullOrEmpty(resourceUri))
-///     {
-///         // Remove the subscription from the server's tracking system
-///         _subscriptionManager.RemoveSubscription(context.ClientId, resourceUri);
-///     }
-///     return Task.FromResult(new EmptyResult());
-/// });
-/// </code>
-/// </example>
-/// <seealso cref="SubscribeRequestParams"/>
-/// <seealso cref="ResourceUpdatedNotificationParams"/>
-/// <seealso href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</seealso>
 public class UnsubscribeRequestParams : RequestParams
 {
     /// <summary>
