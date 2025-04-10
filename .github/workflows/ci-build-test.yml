@@ -1,10 +1,23 @@
 name: Build and Test
 
 on:
+  # Manual trigger
+  workflow_dispatch:
+
+  # Run CI for all pushes to main
   push:
     branches: ["main"]
+
+  # Run CI for pull requests to all branches, but only if code changed
   pull_request:
-    branches: ["main"]
+    paths:
+      - ".github/workflows/ci-*.yml"
+      - "*.sln"
+      - "*.props"
+      - "Makefile"
+      - "src/**"
+      - "tests/**"
+      - "samples/**"
 
 permissions:
   contents: read
@@ -79,5 +92,5 @@ jobs:
   publish-coverage:
     if: github.actor != 'dependabot[bot]'
     needs: build
-    uses: ./.github/workflows/code-coverage.yml
+    uses: ./.github/workflows/ci-code-coverage.yml
     secrets: inherit
