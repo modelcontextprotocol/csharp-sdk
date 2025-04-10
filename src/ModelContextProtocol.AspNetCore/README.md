@@ -30,20 +30,16 @@ dotnet add package ModelContextProtocol.AspNetCore --prerelease
 
 ```csharp
 // Program.cs
-using ModelContextProtocol.Server;
+?using ModelContextProtocol.Server;
 using System.ComponentModel;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.WebHost.ConfigureKestrel(options =>
-{
-    options.ListenLocalhost(3001);
-});
 builder.Services.AddMcpServer().WithToolsFromAssembly();
 var app = builder.Build();
 
 app.MapMcp();
 
-app.Run();
+app.Run("http://localhost:3001");
 
 [McpServerToolType]
 public static class EchoTool
