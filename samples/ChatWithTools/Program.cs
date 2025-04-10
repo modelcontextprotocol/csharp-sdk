@@ -9,6 +9,8 @@ using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
+using ModelContextProtocol.Protocol.Messages;
+using ModelContextProtocol.Protocol.Types;
 
 using var tracerProvider = Sdk.CreateTracerProviderBuilder()
     .AddHttpClientInstrumentation()
@@ -31,25 +33,48 @@ using var loggerFactory = LoggerFactory.Create(builder =>
         });
     });
 
-var mainSource = new ActivitySource("ModelContextProtocol.Client.Sample");
 // Connect to an MCP server
-Console.WriteLine("Connecting client to MCP 'everything' server");
+Console.WriteLine("Connecting client to MCP 'aspnetcore' server");
+
+
+// Create an IChatClient. (This shows using OpenAIClient, but it could be any other IChatClient implementation.)
+// Provide your own OPENAI_API_KEY via an environment variable.
+using IChatClient chatClient =
+    new OpenAIClient(Environment.GetEnvironmentVariable("OPENAI_API_KEY")).AsChatClient("gpt-4o-mini")
+    .AsBuilder()
+    .UseFunctionInvocation()
+    .UseOpenTelemetry(loggerFactory: loggerFactory, configure: o => o.EnableSensitiveData = true)
+    .Build();
+
+var samplingHandler = chatClient.CreateSamplingHandler();
+
 var mcpClient = await McpClientFactory.CreateAsync(
     new()
     {
         Id = "everything",
-        Name = "Everything",
+        Name = "everything",
         TransportType = TransportTypes.StdIo,
+        //TransportType = TransportTypes.Sse,
+        //Location = "http://localhost:3001/sse",
         TransportOptions = new()
         {
             //["command"] = "npx", ["arguments"] = "-y @modelcontextprotocol/server-everything",
-            ["command"] = @"D:\repo\csharp-sdk\artifacts\bin\EverythingServer\net9.0\EverythingServer.exe",
+            ["command"] = @"D:\repo\csharp-sdk\artifacts\bin\EverythingServer\net9.0\EverythingServer.exe"
         }
 
     },
+    clientOptions: new McpClientOptions()
+    {
+        Capabilities = new ClientCapabilities()
+        {
+            Sampling = new SamplingCapability() { SamplingHandler = (param, progress, ct) => {
+                Console.WriteLine(param?.Meta?.ProgressToken);
+                return samplingHandler(param, progress, ct);
+            } }
+        },
+    },
     loggerFactory: loggerFactory);
 
-//mcpClient.RegisterNotificationHandler
 
 // Get all available tools
 Console.WriteLine("Tools available:");
@@ -61,14 +86,6 @@ foreach (var tool in tools)
 
 Console.WriteLine();
 
-// Create an IChatClient. (This shows using OpenAIClient, but it could be any other IChatClient implementation.)
-// Provide your own OPENAI_API_KEY via an environment variable.
-using IChatClient chatClient =
-    new OpenAIClient(Environment.GetEnvironmentVariable("OPENAI_API_KEY")).AsChatClient("gpt-4o-mini")
-    .AsBuilder()
-    .UseFunctionInvocation()
-    .UseOpenTelemetry(loggerFactory: loggerFactory, configure: o => o.EnableSensitiveData = true)
-    .Build();
 
 // Have a conversation, making all tools available to the LLM.
 List<ChatMessage> messages = [];
@@ -79,7 +96,7 @@ while (true)
     messages.Add(new(ChatRole.User, Console.ReadLine()));
 
     List<ChatResponseUpdate> updates = [];
-    await foreach (var update in chatClient.GetStreamingResponseAsync(messages, new() { Tools = [.. tools] }))
+    await foreach (var update in chatClient.GetStreamingResponseAsync(messages, new() { Tools = [.. tools]}))
     {
         Console.Write(update);
         updates.Add(update);
