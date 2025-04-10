@@ -1,6 +1,7 @@
 ﻿using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Utils.Json;
 using System.Text.Json;
 using System.Threading.Channels;
 
@@ -63,7 +64,7 @@ public class TestServerTransport : ITransport
             Result = JsonSerializer.SerializeToNode(new ListRootsResult
             {
                 Roots = []
-            }),
+            }, McpJsonUtilities.DefaultOptions),
         }, cancellationToken);
     }
 
@@ -72,7 +73,7 @@ public class TestServerTransport : ITransport
         await WriteMessageAsync(new JsonRpcResponse
         {
             Id = request.Id,
-            Result = JsonSerializer.SerializeToNode(new CreateMessageResult { Content = new(), Model = "model", Role = "role" }),
+            Result = JsonSerializer.SerializeToNode(new CreateMessageResult { Content = new(), Model = "model", Role = "role" }, McpJsonUtilities.DefaultOptions),
         }, cancellationToken);
     }
 

@@ -2,6 +2,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Utils.Json;
 using Moq;
 using System.Reflection;
 using System.Text.Json;
@@ -9,7 +10,7 @@ using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Tests.Server;
 
-public class McpServerToolTests
+public partial class McpServerToolTests
 {
     [Fact]
     public void Create_InvalidArgs_Throws()
@@ -36,7 +37,7 @@ public class McpServerToolTests
             return "42";
         });
 
-        Assert.DoesNotContain("server", JsonSerializer.Serialize(tool.ProtocolTool.InputSchema));
+        Assert.DoesNotContain("server", JsonSerializer.Serialize(tool.ProtocolTool.InputSchema, McpJsonUtilities.DefaultOptions));
 
         var result = await tool.InvokeAsync(
             new RequestContext<CallToolRequestParams>(mockServer.Object, null),
@@ -86,7 +87,7 @@ public class McpServerToolTests
 
         McpServerTool tool = services.GetRequiredService<McpServerTool>();
 
-        Assert.DoesNotContain("actualMyService", JsonSerializer.Serialize(tool.ProtocolTool.InputSchema));
+        Assert.DoesNotContain("actualMyService", JsonSerializer.Serialize(tool.ProtocolTool.InputSchema, McpJsonUtilities.DefaultOptions));
 
         Mock<IMcpServer> mockServer = new();
 
@@ -127,9 +128,11 @@ public class McpServerToolTests
     [Fact]
     public async Task SupportsDisposingInstantiatedDisposableTargets()
     {
+        McpServerToolCreateOptions options = new() { SerializerOptions = JsonContext2.Default.Options };
         McpServerTool tool1 = McpServerTool.Create(
             typeof(DisposableToolType).GetMethod(nameof(DisposableToolType.InstanceMethod))!,
-            typeof(DisposableToolType));
+            typeof(DisposableToolType),
+            options);
 
         var result = await tool1.InvokeAsync(
             new RequestContext<CallToolRequestParams>(null!, null),
@@ -140,9 +143,11 @@ public class McpServerToolTests
     [Fact]
     public async Task SupportsAsyncDisposingInstantiatedAsyncDisposableTargets()
     {
+        McpServerToolCreateOptions options = new() { SerializerOptions = JsonContext2.Default.Options };
         McpServerTool tool1 = McpServerTool.Create(
             typeof(AsyncDisposableToolType).GetMethod(nameof(AsyncDisposableToolType.InstanceMethod))!,
-            typeof(AsyncDisposableToolType));
+            typeof(AsyncDisposableToolType),
+            options);
 
         var result = await tool1.InvokeAsync(
             new RequestContext<CallToolRequestParams>(null!, null),
@@ -153,9 +158,11 @@ public class McpServerToolTests
     [Fact]
     public async Task SupportsAsyncDisposingInstantiatedAsyncDisposableAndDisposableTargets()
     {
+        McpServerToolCreateOptions options = new() { SerializerOptions = JsonContext2.Default.Options };
         McpServerTool tool1 = McpServerTool.Create(
             typeof(AsyncDisposableAndDisposableToolType).GetMethod(nameof(AsyncDisposableAndDisposableToolType.InstanceMethod))!,
-            typeof(AsyncDisposableAndDisposableToolType));
+            typeof(AsyncDisposableAndDisposableToolType),
+            options);
 
         var result = await tool1.InvokeAsync(
             new RequestContext<CallToolRequestParams>(null!, null),
@@ -432,4 +439,10 @@ public class McpServerToolTests
             return this;
         }
     }
+
+    [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+    [JsonSerializable(typeof(DisposableToolType))]
+    [JsonSerializable(typeof(AsyncDisposableToolType))]
+    [JsonSerializable(typeof(AsyncDisposableAndDisposableToolType))]
+    partial class JsonContext2 : JsonSerializerContext;
 }

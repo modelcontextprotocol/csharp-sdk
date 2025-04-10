@@ -67,6 +67,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             Name = options?.Name ?? method.GetCustomAttribute<McpServerToolAttribute>()?.Name,
             Description = options?.Description,
             MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
+            SerializerOptions = options?.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
             ConfigureParameterBinding = pi =>
             {
                 if (pi.ParameterType == typeof(RequestContext<CallToolRequestParams>))
@@ -314,7 +315,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             {
                 Content = [new()
                 {
-                    Text = JsonSerializer.Serialize(result, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(object))),
+                    Text = JsonSerializer.Serialize(result, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))),
                     Type = "text"
                 }]
             },

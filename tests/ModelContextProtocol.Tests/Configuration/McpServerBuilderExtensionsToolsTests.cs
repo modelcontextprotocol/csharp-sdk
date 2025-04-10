@@ -7,10 +7,12 @@ using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Utils.Json;
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.IO.Pipelines;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
 
@@ -18,7 +20,7 @@ using System.Threading.Channels;
 
 namespace ModelContextProtocol.Tests.Configuration;
 
-public class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
+public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
 {
     public McpServerBuilderExtensionsToolsTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
@@ -47,7 +49,7 @@ public class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                                           "properties": {},
                                           "required": []
                                         }
-                                        """),
+                                        """, McpJsonUtilities.DefaultOptions),
                                 }],
                         };
 
@@ -65,7 +67,7 @@ public class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                                           "properties": {},
                                           "required": []
                                         }
-                                        """),
+                                        """, McpJsonUtilities.DefaultOptions),
                                 }],
                         };
 
@@ -83,7 +85,7 @@ public class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                                           "properties": {},
                                           "required": []
                                         }
-                                        """),
+                                        """, McpJsonUtilities.DefaultOptions),
                                 }],
                         };
 
@@ -107,7 +109,7 @@ public class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                         throw new Exception($"Unknown tool '{request.Params?.Name}'");
                 }
             })
-            .WithTools<EchoTool>();
+            .WithTools<EchoTool>(serializerOptions: JsonContext.Default.Options);
 
         services.AddSingleton(new ObjectWithId());
     }
@@ -430,7 +432,7 @@ public class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     public void Register_Tools_From_Current_Assembly()
     {
         ServiceCollection sc = new();
-        sc.AddMcpServer().WithToolsFromAssembly();
+        sc.AddMcpServer().WithToolsFromAssembly(serializerOptions: JsonContext.Default.Options);
         IServiceProvider services = sc.BuildServiceProvider();
 
         Assert.Contains(services.GetServices<McpServerTool>(), t => t.ProtocolTool.Name == "Echo");
@@ -446,17 +448,17 @@ public class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         {
             sc.AddSingleton(new ComplexObject());
         }
-        sc.AddMcpServer().WithTools(typeof(EchoTool));
+        sc.AddMcpServer().WithTools(JsonContext.Default.Options, typeof(EchoTool));
         IServiceProvider services = sc.BuildServiceProvider();
 
         McpServerTool tool = services.GetServices<McpServerTool>().First(t => t.ProtocolTool.Name == "EchoComplex");
         if (parameterInServices)
         {
-            Assert.DoesNotContain("\"complex\"", JsonSerializer.Serialize(tool.ProtocolTool.InputSchema));
+            Assert.DoesNotContain("\"complex\"", JsonSerializer.Serialize(tool.ProtocolTool.InputSchema, AIJsonUtilities.DefaultOptions));
         }
         else
         {
-            Assert.Contains("\"complex\"", JsonSerializer.Serialize(tool.ProtocolTool.InputSchema));
+            Assert.Contains("\"complex\"", JsonSerializer.Serialize(tool.ProtocolTool.InputSchema, AIJsonUtilities.DefaultOptions));
         }
     }
 
@@ -483,17 +485,17 @@ public class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                 break;
         }
 
-        sc.AddMcpServer().WithToolsFromAssembly();
+        sc.AddMcpServer().WithToolsFromAssembly(serializerOptions: JsonContext.Default.Options);
         IServiceProvider services = sc.BuildServiceProvider();
 
         McpServerTool tool = services.GetServices<McpServerTool>().First(t => t.ProtocolTool.Name == "EchoComplex");
         if (lifetime is not null)
         {
-            Assert.DoesNotContain("\"complex\"", JsonSerializer.Serialize(tool.ProtocolTool.InputSchema));
+            Assert.DoesNotContain("\"complex\"", JsonSerializer.Serialize(tool.ProtocolTool.InputSchema, AIJsonUtilities.DefaultOptions));
         }
         else
         {
-            Assert.Contains("\"complex\"", JsonSerializer.Serialize(tool.ProtocolTool.InputSchema));
+            Assert.Contains("\"complex\"", JsonSerializer.Serialize(tool.ProtocolTool.InputSchema, AIJsonUtilities.DefaultOptions));
         }
     }
 
@@ -526,9 +528,9 @@ public class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     {
         ServiceCollection sc = new();
         sc.AddMcpServer()
-            .WithTools<EchoTool>()
-            .WithTools<AnotherToolType>()
-            .WithTools(typeof(ToolTypeWithNoAttribute));
+            .WithTools<EchoTool>(serializerOptions: JsonContext.Default.Options)
+            .WithTools<AnotherToolType>(serializerOptions: JsonContext.Default.Options)
+            .WithTools(JsonContext.Default.Options, typeof(ToolTypeWithNoAttribute));
         IServiceProvider services = sc.BuildServiceProvider();
 
         Assert.Contains(services.GetServices<McpServerTool>(), t => t.ProtocolTool.Name == "double_echo");
@@ -584,7 +586,7 @@ public class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         ConcurrentQueue<ProgressNotification> notifications = new();
         await using (client.RegisterNotificationHandler(NotificationMethods.ProgressNotification, (notification, cancellationToken) =>
         {
-            ProgressNotification pn = JsonSerializer.Deserialize<ProgressNotification>(notification.Params)!;
+            ProgressNotification pn = JsonSerializer.Deserialize<ProgressNotification>(notification.Params, McpJsonUtilities.DefaultOptions)!;
             notifications.Enqueue(pn);
             return Task.CompletedTask;
         }))
@@ -598,7 +600,7 @@ public class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                 },
                 cancellationToken: TestContext.Current.CancellationToken);
 
-            Assert.Contains("done", JsonSerializer.Serialize(result));
+            Assert.Contains("done", JsonSerializer.Serialize(result, McpJsonUtilities.DefaultOptions));
             SpinWait.SpinUntil(() => notifications.Count == 10, TimeSpan.FromSeconds(10));
         }
 
@@ -765,4 +767,16 @@ public class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     {
         public string Id { get; set; } = Guid.NewGuid().ToString("N");
     }
+
+    [JsonSerializable(typeof(bool))]
+    [JsonSerializable(typeof(int))]
+    [JsonSerializable(typeof(long))]
+    [JsonSerializable(typeof(double))]
+    [JsonSerializable(typeof(string))]
+    [JsonSerializable(typeof(DateTime))]
+    [JsonSerializable(typeof(DateTimeOffset))]
+    [JsonSerializable(typeof(ComplexObject))]
+    [JsonSerializable(typeof(string[]))]
+    [JsonSerializable(typeof(JsonElement))]
+    partial class JsonContext : JsonSerializerContext;
 }

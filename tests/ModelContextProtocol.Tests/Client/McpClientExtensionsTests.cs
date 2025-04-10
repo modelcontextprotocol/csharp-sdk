@@ -5,6 +5,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Utils.Json;
 using Moq;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
@@ -379,7 +380,7 @@ public class McpClientExtensionsTests : ClientServerTestBase
         await using (client.RegisterNotificationHandler(NotificationMethods.LoggingMessageNotification,
             (notification, cancellationToken) =>
             {
-                Assert.True(channel.Writer.TryWrite(JsonSerializer.Deserialize<LoggingMessageNotificationParams>(notification.Params)));
+                Assert.True(channel.Writer.TryWrite(JsonSerializer.Deserialize<LoggingMessageNotificationParams>(notification.Params, McpJsonUtilities.DefaultOptions)));
                 return Task.CompletedTask;
             }))
         {
@@ -398,7 +399,7 @@ public class McpClientExtensionsTests : ClientServerTestBase
 
                 Assert.Equal("TestLogger", m.Logger);
 
-                string ? s = JsonSerializer.Deserialize<string>(m.Data.Value);
+                string ? s = JsonSerializer.Deserialize<string>(m.Data.Value, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(s);
 
                 if (s.Contains("Information"))

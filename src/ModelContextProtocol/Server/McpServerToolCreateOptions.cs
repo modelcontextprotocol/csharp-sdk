@@ -1,4 +1,6 @@
+using ModelContextProtocol.Utils.Json;
 using System.ComponentModel;
+using System.Text.Json;
 
 namespace ModelContextProtocol.Server;
 
@@ -123,10 +125,18 @@ public sealed class McpServerToolCreateOptions
     public bool? ReadOnly { get; set; }
 
     /// <summary>
+    /// Gets or sets the JSON serializer options to use when marshalling data to/from JSON.
+    /// </summary>
+    /// <remarks>
+    /// Defaults to <see cref="McpJsonUtilities.DefaultOptions"/> if left unspecified.
+    /// </remarks>
+    public JsonSerializerOptions? SerializerOptions { get; set; }
+
+    /// <summary>
     /// Creates a shallow clone of the current <see cref="McpServerToolCreateOptions"/> instance.
     /// </summary>
     internal McpServerToolCreateOptions Clone() =>
-        new McpServerToolCreateOptions()
+        new McpServerToolCreateOptions
         {
             Services = Services,
             Name = Name,
@@ -135,6 +145,7 @@ public sealed class McpServerToolCreateOptions
             Destructive = Destructive,
             Idempotent = Idempotent,
             OpenWorld = OpenWorld,
-            ReadOnly = ReadOnly
+            ReadOnly = ReadOnly,
+            SerializerOptions = SerializerOptions,
         };
 }

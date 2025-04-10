@@ -3,6 +3,7 @@ using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
+using ModelContextProtocol.Utils.Json;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -185,7 +186,7 @@ public class McpServerTests : LoggedTest
             configureOptions: null,
             assertResult: response =>
             {
-                var result = JsonSerializer.Deserialize<InitializeResult>(response);
+                var result = JsonSerializer.Deserialize<InitializeResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result);
                 Assert.Equal("ModelContextProtocol.Tests", result.ServerInfo.Name);
                 Assert.Equal("1.0.0.0", result.ServerInfo.Version);
@@ -217,7 +218,7 @@ public class McpServerTests : LoggedTest
             configureOptions: null,
             assertResult: response =>
             {
-                var result = JsonSerializer.Deserialize<CompleteResult>(response);
+                var result = JsonSerializer.Deserialize<CompleteResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result?.Completion);
                 Assert.Equal(["test"], result.Completion.Values);
                 Assert.Equal(2, result.Completion.Total);
@@ -254,7 +255,7 @@ public class McpServerTests : LoggedTest
             configureOptions: null,
             assertResult: response =>
             {
-                var result = JsonSerializer.Deserialize<ListResourceTemplatesResult>(response);
+                var result = JsonSerializer.Deserialize<ListResourceTemplatesResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result?.ResourceTemplates);
                 Assert.NotEmpty(result.ResourceTemplates);
                 Assert.Equal("test", result.ResourceTemplates[0].UriTemplate);
@@ -283,7 +284,7 @@ public class McpServerTests : LoggedTest
             configureOptions: null,
             assertResult: response =>
             {
-                var result = JsonSerializer.Deserialize<ListResourcesResult>(response);
+                var result = JsonSerializer.Deserialize<ListResourcesResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result?.Resources);
                 Assert.NotEmpty(result.Resources);
                 Assert.Equal("test", result.Resources[0].Uri);
@@ -318,7 +319,7 @@ public class McpServerTests : LoggedTest
             configureOptions: null,
             assertResult: response =>
             {
-                var result = JsonSerializer.Deserialize<ReadResourceResult>(response);
+                var result = JsonSerializer.Deserialize<ReadResourceResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result?.Contents);
                 Assert.NotEmpty(result.Contents);
 
@@ -355,7 +356,7 @@ public class McpServerTests : LoggedTest
             configureOptions: null,
             assertResult: response =>
             {
-                var result = JsonSerializer.Deserialize<ListPromptsResult>(response);
+                var result = JsonSerializer.Deserialize<ListPromptsResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result?.Prompts);
                 Assert.NotEmpty(result.Prompts);
                 Assert.Equal("test", result.Prompts[0].Name);
@@ -384,7 +385,7 @@ public class McpServerTests : LoggedTest
             configureOptions: null,
             assertResult: response =>
             {
-                var result = JsonSerializer.Deserialize<GetPromptResult>(response);
+                var result = JsonSerializer.Deserialize<GetPromptResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result);
                 Assert.Equal("test", result.Description);
             });
@@ -418,7 +419,7 @@ public class McpServerTests : LoggedTest
             configureOptions: null,
             assertResult: response =>
             {
-                var result = JsonSerializer.Deserialize<ListToolsResult>(response);
+                var result = JsonSerializer.Deserialize<ListToolsResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result);
                 Assert.NotEmpty(result.Tools);
                 Assert.Equal("test", result.Tools[0].Name);
@@ -453,7 +454,7 @@ public class McpServerTests : LoggedTest
             configureOptions: null,
             assertResult: response =>
             {
-                var result = JsonSerializer.Deserialize<CallToolResponse>(response);
+                var result = JsonSerializer.Deserialize<CallToolResponse>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result);
                 Assert.NotEmpty(result.Content);
                 Assert.Equal("test", result.Content[0].Text);
@@ -581,7 +582,7 @@ public class McpServerTests : LoggedTest
 
         public Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken)
         {
-            CreateMessageRequestParams? rp = JsonSerializer.Deserialize<CreateMessageRequestParams>(request.Params);
+            CreateMessageRequestParams? rp = JsonSerializer.Deserialize<CreateMessageRequestParams>(request.Params, McpJsonUtilities.DefaultOptions);
 
             Assert.NotNull(rp);
             Assert.Equal(0.75f, rp.Temperature);
@@ -608,7 +609,7 @@ public class McpServerTests : LoggedTest
             return Task.FromResult(new JsonRpcResponse
             { 
                 Id = new RequestId("0"),
-                Result = JsonSerializer.SerializeToNode(result),
+                Result = JsonSerializer.SerializeToNode(result, McpJsonUtilities.DefaultOptions),
             });
         }
 
@@ -658,11 +659,11 @@ public class McpServerTests : LoggedTest
                     Total = 100,
                     Message = "Progress message",
                 },
-            }),
+            }, McpJsonUtilities.DefaultOptions),
         }, TestContext.Current.CancellationToken);
 
         var notification = await notificationReceived.Task;
-        var progress = JsonSerializer.Deserialize<ProgressNotification>(notification.Params);
+        var progress = JsonSerializer.Deserialize<ProgressNotification>(notification.Params, McpJsonUtilities.DefaultOptions);
         Assert.NotNull(progress);
         Assert.Equal("abc", progress.ProgressToken.ToString());
         Assert.Equal(50, progress.Progress.Progress);

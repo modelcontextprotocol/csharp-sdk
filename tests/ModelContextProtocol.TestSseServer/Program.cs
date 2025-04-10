@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Connections;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Utils.Json;
 using Serilog;
 using System.Text;
 using System.Text.Json;
@@ -124,7 +125,7 @@ public class Program
                                         },
                                         "required": ["message"]
                                     }
-                                    """),
+                                    """, McpJsonUtilities.DefaultOptions),
                             },
                             new Tool()
                             {
@@ -145,7 +146,7 @@ public class Program
                                         },
                                         "required": ["prompt", "maxTokens"]
                                     }
-                                    """),
+                                    """, McpJsonUtilities.DefaultOptions),
                             }
                         ]
                     });

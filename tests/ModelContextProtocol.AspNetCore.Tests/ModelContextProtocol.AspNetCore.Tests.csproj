@@ -10,6 +10,11 @@
     <RootNamespace>ModelContextProtocol.AspNetCore.Tests</RootNamespace>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net9.0'">
+    <!-- For better test coverage, only disable reflection in one of the targets -->
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+  </PropertyGroup>
+
   <PropertyGroup>
     <!-- Without this, tests are currently not showing results until all tests complete
          https://xunit.net/docs/getting-started/v3/microsoft-testing-platform

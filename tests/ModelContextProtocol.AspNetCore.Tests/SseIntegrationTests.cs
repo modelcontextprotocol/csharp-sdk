@@ -10,11 +10,12 @@ using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using ModelContextProtocol.Utils.Json;
+using System.Text.Json.Serialization;
 using TestServerWithHosting.Tools;
 
 namespace ModelContextProtocol.Tests;
 
-public class SseIntegrationTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper)
+public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper)
 {
     private SseClientTransportOptions DefaultTransportOptions = new()
     {
@@ -41,7 +42,7 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : KestrelInMemo
         await using var mcpClient = await ConnectMcpClient(httpClient);
 
         // Send a test message through POST endpoint
-        await mcpClient.SendNotificationAsync("test/message", new { message = "Hello, SSE!" }, cancellationToken: TestContext.Current.CancellationToken);
+        await mcpClient.SendNotificationAsync("test/message", new Envelope { Message = "Hello, SSE!" }, serializerOptions: JsonContext.Default.Options, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(true);
     }
@@ -57,7 +58,7 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : KestrelInMemo
         await using var mcpClient = await ConnectMcpClient(httpClient);
 
         // Send a test message through POST endpoint
-        await mcpClient.SendNotificationAsync("test/message", new { message = "Hello, SSE!" }, cancellationToken: TestContext.Current.CancellationToken);
+        await mcpClient.SendNotificationAsync("test/message", new Envelope { Message = "Hello, SSE!" }, serializerOptions: JsonContext.Default.Options, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(true);
     }
@@ -73,7 +74,7 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : KestrelInMemo
             mcpServer.RegisterNotificationHandler("test/notification", async (notification, cancellationToken) =>
             {
                 Assert.Equal("Hello from client!", notification.Params?["message"]?.GetValue<string>());
-                await mcpServer.SendNotificationAsync("test/notification", new { message = "Hello from server!" }, cancellationToken: cancellationToken);
+                await mcpServer.SendNotificationAsync("test/notification", new Envelope { Message = "Hello from server!" }, serializerOptions: JsonContext.Default.Options, cancellationToken: cancellationToken);
             });
             return mcpServer.RunAsync(cancellationToken);
         });
@@ -90,7 +91,7 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : KestrelInMemo
         });
 
         // Send a test message through POST endpoint
-        await mcpClient.SendNotificationAsync("test/notification", new { message = "Hello from client!" }, cancellationToken: TestContext.Current.CancellationToken);
+        await mcpClient.SendNotificationAsync("test/notification", new Envelope { Message = "Hello from client!" }, serializerOptions: JsonContext.Default.Options, cancellationToken: TestContext.Current.CancellationToken);
 
         var message = await receivedNotification.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         Assert.Equal("Hello from server!", message);
@@ -205,4 +206,13 @@ public class SseIntegrationTests(ITestOutputHelper outputHelper) : KestrelInMemo
             await context.Response.WriteAsync("Accepted");
         });
     }
+
+    public class Envelope
+    {
+        public required string Message { get; set; }
+    }
+
+    [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+    [JsonSerializable(typeof(Envelope))]
+    partial class JsonContext : JsonSerializerContext;
 }

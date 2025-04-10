@@ -19,10 +19,8 @@ public static class McpJsonUtilitiesTests
     public static void DefaultOptions_UseReflectionWhenEnabled()
     {
         var options = McpJsonUtilities.DefaultOptions;
-        bool isReflectionEnabled = JsonSerializer.IsReflectionEnabledByDefault;
         Type anonType = new { Id = 42 }.GetType();
 
-        Assert.True(isReflectionEnabled); // To be disabled once https://github.com/dotnet/extensions/pull/6241 is incorporated
-        Assert.Equal(isReflectionEnabled, options.TryGetTypeInfo(anonType, out _));
+        Assert.Equal(JsonSerializer.IsReflectionEnabledByDefault, options.TryGetTypeInfo(anonType, out _));
     }
 }

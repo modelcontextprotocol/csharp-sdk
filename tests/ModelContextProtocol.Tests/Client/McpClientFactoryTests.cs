@@ -3,6 +3,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Utils.Json;
 using Moq;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -107,7 +108,7 @@ public class McpClientFactoryTests
                                 Name = "NopTransport",
                                 Version = "1.0.0"
                             },
-                        }),
+                        }, McpJsonUtilities.DefaultOptions),
                     });
                     break;
             }

@@ -4,12 +4,14 @@ using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Tests.Utils;
+using ModelContextProtocol.Utils.Json;
 using OpenAI;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Tests;
 
-public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegrationTestFixture>
+public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegrationTestFixture>
 {
     private static readonly string? s_openAIKey = Environment.GetEnvironmentVariable("AI:OpenAI:ApiKey");
 
@@ -261,7 +263,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
                 [
                     new(NotificationMethods.ResourceUpdatedNotification, (notification, cancellationToken) =>
                     {
-                        var notificationParams = JsonSerializer.Deserialize<ResourceUpdatedNotificationParams>(notification.Params);
+                        var notificationParams = JsonSerializer.Deserialize<ResourceUpdatedNotificationParams>(notification.Params, McpJsonUtilities.DefaultOptions);
                         tcs.TrySetResult(true);
                         return Task.CompletedTask;
                     })
@@ -291,7 +293,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
                 [
                     new(NotificationMethods.ResourceUpdatedNotification, (notification, cancellationToken) =>
                     {
-                        var notificationParams = JsonSerializer.Deserialize<ResourceUpdatedNotificationParams>(notification.Params);
+                        var notificationParams = JsonSerializer.Deserialize<ResourceUpdatedNotificationParams>(notification.Params, McpJsonUtilities.DefaultOptions);
                         receivedNotification.TrySetResult(true);
                         return Task.CompletedTask;
                     })
@@ -442,11 +444,16 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
 
         // Verify we can send notifications without errors
         await client.SendNotificationAsync(NotificationMethods.RootsUpdatedNotification, cancellationToken: TestContext.Current.CancellationToken);
-        await client.SendNotificationAsync("test/notification", new { test = true }, cancellationToken: TestContext.Current.CancellationToken);
+        await client.SendNotificationAsync("test/notification", new TestNotification { Test = true }, cancellationToken: TestContext.Current.CancellationToken, serializerOptions: JsonContext3.Default.Options);
 
         // assert
         // no response to check, if no exception is thrown, it's a success
         Assert.True(true);
+    }
+
+    class TestNotification
+    {
+        public required bool Test { get; set; }
     }
 
     [Fact]
@@ -557,7 +564,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
                 [
                     new(NotificationMethods.LoggingMessageNotification, (notification, cancellationToken) =>
                     {
-                        var loggingMessageNotificationParameters = JsonSerializer.Deserialize<LoggingMessageNotificationParams>(notification.Params);
+                        var loggingMessageNotificationParameters = JsonSerializer.Deserialize<LoggingMessageNotificationParams>(notification.Params, McpJsonUtilities.DefaultOptions);
                         if (loggingMessageNotificationParameters is not null)
                         {
                             receivedNotification.TrySetResult(true);
@@ -574,4 +581,7 @@ public class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIntegratio
         // assert
         await receivedNotification.Task;
     }
+
+    [JsonSerializable(typeof(TestNotification))]
+    partial class JsonContext3 : JsonSerializerContext;
 }
