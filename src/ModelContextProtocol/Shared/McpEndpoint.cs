@@ -58,6 +58,11 @@ internal abstract class McpEndpoint : IAsyncDisposable
     public abstract string EndpointName { get; }
 
     /// <summary>
+    /// Gets the transport used for communication with the server or client.
+    /// </summary>
+    public abstract ITransport Transport { get; }
+
+    /// <summary>
     /// Task that processes incoming messages from the transport.
     /// </summary>
     protected Task? MessageProcessingTask { get; private set; }

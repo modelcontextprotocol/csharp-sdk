@@ -96,6 +96,9 @@ internal sealed class McpClient : McpEndpoint, IMcpClient
     /// <inheritdoc/>
     public override string EndpointName { get; }
 
+    /// <inheritdoc/>
+    public override ITransport Transport => _sessionTransport ?? throw new InvalidOperationException(EndpointName + " is not connected.");
+
     /// <summary>
     /// Asynchronously connects to an MCP server, establishes the transport connection, and completes the initialization handshake.
     /// </summary>

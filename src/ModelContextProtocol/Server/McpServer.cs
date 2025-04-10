@@ -113,6 +113,9 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
     public override string EndpointName => _endpointName;
 
     /// <inheritdoc />
+    public override ITransport Transport => _sessionTransport;
+
+    /// <inheritdoc />
     public LoggingLevel? LoggingLevel => _loggingLevel?.Value;
 
     /// <inheritdoc />
