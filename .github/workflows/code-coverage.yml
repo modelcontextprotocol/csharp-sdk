@@ -3,6 +3,9 @@ name: Code Coverage
 on:
   workflow_call:
 
+permissions:
+  contents: read
+
 jobs:
   publish-coverage:
     runs-on: ubuntu-latest
