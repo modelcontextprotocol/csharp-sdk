@@ -142,7 +142,7 @@ public static class McpServerExtensions
                 ModelPreferences = modelPreferences,
             }, cancellationToken).ConfigureAwait(false);
 
-        return new(new ChatMessage(new(result.Role), [result.Content.ToAIContent()]))
+        return new(new ChatMessage(result.Role is Role.User ? ChatRole.User : ChatRole.Assistant, [result.Content.ToAIContent()]))
         {
             ModelId = result.Model,
             FinishReason = result.StopReason switch

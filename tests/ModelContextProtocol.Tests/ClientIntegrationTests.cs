@@ -376,7 +376,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
                         return Task.FromResult(new CreateMessageResult
                         {
                             Model = "test-model",
-                            Role = "assistant",
+                            Role = Role.Assistant,
                             Content = new Content
                             {
                                 Type = "text",

@@ -926,7 +926,7 @@ public static class McpClientExtensions
         {
             Content = content,
             Model = chatResponse.ModelId ?? "unknown",
-            Role = lastMessage?.Role == ChatRole.User ? "user" : "assistant",
+            Role = lastMessage?.Role == ChatRole.User ? Role.User : Role.Assistant,
             StopReason = chatResponse.FinishReason == ChatFinishReason.Length ? "maxTokens" : "endTurn",
         };
     }

@@ -73,7 +73,7 @@ public class TestServerTransport : ITransport
         await WriteMessageAsync(new JsonRpcResponse
         {
             Id = request.Id,
-            Result = JsonSerializer.SerializeToNode(new CreateMessageResult { Content = new(), Model = "model", Role = "role" }, McpJsonUtilities.DefaultOptions),
+            Result = JsonSerializer.SerializeToNode(new CreateMessageResult { Content = new(), Model = "model", Role = Role.User }, McpJsonUtilities.DefaultOptions),
         }, cancellationToken);
     }
 

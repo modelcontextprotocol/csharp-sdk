@@ -83,7 +83,7 @@ public class DockerEverythingServerTests(ITestOutputHelper testOutputHelper) : L
                         return Task.FromResult(new CreateMessageResult
                         {
                             Model = "test-model",
-                            Role = "assistant",
+                            Role = Role.Assistant,
                             Content = new Content
                             {
                                 Type = "text",
