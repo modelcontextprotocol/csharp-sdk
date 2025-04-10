@@ -8,6 +8,9 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Logging.AddConsole(consoleLogOptions =>
@@ -128,7 +131,7 @@ builder.Services
         {
             throw new NotSupportedException($"Params are required.");
         }
-        
+
         var @ref = @params.Ref;
         var argument = @params.Argument;
 
@@ -184,6 +187,20 @@ builder.Services
         return new EmptyResult();
     })
     ;
+
+
+var resource = ResourceBuilder.CreateEmpty().AddService("mcp.server");
+builder.Services.AddOpenTelemetry()
+    .WithTracing(b => b.SetResourceBuilder(resource)
+        .AddOtlpExporter()
+        .AddSource("*")
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation())
+    .WithMetrics(b => b.SetResourceBuilder(resource)
+        .AddMeter("*")
+        .AddOtlpExporter()
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation());
 
 builder.Services.AddSingleton(subscriptions);
 builder.Services.AddHostedService<SubscriptionMessageSender>();

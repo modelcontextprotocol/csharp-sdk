@@ -66,5 +66,10 @@
     <PackageVersion Include="System.Linq.AsyncEnumerable" Version="$(System10Version)" />
     <PackageVersion Include="xunit.v3" Version="1.1.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.0.2" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.11.2" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http " Version="1.11.0" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.11.2"  />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.11.1"  />
+
   </ItemGroup>
 </Project>
