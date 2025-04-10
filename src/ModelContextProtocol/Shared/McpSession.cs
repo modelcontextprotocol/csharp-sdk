@@ -197,7 +197,8 @@ internal sealed class McpSession : IDisposable
             Diagnostics.ActivitySource.StartActivity(
                 CreateActivityName(method),
                 ActivityKind.Server,
-                parentContext: ExtractActivityContext(message)) :
+                parentContext: ExtractActivityContext(message),
+                links: FromCurrent()) :
             null;
 
         TagList tags = default;
@@ -743,4 +744,12 @@ internal sealed class McpSession : IDisposable
             JsonRpcNotification notification => notification.Method != NotificationMethods.LoggingMessageNotification,
             _ => false
         };
+
+    private static ActivityLink[] FromCurrent() {
+        if (Activity.Current is { } activity) {
+            return [new ActivityLink(activity.Context)];
+        }
+
+        return Array.Empty<ActivityLink>();
+    }
 }
