@@ -12,17 +12,17 @@ namespace ModelContextProtocol.Protocol.Types;
 /// These capabilities are advertised to clients during the initialize handshake.
 /// </para>
 /// <para>
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
+/// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
 public class ServerCapabilities
 {
     /// <summary>
-    /// Experimental, non-standard capabilities that the server supports.
+    /// Gets or sets experimental, non-standard capabilities that the server supports.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The Experimental dictionary allows servers to advertise support for features that are not yet 
+    /// The <see cref="Experimental"/> dictionary allows servers to advertise support for features that are not yet 
     /// standardized in the Model Context Protocol specification. This extension mechanism enables 
     /// future protocol enhancements while maintaining backward compatibility.
     /// </para>
@@ -36,112 +36,31 @@ public class ServerCapabilities
     public Dictionary<string, object>? Experimental { get; set; }
 
     /// <summary>
-    /// Present if the server supports sending log messages to the client.
+    /// Gets or sets a server's logging capability, supporting sending log messages to the client.
     /// </summary>
     [JsonPropertyName("logging")]
     public LoggingCapability? Logging { get; set; }
 
     /// <summary>
-    /// Present if the server supports predefined prompt templates that clients can discover and use.
+    /// Gets or sets a server's prompts capability for serving predefined prompt templates that clients can discover and use.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// When configured, this capability enables clients to:
-    /// <list type="bullet">
-    ///   <item>
-    ///     <description>List available prompts through the prompts/list endpoint</description>
-    ///   </item>
-    ///   <item>
-    ///     <description>Retrieve specific prompts through the prompts/get endpoint</description>
-    ///   </item>
-    ///   <item>
-    ///     <description>Receive notifications when the available prompts change (if <see cref="PromptsCapability.ListChanged"/> is true)</description>
-    ///   </item>
-    /// </list>
-    /// </para>
-    /// <para>
-    /// Prompts can be defined statically in the <see cref="PromptsCapability.PromptCollection"/> or
-    /// dynamically generated through handlers. This capability is useful for servers that want to
-    /// provide standardized, reusable prompts that clients can easily incorporate into their workflows.
-    /// </para>
-    /// </remarks>
     [JsonPropertyName("prompts")]
     public PromptsCapability? Prompts { get; set; }
 
     /// <summary>
-    /// Present if the server offers any resources to read. Resources are sources of information that
-    /// can be accessed by the client through URI-based identifiers.
+    /// Gets or sets a server's resources capability for serving predefined resources that clients can discover and use.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// When configured, this capability enables clients to:
-    /// <list type="bullet">
-    ///   <item>
-    ///     <description>List available resources through the resources/list endpoint</description>
-    ///   </item>
-    ///   <item>
-    ///     <description>Read resource contents through the resources/read endpoint</description>
-    ///   </item>
-    ///   <item>
-    ///     <description>Subscribe to resource updates if the server supports it</description>
-    ///   </item>
-    ///   <item>
-    ///     <description>Receive notifications when resources change (if subscription is enabled)</description>
-    ///   </item>
-    /// </list>
-    /// </para>
-    /// <para>
-    /// Resources can represent various types of data such as documents, files, database records, or any
-    /// other content that may be relevant to the client. The server can define how resources are accessed
-    /// and what types of resources are available.
-    /// </para>
-    /// <para>
-    /// Example usage:
-    /// <code>
-    /// var serverOptions = new McpServerOptions
-    /// {
-    ///     Capabilities = new ServerCapabilities
-    ///     {
-    ///         Resources = new ResourcesCapability
-    ///         {
-    ///             Subscribe = true,
-    ///             ListResourcesHandler = (context, cancellationToken) =>
-    ///             {
-    ///                 return Task.FromResult(new ListResourcesResult
-    ///                 {
-    ///                     Resources = 
-    ///                     [
-    ///                         new Resource
-    ///                         {
-    ///                             Uri = "document://123",
-    ///                             Name = "Sample Document",
-    ///                             Description = "A sample document resource"
-    ///                         }
-    ///                     ]
-    ///                 });
-    ///             },
-    ///             ReadResourceHandler = (context, cancellationToken) =>
-    ///             {
-    ///                 // Handle resource reading logic
-    ///                 return Task.FromResult(new ReadResourceResult());
-    ///             }
-    ///         }
-    ///     }
-    /// };
-    /// </code>
-    /// </para>
-    /// </remarks>
     [JsonPropertyName("resources")]
     public ResourcesCapability? Resources { get; set; }
 
     /// <summary>
-    /// Present if the server offers any tools to call.
+    /// Gets or sets a server's tools capability for listing tools that a client is able to invoke.
     /// </summary>
     [JsonPropertyName("tools")]
     public ToolsCapability? Tools { get; set; }
 
     /// <summary>
-    /// Present if the server supports argument autocompletion suggestions.
+    /// Gets or sets a server's completions capability for supporting argument auto-completion suggestions.
     /// </summary>
     [JsonPropertyName("completions")]
     public CompletionsCapability? Completions { get; set; }
@@ -158,23 +77,9 @@ public class ServerCapabilities
     /// when a notification with that method is received.
     /// </para>
     /// <para>
-    /// Example usage:
-    /// <code>
-    /// var serverOptions = new McpServerOptions
-    /// {
-    ///     Capabilities = new ServerCapabilities
-    ///     {
-    ///         NotificationHandlers =
-    ///         [
-    ///             new(NotificationMethods.InitializedNotification, (notification, cancellationToken) =>
-    ///             {
-    ///                 Console.WriteLine("Client successfully initialized");
-    ///                 return Task.CompletedTask;
-    ///             })
-    ///         ]
-    ///     }
-    /// };
-    /// </code>
+    /// Handlers provided via <see cref="NotificationHandlers"/> will be registered with the server for the lifetime of the server.
+    /// For transient handlers, <see cref="IMcpEndpoint.RegisterNotificationHandler"/> may be used to register a handler that can
+    /// then be unregistered by disposing of the <see cref="IAsyncDisposable"/> returned from the method.
     /// </para>
     /// </remarks>
     [JsonIgnore]

@@ -5,21 +5,20 @@ using System.Text.Json.Serialization;
 namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
-/// Represents a tool that the server is capable of calling. Part of the ListToolsResponse.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
+/// Represents a tool that the server is capable of calling.
 /// </summary>
 public class Tool
 {
     private JsonElement _inputSchema = McpJsonUtilities.DefaultMcpToolSchema;
 
     /// <summary>
-    /// The name of the tool.
+    /// Gets or sets the name of the tool.
     /// </summary>
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
 
     /// <summary>
-    /// A human-readable description of the tool.
+    /// Gets or sets a human-readable description of the tool.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -31,22 +30,11 @@ public class Tool
     /// and how to use the tool based on user requests.
     /// </para>
     /// </remarks>
-    /// <example>
-    /// <code>
-    /// var tool = new Tool
-    /// {
-    ///     Name = "GetWeather",
-    ///     Description = "Gets the current weather for a location.",
-    ///     InputSchema = // JSON schema defining latitude and longitude parameters
-    /// };
-    /// </code>
-    /// </example>
     [JsonPropertyName("description")]
     public string? Description { get; set; }
 
     /// <summary>
-    /// A JSON Schema object defining the expected parameters for the tool.
-    /// Used by clients to validate inputs before sending them to the server.
+    /// Gets or sets a JSON Schema object defining the expected parameters for the tool.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -63,31 +51,6 @@ public class Tool
     /// If not explicitly set, a default minimal schema of <c>{"type":"object"}</c> is used.
     /// </para>
     /// </remarks>
-    /// <example>
-    /// <code>
-    /// var weatherTool = new Tool
-    /// {
-    ///     Name = "GetWeatherForecast",
-    ///     Description = "Gets the weather forecast for a location.",
-    ///     InputSchema = JsonSerializer.Deserialize&lt;JsonElement&gt;("""
-    ///     {
-    ///         "type": "object",
-    ///         "properties": {
-    ///             "latitude": {
-    ///                 "type": "number",
-    ///                 "description": "Latitude of the location."
-    ///             },
-    ///             "longitude": {
-    ///                 "type": "number",
-    ///                 "description": "Longitude of the location."
-    ///             }
-    ///         },
-    ///         "required": ["latitude", "longitude"]
-    ///     }
-    ///     """)
-    /// };
-    /// </code>
-    /// </example>
     [JsonPropertyName("inputSchema")]
     public JsonElement InputSchema  
     { 
@@ -104,11 +67,13 @@ public class Tool
     }
 
     /// <summary>
-    /// Optional additional tool information and behavior hints.
+    /// Gets or sets optional additional tool information and behavior hints.
+    /// </summary>
+    /// <remarks>
     /// These annotations provide metadata about the tool's behavior, such as whether it's read-only,
     /// destructive, idempotent, or operates in an open world. They also can include a human-readable title.
     /// Note that these are hints and should not be relied upon for security decisions.
-    /// </summary>
+    /// </remarks>
     [JsonPropertyName("annotations")]
     public ToolAnnotations? Annotations { get; set; }
 }

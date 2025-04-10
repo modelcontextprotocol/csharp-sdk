@@ -14,7 +14,7 @@ namespace ModelContextProtocol.Protocol.Messages;
 public class ProgressNotification
 {
     /// <summary>
-    /// Gets the progress token which was given in the initial request, used to associate this notification with 
+    /// Gets or sets the progress token which was given in the initial request, used to associate this notification with 
     /// the corresponding request.
     /// </summary>
     /// <remarks>
@@ -30,7 +30,7 @@ public class ProgressNotification
     public required ProgressToken ProgressToken { get; init; }
 
     /// <summary>
-    /// Gets the progress thus far.
+    /// Gets or sets the progress thus far.
     /// </summary>
     /// <remarks>
     /// This should increase for each notification issued as part of the same request, even if the total is unknown.

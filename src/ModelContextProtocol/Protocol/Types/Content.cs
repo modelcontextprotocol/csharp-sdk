@@ -1,3 +1,4 @@
+using Microsoft.Extensions.AI;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol.Types;
@@ -21,104 +22,50 @@ namespace ModelContextProtocol.Protocol.Types;
 /// and other communication between clients and servers.
 /// </para>
 /// <para>
-/// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema specification</see> for more details.
+/// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for more details.
 /// </para>
 /// </remarks>
-/// <example>
-/// Creating and using different types of Content:
-/// <code>
-/// // Text content
-/// var textContent = new Content
-/// {
-///     Type = "text",
-///     Text = "Hello, this is a text message."
-/// };
-/// 
-/// // Image content
-/// var imageContent = new Content
-/// {
-///     Type = "image",
-///     Data = Convert.ToBase64String(imageBytes),
-///     MimeType = "image/png"
-/// };
-/// 
-/// // Resource content
-/// var resourceContent = new Content
-/// {
-///     Type = "resource",
-///     Resource = new TextResourceContents
-///     {
-///         Uri = "resource://text.txt",
-///         Text = "This is a resource text."
-///     }
-/// };
-/// 
-/// // Convert to AIContent for use with Microsoft.Extensions.AI
-/// AIContent aiContent = textContent.ToAIContent();
-/// </code>
-/// </example>
-/// <seealso cref="ResourceContents"/>
-/// <seealso cref="BlobResourceContents"/>
-/// <seealso cref="TextResourceContents"/>
-/// <seealso cref="AIContentExtensions.ToAIContent(Content)"/>
 public class Content
 {
     /// <summary>
-    /// The type of content. This determines the structure of the content object. Can be "image", "audio", "text", "resource".
+    /// Gets or sets the type of content.
     /// </summary>
-
+    /// <remarks>
+    /// This determines the structure of the content object. Valid values include "image", "audio", "text", and "resource".
+    /// </remarks>
     [JsonPropertyName("type")]
-    public string Type { get; set; } = string.Empty;
+    public string Type { get; set; } = "text";
 
     /// <summary>
-    /// The text content of the message.
+    /// Gets or sets the text content of the message.
     /// </summary>
     [JsonPropertyName("text")]
     public string? Text { get; set; }
 
     /// <summary>
-    /// The base64-encoded image data.
+    /// Gets or sets the base64-encoded image or audio data.
     /// </summary>
     [JsonPropertyName("data")]
     public string? Data { get; set; }
 
     /// <summary>
-    /// The MIME type of the content, specifying the format of the data.
+    /// Gets or sets the MIME type (or "media type") of the content, specifying the format of the data.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Used when <see cref="Type"/> is "image" or "audio" to indicate the specific format of the binary data.
-    /// Common values include "image/png", "image/jpeg", "audio/wav", "audio/mp3", etc.
+    /// This property is used when <see cref="Type"/> is "image", "audio", or "resource", to indicate the specific format of the binary data.
+    /// Common values include "image/png", "image/jpeg", "audio/wav", and "audio/mp3".
     /// </para>
     /// <para>
-    /// This property is typically required when the <see cref="Data"/> property contains binary content,
+    /// This property is required when the <see cref="Data"/> property contains binary content,
     /// as it helps clients properly interpret and render the content.
     /// </para>
     /// </remarks>
-    /// <example>
-    /// <code>
-    /// // Image content with MIME type
-    /// var imageContent = new Content
-    /// {
-    ///     Type = "image",
-    ///     Data = Convert.ToBase64String(imageBytes),
-    ///     MimeType = "image/png"
-    /// };
-    /// 
-    /// // Audio content with MIME type
-    /// var audioContent = new Content
-    /// {
-    ///     Type = "audio",
-    ///     Data = Convert.ToBase64String(audioBytes),
-    ///     MimeType = "audio/wav"
-    /// };
-    /// </code>
-    /// </example>
     [JsonPropertyName("mimeType")]
     public string? MimeType { get; set; }
 
     /// <summary>
-    /// The resource content of the message when <see cref="Type"/> is "resource".
+    /// Gets or sets the resource content of the message when <see cref="Type"/> is "resource".
     /// </summary>
     /// <remarks>
     /// <para>
@@ -130,52 +77,17 @@ public class Content
     /// binary (<see cref="BlobResourceContents"/>), allowing for flexible data representation.
     /// Each resource has a URI that can be used for identification and retrieval.
     /// </para>
-    /// <para>
-    /// When converting to <see cref="Microsoft.Extensions.AI.AIContent"/> using 
-    /// <see cref="AIContentExtensions.ToAIContent(Content)"/>, the appropriate content type 
-    /// will be created based on the resource type.
-    /// </para>
     /// </remarks>
-    /// <example>
-    /// <code>
-    /// // Create a Content object with a text resource
-    /// var content = new Content
-    /// {
-    ///     Type = "resource",
-    ///     Resource = new TextResourceContents
-    ///     {
-    ///         Uri = "resource://document.txt",
-    ///         MimeType = "text/plain",
-    ///         Text = "This is a text resource"
-    ///     }
-    /// };
-    /// 
-    /// // Create a Content object with a binary resource
-    /// var imageContent = new Content
-    /// {
-    ///     Type = "resource",
-    ///     Resource = new BlobResourceContents
-    ///     {
-    ///         Uri = "resource://image.png",
-    ///         MimeType = "image/png",
-    ///         Blob = Convert.ToBase64String(imageBytes)
-    ///     }
-    /// };
-    /// </code>
-    /// </example>
-    /// <seealso cref="ResourceContents"/>
-    /// <seealso cref="TextResourceContents"/>
-    /// <seealso cref="BlobResourceContents"/>
-    /// <seealso cref="AIContentExtensions.ToAIContent(Content)"/>
     [JsonPropertyName("resource")]
     public ResourceContents? Resource { get; set; }
 
     /// <summary>
-    /// Optional annotations for the content.
-    /// These annotations can be used to specify the intended audience (User, Assistant, or both)
-    /// and the priority level of the content. Clients can use this information to filter
-    /// or prioritize content for different roles.
+    /// Gets or sets optional annotations for the content.
     /// </summary>
+    /// <remarks>
+    /// These annotations can be used to specify the intended audience (<see cref="Role.User"/>, <see cref="Role.Assistant"/>, or both)
+    /// and the priority level of the content. Clients can use this information to filter or prioritize content for different roles.
+    /// </remarks>
     [JsonPropertyName("annotations")]
     public Annotations? Annotations { get; init; }
 }

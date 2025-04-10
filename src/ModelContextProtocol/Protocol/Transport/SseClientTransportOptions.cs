@@ -6,7 +6,7 @@ namespace ModelContextProtocol.Protocol.Transport;
 public record SseClientTransportOptions
 {
     /// <summary>
-    /// Gets the base address of the server for SSE connections.
+    /// Gets or sets the base address of the server for SSE connections.
     /// </summary>
     public required Uri Endpoint
     {
@@ -36,7 +36,7 @@ public record SseClientTransportOptions
     public string? Name { get; init; }
 
     /// <summary>
-    /// Gets a timeout used to establish the initial connection to the SSE server.
+    /// Gets or sets a timeout used to establish the initial connection to the SSE server.
     /// </summary>
     /// <remarks>
     /// This timeout controls how long the client waits for:
@@ -49,7 +49,7 @@ public record SseClientTransportOptions
     public TimeSpan ConnectionTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    /// Gets the maximum number of reconnection attempts for the SSE connection before giving up.
+    /// Gets or sets the maximum number of reconnection attempts for the SSE connection before giving up.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -64,7 +64,7 @@ public record SseClientTransportOptions
     public int MaxReconnectAttempts { get; init; } = 3;
 
     /// <summary>
-    /// Gets the delay to employ between reconnection attempts when the SSE connection fails.
+    /// Gets or sets the delay to employ between reconnection attempts when the SSE connection fails.
     /// </summary>
     /// <remarks>
     /// <para>

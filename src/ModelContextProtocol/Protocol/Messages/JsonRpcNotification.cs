@@ -18,13 +18,13 @@ public record JsonRpcNotification : IJsonRpcMessage
     public string JsonRpc { get; init; } = "2.0";
 
     /// <summary>
-    /// Gets the name of the notification method.
+    /// Gets or sets the name of the notification method.
     /// </summary>
     [JsonPropertyName("method")]
     public required string Method { get; init; }
 
     /// <summary>
-    /// Gets optional parameters for the notification.
+    /// Gets or sets optional parameters for the notification.
     /// </summary>
     [JsonPropertyName("params")]
     public JsonNode? Params { get; init; }

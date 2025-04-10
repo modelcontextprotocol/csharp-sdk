@@ -3,26 +3,28 @@
 namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
-/// A request to include context from one or more MCP servers (including the caller), to be attached to the prompt.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
+/// Specifies the context inclusion options for a request in the Model Context Protocol (MCP).
 /// </summary>
+/// <remarks>
+/// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
+/// </remarks>
 [JsonConverter(typeof(CustomizableJsonStringEnumConverter<ContextInclusion>))]
 public enum ContextInclusion
 {
     /// <summary>
-    /// No context should be included.
+    /// Indicates that no context should be included.
     /// </summary>
     [JsonStringEnumMemberName("none")]
     None,
 
     /// <summary>
-    /// Include context from the server that sent the request.
+    /// Indicates that context from the server that sent the request should be included.
     /// </summary>
     [JsonStringEnumMemberName("thisServer")]
     ThisServer,
 
     /// <summary>
-    /// Include context from all servers that the client is connected to.
+    /// Indicates that context from all servers that the client is connected to should be included.
     /// </summary>
     [JsonStringEnumMemberName("allServers")]
     AllServers

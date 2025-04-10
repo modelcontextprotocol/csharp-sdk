@@ -1,4 +1,6 @@
+using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Messages;
+using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
 using System.Text.Json;
@@ -14,40 +16,12 @@ namespace ModelContextProtocol;
 /// <para>
 /// This class provides strongly-typed methods for working with the Model Context Protocol (MCP) endpoints,
 /// simplifying JSON-RPC communication by handling serialization and deserialization of parameters and results.
-/// The extension methods offer:
-/// <list type="bullet">
-///   <item>Type-safe request sending with automatic JSON serialization/deserialization</item>
-///   <item>Simplified notification sending with parameter serialization</item>
-///   <item>Convenience methods for progress reporting</item>
-/// </list>
 /// </para>
 /// <para>
-/// These extension methods are designed to be used with both client (<see cref="Client.IMcpClient"/>) and
-/// server (<see cref="Server.IMcpServer"/>) implementations of the <see cref="IMcpEndpoint"/> interface.
+/// These extension methods are designed to be used with both client (<see cref="IMcpClient"/>) and
+/// server (<see cref="IMcpServer"/>) implementations of the <see cref="IMcpEndpoint"/> interface.
 /// </para>
 /// </remarks>
-/// <example>
-/// <code>
-/// // Example: Sending a typed request and handling the typed response
-/// MyRequestParams requestParams = new() { Value = "example" };
-/// MyResponseType result = await endpoint.SendRequestAsync&lt;MyRequestParams, MyResponseType&gt;(
-///     "myMethod", 
-///     requestParams,
-///     cancellationToken: token);
-///     
-/// // Example: Sending a notification with parameters
-/// await endpoint.SendNotificationAsync("status/update", 
-///     new { Status = "processing", Progress = 0.5 },
-///     cancellationToken: token);
-///     
-/// // Example: Reporting progress using a progress token
-/// var progressToken = new ProgressToken("op123");
-/// await endpoint.NotifyProgressAsync(
-///     progressToken,
-///     new ProgressNotificationValue { Progress = 75 }, 
-///     cancellationToken: token);
-/// </code>
-/// </example>
 public static class McpEndpointExtensions
 {
     /// <summary>
@@ -135,19 +109,7 @@ public static class McpEndpointExtensions
     /// that don't expect a response. They are commonly used for events, status updates, or to signal 
     /// changes in state.
     /// </para>
-    /// <para>
-    /// For notifications that require parameters, use the overloaded method that accepts a parameters object.
-    /// </para>
     /// </remarks>
-    /// <example>
-    /// <code>
-    /// // Example: Sending a notification without parameters
-    /// await endpoint.SendNotificationAsync("notifications/tools/list_changed", cancellationToken);
-    /// 
-    /// // Example: Notifying that roots have been updated (from a client to server)
-    /// await client.SendNotificationAsync(NotificationMethods.RootsUpdatedNotification, cancellationToken);
-    /// </code>
-    /// </example>
     public static Task SendNotificationAsync(this IMcpEndpoint client, string method, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
@@ -172,37 +134,13 @@ public static class McpEndpointExtensions
     /// </para>
     /// <para>
     /// The parameters object is serialized to JSON according to the provided serializer options or the default 
-    /// options if none are specified. Both anonymous types and strongly-typed objects can be used as parameters.
+    /// options if none are specified.
     /// </para>
     /// <para>
     /// The Model Context Protocol defines several standard notification methods in <see cref="NotificationMethods"/>,
     /// but custom methods can also be used for application-specific notifications.
     /// </para>
     /// </remarks>
-    /// <example>
-    /// <code>
-    /// // Example: Sending a logging message notification
-    /// await server.SendNotificationAsync("notifications/message", new
-    /// {
-    ///     Level = "info",
-    ///     Data = "Processing started"
-    /// }, cancellationToken: token);
-    /// 
-    /// // Example: Sending a resource update notification
-    /// await server.SendNotificationAsync("notifications/resource/updated", new
-    /// {
-    ///     Uri = "resource://documents/123"
-    /// }, cancellationToken: token);
-    /// 
-    /// // Example: Sending a progress notification for a long-running operation
-    /// await server.SendNotificationAsync("notifications/progress", new
-    /// {
-    ///     Progress = 75,
-    ///     Total = 100,
-    ///     ProgressToken = "operation-123"
-    /// }, cancellationToken: token);
-    /// </code>
-    /// </example>
     public static Task SendNotificationAsync<TParameters>(
         this IMcpEndpoint endpoint,
         string method,
@@ -259,44 +197,6 @@ public static class McpEndpointExtensions
     /// Progress notifications are sent asynchronously and don't block the operation from continuing.
     /// </para>
     /// </remarks>
-    /// <example>
-    /// <code>
-    /// // Example: Reporting progress during a long-running operation
-    /// async Task ProcessDataAsync(IMcpEndpoint endpoint, string operationId, CancellationToken cancellationToken)
-    /// {
-    ///     // Create a progress token for this specific operation
-    ///     var progressToken = new ProgressToken(operationId);
-    ///     
-    ///     // Report initial progress
-    ///     await endpoint.NotifyProgressAsync(
-    ///         progressToken,
-    ///         new ProgressNotificationValue { Progress = 0, Message = "Starting process..." },
-    ///         cancellationToken);
-    ///         
-    ///     // Perform operation with intermediate progress updates
-    ///     for (int i = 1; i &lt;= 10; i++)
-    ///     {
-    ///         // Do work...
-    ///         await Task.Delay(1000, cancellationToken);
-    ///         
-    ///         // Report progress (10%, 20%, etc.)
-    ///         await endpoint.NotifyProgressAsync(
-    ///             progressToken,
-    ///             new ProgressNotificationValue { 
-    ///                 Progress = i * 10,
-    ///                 Message = $"Processed {i} of 10 items"
-    ///             },
-    ///             cancellationToken);
-    ///     }
-    ///     
-    ///     // Report completion
-    ///     await endpoint.NotifyProgressAsync(
-    ///         progressToken,
-    ///         new ProgressNotificationValue { Progress = 100, Message = "Process complete" },
-    ///         cancellationToken);
-    /// }
-    /// </code>
-    /// </example>
     public static Task NotifyProgressAsync(
         this IMcpEndpoint endpoint,
         ProgressToken progressToken,

@@ -1,7 +1,11 @@
+using ModelContextProtocol.Protocol.Messages;
+using System.Text.Json.Serialization;
+
 namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
-/// Sent from the server as the payload of "notifications/resources/updated" notifications whenever a subscribed resource changes.
+/// Represents the parameters used with a <see cref="NotificationMethods.ResourceUpdatedNotification"/>
+/// notification sent whenever a subscribed resource changes.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -10,42 +14,17 @@ namespace ModelContextProtocol.Protocol.Types;
 /// allow clients to maintain synchronized state without needing to poll the server for changes.
 /// </para>
 /// <para>
-/// The notification only contains the URI of the changed resource. Clients typically need to 
-/// make a separate call to <c>ReadResourceAsync</c> to get the updated content if needed.
+/// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
-/// <example>
-/// <code>
-/// // Server-side: Send resource updated notification
-/// var notificationParams = new ResourceUpdatedNotificationParams
-/// {
-///     Uri = "resource://documents/123"
-/// };
-/// 
-/// await server.SendNotificationAsync(
-///     NotificationMethods.ResourceUpdatedNotification,
-///     notificationParams,
-///     cancellationToken);
-///     
-/// // Client-side: Register to handle resource update notifications
-/// client.RegisterNotificationHandler&lt;ResourceUpdatedNotificationParams&gt;(
-///     NotificationMethods.ResourceUpdatedNotification, 
-///     (notification, cancellationToken) =>
-///     {
-///         Console.WriteLine($"Resource updated: {notification.Params?.Uri}");
-///         // Fetch the updated resource if needed
-///         return Task.CompletedTask;
-///     });
-/// </code>
-/// </example>
-/// <seealso cref="SubscribeRequestParams"/>
-/// <seealso cref="UnsubscribeRequestParams"/>
-/// <seealso href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</seealso>
 public class ResourceUpdatedNotificationParams
 {
     /// <summary>
-    /// The URI of the resource that was updated. The URI can use any protocol; it is up to the server how to interpret it.
+    /// Gets or sets the URI of the resource that was updated.
     /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("uri")]
+    /// <remarks>
+    /// The URI can use any protocol; it is up to the server how to interpret it.
+    /// </remarks>
+    [JsonPropertyName("uri")]
     public string? Uri { get; init; }
 }
