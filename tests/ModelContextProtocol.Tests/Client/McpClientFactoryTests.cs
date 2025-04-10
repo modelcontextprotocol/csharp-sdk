@@ -44,7 +44,7 @@ public class McpClientFactoryTests
                         new CreateMessageResult { 
                             Content = new Content { Text = "result" }, 
                             Model = "test-model", 
-                            Role = "test-role", 
+                            Role = Role.User, 
                             StopReason = "endTurn" 
                     }),
                 },

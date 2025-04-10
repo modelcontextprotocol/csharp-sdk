@@ -84,7 +84,7 @@ public class McpClientExtensionsTests : ClientServerTestBase
         Assert.NotNull(result);
         Assert.Equal("Hello, World!", result.Content.Text);
         Assert.Equal("test-model", result.Model);
-        Assert.Equal("assistant", result.Role);
+        Assert.Equal(Role.Assistant, result.Role);
         Assert.Equal("endTurn", result.StopReason);
     }
 
@@ -139,7 +139,7 @@ public class McpClientExtensionsTests : ClientServerTestBase
         Assert.NotNull(result);
         Assert.Equal(expectedData, result.Content.Data);
         Assert.Equal("test-model", result.Model);
-        Assert.Equal("assistant", result.Role);
+        Assert.Equal(Role.Assistant, result.Role);
         Assert.Equal("endTurn", result.StopReason);
     }
 
@@ -201,7 +201,7 @@ public class McpClientExtensionsTests : ClientServerTestBase
         // Assert
         Assert.NotNull(result);
         Assert.Equal("test-model", result.Model);
-        Assert.Equal(ChatRole.Assistant.ToString(), result.Role);
+        Assert.Equal(Role.Assistant, result.Role);
         Assert.Equal("endTurn", result.StopReason);
     }
 

@@ -219,7 +219,7 @@ public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerInte
             return new CreateMessageResult
             {
                 Model = "test-model",
-                Role = "assistant",
+                Role = Role.Assistant,
                 Content = new Content
                 {
                     Type = "text",

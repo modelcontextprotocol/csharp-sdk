@@ -601,7 +601,7 @@ public class McpServerTests : LoggedTest
             {
                 Content = new() { Text = "The Eiffel Tower.", Type = "text" },
                 Model = "amazingmodel",
-                Role = "assistant",
+                Role = Role.Assistant,
                 StopReason = "endTurn",
             };
 
