@@ -1,10 +1,10 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
-/// An empty result object.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
+/// Represents an empty result object for operations that need to indicate successful completion 
+/// but don't need to return any specific data.
 /// </summary>
 public class EmptyResult
 {

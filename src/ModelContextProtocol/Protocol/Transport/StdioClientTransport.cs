@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Utils;
@@ -12,8 +12,18 @@ using System.Text.RegularExpressions;
 namespace ModelContextProtocol.Protocol.Transport;
 
 /// <summary>
-/// Provides a client MCP transport implemented via "stdio" (standard input/output).
+/// Provides a <see cref="IClientTransport"/> implemented via "stdio" (standard input/output).
 /// </summary>
+/// <remarks>
+/// <para>
+/// This transport launches an external process and communicates with it through standard input and output streams.
+/// It's used to connect to MCP servers launched and hosted in child processes.
+/// </para>
+/// <para>
+/// The transport manages the entire lifecycle of the process: starting it with specified command-line arguments
+/// and environment variables, handling output, and properly terminating the process when the transport is closed.
+/// </para>
+/// </remarks>
 public sealed class StdioClientTransport : IClientTransport
 {
     private readonly StdioClientTransportOptions _options;
@@ -22,8 +32,8 @@ public sealed class StdioClientTransport : IClientTransport
     /// <summary>
     /// Initializes a new instance of the <see cref="StdioClientTransport"/> class.
     /// </summary>
-    /// <param name="options">Configuration options for the transport.</param>
-    /// <param name="loggerFactory">A logger factory for creating loggers.</param>
+    /// <param name="options">Configuration options for the transport, including the command to execute, arguments, working directory, and environment variables.</param>
+    /// <param name="loggerFactory">Logger factory for creating loggers used for diagnostic output during transport operations.</param>
     public StdioClientTransport(StdioClientTransportOptions options, ILoggerFactory? loggerFactory = null)
     {
         Throw.IfNull(options);

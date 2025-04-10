@@ -1,26 +1,51 @@
-﻿namespace ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol.Messages;
+using System.Text.Json.Serialization;
+
+namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
-/// A prompt or prompt template that the server offers.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
+/// Represents a prompt that the server offers.
 /// </summary>
+/// <remarks>
+/// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
+/// </remarks>
 public class Prompt
 {
     /// <summary>
-    /// A list of arguments to use for templating the prompt.
+    /// Gets or sets a list of arguments that this prompt accepts for templating and customization.
     /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("arguments")]
+    /// <remarks>
+    /// <para>
+    /// This list defines the arguments that can be provided when requesting the prompt.
+    /// Each argument specifies metadata like name, description, and whether it's required.
+    /// </para>
+    /// <para>
+    /// When a client makes a <see cref="RequestMethods.PromptsGet"/> request, it can provide values for these arguments
+    /// which will be substituted into the prompt template or otherwise used to render the prompt.
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("arguments")]
     public List<PromptArgument>? Arguments { get; set; }
 
     /// <summary>
-    /// An optional description of what this prompt provides
+    /// Gets or sets an optional description of what this prompt provides.
     /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("description")]
+    /// <remarks>
+    /// <para>
+    /// This description helps developers understand the purpose and use cases for the prompt.
+    /// It should explain what the prompt is designed to accomplish and any important context.
+    /// </para>
+    /// <para>
+    /// The description is typically used in documentation, UI displays, and for providing context
+    /// to client applications that may need to choose between multiple available prompts.
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("description")]
     public string? Description { get; set; }
 
     /// <summary>
-    /// The name of the prompt or prompt template.
+    /// Gets or sets the name of the prompt.
     /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("name")]
+    [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
 }

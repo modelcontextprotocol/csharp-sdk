@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Utils;
@@ -19,7 +19,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
         McpServerPromptCreateOptions? options)
     {
         Throw.IfNull(method);
-        
+
         options = DeriveOptions(method.Method, options);
 
         return Create(method.Method, method.Target, options);
@@ -188,6 +188,18 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
     public override Prompt ProtocolPrompt { get; }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// This implementation invokes the underlying <see cref="AIFunction"/> with the request arguments, and processes
+    /// the result to create a standardized <see cref="GetPromptResult"/>. The method supports various return types from
+    /// the underlying function:
+    /// <list type="bullet">
+    ///   <item><description>Direct <see cref="GetPromptResult"/> instances are returned as-is</description></item>
+    ///   <item><description>String values are converted to a single user message</description></item>
+    ///   <item><description>Single <see cref="PromptMessage"/> objects are wrapped in a result</description></item>
+    ///   <item><description>Collections of <see cref="PromptMessage"/> objects are combined in a result</description></item>
+    ///   <item><description><see cref="ChatMessage"/> objects are converted to prompt messages</description></item>
+    /// </list>
+    /// </remarks>
     public override async Task<GetPromptResult> GetAsync(
         RequestContext<GetPromptRequestParams> request, CancellationToken cancellationToken = default)
     {

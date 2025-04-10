@@ -1,65 +1,166 @@
-﻿using ModelContextProtocol.Protocol.Types;
+using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Protocol.Messages;
+using ModelContextProtocol.Protocol.Types;
 
 namespace ModelContextProtocol.Server;
 
 /// <summary>
-/// Container for handlers used in the creation of an MCP server.
+/// Provides a container for handlers used in the creation of an MCP server.
 /// </summary>
+/// <remarks>
+/// <para>
+/// This class provides a centralized collection of delegates that implement various capabilities of the Model Context Protocol.
+/// Each handler in this class corresponds to a specific endpoint in the Model Context Protocol and
+/// is responsible for processing a particular type of request. The handlers are used to customize
+/// the behavior of the MCP server by providing implementations for the various protocol operations.
+/// </para>
+/// <para>
+/// Handlers can be configured individually using the extension methods in <see cref="McpServerBuilderExtensions"/>
+/// such as <see cref="McpServerBuilderExtensions.WithListToolsHandler"/> and
+/// <see cref="McpServerBuilderExtensions.WithCallToolHandler"/>.
+/// </para>
+/// <para>
+/// When a client sends a request to the server, the appropriate handler is invoked to process the
+/// request and produce a response according to the protocol specification. Which handler is selected
+/// is done based on an ordinal, case-sensitive string comparison.
+/// </para>
+/// </remarks>
 public sealed class McpServerHandlers
 {
     /// <summary>
-    /// Gets or sets the handler for list tools requests.
+    /// Gets or sets the handler for <see cref="RequestMethods.ToolsList"/> requests.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The handler should return a list of available tools when requested by a client.
+    /// It supports pagination through the cursor mechanism, where the client can make
+    /// repeated calls with the cursor returned by the previous call to retrieve more tools.
+    /// </para>
+    /// <para>
+    /// This handler works alongside any tools defined in the <see cref="McpServerTool"/> collection.
+    /// Tools from both sources will be combined when returning results to clients.
+    /// </para>
+    /// </remarks>
     public Func<RequestContext<ListToolsRequestParams>, CancellationToken, Task<ListToolsResult>>? ListToolsHandler { get; set; }
 
     /// <summary>
-    /// Gets or sets the handler for call tool requests.
+    /// Gets or sets the handler for <see cref="RequestMethods.ToolsCall"/> requests.
     /// </summary>
+    /// <remarks>
+    /// This handler is invoked when a client makes a call to a tool that isn't found in the <see cref="McpServerTool"/> collection.
+    /// The handler should implement logic to execute the requested tool and return appropriate results.
+    /// </remarks>
     public Func<RequestContext<CallToolRequestParams>, CancellationToken, Task<CallToolResponse>>? CallToolHandler { get; set; }
 
     /// <summary>
-    /// Gets or sets the handler for list prompts requests.
+    /// Gets or sets the handler for <see cref="RequestMethods.PromptsList"/> requests.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The handler should return a list of available prompts when requested by a client.
+    /// It supports pagination through the cursor mechanism, where the client can make
+    /// repeated calls with the cursor returned by the previous call to retrieve more prompts.
+    /// </para>
+    /// <para>
+    /// This handler works alongside any prompts defined in the <see cref="McpServerPrompt"/> collection.
+    /// Prompts from both sources will be combined when returning results to clients.
+    /// </para>
+    /// </remarks>
     public Func<RequestContext<ListPromptsRequestParams>, CancellationToken, Task<ListPromptsResult>>? ListPromptsHandler { get; set; }
 
     /// <summary>
-    /// Gets or sets the handler for get prompt requests.
+    /// Gets or sets the handler for <see cref="RequestMethods.PromptsGet"/> requests.
     /// </summary>
+    /// <remarks>
+    /// This handler is invoked when a client requests details for a specific prompt that isn't found in the <see cref="McpServerPrompt"/> collection.
+    /// The handler should implement logic to fetch or generate the requested prompt and return appropriate results.
+    /// </remarks>
     public Func<RequestContext<GetPromptRequestParams>, CancellationToken, Task<GetPromptResult>>? GetPromptHandler { get; set; }
 
     /// <summary>
-    /// Gets or sets the handler for list resource templates requests.
+    /// Gets or sets the handler for <see cref="RequestMethods.ResourcesTemplatesList"/> requests.
     /// </summary>
+    /// <remarks>
+    /// The handler should return a list of available resource templates when requested by a client.
+    /// It supports pagination through the cursor mechanism, where the client can make
+    /// repeated calls with the cursor returned by the previous call to retrieve more resource templates.
+    /// </remarks>
     public Func<RequestContext<ListResourceTemplatesRequestParams>, CancellationToken, Task<ListResourceTemplatesResult>>? ListResourceTemplatesHandler { get; set; }
 
     /// <summary>
-    /// Gets or sets the handler for list resources requests.
+    /// Gets or sets the handler for <see cref="RequestMethods.ResourcesList"/> requests.
     /// </summary>
+    /// <remarks>
+    /// The handler should return a list of available resources when requested by a client.
+    /// It supports pagination through the cursor mechanism, where the client can make
+    /// repeated calls with the cursor returned by the previous call to retrieve more resources.
+    /// </remarks>
     public Func<RequestContext<ListResourcesRequestParams>, CancellationToken, Task<ListResourcesResult>>? ListResourcesHandler { get; set; }
 
     /// <summary>
-    /// Gets or sets the handler for read resources requests.
+    /// Gets or sets the handler for <see cref="RequestMethods.ResourcesRead"/> requests.
     /// </summary>
+    /// <remarks>
+    /// This handler is invoked when a client requests the content of a specific resource identified by its URI.
+    /// The handler should implement logic to locate and retrieve the requested resource.
+    /// </remarks>
     public Func<RequestContext<ReadResourceRequestParams>, CancellationToken, Task<ReadResourceResult>>? ReadResourceHandler { get; set; }
 
     /// <summary>
-    /// Gets or sets the handler for completion complete requests.
+    /// Gets or sets the handler for <see cref="RequestMethods.CompletionComplete"/> requests.
     /// </summary>
+    /// <remarks>
+    /// This handler provides auto-completion suggestions for prompt arguments or resource references in the Model Context Protocol.
+    /// The handler processes auto-completion requests, returning a list of suggestions based on the 
+    /// reference type and current argument value.
+    /// </remarks>
     public Func<RequestContext<CompleteRequestParams>, CancellationToken, Task<CompleteResult>>? CompleteHandler { get; set; }
 
     /// <summary>
-    /// Gets or sets the handler for subscribe to resources messages.
+    /// Gets or sets the handler for <see cref="RequestMethods.ResourcesSubscribe"/> requests.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This handler is invoked when a client wants to receive notifications about changes to specific resources or resource patterns.
+    /// The handler should implement logic to register the client's interest in the specified resources
+    /// and set up the necessary infrastructure to send notifications when those resources change.
+    /// </para>
+    /// <para>
+    /// After a successful subscription, the server should send resource change notifications to the client
+    /// whenever a relevant resource is created, updated, or deleted.
+    /// </para>
+    /// </remarks>
     public Func<RequestContext<SubscribeRequestParams>, CancellationToken, Task<EmptyResult>>? SubscribeToResourcesHandler { get; set; }
 
     /// <summary>
-    /// Gets or sets the handler for unsubscribe from resources messages.
+    /// Gets or sets the handler for <see cref="RequestMethods.ResourcesUnsubscribe"/> requests.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This handler is invoked when a client wants to stop receiving notifications about previously subscribed resources.
+    /// The handler should implement logic to remove the client's subscriptions to the specified resources
+    /// and clean up any associated resources.
+    /// </para>
+    /// <para>
+    /// After a successful unsubscription, the server should no longer send resource change notifications
+    /// to the client for the specified resources.
+    /// </para>
+    /// </remarks>
     public Func<RequestContext<UnsubscribeRequestParams>, CancellationToken, Task<EmptyResult>>? UnsubscribeFromResourcesHandler { get; set; }
 
     /// <summary>
-    /// Get or sets the handler for set logging level requests.
+    /// Gets or sets the handler for <see cref="RequestMethods.LoggingSetLevel"/> requests.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This handler processes <see cref="RequestMethods.LoggingSetLevel"/> requests from clients. When set, it enables
+    /// clients to control which log messages they receive by specifying a minimum severity threshold.
+    /// </para>
+    /// <para>
+    /// After handling a level change request, the server typically begins sending log messages
+    /// at or above the specified level to the client as notifications/message notifications.
+    /// </para>
+    /// </remarks>
     public Func<RequestContext<SetLevelRequestParams>, CancellationToken, Task<EmptyResult>>? SetLoggingLevelHandler { get; set; }
 
     /// <summary>

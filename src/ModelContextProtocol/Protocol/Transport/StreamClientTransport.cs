@@ -1,11 +1,16 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Utils;
 
 namespace ModelContextProtocol.Protocol.Transport;
 
 /// <summary>
-/// Provides a client MCP transport implemented around a pair of input/output streams.
+/// Provides an <see cref="IClientTransport"/> implemented around a pair of input/output streams.
 /// </summary>
+/// <remarks>
+/// This transport is useful for scenarios where you already have established streams for communication,
+/// such as custom network protocols, pipe connections, or for testing purposes. It works with any
+/// readable and writable streams.
+/// </remarks>
 public sealed class StreamClientTransport : IClientTransport
 {
     private readonly Stream _serverInput;
@@ -36,8 +41,7 @@ public sealed class StreamClientTransport : IClientTransport
     }
 
     /// <inheritdoc />
-    public string Name => $"in-memory-stream";
-
+    public string Name => "in-memory-stream";
 
     /// <inheritdoc />
     public Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default)

@@ -1,6 +1,3 @@
-using ModelContextProtocol.Utils;
-using System.Runtime.InteropServices;
-
 namespace System.IO;
 
 internal static class TextWriterExtensions

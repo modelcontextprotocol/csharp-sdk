@@ -1,23 +1,32 @@
-﻿using System.Text.Json;
+using ModelContextProtocol.Protocol.Messages;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
-/// Used by the client to get a prompt provided by the server.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
+/// Represents the parameters used with a <see cref="RequestMethods.PromptsGet"/> request from a client to get a prompt provided by a server.
 /// </summary>
+/// <remarks>
+/// The server will respond with a <see cref="GetPromptResult"/> containing the resulting prompt.
+/// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
+/// </remarks>
 public class GetPromptRequestParams : RequestParams
 {
     /// <summary>
-    /// he name of the prompt or prompt template.
+    /// Gets or sets the name of the prompt.
     /// </summary>
     [JsonPropertyName("name")]
     public required string Name { get; init; }
 
     /// <summary>
-    /// Arguments to use for templating the prompt.
+    /// Gets or sets arguments to use for templating the prompt when retrieving it from the server.
     /// </summary>
+    /// <remarks>
+    /// Typically, these arguments are used to replace placeholders in prompt templates. The keys in this dictionary
+    /// should match the names defined in the prompt's <see cref="Prompt.Arguments"/> list. However, the server may
+    /// choose to use these arguments in any way it deems appropriate to generate the prompt.
+    /// </remarks>
     [JsonPropertyName("arguments")]
     public IReadOnlyDictionary<string, JsonElement>? Arguments { get; init; }
 }

@@ -1,4 +1,4 @@
-﻿namespace ModelContextProtocol.Protocol.Messages;
+namespace ModelContextProtocol.Protocol.Messages;
 
 /// <summary>
 /// Standard JSON-RPC error codes as defined in the MCP specification.

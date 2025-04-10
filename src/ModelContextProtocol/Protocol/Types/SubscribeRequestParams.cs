@@ -1,14 +1,34 @@
-﻿namespace ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol.Messages;
+using System.Text.Json.Serialization;
+
+namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
-/// Sent from the client to request updated notifications from the server whenever a particular primitive changes.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
+/// Represents the parameters used with a <see cref="RequestMethods.ResourcesSubscribe"/> request from a client
+/// to request real-time notifications from the server whenever a particular resource changes.
 /// </summary>
+/// <remarks>
+/// <para>
+/// The subscription mechanism allows clients to be notified about changes to specific resources
+/// identified by their URI. When a subscribed resource changes, the server sends a notification
+/// to the client with the updated resource information.
+/// </para>
+/// <para>
+/// Subscriptions remain active until explicitly canceled using <see cref="UnsubscribeRequestParams"/>
+/// or until the connection is terminated.
+/// </para>
+/// <para>
+/// The server may refuse or limit subscriptions based on its capabilities or resource constraints.
+/// </para>
+/// </remarks>
 public class SubscribeRequestParams : RequestParams
 {
     /// <summary>
-    /// The URI of the resource to subscribe to. The URI can use any protocol; it is up to the server how to interpret it.
+    /// Gets or sets the URI of the resource to subscribe to.
     /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("uri")]
+    /// <remarks>
+    /// The URI can use any protocol; it is up to the server how to interpret it.
+    /// </remarks>
+    [JsonPropertyName("uri")]
     public string? Uri { get; init; }
 }

@@ -1,11 +1,13 @@
-﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol.Types;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 
 namespace ModelContextProtocol.Server;
 
-/// <summary>Represents an invocable tool used by Model Context Protocol clients and servers.</summary>
+/// <summary>
+/// Represents an invocable tool used by Model Context Protocol clients and servers.
+/// </summary>
 public abstract class McpServerTool : IMcpServerPrimitive
 {
     /// <summary>Initializes a new instance of the <see cref="McpServerTool"/> class.</summary>

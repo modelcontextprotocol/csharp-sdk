@@ -1,30 +1,52 @@
-﻿using System.Text.Json;
+using ModelContextProtocol.Protocol.Messages;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
-/// Sent from the server as the payload of "notifications/message" notifications whenever a log message is generated.
-/// 
-/// If no logging/setLevel request has been sent from the client, the server MAY decide which messages to send automatically.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
+/// Represents the parameters used with a <see cref="NotificationMethods.LoggingMessageNotification"/>
+/// notification sent whenever a log message is generated.
 /// </summary>
+/// <remarks>
+/// <para>
+/// Logging notifications allow servers to communicate diagnostic information to clients with varying severity levels.
+/// Clients can filter these messages based on the <see cref="Level"/> and <see cref="Logger"/> properties.
+/// </para>
+/// <para>
+/// If no <see cref="RequestMethods.LoggingSetLevel"/> request has been sent from the client, the server may decide which
+/// messages to send automatically.
+/// </para>
+/// <para>
+/// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
+/// </para>
+/// </remarks>
 public class LoggingMessageNotificationParams
 {
     /// <summary>
-    /// The severity of this log message.
+    /// Gets or sets the severity of this log message.
     /// </summary>
     [JsonPropertyName("level")]
     public LoggingLevel Level { get; init; }
 
     /// <summary>
-    /// An optional name of the logger issuing this message.
+    /// Gets or sets an optional name of the logger issuing this message.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="Logger"/> typically represents a category or component in the server's logging system.
+    /// The logger name is useful for filtering and routing log messages in client applications.
+    /// </para>
+    /// <para>
+    /// When implementing custom servers, choose clear, hierarchical logger names to help
+    /// clients understand the source of log messages.
+    /// </para>
+    /// </remarks>
     [JsonPropertyName("logger")]
     public string? Logger { get; init; }
 
     /// <summary>
-    /// The data to be logged, such as a string message or an object.
+    /// Gets or sets the data to be logged, such as a string message.
     /// </summary>
     [JsonPropertyName("data")]
     public JsonElement? Data { get; init; }

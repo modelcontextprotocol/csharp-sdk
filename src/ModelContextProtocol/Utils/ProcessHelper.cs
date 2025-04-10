@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace ModelContextProtocol.Utils;
@@ -11,8 +11,29 @@ internal static class ProcessHelper
     private static readonly bool _isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
     private static readonly TimeSpan _defaultTimeout = TimeSpan.FromSeconds(30);
 
+    /// <summary>
+    /// Kills a process and all of its child processes (entire process tree).
+    /// </summary>
+    /// <param name="process">The process to terminate along with its child processes.</param>
+    /// <remarks>
+    /// This method uses a default timeout of 30 seconds when waiting for processes to exit.
+    /// On Windows, this uses the "taskkill" command with the /T flag.
+    /// On non-Windows platforms, it recursively identifies and terminates child processes.
+    /// </remarks>
     public static void KillTree(this Process process) => process.KillTree(_defaultTimeout);
 
+    /// <summary>
+    /// Kills a process and all of its child processes (entire process tree) with a specified timeout.
+    /// </summary>
+    /// <param name="process">The process to terminate along with its child processes.</param>
+    /// <param name="timeout">The maximum time to wait for the processes to exit.</param>
+    /// <remarks>
+    /// On Windows, this uses the "taskkill" command with the /T flag to terminate the process tree.
+    /// On non-Windows platforms, it recursively identifies and terminates child processes.
+    /// The method waits for the specified timeout for processes to exit before continuing.
+    /// This is particularly useful for applications that spawn child processes (like Node.js)
+    /// that wouldn't be terminated automatically when the parent process exits.
+    /// </remarks>
     public static void KillTree(this Process process, TimeSpan timeout)
     {
         var pid = process.Id;

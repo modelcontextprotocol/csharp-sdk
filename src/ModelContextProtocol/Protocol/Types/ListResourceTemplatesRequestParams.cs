@@ -1,7 +1,13 @@
-﻿namespace ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol.Messages;
+
+namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
-/// Sent from the client to request a list of resource templates the server has.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
+/// Represents the parameters used with a <see cref="RequestMethods.ResourcesTemplatesList"/> request from a client to request
+/// a list of resource templates available from the server.
 /// </summary>
+/// <remarks>
+/// The server responds with a <see cref="ListResourceTemplatesResult"/> containing the available resource templates.
+/// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
+/// </remarks>
 public class ListResourceTemplatesRequestParams : PaginatedRequestParams;

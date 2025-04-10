@@ -1,61 +1,105 @@
-﻿namespace ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol.Messages;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
+
+namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
-/// A request from the server to sample an LLM via the client. 
-/// The client has full discretion over which model to select. 
-/// The client should also inform the user before beginning sampling, to allow them to inspect the request (human in the loop) and decide whether to approve it.
-/// 
-/// While these align with the protocol specification,
-/// clients have full discretion over model selection and should inform users before sampling.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
+/// Represents the parameters used with a <see cref="RequestMethods.SamplingCreateMessage"/> 
+/// request from a server to sample an LLM via the client.
 /// </summary>
+/// <remarks>
+/// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
+/// </remarks>
 public class CreateMessageRequestParams : RequestParams
 {
     /// <summary>
-    /// A request to include context from one or more MCP servers (including the caller), to be attached to the prompt. The client MAY ignore this request.
+    /// Gets or sets an indication as to which server contexts should be included in the prompt.
     /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("includeContext")]
+    /// <remarks>
+    /// The client may ignore this request.
+    /// </remarks>
+    [JsonPropertyName("includeContext")]
     public ContextInclusion? IncludeContext { get; init; }
 
     /// <summary>
-    /// The maximum number of tokens to sample, as requested by the server. The client MAY choose to sample fewer tokens than requested.
+    /// Gets or sets the maximum number of tokens to generate in the LLM response, as requested by the server.
     /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("maxTokens")]
+    /// <remarks>
+    /// A token is generally a word or part of a word in the text. Setting this value helps control 
+    /// response length and computation time. The client may choose to sample fewer tokens than requested.
+    /// </remarks>
+    [JsonPropertyName("maxTokens")]
     public int? MaxTokens { get; init; }
 
     /// <summary>
-    /// Messages requested by the server to be included in the prompt.
+    /// Gets or sets the messages requested by the server to be included in the prompt.
     /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("messages")]
+    [JsonPropertyName("messages")]
     public required IReadOnlyList<SamplingMessage> Messages { get; init; }
 
     /// <summary>
-    /// Optional metadata to pass through to the LLM provider. The format of this metadata is provider-specific.
+    /// Gets or sets optional metadata to pass through to the LLM provider.
     /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("metadata")]
-    public object? Metadata { get; init; }
+    /// <remarks>
+    /// The format of this metadata is provider-specific and can include model-specific settings or
+    /// configuration that isn't covered by standard parameters. This allows for passing custom parameters 
+    /// that are specific to certain AI models or providers.
+    /// </remarks>
+    [JsonPropertyName("metadata")]
+    public JsonElement? Metadata { get; init; }
 
     /// <summary>
-    /// The server's preferences for which model to select. The client MAY ignore these preferences.
+    /// Gets or sets the server's preferences for which model to select.
     /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("modelPreferences")]
+    /// <remarks>
+    /// <para>
+    /// The client may ignore these preferences.
+    /// </para>
+    /// <para>
+    /// These preferences help the client make an appropriate model selection based on the server's priorities
+    /// for cost, speed, intelligence, and specific model hints.
+    /// </para>
+    /// <para>
+    /// When multiple dimensions are specified (cost, speed, intelligence), the client should balance these
+    /// based on their relative values. If specific model hints are provided, the client should evaluate them
+    /// in order and prioritize them over numeric priorities.
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("modelPreferences")]
     public ModelPreferences? ModelPreferences { get; init; }
 
     /// <summary>
-    /// Optional stop sequences that the server wants to use for sampling.
+    /// Gets or sets optional sequences of characters that signal the LLM to stop generating text when encountered.
     /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("stopSequences")]
+    /// <remarks>
+    /// <para>
+    /// When the model generates any of these sequences during sampling, text generation stops immediately,
+    /// even if the maximum token limit hasn't been reached. This is useful for controlling generation 
+    /// endings or preventing the model from continuing beyond certain points.
+    /// </para>
+    /// <para>
+    /// Stop sequences are typically case-sensitive, and typically the LLM will only stop generation when a produced
+    /// sequence exactly matches one of the provided sequences. Common uses include ending markers like "END", punctuation
+    /// like ".", or special delimiter sequences like "###".
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("stopSequences")]
     public IReadOnlyList<string>? StopSequences { get; init; }
 
     /// <summary>
-    /// An optional system prompt the server wants to use for sampling. The client MAY modify or omit this prompt.
+    /// Gets or sets an optional system prompt the server wants to use for sampling.
     /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("systemPrompt")]
+    /// <remarks>
+    /// The client may modify or omit this prompt.
+    /// </remarks>
+    [JsonPropertyName("systemPrompt")]
     public string? SystemPrompt { get; init; }
 
     /// <summary>
-    /// The temperature to use for sampling, as requested by the server.
+    /// Gets or sets the temperature to use for sampling, as requested by the server.
     /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("temperature")]
+    [JsonPropertyName("temperature")]
     public float? Temperature { get; init; }
 }

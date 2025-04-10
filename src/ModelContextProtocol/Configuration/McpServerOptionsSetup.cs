@@ -1,4 +1,4 @@
-﻿using ModelContextProtocol.Server;
+using ModelContextProtocol.Server;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Utils;
 

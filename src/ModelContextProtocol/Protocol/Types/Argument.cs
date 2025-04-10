@@ -1,22 +1,29 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
-/// Used for completion requests to provide additional context for the completion options.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
+/// Represents an argument used in completion requests to provide context for auto-completion functionality.
 /// </summary>
+/// <remarks>
+/// This class is used when requesting completion suggestions for a particular field or parameter.
+/// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
+/// </remarks>
 public class Argument
 {
     /// <summary>
-    /// The name of the argument.
+    /// Gets or sets the name of the argument being completed.
     /// </summary>
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
 
     /// <summary>
-    /// The value of the argument to use for completion matching.
+    /// Gets or sets the current partial text value for which completion suggestions are requested.
     /// </summary>
+    /// <remarks>
+    /// This represents the text that has been entered so far and for which completion
+    /// options should be generated.
+    /// </remarks>
     [JsonPropertyName("value")]
     public string Value { get; set; } = string.Empty;
 }

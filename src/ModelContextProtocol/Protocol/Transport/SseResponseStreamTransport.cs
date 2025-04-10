@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Buffers;
 using System.Net.ServerSentEvents;
 using System.Text.Json;
@@ -9,10 +9,19 @@ using ModelContextProtocol.Utils.Json;
 namespace ModelContextProtocol.Protocol.Transport;
 
 /// <summary>
-/// Implements the MCP SSE server transport protocol using the SSE response <see cref="Stream"/>.
+/// Provides an <see cref="ITransport"/> implementation using Server-Sent Events (SSE) for server-to-client communication.
 /// </summary>
-/// <param name="sseResponseStream">The stream to write the SSE response body to.</param>
-/// <param name="messageEndpoint">The endpoint to send JSON-RPC messages to. Defaults to "/message".</param> 
+/// <remarks>
+/// <para>
+/// This transport provides one-way communication from server to client using the SSE protocol over HTTP,
+/// while receiving client messages through a separate mechanism. It writes messages as 
+/// SSE events to a response stream, typically associated with an HTTP response.
+/// </para>
+/// <para>
+/// This transport is used in scenarios where the server needs to push messages to the client in real-time,
+/// such as when streaming completion results or providing progress updates during long-running operations.
+/// </para>
+/// </remarks>
 public sealed class SseResponseStreamTransport(Stream sseResponseStream, string messageEndpoint = "/message") : ITransport
 {
     private readonly Channel<IJsonRpcMessage> _incomingChannel = CreateBoundedChannel<IJsonRpcMessage>();
@@ -21,12 +30,12 @@ public sealed class SseResponseStreamTransport(Stream sseResponseStream, string 
     private Task? _sseWriteTask;
     private Utf8JsonWriter? _jsonWriter;
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public bool IsConnected { get; private set; }
 
     /// <summary>
-    /// Starts the transport and writes the JSON-RPC messages sent via <see cref="SendMessageAsync(IJsonRpcMessage, CancellationToken)"/>
-    /// to the SSE response stream until cancelled or disposed.
+    /// Starts the transport and writes the JSON-RPC messages sent via <see cref="SendMessageAsync"/>
+    /// to the SSE response stream until cancellation is requested or the transport is disposed.
     /// </summary>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task representing the send loop that writes JSON-RPC messages to the SSE response stream.</returns>
@@ -83,10 +92,25 @@ public sealed class SseResponseStreamTransport(Stream sseResponseStream, string 
     /// <summary>
     /// Handles incoming JSON-RPC messages received on the /message endpoint.
     /// </summary>
-    /// <param name="message">The JSON-RPC message received.</param>
+    /// <param name="message">The JSON-RPC message received from the client.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>A task representing the potentially asynchronous operation to buffer or process the JSON-RPC message.</returns>
+    /// <returns>A task representing the asynchronous operation to buffer the JSON-RPC message for processing.</returns>
     /// <exception cref="InvalidOperationException">Thrown when there is an attempt to process a message before calling <see cref="RunAsync(CancellationToken)"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This method is the entry point for processing client-to-server communication in the SSE transport model. 
+    /// While the SSE protocol itself is unidirectional (server to client), this method allows bidirectional 
+    /// communication by handling HTTP POST requests sent to the message endpoint.
+    /// </para>
+    /// <para>
+    /// When a client sends a JSON-RPC message to the /message endpoint, the server calls this method to
+    /// process the message and make it available to the MCP server via the <see cref="MessageReader"/> channel.
+    /// </para>
+    /// <para>
+    /// This method validates that the transport is connected before processing the message, ensuring proper
+    /// sequencing of operations in the transport lifecycle.
+    /// </para>
+    /// </remarks>
     public async Task OnMessageReceivedAsync(IJsonRpcMessage message, CancellationToken cancellationToken)
     {
         if (!IsConnected)

@@ -1,4 +1,4 @@
-﻿using ModelContextProtocol.Protocol.Messages;
+using ModelContextProtocol.Protocol.Messages;
 using Microsoft.Extensions.Logging;
 
 namespace ModelContextProtocol.Logging;

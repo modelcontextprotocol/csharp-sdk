@@ -11,10 +11,27 @@ using System.Reflection;
 
 namespace System.Text.Json.Serialization;
 
+/// <summary>
+/// A JSON converter for enums that allows customizing the serialized string value of enum members
+/// using the <see cref="JsonStringEnumMemberNameAttribute"/>.
+/// </summary>
+/// <typeparam name="TEnum">The enum type to convert.</typeparam>
+/// <remarks>
+/// This is a temporary workaround for lack of System.Text.Json's JsonStringEnumConverter&lt;T&gt;
+/// 9.x support for custom enum member naming. It will be replaced by the built-in functionality
+/// once .NET 9 is fully adopted.
+/// </remarks>
 internal sealed class CustomizableJsonStringEnumConverter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicFields)] TEnum> :
     JsonStringEnumConverter<TEnum> where TEnum : struct, Enum
 {
 #if !NET9_0_OR_GREATER
+    /// <summary>
+    /// Initializes a new instance of the <see cref="CustomizableJsonStringEnumConverter{TEnum}"/> class.
+    /// </summary>
+    /// <remarks>
+    /// The converter automatically detects any enum members decorated with <see cref="JsonStringEnumMemberNameAttribute"/>
+    /// and uses those values during serialization and deserialization.
+    /// </remarks>
     public CustomizableJsonStringEnumConverter() :
         base(namingPolicy: ResolveNamingPolicy())
     {
@@ -42,22 +59,27 @@ internal sealed class CustomizableJsonStringEnumConverter<[DynamicallyAccessedMe
 
 #if !NET9_0_OR_GREATER
 /// <summary>
-/// Determines the string value that should be used when serializing an enum member.
+/// Determines the custom string value that should be used when serializing an enum member using JSON.
 /// </summary>
+/// <remarks>
+/// This attribute is a temporary workaround for lack of System.Text.Json's support for custom enum member naming
+/// in versions prior to .NET 9. It works together with <see cref="CustomizableJsonStringEnumConverter{TEnum}"/>
+/// to provide customized string representations of enum values during JSON serialization and deserialization.
+/// </remarks>
 [AttributeUsage(AttributeTargets.Field, AllowMultiple = false)]
 internal sealed class JsonStringEnumMemberNameAttribute : Attribute
 {
     /// <summary>
     /// Creates new attribute instance with a specified enum member name.
     /// </summary>
-    /// <param name="name">The name to apply to the current enum member.</param>
+    /// <param name="name">The name to apply to the current enum member when serialized to JSON.</param>
     public JsonStringEnumMemberNameAttribute(string name)
     {
         Name = name;
     }
 
     /// <summary>
-    /// Gets the name of the enum member.
+    /// Gets the custom JSON name of the enum member.
     /// </summary>
     public string Name { get; }
 }

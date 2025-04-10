@@ -4,13 +4,20 @@ using System.Text.Json.Serialization;
 namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
-/// Metadata related to the request.
+/// Provides metadata related to the request that provides additional protocol-level information.
 /// </summary>
+/// <remarks>
+/// This class contains properties that are used by the Model Context Protocol
+/// for features like progress tracking and other protocol-specific capabilities.
+/// </remarks>
 public class RequestParamsMetadata
 {
     /// <summary>
-    /// If specified, the caller is requesting out-of-band progress notifications for this request (as represented by notifications/progress). The value of this parameter is an opaque token that will be attached to any subsequent notifications. The receiver is not obligated to provide these notifications.
+    /// Gets or sets an opaque token that will be attached to any subsequent progress notifications.
     /// </summary>
+    /// <remarks>
+    /// The receiver is not obligated to provide these notifications.
+    /// </remarks>
     [JsonPropertyName("progressToken")]
     public ProgressToken? ProgressToken { get; set; } = default!;
 }

@@ -1,4 +1,4 @@
-﻿using System.Threading.Channels;
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
@@ -7,8 +7,19 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace ModelContextProtocol.Protocol.Transport;
 
 /// <summary>
-/// Base class for implementing MCP transports with common functionality.
+/// Provides a base class for implementing <see cref="ITransport"/>.
 /// </summary>
+/// <remarks>
+/// <para>
+/// The <see cref="TransportBase"/> class provides core functionality required by most <see cref="ITransport"/>
+/// implementations, including message channel management, connection state tracking, and logging support.
+/// </para>
+/// <para>
+/// Custom transport implementations should inherit from this class and implement the abstract
+/// <see cref="SendMessageAsync(IJsonRpcMessage, CancellationToken)"/> and <see cref="DisposeAsync()"/> methods
+/// to handle the specific transport mechanism being used.
+/// </para>
+/// </remarks>
 public abstract class TransportBase : ITransport
 {
     private readonly Channel<IJsonRpcMessage> _messageChannel;

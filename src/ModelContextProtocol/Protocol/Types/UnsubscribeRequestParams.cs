@@ -1,14 +1,27 @@
-﻿namespace ModelContextProtocol.Protocol.Types;
+using System.Text.Json.Serialization;
+
+namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
-/// Sent from the client to request not receiving updated notifications from the server whenever a primitive resource changes.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
+/// Sent from the client to cancel resource update notifications from the server for a specific resource.
 /// </summary>
+/// <remarks>
+/// <para>
+/// After a client has subscribed to resource updates using <see cref="SubscribeRequestParams"/>, 
+/// this message can be sent to stop receiving notifications for a specific resource. 
+/// This is useful for conserving resources and network bandwidth when 
+/// the client no longer needs to track changes to a particular resource.
+/// </para>
+/// <para>
+/// The unsubscribe operation is idempotent, meaning it can be called multiple times 
+/// for the same resource without causing errors, even if there is no active subscription.
+/// </para>
+/// </remarks>
 public class UnsubscribeRequestParams : RequestParams
 {
     /// <summary>
-    /// The URI of the resource to unsubscribe fro. The URI can use any protocol; it is up to the server how to interpret it.
+    /// The URI of the resource to unsubscribe from. The URI can use any protocol; it is up to the server how to interpret it.
     /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("uri")]
+    [JsonPropertyName("uri")]
     public string? Uri { get; init; }
 }

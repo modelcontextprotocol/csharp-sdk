@@ -3,14 +3,20 @@ using System.Text.Json.Serialization;
 namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
-/// Base class for all request parameters.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/#L771-L806">See the schema for details</see>
+/// Provides a base class for all request parameters.
 /// </summary>
+/// <remarks>
+/// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
+/// </remarks>
 public abstract class RequestParams
 {
     /// <summary>
-    /// Metadata related to the tool invocation.
+    /// Gets or sets metadata related to the request that provides additional protocol-level information.
     /// </summary>
+    /// <remarks>
+    /// This can include progress tracking tokens and other protocol-specific properties
+    /// that are not part of the primary request parameters.
+    /// </remarks>
     [JsonPropertyName("_meta")]
     public RequestParamsMetadata? Meta { get; init; }
 }

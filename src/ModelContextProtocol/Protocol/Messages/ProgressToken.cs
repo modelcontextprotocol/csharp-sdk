@@ -1,4 +1,4 @@
-﻿using ModelContextProtocol.Utils;
+using ModelContextProtocol.Utils;
 using System.ComponentModel;
 using System.Globalization;
 using System.Text.Json;
@@ -41,9 +41,7 @@ public readonly struct ProgressToken : IEquatable<ProgressToken>
         _token is long longValue ? longValue.ToString(CultureInfo.InvariantCulture) :
         null;
 
-    /// <summary>
-    /// Compares this ProgressToken to another ProgressToken.
-    /// </summary>
+    /// <inheritdoc />
     public bool Equals(ProgressToken other) => Equals(_token, other._token);
 
     /// <inheritdoc />
@@ -52,18 +50,14 @@ public readonly struct ProgressToken : IEquatable<ProgressToken>
     /// <inheritdoc />
     public override int GetHashCode() => _token?.GetHashCode() ?? 0;
 
-    /// <summary>
-    /// Compares two ProgressTokens for equality.
-    /// </summary>
+    /// <inheritdoc />
     public static bool operator ==(ProgressToken left, ProgressToken right) => left.Equals(right);
 
-    /// <summary>
-    /// Compares two ProgressTokens for inequality.
-    /// </summary>
+    /// <inheritdoc />
     public static bool operator !=(ProgressToken left, ProgressToken right) => !left.Equals(right);
 
     /// <summary>
-    /// JSON converter for ProgressToken that handles both string and number values.
+    /// Provides a <see cref="JsonConverter"/> for <see cref="ProgressToken"/> that handles both string and number values.
     /// </summary>
     [EditorBrowsable(EditorBrowsableState.Never)]
     public sealed class Converter : JsonConverter<ProgressToken>

@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
@@ -165,7 +165,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             return;
         }
 
-        var completeHandler = completionsCapability.CompleteHandler ?? 
+        var completeHandler = completionsCapability.CompleteHandler ??
             throw new McpException("Completions capability was enabled, but Complete handler was not specified.");
 
         // This capability is not optional, so return an empty result if there is no handler.

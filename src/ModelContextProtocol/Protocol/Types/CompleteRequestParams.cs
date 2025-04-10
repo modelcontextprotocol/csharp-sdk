@@ -1,20 +1,35 @@
-﻿namespace ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol.Messages;
+using System.Text.Json.Serialization;
+
+namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
-/// A request from the client to the server, to ask for completion options.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
+/// Represents the parameters used with a <see cref="RequestMethods.CompletionComplete"/> request from 
+/// a client to ask a server for auto-completion suggestions.
 /// </summary>
+/// <remarks>
+/// <para>
+/// <see cref="RequestMethods.CompletionComplete"/> is used in the Model Context Protocol completion workflow
+/// to provide intelligent suggestions for partial inputs related to resources, prompts, or other referenceable entities.
+/// The completion mechanism in MCP allows clients to request suggestions based on partial inputs.
+/// The server will respond with a <see cref="CompleteResult"/> containing matching values.
+/// </para>
+/// <para>
+/// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
+/// </para>
+/// </remarks>
 public class CompleteRequestParams : RequestParams
 {
     /// <summary>
-    /// The reference's information
+    /// Gets or sets the reference's information.
     /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("ref")]
+    [JsonPropertyName("ref")]
     public required Reference Ref { get; init; }
 
     /// <summary>
-    /// The argument's information
+    /// Gets or sets the argument information for the completion request, specifying what is being completed
+    /// and the current partial input.
     /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("argument")]
+    [JsonPropertyName("argument")]
     public required Argument Argument { get; init; }    
 }

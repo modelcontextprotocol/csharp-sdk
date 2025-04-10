@@ -1,27 +1,45 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol.Messages;
 
 /// <summary>
-/// An out-of-band notification used to inform the receiver of a progress update for a long-running request.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
+/// Represents an out-of-band notification used to inform the receiver of a progress update for a long-running request.
 /// </summary>
+/// <remarks>
+/// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for more details.
+/// </remarks>
 [JsonConverter(typeof(Converter))]
 public class ProgressNotification
 {
     /// <summary>
-    /// The progress token which was given in the initial request, used to associate this notification with the request that is proceeding.
+    /// Gets or sets the progress token which was given in the initial request, used to associate this notification with 
+    /// the corresponding request.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This token acts as a correlation identifier that links progress updates to their corresponding request.
+    /// </para>
+    /// <para>
+    /// When an endpoint initiates a request with a <see cref="ProgressToken"/> in its metadata, 
+    /// the receiver can send progress notifications using this same token. This allows both sides to 
+    /// correlate the notifications with the original request.
+    /// </para>
+    /// </remarks>
     public required ProgressToken ProgressToken { get; init; }
 
     /// <summary>
-    /// The progress thus far. This should increase every time progress is made, even if the total is unknown.
+    /// Gets or sets the progress thus far.
     /// </summary>
+    /// <remarks>
+    /// This should increase for each notification issued as part of the same request, even if the total is unknown.
+    /// </remarks>
     public required ProgressNotificationValue Progress { get; init; }
 
-    /// <summary>Provides a <see cref="JsonConverter"/> for <see cref="ProgressNotification"/>.</summary>
+    /// <summary>
+    /// Provides a <see cref="JsonConverter"/> for <see cref="ProgressNotification"/>.
+    /// </summary>
     [EditorBrowsable(EditorBrowsableState.Never)]
     public sealed class Converter : JsonConverter<ProgressNotification>
     {

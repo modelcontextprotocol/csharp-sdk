@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol.Types;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
@@ -14,13 +14,29 @@ public abstract class McpServerPrompt : IMcpServerPrimitive
     }
 
     /// <summary>Gets the protocol <see cref="Prompt"/> type for this instance.</summary>
+    /// <remarks>
+    /// The ProtocolPrompt property represents the underlying prompt definition as defined in the
+    /// Model Context Protocol specification. It contains metadata like the prompt's name,
+    /// description, and acceptable arguments.
+    /// </remarks>
     public abstract Prompt ProtocolPrompt { get; }
 
-    /// <summary>Invokes the <see cref="McpServerPrompt"/>.</summary>
-    /// <param name="request">The request information resulting in the invocation of this tool.</param>
-    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>The call response from invoking the tool.</returns>
+    /// <summary>
+    /// Gets the prompt, rendering it with the provided request parameters and returning the prompt result.
+    /// </summary>
+    /// <param name="request">
+    /// The request context containing information about the prompt invocation, including any arguments
+    /// passed to the prompt. This object provides access to both the request parameters and the server context.
+    /// </param>
+    /// <param name="cancellationToken">
+    /// The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.
+    /// </param>
+    /// <returns>
+    /// A <see cref="Task"/> representing the asynchronous operation, containing a <see cref="GetPromptResult"/> with
+    /// the prompt content and messages.
+    /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is <see langword="null"/>.</exception>
+    /// <exception cref="InvalidOperationException">The prompt implementation returns <see langword="null"/> or an unsupported result type.</exception>
     public abstract Task<GetPromptResult> GetAsync(
         RequestContext<GetPromptRequestParams> request,
         CancellationToken cancellationToken = default);

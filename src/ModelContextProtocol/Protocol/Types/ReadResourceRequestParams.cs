@@ -1,14 +1,20 @@
-﻿namespace ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol.Messages;
+using System.Text.Json.Serialization;
+
+namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
-/// Sent from the client to the server, to read a specific resource URI.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
+/// Represents the parameters used with a <see cref="RequestMethods.ResourcesRead"/> request from a client to get a resource provided by a server.
 /// </summary>
+/// <remarks>
+/// The server will respond with a <see cref="ReadResourceResult"/> containing the resulting resource data.
+/// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
+/// </remarks>
 public class ReadResourceRequestParams : RequestParams
 {
     /// <summary>
     /// The URI of the resource to read. The URI can use any protocol; it is up to the server how to interpret it.
     /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("uri")]
+    [JsonPropertyName("uri")]
     public required string Uri { get; init; }
 }

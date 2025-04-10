@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
@@ -20,6 +20,24 @@ internal class StreamClientSessionTransport : TransportBase
     /// <summary>
     /// Initializes a new instance of the <see cref="StreamClientSessionTransport"/> class.
     /// </summary>
+    /// <param name="serverInput">
+    /// The text writer connected to the server's input stream. 
+    /// Messages written to this writer will be sent to the server.
+    /// </param>
+    /// <param name="serverOutput">
+    /// The text reader connected to the server's output stream.
+    /// Messages read from this reader will be received from the server.
+    /// </param>
+    /// <param name="endpointName">
+    /// A name that identifies this transport endpoint in logs.
+    /// </param>
+    /// <param name="loggerFactory">
+    /// Optional factory for creating loggers. If null, a NullLogger will be used.
+    /// </param>
+    /// <remarks>
+    /// This constructor starts a background task to read messages from the server output stream.
+    /// The transport will be marked as connected once initialized.
+    /// </remarks>
     public StreamClientSessionTransport(
         TextWriter serverInput, TextReader serverOutput, string endpointName, ILoggerFactory? loggerFactory)
         : base(loggerFactory)
@@ -43,11 +61,43 @@ internal class StreamClientSessionTransport : TransportBase
         SetConnected(true);
     }
 
+    /// <summary>
+    /// Gets the logger instance used by this transport for diagnostic output.
+    /// If no logger factory was provided in the constructor, this will be a NullLogger.
+    /// </summary>
+    /// <remarks>
+    /// Derived classes can use this logger to emit additional diagnostic information
+    /// specific to their implementation.
+    /// </remarks>
     protected ILogger Logger { get; private set; }
 
+    /// <summary>
+    /// Gets the name that identifies this transport endpoint in logs.
+    /// </summary>
+    /// <remarks>
+    /// This name is provided during construction and is used in log messages to identify
+    /// the source of transport-related events.
+    /// </remarks>
     protected string EndpointName { get; }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// <para>
+    /// For stream-based transports, this implementation serializes the JSON-RPC message to the 
+    /// underlying output stream. The specific serialization format includes:
+    /// <list type="bullet">
+    ///   <item>A Content-Length header that specifies the byte length of the JSON message</item>
+    ///   <item>A blank line separator</item>
+    ///   <item>The UTF-8 encoded JSON representation of the message</item>
+    /// </list>
+    /// </para>
+    /// <para>
+    /// This implementation first checks if the transport is connected and throws a <see cref="McpTransportException"/>
+    /// if it's not. It then extracts the message ID (if present) for logging purposes, serializes the message,
+    /// and writes it to the output stream.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="McpTransportException">Thrown when the transport is not connected.</exception>
     public override async Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         if (!IsConnected)
@@ -84,6 +134,16 @@ internal class StreamClientSessionTransport : TransportBase
     }
 
     /// <inheritdoc/>
+    /// <summary>
+    /// Asynchronously releases all resources used by the stream client session transport.
+    /// </summary>
+    /// <returns>A task that represents the asynchronous dispose operation.</returns>
+    /// <remarks>
+    /// This method cancels ongoing operations and waits for the read task to complete
+    /// before marking the transport as disconnected. It calls <see cref="CleanupAsync"/> 
+    /// to perform the actual cleanup work.
+    /// After disposal, the transport can no longer be used to send or receive messages.
+    /// </remarks>
     public override ValueTask DisposeAsync() =>
         CleanupAsync(CancellationToken.None);
 

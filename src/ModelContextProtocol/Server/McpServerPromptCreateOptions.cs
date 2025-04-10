@@ -1,16 +1,29 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 
 namespace ModelContextProtocol.Server;
 
-/// <summary>Provides options for controlling the creation of an <see cref="McpServerPrompt"/>.</summary>
+/// <summary>
+/// Provides options for controlling the creation of an <see cref="McpServerPrompt"/>.
+/// </summary>
+/// <remarks>
+/// <para>
+/// These options allow for customizing the behavior and metadata of prompts created with
+/// <see cref="M:McpServerPrompt.Create"/>. They provide control over naming, description,
+/// and dependency injection integration.
+/// </para>
+/// <para>
+/// When creating prompts programmatically rather than using attributes, these options
+/// provide the same level of configuration flexibility.
+/// </para>
+/// </remarks>
 public sealed class McpServerPromptCreateOptions
 {
     /// <summary>
     /// Gets or sets optional services used in the construction of the <see cref="McpServerPrompt"/>.
     /// </summary>
     /// <remarks>
-    /// These services will be used to determine which parameters should be satisifed from dependency injection; what services
-    /// are satisfied via this provider should match what's satisfied via the provider passed in at invocation time.
+    /// These services will be used to determine which parameters should be satisifed from dependency injection. As such,
+    /// what services are satisfied via this provider should match what's satisfied via the provider passed in at invocation time.
     /// </remarks>
     public IServiceProvider? Services { get; set; }
 

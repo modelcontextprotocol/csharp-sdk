@@ -1,4 +1,4 @@
-﻿using ModelContextProtocol.Utils;
+using ModelContextProtocol.Utils;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;

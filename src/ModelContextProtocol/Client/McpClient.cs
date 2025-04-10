@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
@@ -96,6 +96,9 @@ internal sealed class McpClient : McpEndpoint, IMcpClient
     /// <inheritdoc/>
     public override string EndpointName { get; }
 
+    /// <summary>
+    /// Asynchronously connects to an MCP server, establishes the transport connection, and completes the initialization handshake.
+    /// </summary>
     public async Task ConnectAsync(CancellationToken cancellationToken = default)
     {
         _connectCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

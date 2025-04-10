@@ -1,27 +1,30 @@
-﻿using System.Text.Json.Nodes;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol.Messages;
 
 /// <summary>
-/// A notification message in the JSON-RPC protocol (a request that doesn't expect a response).
+/// Represents a notification message in the JSON-RPC protocol.
 /// </summary>
+/// <remarks>
+/// Notifications are messages that do not require a response and are not matched with a response message.
+/// They are useful for one-way communication, such as log notifications and progress updates.
+/// Unlike requests, notifications do not include an ID field, since there will be no response to match with it.
+/// </remarks>
 public record JsonRpcNotification : IJsonRpcMessage
 {
-    /// <summary>
-    /// JSON-RPC protocol version. Always "2.0".
-    /// </summary>
+    /// <inheritdoc />
     [JsonPropertyName("jsonrpc")]
     public string JsonRpc { get; init; } = "2.0";
 
     /// <summary>
-    /// Name of the notification method.
+    /// Gets or sets the name of the notification method.
     /// </summary>
     [JsonPropertyName("method")]
     public required string Method { get; init; }
 
     /// <summary>
-    /// Optional parameters for the notification.
+    /// Gets or sets optional parameters for the notification.
     /// </summary>
     [JsonPropertyName("params")]
     public JsonNode? Params { get; init; }

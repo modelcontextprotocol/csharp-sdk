@@ -1,4 +1,4 @@
-﻿using ModelContextProtocol.Utils;
+using ModelContextProtocol.Utils;
 using System.ComponentModel;
 using System.Globalization;
 using System.Text.Json;
@@ -41,9 +41,7 @@ public readonly struct RequestId : IEquatable<RequestId>
         _id is long longValue ? longValue.ToString(CultureInfo.InvariantCulture) :
         string.Empty;
 
-    /// <summary>
-    /// Compares this RequestId to another RequestId.
-    /// </summary>
+    /// <inheritdoc />
     public bool Equals(RequestId other) => Equals(_id, other._id);
 
     /// <inheritdoc />
@@ -52,21 +50,17 @@ public readonly struct RequestId : IEquatable<RequestId>
     /// <inheritdoc />
     public override int GetHashCode() => _id?.GetHashCode() ?? 0;
 
-    /// <summary>
-    /// Compares two RequestIds for equality.
-    /// </summary>
+    /// <inheritdoc />
     public static bool operator ==(RequestId left, RequestId right) => left.Equals(right);
 
-    /// <summary>
-    /// Compares two RequestIds for inequality.
-    /// </summary>
+    /// <inheritdoc />
     public static bool operator !=(RequestId left, RequestId right) => !left.Equals(right);
 
     /// <summary>
-    /// JSON converter for RequestId that handles both string and number values.
+    /// Provides a <see cref="JsonConverter"/> for <see cref="RequestId"/> that handles both string and number values.
     /// </summary>
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public sealed class Converter: JsonConverter<RequestId>
+    public sealed class Converter : JsonConverter<RequestId>
     {
         /// <inheritdoc />
         public override RequestId Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
@@ -89,7 +83,7 @@ public readonly struct RequestId : IEquatable<RequestId>
                 case string str:
                     writer.WriteStringValue(str);
                     return;
-                
+
                 case long longValue:
                     writer.WriteNumberValue(longValue);
                     return;

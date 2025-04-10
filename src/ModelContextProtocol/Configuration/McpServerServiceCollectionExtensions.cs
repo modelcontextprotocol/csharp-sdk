@@ -1,20 +1,21 @@
-﻿using ModelContextProtocol.Server;
+using ModelContextProtocol.Server;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Microsoft.Extensions.DependencyInjection;
 
 /// <summary>
-/// Extension to host an MCP server
+/// Provides extension methods for configuring MCP servers with dependency injection.
 /// </summary>
 public static class McpServerServiceCollectionExtensions
 {
     /// <summary>
-    /// Adds the MCP server to the service collection with default options.
+    /// Adds the Model Context Protocol (MCP) server to the service collection with default options.
     /// </summary>
-    /// <param name="services"></param>
-    /// <param name="configureOptions"></param>
-    /// <returns></returns>
+    /// <param name="services">The <see cref="IServiceCollection"/> to add the server to.</param>
+    /// <param name="configureOptions">Optional callback to configure the <see cref="McpServerOptions"/>.</param>
+    /// <returns>An <see cref="IMcpServerBuilder"/> that can be used to further configure the MCP server.</returns>
+
     public static IMcpServerBuilder AddMcpServer(this IServiceCollection services, Action<McpServerOptions>? configureOptions = null)
     {
         services.AddOptions();

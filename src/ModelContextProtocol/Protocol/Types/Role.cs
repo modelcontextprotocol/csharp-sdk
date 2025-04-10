@@ -1,22 +1,21 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
-/// Represents the type of role in the conversation.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
+/// Represents the type of role in the Model Context Protocol conversation.
 /// </summary>
 [JsonConverter(typeof(CustomizableJsonStringEnumConverter<Role>))]
 public enum Role
 {
     /// <summary>
-    /// Corresponds to the user in the conversation.
+    /// Corresponds to a human user in the conversation.
     /// </summary>
     [JsonStringEnumMemberName("user")]
     User,
 
     /// <summary>
-    /// Corresponds to the AI in the conversation.
+    /// Corresponds to the AI assistant in the conversation.
     /// </summary>
     [JsonStringEnumMemberName("assistant")]
     Assistant

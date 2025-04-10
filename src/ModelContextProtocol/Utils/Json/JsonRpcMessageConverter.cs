@@ -1,4 +1,4 @@
-﻿using ModelContextProtocol.Protocol.Messages;
+using ModelContextProtocol.Protocol.Messages;
 using System.ComponentModel;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -6,8 +6,25 @@ using System.Text.Json.Serialization;
 namespace ModelContextProtocol.Utils.Json;
 
 /// <summary>
-/// JSON converter for IJsonRpcMessage that handles polymorphic deserialization of different message types.
+/// Provides a <see cref="JsonConverter"/> for <see cref="IJsonRpcMessage"/> messages,
+/// handling polymorphic deserialization of different message types.
 /// </summary>
+/// <remarks>
+/// <para>
+/// This converter is responsible for correctly deserializing JSON-RPC messages into their appropriate
+/// concrete types based on the message structure. It analyzes the JSON payload and determines if it
+/// represents a request, notification, successful response, or error response.
+/// </para>
+/// <para>
+/// The type determination rules follow the JSON-RPC 2.0 specification:
+/// <list type="bullet">
+/// <item><description>Messages with "method" and "id" properties are deserialized as <see cref="JsonRpcRequest"/>.</description></item>
+/// <item><description>Messages with "method" but no "id" property are deserialized as <see cref="JsonRpcNotification"/>.</description></item>
+/// <item><description>Messages with "id" and "result" properties are deserialized as <see cref="JsonRpcResponse"/>.</description></item>
+/// <item><description>Messages with "id" and "error" properties are deserialized as <see cref="JsonRpcError"/>.</description></item>
+/// </list>
+/// </para>
+/// </remarks>
 [EditorBrowsable(EditorBrowsableState.Never)]
 public sealed class JsonRpcMessageConverter : JsonConverter<IJsonRpcMessage>
 {

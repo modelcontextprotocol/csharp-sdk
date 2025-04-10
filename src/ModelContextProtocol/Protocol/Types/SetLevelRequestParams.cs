@@ -1,16 +1,20 @@
-﻿using System.Text.Json.Serialization;
+using ModelContextProtocol.Protocol.Messages;
+using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
-/// A request from the client to the server, to enable or adjust logging.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
+/// Represents the parameters used with a <see cref="RequestMethods.LoggingSetLevel"/> request from a client
+/// to enable or adjust logging.
 /// </summary>
+/// <remarks>
+/// This request allows clients to configure the level of logging information they want to receive from the server.
+/// The server will send notifications for log events at the specified level and all higher (more severe) levels.
+/// </remarks>
 public class SetLevelRequestParams : RequestParams
 {
     /// <summary>
-    /// The level of logging that the client wants to receive from the server. 
-    /// The server should send all logs at this level and higher (i.e., more severe) to the client as notifications/message.
+    /// Gets or sets the level of logging that the client wants to receive from the server. 
     /// </summary>
     [JsonPropertyName("level")]
     public required LoggingLevel Level { get; init; }

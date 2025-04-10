@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Nodes;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol.Messages;
@@ -6,17 +6,21 @@ namespace ModelContextProtocol.Protocol.Messages;
 /// <summary>
 /// A request message in the JSON-RPC protocol.
 /// </summary>
+/// <remarks>
+/// Requests are messages that require a response from the receiver. Each request includes a unique ID
+/// that will be included in the corresponding response message (either a success response or an error).
+/// 
+/// The receiver of a request message is expected to execute the specified method with the provided parameters
+/// and return either a <see cref="JsonRpcResponse"/> with the result, or a <see cref="JsonRpcError"/>
+/// if the method execution fails.
+/// </remarks>
 public record JsonRpcRequest : IJsonRpcMessageWithId
 {
-    /// <summary>
-    /// JSON-RPC protocol version. Always "2.0".
-    /// </summary>
+    /// <inheritdoc />
     [JsonPropertyName("jsonrpc")]
     public string JsonRpc { get; init; } = "2.0";
 
-    /// <summary>
-    /// Request identifier. Must be a string or number and unique within the session.
-    /// </summary>
+    /// <inheritdoc/>
     [JsonPropertyName("id")]
     public RequestId Id { get; set; }
 

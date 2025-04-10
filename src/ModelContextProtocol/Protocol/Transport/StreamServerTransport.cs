@@ -1,19 +1,23 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
-using System.IO.Pipelines;
 using System.Text;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Protocol.Transport;
 
 /// <summary>
-/// Provides a server MCP transport implemented around a pair of input/output streams.
+/// Provides an <see cref="ITransport"/> implemented using a pair of input and output streams.
 /// </summary>
-public class StreamServerTransport : TransportBase, ITransport
+/// <remarks>
+/// The <see cref="StreamServerTransport"/> class implements bidirectional JSON-RPC messaging over arbitrary
+/// streams, allowing MCP communication with clients through various I/O channels such as network sockets,
+/// memory streams, or pipes.
+/// </remarks>
+public class StreamServerTransport : TransportBase
 {
     private static readonly byte[] s_newlineBytes = "\n"u8.ToArray();
 

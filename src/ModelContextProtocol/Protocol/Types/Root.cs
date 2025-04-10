@@ -1,26 +1,37 @@
-﻿namespace ModelContextProtocol.Protocol.Types;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace ModelContextProtocol.Protocol.Types;
 
 /// <summary>
-/// Represents a root URI and its metadata.
-/// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
+/// Represents a root URI and its metadata in the Model Context Protocol.
 /// </summary>
+/// <remarks>
+/// Root URIs serve as entry points for resource navigation, typically representing
+/// top-level directories or container resources that can be accessed and traversed.
+/// Roots provide a hierarchical structure for organizing and accessing resources within the protocol.
+/// Each root has a URI that uniquely identifies it and optional metadata like a human-readable name.
+/// </remarks>
 public class Root
 {
     /// <summary>
-    /// The URI of the root.
+    /// Gets or sets the URI of the root.
     /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("uri")]
+    [JsonPropertyName("uri")]
     public required string Uri { get; init; }
 
     /// <summary>
-    /// A human-readable name for the root.
+    /// Gets or sets a human-readable name for the root.
     /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("name")]
+    [JsonPropertyName("name")]
     public string? Name { get; init; }
 
     /// <summary>
-    /// Additional metadata for the root. Reserved by the protocol for future use.
+    /// Gets or sets additional metadata for the root.
     /// </summary>
-    [System.Text.Json.Serialization.JsonPropertyName("meta")]
-    public object? Meta { get; init; }
+    /// <remarks>
+    /// This is reserved by the protocol for future use.
+    /// </remarks>
+    [JsonPropertyName("meta")]
+    public JsonElement? Meta { get; init; }
 }

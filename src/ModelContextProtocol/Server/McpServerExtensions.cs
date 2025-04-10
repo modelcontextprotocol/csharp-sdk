@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Types;
@@ -10,14 +10,25 @@ using System.Text.Json;
 
 namespace ModelContextProtocol.Server;
 
-/// <summary>Provides extension methods for interacting with an <see cref="IMcpServer"/>.</summary>
+/// <summary>
+/// Provides extension methods for interacting with an <see cref="IMcpServer"/> instance.
+/// </summary>
 public static class McpServerExtensions
 {
     /// <summary>
-    /// Requests to sample an LLM via the client.
+    /// Requests to sample an LLM via the client using the specified request parameters.
     /// </summary>
+    /// <param name="server">The server instance initiating the request.</param>
+    /// <param name="request">The parameters for the sampling request.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
+    /// <returns>A task containing the sampling result from the client.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="server"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">The client does not support sampling.</exception>
+    /// <remarks>
+    /// This method requires the client to support sampling capabilities.
+    /// It allows detailed control over sampling parameters including messages, system prompt, temperature, 
+    /// and token limits.
+    /// </remarks>
     public static Task<CreateMessageResult> RequestSamplingAsync(
         this IMcpServer server, CreateMessageRequestParams request, CancellationToken cancellationToken)
     {
@@ -37,16 +48,20 @@ public static class McpServerExtensions
     }
 
     /// <summary>
-    /// Requests to sample an LLM via the client.
+    /// Requests to sample an LLM via the client using the provided chat messages and options.
     /// </summary>
-    /// <param name="server">The server issueing the request.</param>
+    /// <param name="server">The server initiating the request.</param>
     /// <param name="messages">The messages to send as part of the request.</param>
-    /// <param name="options">The options to use for the request.</param>
+    /// <param name="options">The options to use for the request, including model parameters and constraints.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>A task containing the response from the client.</returns>
+    /// <returns>A task containing the chat response from the model.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="server"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="messages"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">The client does not support sampling.</exception>
+    /// <remarks>
+    /// This method converts the provided chat messages into a format suitable for the sampling API,
+    /// handling different content types such as text, images, and audio.
+    /// </remarks>
     public static async Task<ChatResponse> RequestSamplingAsync(
         this IMcpServer server,
         IEnumerable<ChatMessage> messages, ChatOptions? options = default, CancellationToken cancellationToken = default)
@@ -138,7 +153,9 @@ public static class McpServerExtensions
         };
     }
 
-    /// <summary>Creates an <see cref="IChatClient"/> that can be used to send sampling requests to the client.</summary>
+    /// <summary>
+    /// Creates an <see cref="IChatClient"/> wrapper that can be used to send sampling requests to the client.
+    /// </summary>
     /// <param name="server">The server to be wrapped as an <see cref="IChatClient"/>.</param>
     /// <returns>The <see cref="IChatClient"/> that can be used to issue sampling requests to the client.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="server"/> is <see langword="null"/>.</exception>
@@ -168,8 +185,18 @@ public static class McpServerExtensions
     /// <summary>
     /// Requests the client to list the roots it exposes.
     /// </summary>
+    /// <param name="server">The server initiating the request.</param>
+    /// <param name="request">The parameters for the list roots request.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
+    /// <returns>A task containing the list of roots exposed by the client.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="server"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">The client does not support roots.</exception>
+    /// <remarks>
+    /// This method requires the client to support the roots capability.
+    /// Root resources allow clients to expose a hierarchical structure of resources that can be
+    /// navigated and accessed by the server. These resources might include file systems, databases,
+    /// or other structured data sources that the client makes available through the protocol.
+    /// </remarks>
     public static Task<ListRootsResult> RequestRootsAsync(
         this IMcpServer server, ListRootsRequestParams request, CancellationToken cancellationToken)
     {
@@ -189,7 +216,6 @@ public static class McpServerExtensions
     }
 
     /// <summary>Provides an <see cref="IChatClient"/> implementation that's implemented via client sampling.</summary>
-    /// <param name="server"></param>
     private sealed class SamplingChatClient(IMcpServer server) : IChatClient
     {
         /// <inheritdoc/>

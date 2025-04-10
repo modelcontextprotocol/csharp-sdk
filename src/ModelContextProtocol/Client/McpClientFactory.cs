@@ -1,4 +1,4 @@
-﻿using ModelContextProtocol.Logging;
+using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Utils;
 using Microsoft.Extensions.Logging;
@@ -6,7 +6,14 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ModelContextProtocol.Client;
 
-/// <summary>Provides factory methods for creating MCP clients.</summary>
+/// <summary>
+/// Provides factory methods for creating Model Context Protocol (MCP) clients.
+/// </summary>
+/// <remarks>
+/// This factory class is the primary way to instantiate <see cref="IMcpClient"/> instances
+/// that connect to MCP servers. It handles the creation and connection
+/// of appropriate implementations through the supplied transport.
+/// </remarks>
 public static class McpClientFactory
 {
     /// <summary>Creates an <see cref="IMcpClient"/>, connecting it to the specified server.</summary>
