@@ -58,22 +58,7 @@ public static partial class McpServerBuilderExtensions
     /// <summary>Adds <see cref="McpServerTool"/> instances to the service collection backing <paramref name="builder"/>.</summary>
     /// <param name="builder">The builder instance.</param>
     /// <param name="toolTypes">Types with marked methods to add as tools to the server.</param>
-    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentNullException"><paramref name="toolTypes"/> is <see langword="null"/>.</exception>
-    /// <remarks>
-    /// This method discovers all instance and static methods (public and non-public) on the specified <paramref name="toolTypes"/>
-    /// types, where the methods are attributed as <see cref="McpServerToolAttribute"/>, and adds an <see cref="McpServerTool"/>
-    /// instance for each. For instance methods, an instance will be constructed for each invocation of the tool.
-    /// </remarks>
-    [RequiresUnreferencedCode(WithToolsRequiresUnreferencedCodeMessage)]
-    public static IMcpServerBuilder WithTools(this IMcpServerBuilder builder, params IEnumerable<Type> toolTypes) =>
-        WithTools(builder, serializerOptions: null, toolTypes);
-
-    /// <summary>Adds <see cref="McpServerTool"/> instances to the service collection backing <paramref name="builder"/>.</summary>
-    /// <param name="builder">The builder instance.</param>
     /// <param name="serializerOptions">The serializer options governing tool parameter marshalling.</param>
-    /// <param name="toolTypes">Types with marked methods to add as tools to the server.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="toolTypes"/> is <see langword="null"/>.</exception>
@@ -83,7 +68,7 @@ public static partial class McpServerBuilderExtensions
     /// instance for each. For instance methods, an instance will be constructed for each invocation of the tool.
     /// </remarks>
     [RequiresUnreferencedCode(WithToolsRequiresUnreferencedCodeMessage)]
-    public static IMcpServerBuilder WithTools(this IMcpServerBuilder builder, JsonSerializerOptions? serializerOptions, params IEnumerable<Type> toolTypes)
+    public static IMcpServerBuilder WithTools(this IMcpServerBuilder builder, IEnumerable<Type> toolTypes, JsonSerializerOptions? serializerOptions = null)
     {
         Throw.IfNull(builder);
         Throw.IfNull(toolTypes);
@@ -142,10 +127,11 @@ public static partial class McpServerBuilderExtensions
 
         toolAssembly ??= Assembly.GetCallingAssembly();
 
-        return builder.WithTools(serializerOptions: serializerOptions,
+        return builder.WithTools(
             from t in toolAssembly.GetTypes()
             where t.GetCustomAttribute<McpServerToolTypeAttribute>() is not null
-            select t);
+            select t,
+            serializerOptions);
     }
     #endregion
 

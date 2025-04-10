@@ -448,7 +448,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         {
             sc.AddSingleton(new ComplexObject());
         }
-        sc.AddMcpServer().WithTools(JsonContext.Default.Options, typeof(EchoTool));
+        sc.AddMcpServer().WithTools([typeof(EchoTool)], JsonContext.Default.Options);
         IServiceProvider services = sc.BuildServiceProvider();
 
         McpServerTool tool = services.GetServices<McpServerTool>().First(t => t.ProtocolTool.Name == "EchoComplex");
@@ -530,7 +530,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         sc.AddMcpServer()
             .WithTools<EchoTool>(serializerOptions: JsonContext.Default.Options)
             .WithTools<AnotherToolType>(serializerOptions: JsonContext.Default.Options)
-            .WithTools(JsonContext.Default.Options, typeof(ToolTypeWithNoAttribute));
+            .WithTools([typeof(ToolTypeWithNoAttribute)], JsonContext.Default.Options);
         IServiceProvider services = sc.BuildServiceProvider();
 
         Assert.Contains(services.GetServices<McpServerTool>(), t => t.ProtocolTool.Name == "double_echo");
