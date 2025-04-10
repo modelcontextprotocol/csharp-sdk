@@ -40,6 +40,9 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    permissions:
+      contents: read
+
     steps:
     - name: Clone the repo
       uses: actions/checkout@v4
@@ -60,6 +63,9 @@ jobs:
   build-package:
     runs-on: windows-latest
     needs: build-all-configs
+
+    permissions:
+      contents: read
 
     env:
       version_suffix_args: ${{ github.event_name != 'release' && format('--version-suffix "{0}"', inputs.version_suffix_override || format('ci.{0}', github.run_number)) || '' }}
@@ -87,9 +93,13 @@ jobs:
           name: build-artifacts
           path: ${{ github.workspace }}/artifacts
 
-  publish-package:
+  publish-github:
     needs: build-package
     runs-on: ubuntu-latest
+
+    permissions:
+      packages: write
+
     steps:
       - uses: actions/checkout@v4
 
@@ -100,13 +110,6 @@ jobs:
 
       - name: Download build artifacts
         uses: actions/download-artifact@v4
-
-      - name: Upload release asset
-        if: github.event_name == 'release'
-        run: gh release upload ${{ github.event.release.tag_name }}
-          ${{ github.workspace }}/build-artifacts/packages/*.*nupkg
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Authenticate to GitHub registry
         run: dotnet nuget add source
@@ -123,9 +126,50 @@ jobs:
             --api-key ${{ secrets.GITHUB_TOKEN }}
             --skip-duplicate
 
+  publish-release:
+    if: github.event_name == 'release'
+    needs: build-package
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v2
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Upload release asset
+        run: gh release upload ${{ github.event.release.tag_name }}
+          ${{ github.workspace }}/build-artifacts/packages/*.*nupkg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-nuget:
+    # Only publish to NuGet.org from the modelcontextprotocol/csharp-sdk repository
+    if: ${{ github.event_name == 'release' && github.repository == 'modelcontextprotocol/csharp-sdk' }}
+    needs: build-package
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v2
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+
       - name: Publish to NuGet.org (Releases only)
-        # Only publish to NuGet.org from the modelcontextprotocol/csharp-sdk repository
-        if: ${{ github.event_name == 'release' && github.repository == 'modelcontextprotocol/csharp-sdk' }}
         run: dotnet nuget push
             ${{github.workspace}}/build-artifacts/packages/*.nupkg
             --source https://api.nuget.org/v3/index.json
