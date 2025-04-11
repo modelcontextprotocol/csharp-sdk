@@ -8,7 +8,7 @@ namespace ModelContextProtocol.Protocol.Types;
 /// Represents the tools capability configuration.
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </summary>
-public class ToolsCapability
+public class ToolsCapability : IListCapability<McpServerTool>
 {
     /// <summary>
     /// Gets or sets whether this server supports notifications for changes to the tool list.
@@ -61,4 +61,9 @@ public class ToolsCapability
     /// </remarks>
     [JsonIgnore]
     public McpServerPrimitiveCollection<McpServerTool>? ToolCollection { get; set; }
+    McpServerPrimitiveCollection<McpServerTool>? IListCapability<McpServerTool>.Collection
+    {
+        get => ToolCollection;
+        set => ToolCollection = value;
+    }
 }

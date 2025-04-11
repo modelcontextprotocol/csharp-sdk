@@ -20,9 +20,6 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
     private readonly ITransport _sessionTransport;
 
-    private readonly EventHandler? _toolsChangedDelegate;
-    private readonly EventHandler? _promptsChangedDelegate;
-
     private string _endpointName;
     private int _started;
 
@@ -32,6 +29,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
     /// rather than a nullable to be able to manipulate it atomically.
     /// </remarks>
     private StrongBox<LoggingLevel>? _loggingLevel;
+    private readonly List<Disposable> _disposables = [];
 
     /// <summary>
     /// Creates a new instance of <see cref="McpServer"/>.
@@ -64,32 +62,16 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         SetCompletionHandler(options);
         SetPingHandler();
 
+        var capabilities = options.Capabilities;
         // Register any notification handlers that were provided.
-        if (options.Capabilities?.NotificationHandlers is { } notificationHandlers)
+        if (capabilities?.NotificationHandlers is { } notificationHandlers)
         {
             NotificationHandlers.RegisterRange(notificationHandlers);
         }
-
-        // Now that everything has been configured, subscribe to any necessary notifications.
-        if (ServerOptions.Capabilities?.Tools?.ToolCollection is { } tools)
-        {
-            _toolsChangedDelegate = delegate
-            {
-                _ = SendMessageAsync(new JsonRpcNotification() { Method = NotificationMethods.ToolListChangedNotification });
-            };
-
-            tools.Changed += _toolsChangedDelegate;
-        }
-
-        if (ServerOptions.Capabilities?.Prompts?.PromptCollection is { } prompts)
-        {
-            _promptsChangedDelegate = delegate
-            {
-                _ = SendMessageAsync(new JsonRpcNotification() { Method = NotificationMethods.PromptListChangedNotification });
-            };
-
-            prompts.Changed += _promptsChangedDelegate;
-        }
+        
+        RegisterListChange(capabilities?.Tools, NotificationMethods.ToolListChangedNotification);
+        RegisterListChange(capabilities?.Prompts, NotificationMethods.PromptListChangedNotification);
+        RegisterListChange(capabilities?.Resources, NotificationMethods.ResourceListChangedNotification);
 
         // And initialize the session.
         InitializeSession(transport);
@@ -136,18 +118,11 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
     public override async ValueTask DisposeUnsynchronizedAsync()
     {
-        if (_toolsChangedDelegate is not null &&
-            ServerOptions.Capabilities?.Tools?.ToolCollection is { } tools)
+        foreach (var disposable in _disposables)
         {
-            tools.Changed -= _toolsChangedDelegate;
+            disposable.Dispose();
         }
-
-        if (_promptsChangedDelegate is not null &&
-            ServerOptions.Capabilities?.Prompts?.PromptCollection is { } prompts)
-        {
-            prompts.Changed -= _promptsChangedDelegate;
-        }
-
+        _disposables.Clear();
         await base.DisposeUnsynchronizedAsync().ConfigureAwait(false);
     }
 
@@ -210,14 +185,29 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
         var listResourcesHandler = resourcesCapability.ListResourcesHandler;
         var listResourceTemplatesHandler = resourcesCapability.ListResourceTemplatesHandler;
+        var readResourceHandler = resourcesCapability.ReadResourceHandler;
+        var resourceCollection = resourcesCapability.ResourceCollection;
 
-        if ((listResourcesHandler is not { } && listResourceTemplatesHandler is not { }) ||
-            resourcesCapability.ReadResourceHandler is not { } readResourceHandler)
+        var originalListResourcesHandler = listResourcesHandler;
+        listResourcesHandler = async (request, cancellationToken) =>
         {
-            throw new McpException("Resources capability was enabled, but ListResources and/or ReadResource handlers were not specified.");
-        }
+            ListResourcesResult result = originalListResourcesHandler is not null ?
+                await originalListResourcesHandler(request, cancellationToken).ConfigureAwait(false) :
+                new();
 
-        listResourcesHandler ??= (static (_, _) => Task.FromResult(new ListResourcesResult()));
+            if (request.Params?.Cursor is null && resourceCollection is not null)
+            {
+                result.Resources.AddRange(resourceCollection.Select(t => t.ProtocolResource));
+            }
+
+            return result;
+        };
+
+        var isMissingListResourceHandlers = originalListResourcesHandler is not { } && listResourceTemplatesHandler is not { };
+        if (resourceCollection is not { IsEmpty: false } && (isMissingListResourceHandlers || readResourceHandler is not { }))
+        {
+            throw new McpException("Resources capability was enabled, but ListResources, ListResourceTemplates, and/or ReadResource handlers were not specified.");
+        }
 
         RequestHandlers.Set(
             RequestMethods.ResourcesList,
@@ -225,6 +215,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             McpJsonUtilities.JsonContext.Default.ListResourcesRequestParams,
             McpJsonUtilities.JsonContext.Default.ListResourcesResult);
 
+        readResourceHandler ??= static (_, _) => Task.FromResult(new ReadResourceResult());
         RequestHandlers.Set(
             RequestMethods.ResourcesRead,
             (request, cancellationToken) => readResourceHandler(new(this, request), cancellationToken),
@@ -481,6 +472,21 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             },
             McpJsonUtilities.JsonContext.Default.SetLevelRequestParams,
             McpJsonUtilities.JsonContext.Default.EmptyResult);
+    }
+
+    private void RegisterListChange<T>(IListCapability<T>? capability, string methodName)
+        where T : IMcpServerPrimitive
+    {
+        // https://modelcontextprotocol.io/specification/2024-11-05/server/tools#capabilities
+        // Look to spec for guidance on ListChanged over collection existance.
+        if (capability?.Collection is { } collection)
+            //&& capability.ListChanged is true)
+        {
+            void ChangedDelegate(object? sender, EventArgs e)
+                => _ = this.SendNotificationAsync(methodName);
+            collection.Changed += ChangedDelegate;
+            _disposables.Add(new(() => collection.Changed -= ChangedDelegate));
+        }
     }
 
     /// <summary>Maps a <see cref="LogLevel"/> to a <see cref="LoggingLevel"/>.</summary>
