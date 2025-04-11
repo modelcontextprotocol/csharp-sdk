@@ -4,7 +4,7 @@ using ModelContextProtocol.Tests.Utils;
 using System.Net;
 using System.Text;
 
-namespace ModelContextProtocol.Tests;
+namespace ModelContextProtocol.AspNetCore.Tests;
 
 public class SseServerIntegrationTests : LoggedTest, IClassFixture<SseServerIntegrationTestFixture>
 {

@@ -2,7 +2,7 @@
 using System.Text;
 using Microsoft.Extensions.Logging;
 
-namespace ModelContextProtocol.Test.Utils;
+namespace ModelContextProtocol.Tests.Utils;
 
 public class XunitLoggerProvider(ITestOutputHelper output) : ILoggerProvider
 {

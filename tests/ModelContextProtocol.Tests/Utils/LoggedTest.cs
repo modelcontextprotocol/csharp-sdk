@@ -1,5 +1,4 @@
 ﻿using Microsoft.Extensions.Logging;
-using ModelContextProtocol.Test.Utils;
 
 namespace ModelContextProtocol.Tests.Utils;
 

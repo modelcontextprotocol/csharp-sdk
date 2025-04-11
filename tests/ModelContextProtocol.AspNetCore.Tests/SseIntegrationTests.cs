@@ -4,16 +4,16 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Server;
-using ModelContextProtocol.Tests.Utils;
 using ModelContextProtocol.Utils.Json;
 using System.Text.Json.Serialization;
 using TestServerWithHosting.Tools;
 
-namespace ModelContextProtocol.Tests;
+namespace ModelContextProtocol.AspNetCore.Tests;
 
 public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper)
 {

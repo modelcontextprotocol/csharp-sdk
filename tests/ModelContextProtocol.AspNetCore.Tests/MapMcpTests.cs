@@ -1,8 +1,8 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
-using ModelContextProtocol.Tests.Utils;
+using ModelContextProtocol.AspNetCore.Tests.Utils;
 
-namespace ModelContextProtocol.AspNetCore.Tests.Server;
+namespace ModelContextProtocol.AspNetCore.Tests;
 
 public class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelInMemoryTest(testOutputHelper)
 {
