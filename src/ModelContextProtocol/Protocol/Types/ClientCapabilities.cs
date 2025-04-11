@@ -77,5 +77,5 @@ public class ClientCapabilities
     /// </para>
     /// </remarks>
     [JsonIgnore]
-    public IEnumerable<KeyValuePair<string, Func<JsonRpcNotification, CancellationToken, Task>>>? NotificationHandlers { get; set; }
+    public IEnumerable<KeyValuePair<string, Func<JsonRpcNotification, CancellationToken, ValueTask>>>? NotificationHandlers { get; set; }
 }

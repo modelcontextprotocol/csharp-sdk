@@ -206,7 +206,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
     ///   <item><description><see cref="ChatMessage"/> objects are converted to prompt messages</description></item>
     /// </list>
     /// </remarks>
-    public override async Task<GetPromptResult> GetAsync(
+    public override async ValueTask<GetPromptResult> GetAsync(
         RequestContext<GetPromptRequestParams> request, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(request);

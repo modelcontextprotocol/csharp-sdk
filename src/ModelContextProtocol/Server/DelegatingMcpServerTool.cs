@@ -24,7 +24,7 @@ public abstract class DelegatingMcpServerTool : McpServerTool
     public override Tool ProtocolTool => _innerTool.ProtocolTool;
 
     /// <inheritdoc />
-    public override Task<CallToolResponse> InvokeAsync(
+    public override ValueTask<CallToolResponse> InvokeAsync(
         RequestContext<CallToolRequestParams> request, 
         CancellationToken cancellationToken = default) =>
         _innerTool.InvokeAsync(request, cancellationToken);

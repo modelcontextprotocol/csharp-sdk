@@ -16,8 +16,6 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
 
-#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
-
 namespace ModelContextProtocol.Tests.Configuration;
 
 public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
@@ -209,7 +207,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         await using (client.RegisterNotificationHandler(NotificationMethods.ToolListChangedNotification, (notification, cancellationToken) =>
             {
                 listChanged.Writer.TryWrite(notification);
-                return Task.CompletedTask;
+                return default;
             }))
         {
             serverTools.Add(newTool);
@@ -588,7 +586,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         {
             ProgressNotification pn = JsonSerializer.Deserialize<ProgressNotification>(notification.Params, McpJsonUtilities.DefaultOptions)!;
             notifications.Enqueue(pn);
-            return Task.CompletedTask;
+            return default;
         }))
         {
             var result = await client.SendRequestAsync<CallToolRequestParams, CallToolResponse>(

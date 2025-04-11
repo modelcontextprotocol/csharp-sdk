@@ -237,7 +237,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
     public override Tool ProtocolTool { get; }
 
     /// <inheritdoc />
-    public override async Task<CallToolResponse> InvokeAsync(
+    public override async ValueTask<CallToolResponse> InvokeAsync(
         RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(request);

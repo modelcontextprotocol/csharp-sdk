@@ -8,6 +8,8 @@ using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
 using System.Runtime.CompilerServices;
 
+#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
+
 namespace ModelContextProtocol.Server;
 
 /// <inheritdoc />
@@ -157,7 +159,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
     private void SetPingHandler()
     {
         RequestHandlers.Set(RequestMethods.Ping,
-            (request, _) => Task.FromResult(new PingResult()),
+            async (request, _) => new PingResult(),
             McpJsonUtilities.JsonContext.Default.JsonNode,
             McpJsonUtilities.JsonContext.Default.PingResult);
     }
@@ -165,7 +167,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
     private void SetInitializeHandler(McpServerOptions options)
     {
         RequestHandlers.Set(RequestMethods.Initialize,
-            (request, _) =>
+            async (request, _) =>
             {
                 ClientCapabilities = request?.Capabilities ?? new();
                 ClientInfo = request?.ClientInfo;
@@ -174,13 +176,13 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
                 _endpointName = $"{_endpointName}, Client ({ClientInfo?.Name} {ClientInfo?.Version})";
                 GetSessionOrThrow().EndpointName = _endpointName;
 
-                return Task.FromResult(new InitializeResult
+                return new InitializeResult
                 {
                     ProtocolVersion = options.ProtocolVersion,
                     Instructions = options.ServerInstructions,
                     ServerInfo = options.ServerInfo ?? DefaultImplementation,
                     Capabilities = ServerCapabilities ?? new(),
-                });
+                };
             },
             McpJsonUtilities.JsonContext.Default.InitializeRequestParams,
             McpJsonUtilities.JsonContext.Default.InitializeResult);
@@ -220,7 +222,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             throw new McpException("Resources capability was enabled, but ListResources and/or ReadResource handlers were not specified.");
         }
 
-        listResourcesHandler ??= (static (_, _) => Task.FromResult(new ListResourcesResult()));
+        listResourcesHandler ??= static async (_, _) => new ListResourcesResult();
 
         RequestHandlers.Set(
             RequestMethods.ResourcesList,
@@ -234,7 +236,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             McpJsonUtilities.JsonContext.Default.ReadResourceRequestParams,
             McpJsonUtilities.JsonContext.Default.ReadResourceResult);
 
-        listResourceTemplatesHandler ??= (static (_, _) => Task.FromResult(new ListResourceTemplatesResult()));
+        listResourceTemplatesHandler ??= static async (_, _) => new ListResourceTemplatesResult();
         RequestHandlers.Set(
             RequestMethods.ResourcesTemplatesList,
             (request, cancellationToken) => InvokeHandlerAsync(listResourceTemplatesHandler, request, cancellationToken),
@@ -480,14 +482,14 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
                 }
 
                 // Otherwise, consider it handled.
-                return EmptyResult.CompletedTask;
+                return new ValueTask<EmptyResult>(EmptyResult.Instance);
             },
             McpJsonUtilities.JsonContext.Default.SetLevelRequestParams,
             McpJsonUtilities.JsonContext.Default.EmptyResult);
     }
 
-    private Task<TResult> InvokeHandlerAsync<TParams, TResult>(
-        Func<RequestContext<TParams>, CancellationToken, Task<TResult>> handler,
+    private ValueTask<TResult> InvokeHandlerAsync<TParams, TResult>(
+        Func<RequestContext<TParams>, CancellationToken, ValueTask<TResult>> handler,
         TParams? args,
         CancellationToken cancellationToken)
     {
@@ -495,8 +497,8 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             InvokeScopedAsync(handler, args, cancellationToken) :
             handler(new(this) { Params = args }, cancellationToken);
 
-        async Task<TResult> InvokeScopedAsync(
-            Func<RequestContext<TParams>, CancellationToken, Task<TResult>> handler,
+        async ValueTask<TResult> InvokeScopedAsync(
+            Func<RequestContext<TParams>, CancellationToken, ValueTask<TResult>> handler,
             TParams? args,
             CancellationToken cancellationToken)
         {
