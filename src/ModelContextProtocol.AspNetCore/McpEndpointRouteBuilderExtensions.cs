@@ -23,6 +23,7 @@ public static class McpEndpointRouteBuilderExtensions
             throw new InvalidOperationException("You must call WithHttpTransport(). Unable to find required services. Call builder.Services.AddMcpServer().WithHttpTransport() in application startup code.");
 
         var routeGroup = endpoints.MapGroup(pattern);
+        routeGroup.MapGet("", handler.HandleRequestAsync);
         routeGroup.MapGet("/sse", handler.HandleRequestAsync);
         routeGroup.MapPost("/message", handler.HandleRequestAsync);
         return routeGroup;

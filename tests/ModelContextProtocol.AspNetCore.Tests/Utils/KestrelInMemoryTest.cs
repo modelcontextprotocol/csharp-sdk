@@ -19,21 +19,24 @@ public class KestrelInMemoryTest : LoggedTest
         Builder.Services.RemoveAll<IConnectionListenerFactory>();
         Builder.Services.AddSingleton<IConnectionListenerFactory>(_inMemoryTransport);
         Builder.Services.AddSingleton(LoggerProvider);
-    }
 
-    public WebApplicationBuilder Builder { get; }
-
-    public HttpClient CreateHttpClient()
-    {
-        var socketsHttpHandler = new SocketsHttpHandler()
+        HttpClient = new HttpClient(new SocketsHttpHandler()
         {
             ConnectCallback = (context, token) =>
             {
                 var connection = _inMemoryTransport.CreateConnection();
                 return new(connection.ClientStream);
             },
-        };
+        });
+    }
 
-        return new HttpClient(socketsHttpHandler);
+    public WebApplicationBuilder Builder { get; }
+
+    public HttpClient HttpClient { get; }
+
+    public override void Dispose()
+    {
+        HttpClient.Dispose();
+        base.Dispose();
     }
 }

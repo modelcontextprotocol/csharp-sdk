@@ -38,8 +38,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        using var httpClient = CreateHttpClient();
-        await using var mcpClient = await ConnectMcpClient(httpClient);
+        await using var mcpClient = await ConnectMcpClient(HttpClient);
 
         // Send a test message through POST endpoint
         await mcpClient.SendNotificationAsync("test/message", new Envelope { Message = "Hello, SSE!" }, serializerOptions: JsonContext.Default.Options, cancellationToken: TestContext.Current.CancellationToken);
@@ -54,8 +53,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         MapAbsoluteEndpointUriMcp(app);
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        using var httpClient = CreateHttpClient();
-        await using var mcpClient = await ConnectMcpClient(httpClient);
+        await using var mcpClient = await ConnectMcpClient(HttpClient);
 
         // Send a test message through POST endpoint
         await mcpClient.SendNotificationAsync("test/message", new Envelope { Message = "Hello, SSE!" }, serializerOptions: JsonContext.Default.Options, cancellationToken: TestContext.Current.CancellationToken);
@@ -87,8 +85,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        using var httpClient = CreateHttpClient();
-        await using var mcpClient = await ConnectMcpClient(httpClient);
+        await using var mcpClient = await ConnectMcpClient(HttpClient);
 
         mcpClient.RegisterNotificationHandler("test/notification", (args, ca) =>
         {
@@ -128,8 +125,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        using var httpClient = CreateHttpClient();
-        await using var mcpClient = await ConnectMcpClient(httpClient);
+        await using var mcpClient = await ConnectMcpClient(HttpClient);
 
         // Options can be lazily initialized, but they must be instantiated by the time an MCP client can finish connecting.
         // Callbacks can be called multiple times if configureOptionsAsync is configured, because that uses the IOptionsFactory,
