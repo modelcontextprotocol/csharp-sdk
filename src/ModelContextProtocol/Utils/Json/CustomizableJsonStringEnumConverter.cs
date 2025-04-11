@@ -4,13 +4,16 @@
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 // NOTE:
-// This is a temporary workaround for lack of System.Text.Json's JsonStringEnumConverter<T>
+// This is a workaround for lack of System.Text.Json's JsonStringEnumConverter<T>
 // 9.x support for JsonStringEnumMemberNameAttribute. Once all builds use the System.Text.Json 9.x
-// version, this whole file can be removed.
+// version, this whole file can be removed. Note that the type is public so that external source
+// generators can use it, so removing it is a potential breaking change.
 
-namespace System.Text.Json.Serialization;
+namespace ModelContextProtocol.Utils.Json;
 
 /// <summary>
 /// A JSON converter for enums that allows customizing the serialized string value of enum members
