@@ -65,7 +65,8 @@ public class EverythingSseServerFixture : IAsyncDisposable
             ProcessStartInfo processStartInfo = new()
             {
                 FileName = "docker",
-                Arguments = "--version",
+                // "docker info" returns a non-zero exit code if docker engine is not running.
+                Arguments = "info",
                 UseShellExecute = false,
             };
 
