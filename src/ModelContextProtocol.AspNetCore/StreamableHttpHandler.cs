@@ -57,7 +57,7 @@ internal sealed class StreamableHttpHandler(
         context.Features.GetRequiredFeature<IHttpResponseBodyFeature>().DisableBuffering();
 
         var sessionId = MakeNewSessionId();
-        await using var transport = new SseResponseStreamTransport(response.Body, $"/message?sessionId={sessionId}");
+        await using var transport = new SseResponseStreamTransport(response.Body, $"message?sessionId={sessionId}");
         if (!_sessions.TryAdd(sessionId, transport))
         {
             throw new Exception($"Unreachable given good entropy! Session with ID '{sessionId}' has already been created.");

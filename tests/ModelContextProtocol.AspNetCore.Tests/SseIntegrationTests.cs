@@ -30,7 +30,6 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
             LoggerFactory,
             TestContext.Current.CancellationToken);
 
-
     [Fact]
     public async Task ConnectAndReceiveMessage_InMemoryServer()
     {
