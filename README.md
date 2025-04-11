@@ -31,7 +31,7 @@ To get started writing a client, the `McpClientFactory.CreateAsync` method is us
 to a server. Once you have an `IMcpClient`, you can interact with it, such as to enumerate all available tools and invoke tools.
 
 ```csharp
-var clientTransport = new StdioClientTransport(new()
+var clientTransport = new StdioClientTransport(new StdioClientTransportOptions
 {
     Name = "Everything",
     Command = "npx",
@@ -93,16 +93,21 @@ using ModelContextProtocol.Server;
 using System.ComponentModel;
 
 var builder = Host.CreateApplicationBuilder(args);
+
 builder.Logging.AddConsole(consoleLogOptions =>
 {
     // Configure all logs to go to stderr
     consoleLogOptions.LogToStandardErrorThreshold = LogLevel.Trace;
 });
+
 builder.Services
     .AddMcpServer()
     .WithStdioServerTransport()
     .WithToolsFromAssembly();
-await builder.Build().RunAsync();
+
+var app = builder.Build();
+
+await app.RunAsync();
 
 [McpServerToolType]
 public static class EchoTool
@@ -132,7 +137,7 @@ public static async Task<string> SummarizeDownloadedContent(
         new(ChatRole.User, content),
     ];
     
-    ChatOptions options = new()
+    var options = new ChatOptions()
     {
         MaxOutputTokens = 256,
         Temperature = 0.3f,
@@ -161,12 +166,12 @@ using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using System.Text.Json;
 
-McpServerOptions options = new()
+var options = new McpServerOptions()
 {
-    ServerInfo = new() { Name = "MyServer", Version = "1.0.0" },
-    Capabilities = new()
+    ServerInfo = new Implementation() { Name = "MyServer", Version = "1.0.0" },
+    Capabilities = new ServerCapabilities()
     {
-        Tools = new()
+        Tools = new ToolsCapability()
         {
             ListToolsHandler = (request, cancellationToken) =>
                 Task.FromResult(new ListToolsResult()
@@ -199,7 +204,7 @@ McpServerOptions options = new()
                 {
                     if (request.Params.Arguments?.TryGetValue("message", out var message) is not true)
                     {
-                        throw new McpServerException("Missing required argument 'message'");
+                        throw new McpException("Missing required argument 'message'");
                     }
 
                     return Task.FromResult(new CallToolResponse()
@@ -208,7 +213,7 @@ McpServerOptions options = new()
                     });
                 }
 
-                throw new McpServerException($"Unknown tool: '{request.Params?.Name}'");
+                throw new McpException($"Unknown tool: '{request.Params?.Name}'");
             },
         }
     },

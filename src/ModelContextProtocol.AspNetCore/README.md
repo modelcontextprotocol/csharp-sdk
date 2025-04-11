@@ -34,16 +34,19 @@ using ModelContextProtocol.Server;
 using System.ComponentModel;
 
 var builder = WebApplication.CreateBuilder(args);
+
 builder.WebHost.ConfigureKestrel(options =>
 {
     options.ListenLocalhost(3001);
 });
+
 builder.Services.AddMcpServer().WithToolsFromAssembly();
+
 var app = builder.Build();
 
 app.MapMcp();
 
-app.Run();
+await app.RunAsync();
 
 [McpServerToolType]
 public static class EchoTool
