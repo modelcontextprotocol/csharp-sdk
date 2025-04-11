@@ -408,7 +408,8 @@ public class Program
             builder.Logging.AddProvider(loggerProvider);
         }
 
-        builder.Services.AddMcpServer(ConfigureOptions);
+        builder.Services.AddMcpServer(ConfigureOptions)
+            .WithHttpTransport();
 
         var app = builder.Build();
         app.UseRouting();

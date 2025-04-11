@@ -34,7 +34,9 @@ dotnet add package ModelContextProtocol.AspNetCore --prerelease
 using System.ComponentModel;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddMcpServer().WithToolsFromAssembly();
+builder.Services.AddMcpServer()
+    .WithHttpTransport()
+    .WithToolsFromAssembly();
 var app = builder.Build();
 
 app.MapMcp();
