@@ -1,6 +1,7 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 
@@ -21,7 +22,8 @@ namespace System.Text.Json.Serialization;
 /// 9.x support for custom enum member naming. It will be replaced by the built-in functionality
 /// once .NET 9 is fully adopted.
 /// </remarks>
-internal sealed class CustomizableJsonStringEnumConverter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicFields)] TEnum> :
+[EditorBrowsable(EditorBrowsableState.Never)]
+public sealed class CustomizableJsonStringEnumConverter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicFields)] TEnum> :
     JsonStringEnumConverter<TEnum> where TEnum : struct, Enum
 {
 #if !NET9_0_OR_GREATER

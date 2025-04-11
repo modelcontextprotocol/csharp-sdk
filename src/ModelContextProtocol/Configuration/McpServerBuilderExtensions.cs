@@ -143,6 +143,7 @@ public static partial class McpServerBuilderExtensions
     /// <summary>Adds <see cref="McpServerPrompt"/> instances to the service collection backing <paramref name="builder"/>.</summary>
     /// <typeparam name="TPromptType">The prompt type.</typeparam>
     /// <param name="builder">The builder instance.</param>
+    /// <param name="serializerOptions">The serializer options governing prompt parameter marshalling.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     /// <remarks>
@@ -154,7 +155,8 @@ public static partial class McpServerBuilderExtensions
         DynamicallyAccessedMemberTypes.PublicMethods |
         DynamicallyAccessedMemberTypes.NonPublicMethods |
         DynamicallyAccessedMemberTypes.PublicConstructors)] TPromptType>(
-        this IMcpServerBuilder builder)
+        this IMcpServerBuilder builder,
+        JsonSerializerOptions? serializerOptions = null)
     {
         Throw.IfNull(builder);
 
@@ -163,8 +165,8 @@ public static partial class McpServerBuilderExtensions
             if (promptMethod.GetCustomAttribute<McpServerPromptAttribute>() is not null)
             {
                 builder.Services.AddSingleton((Func<IServiceProvider, McpServerPrompt>)(promptMethod.IsStatic ?
-                    services => McpServerPrompt.Create(promptMethod, options: new() { Services = services }) :
-                    services => McpServerPrompt.Create(promptMethod, typeof(TPromptType), new() { Services = services })));
+                    services => McpServerPrompt.Create(promptMethod, options: new() { Services = services, SerializerOptions = serializerOptions }) :
+                    services => McpServerPrompt.Create(promptMethod, typeof(TPromptType), new() { Services = services, SerializerOptions = serializerOptions })));
             }
         }
 
@@ -174,6 +176,7 @@ public static partial class McpServerBuilderExtensions
     /// <summary>Adds <see cref="McpServerPrompt"/> instances to the service collection backing <paramref name="builder"/>.</summary>
     /// <param name="builder">The builder instance.</param>
     /// <param name="promptTypes">Types with marked methods to add as prompts to the server.</param>
+    /// <param name="serializerOptions">The serializer options governing prompt parameter marshalling.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="promptTypes"/> is <see langword="null"/>.</exception>
@@ -183,7 +186,7 @@ public static partial class McpServerBuilderExtensions
     /// instance for each. For instance methods, an instance will be constructed for each invocation of the prompt.
     /// </remarks>
     [RequiresUnreferencedCode(WithPromptsRequiresUnreferencedCodeMessage)]
-    public static IMcpServerBuilder WithPrompts(this IMcpServerBuilder builder, params IEnumerable<Type> promptTypes)
+    public static IMcpServerBuilder WithPrompts(this IMcpServerBuilder builder, IEnumerable<Type> promptTypes, JsonSerializerOptions? serializerOptions = null)
     {
         Throw.IfNull(builder);
         Throw.IfNull(promptTypes);
@@ -197,8 +200,8 @@ public static partial class McpServerBuilderExtensions
                     if (promptMethod.GetCustomAttribute<McpServerPromptAttribute>() is not null)
                     {
                         builder.Services.AddSingleton((Func<IServiceProvider, McpServerPrompt>)(promptMethod.IsStatic ?
-                            services => McpServerPrompt.Create(promptMethod, options: new() { Services = services }) :
-                            services => McpServerPrompt.Create(promptMethod, promptType, new() { Services = services })));
+                            services => McpServerPrompt.Create(promptMethod, options: new() { Services = services, SerializerOptions = serializerOptions }) :
+                            services => McpServerPrompt.Create(promptMethod, promptType, new() { Services = services, SerializerOptions = serializerOptions })));
                     }
                 }
             }
@@ -211,6 +214,7 @@ public static partial class McpServerBuilderExtensions
     /// Adds types marked with the <see cref="McpServerPromptTypeAttribute"/> attribute from the given assembly as prompts to the server.
     /// </summary>
     /// <param name="builder">The builder instance.</param>
+    /// <param name="serializerOptions">The serializer options governing prompt parameter marshalling.</param>
     /// <param name="promptAssembly">The assembly to load the types from. If <see langword="null"/>, the calling assembly will be used.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
@@ -235,7 +239,7 @@ public static partial class McpServerBuilderExtensions
     /// </para>
     /// </remarks>
     [RequiresUnreferencedCode(WithPromptsRequiresUnreferencedCodeMessage)]
-    public static IMcpServerBuilder WithPromptsFromAssembly(this IMcpServerBuilder builder, Assembly? promptAssembly = null)
+    public static IMcpServerBuilder WithPromptsFromAssembly(this IMcpServerBuilder builder, Assembly? promptAssembly = null, JsonSerializerOptions? serializerOptions = null)
     {
         Throw.IfNull(builder);
 
@@ -244,7 +248,8 @@ public static partial class McpServerBuilderExtensions
         return builder.WithPrompts(
             from t in promptAssembly.GetTypes()
             where t.GetCustomAttribute<McpServerPromptTypeAttribute>() is not null
-            select t);
+            select t,
+            serializerOptions);
     }
     #endregion
 
