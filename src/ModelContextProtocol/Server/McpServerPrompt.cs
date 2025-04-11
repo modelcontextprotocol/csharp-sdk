@@ -18,8 +18,7 @@ namespace ModelContextProtocol.Server;
 /// to <see cref="Prompt"/>, which provides the protocol representation of a prompt, and <see cref="McpClientPrompt"/>, which
 /// provides a client-side representation of a prompt). Instances of <see cref="McpServerPrompt"/> can be added into a
 /// <see cref="IServiceCollection"/> to be picked up automatically when <see cref="McpServerFactory"/> is used to create
-/// an <see cref="IMcpServer"/>, or added into a <see cref="McpServerPrimitiveCollection{McpServerPrompt}"/> to be used as
-/// a <see cref="PromptsCapability.PromptCollection"/>.
+/// an <see cref="IMcpServer"/>, or added into a <see cref="McpServerPrimitiveCollection{McpServerPrompt}"/>.
 /// </para>
 /// <para>
 /// Most commonly, <see cref="McpServerPrompt"/> instances are created using the static <see cref="M:McpServerPrompt.Create"/> methods.
@@ -67,7 +66,8 @@ namespace ModelContextProtocol.Server;
 ///     <description>
 ///       When the <see cref="McpServerPrompt"/> is constructed, it may be passed an <see cref="IServiceProvider"/> via 
 ///       <see cref="McpServerPromptCreateOptions.Services"/>. Any parameter that can be satisfied by that <see cref="IServiceProvider"/>
-///       will be resolved from the <see cref="IServiceProvider"/> provided to <see cref="GetAsync"/> rather than from the argument collection.
+///       according to <see cref="IServiceProviderIsService"/> will be resolved from the <see cref="IServiceProvider"/> provided to 
+///       <see cref="GetAsync"/> rather than from the argument collection.
 ///     </description>
 ///   </item>
 ///   <item>

@@ -19,8 +19,7 @@ namespace ModelContextProtocol.Server;
 /// to <see cref="Tool"/>, which provides the protocol representation of a tool, and <see cref="McpClientTool"/>, which
 /// provides a client-side representation of a tool). Instances of <see cref="McpServerTool"/> can be added into a
 /// <see cref="IServiceCollection"/> to be picked up automatically when <see cref="McpServerFactory"/> is used to create
-/// an <see cref="IMcpServer"/>, or added into a <see cref="McpServerPrimitiveCollection{McpServerTool}"/> to be used as
-/// a <see cref="ToolsCapability.ToolCollection"/>.
+/// an <see cref="IMcpServer"/>, or added into a <see cref="McpServerPrimitiveCollection{McpServerTool}"/>.
 /// </para>
 /// <para>
 /// Most commonly, <see cref="McpServerTool"/> instances are created using the static <see cref="M:McpServerTool.Create"/> methods.
@@ -70,8 +69,8 @@ namespace ModelContextProtocol.Server;
 ///     <description>
 ///       When the <see cref="McpServerTool"/> is constructed, it may be passed an <see cref="IServiceProvider"/> via 
 ///       <see cref="McpServerToolCreateOptions.Services"/>. Any parameter that can be satisfied by that <see cref="IServiceProvider"/>
-///       will not be included in the generated JSON schema and will be resolved from the <see cref="IServiceProvider"/> provided to 
-///       <see cref="InvokeAsync"/> rather than from the argument collection.
+///       according to <see cref="IServiceProviderIsService"/> will not be included in the generated JSON schema and will be resolved 
+///       from the <see cref="IServiceProvider"/> provided to <see cref="InvokeAsync"/> rather than from the argument collection.
 ///     </description>
 ///   </item>
 ///   <item>

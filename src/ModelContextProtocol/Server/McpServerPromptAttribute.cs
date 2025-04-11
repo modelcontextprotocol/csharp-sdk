@@ -55,7 +55,8 @@ namespace ModelContextProtocol.Server;
 ///     <description>
 ///       When the <see cref="McpServerPrompt"/> is constructed, it may be passed an <see cref="IServiceProvider"/> via 
 ///       <see cref="McpServerPromptCreateOptions.Services"/>. Any parameter that can be satisfied by that <see cref="IServiceProvider"/>
-///       will be resolved from the <see cref="IServiceProvider"/> provided to the prompt invocation rather than from the argument collection.
+///       according to <see cref="IServiceProviderIsService"/> will be resolved from the <see cref="IServiceProvider"/> provided to the 
+///       prompt invocation rather than from the argument collection.
 ///     </description>
 ///   </item>
 ///   <item>
