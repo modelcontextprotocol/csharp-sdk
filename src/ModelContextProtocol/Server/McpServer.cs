@@ -502,15 +502,24 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             TParams? args,
             CancellationToken cancellationToken)
         {
-            using var scope = Services?.GetService<IServiceScopeFactory>()?.CreateScope();
-
-            return await handler(
-                new RequestContext<TParams>(this) 
+            var scope = Services?.GetService<IServiceScopeFactory>()?.CreateAsyncScope();
+            try
+            {
+                return await handler(
+                    new RequestContext<TParams>(this)
+                    {
+                        Services = scope?.ServiceProvider ?? Services,
+                        Params = args
+                    },
+                    cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                if (scope is not null)
                 {
-                    Services = scope?.ServiceProvider ?? Services,
-                    Params = args 
-                },
-                cancellationToken).ConfigureAwait(false);
+                    await scope.Value.DisposeAsync().ConfigureAwait(false);
+                }
+            }
         }
     }
 

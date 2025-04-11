@@ -107,7 +107,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                         throw new Exception($"Unknown tool '{request.Params?.Name}'");
                 }
             })
-            .WithTools<EchoTool>(serializerOptions: JsonContext.Default.Options);
+            .WithTools<EchoTool>(serializerOptions: BuilderToolsJsonContext.Default.Options);
 
         services.AddSingleton(new ObjectWithId());
     }
@@ -429,8 +429,13 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     [Fact]
     public void Register_Tools_From_Current_Assembly()
     {
+        if (!JsonSerializer.IsReflectionEnabledByDefault)
+        {
+            return;
+        }
+
         ServiceCollection sc = new();
-        sc.AddMcpServer().WithToolsFromAssembly(serializerOptions: JsonContext.Default.Options);
+        sc.AddMcpServer().WithToolsFromAssembly();
         IServiceProvider services = sc.BuildServiceProvider();
 
         Assert.Contains(services.GetServices<McpServerTool>(), t => t.ProtocolTool.Name == "Echo");
@@ -446,7 +451,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         {
             sc.AddSingleton(new ComplexObject());
         }
-        sc.AddMcpServer().WithTools([typeof(EchoTool)], JsonContext.Default.Options);
+        sc.AddMcpServer().WithTools([typeof(EchoTool)], BuilderToolsJsonContext.Default.Options);
         IServiceProvider services = sc.BuildServiceProvider();
 
         McpServerTool tool = services.GetServices<McpServerTool>().First(t => t.ProtocolTool.Name == "EchoComplex");
@@ -460,6 +465,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         }
     }
 
+
     [Theory]
     [InlineData(ServiceLifetime.Singleton)]
     [InlineData(ServiceLifetime.Scoped)]
@@ -467,6 +473,11 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     [InlineData(null)]
     public void WithToolsFromAssembly_Parameters_Satisfiable_From_DI(ServiceLifetime? lifetime)
     {
+        if (!JsonSerializer.IsReflectionEnabledByDefault)
+        {
+            return;
+        }
+
         ServiceCollection sc = new();
         switch (lifetime)
         {
@@ -483,7 +494,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                 break;
         }
 
-        sc.AddMcpServer().WithToolsFromAssembly(serializerOptions: JsonContext.Default.Options);
+        sc.AddMcpServer().WithToolsFromAssembly();
         IServiceProvider services = sc.BuildServiceProvider();
 
         McpServerTool tool = services.GetServices<McpServerTool>().First(t => t.ProtocolTool.Name == "EchoComplex");
@@ -526,9 +537,9 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     {
         ServiceCollection sc = new();
         sc.AddMcpServer()
-            .WithTools<EchoTool>(serializerOptions: JsonContext.Default.Options)
-            .WithTools<AnotherToolType>(serializerOptions: JsonContext.Default.Options)
-            .WithTools([typeof(ToolTypeWithNoAttribute)], JsonContext.Default.Options);
+            .WithTools<EchoTool>(serializerOptions: BuilderToolsJsonContext.Default.Options)
+            .WithTools<AnotherToolType>(serializerOptions: BuilderToolsJsonContext.Default.Options)
+            .WithTools([typeof(ToolTypeWithNoAttribute)], BuilderToolsJsonContext.Default.Options);
         IServiceProvider services = sc.BuildServiceProvider();
 
         Assert.Contains(services.GetServices<McpServerTool>(), t => t.ProtocolTool.Name == "double_echo");
@@ -759,4 +770,22 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     {
         public string Id { get; set; } = Guid.NewGuid().ToString("N");
     }
+
+    public class ComplexObject
+    {
+        public string? Name { get; set; }
+        public int Age { get; set; }
+    }
+
+    [JsonSerializable(typeof(bool))]
+    [JsonSerializable(typeof(int))]
+    [JsonSerializable(typeof(long))]
+    [JsonSerializable(typeof(double))]
+    [JsonSerializable(typeof(string))]
+    [JsonSerializable(typeof(DateTime))]
+    [JsonSerializable(typeof(DateTimeOffset))]
+    [JsonSerializable(typeof(ComplexObject))]
+    [JsonSerializable(typeof(string[]))]
+    [JsonSerializable(typeof(JsonElement))]
+    partial class BuilderToolsJsonContext : JsonSerializerContext;
 }
