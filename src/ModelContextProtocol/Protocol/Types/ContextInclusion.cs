@@ -1,4 +1,5 @@
-﻿using System.Text.Json.Serialization;
+﻿using ModelContextProtocol.Utils.Json;
+using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol.Types;
 

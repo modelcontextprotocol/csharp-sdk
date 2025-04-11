@@ -6,13 +6,14 @@ using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
+using System.Text.Json.Serialization;
 using System.Threading.Channels;
 
 #pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
 
 namespace ModelContextProtocol.Tests.Configuration;
 
-public class McpServerBuilderExtensionsPromptsTests : ClientServerTestBase
+public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBase
 {
     public McpServerBuilderExtensionsPromptsTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
@@ -237,7 +238,7 @@ public class McpServerBuilderExtensionsPromptsTests : ClientServerTestBase
         ServiceCollection sc = new();
         sc.AddMcpServer()
             .WithPrompts<SimplePrompts>()
-            .WithPrompts<MorePrompts>();
+            .WithPrompts<MorePrompts>(JsonContext4.Default.Options);
         IServiceProvider services = sc.BuildServiceProvider();
 
         Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == nameof(SimplePrompts.ReturnsChatMessages));
@@ -270,7 +271,7 @@ public class McpServerBuilderExtensionsPromptsTests : ClientServerTestBase
     public sealed class MorePrompts
     {
         [McpServerPrompt]
-        public static PromptMessage AnotherPrompt() =>
+        public static PromptMessage AnotherPrompt(ObjectWithId id) =>
             new PromptMessage
             {
                 Role = Role.User,
@@ -282,4 +283,8 @@ public class McpServerBuilderExtensionsPromptsTests : ClientServerTestBase
     {
         public string Id { get; set; } = Guid.NewGuid().ToString("N");
     }
+
+    [JsonSerializable(typeof(ObjectWithId))]
+    [JsonSerializable(typeof(PromptMessage))]
+    partial class JsonContext4 : JsonSerializerContext;
 }
