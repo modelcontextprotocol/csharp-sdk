@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
@@ -19,6 +20,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
     };
 
     private readonly ITransport _sessionTransport;
+    private readonly bool _servicesScopePerRequest;
 
     private readonly EventHandler? _toolsChangedDelegate;
     private readonly EventHandler? _promptsChangedDelegate;
@@ -54,6 +56,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         ServerOptions = options;
         Services = serviceProvider;
         _endpointName = $"Server ({options.ServerInfo?.Name ?? DefaultImplementation.Name} {options.ServerInfo?.Version ?? DefaultImplementation.Version})";
+        _servicesScopePerRequest = options.ScopeRequests;
 
         // Configure all request handlers based on the supplied options.
         SetInitializeHandler(options);
@@ -196,7 +199,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         // This capability is not optional, so return an empty result if there is no handler.
         RequestHandlers.Set(
             RequestMethods.CompletionComplete,
-            (request, cancellationToken) => completeHandler(new(this, request), cancellationToken),
+            (request, cancellationToken) => InvokeHandlerAsync(completeHandler, request, cancellationToken),
             McpJsonUtilities.JsonContext.Default.CompleteRequestParams,
             McpJsonUtilities.JsonContext.Default.CompleteResult);
     }
@@ -221,20 +224,20 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
         RequestHandlers.Set(
             RequestMethods.ResourcesList,
-            (request, cancellationToken) => listResourcesHandler(new(this, request), cancellationToken),
+            (request, cancellationToken) => InvokeHandlerAsync(listResourcesHandler, request, cancellationToken),
             McpJsonUtilities.JsonContext.Default.ListResourcesRequestParams,
             McpJsonUtilities.JsonContext.Default.ListResourcesResult);
 
         RequestHandlers.Set(
             RequestMethods.ResourcesRead,
-            (request, cancellationToken) => readResourceHandler(new(this, request), cancellationToken),
+            (request, cancellationToken) => InvokeHandlerAsync(readResourceHandler, request, cancellationToken),
             McpJsonUtilities.JsonContext.Default.ReadResourceRequestParams,
             McpJsonUtilities.JsonContext.Default.ReadResourceResult);
 
         listResourceTemplatesHandler ??= (static (_, _) => Task.FromResult(new ListResourceTemplatesResult()));
         RequestHandlers.Set(
             RequestMethods.ResourcesTemplatesList,
-            (request, cancellationToken) => listResourceTemplatesHandler(new(this, request), cancellationToken),
+            (request, cancellationToken) => InvokeHandlerAsync(listResourceTemplatesHandler, request, cancellationToken),
             McpJsonUtilities.JsonContext.Default.ListResourceTemplatesRequestParams,
             McpJsonUtilities.JsonContext.Default.ListResourceTemplatesResult);
 
@@ -252,13 +255,13 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
         RequestHandlers.Set(
             RequestMethods.ResourcesSubscribe,
-            (request, cancellationToken) => subscribeHandler(new(this, request), cancellationToken),
+            (request, cancellationToken) => InvokeHandlerAsync(subscribeHandler, request, cancellationToken),
             McpJsonUtilities.JsonContext.Default.SubscribeRequestParams,
             McpJsonUtilities.JsonContext.Default.EmptyResult);
 
         RequestHandlers.Set(
             RequestMethods.ResourcesUnsubscribe,
-            (request, cancellationToken) => unsubscribeHandler(new(this, request), cancellationToken),
+            (request, cancellationToken) => InvokeHandlerAsync(unsubscribeHandler, request, cancellationToken),
             McpJsonUtilities.JsonContext.Default.UnsubscribeRequestParams,
             McpJsonUtilities.JsonContext.Default.EmptyResult);
     }
@@ -345,13 +348,13 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
         RequestHandlers.Set(
             RequestMethods.PromptsList,
-            (request, cancellationToken) => listPromptsHandler(new(this, request), cancellationToken),
+            (request, cancellationToken) => InvokeHandlerAsync(listPromptsHandler, request, cancellationToken),
             McpJsonUtilities.JsonContext.Default.ListPromptsRequestParams,
             McpJsonUtilities.JsonContext.Default.ListPromptsResult);
 
         RequestHandlers.Set(
             RequestMethods.PromptsGet,
-            (request, cancellationToken) => getPromptHandler(new(this, request), cancellationToken),
+            (request, cancellationToken) => InvokeHandlerAsync(getPromptHandler, request, cancellationToken),
             McpJsonUtilities.JsonContext.Default.GetPromptRequestParams,
             McpJsonUtilities.JsonContext.Default.GetPromptResult);
     }
@@ -438,13 +441,13 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
         RequestHandlers.Set(
             RequestMethods.ToolsList,
-            (request, cancellationToken) => listToolsHandler(new(this, request), cancellationToken),
+            (request, cancellationToken) => InvokeHandlerAsync(listToolsHandler, request, cancellationToken),
             McpJsonUtilities.JsonContext.Default.ListToolsRequestParams,
             McpJsonUtilities.JsonContext.Default.ListToolsResult);
 
         RequestHandlers.Set(
             RequestMethods.ToolsCall,
-            (request, cancellationToken) => callToolHandler(new(this, request), cancellationToken),
+            (request, cancellationToken) => InvokeHandlerAsync(callToolHandler, request, cancellationToken),
             McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
             McpJsonUtilities.JsonContext.Default.CallToolResponse);
     }
@@ -473,7 +476,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
                 // If a handler was provided, now delegate to it.
                 if (setLoggingLevelHandler is not null)
                 {
-                    return setLoggingLevelHandler(new(this, request), cancellationToken);
+                    return InvokeHandlerAsync(setLoggingLevelHandler, request, cancellationToken);
                 }
 
                 // Otherwise, consider it handled.
@@ -481,6 +484,32 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             },
             McpJsonUtilities.JsonContext.Default.SetLevelRequestParams,
             McpJsonUtilities.JsonContext.Default.EmptyResult);
+    }
+
+    private Task<TResult> InvokeHandlerAsync<TParams, TResult>(
+        Func<RequestContext<TParams>, CancellationToken, Task<TResult>> handler,
+        TParams? args,
+        CancellationToken cancellationToken)
+    {
+        return _servicesScopePerRequest ?
+            InvokeScopedAsync(handler, args, cancellationToken) :
+            handler(new(this) { Params = args }, cancellationToken);
+
+        async Task<TResult> InvokeScopedAsync(
+            Func<RequestContext<TParams>, CancellationToken, Task<TResult>> handler,
+            TParams? args,
+            CancellationToken cancellationToken)
+        {
+            using var scope = Services?.GetService<IServiceScopeFactory>()?.CreateScope();
+
+            return await handler(
+                new RequestContext<TParams>(this) 
+                {
+                    Services = scope?.ServiceProvider ?? Services,
+                    Params = args 
+                },
+                cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <summary>Maps a <see cref="LogLevel"/> to a <see cref="LoggingLevel"/>.</summary>

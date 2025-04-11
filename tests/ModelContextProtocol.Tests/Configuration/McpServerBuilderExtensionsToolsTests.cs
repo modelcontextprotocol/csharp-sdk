@@ -757,26 +757,8 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         public static string MethodD(string d) => d.ToString();
     }
 
-    public class ComplexObject
-    {
-        public string? Name { get; set; }
-        public int Age { get; set; }
-    }
-
     public class ObjectWithId
     {
         public string Id { get; set; } = Guid.NewGuid().ToString("N");
     }
-
-    [JsonSerializable(typeof(bool))]
-    [JsonSerializable(typeof(int))]
-    [JsonSerializable(typeof(long))]
-    [JsonSerializable(typeof(double))]
-    [JsonSerializable(typeof(string))]
-    [JsonSerializable(typeof(DateTime))]
-    [JsonSerializable(typeof(DateTimeOffset))]
-    [JsonSerializable(typeof(ComplexObject))]
-    [JsonSerializable(typeof(string[]))]
-    [JsonSerializable(typeof(JsonElement))]
-    partial class JsonContext : JsonSerializerContext;
 }
