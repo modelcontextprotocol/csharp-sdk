@@ -17,12 +17,6 @@ internal static partial class Log
     [LoggerMessage(Level = LogLevel.Information, Message = "Client for {endpointName} created and connected")]
     internal static partial void ClientCreated(this ILogger logger, string endpointName);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "Client server {endpointName} already initializing")]
-    internal static partial void ClientAlreadyInitializing(this ILogger logger, string endpointName);
-
-    [LoggerMessage(Level = LogLevel.Information, Message = "Client server {endpointName} already initialized")]
-    internal static partial void ClientAlreadyInitialized(this ILogger logger, string endpointName);
-
     [LoggerMessage(Level = LogLevel.Error, Message = "Client server {endpointName} initialization error")]
     internal static partial void ClientInitializationError(this ILogger logger, string endpointName, Exception exception);
 
@@ -49,9 +43,6 @@ internal static partial class Log
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The request has not valid message ID for {endpointName}")]
     internal static partial void RequestHasInvalidId(this ILogger logger, string endpointName);
-
-    [LoggerMessage(Level = LogLevel.Error, Message = "Notification handler error for {endpointName} with method {method}")]
-    internal static partial void NotificationHandlerError(this ILogger logger, string endpointName, string method, Exception exception);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Client not connected for {endpointName}")]
     internal static partial void ClientNotConnected(this ILogger logger, string endpointName);
@@ -157,9 +148,6 @@ internal static partial class Log
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Transport cleaning up for {endpointName}")]
     internal static partial void TransportCleaningUp(this ILogger logger, string endpointName);
-
-    [LoggerMessage(Level = LogLevel.Debug, Message = "Transport closing stdin for {endpointName}")]
-    internal static partial void TransportClosingStdin(this ILogger logger, string endpointName);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Transport waiting for shutdown for {endpointName}")]
     internal static partial void TransportWaitingForShutdown(this ILogger logger, string endpointName);
@@ -307,25 +295,6 @@ internal static partial class Log
         string endpointName,
         string method,
         string id);
-
-    [LoggerMessage(
-        EventId = 7016,
-        Level = LogLevel.Error,
-        Message = "{endpointName} already initializing"
-    )]
-    public static partial void ServerAlreadyInitializing(
-        this ILogger logger,
-        string endpointName);
-
-    [LoggerMessage(
-        EventId = 7017,
-        Level = LogLevel.Error,
-        Message = "{endpointName} initialization error"
-    )]
-    public static partial void ServerInitializationError(
-        this ILogger logger,
-        string endpointName,
-        Exception e);
 
     [LoggerMessage(
         EventId = 7018,
