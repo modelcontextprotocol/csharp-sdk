@@ -3,20 +3,23 @@ name: Code Coverage
 on:
   workflow_call:
 
+permissions:
+  contents: read
+
 jobs:
   publish-coverage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: |
             9.0.x
             8.0.x
 
       - name: Download test results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
         with:
           pattern: testresults-*
 
@@ -33,14 +36,14 @@ jobs:
           toolpath: "reportgeneratortool"
 
       - name: Upload combined coverage XML
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: coverage
           path: ${{ github.workspace }}/report
           retention-days: 7
 
       - name: Publish code coverage report
-        uses: irongut/CodeCoverageSummary@v1.3.0
+        uses: irongut/CodeCoverageSummary@51cc3a756ddcd398d447c044c02cb6aa83fdae95 # v1.3.0
         with:
           filename: "report/Cobertura.xml"
           badge: true
@@ -53,18 +56,11 @@ jobs:
           thresholds: "60 80"
 
       - name: Upload combined coverage markdown
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: coverage-markdown
           path: ${{ github.workspace }}/code-coverage-results.md
           retention-days: 7
-
-      - name: Add Coverage PR Comment
-        uses: marocchino/sticky-pull-request-comment@v2
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        with:
-          recreate: true
-          path: ${{ github.workspace }}/code-coverage-results.md
 
       - name: Coverage on step summary
         if: always()
