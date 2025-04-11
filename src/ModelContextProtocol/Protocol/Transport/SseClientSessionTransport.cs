@@ -285,21 +285,8 @@ internal sealed class SseClientSessionTransport : TransportBase
                 return;
             }
 
-            // Check if data is absolute URI
-            if (data.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || data.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-            {
-                // Since the endpoint is an absolute URI, we can use it directly
-                _messageEndpoint = new Uri(data);
-            }
-            else
-            {
-                // If the endpoint is a relative URI, we need to combine it with the relative path of the SSE endpoint
-                var baseUriBuilder = new UriBuilder(_sseEndpoint);
-
-
-                // Instead of manually concatenating strings, use the Uri class's composition capabilities
-                _messageEndpoint = new Uri(baseUriBuilder.Uri, data);
-            }
+            // If data is an absolute URL, the Uri will be constructed entirely from it and not the _sseEndpoint.
+            _messageEndpoint = new Uri(_sseEndpoint, data);
 
             // Set connected state
             SetConnected(true);
