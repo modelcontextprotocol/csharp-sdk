@@ -10,7 +10,7 @@ namespace ModelContextProtocol.Protocol.Types;
 /// <remarks>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
-public class ResourcesCapability
+public class ResourcesCapability : IListCapability<McpServerResource>
 {
     /// <summary>
     /// Gets or sets whether this server supports subscribing to resource updates.
@@ -87,4 +87,16 @@ public class ResourcesCapability
     /// </remarks>
     [JsonIgnore]
     public Func<RequestContext<UnsubscribeRequestParams>, CancellationToken, Task<EmptyResult>>? UnsubscribeFromResourcesHandler { get; set; }
+
+    /// <summary>
+    /// The list of resource templates that the server supports.
+    /// </summary>
+    [JsonIgnore]
+    public McpServerPrimitiveCollection<McpServerResource>? ResourceCollection { get; set; }
+
+    McpServerPrimitiveCollection<McpServerResource>? IListCapability<McpServerResource>.Collection
+    {
+        get => ResourceCollection;
+        set => ResourceCollection = value;
+    }
 }
