@@ -38,7 +38,7 @@ internal sealed class NotificationHandlers
     /// with the corresponding method name is received.
     /// </para>
     /// </remarks>
-    public void RegisterRange(IEnumerable<KeyValuePair<string, Func<JsonRpcNotification, CancellationToken, Task>>> handlers)
+    public void RegisterRange(IEnumerable<KeyValuePair<string, Func<JsonRpcNotification, CancellationToken, ValueTask>>> handlers)
     {
         foreach (var entry in handlers)
         {
@@ -64,7 +64,7 @@ internal sealed class NotificationHandlers
     /// all registered handlers will be invoked in reverse order of registration (newest first).
     /// </remarks>
     public IAsyncDisposable Register(
-        string method, Func<JsonRpcNotification, CancellationToken, Task> handler, bool temporary = true)
+        string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler, bool temporary = true)
     {
         // Create the new registration instance.
         Registration reg = new(this, method, handler, temporary);
@@ -143,7 +143,7 @@ internal sealed class NotificationHandlers
 
     /// <summary>Provides storage for a handler registration.</summary>
     private sealed class Registration(
-        NotificationHandlers handlers, string method, Func<JsonRpcNotification, CancellationToken, Task> handler, bool unregisterable) : IAsyncDisposable
+        NotificationHandlers handlers, string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler, bool unregisterable) : IAsyncDisposable
     {
         /// <summary>Used to prevent deadlocks during disposal.</summary>
         /// <remarks>
@@ -165,7 +165,7 @@ internal sealed class NotificationHandlers
         private readonly string _method = method;
         
         /// <summary>The handler this registration represents.</summary>
-        private readonly Func<JsonRpcNotification, CancellationToken, Task> _handler = handler;
+        private readonly Func<JsonRpcNotification, CancellationToken, ValueTask> _handler = handler;
 
         /// <summary>true if this instance is temporary; false if it's permanent</summary>
         private readonly bool _temporary = unregisterable;
@@ -272,7 +272,7 @@ internal sealed class NotificationHandlers
         }
 
         /// <summary>Invoke the handler associated with the registration.</summary>
-        public Task InvokeAsync(JsonRpcNotification notification, CancellationToken cancellationToken)
+        public ValueTask InvokeAsync(JsonRpcNotification notification, CancellationToken cancellationToken)
         {
             // For permanent registrations, skip all the tracking overhead and just invoke the handler.
             if (!_temporary)
@@ -285,7 +285,7 @@ internal sealed class NotificationHandlers
         }
 
         /// <summary>Invoke the handler associated with the temporary registration.</summary>
-        private async Task InvokeTemporaryAsync(JsonRpcNotification notification, CancellationToken cancellationToken)
+        private async ValueTask InvokeTemporaryAsync(JsonRpcNotification notification, CancellationToken cancellationToken)
         {
             // Check whether we need to handle this registration. If DisposeAsync has been called,
             // then even if there are in-flight invocations for it, we avoid adding more.

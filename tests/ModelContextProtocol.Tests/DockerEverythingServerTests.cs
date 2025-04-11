@@ -77,10 +77,10 @@ public class DockerEverythingServerTests(ITestOutputHelper testOutputHelper) : L
             {
                 Sampling = new()
                 {
-                    SamplingHandler = (_, _, _) =>
+                    SamplingHandler = async (_, _, _) =>
                     {
                         samplingHandlerCalls++;
-                        return Task.FromResult(new CreateMessageResult
+                        return new CreateMessageResult
                         {
                             Model = "test-model",
                             Role = Role.Assistant,
@@ -89,7 +89,7 @@ public class DockerEverythingServerTests(ITestOutputHelper testOutputHelper) : L
                                 Type = "text",
                                 Text = "Test response"
                             }
-                        });
+                        };
                     },
                 },
             },

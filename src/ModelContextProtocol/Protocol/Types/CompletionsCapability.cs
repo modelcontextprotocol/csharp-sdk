@@ -33,5 +33,5 @@ public class CompletionsCapability
     /// and should return appropriate completion suggestions.
     /// </remarks>
     [JsonIgnore]
-    public Func<RequestContext<CompleteRequestParams>, CancellationToken, Task<CompleteResult>>? CompleteHandler { get; set; }
+    public Func<RequestContext<CompleteRequestParams>, CancellationToken, ValueTask<CompleteResult>>? CompleteHandler { get; set; }
 }

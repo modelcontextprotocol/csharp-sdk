@@ -9,5 +9,5 @@ namespace ModelContextProtocol.Protocol.Types;
 public class EmptyResult
 {
     [JsonIgnore]
-    internal static Task<EmptyResult> CompletedTask { get; } = Task.FromResult(new EmptyResult());
+    internal static EmptyResult Instance { get; } = new();
 }

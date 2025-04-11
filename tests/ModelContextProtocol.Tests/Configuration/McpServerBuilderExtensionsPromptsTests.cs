@@ -8,8 +8,6 @@ using ModelContextProtocol.Server;
 using System.ComponentModel;
 using System.Threading.Channels;
 
-#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
-
 namespace ModelContextProtocol.Tests.Configuration;
 
 public class McpServerBuilderExtensionsPromptsTests : ClientServerTestBase
@@ -143,7 +141,7 @@ public class McpServerBuilderExtensionsPromptsTests : ClientServerTestBase
         await using (client.RegisterNotificationHandler("notifications/prompts/list_changed", (notification, cancellationToken) =>
             {
                 listChanged.Writer.TryWrite(notification);
-                return Task.CompletedTask;
+                return default;
             }))
         {
             serverPrompts.Add(newPrompt);

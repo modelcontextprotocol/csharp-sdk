@@ -25,7 +25,7 @@ public class NotificationHandlerTests : ClientServerTestBase
                 {
                     Interlocked.Increment(ref counter);
                     tcs.SetResult(true);
-                    return Task.CompletedTask;
+                    return default;
                 }))
             {
                 await Server.SendNotificationAsync(NotificationName, TestContext.Current.CancellationToken);
@@ -58,7 +58,7 @@ public class NotificationHandlerTests : ClientServerTestBase
                     tcs.TrySetResult(true);
                 }
 
-                return Task.CompletedTask;
+                return default;
             });
         }
 

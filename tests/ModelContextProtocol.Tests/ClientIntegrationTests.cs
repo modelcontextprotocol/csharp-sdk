@@ -265,7 +265,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
                     {
                         var notificationParams = JsonSerializer.Deserialize<ResourceUpdatedNotificationParams>(notification.Params, McpJsonUtilities.DefaultOptions);
                         tcs.TrySetResult(true);
-                        return Task.CompletedTask;
+                        return default;
                     })
                 ]
             }
@@ -295,7 +295,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
                     {
                         var notificationParams = JsonSerializer.Deserialize<ResourceUpdatedNotificationParams>(notification.Params, McpJsonUtilities.DefaultOptions);
                         receivedNotification.TrySetResult(true);
-                        return Task.CompletedTask;
+                        return default;
                     })
                 ]
             }
@@ -370,10 +370,10 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
             {
                 Sampling = new()
                 {
-                    SamplingHandler = (_, _, _) =>
+                    SamplingHandler = async (_, _, _) =>
                     {
                         samplingHandlerCalls++;
-                        return Task.FromResult(new CreateMessageResult
+                        return new CreateMessageResult
                         {
                             Model = "test-model",
                             Role = Role.Assistant,
@@ -382,7 +382,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
                                 Type = "text",
                                 Text = "Test response"
                             }
-                        });
+                        };
                     },
                 },
             },
@@ -569,7 +569,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
                         {
                             receivedNotification.TrySetResult(true);
                         }
-                        return Task.CompletedTask;
+                        return default;
                     })
                 ]
             }

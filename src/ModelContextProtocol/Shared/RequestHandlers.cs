@@ -30,7 +30,7 @@ internal sealed class RequestHandlers : Dictionary<string, Func<JsonRpcRequest, 
     /// </remarks>
     public void Set<TRequest, TResponse>(
         string method,
-        Func<TRequest?, CancellationToken, Task<TResponse>> handler,
+        Func<TRequest?, CancellationToken, ValueTask<TResponse>> handler,
         JsonTypeInfo<TRequest> requestTypeInfo,
         JsonTypeInfo<TResponse> responseTypeInfo)
     {

@@ -202,8 +202,8 @@ public class McpServerTests : LoggedTest
             {
                 Completions = new()
                 {
-                    CompleteHandler = (request, ct) =>
-                        Task.FromResult(new CompleteResult
+                    CompleteHandler = async (request, ct) =>
+                        new CompleteResult
                         {
                             Completion = new()
                             {
@@ -211,7 +211,7 @@ public class McpServerTests : LoggedTest
                                 Total = 2,
                                 HasMore = true
                             }
-                        })
+                        }
                 }
             },
             method: RequestMethods.CompletionComplete,
@@ -234,19 +234,19 @@ public class McpServerTests : LoggedTest
             {
                 Resources = new()
                 {
-                    ListResourceTemplatesHandler = (request, ct) =>
+                    ListResourceTemplatesHandler = async (request, ct) =>
                     {
-                        return Task.FromResult(new ListResourceTemplatesResult
+                        return new ListResourceTemplatesResult
                         {
                             ResourceTemplates = [new() { UriTemplate = "test", Name = "Test Resource" }]
-                        });
+                        };
                     },
-                    ListResourcesHandler = (request, ct) =>
+                    ListResourcesHandler = async (request, ct) =>
                     {
-                        return Task.FromResult(new ListResourcesResult
+                        return new ListResourcesResult
                         {
                             Resources = [new() { Uri = "test", Name = "Test Resource" }]
-                        });
+                        };
                     },
                     ReadResourceHandler = (request, ct) => throw new NotImplementedException(),
                 }
@@ -270,12 +270,12 @@ public class McpServerTests : LoggedTest
             {
                 Resources = new()
                 {
-                    ListResourcesHandler = (request, ct) =>
+                    ListResourcesHandler = async (request, ct) =>
                     {
-                        return Task.FromResult(new ListResourcesResult
+                        return new ListResourcesResult
                         {
                             Resources = [new() { Uri = "test", Name = "Test Resource" }]
-                        });
+                        };
                     },
                     ReadResourceHandler = (request, ct) => throw new NotImplementedException(),
                 }
@@ -305,12 +305,12 @@ public class McpServerTests : LoggedTest
             {
                 Resources = new()
                 {
-                    ReadResourceHandler = (request, ct) =>
+                    ReadResourceHandler = async (request, ct) =>
                     {
-                        return Task.FromResult(new ReadResourceResult
+                        return new ReadResourceResult
                         {
                             Contents = [new TextResourceContents { Text = "test" }]
-                        });
+                        };
                     },
                     ListResourcesHandler = (request, ct) => throw new NotImplementedException(),
                 }
@@ -342,12 +342,12 @@ public class McpServerTests : LoggedTest
             {
                 Prompts = new()
                 {
-                    ListPromptsHandler = (request, ct) =>
+                    ListPromptsHandler = async (request, ct) =>
                     {
-                        return Task.FromResult(new ListPromptsResult
+                        return new ListPromptsResult
                         {
                             Prompts = [new() { Name = "test" }]
-                        });
+                        };
                     },
                     GetPromptHandler = (request, ct) => throw new NotImplementedException(),
                 },
@@ -377,7 +377,7 @@ public class McpServerTests : LoggedTest
             {
                 Prompts = new()
                 {
-                    GetPromptHandler = (request, ct) => Task.FromResult(new GetPromptResult { Description = "test" }),
+                    GetPromptHandler = async (request, ct) => new GetPromptResult { Description = "test" },
                     ListPromptsHandler = (request, ct) => throw new NotImplementedException(),
                 }
             },
@@ -405,12 +405,12 @@ public class McpServerTests : LoggedTest
             {
                 Tools = new()
                 {
-                    ListToolsHandler = (request, ct) =>
+                    ListToolsHandler = async (request, ct) =>
                     {
-                        return Task.FromResult(new ListToolsResult
+                        return new ListToolsResult
                         {
                             Tools = [new() { Name = "test" }]
-                        });
+                        };
                     },
                     CallToolHandler = (request, ct) => throw new NotImplementedException(),
                 }
@@ -440,12 +440,12 @@ public class McpServerTests : LoggedTest
             {
                 Tools = new()
                 {
-                    CallToolHandler = (request, ct) =>
+                    CallToolHandler = async (request, ct) =>
                     {
-                        return Task.FromResult(new CallToolResponse
+                        return new CallToolResponse
                         {
                             Content = [new Content { Text = "test" }]
-                        });
+                        };
                     },
                     ListToolsHandler = (request, ct) => throw new NotImplementedException(),
                 }
@@ -623,7 +623,7 @@ public class McpServerTests : LoggedTest
             throw new NotImplementedException();
         public Task RunAsync(CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
-        public IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, Task> handler) =>
+        public IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler) =>
             throw new NotImplementedException();
     }
 
@@ -639,7 +639,7 @@ public class McpServerTests : LoggedTest
             NotificationHandlers = [new(NotificationMethods.ProgressNotification, (notification, cancellationToken) =>
             {
                 notificationReceived.TrySetResult(notification);
-                return Task.CompletedTask;
+                return default;
             })],
         };
 

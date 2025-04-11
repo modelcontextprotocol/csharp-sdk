@@ -40,7 +40,7 @@ public class ResourcesCapability
     /// allowing clients to discover available resource types and their access patterns.
     /// </remarks>
     [JsonIgnore]
-    public Func<RequestContext<ListResourceTemplatesRequestParams>, CancellationToken, Task<ListResourceTemplatesResult>>? ListResourceTemplatesHandler { get; set; }
+    public Func<RequestContext<ListResourceTemplatesRequestParams>, CancellationToken, ValueTask<ListResourceTemplatesResult>>? ListResourceTemplatesHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.ResourcesList"/> requests.
@@ -50,7 +50,7 @@ public class ResourcesCapability
     /// The implementation should return a <see cref="ListResourcesResult"/> with the matching resources.
     /// </remarks>
     [JsonIgnore]
-    public Func<RequestContext<ListResourcesRequestParams>, CancellationToken, Task<ListResourcesResult>>? ListResourcesHandler { get; set; }
+    public Func<RequestContext<ListResourcesRequestParams>, CancellationToken, ValueTask<ListResourcesResult>>? ListResourcesHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.ResourcesRead"/> requests.
@@ -62,7 +62,7 @@ public class ResourcesCapability
     /// its contents in a ReadResourceResult object.
     /// </remarks>
     [JsonIgnore]
-    public Func<RequestContext<ReadResourceRequestParams>, CancellationToken, Task<ReadResourceResult>>? ReadResourceHandler { get; set; }
+    public Func<RequestContext<ReadResourceRequestParams>, CancellationToken, ValueTask<ReadResourceResult>>? ReadResourceHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.ResourcesSubscribe"/> requests.
@@ -75,7 +75,7 @@ public class ResourcesCapability
     /// requiring polling.
     /// </remarks>
     [JsonIgnore]
-    public Func<RequestContext<SubscribeRequestParams>, CancellationToken, Task<EmptyResult>>? SubscribeToResourcesHandler { get; set; }
+    public Func<RequestContext<SubscribeRequestParams>, CancellationToken, ValueTask<EmptyResult>>? SubscribeToResourcesHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.ResourcesUnsubscribe"/> requests.
@@ -86,5 +86,5 @@ public class ResourcesCapability
     /// about the specified resource.
     /// </remarks>
     [JsonIgnore]
-    public Func<RequestContext<UnsubscribeRequestParams>, CancellationToken, Task<EmptyResult>>? UnsubscribeFromResourcesHandler { get; set; }
+    public Func<RequestContext<UnsubscribeRequestParams>, CancellationToken, ValueTask<EmptyResult>>? UnsubscribeFromResourcesHandler { get; set; }
 }

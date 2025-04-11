@@ -150,7 +150,7 @@ public abstract class McpServerTool : IMcpServerPrimitive
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>The call response from invoking the tool.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is <see langword="null"/>.</exception>
-    public abstract Task<CallToolResponse> InvokeAsync(
+    public abstract ValueTask<CallToolResponse> InvokeAsync(
         RequestContext<CallToolRequestParams> request,
         CancellationToken cancellationToken = default);
 

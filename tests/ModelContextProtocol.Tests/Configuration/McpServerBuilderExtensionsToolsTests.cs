@@ -16,8 +16,6 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
 
-#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
-
 namespace ModelContextProtocol.Tests.Configuration;
 
 public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
@@ -209,7 +207,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         await using (client.RegisterNotificationHandler(NotificationMethods.ToolListChangedNotification, (notification, cancellationToken) =>
             {
                 listChanged.Writer.TryWrite(notification);
-                return Task.CompletedTask;
+                return default;
             }))
         {
             serverTools.Add(newTool);
@@ -588,7 +586,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         {
             ProgressNotification pn = JsonSerializer.Deserialize<ProgressNotification>(notification.Params, McpJsonUtilities.DefaultOptions)!;
             notifications.Enqueue(pn);
-            return Task.CompletedTask;
+            return default;
         }))
         {
             var result = await client.SendRequestAsync<CallToolRequestParams, CallToolResponse>(
@@ -757,26 +755,8 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         public static string MethodD(string d) => d.ToString();
     }
 
-    public class ComplexObject
-    {
-        public string? Name { get; set; }
-        public int Age { get; set; }
-    }
-
     public class ObjectWithId
     {
         public string Id { get; set; } = Guid.NewGuid().ToString("N");
     }
-
-    [JsonSerializable(typeof(bool))]
-    [JsonSerializable(typeof(int))]
-    [JsonSerializable(typeof(long))]
-    [JsonSerializable(typeof(double))]
-    [JsonSerializable(typeof(string))]
-    [JsonSerializable(typeof(DateTime))]
-    [JsonSerializable(typeof(DateTimeOffset))]
-    [JsonSerializable(typeof(ComplexObject))]
-    [JsonSerializable(typeof(string[]))]
-    [JsonSerializable(typeof(JsonElement))]
-    partial class JsonContext : JsonSerializerContext;
 }

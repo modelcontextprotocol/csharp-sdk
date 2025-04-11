@@ -39,7 +39,7 @@ public class CancellationTests : ClientServerTestBase
         await using (Server.RegisterNotificationHandler(NotificationMethods.CancelledNotification, (notification, cancellationToken) =>
         {
             gotCancellation = true;
-            return Task.CompletedTask;
+            return default;
         }))
         {
             await Assert.ThrowsAsync<OperationCanceledException>(() => client.ListToolsAsync(cancellationToken: new CancellationToken(true)));

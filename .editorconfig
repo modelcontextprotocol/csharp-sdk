@@ -4,6 +4,9 @@ root = true
 # C# files
 [*.cs]
 
+# Compiler
+dotnet_diagnostic.CS1998.severity = suggestion      # CS1998: Missing awaits
+
 # Code Analysis
 dotnet_diagnostic.CA1002.severity = none            # CA1002: Do not expose generic lists
 dotnet_diagnostic.CA1031.severity = none            # CA1031: Do not catch general exception types

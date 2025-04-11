@@ -8,6 +8,8 @@ using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 
+#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
+
 namespace ModelContextProtocol.TestServer;
 
 internal static class Program
@@ -110,9 +112,9 @@ internal static class Program
     {
         return new()
         {
-            ListToolsHandler = (request, cancellationToken) =>
+            ListToolsHandler = async (request, cancellationToken) =>
             {
-                return Task.FromResult(new ListToolsResult()
+                return new ListToolsResult()
                 {
                     Tools =
                     [
@@ -155,7 +157,7 @@ internal static class Program
                                 """),
                         }
                     ]
-                });
+                };
             },
 
             CallToolHandler = async (request, cancellationToken) =>
@@ -199,9 +201,9 @@ internal static class Program
     {
         return new()
         {
-            ListPromptsHandler = (request, cancellationToken) =>
+            ListPromptsHandler = async (request, cancellationToken) =>
             {
-                return Task.FromResult(new ListPromptsResult()
+                return new ListPromptsResult()
                 {
                     Prompts = [
                         new Prompt()
@@ -230,10 +232,10 @@ internal static class Program
                             ]
                         }
                     ]
-                });
+                };
             },
 
-            GetPromptHandler = (request, cancellationToken) =>
+            GetPromptHandler = async (request, cancellationToken) =>
             {
                 List<PromptMessage> messages = [];
                 if (request.Params?.Name == "simple_prompt")
@@ -286,10 +288,10 @@ internal static class Program
                     throw new McpException($"Unknown prompt: {request.Params?.Name}");
                 }
 
-                return Task.FromResult(new GetPromptResult()
+                return new GetPromptResult()
                 {
                     Messages = messages
-                });
+                };
             }
         };
     }
@@ -300,7 +302,7 @@ internal static class Program
     {
         return new()
         {
-            SetLoggingLevelHandler = (request, cancellationToken) =>
+            SetLoggingLevelHandler = async (request, cancellationToken) =>
             {
                 if (request.Params?.Level is null)
                 {
@@ -309,7 +311,7 @@ internal static class Program
 
                 _minimumLoggingLevel = request.Params.Level;
 
-                return Task.FromResult(new EmptyResult());
+                return new EmptyResult();
             }
         };
     }
@@ -360,9 +362,9 @@ internal static class Program
 
         return new()
         {
-            ListResourceTemplatesHandler = (request, cancellationToken) =>
+            ListResourceTemplatesHandler = async (request, cancellationToken) =>
             {
-                return Task.FromResult(new ListResourceTemplatesResult()
+                return new ListResourceTemplatesResult()
                 {
                     ResourceTemplates = [
                         new ResourceTemplate()
@@ -371,10 +373,10 @@ internal static class Program
                             Name = "Dynamic Resource",
                         }
                     ]
-                });
+                };
             },
 
-            ListResourcesHandler = (request, cancellationToken) =>
+            ListResourcesHandler = async (request, cancellationToken) =>
             {
                 int startIndex = 0;
                 if (request.Params?.Cursor is not null)
@@ -397,14 +399,14 @@ internal static class Program
                 {
                     nextCursor = Convert.ToBase64String(Encoding.UTF8.GetBytes(endIndex.ToString()));
                 }
-                return Task.FromResult(new ListResourcesResult()
+                return new ListResourcesResult()
                 {
                     NextCursor = nextCursor,
                     Resources = resources.GetRange(startIndex, endIndex - startIndex)
-                });
+                };
             },
 
-            ReadResourceHandler = (request, cancellationToken) =>
+            ReadResourceHandler = async (request, cancellationToken) =>
             {
                 if (request.Params?.Uri is null)
                 {
@@ -418,7 +420,8 @@ internal static class Program
                     {
                         throw new McpException("Invalid resource URI");
                     }
-                    return Task.FromResult(new ReadResourceResult()
+
+                    return new ReadResourceResult()
                     {
                         Contents = [
                             new TextResourceContents()
@@ -428,19 +431,19 @@ internal static class Program
                                 Text = $"Dynamic resource {id}: This is a plaintext resource"
                             }
                         ]
-                    });
+                    };
                 }
 
                 ResourceContents contents = resourceContents.FirstOrDefault(r => r.Uri == request.Params.Uri)
                     ?? throw new McpException("Resource not found");
 
-                return Task.FromResult(new ReadResourceResult()
+                return new ReadResourceResult()
                 {
                     Contents = [contents]
-                });
+                };
             },
 
-            SubscribeToResourcesHandler = (request, cancellationToken) =>
+            SubscribeToResourcesHandler = async (request, cancellationToken) =>
             {
                 if (request?.Params?.Uri is null)
                 {
@@ -454,10 +457,10 @@ internal static class Program
 
                 _subscribedResources.TryAdd(request.Params.Uri, true);
 
-                return Task.FromResult(new EmptyResult());
+                return new EmptyResult();
             },
 
-            UnsubscribeFromResourcesHandler = (request, cancellationToken) =>
+            UnsubscribeFromResourcesHandler = async (request, cancellationToken) =>
             {
                 if (request?.Params?.Uri is null)
                 {
@@ -471,7 +474,7 @@ internal static class Program
 
                 _subscribedResources.TryRemove(request.Params.Uri, out _);
 
-                return Task.FromResult(new EmptyResult());
+                return new EmptyResult();
             },
 
             Subscribe = true
@@ -487,17 +490,17 @@ internal static class Program
             {"temperature", ["0", "0.5", "0.7", "1.0"]},
         };
 
-        Func<RequestContext<CompleteRequestParams>, CancellationToken, Task<CompleteResult>> handler = (request, cancellationToken) =>
+        Func<RequestContext<CompleteRequestParams>, CancellationToken, ValueTask<CompleteResult>> handler = async (request, cancellationToken) =>
         {
             if (request.Params?.Ref?.Type == "ref/resource")
             {
                 var resourceId = request.Params?.Ref?.Uri?.Split('/').LastOrDefault();
                 if (string.IsNullOrEmpty(resourceId))
-                    return Task.FromResult(new CompleteResult() { Completion = new() { Values = [] } });
+                    return new CompleteResult() { Completion = new() { Values = [] } };
 
                 // Filter resource IDs that start with the input value
                 var values = sampleResourceIds.Where(id => id.StartsWith(request.Params!.Argument.Value)).ToArray();
-                return Task.FromResult(new CompleteResult() { Completion = new() { Values = values, HasMore = false, Total = values.Length } });
+                return new CompleteResult() { Completion = new() { Values = values, HasMore = false, Total = values.Length } };
 
             }
 
@@ -505,10 +508,10 @@ internal static class Program
             {
                 // Handle completion for prompt arguments
                 if (!exampleCompletions.TryGetValue(request.Params.Argument.Name, out var completions))
-                    return Task.FromResult(new CompleteResult() { Completion = new() { Values = [] } });
+                    return new CompleteResult() { Completion = new() { Values = [] } };
 
                 var values = completions.Where(value => value.StartsWith(request.Params.Argument.Value)).ToArray();
-                return Task.FromResult(new CompleteResult() { Completion = new() { Values = values, HasMore = false, Total = values.Length } });
+                return new CompleteResult() { Completion = new() { Values = values, HasMore = false, Total = values.Length } };
             }
 
             throw new McpException($"Unknown reference type: {request.Params?.Ref.Type}");

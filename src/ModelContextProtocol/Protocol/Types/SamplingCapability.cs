@@ -40,5 +40,5 @@ public class SamplingCapability
     /// </para>
     /// </remarks>
     [JsonIgnore]
-    public Func<CreateMessageRequestParams?, IProgress<ProgressNotificationValue>, CancellationToken, Task<CreateMessageResult>>? SamplingHandler { get; set; }
+    public Func<CreateMessageRequestParams?, IProgress<ProgressNotificationValue>, CancellationToken, ValueTask<CreateMessageResult>>? SamplingHandler { get; set; }
 }

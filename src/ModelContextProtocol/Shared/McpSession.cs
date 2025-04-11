@@ -314,7 +314,7 @@ internal sealed class McpSession : IDisposable
         }, Tuple.Create(this, requestId));
     }
 
-    public IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, Task> handler)
+    public IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler)
     {
         Throw.IfNullOrWhiteSpace(method);
         Throw.IfNull(handler);

@@ -12,10 +12,7 @@ public class McpServerLoggingLevelTests
 
         services.AddMcpServer()
             .WithStdioServerTransport()
-            .WithSetLoggingLevelHandler((ctx, ct) =>
-            {
-                return Task.FromResult(new EmptyResult());
-            });
+            .WithSetLoggingLevelHandler(async (ctx, ct) => new EmptyResult());
 
         var provider = services.BuildServiceProvider();
 
@@ -29,10 +26,7 @@ public class McpServerLoggingLevelTests
 
         services.AddMcpServer()
             .WithStdioServerTransport()
-            .WithSetLoggingLevelHandler((ctx, ct) =>
-            {
-                return Task.FromResult(new EmptyResult());
-            });
+            .WithSetLoggingLevelHandler(async (ctx, ct) => new EmptyResult());
 
         var provider = services.BuildServiceProvider();
 
