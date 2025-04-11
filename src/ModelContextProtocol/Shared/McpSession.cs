@@ -298,7 +298,18 @@ internal sealed partial class McpSession : IDisposable
         if (!_requestHandlers.TryGetValue(request.Method, out var handler))
         {
             LogNoHandlerFoundForRequest(EndpointName, request.Method);
-            throw new McpException($"Method '{request.Method}' is not available.", McpErrorCode.MethodNotFound);
+            await SendMessageAsync(new JsonRpcError
+            {
+                Id = request.Id,
+                JsonRpc = "2.0",
+                Error = new JsonRpcErrorDetail
+                {
+                    Message = $"{EndpointName} lacks capability to do {request.Method}",
+                    Code = (int) McpErrorCode.MethodNotFound,
+                },
+                RelatedTransport = request.RelatedTransport
+            }, cancellationToken).ConfigureAwait(false);
+            return null;
         }
 
         LogRequestHandlerCalled(EndpointName, request.Method);
