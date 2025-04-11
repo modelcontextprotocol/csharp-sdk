@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
-using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
+using System;
 using System.Diagnostics;
 
 namespace ModelContextProtocol.Protocol.Transport;
@@ -49,7 +49,6 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
 
         if (hasExited)
         {
-            Logger.TransportNotConnected(EndpointName);
             throw new McpTransportException("Transport is not connected", processException);
         }
 
@@ -59,7 +58,14 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
     /// <inheritdoc/>
     protected override ValueTask CleanupAsync(CancellationToken cancellationToken)
     {
-        StdioClientTransport.DisposeProcess(_process, processRunning: true, Logger, _options.ShutdownTimeout, EndpointName);
+        try
+        {
+            StdioClientTransport.DisposeProcess(_process, processRunning: true, _options.ShutdownTimeout, Name);
+        }
+        catch (Exception ex)
+        {
+            LogTransportShutdownFailed(Name, ex);
+        }
 
         return base.CleanupAsync(cancellationToken);
     }

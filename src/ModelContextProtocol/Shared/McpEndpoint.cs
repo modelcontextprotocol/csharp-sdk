@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Server;
@@ -17,7 +16,7 @@ namespace ModelContextProtocol.Shared;
 /// This is especially true as a client represents a connection to one and only one server, and vice versa.
 /// Any multi-client or multi-server functionality should be implemented at a higher level of abstraction.
 /// </summary>
-internal abstract class McpEndpoint : IAsyncDisposable
+internal abstract partial class McpEndpoint : IAsyncDisposable
 {
     /// <summary>Cached naming information used for name/version when none is specified.</summary>
     internal static AssemblyName DefaultAssemblyName { get; } = (Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly()).GetName();
@@ -95,7 +94,7 @@ internal abstract class McpEndpoint : IAsyncDisposable
     /// <returns></returns>
     public virtual async ValueTask DisposeUnsynchronizedAsync()
     {
-        _logger.CleaningUpEndpoint(EndpointName);
+        LogEndpointShuttingDown(EndpointName);
 
         try
         {
@@ -122,9 +121,15 @@ internal abstract class McpEndpoint : IAsyncDisposable
             _sessionCts?.Dispose();
         }
 
-        _logger.EndpointCleanedUp(EndpointName);
+        LogEndpointShutDown(EndpointName);
     }
 
     protected McpSession GetSessionOrThrow()
         => _session ?? throw new InvalidOperationException($"This should be unreachable from public API! Call {nameof(InitializeSession)} before sending messages.");
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} shutting down.")]
+    private partial void LogEndpointShuttingDown(string endpointName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} shut down.")]
+    private partial void LogEndpointShutDown(string endpointName);
 }

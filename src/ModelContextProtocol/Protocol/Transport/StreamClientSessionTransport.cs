@@ -1,6 +1,4 @@
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
-using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
@@ -40,17 +38,14 @@ internal class StreamClientSessionTransport : TransportBase
     /// </remarks>
     public StreamClientSessionTransport(
         TextWriter serverInput, TextReader serverOutput, string endpointName, ILoggerFactory? loggerFactory)
-        : base(loggerFactory)
+        : base(endpointName, loggerFactory)
     {
-        Logger = (ILogger?)loggerFactory?.CreateLogger<StdioClientTransport>() ?? NullLogger.Instance;
         _serverOutput = serverOutput;
         _serverInput = serverInput;
-        EndpointName = endpointName;
 
         // Start reading messages in the background. We use the rarer pattern of new Task + Start
         // in order to ensure that the body of the task will always see _readTask initialized.
         // It is then able to reliably null it out on completion.
-        Logger.TransportReadingMessages(endpointName);
         var readTask = new Task<Task>(
             thisRef => ((StreamClientSessionTransport)thisRef!).ReadMessagesAsync(_shutdownCts.Token), 
             this,
@@ -60,25 +55,6 @@ internal class StreamClientSessionTransport : TransportBase
 
         SetConnected(true);
     }
-
-    /// <summary>
-    /// Gets the logger instance used by this transport for diagnostic output.
-    /// If no logger factory was provided in the constructor, this will be a NullLogger.
-    /// </summary>
-    /// <remarks>
-    /// Derived classes can use this logger to emit additional diagnostic information
-    /// specific to their implementation.
-    /// </remarks>
-    protected ILogger Logger { get; private set; }
-
-    /// <summary>
-    /// Gets the name that identifies this transport endpoint in logs.
-    /// </summary>
-    /// <remarks>
-    /// This name is provided during construction and is used in log messages to identify
-    /// the source of transport-related events.
-    /// </remarks>
-    protected string EndpointName { get; }
 
     /// <inheritdoc/>
     /// <remarks>
@@ -102,7 +78,6 @@ internal class StreamClientSessionTransport : TransportBase
     {
         if (!IsConnected)
         {
-            Logger.TransportNotConnected(EndpointName);
             throw new McpTransportException("Transport is not connected");
         }
 
@@ -117,18 +92,13 @@ internal class StreamClientSessionTransport : TransportBase
         using var _ = await _sendLock.LockAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            Logger.TransportSendingMessage(EndpointName, id, json);
-            Logger.TransportMessageBytesUtf8(EndpointName, json);
-
             // Write the message followed by a newline using our UTF-8 writer
             await _serverInput.WriteLineAsync(json).ConfigureAwait(false);
             await _serverInput.FlushAsync(cancellationToken).ConfigureAwait(false);
-
-            Logger.TransportSentMessage(EndpointName, id);
         }
         catch (Exception ex)
         {
-            Logger.TransportSendFailed(EndpointName, id, ex);
+            LogTransportSendFailed(Name, id, ex);
             throw new McpTransportException("Failed to send message", ex);
         }
     }
@@ -151,14 +121,13 @@ internal class StreamClientSessionTransport : TransportBase
     {
         try
         {
-            Logger.TransportEnteringReadMessagesLoop(EndpointName);
+            LogTransportEnteringReadMessagesLoop(Name);
 
             while (!cancellationToken.IsCancellationRequested)
             {
-                Logger.TransportWaitingForMessage(EndpointName);
                 if (await _serverOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false) is not string line)
                 {
-                    Logger.TransportEndOfStream(EndpointName);
+                    LogTransportEndOfStream(Name);
                     break;
                 }
 
@@ -167,20 +136,18 @@ internal class StreamClientSessionTransport : TransportBase
                     continue;
                 }
 
-                Logger.TransportReceivedMessage(EndpointName, line);
-                Logger.TransportMessageBytesUtf8(EndpointName, line);
+                LogTransportReceivedMessageSensitive(Name, line);
 
                 await ProcessMessageAsync(line, cancellationToken).ConfigureAwait(false);
             }
-            Logger.TransportExitingReadMessagesLoop(EndpointName);
         }
         catch (OperationCanceledException)
         {
-            Logger.TransportReadMessagesCancelled(EndpointName);
+            LogTransportReadMessagesCancelled(Name);
         }
         catch (Exception ex)
         {
-            Logger.TransportReadMessagesFailed(EndpointName, ex);
+            LogTransportReadMessagesFailed(Name, ex);
         }
         finally
         {
@@ -202,24 +169,31 @@ internal class StreamClientSessionTransport : TransportBase
                     messageId = messageWithId.Id.ToString();
                 }
 
-                Logger.TransportReceivedMessageParsed(EndpointName, messageId);
+                LogTransportReceivedMessage(Name, messageId);
                 await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
-                Logger.TransportMessageWritten(EndpointName, messageId);
+                LogTransportMessageWritten(Name, messageId);
             }
             else
             {
-                Logger.TransportMessageParseUnexpectedType(EndpointName, line);
+                LogTransportMessageParseUnexpectedTypeSensitive(Name, line);
             }
         }
         catch (JsonException ex)
         {
-            Logger.TransportMessageParseFailed(EndpointName, line, ex);
+            if (Logger.IsEnabled(LogLevel.Trace))
+            {
+                LogTransportMessageParseFailedSensitive(Name, line, ex);
+            }
+            else
+            {
+                LogTransportMessageParseFailed(Name, ex);
+            }
         }
     }
 
     protected virtual async ValueTask CleanupAsync(CancellationToken cancellationToken)
     {
-        Logger.TransportCleaningUp(EndpointName);
+        LogTransportShuttingDown(Name);
 
         if (Interlocked.Exchange(ref _shutdownCts, null) is { } shutdownCts)
         {
@@ -231,25 +205,18 @@ internal class StreamClientSessionTransport : TransportBase
         {
             try
             {
-                Logger.TransportWaitingForReadTask(EndpointName);
                 await readTask.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
-                Logger.TransportReadTaskCleanedUp(EndpointName);
-            }
-            catch (TimeoutException)
-            {
-                Logger.TransportCleanupReadTaskTimeout(EndpointName);
             }
             catch (OperationCanceledException)
             {
-                Logger.TransportCleanupReadTaskCancelled(EndpointName);
             }
             catch (Exception ex)
             {
-                Logger.TransportCleanupReadTaskFailed(EndpointName, ex);
+                LogTransportCleanupReadTaskFailed(Name, ex);
             }
         }
 
         SetConnected(false);
-        Logger.TransportCleanedUp(EndpointName);
+        LogTransportShutDown(Name);
     }
 }

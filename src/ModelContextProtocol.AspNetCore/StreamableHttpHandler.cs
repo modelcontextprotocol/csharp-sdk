@@ -9,6 +9,7 @@ using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils.Json;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Security.Cryptography;
 
 namespace ModelContextProtocol.AspNetCore;
@@ -61,18 +62,19 @@ internal sealed class StreamableHttpHandler(
         var httpMcpSession = new HttpMcpSession(transport, context.User);
         if (!_sessions.TryAdd(sessionId, httpMcpSession))
         {
-            throw new Exception($"Unreachable given good entropy! Session with ID '{sessionId}' has already been created.");
-        }
-
-        var mcpServerOptions = mcpServerOptionsSnapshot.Value;
-        if (httpMcpServerOptions.Value.ConfigureSessionOptions is { } configureSessionOptions)
-        {
-            mcpServerOptions = mcpServerOptionsFactory.Create(Options.DefaultName);
-            await configureSessionOptions(context, mcpServerOptions, cancellationToken);
+            Debug.Fail("Unreachable given good entropy!");
+            throw new InvalidOperationException($"Session with ID '{sessionId}' has already been created.");
         }
 
         try
         {
+            var mcpServerOptions = mcpServerOptionsSnapshot.Value;
+            if (httpMcpServerOptions.Value.ConfigureSessionOptions is { } configureSessionOptions)
+            {
+                mcpServerOptions = mcpServerOptionsFactory.Create(Options.DefaultName);
+                await configureSessionOptions(context, mcpServerOptions, cancellationToken);
+            }
+
             var transportTask = transport.RunAsync(cancellationToken);
 
             try

@@ -1,6 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Utils;
@@ -19,7 +18,7 @@ namespace ModelContextProtocol.Shared;
 /// <summary>
 /// Class for managing an MCP JSON-RPC session. This covers both MCP clients and servers.
 /// </summary>
-internal sealed class McpSession : IDisposable
+internal sealed partial class McpSession : IDisposable
 {
     private static readonly Histogram<double> s_clientSessionDuration = Diagnostics.CreateDurationHistogram(
         "mcp.client.session.duration", "Measures the duration of a client session.", longBuckets: true);
@@ -101,7 +100,7 @@ internal sealed class McpSession : IDisposable
         {
             await foreach (var message in _transport.MessageReader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
-                _logger.TransportMessageRead(EndpointName, message.GetType().Name);
+                LogMessageRead(EndpointName, message.GetType().Name);
 
                 _ = ProcessMessageAsync();
                 async Task ProcessMessageAsync()
@@ -142,7 +141,7 @@ internal sealed class McpSession : IDisposable
 
                         if (!isUserCancellation && message is JsonRpcRequest request)
                         {
-                            _logger.RequestHandlerError(EndpointName, request.Method, ex);
+                            LogRequestHandlerException(EndpointName, request.Method, ex);
                             await _transport.SendMessageAsync(new JsonRpcError
                             {
                                 Id = request.Id,
@@ -156,8 +155,14 @@ internal sealed class McpSession : IDisposable
                         }
                         else if (ex is not OperationCanceledException)
                         {
-                            var payload = JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.IJsonRpcMessage);
-                            _logger.MessageHandlerError(EndpointName, message.GetType().Name, payload, ex);
+                            if (_logger.IsEnabled(LogLevel.Trace))
+                            {
+                                LogMessageHandlerExceptionSensitive(EndpointName, message.GetType().Name, JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.IJsonRpcMessage), ex);
+                            }
+                            else
+                            {
+                                LogMessageHandlerException(EndpointName, message.GetType().Name, ex);
+                            }
                         }
                     }
                     finally
@@ -174,7 +179,7 @@ internal sealed class McpSession : IDisposable
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             // Normal shutdown
-            _logger.EndpointMessageProcessingCancelled(EndpointName);
+            LogEndpointMessageProcessingCanceled(EndpointName);
         }
         finally
         {
@@ -226,7 +231,7 @@ internal sealed class McpSession : IDisposable
                     break;
 
                 default:
-                    _logger.EndpointHandlerUnexpectedMessageType(EndpointName, message.GetType().Name);
+                    LogEndpointHandlerUnexpectedMessageType(EndpointName, message.GetType().Name);
                     break;
             }
         }
@@ -252,7 +257,7 @@ internal sealed class McpSession : IDisposable
                     _handlingRequests.TryGetValue(cn.RequestId, out var cts))
                 {
                     await cts.CancelAsync().ConfigureAwait(false);
-                    _logger.RequestCanceled(cn.RequestId, cn.Reason);
+                    LogRequestCanceled(EndpointName, cn.RequestId, cn.Reason);
                 }
             }
             catch
@@ -267,18 +272,13 @@ internal sealed class McpSession : IDisposable
 
     private void HandleMessageWithId(IJsonRpcMessage message, IJsonRpcMessageWithId messageWithId)
     {
-        if (messageWithId.Id.Id is null)
+        if (_pendingRequests.TryRemove(messageWithId.Id, out var tcs))
         {
-            _logger.RequestHasInvalidId(EndpointName);
-        }
-        else if (_pendingRequests.TryRemove(messageWithId.Id, out var tcs))
-        {
-            _logger.ResponseMatchedPendingRequest(EndpointName, messageWithId.Id.ToString());
             tcs.TrySetResult(message);
         }
         else
         {
-            _logger.NoRequestFoundForMessageWithId(EndpointName, messageWithId.Id.ToString());
+            LogNoRequestFoundForMessageWithId(EndpointName, messageWithId.Id);
         }
     }
 
@@ -286,13 +286,14 @@ internal sealed class McpSession : IDisposable
     {
         if (!_requestHandlers.TryGetValue(request.Method, out var handler))
         {
-            _logger.NoHandlerFoundForRequest(EndpointName, request.Method);
+            LogNoHandlerFoundForRequest(EndpointName, request.Method);
             throw new McpException("The method does not exist or is not available.", ErrorCodes.MethodNotFound);
         }
 
-        _logger.RequestHandlerCalled(EndpointName, request.Method);
+        LogRequestHandlerCalled(EndpointName, request.Method);
         JsonNode? result = await handler(request, cancellationToken).ConfigureAwait(false);
-        _logger.RequestHandlerCompleted(EndpointName, request.Method);
+        LogRequestHandlerCompleted(EndpointName, request.Method);
+
         await _transport.SendMessageAsync(new JsonRpcResponse
         {
             Id = request.Id,
@@ -341,7 +342,6 @@ internal sealed class McpSession : IDisposable
     {
         if (!_transport.IsConnected)
         {
-            _logger.EndpointNotConnected(EndpointName);
             throw new McpException("Transport is not connected");
         }
 
@@ -375,21 +375,21 @@ internal sealed class McpSession : IDisposable
                 AddTags(ref tags, activity, request, method);
             }
 
-            // Expensive logging, use the logging framework to check if the logger is enabled
-            if (_logger.IsEnabled(LogLevel.Debug))
+            if (_logger.IsEnabled(LogLevel.Trace))
             {
-                _logger.SendingRequestPayload(EndpointName, JsonSerializer.Serialize(request, McpJsonUtilities.JsonContext.Default.JsonRpcRequest));
+                LogSendingRequestSensitive(EndpointName, request.Method, JsonSerializer.Serialize(request, McpJsonUtilities.JsonContext.Default.IJsonRpcMessage));
+            }
+            else
+            {
+                LogSendingRequest(EndpointName, request.Method);
             }
 
-            // Less expensive information logging
-            _logger.SendingRequest(EndpointName, request.Method);
-
             await _transport.SendMessageAsync(request, cancellationToken).ConfigureAwait(false);
-            _logger.RequestSentAwaitingResponse(EndpointName, request.Method, request.Id.ToString());
 
             // Now that the request has been sent, register for cancellation. If we registered before,
             // a cancellation request could arrive before the server knew about that request ID, in which
             // case the server could ignore it.
+            LogRequestSentAwaitingResponse(EndpointName, request.Method, request.Id);
             IJsonRpcMessage? response;
             using (var registration = RegisterCancellation(cancellationToken, request.Id))
             {
@@ -398,8 +398,8 @@ internal sealed class McpSession : IDisposable
 
             if (response is JsonRpcError error)
             {
-                _logger.RequestFailed(EndpointName, request.Method, error.Error.Message, error.Error.Code);
-                throw new McpException($"Request failed (server side): {error.Error.Message}", error.Error.Code);
+                LogSendingRequestFailed(EndpointName, request.Method, error.Error.Message, error.Error.Code);
+                throw new McpException($"Request failed (remote): {error.Error.Message}", error.Error.Code);
             }
 
             if (response is JsonRpcResponse success)
@@ -409,13 +409,20 @@ internal sealed class McpSession : IDisposable
                     AddResponseTags(ref tags, activity, success.Result, method);
                 }
 
-                _logger.RequestResponseReceivedPayload(EndpointName, success.Result?.ToJsonString() ?? "null");
-                _logger.RequestResponseReceived(EndpointName, request.Method);
+                if (_logger.IsEnabled(LogLevel.Trace))
+                {
+                    LogRequestResponseReceivedSensitive(EndpointName, request.Method, success.Result?.ToJsonString() ?? "null");
+                }
+                else
+                {
+                    LogRequestResponseReceived(EndpointName, request.Method);
+                }
+
                 return success;
             }
 
             // Unexpected response type
-            _logger.RequestInvalidResponseType(EndpointName, request.Method);
+            LogSendingRequestInvalidResponseType(EndpointName, request.Method);
             throw new McpException("Invalid response type");
         }
         catch (Exception ex) when (addTags)
@@ -436,7 +443,6 @@ internal sealed class McpSession : IDisposable
 
         if (!_transport.IsConnected)
         {
-            _logger.ClientNotConnected(EndpointName);
             throw new McpException("Transport is not connected");
         }
 
@@ -463,9 +469,13 @@ internal sealed class McpSession : IDisposable
                 AddTags(ref tags, activity, message, method);
             }
 
-            if (_logger.IsEnabled(LogLevel.Debug))
+            if (_logger.IsEnabled(LogLevel.Trace))
             {
-                _logger.SendingMessage(EndpointName, JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.IJsonRpcMessage));
+                LogSendingMessageSensitive(EndpointName, JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.IJsonRpcMessage));
+            }
+            else
+            {
+                LogSendingMessage(EndpointName);
             }
 
             await _transport.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
@@ -683,4 +693,64 @@ internal sealed class McpSession : IDisposable
 
         return null;
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} message processing canceled.")]
+    private partial void LogEndpointMessageProcessingCanceled(string endpointName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} method '{Method}' request handler called.")]
+    private partial void LogRequestHandlerCalled(string endpointName, string method);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} method '{Method}' request handler completed.")]
+    private partial void LogRequestHandlerCompleted(string endpointName, string method);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} method '{Method}' request handler failed.")]
+    private partial void LogRequestHandlerException(string endpointName, string method, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} received request for unknown request ID '{RequestId}'.")]
+    private partial void LogNoRequestFoundForMessageWithId(string endpointName, RequestId requestId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} request failed for method '{Method}': {ErrorMessage} ({ErrorCode}).")]
+    private partial void LogSendingRequestFailed(string endpointName, string method, string errorMessage, int errorCode);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received invalid response for method '{Method}'.")]
+    private partial void LogSendingRequestInvalidResponseType(string endpointName, string method);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "{EndpointName} sending method '{Method}' request.")]
+    private partial void LogSendingRequest(string endpointName, string method);
+
+    [LoggerMessage(Level = LogLevel.Trace, Message = "{EndpointName} sending method '{Method}' request. Request: '{Request}'.")]
+    private partial void LogSendingRequestSensitive(string endpointName, string method, string request);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} canceled request '{RequestId}' per client notification. Reason: '{Reason}'.")]
+    private partial void LogRequestCanceled(string endpointName, RequestId requestId, string? reason);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "{EndpointName} Request response received for method {method}")]
+    private partial void LogRequestResponseReceived(string endpointName, string method);
+
+    [LoggerMessage(Level = LogLevel.Trace, Message = "{EndpointName} Request response received for method {method}. Response: '{Response}'.")]
+    private partial void LogRequestResponseReceivedSensitive(string endpointName, string method, string response);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "{EndpointName} read {MessageType} message from channel.")]
+    private partial void LogMessageRead(string endpointName, string messageType);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} message handler {MessageType} failed.")]
+    private partial void LogMessageHandlerException(string endpointName, string messageType, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Trace, Message = "{EndpointName} message handler {MessageType} failed. Message: '{Message}'.")]
+    private partial void LogMessageHandlerExceptionSensitive(string endpointName, string messageType, string message, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received unexpected {MessageType} message type.")]
+    private partial void LogEndpointHandlerUnexpectedMessageType(string endpointName, string messageType);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received request for method '{Method}', but not handler is available.")]
+    private partial void LogNoHandlerFoundForRequest(string endpointName, string method);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "{EndpointName} waiting for response to request '{RequestId}' for method '{Method}'.")]
+    private partial void LogRequestSentAwaitingResponse(string endpointName, string method, RequestId requestId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "{EndpointName} sending message.")]
+    private partial void LogSendingMessage(string endpointName);
+
+    [LoggerMessage(Level = LogLevel.Trace, Message = "{EndpointName} sending message. Message: '{Message}'.")]
+    private partial void LogSendingMessageSensitive(string endpointName, string message);
 }

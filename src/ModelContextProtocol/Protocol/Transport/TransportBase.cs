@@ -1,6 +1,5 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
-using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -20,7 +19,7 @@ namespace ModelContextProtocol.Protocol.Transport;
 /// to handle the specific transport mechanism being used.
 /// </para>
 /// </remarks>
-public abstract class TransportBase : ITransport
+public abstract partial class TransportBase : ITransport
 {
     private readonly Channel<IJsonRpcMessage> _messageChannel;
     private readonly ILogger _logger;
@@ -29,16 +28,29 @@ public abstract class TransportBase : ITransport
     /// <summary>
     /// Initializes a new instance of the <see cref="TransportBase"/> class.
     /// </summary>
-    protected TransportBase(ILoggerFactory? loggerFactory)
+    protected TransportBase(string name, ILoggerFactory? loggerFactory)
     {
+        Name = name;
+        _logger = loggerFactory?.CreateLogger(GetType()) ?? NullLogger.Instance;
+
         // Unbounded channel to prevent blocking on writes
         _messageChannel = Channel.CreateUnbounded<IJsonRpcMessage>(new UnboundedChannelOptions
         {
             SingleReader = true,
             SingleWriter = true,
         });
-        _logger = loggerFactory?.CreateLogger(GetType()) ?? NullLogger.Instance;
     }
+
+    /// <summary>Gets the logger used by this transport.</summary>
+    private protected ILogger Logger => _logger;
+
+    /// <summary>
+    /// Gets the name that identifies this transport endpoint in logs.
+    /// </summary>
+    /// <remarks>
+    /// This name is used in log messages to identify the source of transport-related events.
+    /// </remarks>
+    protected string Name { get; }
 
     /// <inheritdoc/>
     public bool IsConnected => _isConnected == 1;
@@ -64,9 +76,7 @@ public abstract class TransportBase : ITransport
             throw new McpTransportException("Transport is not connected");
         }
 
-        _logger.TransportWritingMessageToChannel(message);
         await _messageChannel.Writer.WriteAsync(message, cancellationToken).ConfigureAwait(false);
-        _logger.TransportMessageWrittenToChannel();
     }
 
     /// <summary>
@@ -86,4 +96,64 @@ public abstract class TransportBase : ITransport
             _messageChannel.Writer.Complete();
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "{EndpointName} transport connect failed.")]
+    private protected partial void LogTransportConnectFailed(string endpointName, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "{EndpointName} transport send failed for message ID '{MessageId}'.")]
+    private protected partial void LogTransportSendFailed(string endpointName, string messageId, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} transport reading messages.")]
+    private protected partial void LogTransportEnteringReadMessagesLoop(string endpointName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} transport completed reading messages.")]
+    private protected partial void LogTransportEndOfStream(string endpointName);
+
+    [LoggerMessage(Level = LogLevel.Trace, Message = "{EndpointName} transport received message. Message: '{Message}'.")]
+    private protected partial void LogTransportReceivedMessageSensitive(string endpointName, string message);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "{EndpointName} transport received message with ID '{MessageId}'.")]
+    private protected partial void LogTransportReceivedMessage(string endpointName, string messageId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "{EndpointName} transport sent message with ID '{MessageId}'.")]
+    private protected partial void LogTransportMessageWritten(string endpointName, string messageId);
+
+    [LoggerMessage(Level = LogLevel.Trace, Message = "{EndpointName} transport received unexpected message. Message: '{Message}'.")]
+    private protected partial void LogTransportMessageParseUnexpectedTypeSensitive(string endpointName, string message);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} transport message parsing failed.")]
+    private protected partial void LogTransportMessageParseFailed(string endpointName, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Trace, Message = "{EndpointName} transport message parsing failed. Message: '{Message}'.")]
+    private protected partial void LogTransportMessageParseFailedSensitive(string endpointName, string message, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} transport message reading canceled.")]
+    private protected partial void LogTransportReadMessagesCancelled(string endpointName);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} transport message reading failed.")]
+    private protected partial void LogTransportReadMessagesFailed(string endpointName, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} shutting down.")]
+    private protected partial void LogTransportShuttingDown(string endpointName);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} shutdown failed.")]
+    private protected partial void LogTransportShutdownFailed(string endpointName, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} shutdown failed waiting for message reading completion.")]
+    private protected partial void LogTransportCleanupReadTaskFailed(string endpointName, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} shut down.")]
+    private protected partial void LogTransportShutDown(string endpointName);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received message before connected.")]
+    private protected partial void LogTransportMessageReceivedBeforeConnected(string endpointName);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} endpoint event received out of order.")]
+    private protected partial void LogTransportEndpointEventInvalid(string endpointName);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} failed to parse event.")]
+    private protected partial void LogTransportEndpointEventParseFailed(string endpointName, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} failed to parse event. Message: '{Message}'.")]
+    private protected partial void LogTransportEndpointEventParseFailedSensitive(string endpointName, string message, Exception exception);
 }

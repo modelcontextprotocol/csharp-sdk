@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging;
-using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
@@ -10,7 +9,7 @@ using System.Text.Json;
 namespace ModelContextProtocol.Client;
 
 /// <inheritdoc/>
-internal sealed class McpClient : McpEndpoint, IMcpClient
+internal sealed partial class McpClient : McpEndpoint, IMcpClient
 {
     private static Implementation DefaultImplementation { get; } = new()
     {
@@ -133,9 +132,12 @@ internal sealed class McpClient : McpEndpoint, IMcpClient
                     cancellationToken: initializationCts.Token).ConfigureAwait(false);
 
                 // Store server information
-                _logger.ServerCapabilitiesReceived(EndpointName,
-                    capabilities: JsonSerializer.Serialize(initializeResponse.Capabilities, McpJsonUtilities.JsonContext.Default.ServerCapabilities),
-                    serverInfo: JsonSerializer.Serialize(initializeResponse.ServerInfo, McpJsonUtilities.JsonContext.Default.Implementation));
+                if (_logger.IsEnabled(LogLevel.Information))
+                {
+                    LogServerCapabilitiesReceived(EndpointName,
+                        capabilities: JsonSerializer.Serialize(initializeResponse.Capabilities, McpJsonUtilities.JsonContext.Default.ServerCapabilities),
+                        serverInfo: JsonSerializer.Serialize(initializeResponse.ServerInfo, McpJsonUtilities.JsonContext.Default.Implementation));
+                }
 
                 _serverCapabilities = initializeResponse.Capabilities;
                 _serverInfo = initializeResponse.ServerInfo;
@@ -144,7 +146,7 @@ internal sealed class McpClient : McpEndpoint, IMcpClient
                 // Validate protocol version
                 if (initializeResponse.ProtocolVersion != _options.ProtocolVersion)
                 {
-                    _logger.ServerProtocolVersionMismatch(EndpointName, _options.ProtocolVersion, initializeResponse.ProtocolVersion);
+                    LogServerProtocolVersionMismatch(EndpointName, _options.ProtocolVersion, initializeResponse.ProtocolVersion);
                     throw new McpException($"Server protocol version mismatch. Expected {_options.ProtocolVersion}, got {initializeResponse.ProtocolVersion}");
                 }
 
@@ -155,13 +157,13 @@ internal sealed class McpClient : McpEndpoint, IMcpClient
             }
             catch (OperationCanceledException oce) when (initializationCts.IsCancellationRequested)
             {
-                _logger.ClientInitializationTimeout(EndpointName);
+                LogClientInitializationTimeout(EndpointName);
                 throw new McpException("Initialization timed out", oce);
             }
         }
         catch (Exception e)
         {
-            _logger.ClientInitializationError(EndpointName, e);
+            LogClientInitializationError(EndpointName, e);
             await DisposeAsync().ConfigureAwait(false);
             throw;
         }
@@ -188,4 +190,16 @@ internal sealed class McpClient : McpEndpoint, IMcpClient
             }
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} client received server '{ServerInfo}' capabilities: '{Capabilities}'.")]
+    private partial void LogServerCapabilitiesReceived(string endpointName, string capabilities, string serverInfo);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "{EndpointName} client initialization error.")]
+    private partial void LogClientInitializationError(string endpointName, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "{EndpointName} client initialization timed out.")]
+    private partial void LogClientInitializationTimeout(string endpointName);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "{EndpointName} client protocol version mismatch with server. Expected '{Expected}', received '{Received}'.")]
+    private partial void LogServerProtocolVersionMismatch(string endpointName, string expected, string received);
 }

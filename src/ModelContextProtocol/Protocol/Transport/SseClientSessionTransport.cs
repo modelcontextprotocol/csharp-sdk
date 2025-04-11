@@ -1,9 +1,9 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
+using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Net.ServerSentEvents;
 using System.Text;
@@ -14,9 +14,8 @@ namespace ModelContextProtocol.Protocol.Transport;
 /// <summary>
 /// The ServerSideEvents client transport implementation
 /// </summary>
-internal sealed class SseClientSessionTransport : TransportBase
+internal sealed partial class SseClientSessionTransport : TransportBase
 {
-    private readonly string _endpointName;
     private readonly HttpClient _httpClient;
     private readonly SseClientTransportOptions _options;
     private readonly Uri _sseEndpoint;
@@ -35,7 +34,7 @@ internal sealed class SseClientSessionTransport : TransportBase
     /// <param name="loggerFactory">Logger factory for creating loggers.</param>
     /// <param name="endpointName">The endpoint name used for logging purposes.</param>
     public SseClientSessionTransport(SseClientTransportOptions transportOptions, HttpClient httpClient, ILoggerFactory? loggerFactory, string endpointName)
-        : base(loggerFactory)
+        : base(endpointName, loggerFactory)
     {
         Throw.IfNull(transportOptions);
         Throw.IfNull(httpClient);
@@ -45,36 +44,23 @@ internal sealed class SseClientSessionTransport : TransportBase
         _httpClient = httpClient;
         _connectionCts = new CancellationTokenSource();
         _logger = (ILogger?)loggerFactory?.CreateLogger<SseClientTransport>() ?? NullLogger.Instance;
-        _connectionEstablished = new TaskCompletionSource<bool>();
-        _endpointName = endpointName;
+        _connectionEstablished = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
     /// <inheritdoc/>
     public async Task ConnectAsync(CancellationToken cancellationToken = default)
     {
+        Debug.Assert(!IsConnected);
         try
         {
-            if (IsConnected)
-            {
-                _logger.TransportAlreadyConnected(_endpointName);
-                throw new McpTransportException("Transport is already connected");
-            }
-
             // Start message receiving loop
             _receiveTask = ReceiveMessagesAsync(_connectionCts.Token);
 
-            _logger.TransportReadingMessages(_endpointName);
-
             await _connectionEstablished.Task.WaitAsync(_options.ConnectionTimeout, cancellationToken).ConfigureAwait(false);
         }
-        catch (McpTransportException)
+        catch (Exception ex) when (ex is not McpTransportException) // propagate transport exceptions
         {
-            // Rethrow transport exceptions
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _logger.TransportConnectFailed(_endpointName, ex);
+            LogTransportConnectFailed(Name, ex);
             await CloseAsync().ConfigureAwait(false);
             throw new McpTransportException("Failed to connect transport", ex);
         }
@@ -118,7 +104,7 @@ internal sealed class SseClientSessionTransport : TransportBase
             // If the response is not a JSON-RPC response, it is an SSE message
             if (string.IsNullOrEmpty(responseContent) || responseContent.Equals("accepted", StringComparison.OrdinalIgnoreCase))
             {
-                _logger.SSETransportPostAccepted(_endpointName, messageId);
+                LogAcceptedPost(Name, messageId);
                 // The response will arrive as an SSE message
             }
             else
@@ -126,21 +112,30 @@ internal sealed class SseClientSessionTransport : TransportBase
                 JsonRpcResponse initializeResponse = JsonSerializer.Deserialize(responseContent, McpJsonUtilities.JsonContext.Default.JsonRpcResponse) ??
                     throw new McpTransportException("Failed to initialize client");
 
-                _logger.TransportReceivedMessageParsed(_endpointName, messageId);
+                LogTransportReceivedMessage(Name, messageId);
                 await WriteMessageAsync(initializeResponse, cancellationToken).ConfigureAwait(false);
-                _logger.TransportMessageWritten(_endpointName, messageId);
+                LogTransportMessageWritten(Name, messageId);
             }
+
             return;
         }
 
         // Otherwise, check if the response was accepted (the response will come as an SSE message)
         if (string.IsNullOrEmpty(responseContent) || responseContent.Equals("accepted", StringComparison.OrdinalIgnoreCase))
         {
-            _logger.SSETransportPostAccepted(_endpointName, messageId);
+            LogAcceptedPost(Name, messageId);
         }
         else
         {
-            _logger.SSETransportPostNotAccepted(_endpointName, messageId, responseContent);
+            if (_logger.IsEnabled(LogLevel.Trace))
+            {
+                LogRejectedPostSensitive(Name, messageId, responseContent);
+            }
+            else
+            {
+                LogRejectedPost(Name, messageId);
+            }
+
             throw new McpTransportException("Failed to send message");
         }
     }
@@ -151,12 +146,17 @@ internal sealed class SseClientSessionTransport : TransportBase
         {
             await _connectionCts.CancelAsync().ConfigureAwait(false);
 
-            if (_receiveTask != null)
+            try
             {
-                await _receiveTask.ConfigureAwait(false);
+                if (_receiveTask != null)
+                {
+                    await _receiveTask.ConfigureAwait(false);
+                }
             }
-
-            _connectionCts.Dispose();
+            finally
+            {
+                _connectionCts.Dispose();
+            }
         }
         finally
         {
@@ -216,13 +216,13 @@ internal sealed class SseClientSessionTransport : TransportBase
         catch when (cancellationToken.IsCancellationRequested)
         {
             // Normal shutdown
+            LogTransportReadMessagesCancelled(Name);
             _connectionEstablished.TrySetCanceled(cancellationToken);
-            _logger.TransportReadMessagesCancelled(_endpointName);
         }
-        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        catch (Exception ex)
         {
+            LogTransportReadMessagesFailed(Name, ex);
             _connectionEstablished.TrySetException(ex);
-            _logger.TransportConnectionError(_endpointName, ex);
             throw;
         }
         finally
@@ -235,7 +235,7 @@ internal sealed class SseClientSessionTransport : TransportBase
     {
         if (!IsConnected)
         {
-            _logger.TransportMessageReceivedBeforeConnected(_endpointName, data);
+            LogTransportMessageReceivedBeforeConnected(Name);
             return;
         }
 
@@ -244,7 +244,7 @@ internal sealed class SseClientSessionTransport : TransportBase
             var message = JsonSerializer.Deserialize(data, McpJsonUtilities.JsonContext.Default.IJsonRpcMessage);
             if (message == null)
             {
-                _logger.TransportMessageParseUnexpectedType(_endpointName, data);
+                LogTransportMessageParseUnexpectedTypeSensitive(Name, data);
                 return;
             }
 
@@ -254,13 +254,20 @@ internal sealed class SseClientSessionTransport : TransportBase
                 messageId = messageWithId.Id.ToString();
             }
 
-            _logger.TransportReceivedMessageParsed(_endpointName, messageId);
+            LogTransportReceivedMessage(Name, messageId);
             await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
-            _logger.TransportMessageWritten(_endpointName, messageId);
+            LogTransportMessageWritten(Name, messageId);
         }
         catch (JsonException ex)
         {
-            _logger.TransportMessageParseFailed(_endpointName, data, ex);
+            if (_logger.IsEnabled(LogLevel.Trace))
+            {
+                LogTransportMessageParseFailedSensitive(Name, data, ex);
+            }
+            else
+            {
+                LogTransportMessageParseFailed(Name, ex);
+            }
         }
     }
 
@@ -270,7 +277,7 @@ internal sealed class SseClientSessionTransport : TransportBase
         {
             if (string.IsNullOrEmpty(data))
             {
-                _logger.TransportEndpointEventInvalid(_endpointName, data);
+                LogTransportEndpointEventInvalid(Name);
                 return;
             }
 
@@ -283,7 +290,15 @@ internal sealed class SseClientSessionTransport : TransportBase
         }
         catch (JsonException ex)
         {
-            _logger.TransportEndpointEventParseFailed(_endpointName, data, ex);
+            if (_logger.IsEnabled(LogLevel.Trace))
+            {
+                LogTransportEndpointEventParseFailedSensitive(Name, data, ex);
+            }
+            else
+            {
+                LogTransportEndpointEventParseFailed(Name, ex);
+            }
+
             throw new McpTransportException("Failed to parse endpoint event", ex);
         }
     }
@@ -301,4 +316,13 @@ internal sealed class SseClientSessionTransport : TransportBase
             }
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} accepted SSE transport POST for message ID '{MessageId}'.")]
+    private partial void LogAcceptedPost(string endpointName, string messageId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} rejected SSE transport POST for message ID '{MessageId}'.")]
+    private partial void LogRejectedPost(string endpointName, string messageId);
+
+    [LoggerMessage(Level = LogLevel.Trace, Message = "{EndpointName} rejected SSE transport POST for message ID '{MessageId}'. Server response: '{responseContent}'.")]
+    private partial void LogRejectedPostSensitive(string endpointName, string messageId, string responseContent);
 }

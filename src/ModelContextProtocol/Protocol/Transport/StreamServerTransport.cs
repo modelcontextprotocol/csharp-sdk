@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
@@ -25,7 +24,6 @@ public class StreamServerTransport : TransportBase
 
     private readonly TextReader _inputReader;
     private readonly Stream _outputStream;
-    private readonly string _endpointName;
 
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private readonly CancellationTokenSource _shutdownCts = new();
@@ -43,7 +41,7 @@ public class StreamServerTransport : TransportBase
     /// <exception cref="ArgumentNullException"><paramref name="inputStream"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="outputStream"/> is <see langword="null"/>.</exception>
     public StreamServerTransport(Stream inputStream, Stream outputStream, string? serverName = null, ILoggerFactory? loggerFactory = null)
-        : base(loggerFactory)
+        : base(serverName is not null ? $"Server (stream) ({serverName})" : "Server (stream)", loggerFactory)
     {
         Throw.IfNull(inputStream);
         Throw.IfNull(outputStream);
@@ -55,8 +53,6 @@ public class StreamServerTransport : TransportBase
 
         SetConnected(true);
         _readLoopCompleted = Task.Run(ReadMessagesAsync, _shutdownCts.Token);
-
-        _endpointName = serverName is not null ? $"Server (stream) ({serverName})" : "Server (stream)";
     }
 
     /// <inheritdoc/>
@@ -64,7 +60,6 @@ public class StreamServerTransport : TransportBase
     {
         if (!IsConnected)
         {
-            _logger.TransportNotConnected(_endpointName);
             throw new McpTransportException("Transport is not connected");
         }
 
@@ -78,17 +73,13 @@ public class StreamServerTransport : TransportBase
 
         try
         {
-            _logger.TransportSendingMessage(_endpointName, id);
-
             await JsonSerializer.SerializeAsync(_outputStream, message, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(IJsonRpcMessage)), cancellationToken).ConfigureAwait(false);
             await _outputStream.WriteAsync(s_newlineBytes, cancellationToken).ConfigureAwait(false);
             await _outputStream.FlushAsync(cancellationToken).ConfigureAwait(false);
-
-            _logger.TransportSentMessage(_endpointName, id);
         }
         catch (Exception ex)
         {
-            _logger.TransportSendFailed(_endpointName, id, ex);
+            LogTransportSendFailed(Name, id, ex);
             throw new McpTransportException("Failed to send message", ex);
         }
     }
@@ -98,26 +89,23 @@ public class StreamServerTransport : TransportBase
         CancellationToken shutdownToken = _shutdownCts.Token;
         try
         {
-            _logger.TransportEnteringReadMessagesLoop(_endpointName);
+            LogTransportEnteringReadMessagesLoop(Name);
 
             while (!shutdownToken.IsCancellationRequested)
             {
-                _logger.TransportWaitingForMessage(_endpointName);
-
                 var line = await _inputReader.ReadLineAsync(shutdownToken).ConfigureAwait(false);
                 if (string.IsNullOrWhiteSpace(line))
                 {
                     if (line is null)
                     {
-                        _logger.TransportEndOfStream(_endpointName);
+                        LogTransportEndOfStream(Name);
                         break;
                     }
 
                     continue;
                 }
 
-                _logger.TransportReceivedMessage(_endpointName, line);
-                _logger.TransportMessageBytesUtf8(_endpointName, line);
+                LogTransportReceivedMessageSensitive(Name, line);
 
                 try
                 {
@@ -128,32 +116,38 @@ public class StreamServerTransport : TransportBase
                         {
                             messageId = messageWithId.Id.ToString();
                         }
-                        _logger.TransportReceivedMessageParsed(_endpointName, messageId);
 
+                        LogTransportReceivedMessage(Name, messageId);
                         await WriteMessageAsync(message, shutdownToken).ConfigureAwait(false);
-                        _logger.TransportMessageWritten(_endpointName, messageId);
+                        LogTransportMessageWritten(Name, messageId);
                     }
                     else
                     {
-                        _logger.TransportMessageParseUnexpectedType(_endpointName, line);
+                        LogTransportMessageParseUnexpectedTypeSensitive(Name, line);
                     }
                 }
                 catch (JsonException ex)
                 {
-                    _logger.TransportMessageParseFailed(_endpointName, line, ex);
+                    if (Logger.IsEnabled(LogLevel.Trace))
+                    {
+                        LogTransportMessageParseFailedSensitive(Name, line, ex);
+                    }
+                    else
+                    {
+                        LogTransportMessageParseFailed(Name, ex);
+                    }
+
                     // Continue reading even if we fail to parse a message
                 }
             }
-
-            _logger.TransportExitingReadMessagesLoop(_endpointName);
         }
         catch (OperationCanceledException)
         {
-            _logger.TransportReadMessagesCancelled(_endpointName);
+            LogTransportReadMessagesCancelled(Name);
         }
         catch (Exception ex)
         {
-            _logger.TransportReadMessagesFailed(_endpointName, ex);
+            LogTransportReadMessagesFailed(Name, ex);
         }
         finally
         {
@@ -171,7 +165,7 @@ public class StreamServerTransport : TransportBase
 
         try
         {
-            _logger.TransportCleaningUp(_endpointName);
+            LogTransportShuttingDown(Name);
 
             // Signal to the stdin reading loop to stop.
             await _shutdownCts.CancelAsync().ConfigureAwait(false);
@@ -185,27 +179,20 @@ public class StreamServerTransport : TransportBase
             // Make sure the work has quiesced.
             try
             {
-                _logger.TransportWaitingForReadTask(_endpointName);
                 await _readLoopCompleted.ConfigureAwait(false);
-                _logger.TransportReadTaskCleanedUp(_endpointName);
-            }
-            catch (TimeoutException)
-            {
-                _logger.TransportCleanupReadTaskTimeout(_endpointName);
             }
             catch (OperationCanceledException)
             {
-                _logger.TransportCleanupReadTaskCancelled(_endpointName);
             }
             catch (Exception ex)
             {
-                _logger.TransportCleanupReadTaskFailed(_endpointName, ex);
+                LogTransportCleanupReadTaskFailed(Name, ex);
             }
         }
         finally
         {
             SetConnected(false);
-            _logger.TransportCleanedUp(_endpointName);
+            LogTransportShutDown(Name);
         }
 
         GC.SuppressFinalize(this);
