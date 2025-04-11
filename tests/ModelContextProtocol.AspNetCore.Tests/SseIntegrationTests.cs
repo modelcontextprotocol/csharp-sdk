@@ -34,6 +34,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
     [Fact]
     public async Task ConnectAndReceiveMessage_InMemoryServer()
     {
+        Builder.Services.AddMcpServer().WithHttpTransport();
         await using var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
@@ -68,16 +69,23 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
     {
         var receivedNotification = new TaskCompletionSource<string?>();
 
-        await using var app = Builder.Build();
-        app.MapMcp(runSessionAsync: (httpContext, mcpServer, cancellationToken) =>
-        {
-            mcpServer.RegisterNotificationHandler("test/notification", async (notification, cancellationToken) =>
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(httpTransportOptions =>
             {
-                Assert.Equal("Hello from client!", notification.Params?["message"]?.GetValue<string>());
-                await mcpServer.SendNotificationAsync("test/notification", new Envelope { Message = "Hello from server!" }, serializerOptions: JsonContext.Default.Options, cancellationToken: cancellationToken);
+                httpTransportOptions.RunSessionHandler = (httpContext, mcpServer, cancellationToken) =>
+                {
+                    // We could also use ServerCapabilities.NotificationHandlers, but it's good to have some test coverage of RunSessionHandler.
+                    mcpServer.RegisterNotificationHandler("test/notification", async (notification, cancellationToken) =>
+                    {
+                        Assert.Equal("Hello from client!", notification.Params?["message"]?.GetValue<string>());
+                        await mcpServer.SendNotificationAsync("test/notification", new Envelope { Message = "Hello from server!" }, serializerOptions: JsonContext.Default.Options, cancellationToken: cancellationToken);
+                    });
+                    return mcpServer.RunAsync(cancellationToken);
+                };
             });
-            return mcpServer.RunAsync(cancellationToken);
-        });
+
+        await using var app = Builder.Build();
+        app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
 
         using var httpClient = CreateHttpClient();
@@ -107,6 +115,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
             {
                 Interlocked.Increment(ref firstOptionsCallbackCallCount);
             })
+            .WithHttpTransport()
             .WithTools<EchoTool>();
 
         Builder.Services.AddMcpServer(options =>
