@@ -105,9 +105,7 @@ builder.Services
     .WithStdioServerTransport()
     .WithToolsFromAssembly();
 
-var app = builder.Build();
-
-await app.RunAsync();
+await builder.Build().RunAsync();
 
 [McpServerToolType]
 public static class EchoTool
@@ -166,7 +164,7 @@ using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using System.Text.Json;
 
-var options = new McpServerOptions()
+McpServerOptions options = new()
 {
     ServerInfo = new Implementation() { Name = "MyServer", Version = "1.0.0" },
     Capabilities = new ServerCapabilities()

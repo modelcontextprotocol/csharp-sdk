@@ -46,7 +46,7 @@ var app = builder.Build();
 
 app.MapMcp();
 
-await app.RunAsync();
+app.Run();
 
 [McpServerToolType]
 public static class EchoTool
