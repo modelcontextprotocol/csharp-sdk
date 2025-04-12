@@ -31,7 +31,7 @@ To get started writing a client, the `McpClientFactory.CreateAsync` method is us
 to a server. Once you have an `IMcpClient`, you can interact with it, such as to enumerate all available tools and invoke tools.
 
 ```csharp
-var clientTransport = new StdioClientTransport(new()
+var clientTransport = new StdioClientTransport(new StdioClientTransportOptions
 {
     Name = "Everything",
     Command = "npx",
@@ -163,10 +163,10 @@ using System.Text.Json;
 
 McpServerOptions options = new()
 {
-    ServerInfo = new() { Name = "MyServer", Version = "1.0.0" },
-    Capabilities = new()
+    ServerInfo = new Implementation() { Name = "MyServer", Version = "1.0.0" },
+    Capabilities = new ServerCapabilities()
     {
-        Tools = new()
+        Tools = new ToolsCapability()
         {
             ListToolsHandler = (request, cancellationToken) =>
                 Task.FromResult(new ListToolsResult()
@@ -199,7 +199,7 @@ McpServerOptions options = new()
                 {
                     if (request.Params.Arguments?.TryGetValue("message", out var message) is not true)
                     {
-                        throw new McpServerException("Missing required argument 'message'");
+                        throw new McpException("Missing required argument 'message'");
                     }
 
                     return Task.FromResult(new CallToolResponse()
@@ -208,7 +208,7 @@ McpServerOptions options = new()
                     });
                 }
 
-                throw new McpServerException($"Unknown tool: '{request.Params?.Name}'");
+                throw new McpException($"Unknown tool: '{request.Params?.Name}'");
             },
         }
     },
