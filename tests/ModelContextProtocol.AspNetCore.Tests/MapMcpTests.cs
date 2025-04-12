@@ -6,6 +6,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
+using System.Net;
 using System.Security.Claims;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
@@ -84,7 +85,7 @@ public class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelInMemoryTe
         {
             return async context =>
             {
-                context.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim("name", "TestUser")], "TestAuthType", "name", "role"));
+                context.User = CreateUser("TestUser");
                 await next(context);
             };
         });
@@ -103,6 +104,41 @@ public class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelInMemoryTe
         var content = Assert.Single(response.Content);
         Assert.Equal("TestUser: Hello world!", content.Text);
     }
+
+
+    [Fact]
+    public async Task Messages_FromNewUser_AreRejected()
+    {
+        Builder.Services.AddMcpServer().WithHttpTransport().WithTools<EchoHttpContextUserTools>();
+
+        // Add an authentication scheme that will send a 403 Forbidden response.
+        Builder.Services.AddAuthentication().AddBearerToken();
+        Builder.Services.AddHttpContextAccessor();
+
+        await using var app = Builder.Build();
+
+        app.Use(next =>
+        {
+            var i = 0;
+            return async context =>
+            {
+                context.User = CreateUser($"TestUser{Interlocked.Increment(ref i)}");
+                await next(context);
+            };
+        });
+
+        app.MapMcp();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        var httpRequestException = await Assert.ThrowsAsync<HttpRequestException>(() => ConnectAsync());
+        Assert.Equal(HttpStatusCode.Forbidden, httpRequestException.StatusCode);
+    }
+
+    private ClaimsPrincipal CreateUser(string name)
+        => new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim("name", name), new Claim(ClaimTypes.NameIdentifier, name)],
+            "TestAuthType", "name", "role"));
 
     [McpServerToolType]
     private class EchoHttpContextUserTools(IHttpContextAccessor contextAccessor)

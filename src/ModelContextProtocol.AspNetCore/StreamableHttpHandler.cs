@@ -21,7 +21,7 @@ internal sealed class StreamableHttpHandler(
     ILoggerFactory loggerFactory)
 {
 
-    private readonly ConcurrentDictionary<string, SseResponseStreamTransport> _sessions = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, HttpMcpSession> _sessions = new(StringComparer.Ordinal);
     private readonly ILogger _logger = loggerFactory.CreateLogger<StreamableHttpHandler>();
 
     public async Task HandleRequestAsync(HttpContext context)
@@ -58,7 +58,8 @@ internal sealed class StreamableHttpHandler(
 
         var sessionId = MakeNewSessionId();
         await using var transport = new SseResponseStreamTransport(response.Body, $"message?sessionId={sessionId}");
-        if (!_sessions.TryAdd(sessionId, transport))
+        var httpMcpSession = new HttpMcpSession(transport, context.User);
+        if (!_sessions.TryAdd(sessionId, httpMcpSession))
         {
             throw new Exception($"Unreachable given good entropy! Session with ID '{sessionId}' has already been created.");
         }
@@ -107,9 +108,15 @@ internal sealed class StreamableHttpHandler(
             return;
         }
 
-        if (!_sessions.TryGetValue(sessionId.ToString(), out var transport))
+        if (!_sessions.TryGetValue(sessionId.ToString(), out var httpMcpSession))
         {
             await Results.BadRequest($"Session ID not found.").ExecuteAsync(context);
+            return;
+        }
+
+        if (!httpMcpSession.HasSameUserId(context.User))
+        {
+            await Results.Forbid().ExecuteAsync(context);
             return;
         }
 
@@ -120,7 +127,7 @@ internal sealed class StreamableHttpHandler(
             return;
         }
 
-        await transport.OnMessageReceivedAsync(message, context.RequestAborted);
+        await httpMcpSession.Transport.OnMessageReceivedAsync(message, context.RequestAborted);
         context.Response.StatusCode = StatusCodes.Status202Accepted;
         await context.Response.WriteAsync("Accepted");
     }
