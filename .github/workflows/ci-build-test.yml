@@ -12,7 +12,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/ci-*.yml"
-      - "*.sln"
+      - "*.slnx"
       - "*.props"
       - "Makefile"
       - "src/**"
