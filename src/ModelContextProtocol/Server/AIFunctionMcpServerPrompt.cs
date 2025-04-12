@@ -2,6 +2,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Utils;
+using ModelContextProtocol.Utils.Json;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text.Json;
@@ -66,6 +67,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
             Name = options?.Name ?? method.GetCustomAttribute<McpServerPromptAttribute>()?.Name,
             Description = options?.Description,
             MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
+            SerializerOptions = options?.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
             ConfigureParameterBinding = pi =>
             {
                 if (pi.ParameterType == typeof(RequestContext<GetPromptRequestParams>))
@@ -97,7 +99,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
                     {
                         ExcludeFromSchema = true,
                         BindParameter = (pi, args) =>
-                            GetRequestContext(args)?.Server?.Services?.GetService(pi.ParameterType) ??
+                            GetRequestContext(args)?.Services?.GetService(pi.ParameterType) ??
                             (pi.HasDefaultValue ? null :
                              throw new ArgumentException("No service of the requested type was found.")),
                     };
@@ -109,7 +111,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
                     {
                         ExcludeFromSchema = true,
                         BindParameter = (pi, args) =>
-                            (GetRequestContext(args)?.Server?.Services as IKeyedServiceProvider)?.GetKeyedService(pi.ParameterType, keyedAttr.Key) ??
+                            (GetRequestContext(args)?.Services as IKeyedServiceProvider)?.GetKeyedService(pi.ParameterType, keyedAttr.Key) ??
                             (pi.HasDefaultValue ? null :
                              throw new ArgumentException("No service of the requested type was found.")),
                     };
@@ -136,6 +138,10 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
         Throw.IfNull(function);
 
         List<PromptArgument> args = [];
+        HashSet<string>? requiredProps = function.JsonSchema.TryGetProperty("required", out JsonElement required)
+            ? new(required.EnumerateArray().Select(p => p.GetString()!), StringComparer.Ordinal)
+            : null;
+
         if (function.JsonSchema.TryGetProperty("properties", out JsonElement properties))
         {
             foreach (var param in properties.EnumerateObject())
@@ -144,7 +150,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
                 {
                     Name = param.Name,
                     Description = param.Value.TryGetProperty("description", out JsonElement description) ? description.GetString() : null,
-                    Required = param.Value.TryGetProperty("required", out JsonElement required) && required.GetBoolean(),
+                    Required = requiredProps?.Contains(param.Name) ?? false,
                 });
             }
         }
@@ -200,7 +206,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
     ///   <item><description><see cref="ChatMessage"/> objects are converted to prompt messages</description></item>
     /// </list>
     /// </remarks>
-    public override async Task<GetPromptResult> GetAsync(
+    public override async ValueTask<GetPromptResult> GetAsync(
         RequestContext<GetPromptRequestParams> request, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(request);
@@ -208,7 +214,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
 
         AIFunctionArguments arguments = new()
         {
-            Services = request.Server?.Services,
+            Services = request.Services,
             Context = new Dictionary<object, object?>() { [typeof(RequestContext<GetPromptRequestParams>)] = request }
         };
 

@@ -41,18 +41,19 @@ public class McpClientFactoryTests
             {
                 Sampling = new SamplingCapability
                 {
-                    SamplingHandler = (c, p, t) => Task.FromResult(
-                        new CreateMessageResult { 
+                    SamplingHandler = async (c, p, t) =>
+                        new CreateMessageResult 
+                        { 
                             Content = new Content { Text = "result" }, 
                             Model = "test-model", 
                             Role = Role.User, 
                             StopReason = "endTurn" 
-                    }),
+                        },
                 },
                 Roots = new RootsCapability
                 {
                     ListChanged = true,
-                    RootsHandler = (t, r) => Task.FromResult(new ListRootsResult { Roots = [] }),
+                    RootsHandler = async (t, r) => new ListRootsResult { Roots = [] },
                 }
             }
         };

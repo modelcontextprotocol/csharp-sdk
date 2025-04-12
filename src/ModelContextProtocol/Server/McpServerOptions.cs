@@ -56,4 +56,13 @@ public class McpServerOptions
     /// to provide context about available functionality.
     /// </remarks>
     public string? ServerInstructions { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to create a new service provider scope for each handled request.
+    /// </summary>
+    /// <remarks>
+    /// The default is <see langword="true"/>. When <see langword="true"/>, each invocation of a request
+    /// handler will be invoked within a new service scope.
+    /// </remarks>
+    public bool ScopeRequests { get; set; } = true;
 }

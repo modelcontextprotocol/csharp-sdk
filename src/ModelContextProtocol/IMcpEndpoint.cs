@@ -69,5 +69,5 @@ public interface IMcpEndpoint : IAsyncDisposable
     /// <param name="method">The notification method.</param>
     /// <param name="handler">The handler to be invoked.</param>
     /// <returns>An <see cref="IDisposable"/> that will remove the registered handler when disposed.</returns>
-    IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, Task> handler);
+    IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler);
 }

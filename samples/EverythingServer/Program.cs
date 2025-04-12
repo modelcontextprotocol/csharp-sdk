@@ -9,6 +9,8 @@ using ModelContextProtocol;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 
+#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
+
 var builder = Host.CreateApplicationBuilder(args);
 builder.Logging.AddConsole(consoleLogOptions =>
 {
@@ -31,17 +33,17 @@ builder.Services
     .WithTools<TinyImageTool>()
     .WithPrompts<ComplexPromptType>()
     .WithPrompts<SimplePromptType>()
-    .WithListResourceTemplatesHandler((ctx, ct) =>
+    .WithListResourceTemplatesHandler(async (ctx, ct) =>
     {
-        return Task.FromResult(new ListResourceTemplatesResult
+        return new ListResourceTemplatesResult
         {
             ResourceTemplates =
             [
                 new ResourceTemplate { Name = "Static Resource", Description = "A static resource with a numeric ID", UriTemplate = "test://static/resource/{id}" }
             ]
-        });
+        };
     })
-    .WithReadResourceHandler((ctx, ct) =>
+    .WithReadResourceHandler(async (ctx, ct) =>
     {
         var uri = ctx.Params?.Uri;
 
@@ -61,7 +63,7 @@ builder.Services
 
         if (resource.MimeType == "text/plain")
         {
-            return Task.FromResult(new ReadResourceResult
+            return new ReadResourceResult
             {
                 Contents = [new TextResourceContents
                 {
@@ -69,11 +71,11 @@ builder.Services
                     MimeType = resource.MimeType,
                     Uri = resource.Uri,
                 }]
-            });
+            };
         }
         else
         {
-            return Task.FromResult(new ReadResourceResult
+            return new ReadResourceResult
             {
                 Contents = [new BlobResourceContents
                 {
@@ -81,7 +83,7 @@ builder.Services
                     MimeType = resource.MimeType,
                     Uri = resource.Uri,
                 }]
-            });
+            };
         }
     })
     .WithSubscribeToResourcesHandler(async (ctx, ct) =>
@@ -106,16 +108,16 @@ builder.Services
 
         return new EmptyResult();
     })
-    .WithUnsubscribeFromResourcesHandler((ctx, ct) =>
+    .WithUnsubscribeFromResourcesHandler(async (ctx, ct) =>
     {
         var uri = ctx.Params?.Uri;
         if (uri is not null)
         {
             subscriptions.Remove(uri);
         }
-        return Task.FromResult(new EmptyResult());
+        return new EmptyResult();
     })
-    .WithCompleteHandler((ctx, ct) =>
+    .WithCompleteHandler(async (ctx, ct) =>
     {
         var exampleCompletions = new Dictionary<string, IEnumerable<string>>
         {
@@ -128,7 +130,7 @@ builder.Services
         {
             throw new NotSupportedException($"Params are required.");
         }
-        
+
         var @ref = @params.Ref;
         var argument = @params.Argument;
 
@@ -138,15 +140,15 @@ builder.Services
 
             if (resourceId is null)
             {
-                return Task.FromResult(new CompleteResult());
+                return new CompleteResult();
             }
 
             var values = exampleCompletions["resourceId"].Where(id => id.StartsWith(argument.Value));
 
-            return Task.FromResult(new CompleteResult
+            return new CompleteResult
             {
-                Completion = new Completion { Values = [..values], HasMore = false, Total = values.Count() }
-            });
+                Completion = new Completion { Values = [.. values], HasMore = false, Total = values.Count() }
+            };
         }
 
         if (@ref.Type == "ref/prompt")
@@ -157,10 +159,10 @@ builder.Services
             }
 
             var values = value.Where(value => value.StartsWith(argument.Value));
-            return Task.FromResult(new CompleteResult
+            return new CompleteResult
             {
-                Completion = new Completion { Values = [..values], HasMore = false, Total = values.Count() }
-            });
+                Completion = new Completion { Values = [.. values], HasMore = false, Total = values.Count() }
+            };
         }
 
         throw new NotSupportedException($"Unknown reference type: {@ref.Type}");
@@ -175,15 +177,14 @@ builder.Services
         _minimumLoggingLevel = ctx.Params.Level;
 
         await ctx.Server.SendNotificationAsync("notifications/message", new
-            {
-                Level = "debug",
-                Logger = "test-server",
-                Data = $"Logging level set to {_minimumLoggingLevel}",
-            }, cancellationToken: ct);
+        {
+            Level = "debug",
+            Logger = "test-server",
+            Data = $"Logging level set to {_minimumLoggingLevel}",
+        }, cancellationToken: ct);
 
         return new EmptyResult();
-    })
-    ;
+    });
 
 builder.Services.AddSingleton(subscriptions);
 builder.Services.AddHostedService<SubscriptionMessageSender>();

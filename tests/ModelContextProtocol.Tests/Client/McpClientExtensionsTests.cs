@@ -381,7 +381,7 @@ public class McpClientExtensionsTests : ClientServerTestBase
             (notification, cancellationToken) =>
             {
                 Assert.True(channel.Writer.TryWrite(JsonSerializer.Deserialize<LoggingMessageNotificationParams>(notification.Params, McpJsonUtilities.DefaultOptions)));
-                return Task.CompletedTask;
+                return default;
             }))
         {
             logger.LogTrace("Trace {Message}", "message");
