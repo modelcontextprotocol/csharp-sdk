@@ -191,6 +191,14 @@ internal sealed class SseClientSessionTransport : TransportBase
                 using var request = new HttpRequestMessage(HttpMethod.Get, _sseEndpoint);
                 request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
 
+                if (_options.AdditionalHeaders != null)
+                {
+                    foreach (var header in _options.AdditionalHeaders)
+                    {
+                        request.Headers.Add(header.Key, header.Value);
+                    }
+                }
+
                 using var response = await _httpClient.SendAsync(
                     request,
                     HttpCompletionOption.ResponseHeadersRead,
