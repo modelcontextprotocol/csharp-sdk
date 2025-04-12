@@ -1,5 +1,8 @@
 ﻿using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using ModelContextProtocol.Protocol.Messages;
 
 namespace ModelContextProtocol;
 
@@ -34,4 +37,79 @@ internal static class Diagnostics
         HistogramBucketBoundaries = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 30, 60, 120, 300],
     };
 #endif
+
+    internal static ActivityContext ExtractActivityContext(this DistributedContextPropagator propagator, IJsonRpcMessage message)
+    {
+        string? traceparent = null;
+        string? tracestate = null;
+        propagator?.ExtractTraceIdAndState(message, ExtractContext, out traceparent, out tracestate);
+        ActivityContext.TryParse(traceparent, tracestate, true, out var activityContext);
+        return activityContext;
+    }
+
+    private static void ExtractContext(object? message, string fieldName, out string? fieldValue, out IEnumerable<string>? fieldValues)
+    {
+        fieldValues = null;
+        fieldValue = null;
+
+        JsonNode? parameters = null;
+        switch (message)
+        {
+            case JsonRpcRequest request:
+                parameters = request.Params;
+                break;
+
+            case JsonRpcNotification notification:
+                parameters = notification.Params;
+                break;
+
+            default:
+                break;
+        }
+
+        if (parameters?[fieldName] is JsonValue value && value.GetValueKind() == JsonValueKind.String)
+        {
+            fieldValue = value.GetValue<string>();
+        }
+    }
+
+    internal static void InjectActivityContext(this DistributedContextPropagator propagator, Activity? activity, IJsonRpcMessage message)
+    {
+        // noop if activity is null
+        propagator?.Inject(activity, message, InjectContext);
+    }
+
+    private static void InjectContext(object? message, string key, string value)
+    {
+        JsonNode? parameters = null;
+        switch (message)
+        {
+            case JsonRpcRequest request:
+                parameters = request.Params;
+                break;
+
+            case JsonRpcNotification notification:
+                parameters = notification.Params;
+                break;
+
+            default:
+                break;
+        }
+
+        if (parameters is JsonObject jsonObject && jsonObject[key] == null)
+        {
+            jsonObject[key] = value;
+        }
+    }
+
+    internal static bool ShouldInstrumentMessage(IJsonRpcMessage message) =>
+        ActivitySource.HasListeners() &&
+        message switch
+        {
+            JsonRpcRequest => true,
+            JsonRpcNotification notification => notification.Method != NotificationMethods.LoggingMessageNotification,
+            _ => false
+        };
+
+    internal static ActivityLink[] ActivityLinkFromCurrent() => Activity.Current is null ? [] : [new ActivityLink(Activity.Current.Context)];
 }

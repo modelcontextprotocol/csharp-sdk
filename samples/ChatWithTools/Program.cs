@@ -5,11 +5,9 @@ using OpenAI;
 
 using OpenTelemetry;
 using OpenTelemetry.Trace;
-using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
-using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Types;
 
 using var tracerProvider = Sdk.CreateTracerProviderBuilder()
@@ -22,31 +20,20 @@ using var metricsProvider = Sdk.CreateMeterProviderBuilder()
     .AddMeter("*")
     .AddOtlpExporter()
     .Build();
-
-using var loggerFactory = LoggerFactory.Create(builder =>
-    {
-        builder.AddOpenTelemetry(opt =>
-        {
-            opt.IncludeFormattedMessage = true;
-            opt.IncludeScopes = true;
-            opt.AddOtlpExporter();
-        });
-    });
+using var loggerFactory = LoggerFactory.Create(builder => builder.AddOpenTelemetry(opt => opt.AddOtlpExporter()));
 
 // Connect to an MCP server
-Console.WriteLine("Connecting client to MCP 'aspnetcore' server");
+Console.WriteLine("Connecting client to MCP 'everything' server");
 
-
-// Create an IChatClient. (This shows using OpenAIClient, but it could be any other IChatClient implementation.)
+// Create OpenAI client (or any other compatible with IChatClient)
 // Provide your own OPENAI_API_KEY via an environment variable.
-using IChatClient chatClient =
-    new OpenAIClient(Environment.GetEnvironmentVariable("OPENAI_API_KEY")).GetChatClient("gpt-4o-mini").AsIChatClient()
+var openAIClient = new OpenAIClient(Environment.GetEnvironmentVariable("OPENAI_API_KEY")).GetChatClient("gpt-4o-mini");
+
+// Create a sampling client.
+using IChatClient samplingClient = openAIClient.AsIChatClient()
     .AsBuilder()
-    .UseFunctionInvocation()
     .UseOpenTelemetry(loggerFactory: loggerFactory, configure: o => o.EnableSensitiveData = true)
     .Build();
-
-var samplingHandler = chatClient.CreateSamplingHandler();
 
 var mcpClient = await McpClientFactory.CreateAsync(
     new StdioClientTransport(new()
@@ -59,10 +46,7 @@ var mcpClient = await McpClientFactory.CreateAsync(
     {
         Capabilities = new ClientCapabilities()
         {
-            Sampling = new SamplingCapability() { SamplingHandler = (param, progress, ct) => {
-                Console.WriteLine(param?.Meta?.ProgressToken);
-                return samplingHandler(param, progress, ct);
-            } }
+            Sampling = new SamplingCapability() { SamplingHandler = samplingClient.CreateSamplingHandler() }
         },
     },
     loggerFactory: loggerFactory);
@@ -76,6 +60,13 @@ foreach (var tool in tools)
 }
 
 Console.WriteLine();
+
+// Create an IChatClient that can use the tools.
+using IChatClient chatClient = openAIClient.AsIChatClient()
+    .AsBuilder()
+    .UseFunctionInvocation()
+    .UseOpenTelemetry(loggerFactory: loggerFactory, configure: o => o.EnableSensitiveData = true)
+    .Build();
 
 // Have a conversation, making all tools available to the LLM.
 List<ChatMessage> messages = [];

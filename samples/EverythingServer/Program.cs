@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
+using OpenTelemetry;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
@@ -190,21 +191,12 @@ builder.Services
         return new EmptyResult();
     });
 
-
-var resource = ResourceBuilder.CreateEmpty().AddService("mcp.server");
+ResourceBuilder resource = ResourceBuilder.CreateDefault().AddService("everything-server");
 builder.Services.AddOpenTelemetry()
-    .WithTracing(b => b.SetResourceBuilder(resource)
-        .AddOtlpExporter()
-        .AddSource("*")
-        .AddAspNetCoreInstrumentation()
-        .AddHttpClientInstrumentation())
-    .WithMetrics(b => b.SetResourceBuilder(resource)
-        .AddMeter("*")
-        .AddOtlpExporter()
-        .AddAspNetCoreInstrumentation()
-        .AddHttpClientInstrumentation())
-    .WithLogging(b => b.SetResourceBuilder(resource)
-        .AddOtlpExporter());
+    .WithTracing(b => b.AddSource("*").AddHttpClientInstrumentation().SetResourceBuilder(resource))
+    .WithMetrics(b => b.AddMeter("*").AddHttpClientInstrumentation().SetResourceBuilder(resource))
+    .WithLogging(b => b.SetResourceBuilder(resource))
+    .UseOtlpExporter();
 
 builder.Services.AddSingleton(subscriptions);
 builder.Services.AddHostedService<SubscriptionMessageSender>();

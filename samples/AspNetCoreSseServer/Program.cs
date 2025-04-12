@@ -1,30 +1,22 @@
 using TestServerWithHosting.Tools;
-using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
-using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
-using AspNetCoreSseServer.Tools;
+using OpenTelemetry;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddMcpServer()
     .WithTools<EchoTool>()
-    .WithTools<SampleLlmTool>()
-    .WithTools<LongRunningTool>();
+    .WithTools<SampleLlmTool>();
 
-var resource = ResourceBuilder.CreateEmpty().AddService("mcp.server");
 builder.Services.AddOpenTelemetry()
-    .WithTracing(b => b.SetResourceBuilder(resource)
-        .AddOtlpExporter()
-        .AddSource("*")
+    .WithTracing(b => b.AddSource("*")
         .AddAspNetCoreInstrumentation()
         .AddHttpClientInstrumentation())
-    .WithMetrics(b => b.SetResourceBuilder(resource)
-        .AddMeter("*")
-        .AddOtlpExporter()
+    .WithMetrics(b => b.AddMeter("*")
         .AddAspNetCoreInstrumentation()
         .AddHttpClientInstrumentation())
-    .WithLogging(b => b.SetResourceBuilder(resource)
-        .AddOtlpExporter());
+    .WithLogging()
+    .UseOtlpExporter();
 
 var app = builder.Build();
 

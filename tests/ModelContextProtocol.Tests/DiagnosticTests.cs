@@ -4,6 +4,7 @@ using ModelContextProtocol.Server;
 using OpenTelemetry.Trace;
 using System.Diagnostics;
 using System.IO.Pipelines;
+using System.Reflection.Metadata;
 
 namespace ModelContextProtocol.Tests;
 
@@ -33,9 +34,95 @@ public class DiagnosticTests
 
         Assert.NotEmpty(activities);
 
-        Activity toolCallActivity = activities.First(a =>
-            a.Tags.Any(t => t.Key == "rpc.method" && t.Value == "tools/call"));
-        Assert.Equal("DoubleValue", toolCallActivity.Tags.First(t => t.Key == "mcp.request.params.name").Value);
+        var clientToolCall = Assert.Single(activities, a =>
+            a.Tags.Any(t => t.Key == "mcp.tool.name" && t.Value == "DoubleValue") &&
+            a.Tags.Any(t => t.Key == "mcp.method.name" && t.Value == "tools/call") &&
+            a.DisplayName == "tools/call DoubleValue" &&
+            a.Kind == ActivityKind.Client &&
+            a.Status == ActivityStatusCode.Unset);
+
+        var serverToolCall = Assert.Single(activities, a =>
+            a.Tags.Any(t => t.Key == "mcp.tool.name" && t.Value == "DoubleValue") &&
+            a.Tags.Any(t => t.Key == "mcp.method.name" && t.Value == "tools/call") &&
+            a.DisplayName == "tools/call DoubleValue" &&
+            a.Kind == ActivityKind.Server &&
+            a.Status == ActivityStatusCode.Unset);
+
+        Assert.Equal(clientToolCall.SpanId, serverToolCall.ParentSpanId);
+        Assert.Equal(clientToolCall.TraceId, serverToolCall.TraceId);
+
+        var clientListToolsCall = Assert.Single(activities, a =>
+            a.Tags.Any(t => t.Key == "mcp.method.name" && t.Value == "tools/list") &&
+            a.DisplayName == "tools/list" &&
+            a.Kind == ActivityKind.Client &&
+            a.Status == ActivityStatusCode.Unset);
+
+        var serverListToolsCall = Assert.Single(activities, a =>
+            a.Tags.Any(t => t.Key == "mcp.method.name" && t.Value == "tools/list") &&
+            a.DisplayName == "tools/list" &&
+            a.Kind == ActivityKind.Server &&
+            a.Status == ActivityStatusCode.Unset);
+
+        Assert.Equal(clientListToolsCall.SpanId, serverListToolsCall.ParentSpanId);
+        Assert.Equal(clientListToolsCall.TraceId, serverListToolsCall.TraceId);
+    }
+
+    [Fact]
+    public async Task Session_FailedToolCall()
+    {
+        var activities = new List<Activity>();
+
+        using (var tracerProvider = OpenTelemetry.Sdk.CreateTracerProviderBuilder()
+            .AddSource("Experimental.ModelContextProtocol")
+            .AddInMemoryExporter(activities)
+            .Build())
+        {
+            await RunConnected(async (client, server) =>
+            {
+                await client.CallToolAsync("Throw", cancellationToken: TestContext.Current.CancellationToken);
+                await Assert.ThrowsAsync<McpException>(() => client.CallToolAsync("does-not-exist", cancellationToken: TestContext.Current.CancellationToken));
+            });
+        }
+
+        Assert.NotEmpty(activities);
+
+        var throwToolClient = Assert.Single(activities, a =>
+            a.Tags.Any(t => t.Key == "mcp.tool.name" && t.Value == "Throw") &&
+            a.Tags.Any(t => t.Key == "mcp.method.name" && t.Value == "tools/call") &&
+            a.DisplayName == "tools/call Throw" &&
+            a.Kind == ActivityKind.Client);
+
+        Assert.Equal(ActivityStatusCode.Error, throwToolClient.Status);
+        Assert.Equal("[{\"type\":\"text\",\"text\":\"boom\"}]", throwToolClient.StatusDescription);
+
+        var throwToolServer = Assert.Single(activities, a =>
+            a.Tags.Any(t => t.Key == "mcp.tool.name" && t.Value == "Throw") &&
+            a.Tags.Any(t => t.Key == "mcp.method.name" && t.Value == "tools/call") &&
+            a.DisplayName == "tools/call Throw" &&
+            a.Kind == ActivityKind.Server);
+
+        Assert.Equal(ActivityStatusCode.Error, throwToolServer.Status);
+        Assert.Equal("[{\"type\":\"text\",\"text\":\"boom\"}]", throwToolServer.StatusDescription);
+
+        var doesNotExistToolClient = Assert.Single(activities, a =>
+            a.Tags.Any(t => t.Key == "mcp.tool.name" && t.Value == "does-not-exist") &&
+            a.Tags.Any(t => t.Key == "mcp.method.name" && t.Value == "tools/call") &&
+            a.DisplayName == "tools/call does-not-exist" &&
+            a.Kind == ActivityKind.Client);
+
+        Assert.Equal(ActivityStatusCode.Error, doesNotExistToolClient.Status);
+        Assert.Equal("Request failed (server side): Unknown tool 'does-not-exist'", doesNotExistToolClient.StatusDescription);
+        Assert.Equal("-32603", doesNotExistToolClient.Tags.Single(t => t.Key == "rpc.jsonrpc.error_code").Value);
+
+        var doesNotExistToolServer = Assert.Single(activities, a =>
+            a.Tags.Any(t => t.Key == "mcp.tool.name" && t.Value == "does-not-exist") &&
+            a.Tags.Any(t => t.Key == "mcp.method.name" && t.Value == "tools/call") &&
+            a.DisplayName == "tools/call does-not-exist" &&
+            a.Kind == ActivityKind.Server);
+
+        Assert.Equal(ActivityStatusCode.Error, doesNotExistToolServer.Status);
+        Assert.Equal("Request failed (server side): Unknown tool 'does-not-exist'", doesNotExistToolClient.StatusDescription);
+        Assert.Equal("-32603", doesNotExistToolClient.Tags.Single(t => t.Key == "rpc.jsonrpc.error_code").Value);
     }
 
     private static async Task RunConnected(Func<IMcpClient, IMcpServer, Task> action)
@@ -52,7 +139,10 @@ public class DiagnosticTests
                 {
                     Tools = new()
                     {
-                        ToolCollection = [McpServerTool.Create((int amount) => amount * 2, new() { Name = "DoubleValue", Description = "Doubles the value." })],
+                        ToolCollection = [
+                            McpServerTool.Create((int amount) => amount * 2, new() { Name = "DoubleValue", Description = "Doubles the value." }),
+                            McpServerTool.Create(() => { throw new Exception("boom"); }, new() { Name = "Throw", Description = "Throws error." }),
+                        ],
                     }
                 }
             }))
