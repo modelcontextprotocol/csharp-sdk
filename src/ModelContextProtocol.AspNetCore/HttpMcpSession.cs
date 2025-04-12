@@ -12,15 +12,15 @@ internal class HttpMcpSession
     }
 
     public SseResponseStreamTransport Transport { get; }
-    public (string ClaimType, string ClaimValue, string Issuer)? UserIdClaim { get; }
+    public (string Type, string Value, string Issuer)? UserIdClaim { get; }
 
     public bool HasSameUserId(ClaimsPrincipal user)
-        => UserIdClaim?.ClaimValue == GetUserIdClaim(user)?.ClaimValue;
+        => UserIdClaim == GetUserIdClaim(user);
 
     // SignalR only checks for ClaimTypes.NameIdentifier in HttpConnectionDispatcher, but AspNetCore.Antiforgery checks that plus the sub and UPN claims.
     // However, we short-circuit unlike antiforgery since we expect to call this to verify MCP messages a lot more frequently than
     // verifying antiforgery tokens from <form> posts.
-    private static (string ClaimType, string ClaimValue, string Issuer)? GetUserIdClaim(ClaimsPrincipal user)
+    private static (string Type, string Value, string Issuer)? GetUserIdClaim(ClaimsPrincipal user)
     {
         if (user?.Identity?.IsAuthenticated != true)
         {
