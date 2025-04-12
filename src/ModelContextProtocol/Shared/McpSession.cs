@@ -276,13 +276,27 @@ internal sealed class McpSession : IDisposable
             _logger.NoRequestFoundForMessageWithId(EndpointName, messageWithId.Id.ToString());
         }
     }
-
+    public class BadRequest
+    {
+        public RequestId RequestId { get; init; }
+    }
     private async Task HandleRequest(JsonRpcRequest request, CancellationToken cancellationToken)
     {
         if (!_requestHandlers.TryGetValue(request.Method, out var handler))
         {
             _logger.NoHandlerFoundForRequest(EndpointName, request.Method);
-            throw new McpException("The method does not exist or is not available.", ErrorCodes.MethodNotFound);
+            await _transport.SendMessageAsync(new JsonRpcNotification
+                {
+                    JsonRpc = "2.0",
+                    Method = NotificationMethods.LoggingMessageNotification,
+                    Params = new JsonObject
+                    {
+                        ["message"] = $"{EndpointName} lacks capability to do {request.Method}",
+                        ["requestId"] = request.Id.ToString(),
+                        ["type"] = nameof(BadRequest)
+                    }
+                }, cancellationToken).ConfigureAwait(false);
+            return;
         }
 
         _logger.RequestHandlerCalled(EndpointName, request.Method);
