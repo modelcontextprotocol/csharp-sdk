@@ -21,16 +21,16 @@ public class McpServerHandlerTests
         Assert.Null(handlers.SubscribeToResourcesHandler);
         Assert.Null(handlers.UnsubscribeFromResourcesHandler);
 
-        handlers.ListToolsHandler = (p, c) => Task.FromResult(new ListToolsResult());
-        handlers.CallToolHandler = (p, c) => Task.FromResult(new CallToolResponse());
-        handlers.ListPromptsHandler = (p, c) => Task.FromResult(new ListPromptsResult());
-        handlers.GetPromptHandler = (p, c) => Task.FromResult(new GetPromptResult());
-        handlers.ListResourceTemplatesHandler = (p, c) => Task.FromResult(new ListResourceTemplatesResult());
-        handlers.ListResourcesHandler = (p, c) => Task.FromResult(new ListResourcesResult());
-        handlers.ReadResourceHandler = (p, c) => Task.FromResult(new ReadResourceResult());
-        handlers.CompleteHandler = (p, c) => Task.FromResult(new CompleteResult());
-        handlers.SubscribeToResourcesHandler = (s, c) => Task.FromResult(new EmptyResult());
-        handlers.UnsubscribeFromResourcesHandler = (s, c) => Task.FromResult(new EmptyResult());
+        handlers.ListToolsHandler = async (p, c) => new ListToolsResult();
+        handlers.CallToolHandler = async (p, c) => new CallToolResponse();
+        handlers.ListPromptsHandler = async (p, c) => new ListPromptsResult();
+        handlers.GetPromptHandler = async (p, c) => new GetPromptResult();
+        handlers.ListResourceTemplatesHandler = async (p, c) => new ListResourceTemplatesResult();
+        handlers.ListResourcesHandler = async (p, c) => new ListResourcesResult();
+        handlers.ReadResourceHandler = async (p, c) => new ReadResourceResult();
+        handlers.CompleteHandler = async (p, c) => new CompleteResult();
+        handlers.SubscribeToResourcesHandler = async (s, c) => new EmptyResult();
+        handlers.UnsubscribeFromResourcesHandler = async (s, c) => new EmptyResult();
 
         Assert.NotNull(handlers.ListToolsHandler);
         Assert.NotNull(handlers.CallToolHandler);

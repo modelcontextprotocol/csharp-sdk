@@ -41,7 +41,7 @@ public sealed class McpServerHandlers
     /// Tools from both sources will be combined when returning results to clients.
     /// </para>
     /// </remarks>
-    public Func<RequestContext<ListToolsRequestParams>, CancellationToken, Task<ListToolsResult>>? ListToolsHandler { get; set; }
+    public Func<RequestContext<ListToolsRequestParams>, CancellationToken, ValueTask<ListToolsResult>>? ListToolsHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.ToolsCall"/> requests.
@@ -50,7 +50,7 @@ public sealed class McpServerHandlers
     /// This handler is invoked when a client makes a call to a tool that isn't found in the <see cref="McpServerTool"/> collection.
     /// The handler should implement logic to execute the requested tool and return appropriate results.
     /// </remarks>
-    public Func<RequestContext<CallToolRequestParams>, CancellationToken, Task<CallToolResponse>>? CallToolHandler { get; set; }
+    public Func<RequestContext<CallToolRequestParams>, CancellationToken, ValueTask<CallToolResponse>>? CallToolHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.PromptsList"/> requests.
@@ -66,7 +66,7 @@ public sealed class McpServerHandlers
     /// Prompts from both sources will be combined when returning results to clients.
     /// </para>
     /// </remarks>
-    public Func<RequestContext<ListPromptsRequestParams>, CancellationToken, Task<ListPromptsResult>>? ListPromptsHandler { get; set; }
+    public Func<RequestContext<ListPromptsRequestParams>, CancellationToken, ValueTask<ListPromptsResult>>? ListPromptsHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.PromptsGet"/> requests.
@@ -75,7 +75,7 @@ public sealed class McpServerHandlers
     /// This handler is invoked when a client requests details for a specific prompt that isn't found in the <see cref="McpServerPrompt"/> collection.
     /// The handler should implement logic to fetch or generate the requested prompt and return appropriate results.
     /// </remarks>
-    public Func<RequestContext<GetPromptRequestParams>, CancellationToken, Task<GetPromptResult>>? GetPromptHandler { get; set; }
+    public Func<RequestContext<GetPromptRequestParams>, CancellationToken, ValueTask<GetPromptResult>>? GetPromptHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.ResourcesTemplatesList"/> requests.
@@ -85,7 +85,7 @@ public sealed class McpServerHandlers
     /// It supports pagination through the cursor mechanism, where the client can make
     /// repeated calls with the cursor returned by the previous call to retrieve more resource templates.
     /// </remarks>
-    public Func<RequestContext<ListResourceTemplatesRequestParams>, CancellationToken, Task<ListResourceTemplatesResult>>? ListResourceTemplatesHandler { get; set; }
+    public Func<RequestContext<ListResourceTemplatesRequestParams>, CancellationToken, ValueTask<ListResourceTemplatesResult>>? ListResourceTemplatesHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.ResourcesList"/> requests.
@@ -95,7 +95,7 @@ public sealed class McpServerHandlers
     /// It supports pagination through the cursor mechanism, where the client can make
     /// repeated calls with the cursor returned by the previous call to retrieve more resources.
     /// </remarks>
-    public Func<RequestContext<ListResourcesRequestParams>, CancellationToken, Task<ListResourcesResult>>? ListResourcesHandler { get; set; }
+    public Func<RequestContext<ListResourcesRequestParams>, CancellationToken, ValueTask<ListResourcesResult>>? ListResourcesHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.ResourcesRead"/> requests.
@@ -104,7 +104,7 @@ public sealed class McpServerHandlers
     /// This handler is invoked when a client requests the content of a specific resource identified by its URI.
     /// The handler should implement logic to locate and retrieve the requested resource.
     /// </remarks>
-    public Func<RequestContext<ReadResourceRequestParams>, CancellationToken, Task<ReadResourceResult>>? ReadResourceHandler { get; set; }
+    public Func<RequestContext<ReadResourceRequestParams>, CancellationToken, ValueTask<ReadResourceResult>>? ReadResourceHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.CompletionComplete"/> requests.
@@ -114,7 +114,7 @@ public sealed class McpServerHandlers
     /// The handler processes auto-completion requests, returning a list of suggestions based on the 
     /// reference type and current argument value.
     /// </remarks>
-    public Func<RequestContext<CompleteRequestParams>, CancellationToken, Task<CompleteResult>>? CompleteHandler { get; set; }
+    public Func<RequestContext<CompleteRequestParams>, CancellationToken, ValueTask<CompleteResult>>? CompleteHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.ResourcesSubscribe"/> requests.
@@ -130,7 +130,7 @@ public sealed class McpServerHandlers
     /// whenever a relevant resource is created, updated, or deleted.
     /// </para>
     /// </remarks>
-    public Func<RequestContext<SubscribeRequestParams>, CancellationToken, Task<EmptyResult>>? SubscribeToResourcesHandler { get; set; }
+    public Func<RequestContext<SubscribeRequestParams>, CancellationToken, ValueTask<EmptyResult>>? SubscribeToResourcesHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.ResourcesUnsubscribe"/> requests.
@@ -146,7 +146,7 @@ public sealed class McpServerHandlers
     /// to the client for the specified resources.
     /// </para>
     /// </remarks>
-    public Func<RequestContext<UnsubscribeRequestParams>, CancellationToken, Task<EmptyResult>>? UnsubscribeFromResourcesHandler { get; set; }
+    public Func<RequestContext<UnsubscribeRequestParams>, CancellationToken, ValueTask<EmptyResult>>? UnsubscribeFromResourcesHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.LoggingSetLevel"/> requests.
@@ -161,7 +161,7 @@ public sealed class McpServerHandlers
     /// at or above the specified level to the client as notifications/message notifications.
     /// </para>
     /// </remarks>
-    public Func<RequestContext<SetLevelRequestParams>, CancellationToken, Task<EmptyResult>>? SetLoggingLevelHandler { get; set; }
+    public Func<RequestContext<SetLevelRequestParams>, CancellationToken, ValueTask<EmptyResult>>? SetLoggingLevelHandler { get; set; }
 
     /// <summary>
     /// Overwrite any handlers in McpServerOptions with non-null handlers from this instance.

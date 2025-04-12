@@ -147,7 +147,7 @@ public abstract class McpServerPrompt : IMcpServerPrimitive
     /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The prompt implementation returns <see langword="null"/> or an unsupported result type.</exception>
-    public abstract Task<GetPromptResult> GetAsync(
+    public abstract ValueTask<GetPromptResult> GetAsync(
         RequestContext<GetPromptRequestParams> request,
         CancellationToken cancellationToken = default);
 
