@@ -69,11 +69,10 @@ List<ChatMessage> messages = [];
 while (true)
 {
     Console.Write("Q: ");
-
     messages.Add(new(ChatRole.User, Console.ReadLine()));
 
     List<ChatResponseUpdate> updates = [];
-    await foreach (var update in chatClient.GetStreamingResponseAsync(messages, new() { Tools = [.. tools]}))
+    await foreach (var update in chatClient.GetStreamingResponseAsync(messages, new() { Tools = [.. tools] }))
     {
         Console.Write(update);
         updates.Add(update);

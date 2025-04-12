@@ -450,7 +450,7 @@ internal sealed class McpSession : IDisposable
         TagList tags = default;
         bool addTags = activity is { IsAllDataRequested: true } || startingTimestamp is not null;
 
-        // propagate trace context, noop if activity is null
+        // propagate trace context
         _propagator?.InjectActivityContext(activity, message);
 
         try
@@ -507,7 +507,6 @@ internal sealed class McpSession : IDisposable
         {
             JsonRpcRequest request => request.Method,
             JsonRpcNotification notification => notification.Method,
-            not null => message.GetType().FullName ?? "unknownMethod",
             _ => "unknownMethod"
         };
 
