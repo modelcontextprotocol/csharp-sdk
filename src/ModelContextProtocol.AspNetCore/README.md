@@ -30,7 +30,7 @@ dotnet add package ModelContextProtocol.AspNetCore --prerelease
 
 ```csharp
 // Program.cs
-?using ModelContextProtocol.Server;
+using ModelContextProtocol.Server;
 using System.ComponentModel;
 
 var builder = WebApplication.CreateBuilder(args);
