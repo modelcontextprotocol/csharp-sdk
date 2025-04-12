@@ -135,7 +135,7 @@ public static async Task<string> SummarizeDownloadedContent(
         new(ChatRole.User, content),
     ];
     
-    var options = new ChatOptions()
+    ChatOptions options = new()
     {
         MaxOutputTokens = 256,
         Temperature = 0.3f,
