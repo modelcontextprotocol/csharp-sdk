@@ -516,8 +516,7 @@ internal sealed class McpSession : IDisposable
         tags.Add("mcp.method.name", method);
         tags.Add("network.transport", _transportKind);
 
-        // RPC convention also includes:
-        // server.address, server.port, client.address, client.port, network.peer.address, network.peer.port, network.type
+        // MCP convention also includes: server.address, server.port, client.address, client.port
 
         if (activity is { IsAllDataRequested: true })
         {
@@ -553,6 +552,7 @@ internal sealed class McpSession : IDisposable
                     target = toolName;
                 }
                 break;
+
             case RequestMethods.PromptsGet:
                 string? promptName = GetStringProperty(paramsObj, "name");
                 if (promptName is not null)
@@ -616,6 +616,7 @@ internal sealed class McpSession : IDisposable
                 {
                     content = prop.ToJsonString();
                 }
+
                 activity.SetStatus(ActivityStatusCode.Error, content);
             }
 
@@ -654,7 +655,8 @@ internal sealed class McpSession : IDisposable
         {
             TagList tags = default;
             tags.Add("network.transport", _transportKind);
-            // TODO server.address, server.port, client.address, client.port, network.peer.address, network.peer.port, network.type
+
+            // MCP convention also includes: server.address, server.port, client.address, client.port
             durationMetric.Record(GetElapsed(_sessionStartingTimestamp).TotalSeconds, tags);
         }
 
