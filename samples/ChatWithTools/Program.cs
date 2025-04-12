@@ -8,7 +8,6 @@ using OpenTelemetry.Trace;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
-using ModelContextProtocol.Protocol.Types;
 
 using var tracerProvider = Sdk.CreateTracerProviderBuilder()
     .AddHttpClientInstrumentation()
@@ -42,12 +41,9 @@ var mcpClient = await McpClientFactory.CreateAsync(
         Arguments = ["-y", "--verbose", "@modelcontextprotocol/server-everything"],
         Name = "Everything",
     }),
-    clientOptions: new McpClientOptions()
+    clientOptions: new()
     {
-        Capabilities = new ClientCapabilities()
-        {
-            Sampling = new SamplingCapability() { SamplingHandler = samplingClient.CreateSamplingHandler() }
-        },
+        Capabilities = new() { Sampling = new() { SamplingHandler = samplingClient.CreateSamplingHandler() } },
     },
     loggerFactory: loggerFactory);
 
