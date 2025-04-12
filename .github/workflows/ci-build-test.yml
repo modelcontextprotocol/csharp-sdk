@@ -62,14 +62,14 @@ jobs:
       run: npm install @modelcontextprotocol/server-memory
 
     - name: Build
-      run: dotnet build --configuration ${{ matrix.configuration }}
+      run: dotnet build ModelContextProtocol.slnx --configuration ${{ matrix.configuration }}
 
     - name: Pack
-      run: dotnet pack --configuration ${{ matrix.configuration }}
+      run: dotnet pack ModelContextProtocol.slnx --configuration ${{ matrix.configuration }}
 
     - name: Test
       run: >-
-        dotnet test
+        dotnet test ModelContextProtocol.slnx 
         --filter '(Execution!=Manual)'
         --no-build
         --configuration ${{ matrix.configuration }}
