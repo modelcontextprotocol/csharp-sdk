@@ -645,6 +645,9 @@ internal sealed class McpSession : IDisposable
         {
             TagList tags = default;
             tags.Add("network.transport", _transportKind);
+
+            // TODO (lmolkova): add server.address and server.port on client-side when using SSE transport,
+            // client.* attributes are not added to metrics because of cardinality
             durationMetric.Record(GetElapsed(_sessionStartingTimestamp).TotalSeconds, tags);
         }
 
