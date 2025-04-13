@@ -10,6 +10,9 @@ using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+#if !NET
+using System.Threading.Channels;
+#endif
 
 namespace ModelContextProtocol.Shared;
 
@@ -515,7 +518,7 @@ internal sealed class McpSession : IDisposable
         tags.Add("mcp.method.name", method);
         tags.Add("network.transport", _transportKind);
 
-        // TODO (lmolkova), when using SSE transport, add:
+        // TODO: When using SSE transport, add:
         // - server.address and server.port on client spans and metrics
         // - client.address and client.port on server spans (not metrics because of cardinality) when using SSE transport
         if (activity is { IsAllDataRequested: true })
@@ -646,7 +649,7 @@ internal sealed class McpSession : IDisposable
             TagList tags = default;
             tags.Add("network.transport", _transportKind);
 
-            // TODO (lmolkova): add server.address and server.port on client-side when using SSE transport,
+            // TODO: Add server.address and server.port on client-side when using SSE transport,
             // client.* attributes are not added to metrics because of cardinality
             durationMetric.Record(GetElapsed(_sessionStartingTimestamp).TotalSeconds, tags);
         }
