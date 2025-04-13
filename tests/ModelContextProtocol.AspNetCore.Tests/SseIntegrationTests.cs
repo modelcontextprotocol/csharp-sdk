@@ -91,7 +91,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         {
             var msg = args.Params?["message"]?.GetValue<string>();
             receivedNotification.SetResult(msg);
-            return Task.CompletedTask;
+            return default;
         });
 
         // Send a test message through POST endpoint

@@ -41,5 +41,5 @@ public class RootsCapability
     /// The handler receives request parameters and should return a <see cref="ListRootsResult"/> containing the collection of available roots.
     /// </remarks>
     [JsonIgnore]
-    public Func<ListRootsRequestParams?, CancellationToken, Task<ListRootsResult>>? RootsHandler { get; set; }
+    public Func<ListRootsRequestParams?, CancellationToken, ValueTask<ListRootsResult>>? RootsHandler { get; set; }
 }

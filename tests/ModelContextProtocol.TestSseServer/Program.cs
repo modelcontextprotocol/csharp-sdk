@@ -6,6 +6,8 @@ using Serilog;
 using System.Text;
 using System.Text.Json;
 
+#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
+
 namespace ModelContextProtocol.TestSseServer;
 
 public class Program
@@ -104,9 +106,9 @@ public class Program
         {
             Tools = new()
             {
-                ListToolsHandler = (request, cancellationToken) =>
+                ListToolsHandler = async (request, cancellationToken) =>
                 {
-                    return Task.FromResult(new ListToolsResult()
+                    return new ListToolsResult()
                     {
                         Tools = 
                         [
@@ -149,7 +151,7 @@ public class Program
                                     """, McpJsonUtilities.DefaultOptions),
                             }
                         ]
-                    });
+                    };
                 },
                 CallToolHandler = async (request, cancellationToken) =>
                 {
@@ -192,10 +194,10 @@ public class Program
             },
             Resources = new()
             {
-                ListResourceTemplatesHandler = (request, cancellationToken) =>
+                ListResourceTemplatesHandler = async (request, cancellationToken) =>
                 {
 
-                    return Task.FromResult(new ListResourceTemplatesResult()
+                    return new ListResourceTemplatesResult()
                     {
                         ResourceTemplates = [
                             new ResourceTemplate()
@@ -204,10 +206,10 @@ public class Program
                                 Name = "Dynamic Resource",
                             }
                         ]
-                    });
+                    };
                 },
 
-                ListResourcesHandler = (request, cancellationToken) =>
+                ListResourcesHandler = async (request, cancellationToken) =>
                 {
                     int startIndex = 0;
                     var requestParams = request.Params ?? new();
@@ -231,13 +233,14 @@ public class Program
                     {
                         nextCursor = Convert.ToBase64String(Encoding.UTF8.GetBytes(endIndex.ToString()));
                     }
-                    return Task.FromResult(new ListResourcesResult()
+
+                    return new ListResourcesResult()
                     {
                         NextCursor = nextCursor,
                         Resources = resources.GetRange(startIndex, endIndex - startIndex)
-                    });
+                    };
                 },
-                ReadResourceHandler =(request, cancellationToken) =>
+                ReadResourceHandler = async (request, cancellationToken) =>
                 {
                     if (request.Params?.Uri is null)
                     {
@@ -251,7 +254,8 @@ public class Program
                         {
                             throw new McpException("Invalid resource URI");
                         }
-                        return Task.FromResult(new ReadResourceResult()
+
+                        return new ReadResourceResult()
                         {
                             Contents = [
                                 new TextResourceContents()
@@ -261,23 +265,23 @@ public class Program
                                     Text = $"Dynamic resource {id}: This is a plaintext resource"
                                 }
                             ]
-                        });
+                        };
                     }
 
                     ResourceContents? contents = resourceContents.FirstOrDefault(r => r.Uri == request.Params.Uri) ?? 
                         throw new McpException("Resource not found");
                     
-                    return Task.FromResult(new ReadResourceResult()
+                    return new ReadResourceResult()
                     {
                         Contents = [contents]
-                    });
+                    };
                 }
             },
             Prompts = new()
             {
-                ListPromptsHandler = (request, cancellationToken) =>
+                ListPromptsHandler = async (request, cancellationToken) =>
                 {
-                    return Task.FromResult(new ListPromptsResult()
+                    return new ListPromptsResult()
                     {
                         Prompts = [
                             new Prompt()
@@ -306,9 +310,9 @@ public class Program
                                 }
                             }
                         ]
-                    });
+                    };
                 },
-                GetPromptHandler = (request, cancellationToken) =>
+                GetPromptHandler = async (request, cancellationToken) =>
                 {
                     if (request.Params is null)
                     {
@@ -365,10 +369,10 @@ public class Program
                         throw new McpException($"Unknown prompt: {request.Params.Name}");
                     }
 
-                    return Task.FromResult(new GetPromptResult()
+                    return new GetPromptResult()
                     {
                         Messages = messages
-                    });
+                    };
                 }
             },
         };

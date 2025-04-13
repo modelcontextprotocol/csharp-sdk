@@ -17,7 +17,7 @@ internal sealed class SingleSessionMcpServerHostedService(IMcpServer session, IH
     {
         try
         {
-            await session.RunAsync(stoppingToken);
+            await session.RunAsync(stoppingToken).ConfigureAwait(false);
         }
         finally
         {

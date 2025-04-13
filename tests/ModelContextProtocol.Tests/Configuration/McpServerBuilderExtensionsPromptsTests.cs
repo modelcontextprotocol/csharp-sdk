@@ -9,8 +9,6 @@ using System.ComponentModel;
 using System.Text.Json.Serialization;
 using System.Threading.Channels;
 
-#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
-
 namespace ModelContextProtocol.Tests.Configuration;
 
 public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBase
@@ -144,7 +142,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
         await using (client.RegisterNotificationHandler("notifications/prompts/list_changed", (notification, cancellationToken) =>
             {
                 listChanged.Writer.TryWrite(notification);
-                return Task.CompletedTask;
+                return default;
             }))
         {
             serverPrompts.Add(newPrompt);

@@ -25,7 +25,7 @@ public abstract class ClientServerTestBase : LoggedTest, IAsyncDisposable
             .AddMcpServer()
             .WithStreamServerTransport(_clientToServerPipe.Reader.AsStream(), _serverToClientPipe.Writer.AsStream());
         ConfigureServices(sc, _builder);
-        ServiceProvider = sc.BuildServiceProvider();
+        ServiceProvider = sc.BuildServiceProvider(validateScopes: true);
 
         _cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         Server = ServiceProvider.GetRequiredService<IMcpServer>();

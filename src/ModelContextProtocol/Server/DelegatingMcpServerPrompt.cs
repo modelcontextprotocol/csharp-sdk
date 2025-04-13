@@ -24,7 +24,7 @@ public abstract class DelegatingMcpServerPrompt : McpServerPrompt
     public override Prompt ProtocolPrompt => _innerPrompt.ProtocolPrompt;
 
     /// <inheritdoc />
-    public override Task<GetPromptResult> GetAsync(
+    public override ValueTask<GetPromptResult> GetAsync(
         RequestContext<GetPromptRequestParams> request, 
         CancellationToken cancellationToken = default) =>
         _innerPrompt.GetAsync(request, cancellationToken);

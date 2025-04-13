@@ -21,7 +21,7 @@ public class McpServerBuilderExtensionsHandlerTests
     [Fact]
     public void WithListToolsHandler_Sets_Handler()
     {
-        Func<RequestContext<ListToolsRequestParams>, CancellationToken, Task<ListToolsResult>> handler = (context, token) => Task.FromResult(new ListToolsResult());
+        Func<RequestContext<ListToolsRequestParams>, CancellationToken, ValueTask<ListToolsResult>> handler = async (context, token) => new ListToolsResult();
 
         _builder.Object.WithListToolsHandler(handler);
 
@@ -34,7 +34,7 @@ public class McpServerBuilderExtensionsHandlerTests
     [Fact]
     public void WithCallToolHandler_Sets_Handler()
     {
-        Func<RequestContext<CallToolRequestParams>, CancellationToken, Task<CallToolResponse>> handler = (context, token) => Task.FromResult(new CallToolResponse());
+        Func<RequestContext<CallToolRequestParams>, CancellationToken, ValueTask<CallToolResponse>> handler = async (context, token) => new CallToolResponse();
 
         _builder.Object.WithCallToolHandler(handler);
 
@@ -47,7 +47,7 @@ public class McpServerBuilderExtensionsHandlerTests
     [Fact]
     public void WithListPromptsHandler_Sets_Handler()
     {
-        Func<RequestContext<ListPromptsRequestParams>, CancellationToken, Task<ListPromptsResult>> handler = (context, token) => Task.FromResult(new ListPromptsResult());
+        Func<RequestContext<ListPromptsRequestParams>, CancellationToken, ValueTask<ListPromptsResult>> handler = async (context, token) => new ListPromptsResult();
 
         _builder.Object.WithListPromptsHandler(handler);
 
@@ -60,7 +60,7 @@ public class McpServerBuilderExtensionsHandlerTests
     [Fact]
     public void WithGetPromptHandler_Sets_Handler()
     {
-        Func<RequestContext<GetPromptRequestParams>, CancellationToken, Task<GetPromptResult>> handler = (context, token) => Task.FromResult(new GetPromptResult());
+        Func<RequestContext<GetPromptRequestParams>, CancellationToken, ValueTask<GetPromptResult>> handler = async (context, token) => new GetPromptResult();
 
         _builder.Object.WithGetPromptHandler(handler);
 
@@ -73,7 +73,7 @@ public class McpServerBuilderExtensionsHandlerTests
     [Fact]
     public void WithListResourceTemplatesHandler_Sets_Handler()
     {
-        Func<RequestContext<ListResourceTemplatesRequestParams>, CancellationToken, Task<ListResourceTemplatesResult>> handler = (context, token) => Task.FromResult(new ListResourceTemplatesResult());
+        Func<RequestContext<ListResourceTemplatesRequestParams>, CancellationToken, ValueTask<ListResourceTemplatesResult>> handler = async (context, token) => new ListResourceTemplatesResult();
 
         _builder.Object.WithListResourceTemplatesHandler(handler);
 
@@ -86,7 +86,7 @@ public class McpServerBuilderExtensionsHandlerTests
     [Fact]
     public void WithListResourcesHandler_Sets_Handler()
     {
-        Func<RequestContext<ListResourcesRequestParams>, CancellationToken, Task<ListResourcesResult>> handler = (context, token) => Task.FromResult(new ListResourcesResult());
+        Func<RequestContext<ListResourcesRequestParams>, CancellationToken, ValueTask<ListResourcesResult>> handler = async (context, token) => new ListResourcesResult();
 
         _builder.Object.WithListResourcesHandler(handler);
 
@@ -99,7 +99,7 @@ public class McpServerBuilderExtensionsHandlerTests
     [Fact]
     public void WithReadResourceHandler_Sets_Handler()
     {
-        Func<RequestContext<ReadResourceRequestParams>, CancellationToken, Task<ReadResourceResult>> handler = (context, token) => Task.FromResult(new ReadResourceResult());
+        Func<RequestContext<ReadResourceRequestParams>, CancellationToken, ValueTask<ReadResourceResult>> handler = async (context, token) => new ReadResourceResult();
 
         _builder.Object.WithReadResourceHandler(handler);
 
@@ -112,7 +112,7 @@ public class McpServerBuilderExtensionsHandlerTests
     [Fact]
     public void WithCompleteHandler_Sets_Handler()
     {
-        Func<RequestContext<CompleteRequestParams>, CancellationToken, Task<CompleteResult>> handler = (context, token) => Task.FromResult(new CompleteResult());
+        Func<RequestContext<CompleteRequestParams>, CancellationToken, ValueTask<CompleteResult>> handler = async (context, token) => new CompleteResult();
 
         _builder.Object.WithCompleteHandler(handler);
 
@@ -125,7 +125,7 @@ public class McpServerBuilderExtensionsHandlerTests
     [Fact]
     public void WithSubscribeToResourcesHandler_Sets_Handler()
     {
-        Func<RequestContext<SubscribeRequestParams>, CancellationToken, Task<EmptyResult>> handler = (context, token) => Task.FromResult(new EmptyResult());
+        Func<RequestContext<SubscribeRequestParams>, CancellationToken, ValueTask<EmptyResult>> handler = async (context, token) => new EmptyResult();
 
         _builder.Object.WithSubscribeToResourcesHandler(handler);
 
@@ -138,7 +138,7 @@ public class McpServerBuilderExtensionsHandlerTests
     [Fact]
     public void WithUnsubscribeFromResourcesHandler_Sets_Handler()
     {
-        Func<RequestContext<UnsubscribeRequestParams>, CancellationToken, Task<EmptyResult>> handler = (context, token) => Task.FromResult(new EmptyResult());
+        Func<RequestContext<UnsubscribeRequestParams>, CancellationToken, ValueTask<EmptyResult>> handler = async (context, token) => new EmptyResult();
 
         _builder.Object.WithUnsubscribeFromResourcesHandler(handler);
 
