@@ -34,7 +34,7 @@ internal sealed class McpSession : IDisposable
     private readonly NotificationHandlers _notificationHandlers;
     private readonly long _sessionStartingTimestamp = Stopwatch.GetTimestamp();
 
-    private readonly DistributedContextPropagator? _propagator = DistributedContextPropagator.Current;
+    private readonly DistributedContextPropagator _propagator = DistributedContextPropagator.Current;
 
     /// <summary>Collection of requests sent on this session and waiting for responses.</summary>
     private readonly ConcurrentDictionary<RequestId, TaskCompletionSource<IJsonRpcMessage>> _pendingRequests = [];
@@ -190,11 +190,11 @@ internal sealed class McpSession : IDisposable
 
         long? startingTimestamp = durationMetric.Enabled ? Stopwatch.GetTimestamp() : null;
 
-        Activity? activity = Diagnostics.ShouldInstrumentMessage(message)?
+        Activity? activity = Diagnostics.ShouldInstrumentMessage(message) ?
             Diagnostics.ActivitySource.StartActivity(
                 CreateActivityName(method),
                 ActivityKind.Server,
-                parentContext: _propagator?.ExtractActivityContext(message) ?? default,
+                parentContext: _propagator.ExtractActivityContext(message),
                 links: Diagnostics.ActivityLinkFromCurrent()) :
             null;
 
@@ -358,7 +358,7 @@ internal sealed class McpSession : IDisposable
             request.Id = new RequestId($"{_id}-{Interlocked.Increment(ref _nextRequestId)}");
         }
 
-        _propagator?.InjectActivityContext(activity, request);
+        _propagator.InjectActivityContext(activity, request);
 
         TagList tags = default;
         bool addTags = activity is { IsAllDataRequested: true } || startingTimestamp is not null;
@@ -515,8 +515,9 @@ internal sealed class McpSession : IDisposable
         tags.Add("mcp.method.name", method);
         tags.Add("network.transport", _transportKind);
 
-        // MCP convention also includes: server.address, server.port, client.address, client.port
-
+        // TODO (lmolkova), when using SSE transport, add:
+        // - server.address and server.port on client spans and metrics
+        // - client.address and client.port on server spans (not metrics because of cardinality) when using SSE transport
         if (activity is { IsAllDataRequested: true })
         {
             // session and request id have high cardinality, so not applying to metric tags
@@ -544,20 +545,11 @@ internal sealed class McpSession : IDisposable
         switch (method)
         {
             case RequestMethods.ToolsCall:
-                string? toolName = GetStringProperty(paramsObj, "name");
-                if (toolName is not null)
-                {
-                    tags.Add("mcp.tool.name", toolName);
-                    target = toolName;
-                }
-                break;
-
             case RequestMethods.PromptsGet:
-                string? promptName = GetStringProperty(paramsObj, "name");
-                if (promptName is not null)
+                target = GetStringProperty(paramsObj, "name");
+                if (target is not null)
                 {
-                    tags.Add("mcp.prompt.name", promptName);
-                    target = promptName;
+                    tags.Add(method == RequestMethods.ToolsCall ? "mcp.tool.name" : "mcp.prompt.name", target);
                 }
                 break;
 
@@ -565,11 +557,10 @@ internal sealed class McpSession : IDisposable
             case RequestMethods.ResourcesSubscribe:
             case RequestMethods.ResourcesUnsubscribe:
             case NotificationMethods.ResourceUpdatedNotification:
-                string? resourceUri = GetStringProperty(paramsObj, "uri");
-                if (resourceUri is not null)
+                target = GetStringProperty(paramsObj, "uri");
+                if (target is not null)
                 {
-                    tags.Add("mcp.resource.uri", resourceUri);
-                    target = resourceUri;
+                    tags.Add("mcp.resource.uri", target);
                 }
                 break;
         }
@@ -611,7 +602,7 @@ internal sealed class McpSession : IDisposable
             if (activity is { IsAllDataRequested: true })
             {
                 string? content = null;
-                if (jsonObject.TryGetPropertyValue("content", out var prop) && prop!= null)
+                if (jsonObject.TryGetPropertyValue("content", out var prop) && prop != null)
                 {
                     content = prop.ToJsonString();
                 }
@@ -654,8 +645,6 @@ internal sealed class McpSession : IDisposable
         {
             TagList tags = default;
             tags.Add("network.transport", _transportKind);
-
-            // MCP convention also includes: server.address, server.port, client.address, client.port
             durationMetric.Record(GetElapsed(_sessionStartingTimestamp).TotalSeconds, tags);
         }
 

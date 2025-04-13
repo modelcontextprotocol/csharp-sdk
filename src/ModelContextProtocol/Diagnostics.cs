@@ -40,9 +40,7 @@ internal static class Diagnostics
 
     internal static ActivityContext ExtractActivityContext(this DistributedContextPropagator propagator, IJsonRpcMessage message)
     {
-        string? traceparent = null;
-        string? tracestate = null;
-        propagator?.ExtractTraceIdAndState(message, ExtractContext, out traceparent, out tracestate);
+        propagator.ExtractTraceIdAndState(message, ExtractContext, out var traceparent, out var tracestate);
         ActivityContext.TryParse(traceparent, tracestate, true, out var activityContext);
         return activityContext;
     }
@@ -76,7 +74,7 @@ internal static class Diagnostics
     internal static void InjectActivityContext(this DistributedContextPropagator propagator, Activity? activity, IJsonRpcMessage message)
     {
         // noop if activity is null
-        propagator?.Inject(activity, message, InjectContext);
+        propagator.Inject(activity, message, InjectContext);
     }
 
     private static void InjectContext(object? message, string key, string value)
