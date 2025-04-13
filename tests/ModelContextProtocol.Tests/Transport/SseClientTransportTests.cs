@@ -17,8 +17,6 @@ public class SseClientTransportTests : LoggedTest
         {
             Endpoint = new Uri("http://localhost:8080"),
             ConnectionTimeout = TimeSpan.FromSeconds(2),
-            MaxReconnectAttempts = 3,
-            ReconnectDelay = TimeSpan.FromMilliseconds(50),
             Name = "Test Server",
             AdditionalHeaders = new Dictionary<string, string>
             {
@@ -76,15 +74,12 @@ public class SseClientTransportTests : LoggedTest
         mockHttpHandler.RequestHandler = (request) =>
         {
             retries++;
-            throw new InvalidOperationException("Test exception");
+            throw new Exception("Test exception");
         };
 
-        var action = async () => await transport.ConnectAsync();
-
-        var exception = await Assert.ThrowsAsync<McpTransportException>(action);
-        Assert.Equal("Exceeded reconnect limit", exception.Message);
-
-        Assert.Equal(_transportOptions.MaxReconnectAttempts, retries);
+        var exception = await Assert.ThrowsAsync<Exception>(() => transport.ConnectAsync(TestContext.Current.CancellationToken));
+        Assert.Equal("Test exception", exception.Message);
+        Assert.Equal(1, retries);
     }
 
     [Fact]

@@ -49,37 +49,6 @@ public record SseClientTransportOptions
     public TimeSpan ConnectionTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    /// Gets or sets the maximum number of reconnection attempts for the SSE connection before giving up.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// This property controls how many times the client will attempt to reconnect to the SSE server
-    /// after a connection failure occurs. If all reconnection attempts fail, a 
-    /// <see cref="McpTransportException"/> with the message "Exceeded reconnect limit" will be thrown.
-    /// </para>
-    /// <para>
-    /// Between each reconnection attempt, the client will wait for the duration specified by <see cref="ReconnectDelay"/>.
-    /// </para>
-    /// </remarks>
-    public int MaxReconnectAttempts { get; init; } = 3;
-
-    /// <summary>
-    /// Gets or sets the delay to employ between reconnection attempts when the SSE connection fails.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// When a connection to the SSE server is lost or fails, the client will wait for this duration
-    /// before attempting to reconnect. This helps prevent excessive reconnection attempts in quick succession
-    /// which could overload the server or network.
-    /// </para>
-    /// <para>
-    /// The reconnection process continues until either a successful connection is established or
-    /// the maximum number of reconnection attempts (<see cref="MaxReconnectAttempts"/>) is reached.
-    /// </para>
-    /// </remarks>
-    public TimeSpan ReconnectDelay { get; init; } = TimeSpan.FromSeconds(5);
-
-    /// <summary>
     /// Gets custom HTTP headers to include in requests to the SSE server.
     /// </summary>
     /// <remarks>

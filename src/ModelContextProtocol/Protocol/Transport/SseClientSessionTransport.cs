@@ -101,11 +101,12 @@ internal sealed class SseClientSessionTransport : TransportBase
             messageId = messageWithId.Id.ToString();
         }
 
-        var response = await _httpClient.PostAsync(
-            _messageEndpoint,
-            content,
-            cancellationToken
-        ).ConfigureAwait(false);
+        var httpRequestMessage = new HttpRequestMessage(HttpMethod.Post, _messageEndpoint)
+        {
+            Content = content,
+        };
+        CopyAdditionalHeaders(httpRequestMessage.Headers);
+        var response = await _httpClient.SendAsync(httpRequestMessage, cancellationToken).ConfigureAwait(false);
 
         response.EnsureSuccessStatusCode();
 
@@ -182,72 +183,52 @@ internal sealed class SseClientSessionTransport : TransportBase
 
     private async Task ReceiveMessagesAsync(CancellationToken cancellationToken)
     {
-        int reconnectAttempts = 0;
-
-        while (!cancellationToken.IsCancellationRequested && !IsConnected)
+        try
         {
-            try
-            {
-                using var request = new HttpRequestMessage(HttpMethod.Get, _sseEndpoint);
-                request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+            using var request = new HttpRequestMessage(HttpMethod.Get, _sseEndpoint);
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+            CopyAdditionalHeaders(request.Headers);
 
-                if (_options.AdditionalHeaders != null)
+            using var response = await _httpClient.SendAsync(
+                request,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken
+            ).ConfigureAwait(false);
+
+            response.EnsureSuccessStatusCode();
+
+            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+            await foreach (SseItem<string> sseEvent in SseParser.Create(stream).EnumerateAsync(cancellationToken).ConfigureAwait(false))
+            {
+                switch (sseEvent.EventType)
                 {
-                    foreach (var header in _options.AdditionalHeaders)
-                    {
-                        request.Headers.Add(header.Key, header.Value);
-                    }
+                    case "endpoint":
+                        HandleEndpointEvent(sseEvent.Data);
+                        break;
+
+                    case "message":
+                        await ProcessSseMessage(sseEvent.Data, cancellationToken).ConfigureAwait(false);
+                        break;
                 }
-
-                using var response = await _httpClient.SendAsync(
-                    request,
-                    HttpCompletionOption.ResponseHeadersRead,
-                    cancellationToken
-                ).ConfigureAwait(false);
-
-                response.EnsureSuccessStatusCode();
-
-                using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-
-                await foreach (SseItem<string> sseEvent in SseParser.Create(stream).EnumerateAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    switch (sseEvent.EventType)
-                    {
-                        case "endpoint":
-                            HandleEndpointEvent(sseEvent.Data);
-                            break;
-
-                        case "message":
-                            await ProcessSseMessage(sseEvent.Data, cancellationToken).ConfigureAwait(false);
-                            break;
-                    }
-                }
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                _logger.TransportReadMessagesCancelled(_endpointName);
-                // Normal shutdown
-            }
-            catch (IOException) when (cancellationToken.IsCancellationRequested)
-            {
-                _logger.TransportReadMessagesCancelled(_endpointName);
-                // Normal shutdown
-            }
-            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
-            {
-                _logger.TransportConnectionError(_endpointName, ex);
-
-                reconnectAttempts++;
-                if (reconnectAttempts >= _options.MaxReconnectAttempts)
-                {
-                    throw new McpTransportException("Exceeded reconnect limit", ex);
-                }
-
-                await Task.Delay(_options.ReconnectDelay, cancellationToken).ConfigureAwait(false);
             }
         }
-
-        SetConnected(false);
+        catch when (cancellationToken.IsCancellationRequested)
+        {
+            // Normal shutdown
+            _connectionEstablished.TrySetCanceled(cancellationToken);
+            _logger.TransportReadMessagesCancelled(_endpointName);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            _connectionEstablished.TrySetException(ex);
+            _logger.TransportConnectionError(_endpointName, ex);
+            throw;
+        }
+        finally
+        {
+            SetConnected(false);
+        }
     }
 
     private async Task ProcessSseMessage(string data, CancellationToken cancellationToken)
@@ -304,6 +285,20 @@ internal sealed class SseClientSessionTransport : TransportBase
         {
             _logger.TransportEndpointEventParseFailed(_endpointName, data, ex);
             throw new McpTransportException("Failed to parse endpoint event", ex);
+        }
+    }
+
+    private void CopyAdditionalHeaders(HttpRequestHeaders headers)
+    {
+        if (_options.AdditionalHeaders is not null)
+        {
+            foreach (var header in _options.AdditionalHeaders)
+            {
+                if (!headers.TryAddWithoutValidation(header.Key, header.Value))
+                {
+                    throw new InvalidOperationException($"Failed to add header '{header.Key}' with value '{header.Value}' from {nameof(SseClientTransportOptions.AdditionalHeaders)}.");
+                }
+            }
         }
     }
 }

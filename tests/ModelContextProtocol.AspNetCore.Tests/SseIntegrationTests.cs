@@ -23,12 +23,11 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         Name = "In-memory Test Server",
     };
 
-    private Task<IMcpClient> ConnectMcpClient(HttpClient httpClient, McpClientOptions? clientOptions = null)
+    private Task<IMcpClient> ConnectMcpClient(HttpClient? httpClient = null, SseClientTransportOptions? transportOptions = null)
         => McpClientFactory.CreateAsync(
-            new SseClientTransport(DefaultTransportOptions, httpClient, LoggerFactory),
-            clientOptions,
-            LoggerFactory,
-            TestContext.Current.CancellationToken);
+            new SseClientTransport(transportOptions ?? DefaultTransportOptions, httpClient ?? HttpClient, LoggerFactory),
+            loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken);
 
     [Fact]
     public async Task ConnectAndReceiveMessage_InMemoryServer()
@@ -38,7 +37,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using var mcpClient = await ConnectMcpClient(HttpClient);
+        await using var mcpClient = await ConnectMcpClient();
 
         // Send a test message through POST endpoint
         await mcpClient.SendNotificationAsync("test/message", new Envelope { Message = "Hello, SSE!" }, serializerOptions: JsonContext.Default.Options, cancellationToken: TestContext.Current.CancellationToken);
@@ -53,7 +52,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         MapAbsoluteEndpointUriMcp(app);
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using var mcpClient = await ConnectMcpClient(HttpClient);
+        await using var mcpClient = await ConnectMcpClient();
 
         // Send a test message through POST endpoint
         await mcpClient.SendNotificationAsync("test/message", new Envelope { Message = "Hello, SSE!" }, serializerOptions: JsonContext.Default.Options, cancellationToken: TestContext.Current.CancellationToken);
@@ -85,7 +84,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using var mcpClient = await ConnectMcpClient(HttpClient);
+        await using var mcpClient = await ConnectMcpClient();
 
         mcpClient.RegisterNotificationHandler("test/notification", (args, ca) =>
         {
@@ -109,14 +108,14 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
 
         Builder.Services.AddMcpServer(options =>
             {
-                Interlocked.Increment(ref firstOptionsCallbackCallCount);
+                firstOptionsCallbackCallCount++;
             })
             .WithHttpTransport()
             .WithTools<EchoTool>();
 
         Builder.Services.AddMcpServer(options =>
             {
-                Interlocked.Increment(ref secondOptionsCallbackCallCount);
+                secondOptionsCallbackCallCount++;
             })
             .WithTools<SampleLlmTool>();
 
@@ -125,7 +124,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using var mcpClient = await ConnectMcpClient(HttpClient);
+        await using var mcpClient = await ConnectMcpClient();
 
         // Options can be lazily initialized, but they must be instantiated by the time an MCP client can finish connecting.
         // Callbacks can be called multiple times if configureOptionsAsync is configured, because that uses the IOptionsFactory,
@@ -149,6 +148,78 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         var textContent = Assert.Single(echoResponse.Content, c => c.Type == "text");
 
         Assert.Equal("hello from client!", textContent.Text);
+    }
+
+    [Fact]
+    public async Task AdditionalHeaders_AreSent_InGetAndPostRequests()
+    {
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport();
+
+        await using var app = Builder.Build();
+
+        bool wasGetRequest = false;
+        bool wasPostRequest = false;
+
+        app.Use(next =>
+        {
+            return async context =>
+            {
+                Assert.Equal("Bearer testToken", context.Request.Headers["Authorize"]);
+                if (context.Request.Method == HttpMethods.Get)
+                {
+                    wasGetRequest = true;
+                }
+                else if (context.Request.Method == HttpMethods.Post)
+                {
+                    wasPostRequest = true;
+                }
+                await next(context);
+            };
+        });
+
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        var sseOptions = new SseClientTransportOptions()
+        {
+            Endpoint = new Uri("http://localhost/sse"),
+            Name = "In-memory Test Server",
+            AdditionalHeaders = new()
+            {
+                ["Authorize"] = "Bearer testToken"
+            },
+        };
+
+        await using var mcpClient = await ConnectMcpClient(transportOptions: sseOptions);
+
+        Assert.True(wasGetRequest);
+        Assert.True(wasPostRequest);
+    }
+
+    [Fact]
+    public async Task EmptyAdditionalHeadersKey_Throws_InvalidOpearionException()
+    {
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport();
+
+        await using var app = Builder.Build();
+
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        var sseOptions = new SseClientTransportOptions()
+        {
+            Endpoint = new Uri("http://localhost/sse"),
+            Name = "In-memory Test Server",
+            AdditionalHeaders = new()
+            {
+                [""] = ""
+            },
+        };
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => ConnectMcpClient(transportOptions: sseOptions));
+        Assert.Equal("Failed to add header '' with value '' from AdditionalHeaders.", ex.Message);
     }
 
     private static void MapAbsoluteEndpointUriMcp(IEndpointRouteBuilder endpoints)
