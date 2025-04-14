@@ -294,7 +294,8 @@ internal sealed class SseClientSessionTransport : TransportBase
             }
 
             // Check if data is absolute URI
-            if (Uri.TryCreate(data, UriKind.Absolute, out var endpoint))
+            if (Uri.TryCreate(data, UriKind.Absolute, out var endpoint) &&
+                endpoint.Scheme.StartsWith("http"))
             {
                 // Since the endpoint is an absolute URI, we can use it directly
                 _messageEndpoint = endpoint;
