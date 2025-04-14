@@ -263,7 +263,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
                 Messages = [.. chatMessages.SelectMany(chatMessage => chatMessage.ToPromptMessages())],
             },
 
-            null => throw new InvalidOperationException($"Null result returned from prompt function."),
+            null => throw new InvalidOperationException("Null result returned from prompt function."),
 
             _ => throw new InvalidOperationException($"Unknown result type '{result.GetType()}' returned from prompt function."),
         };
