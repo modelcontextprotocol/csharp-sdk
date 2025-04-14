@@ -294,10 +294,10 @@ internal sealed class SseClientSessionTransport : TransportBase
             }
 
             // Check if data is absolute URI
-            if (data.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || data.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            if (Uri.TryCreate(data, UriKind.Absolute, out var endpoint))
             {
                 // Since the endpoint is an absolute URI, we can use it directly
-                _messageEndpoint = new Uri(data);
+                _messageEndpoint = endpoint;
             }
             else
             {
