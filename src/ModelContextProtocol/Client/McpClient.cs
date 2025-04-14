@@ -55,7 +55,7 @@ internal sealed class McpClient : McpEndpoint, IMcpClient
             {
                 if (samplingCapability.SamplingHandler is not { } samplingHandler)
                 {
-                    throw new InvalidOperationException($"Sampling capability was set but it did not provide a handler.");
+                    throw new InvalidOperationException("Sampling capability was set but it did not provide a handler.");
                 }
 
                 RequestHandlers.Set(
@@ -72,7 +72,7 @@ internal sealed class McpClient : McpEndpoint, IMcpClient
             {
                 if (rootsCapability.RootsHandler is not { } rootsHandler)
                 {
-                    throw new InvalidOperationException($"Roots capability was set but it did not provide a handler.");
+                    throw new InvalidOperationException("Roots capability was set but it did not provide a handler.");
                 }
 
                 RequestHandlers.Set(

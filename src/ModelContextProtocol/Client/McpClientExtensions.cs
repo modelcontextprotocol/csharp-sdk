@@ -145,7 +145,7 @@ public static class McpClientExtensions
     /// </para>
     /// <para>
     /// Every iteration through the returned <see cref="IAsyncEnumerable{McpClientTool}"/>
-    /// will result in requerying the server and yielding the sequence of available tools.
+    /// will result in re-querying the server and yielding the sequence of available tools.
     /// </para>
     /// </remarks>
     /// <example>
@@ -248,7 +248,7 @@ public static class McpClientExtensions
     /// </para>
     /// <para>
     /// Every iteration through the returned <see cref="IAsyncEnumerable{McpClientPrompt}"/>
-    /// will result in requerying the server and yielding the sequence of available prompts.
+    /// will result in re-querying the server and yielding the sequence of available prompts.
     /// </para>
     /// </remarks>
     /// <example>
@@ -396,7 +396,7 @@ public static class McpClientExtensions
     /// </para>
     /// <para>
     /// Every iteration through the returned <see cref="IAsyncEnumerable{ResourceTemplate}"/>
-    /// will result in requerying the server and yielding the sequence of available resource templates.
+    /// will result in re-querying the server and yielding the sequence of available resource templates.
     /// </para>
     /// </remarks>
     /// <example>
@@ -510,7 +510,7 @@ public static class McpClientExtensions
     /// </para>
     /// <para>
     /// Every iteration through the returned <see cref="IAsyncEnumerable{Resource}"/>
-    /// will result in requerying the server and yielding the sequence of available resources.
+    /// will result in re-querying the server and yielding the sequence of available resources.
     /// </para>
     /// </remarks>
     /// <example>
