@@ -68,21 +68,21 @@ internal sealed partial class SseClientSessionTransport : TransportBase
 
     /// <inheritdoc/>
     public override async Task SendMessageAsync(
-        IJsonRpcMessage message,
+        JsonRpcMessage message,
         CancellationToken cancellationToken = default)
     {
         if (_messageEndpoint == null)
             throw new InvalidOperationException("Transport not connected");
 
         using var content = new StringContent(
-            JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.IJsonRpcMessage),
+            JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage),
             Encoding.UTF8,
             "application/json"
         );
 
         string messageId = "(no id)";
 
-        if (message is IJsonRpcMessageWithId messageWithId)
+        if (message is JsonRpcMessageWithId messageWithId)
         {
             messageId = messageWithId.Id.ToString();
         }
@@ -213,17 +213,20 @@ internal sealed partial class SseClientSessionTransport : TransportBase
                 }
             }
         }
-        catch when (cancellationToken.IsCancellationRequested)
-        {
-            // Normal shutdown
-            LogTransportReadMessagesCancelled(Name);
-            _connectionEstablished.TrySetCanceled(cancellationToken);
-        }
         catch (Exception ex)
         {
-            LogTransportReadMessagesFailed(Name, ex);
-            _connectionEstablished.TrySetException(ex);
-            throw;
+            if (cancellationToken.IsCancellationRequested)
+            {
+                // Normal shutdown
+                LogTransportReadMessagesCancelled(Name);
+                _connectionEstablished.TrySetCanceled(cancellationToken);
+            }
+            else
+            {
+                LogTransportReadMessagesFailed(Name, ex);
+                _connectionEstablished.TrySetException(ex);
+                throw;
+            }
         }
         finally
         {
@@ -241,7 +244,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
 
         try
         {
-            var message = JsonSerializer.Deserialize(data, McpJsonUtilities.JsonContext.Default.IJsonRpcMessage);
+            var message = JsonSerializer.Deserialize(data, McpJsonUtilities.JsonContext.Default.JsonRpcMessage);
             if (message == null)
             {
                 LogTransportMessageParseUnexpectedTypeSensitive(Name, data);
@@ -249,7 +252,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
             }
 
             string messageId = "(no id)";
-            if (message is IJsonRpcMessageWithId messageWithId)
+            if (message is JsonRpcMessageWithId messageWithId)
             {
                 messageId = messageWithId.Id.ToString();
             }

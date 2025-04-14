@@ -80,11 +80,11 @@ public class McpClientFactoryTests
 
     private class NopTransport : ITransport, IClientTransport
     {
-        private readonly Channel<IJsonRpcMessage> _channel = Channel.CreateUnbounded<IJsonRpcMessage>();
+        private readonly Channel<JsonRpcMessage> _channel = Channel.CreateUnbounded<JsonRpcMessage>();
 
         public bool IsConnected => true;
 
-        public ChannelReader<IJsonRpcMessage> MessageReader => _channel.Reader;
+        public ChannelReader<JsonRpcMessage> MessageReader => _channel.Reader;
 
         public Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default) => Task.FromResult<ITransport>(this);
 
@@ -92,7 +92,7 @@ public class McpClientFactoryTests
 
         public string Name => "Test Nop Transport";
 
-        public virtual Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
+        public virtual Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
         {
             switch (message)
             {
@@ -122,7 +122,7 @@ public class McpClientFactoryTests
     {
         public const string ExpectedMessage = "Something failed";
 
-        public override Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
+        public override Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
         {
             throw new InvalidOperationException(ExpectedMessage);
         }

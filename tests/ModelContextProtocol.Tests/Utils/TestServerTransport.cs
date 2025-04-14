@@ -9,19 +9,19 @@ namespace ModelContextProtocol.Tests.Utils;
 
 public class TestServerTransport : ITransport
 {
-    private readonly Channel<IJsonRpcMessage> _messageChannel;
+    private readonly Channel<JsonRpcMessage> _messageChannel;
 
     public bool IsConnected { get; set; }
 
-    public ChannelReader<IJsonRpcMessage> MessageReader => _messageChannel;
+    public ChannelReader<JsonRpcMessage> MessageReader => _messageChannel;
 
-    public List<IJsonRpcMessage> SentMessages { get; } = [];
+    public List<JsonRpcMessage> SentMessages { get; } = [];
 
-    public Action<IJsonRpcMessage>? OnMessageSent { get; set; }
+    public Action<JsonRpcMessage>? OnMessageSent { get; set; }
 
     public TestServerTransport()
     {
-        _messageChannel = Channel.CreateUnbounded<IJsonRpcMessage>(new UnboundedChannelOptions
+        _messageChannel = Channel.CreateUnbounded<JsonRpcMessage>(new UnboundedChannelOptions
         {
             SingleReader = true,
             SingleWriter = true,
@@ -36,7 +36,7 @@ public class TestServerTransport : ITransport
         return default;
     }
 
-    public async Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
+    public async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         SentMessages.Add(message);
         if (message is JsonRpcRequest request)
@@ -77,7 +77,7 @@ public class TestServerTransport : ITransport
         }, cancellationToken);
     }
 
-    private async Task WriteMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
+    private async Task WriteMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         await _messageChannel.Writer.WriteAsync(message, cancellationToken);
     }

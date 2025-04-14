@@ -1,3 +1,4 @@
+using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Utils.Json;
 using System.Text.Json.Serialization;
 
@@ -12,10 +13,20 @@ namespace ModelContextProtocol.Protocol.Messages;
 /// lightweight remote procedure call (RPC) protocol that uses JSON as its data format.
 /// </remarks>
 [JsonConverter(typeof(JsonRpcMessageConverter))]
-public interface IJsonRpcMessage
+public abstract class JsonRpcMessage
 {
     /// <summary>
     /// Gets the JSON-RPC protocol version used.
     /// </summary>
-    string JsonRpc { get; }
+    /// <inheritdoc />
+    [JsonPropertyName("jsonrpc")]
+    public string JsonRpc { get; init; } = "2.0";
+
+    /// <summary>
+    /// If set, the transport the JsonRpcMessage was received on or should be sent over. This is used to support the
+    /// Streamable HTTP transport where the specification states that the server SHOULD include JSON-RPC responses in
+    /// the HTTP response body for the POST request containing the corresponding JSON-RPC request.
+    /// </summary>
+    [JsonIgnore]
+    public ITransport? RelatedTransport { get; set; }
 }

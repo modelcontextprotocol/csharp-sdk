@@ -33,7 +33,7 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
     /// <exception cref="McpTransportException">
     /// Thrown when the underlying process has exited or cannot be accessed.
     /// </exception>
-    public override async Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
+    public override async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         Exception? processException = null;
         bool hasExited = false;

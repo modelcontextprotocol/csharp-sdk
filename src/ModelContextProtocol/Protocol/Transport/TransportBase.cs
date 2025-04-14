@@ -15,13 +15,13 @@ namespace ModelContextProtocol.Protocol.Transport;
 /// </para>
 /// <para>
 /// Custom transport implementations should inherit from this class and implement the abstract
-/// <see cref="SendMessageAsync(IJsonRpcMessage, CancellationToken)"/> and <see cref="DisposeAsync()"/> methods
+/// <see cref="SendMessageAsync(JsonRpcMessage, CancellationToken)"/> and <see cref="DisposeAsync()"/> methods
 /// to handle the specific transport mechanism being used.
 /// </para>
 /// </remarks>
 public abstract partial class TransportBase : ITransport
 {
-    private readonly Channel<IJsonRpcMessage> _messageChannel;
+    private readonly Channel<JsonRpcMessage> _messageChannel;
     private readonly ILogger _logger;
     private int _isConnected;
 
@@ -34,7 +34,7 @@ public abstract partial class TransportBase : ITransport
         _logger = loggerFactory?.CreateLogger(GetType()) ?? NullLogger.Instance;
 
         // Unbounded channel to prevent blocking on writes
-        _messageChannel = Channel.CreateUnbounded<IJsonRpcMessage>(new UnboundedChannelOptions
+        _messageChannel = Channel.CreateUnbounded<JsonRpcMessage>(new UnboundedChannelOptions
         {
             SingleReader = true,
             SingleWriter = true,
@@ -56,10 +56,10 @@ public abstract partial class TransportBase : ITransport
     public bool IsConnected => _isConnected == 1;
 
     /// <inheritdoc/>
-    public ChannelReader<IJsonRpcMessage> MessageReader => _messageChannel.Reader;
+    public ChannelReader<JsonRpcMessage> MessageReader => _messageChannel.Reader;
 
     /// <inheritdoc/>
-    public abstract Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default);
+    public abstract Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default);
 
     /// <inheritdoc/>
     public abstract ValueTask DisposeAsync();
@@ -69,7 +69,7 @@ public abstract partial class TransportBase : ITransport
     /// </summary>
     /// <param name="message">The message to write.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    protected async Task WriteMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
+    protected async Task WriteMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         if (!IsConnected)
         {

@@ -39,7 +39,7 @@ internal sealed partial class McpSession : IDisposable
     private readonly DistributedContextPropagator _propagator = DistributedContextPropagator.Current;
 
     /// <summary>Collection of requests sent on this session and waiting for responses.</summary>
-    private readonly ConcurrentDictionary<RequestId, TaskCompletionSource<IJsonRpcMessage>> _pendingRequests = [];
+    private readonly ConcurrentDictionary<RequestId, TaskCompletionSource<JsonRpcMessage>> _pendingRequests = [];
     /// <summary>
     /// Collection of requests received on this session and currently being handled. The value provides a <see cref="CancellationTokenSource"/>
     /// that can be used to request cancellation of the in-flight handler.
@@ -47,8 +47,9 @@ internal sealed partial class McpSession : IDisposable
     private readonly ConcurrentDictionary<RequestId, CancellationTokenSource> _handlingRequests = new();
     private readonly ILogger _logger;
 
-    private readonly string _id = Guid.NewGuid().ToString("N");
-    private long _nextRequestId;
+    // This _sessionId is solely used to identify the session in telemetry and logs.
+    private readonly string _sessionId = Guid.NewGuid().ToString("N");
+    private long _lastRequestId;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="McpSession"/> class.
@@ -74,6 +75,7 @@ internal sealed partial class McpSession : IDisposable
             StdioClientSessionTransport or StdioServerTransport => "stdio",
             StreamClientSessionTransport or StreamServerTransport => "stream",
             SseClientSessionTransport or SseResponseStreamTransport => "sse",
+            StreamableHttpServerTransport => "http",
             _ => "unknownTransport"
         };
 
@@ -102,10 +104,11 @@ internal sealed partial class McpSession : IDisposable
             {
                 LogMessageRead(EndpointName, message.GetType().Name);
 
+                // Fire and forget the message handling to avoid blocking the transport.
                 _ = ProcessMessageAsync();
                 async Task ProcessMessageAsync()
                 {
-                    IJsonRpcMessageWithId? messageWithId = message as IJsonRpcMessageWithId;
+                    JsonRpcMessageWithId? messageWithId = message as JsonRpcMessageWithId;
                     CancellationTokenSource? combinedCts = null;
                     try
                     {
@@ -118,10 +121,8 @@ internal sealed partial class McpSession : IDisposable
                             _handlingRequests[messageWithId.Id] = combinedCts;
                         }
 
-                        // Fire and forget the message handling to avoid blocking the transport
-                        // If awaiting the task, the transport will not be able to read more messages,
-                        // which could lead to a deadlock if the handler sends a message back
-
+                        // If we await the handler without yielding first, the transport may not be able to read more messages,
+                        // which could lead to a deadlock if the handler sends a message back.
 #if NET
                         await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
 #else
@@ -142,22 +143,22 @@ internal sealed partial class McpSession : IDisposable
                         if (!isUserCancellation && message is JsonRpcRequest request)
                         {
                             LogRequestHandlerException(EndpointName, request.Method, ex);
-                            await _transport.SendMessageAsync(new JsonRpcError
+                            await SendMessageAsync(new JsonRpcError
                             {
                                 Id = request.Id,
-                                JsonRpc = "2.0",
                                 Error = new JsonRpcErrorDetail
                                 {
                                     Code = (ex as McpException)?.ErrorCode ?? ErrorCodes.InternalError,
                                     Message = ex.Message
-                                }
+                                },
+                                RelatedTransport = request.RelatedTransport,
                             }, cancellationToken).ConfigureAwait(false);
                         }
                         else if (ex is not OperationCanceledException)
                         {
                             if (_logger.IsEnabled(LogLevel.Trace))
                             {
-                                LogMessageHandlerExceptionSensitive(EndpointName, message.GetType().Name, JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.IJsonRpcMessage), ex);
+                                LogMessageHandlerExceptionSensitive(EndpointName, message.GetType().Name, JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage), ex);
                             }
                             else
                             {
@@ -191,7 +192,7 @@ internal sealed partial class McpSession : IDisposable
         }
     }
 
-    private async Task HandleMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken)
+    private async Task HandleMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken)
     {
         Histogram<double> durationMetric = _isServer ? s_serverOperationDuration : s_clientOperationDuration;
         string method = GetMethodName(message);
@@ -226,7 +227,7 @@ internal sealed partial class McpSession : IDisposable
                     await HandleNotification(notification, cancellationToken).ConfigureAwait(false);
                     break;
 
-                case IJsonRpcMessageWithId messageWithId:
+                case JsonRpcMessageWithId messageWithId:
                     HandleMessageWithId(message, messageWithId);
                     break;
 
@@ -270,7 +271,7 @@ internal sealed partial class McpSession : IDisposable
         await _notificationHandlers.InvokeHandlers(notification.Method, notification, cancellationToken).ConfigureAwait(false);
     }
 
-    private void HandleMessageWithId(IJsonRpcMessage message, IJsonRpcMessageWithId messageWithId)
+    private void HandleMessageWithId(JsonRpcMessage message, JsonRpcMessageWithId messageWithId)
     {
         if (_pendingRequests.TryRemove(messageWithId.Id, out var tcs))
         {
@@ -294,17 +295,17 @@ internal sealed partial class McpSession : IDisposable
         JsonNode? result = await handler(request, cancellationToken).ConfigureAwait(false);
         LogRequestHandlerCompleted(EndpointName, request.Method);
 
-        await _transport.SendMessageAsync(new JsonRpcResponse
+        await SendMessageAsync(new JsonRpcResponse
         {
             Id = request.Id,
-            JsonRpc = "2.0",
-            Result = result
+            Result = result,
+            RelatedTransport = request.RelatedTransport,
         }, cancellationToken).ConfigureAwait(false);
 
         return result;
     }
 
-    private CancellationTokenRegistration RegisterCancellation(CancellationToken cancellationToken, RequestId requestId)
+    private CancellationTokenRegistration RegisterCancellation(CancellationToken cancellationToken, JsonRpcRequest request)
     {
         if (!cancellationToken.CanBeCanceled)
         {
@@ -313,13 +314,14 @@ internal sealed partial class McpSession : IDisposable
 
         return cancellationToken.Register(static objState =>
         {
-            var state = (Tuple<McpSession, RequestId>)objState!;
+            var state = (Tuple<McpSession, JsonRpcRequest>)objState!;
             _ = state.Item1.SendMessageAsync(new JsonRpcNotification
             {
                 Method = NotificationMethods.CancelledNotification,
-                Params = JsonSerializer.SerializeToNode(new CancelledNotification { RequestId = state.Item2 }, McpJsonUtilities.JsonContext.Default.CancelledNotification)
+                Params = JsonSerializer.SerializeToNode(new CancelledNotification { RequestId = state.Item2.Id }, McpJsonUtilities.JsonContext.Default.CancelledNotification),
+                RelatedTransport = state.Item2.RelatedTransport,
             });
-        }, Tuple.Create(this, requestId));
+        }, Tuple.Create(this, request));
     }
 
     public IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler)
@@ -340,11 +342,6 @@ internal sealed partial class McpSession : IDisposable
     /// <returns>A task containing the server's response.</returns>
     public async Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken)
     {
-        if (!_transport.IsConnected)
-        {
-            throw new McpException("Transport is not connected");
-        }
-
         cancellationToken.ThrowIfCancellationRequested();
 
         Histogram<double> durationMetric = _isServer ? s_serverOperationDuration : s_clientOperationDuration;
@@ -358,7 +355,7 @@ internal sealed partial class McpSession : IDisposable
         // Set request ID
         if (request.Id.Id is null)
         {
-            request.Id = new RequestId($"{_id}-{Interlocked.Increment(ref _nextRequestId)}");
+            request = request.WithId(new RequestId(Interlocked.Increment(ref _lastRequestId)));
         }
 
         _propagator.InjectActivityContext(activity, request);
@@ -366,7 +363,7 @@ internal sealed partial class McpSession : IDisposable
         TagList tags = default;
         bool addTags = activity is { IsAllDataRequested: true } || startingTimestamp is not null;
 
-        var tcs = new TaskCompletionSource<IJsonRpcMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var tcs = new TaskCompletionSource<JsonRpcMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pendingRequests[request.Id] = tcs;
         try
         {
@@ -377,21 +374,21 @@ internal sealed partial class McpSession : IDisposable
 
             if (_logger.IsEnabled(LogLevel.Trace))
             {
-                LogSendingRequestSensitive(EndpointName, request.Method, JsonSerializer.Serialize(request, McpJsonUtilities.JsonContext.Default.IJsonRpcMessage));
+                LogSendingRequestSensitive(EndpointName, request.Method, JsonSerializer.Serialize(request, McpJsonUtilities.JsonContext.Default.JsonRpcMessage));
             }
             else
             {
                 LogSendingRequest(EndpointName, request.Method);
             }
 
-            await _transport.SendMessageAsync(request, cancellationToken).ConfigureAwait(false);
+            await SendToRelatedTransportAsync(request, cancellationToken).ConfigureAwait(false);
 
             // Now that the request has been sent, register for cancellation. If we registered before,
             // a cancellation request could arrive before the server knew about that request ID, in which
             // case the server could ignore it.
             LogRequestSentAwaitingResponse(EndpointName, request.Method, request.Id);
-            IJsonRpcMessage? response;
-            using (var registration = RegisterCancellation(cancellationToken, request.Id))
+            JsonRpcMessage? response;
+            using (var registration = RegisterCancellation(cancellationToken, request))
             {
                 response = await tcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
             }
@@ -437,14 +434,9 @@ internal sealed partial class McpSession : IDisposable
         }
     }
 
-    public async Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
+    public async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(message);
-
-        if (!_transport.IsConnected)
-        {
-            throw new McpException("Transport is not connected");
-        }
 
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -471,14 +463,14 @@ internal sealed partial class McpSession : IDisposable
 
             if (_logger.IsEnabled(LogLevel.Trace))
             {
-                LogSendingMessageSensitive(EndpointName, JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.IJsonRpcMessage));
+                LogSendingMessageSensitive(EndpointName, JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage));
             }
             else
             {
                 LogSendingMessage(EndpointName);
             }
 
-            await _transport.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
+            await SendToRelatedTransportAsync(message, cancellationToken).ConfigureAwait(false);
 
             // If the sent notification was a cancellation notification, cancel the pending request's await, as either the
             // server won't be sending a response, or per the specification, the response should be ignored. There are inherent
@@ -501,6 +493,12 @@ internal sealed partial class McpSession : IDisposable
         }
     }
 
+    // The JsonRpcMessage should be sent over the RelatedTransport if set. This is used to support the
+    // Streamable HTTP transport where the specification states that the server SHOULD include JSON-RPC responses in
+    // the HTTP response body for the POST request containing the corresponding JSON-RPC request.
+    private Task SendToRelatedTransportAsync(JsonRpcMessage message, CancellationToken cancellationToken)
+        => (message.RelatedTransport ?? _transport).SendMessageAsync(message, cancellationToken);
+
     private static CancelledNotification? GetCancelledNotificationParams(JsonNode? notificationParams)
     {
         try
@@ -515,7 +513,7 @@ internal sealed partial class McpSession : IDisposable
 
     private string CreateActivityName(string method) => method;
 
-    private static string GetMethodName(IJsonRpcMessage message) =>
+    private static string GetMethodName(JsonRpcMessage message) =>
         message switch
         {
             JsonRpcRequest request => request.Method,
@@ -523,7 +521,7 @@ internal sealed partial class McpSession : IDisposable
             _ => "unknownMethod"
         };
 
-    private void AddTags(ref TagList tags, Activity? activity, IJsonRpcMessage message, string method)
+    private void AddTags(ref TagList tags, Activity? activity, JsonRpcMessage message, string method)
     {
         tags.Add("mcp.method.name", method);
         tags.Add("network.transport", _transportKind);
@@ -534,9 +532,9 @@ internal sealed partial class McpSession : IDisposable
         if (activity is { IsAllDataRequested: true })
         {
             // session and request id have high cardinality, so not applying to metric tags
-            activity.AddTag("mcp.session.id", _id);
+            activity.AddTag("mcp.session.id", _sessionId);
 
-            if (message is IJsonRpcMessageWithId withId)
+            if (message is JsonRpcMessageWithId withId)
             {
                 activity.AddTag("mcp.request.id", withId.Id.Id?.ToString());
             }

@@ -13,7 +13,7 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 
 public class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelInMemoryTest(testOutputHelper)
 {
-    private async Task<IMcpClient> ConnectAsync(string? path = null)
+    private async Task<IMcpClient> ConnectAsync(string? path = "/sse")
     {
         var sseClientTransportOptions = new SseClientTransportOptions()
         {
@@ -48,9 +48,7 @@ public class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelInMemoryTe
 
     [Theory]
     [InlineData("/a", "/a/sse")]
-    [InlineData("/a", "/a/")]
     [InlineData("/a/", "/a/sse")]
-    [InlineData("/a/", "/a/")]
     public async Task CanConnect_WithMcpClient_AfterCustomizingRoute(string routePattern, string requestPath)
     {
         Builder.Services.AddMcpServer(options =>

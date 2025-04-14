@@ -74,7 +74,7 @@ internal class StreamClientSessionTransport : TransportBase
     /// </para>
     /// </remarks>
     /// <exception cref="McpTransportException">Thrown when the transport is not connected.</exception>
-    public override async Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
+    public override async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         if (!IsConnected)
         {
@@ -82,12 +82,12 @@ internal class StreamClientSessionTransport : TransportBase
         }
 
         string id = "(no id)";
-        if (message is IJsonRpcMessageWithId messageWithId)
+        if (message is JsonRpcMessageWithId messageWithId)
         {
             id = messageWithId.Id.ToString();
         }
 
-        var json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(IJsonRpcMessage)));
+        var json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)));
 
         using var _ = await _sendLock.LockAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -160,11 +160,11 @@ internal class StreamClientSessionTransport : TransportBase
     {
         try
         {
-            var message = (IJsonRpcMessage?)JsonSerializer.Deserialize(line.AsSpan().Trim(), McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(IJsonRpcMessage)));
+            var message = (JsonRpcMessage?)JsonSerializer.Deserialize(line.AsSpan().Trim(), McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)));
             if (message != null)
             {
                 string messageId = "(no id)";
-                if (message is IJsonRpcMessageWithId messageWithId)
+                if (message is JsonRpcMessageWithId messageWithId)
                 {
                     messageId = messageWithId.Id.ToString();
                 }

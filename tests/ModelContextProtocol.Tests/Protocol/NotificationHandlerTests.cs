@@ -33,7 +33,7 @@ public class NotificationHandlerTests : ClientServerTestBase
             }
         }
 
-        Assert.Equal(Iterations, counter);  
+        Assert.Equal(Iterations, counter);
     }
 
     [Fact]
