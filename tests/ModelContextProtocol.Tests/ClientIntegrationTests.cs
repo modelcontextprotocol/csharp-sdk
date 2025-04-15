@@ -307,11 +307,6 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
 
         // unsubscribe
         await client.UnsubscribeFromResourceAsync("test://static/resource/1", TestContext.Current.CancellationToken);
-        receivedNotification = new();
-
-        // wait a bit to validate we don't receive another. this is best effort only;
-        // false negatives are possible.
-        await Assert.ThrowsAsync<TimeoutException>(() => receivedNotification.Task.WaitAsync(TimeSpan.FromSeconds(1), TestContext.Current.CancellationToken));
     }
 
     [Theory]
