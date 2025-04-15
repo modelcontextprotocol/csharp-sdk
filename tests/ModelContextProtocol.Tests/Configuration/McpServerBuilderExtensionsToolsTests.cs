@@ -124,7 +124,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     [Fact]
     public async Task Can_List_Registered_Tools()
     {
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(16, tools.Count);
@@ -190,7 +190,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     [Fact]
     public async Task Can_Be_Notified_Of_Tool_Changes()
     {
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(16, tools.Count);
@@ -231,7 +231,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     [Fact]
     public async Task Can_Call_Registered_Tool()
     {
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         var result = await client.CallToolAsync(
             "Echo",
@@ -249,7 +249,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     [Fact]
     public async Task Can_Call_Registered_Tool_With_Array_Result()
     {
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         var result = await client.CallToolAsync(
             "EchoArray",
@@ -273,7 +273,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     [Fact]
     public async Task Can_Call_Registered_Tool_With_Null_Result()
     {
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         var result = await client.CallToolAsync(
             "ReturnNull",
@@ -287,7 +287,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     [Fact]
     public async Task Can_Call_Registered_Tool_With_Json_Result()
     {
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         var result = await client.CallToolAsync(
             "ReturnJson",
@@ -304,7 +304,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     [Fact]
     public async Task Can_Call_Registered_Tool_With_Int_Result()
     {
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         var result = await client.CallToolAsync(
             "ReturnInteger",
@@ -320,7 +320,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     [Fact]
     public async Task Can_Call_Registered_Tool_And_Pass_ComplexType()
     {
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         var result = await client.CallToolAsync(
             "EchoComplex",
@@ -338,7 +338,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     [Fact]
     public async Task Can_Call_Registered_Tool_With_Instance_Method()
     {
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         string[][] parts = new string[2][];
         for (int i = 0; i < 2; i++)
@@ -367,7 +367,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     [Fact]
     public async Task Returns_IsError_Content_When_Tool_Fails()
     {
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         var result = await client.CallToolAsync(
             "ThrowException",
@@ -382,7 +382,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     [Fact]
     public async Task Throws_Exception_On_Unknown_Tool()
     {
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         var e = await Assert.ThrowsAsync<McpException>(async () => await client.CallToolAsync(
             "NotRegisteredTool",
@@ -394,7 +394,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     [Fact]
     public async Task Returns_IsError_Missing_Parameter()
     {
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         var result = await client.CallToolAsync(
             "Echo",
@@ -511,7 +511,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     [Fact]
     public async Task Recognizes_Parameter_Types()
     {
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
@@ -584,7 +584,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     [Fact]
     public async Task HandlesIProgressParameter()
     {
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(tools);
@@ -627,7 +627,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     [Fact]
     public async Task CancellationNotificationsPropagateToToolTokens()
     {
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(tools);

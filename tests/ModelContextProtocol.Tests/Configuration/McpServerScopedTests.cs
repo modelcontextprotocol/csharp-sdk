@@ -23,7 +23,7 @@ public partial class McpServerScopedTests : ClientServerTestBase
     [Fact]
     public async Task InjectScopedServiceAsArgument()
     {
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         var tools = await client.ListToolsAsync(McpServerScopedTestsJsonContext.Default.Options, TestContext.Current.CancellationToken);
         var tool = tools.First(t => t.Name == nameof(EchoTool.EchoComplex));

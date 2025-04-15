@@ -33,7 +33,7 @@ public class CancellationTests : ClientServerTestBase
     [Fact]
     public async Task PrecancelRequest_CancelsBeforeSending()
     {
-        var client = await CreateMcpClientForServer();
+        await using var client = await CreateMcpClientForServer();
 
         bool gotCancellation = false;
         await using (Server.RegisterNotificationHandler(NotificationMethods.CancelledNotification, (notification, cancellationToken) =>
@@ -51,7 +51,7 @@ public class CancellationTests : ClientServerTestBase
     [Fact]
     public async Task CancellationPropagation_RequestingCancellationCancelsPendingRequest()
     {
-        var client = await CreateMcpClientForServer();
+        await using var client = await CreateMcpClientForServer();
 
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         var waitTool = tools.First(t => t.Name == nameof(WaitForCancellation));

@@ -29,7 +29,6 @@ public class McpClientExtensionsTests : ClientServerTestBase
         }
         services.AddSingleton(McpServerTool.Create([McpServerTool(Destructive = false, OpenWorld = true)] (string i) => $"{i} Result", new() { Name = "ValuesSetViaAttr" }));
         services.AddSingleton(McpServerTool.Create([McpServerTool(Destructive = false, OpenWorld = true)] (string i) => $"{i} Result", new() { Name = "ValuesSetViaOptions", Destructive = true, OpenWorld = false, ReadOnly = true }));
-
     }
 
     [Theory]
@@ -209,7 +208,7 @@ public class McpClientExtensionsTests : ClientServerTestBase
     [Fact]
     public async Task ListToolsAsync_AllToolsReturned()
     {
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(12, tools.Count);
@@ -235,7 +234,7 @@ public class McpClientExtensionsTests : ClientServerTestBase
     [Fact]
     public async Task EnumerateToolsAsync_AllToolsReturned()
     {
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         await foreach (var tool in client.EnumerateToolsAsync(cancellationToken: TestContext.Current.CancellationToken))
         {
@@ -254,7 +253,7 @@ public class McpClientExtensionsTests : ClientServerTestBase
     public async Task EnumerateToolsAsync_FlowsJsonSerializerOptions()
     {
         JsonSerializerOptions options = new(JsonSerializerOptions.Default);
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
         bool hasTools = false;
 
         await foreach (var tool in client.EnumerateToolsAsync(options, TestContext.Current.CancellationToken))
@@ -275,7 +274,7 @@ public class McpClientExtensionsTests : ClientServerTestBase
     public async Task EnumerateToolsAsync_HonorsJsonSerializerOptions()
     {
         JsonSerializerOptions emptyOptions = new() { TypeInfoResolver = JsonTypeInfoResolver.Combine() };
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         var tool = (await client.ListToolsAsync(emptyOptions, TestContext.Current.CancellationToken)).First();
         await Assert.ThrowsAsync<NotSupportedException>(async () => await tool.InvokeAsync(new() { ["i"] = 42 }, TestContext.Current.CancellationToken));
@@ -285,7 +284,7 @@ public class McpClientExtensionsTests : ClientServerTestBase
     public async Task SendRequestAsync_HonorsJsonSerializerOptions()
     {
         JsonSerializerOptions emptyOptions = new() { TypeInfoResolver = JsonTypeInfoResolver.Combine() };
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         await Assert.ThrowsAsync<NotSupportedException>(() => client.SendRequestAsync<CallToolRequestParams, CallToolResponse>("Method4", new() { Name = "tool" }, emptyOptions, cancellationToken: TestContext.Current.CancellationToken));
     }
@@ -294,7 +293,7 @@ public class McpClientExtensionsTests : ClientServerTestBase
     public async Task SendNotificationAsync_HonorsJsonSerializerOptions()
     {
         JsonSerializerOptions emptyOptions = new() { TypeInfoResolver = JsonTypeInfoResolver.Combine() };
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         await Assert.ThrowsAsync<NotSupportedException>(() => client.SendNotificationAsync("Method4", new { Value = 42 }, emptyOptions, cancellationToken: TestContext.Current.CancellationToken));
     }
@@ -303,7 +302,7 @@ public class McpClientExtensionsTests : ClientServerTestBase
     public async Task GetPromptsAsync_HonorsJsonSerializerOptions()
     {
         JsonSerializerOptions emptyOptions = new() { TypeInfoResolver = JsonTypeInfoResolver.Combine() };
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         await Assert.ThrowsAsync<NotSupportedException>(() => client.GetPromptAsync("Prompt", new Dictionary<string, object?> { ["i"] = 42 }, emptyOptions, cancellationToken: TestContext.Current.CancellationToken));
     }
@@ -312,7 +311,7 @@ public class McpClientExtensionsTests : ClientServerTestBase
     public async Task WithName_ChangesToolName()
     {
         JsonSerializerOptions options = new(JsonSerializerOptions.Default);
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         var tool = (await client.ListToolsAsync(options, TestContext.Current.CancellationToken)).First();
         var originalName = tool.Name;
@@ -327,7 +326,7 @@ public class McpClientExtensionsTests : ClientServerTestBase
     public async Task WithDescription_ChangesToolDescription()
     {
         JsonSerializerOptions options = new(JsonSerializerOptions.Default);
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
         var tool = (await client.ListToolsAsync(options, TestContext.Current.CancellationToken)).FirstOrDefault();
         var originalDescription = tool?.Description;
         var redescribedTool = tool?.WithDescription("ToolWithNewDescription");
@@ -337,9 +336,54 @@ public class McpClientExtensionsTests : ClientServerTestBase
     }
 
     [Fact]
+    public async Task WithProgress_ProgressReported()
+    {
+        const int TotalNotifications = 3;
+        int remainingProgress = TotalNotifications;
+        TaskCompletionSource<bool> allProgressReceived = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Server.ServerOptions.Capabilities?.Tools?.ToolCollection?.Add(McpServerTool.Create(async (IProgress<ProgressNotificationValue> progress) =>
+        {
+            for (int i = 0; i < TotalNotifications; i++)
+            {
+                progress.Report(new ProgressNotificationValue { Progress = i * 10, Message = "making progress" });
+                await Task.Delay(1);
+            }
+
+            await allProgressReceived.Task;
+
+            return 42;
+        }, new() { Name = "ProgressReporter" }));
+
+        await using IMcpClient client = await CreateMcpClientForServer();
+
+        var tool = (await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken)).First(t => t.Name == "ProgressReporter");
+
+        IProgress<ProgressNotificationValue> progress = new SynchronousProgress(value =>
+        {
+            Assert.True(value.Progress >= 0 && value.Progress <= 100);
+            Assert.Equal("making progress", value.Message);
+            if (Interlocked.Decrement(ref remainingProgress) == 0)
+            {
+                allProgressReceived.SetResult(true);
+            }
+        });
+
+        Assert.Throws<ArgumentNullException>("progress", () => tool.WithProgress(null!));
+
+        var result = await tool.WithProgress(progress).InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Contains("42", result?.ToString());
+    }
+
+    private sealed class SynchronousProgress(Action<ProgressNotificationValue> callback) : IProgress<ProgressNotificationValue>
+    {
+        public void Report(ProgressNotificationValue value) => callback(value);
+    }
+
+    [Fact]
     public async Task AsClientLoggerProvider_MessagesSentToClient()
     {
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         ILoggerProvider loggerProvider = Server.AsClientLoggerProvider();
         Assert.Throws<ArgumentNullException>("categoryName", () => loggerProvider.CreateLogger(null!));

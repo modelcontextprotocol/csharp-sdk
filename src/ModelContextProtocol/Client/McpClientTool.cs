@@ -1,8 +1,9 @@
-using ModelContextProtocol.Protocol.Types;
-using ModelContextProtocol.Utils.Json;
 using Microsoft.Extensions.AI;
-using System.Text.Json;
+using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Utils;
+using ModelContextProtocol.Utils.Json;
 using System.Collections.ObjectModel;
+using System.Text.Json;
 
 namespace ModelContextProtocol.Client;
 
@@ -36,14 +37,22 @@ public sealed class McpClientTool : AIFunction
     private readonly IMcpClient _client;
     private readonly string _name;
     private readonly string _description;
+    private readonly IProgress<ProgressNotificationValue>? _progress;
 
-    internal McpClientTool(IMcpClient client, Tool tool, JsonSerializerOptions serializerOptions, string? name = null, string? description = null)
+    internal McpClientTool(
+        IMcpClient client,
+        Tool tool,
+        JsonSerializerOptions serializerOptions,
+        string? name = null,
+        string? description = null,
+        IProgress<ProgressNotificationValue>? progress = null)
     {
         _client = client;
         ProtocolTool = tool;
         JsonSerializerOptions = serializerOptions;
         _name = name ?? tool.Name;
         _description = description ?? tool.Description ?? string.Empty;
+        _progress = progress;
     }
 
     /// <summary>
@@ -77,7 +86,7 @@ public sealed class McpClientTool : AIFunction
     protected async override ValueTask<object?> InvokeCoreAsync(
         AIFunctionArguments arguments, CancellationToken cancellationToken)
     {
-        CallToolResponse result = await _client.CallToolAsync(ProtocolTool.Name, arguments, JsonSerializerOptions, cancellationToken: cancellationToken).ConfigureAwait(false);
+        CallToolResponse result = await _client.CallToolAsync(ProtocolTool.Name, arguments, _progress, JsonSerializerOptions, cancellationToken: cancellationToken).ConfigureAwait(false);
         return JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.CallToolResponse);
     }
 
@@ -107,7 +116,7 @@ public sealed class McpClientTool : AIFunction
     /// </remarks>
     public McpClientTool WithName(string name)
     {
-        return new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, name, _description);
+        return new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, name, _description, _progress);
     }
 
     /// <summary>
@@ -133,6 +142,30 @@ public sealed class McpClientTool : AIFunction
     /// <returns>A new instance of <see cref="McpClientTool"/> with the provided description.</returns>
     public McpClientTool WithDescription(string description)
     {
-        return new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, _name, description);
+        return new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, _name, description, _progress);
+    }
+
+    /// <summary>
+    /// Creates a new instance of the tool but modified to report progress via the specified <see cref="IProgress{T}"/>.
+    /// </summary>
+    /// <param name="progress">The <see cref="IProgress{T}"/> to which progress notifications should be reported.</param>
+    /// <remarks>
+    /// <para>
+    /// Adding an <see cref="IProgress{T}"/> to the tool does not impact how it is reported to any AI model.
+    /// Rather, when the tool is invoked, the request to the MCP server will include a unique progress token,
+    /// and any progress notifications issued by the server with that progress token while the operation is in
+    /// flight will be reported to the <paramref name="progress"/> instance.
+    /// </para>
+    /// <para>
+    /// Only one <see cref="IProgress{T}"/> can be specified at a time. Calling <see cref="WithProgress"/> again
+    /// will overwrite any previously specified progress instance.
+    /// </para>
+    /// </remarks>
+    /// <returns>A new instance of <see cref="McpClientTool"/>, configured with the provided progress instance.</returns>
+    public McpClientTool WithProgress(IProgress<ProgressNotificationValue> progress)
+    {
+        Throw.IfNull(progress);
+
+        return new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, _name, _description, progress);
     }
 }
