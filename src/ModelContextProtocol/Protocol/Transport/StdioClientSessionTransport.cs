@@ -23,14 +23,14 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
     /// <para>
     /// For stdio-based transports, this implementation first verifies that the underlying process 
     /// is still running before attempting to send the message. If the process has exited or cannot
-    /// be accessed, a <see cref="McpTransportException"/> is thrown with details about the failure.
+    /// be accessed, a <see cref="InvalidOperationException"/> is thrown with details about the failure.
     /// </para>
     /// <para>
     /// After verifying the process state, this method delegates to the base class implementation
     /// to handle the actual message serialization and transmission to the process's standard input stream.
     /// </para>
     /// </remarks>
-    /// <exception cref="McpTransportException">
+    /// <exception cref="InvalidOperationException">
     /// Thrown when the underlying process has exited or cannot be accessed.
     /// </exception>
     public override async Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
@@ -49,7 +49,7 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
 
         if (hasExited)
         {
-            throw new McpTransportException("Transport is not connected", processException);
+            throw new InvalidOperationException("Transport is not connected", processException);
         }
 
         await base.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);

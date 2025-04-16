@@ -60,7 +60,7 @@ public class StreamServerTransport : TransportBase
     {
         if (!IsConnected)
         {
-            throw new McpTransportException("Transport is not connected");
+            throw new InvalidOperationException("Transport is not connected");
         }
 
         using var _ = await _sendLock.LockAsync(cancellationToken).ConfigureAwait(false);
@@ -80,7 +80,7 @@ public class StreamServerTransport : TransportBase
         catch (Exception ex)
         {
             LogTransportSendFailed(Name, id, ex);
-            throw new McpTransportException("Failed to send message", ex);
+            throw new InvalidOperationException("Failed to send message", ex);
         }
     }
 
