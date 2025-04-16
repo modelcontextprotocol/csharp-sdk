@@ -57,7 +57,29 @@ public static partial class McpServerBuilderExtensions
 
     /// <summary>Adds <see cref="McpServerTool"/> instances to the service collection backing <paramref name="builder"/>.</summary>
     /// <param name="builder">The builder instance.</param>
-    /// <param name="toolTypes">Types with marked methods to add as tools to the server.</param>
+    /// <param name="tools">The <see cref="McpServerTool"/> instances to add to the server.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="tools"/> is <see langword="null"/>.</exception>
+    public static IMcpServerBuilder WithTools(this IMcpServerBuilder builder, IEnumerable<McpServerTool> tools)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(tools);
+
+        foreach (var tool in tools)
+        {
+            if (tool is not null)
+            {
+                builder.Services.AddSingleton(tool);
+            }
+        }
+
+        return builder;
+    }
+
+    /// <summary>Adds <see cref="McpServerTool"/> instances to the service collection backing <paramref name="builder"/>.</summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="toolTypes">Types with <see cref="McpServerToolAttribute"/>-attributed methods to add as tools to the server.</param>
     /// <param name="serializerOptions">The serializer options governing tool parameter marshalling.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
@@ -167,6 +189,28 @@ public static partial class McpServerBuilderExtensions
                 builder.Services.AddSingleton((Func<IServiceProvider, McpServerPrompt>)(promptMethod.IsStatic ?
                     services => McpServerPrompt.Create(promptMethod, options: new() { Services = services, SerializerOptions = serializerOptions }) :
                     services => McpServerPrompt.Create(promptMethod, typeof(TPromptType), new() { Services = services, SerializerOptions = serializerOptions })));
+            }
+        }
+
+        return builder;
+    }
+
+    /// <summary>Adds <see cref="McpServerPrompt"/> instances to the service collection backing <paramref name="builder"/>.</summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="prompts">The <see cref="McpServerPrompt"/> instances to add to the server.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="prompts"/> is <see langword="null"/>.</exception>
+    public static IMcpServerBuilder WithPrompts(this IMcpServerBuilder builder, IEnumerable<McpServerPrompt> prompts)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(prompts);
+
+        foreach (var prompt in prompts)
+        {
+            if (prompt is not null)
+            {
+                builder.Services.AddSingleton(prompt);
             }
         }
 

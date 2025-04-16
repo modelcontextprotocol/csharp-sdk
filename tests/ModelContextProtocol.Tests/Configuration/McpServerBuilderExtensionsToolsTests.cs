@@ -408,6 +408,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     {
         IMcpServerBuilder builder = new ServiceCollection().AddMcpServer();
 
+        Assert.Throws<ArgumentNullException>("tools", () => builder.WithTools((IEnumerable<McpServerTool>)null!));
         Assert.Throws<ArgumentNullException>("toolTypes", () => builder.WithTools((IEnumerable<Type>)null!));
 
         IMcpServerBuilder nullBuilder = null!;
@@ -421,6 +422,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     {
         IMcpServerBuilder builder = new ServiceCollection().AddMcpServer();
 
+        builder.WithTools(tools: []); // no exception
         builder.WithTools(toolTypes: []); // no exception
         builder.WithTools<object>(); // no exception even though no tools exposed
         builder.WithToolsFromAssembly(typeof(AIFunction).Assembly); // no exception even though no tools exposed
@@ -539,7 +541,8 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         sc.AddMcpServer()
             .WithTools<EchoTool>(serializerOptions: BuilderToolsJsonContext.Default.Options)
             .WithTools<AnotherToolType>(serializerOptions: BuilderToolsJsonContext.Default.Options)
-            .WithTools([typeof(ToolTypeWithNoAttribute)], BuilderToolsJsonContext.Default.Options);
+            .WithTools([typeof(ToolTypeWithNoAttribute)], BuilderToolsJsonContext.Default.Options)
+            .WithTools([McpServerTool.Create(() => "42", new() { Name = "Returns42" })]);
         IServiceProvider services = sc.BuildServiceProvider();
 
         Assert.Contains(services.GetServices<McpServerTool>(), t => t.ProtocolTool.Name == "double_echo");
@@ -547,6 +550,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         Assert.Contains(services.GetServices<McpServerTool>(), t => t.ProtocolTool.Name == "MethodB");
         Assert.Contains(services.GetServices<McpServerTool>(), t => t.ProtocolTool.Name == "MethodC");
         Assert.Contains(services.GetServices<McpServerTool>(), t => t.ProtocolTool.Name == "MethodD");
+        Assert.Contains(services.GetServices<McpServerTool>(), t => t.ProtocolTool.Name == "Returns42");
     }
 
     [Fact]

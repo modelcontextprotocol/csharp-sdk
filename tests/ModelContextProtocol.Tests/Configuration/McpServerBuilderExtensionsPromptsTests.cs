@@ -202,6 +202,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
     {
         IMcpServerBuilder builder = new ServiceCollection().AddMcpServer();
 
+        Assert.Throws<ArgumentNullException>("prompts", () => builder.WithPrompts((IEnumerable<McpServerPrompt>)null!));
         Assert.Throws<ArgumentNullException>("promptTypes", () => builder.WithPrompts((IEnumerable<Type>)null!));
 
         IMcpServerBuilder nullBuilder = null!;
@@ -215,6 +216,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
     {
         IMcpServerBuilder builder = new ServiceCollection().AddMcpServer();
 
+        builder.WithPrompts(prompts: []); // no exception
         builder.WithPrompts(promptTypes: []); // no exception
         builder.WithPrompts<object>(); // no exception even though no prompts exposed
         builder.WithPromptsFromAssembly(typeof(AIFunction).Assembly); // no exception even though no prompts exposed
@@ -236,13 +238,15 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
         ServiceCollection sc = new();
         sc.AddMcpServer()
             .WithPrompts<SimplePrompts>()
-            .WithPrompts<MorePrompts>(JsonContext4.Default.Options);
+            .WithPrompts<MorePrompts>(JsonContext4.Default.Options)
+            .WithPrompts([McpServerPrompt.Create(() => "42", new() { Name = "Returns42" })]);
         IServiceProvider services = sc.BuildServiceProvider();
 
         Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == nameof(SimplePrompts.ReturnsChatMessages));
         Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == nameof(SimplePrompts.ThrowsException));
         Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == nameof(SimplePrompts.ReturnsString));
         Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == nameof(MorePrompts.AnotherPrompt));
+        Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == "Returns42");
     }
 
     [McpServerPromptType]
