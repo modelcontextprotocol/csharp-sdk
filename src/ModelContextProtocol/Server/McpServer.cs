@@ -196,7 +196,9 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         }
 
         var completeHandler = completionsCapability.CompleteHandler ??
-            throw new McpException("Completions capability was enabled, but Complete handler was not specified.");
+            throw new InvalidOperationException(
+                $"{nameof(ServerCapabilities)}.{nameof(ServerCapabilities.Completions)} was enabled, " +
+                $"but {nameof(CompletionsCapability.CompleteHandler)} was not specified.");
 
         // This capability is not optional, so return an empty result if there is no handler.
         RequestHandlers.Set(
@@ -219,7 +221,9 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         if ((listResourcesHandler is not { } && listResourceTemplatesHandler is not { }) ||
             resourcesCapability.ReadResourceHandler is not { } readResourceHandler)
         {
-            throw new McpException("Resources capability was enabled, but ListResources and/or ReadResource handlers were not specified.");
+            throw new InvalidOperationException(
+                $"{nameof(ServerCapabilities)}.{nameof(ServerCapabilities.Resources)} was enabled, " +
+                $"but {nameof(ResourcesCapability.ListResourcesHandler)} or {nameof(ResourcesCapability.ReadResourceHandler)} was not specified.");
         }
 
         listResourcesHandler ??= static async (_, _) => new ListResourcesResult();
@@ -252,7 +256,9 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         var unsubscribeHandler = resourcesCapability.UnsubscribeFromResourcesHandler;
         if (subscribeHandler is null || unsubscribeHandler is null)
         {
-            throw new McpException("Resources capability was enabled with subscribe support, but SubscribeToResources and/or UnsubscribeFromResources handlers were not specified.");
+            throw new InvalidOperationException(
+                $"{nameof(ServerCapabilities)}.{nameof(ServerCapabilities.Resources)}.{nameof(ResourcesCapability.Subscribe)} is set, " +
+                $"but {nameof(ResourcesCapability.SubscribeToResourcesHandler)} or {nameof(ResourcesCapability.UnsubscribeFromResourcesHandler)} was not specified.");
         }
 
         RequestHandlers.Set(
@@ -277,7 +283,10 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
         if (listPromptsHandler is null != getPromptHandler is null)
         {
-            throw new McpException("ListPrompts and GetPrompt handlers should be specified together.");
+            throw new InvalidOperationException(
+                $"{nameof(PromptsCapability)}.{nameof(promptsCapability.ListPromptsHandler)} or " +
+                $"{nameof(PromptsCapability)}.{nameof(promptsCapability.GetPromptHandler)} was specified without the other. " +
+                $"Both or neither must be provided.");
         }
 
         // Handle prompts provided via DI.
@@ -310,7 +319,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
                         return originalGetPromptHandler(request, cancellationToken);
                     }
 
-                    throw new McpException($"Unknown prompt '{request.Params?.Name}'");
+                    throw new McpException($"Unknown prompt: '{request.Params?.Name}'", McpErrorCode.InvalidParams);
                 }
 
                 return prompt.GetAsync(request, cancellationToken);
@@ -344,7 +353,9 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             // Make sure the handlers are provided if the capability is enabled.
             if (listPromptsHandler is null || getPromptHandler is null)
             {
-                throw new McpException("ListPrompts and/or GetPrompt handlers were not specified but the Prompts capability was enabled.");
+                throw new InvalidOperationException(
+                    $"{nameof(ServerCapabilities)}.{nameof(ServerCapabilities.Prompts)} was enabled, " +
+                    $"but {nameof(PromptsCapability.ListPromptsHandler)} or {nameof(PromptsCapability.GetPromptHandler)} was not specified.");
             }
         }
 
@@ -370,7 +381,10 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
         if (listToolsHandler is null != callToolHandler is null)
         {
-            throw new McpException("ListTools and CallTool handlers should be specified together.");
+            throw new InvalidOperationException(
+                $"{nameof(ToolsCapability)}.{nameof(ToolsCapability.ListToolsHandler)} or " +
+                $"{nameof(ToolsCapability)}.{nameof(ToolsCapability.CallToolHandler)} was specified without the other. " +
+                $"Both or neither must be provided.");
         }
 
         // Handle tools provided via DI.
@@ -403,7 +417,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
                         return originalCallToolHandler(request, cancellationToken);
                     }
 
-                    throw new McpException($"Unknown tool '{request.Params?.Name}'");
+                    throw new McpException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams);
                 }
 
                 return tool.InvokeAsync(request, cancellationToken);
@@ -437,7 +451,9 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             // Make sure the handlers are provided if the capability is enabled.
             if (listToolsHandler is null || callToolHandler is null)
             {
-                throw new McpException("ListTools and/or CallTool handlers were not specified but the Tools capability was enabled.");
+                throw new InvalidOperationException(
+                    $"{nameof(ServerCapabilities)}.{nameof(ServerCapabilities.Tools)} was enabled, " +
+                    $"but {nameof(ToolsCapability.ListToolsHandler)} or {nameof(ToolsCapability.CallToolHandler)} was not specified.");
             }
         }
 

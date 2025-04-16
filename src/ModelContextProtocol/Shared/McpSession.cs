@@ -142,15 +142,24 @@ internal sealed partial class McpSession : IDisposable
                         if (!isUserCancellation && message is JsonRpcRequest request)
                         {
                             LogRequestHandlerException(EndpointName, request.Method, ex);
+
+                            JsonRpcErrorDetail detail = ex is McpException mcpe ?
+                                new()
+                                {
+                                    Code = (int)mcpe.ErrorCode,
+                                    Message = mcpe.Message,
+                                } :
+                                new()
+                                {
+                                    Code = (int)McpErrorCode.InternalError,
+                                    Message = "An error occurred.",
+                                };
+
                             await _transport.SendMessageAsync(new JsonRpcError
                             {
                                 Id = request.Id,
                                 JsonRpc = "2.0",
-                                Error = new JsonRpcErrorDetail
-                                {
-                                    Code = (ex as McpException)?.ErrorCode ?? ErrorCodes.InternalError,
-                                    Message = ex.Message
-                                }
+                                Error = detail,
                             }, cancellationToken).ConfigureAwait(false);
                         }
                         else if (ex is not OperationCanceledException)
@@ -287,7 +296,7 @@ internal sealed partial class McpSession : IDisposable
         if (!_requestHandlers.TryGetValue(request.Method, out var handler))
         {
             LogNoHandlerFoundForRequest(EndpointName, request.Method);
-            throw new McpException("The method does not exist or is not available.", ErrorCodes.MethodNotFound);
+            throw new McpException($"Method '{request.Method}' is not available.", McpErrorCode.MethodNotFound);
         }
 
         LogRequestHandlerCalled(EndpointName, request.Method);
@@ -342,7 +351,7 @@ internal sealed partial class McpSession : IDisposable
     {
         if (!_transport.IsConnected)
         {
-            throw new McpException("Transport is not connected");
+            throw new InvalidOperationException("Transport is not connected");
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -399,7 +408,7 @@ internal sealed partial class McpSession : IDisposable
             if (response is JsonRpcError error)
             {
                 LogSendingRequestFailed(EndpointName, request.Method, error.Error.Message, error.Error.Code);
-                throw new McpException($"Request failed (remote): {error.Error.Message}", error.Error.Code);
+                throw new McpException($"Request failed (remote): {error.Error.Message}", (McpErrorCode)error.Error.Code);
             }
 
             if (response is JsonRpcResponse success)
@@ -443,7 +452,7 @@ internal sealed partial class McpSession : IDisposable
 
         if (!_transport.IsConnected)
         {
-            throw new McpException("Transport is not connected");
+            throw new InvalidOperationException("Transport is not connected");
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -591,13 +600,16 @@ internal sealed partial class McpSession : IDisposable
             e = ae.InnerException;
         }
 
-        int? intErrorCode = (e as McpException)?.ErrorCode is int errorCode ? errorCode :
-            e is JsonException ? ErrorCodes.ParseError : null;
+        int? intErrorCode = 
+            (int?)((e as McpException)?.ErrorCode) is int errorCode ? errorCode :
+            e is JsonException ? (int)McpErrorCode.ParseError : 
+            null;
 
-        tags.Add("error.type", intErrorCode == null ? e.GetType().FullName : intErrorCode.ToString());
+        string? errorType = intErrorCode?.ToString() ?? e.GetType().FullName;
+        tags.Add("error.type", errorType);
         if (intErrorCode is not null)
         {
-            tags.Add("rpc.jsonrpc.error_code", intErrorCode.ToString());
+            tags.Add("rpc.jsonrpc.error_code", errorType);
         }
 
         if (activity is { IsAllDataRequested: true })

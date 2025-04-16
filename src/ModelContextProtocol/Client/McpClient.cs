@@ -155,10 +155,10 @@ internal sealed partial class McpClient : McpEndpoint, IMcpClient
                     new JsonRpcNotification { Method = NotificationMethods.InitializedNotification },
                     initializationCts.Token).ConfigureAwait(false);
             }
-            catch (OperationCanceledException oce) when (initializationCts.IsCancellationRequested)
+            catch (OperationCanceledException oce) when (initializationCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
             {
                 LogClientInitializationTimeout(EndpointName);
-                throw new McpException("Initialization timed out", oce);
+                throw new TimeoutException("Initialization timed out", oce);
             }
         }
         catch (Exception e)

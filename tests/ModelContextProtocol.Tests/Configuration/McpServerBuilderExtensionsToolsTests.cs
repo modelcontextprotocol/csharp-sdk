@@ -88,7 +88,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                         };
 
                     default:
-                        throw new Exception("Unexpected cursor");
+                        throw new McpException($"Unexpected cursor: '{cursor}'", McpErrorCode.InvalidParams);
                 }
             })
             .WithCallToolHandler(async (request, cancellationToken) =>
@@ -104,7 +104,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                         };
 
                     default:
-                        throw new Exception($"Unknown tool '{request.Params?.Name}'");
+                        throw new McpException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams);
                 }
             })
             .WithTools<EchoTool>(serializerOptions: BuilderToolsJsonContext.Default.Options);
