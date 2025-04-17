@@ -16,14 +16,18 @@ public static class McpEndpointRouteBuilderExtensions
     /// </summary>
     /// <param name="endpoints">The web application to attach MCP HTTP endpoints.</param>
     /// <param name="pattern">The route pattern prefix to map to.</param>
+    /// <param name="occupyRootUrl">Whether to use MapGet to occupy the default home page(/)</param>
     /// <returns>Returns a builder for configuring additional endpoint conventions like authorization policies.</returns>
-    public static IEndpointConventionBuilder MapMcp(this IEndpointRouteBuilder endpoints, [StringSyntax("Route")] string pattern = "")
+    public static IEndpointConventionBuilder MapMcp(this IEndpointRouteBuilder endpoints, [StringSyntax("Route")] string pattern = "", bool occupyRootUrl = true)
     {
         var handler = endpoints.ServiceProvider.GetService<StreamableHttpHandler>() ??
             throw new InvalidOperationException("You must call WithHttpTransport(). Unable to find required services. Call builder.Services.AddMcpServer().WithHttpTransport() in application startup code.");
 
         var routeGroup = endpoints.MapGroup(pattern);
-        routeGroup.MapGet("", handler.HandleRequestAsync);
+        if (occupyRootUrl)
+        {
+            routeGroup.MapGet("", handler.HandleRequestAsync);
+        }
         routeGroup.MapGet("/sse", handler.HandleRequestAsync);
         routeGroup.MapPost("/message", handler.HandleRequestAsync);
         return routeGroup;
