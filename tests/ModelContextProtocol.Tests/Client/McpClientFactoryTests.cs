@@ -5,6 +5,7 @@ using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Utils.Json;
 using Moq;
+using System.IO.Pipelines;
 using System.Text.Json;
 using System.Threading.Channels;
 
@@ -27,6 +28,31 @@ public class McpClientFactoryTests
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(client);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Cancellation_ThrowsCancellationException(bool preCanceled)
+    {
+        var cts = new CancellationTokenSource();
+
+        if (preCanceled)
+        {
+            cts.Cancel();
+        }
+
+        Task t = McpClientFactory.CreateAsync(
+            new StreamClientTransport(new Pipe().Writer.AsStream(), new Pipe().Reader.AsStream()),
+            cancellationToken: cts.Token);
+        Assert.False(t.IsCompleted);
+
+        if (!preCanceled)
+        {
+            cts.Cancel();
+        }
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => t);
     }
 
     [Theory]
