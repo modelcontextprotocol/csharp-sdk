@@ -58,7 +58,9 @@ internal sealed class StreamableHttpHandler(
         context.Features.GetRequiredFeature<IHttpResponseBodyFeature>().DisableBuffering();
 
         var sessionId = MakeNewSessionId();
-        await using var transport = new SseResponseStreamTransport(response.Body, $"message?sessionId={sessionId}");
+        var requestPath = context.Request.Path;
+        var endpointPattern = requestPath.HasValue ? requestPath.Value[..(requestPath.Value.LastIndexOf('/') + 1)] : string.Empty;
+        await using var transport = new SseResponseStreamTransport(response.Body, $"{endpointPattern}message?sessionId={sessionId}");
         var httpMcpSession = new HttpMcpSession(transport, context.User);
         if (!_sessions.TryAdd(sessionId, httpMcpSession))
         {

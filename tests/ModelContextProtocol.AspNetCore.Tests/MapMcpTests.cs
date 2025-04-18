@@ -32,18 +32,28 @@ public class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelInMemoryTe
         Assert.StartsWith("You must call WithHttpTransport()", exception.Message);
     }
 
-    [Fact]
-    public async Task Allows_Customizing_Route()
+    [Theory]
+    [InlineData("/mcp")]
+    [InlineData("/mcp/secondary")]
+    public async Task Allows_Customizing_Route(string pattern)
     {
         Builder.Services.AddMcpServer().WithHttpTransport();
         await using var app = Builder.Build();
 
-        app.MapMcp("/mcp");
+        app.MapMcp(pattern);
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        using var response = await HttpClient.GetAsync("http://localhost/mcp/sse", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+        using var response = await HttpClient.GetAsync($"http://localhost{pattern}/sse", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
         response.EnsureSuccessStatusCode();
+        using var sseStream = await response.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
+        using var sseStreamReader = new StreamReader(sseStream, System.Text.Encoding.UTF8);
+        var eventLine = await sseStreamReader.ReadLineAsync(TestContext.Current.CancellationToken);
+        var dataLine = await sseStreamReader.ReadLineAsync(TestContext.Current.CancellationToken);
+        Assert.NotNull(eventLine);
+        Assert.Equal("event: endpoint", eventLine);
+        Assert.NotNull(dataLine);
+        Assert.Equal($"data: {pattern}/message", dataLine[..dataLine.IndexOf('?')]);
     }
 
     [Theory]
