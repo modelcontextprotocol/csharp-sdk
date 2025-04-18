@@ -3,7 +3,7 @@ using Microsoft.Extensions.Options;
 
 namespace ModelContextProtocol.AspNetCore;
 
-internal sealed class IdleSessionBackgroundService(StreamableHttpHandler handler, IOptions<HttpServerTransportOptions> options) : BackgroundService
+internal sealed class IdleTrackingBackgroundService(StreamableHttpHandler handler, IOptions<HttpServerTransportOptions> options) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -23,7 +23,7 @@ internal sealed class IdleSessionBackgroundService(StreamableHttpHandler handler
 
                 if (handler.Sessions.TryRemove(session.Id, out var removedSession))
                 {
-                    await removedSession.Transport.DisposeAsync();
+                    await removedSession.DisposeAsync();
                 }
             }
         }
@@ -37,7 +37,7 @@ internal sealed class IdleSessionBackgroundService(StreamableHttpHandler handler
             {
                 if (handler.Sessions.TryRemove(sessionKey, out var session))
                 {
-                    await session.Transport.DisposeAsync();
+                    await session.DisposeAsync();
                 }
             }
         }

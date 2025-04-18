@@ -1,29 +1,39 @@
-﻿using ModelContextProtocol.Server;
+﻿using ModelContextProtocol.Protocol.Transport;
+using ModelContextProtocol.Server;
 using System.Security.Claims;
 
 namespace ModelContextProtocol.AspNetCore;
 
-internal sealed class HttpMcpSession<TTransport>(string sessionId, TTransport transport, ClaimsPrincipal user, TimeProvider timeProvider)
+internal sealed class HttpMcpSession<TTransport>(string sessionId, TTransport transport, ClaimsPrincipal user, TimeProvider timeProvider) : IAsyncDisposable
+    where TTransport : ITransport
 {
-    private int _getStarted;
     private int _referenceCount;
+    private int _getRequestStarted;
+    private CancellationTokenSource _disposeCts = new();
 
     public string Id { get; } = sessionId;
     public TTransport Transport { get; } = transport;
     public (string Type, string Value, string Issuer)? UserIdClaim { get; } = GetUserIdClaim(user);
 
-    public bool IsActive => _referenceCount > 0;
+    public CancellationToken SessionClosed => _disposeCts.Token;
+
+    public bool IsActive => !SessionClosed.IsCancellationRequested && _referenceCount > 0;
     public long LastActivityTicks { get; private set; } = timeProvider.GetUtcNow().UtcTicks;
 
-    public bool TryStartGet() => Interlocked.Exchange(ref _getStarted, 1) == 0;
+    public bool TryStartGetRequest() => Interlocked.Exchange(ref _getRequestStarted, 1) == 0;
 
-    public IMcpServer? Server { get; init; }
-    public Task? ServerRunTask { get; init; }
+    public IMcpServer? Server { get; set; }
+    public Task? ServerRunTask { get; set; }
 
     public IDisposable AcquireReference()
     {
         Interlocked.Increment(ref _referenceCount);
         return new UnreferenceDisposable(this, timeProvider);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await Transport.DisposeAsync();
     }
 
     public bool HasSameUserId(ClaimsPrincipal user)

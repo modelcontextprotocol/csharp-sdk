@@ -303,7 +303,7 @@ public class StreamableHttpTests(ITestOutputHelper outputHelper) : KestrelInMemo
 
         // Currently, the OCE thrown by the canceled session is unhandled and turned into a 500 error by Kestrel.
         // The spec suggests sending CancelledNotifications. That would be good, but we can do that later.
-        // For now the important thing is that request completes without indicating success.
+        // For now, the important thing is that request completes without indicating success.
         await Task.WhenAll(longRunningToolTasks);
         foreach (var task in longRunningToolTasks)
         {

@@ -24,7 +24,7 @@ public static class HttpMcpServerBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
         builder.Services.TryAddSingleton<StreamableHttpHandler>();
         builder.Services.TryAddSingleton<SseHandler>();
-        builder.Services.AddHostedService<IdleSessionBackgroundService>();
+        builder.Services.AddHostedService<IdleTrackingBackgroundService>();
 
         if (configureOptions is not null)
         {

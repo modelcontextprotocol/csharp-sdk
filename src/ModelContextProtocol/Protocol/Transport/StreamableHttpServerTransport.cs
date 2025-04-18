@@ -20,7 +20,7 @@ namespace ModelContextProtocol.Protocol.Transport;
 /// </remarks>
 public sealed class StreamableHttpServerTransport : ITransport
 {
-    // For JsonRpcMessages without a RelatedTransport, we don't want a block just because the client didn't make a GET request to handle unsolicited messages.
+    // For JsonRpcMessages without a RelatedTransport, we don't want to block just because the client didn't make a GET request to handle unsolicited messages.
     private readonly SseWriter _sseWriter = new(channelOptions: new BoundedChannelOptions(1)
     {
         SingleReader = true,
@@ -51,8 +51,8 @@ public sealed class StreamableHttpServerTransport : ITransport
             throw new McpException("Session resumption is not yet supported. Please start a new session.");
         }
 
-        using var sseCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token, cancellationToken);
-        await _sseWriter.WriteAllAsync(sseResponseStream, sseCts.Token).ConfigureAwait(false);
+        using var getCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token, cancellationToken);
+        await _sseWriter.WriteAllAsync(sseResponseStream, getCts.Token).ConfigureAwait(false);
     }
 
     /// <summary>

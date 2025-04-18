@@ -40,13 +40,14 @@ internal sealed class SseWriter(string? messageEndpoint = null, BoundedChannelOp
     {
         Throw.IfNull(message);
 
-        // Don't throw an ODE, because this is disposed internally when the transport disconnects due to an abort
-        // or sending all the responses for the a give given Streamable HTTP POST request, so the user might not be at fault.
-        // REVIEW: There's precedence for no-oping here similar to writing to the response body of an aborted request in ASP.NET Core
-        // not throwing. If we did that, we'd have to be more careful to protect the ChannelWriter from also throwing.
+        using var _ = await _disposeLock.LockAsync().ConfigureAwait(false);
+
         if (_disposed)
         {
-            throw new McpException($"Transport is no longer connected.");
+            // Don't throw an ODE, because this is disposed internally when the transport disconnects due to an abort
+            // or sending all the responses for the a give given Streamable HTTP POST request, so the user might not be at fault.
+            // There's precedence for no-oping here similar to writing to the response body of an aborted request in ASP.NET Core.
+            return;
         }
 
         // Emit redundant "event: message" lines for better compatibility with other SDKs.
@@ -72,6 +73,7 @@ internal sealed class SseWriter(string? messageEndpoint = null, BoundedChannelOp
         }
         finally
         {
+            _jsonWriter?.Dispose();
             _disposed = true;
         }
     }
