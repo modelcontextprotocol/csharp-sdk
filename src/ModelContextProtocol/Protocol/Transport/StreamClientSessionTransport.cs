@@ -57,28 +57,11 @@ internal class StreamClientSessionTransport : TransportBase
     }
 
     /// <inheritdoc/>
-    /// <remarks>
-    /// <para>
-    /// For stream-based transports, this implementation serializes the JSON-RPC message to the 
-    /// underlying output stream. The specific serialization format includes:
-    /// <list type="bullet">
-    ///   <item>A Content-Length header that specifies the byte length of the JSON message</item>
-    ///   <item>A blank line separator</item>
-    ///   <item>The UTF-8 encoded JSON representation of the message</item>
-    /// </list>
-    /// </para>
-    /// <para>
-    /// This implementation first checks if the transport is connected and throws a <see cref="McpTransportException"/>
-    /// if it's not. It then extracts the message ID (if present) for logging purposes, serializes the message,
-    /// and writes it to the output stream.
-    /// </para>
-    /// </remarks>
-    /// <exception cref="McpTransportException">Thrown when the transport is not connected.</exception>
     public override async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         if (!IsConnected)
         {
-            throw new McpTransportException("Transport is not connected");
+            throw new InvalidOperationException("Transport is not connected");
         }
 
         string id = "(no id)";
@@ -99,7 +82,7 @@ internal class StreamClientSessionTransport : TransportBase
         catch (Exception ex)
         {
             LogTransportSendFailed(Name, id, ex);
-            throw new McpTransportException("Failed to send message", ex);
+            throw new InvalidOperationException("Failed to send message", ex);
         }
     }
 

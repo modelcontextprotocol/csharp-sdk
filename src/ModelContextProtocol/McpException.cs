@@ -1,8 +1,15 @@
 namespace ModelContextProtocol;
 
 /// <summary>
-/// Represents an exception that is thrown when a Model Context Protocol (MCP) error occurs.
+/// Represents an exception that is thrown when an Model Context Protocol (MCP) error occurs.
 /// </summary>
+/// <remarks>
+/// This exception is used to represent failures to do with protocol-level concerns, such as invalid JSON-RPC requests,
+/// invalid parameters, or internal errors. It is not intended to be used for application-level errors.
+/// <see cref="Exception.Message"/> or <see cref="ErrorCode"/> from a <see cref="McpException"/> may be 
+/// propagated to the remote endpoint; sensitive information should not be included. If sensitive details need
+/// to be included, a different exception type should be used.
+/// </remarks>
 public class McpException : Exception
 {
     /// <summary>
@@ -33,8 +40,8 @@ public class McpException : Exception
     /// Initializes a new instance of the <see cref="McpException"/> class with a specified error message and JSON-RPC error code.
     /// </summary>
     /// <param name="message">The message that describes the error.</param>
-    /// <param name="errorCode">A JSON-RPC error code from <see cref="Protocol.Messages.ErrorCodes"/> class.</param>
-    public McpException(string message, int? errorCode) : this(message, null, errorCode)
+    /// <param name="errorCode">A <see cref="McpErrorCode"/>.</param>
+    public McpException(string message, McpErrorCode errorCode) : this(message, null, errorCode)
     {
     }
 
@@ -43,18 +50,15 @@ public class McpException : Exception
     /// </summary>
     /// <param name="message">The message that describes the error.</param>
     /// <param name="innerException">The exception that is the cause of the current exception, or a null reference if no inner exception is specified.</param>
-    /// <param name="errorCode">A JSON-RPC error code from <see cref="Protocol.Messages.ErrorCodes"/> class.</param>
-    public McpException(string message, Exception? innerException, int? errorCode) : base(message, innerException)
+    /// <param name="errorCode">A <see cref="McpErrorCode"/>.</param>
+    public McpException(string message, Exception? innerException, McpErrorCode errorCode) : base(message, innerException)
     {
         ErrorCode = errorCode;
     }
 
     /// <summary>
-    /// Gets the JSON-RPC error code associated with this exception.
+    /// Gets the error code associated with this exception.
     /// </summary>
-    /// <value>
-    /// A standard JSON-RPC error code, or <see langword="null"/> if the exception wasn't caused by a JSON-RPC error.
-    /// </value>
     /// <remarks>
     /// This property contains a standard JSON-RPC error code as defined in the MCP specification. Common error codes include:
     /// <list type="bullet">
@@ -65,5 +69,5 @@ public class McpException : Exception
     /// <item><description>-32603: Internal error - Internal JSON-RPC error</description></item>
     /// </list>
     /// </remarks>
-    public int? ErrorCode { get; }
+    public McpErrorCode ErrorCode { get; } = McpErrorCode.InternalError;
 }

@@ -108,7 +108,7 @@ public class DiagnosticTests
             a.Kind == ActivityKind.Client);
 
         Assert.Equal(ActivityStatusCode.Error, doesNotExistToolClient.Status);
-        Assert.Equal("-32603", doesNotExistToolClient.Tags.Single(t => t.Key == "rpc.jsonrpc.error_code").Value);
+        Assert.Equal("-32602", doesNotExistToolClient.Tags.Single(t => t.Key == "rpc.jsonrpc.error_code").Value);
 
         var doesNotExistToolServer = Assert.Single(activities, a =>
             a.Tags.Any(t => t.Key == "mcp.tool.name" && t.Value == "does-not-exist") &&
@@ -117,7 +117,7 @@ public class DiagnosticTests
             a.Kind == ActivityKind.Server);
 
         Assert.Equal(ActivityStatusCode.Error, doesNotExistToolServer.Status);
-        Assert.Equal("-32603", doesNotExistToolClient.Tags.Single(t => t.Key == "rpc.jsonrpc.error_code").Value);
+        Assert.Equal("-32602", doesNotExistToolClient.Tags.Single(t => t.Key == "rpc.jsonrpc.error_code").Value);
     }
 
     private static async Task RunConnected(Func<IMcpClient, IMcpServer, Task> action)

@@ -73,7 +73,7 @@ public abstract partial class TransportBase : ITransport
     {
         if (!IsConnected)
         {
-            throw new McpTransportException("Transport is not connected");
+            throw new InvalidOperationException("Transport is not connected");
         }
 
         await _messageChannel.Writer.WriteAsync(message, cancellationToken).ConfigureAwait(false);
