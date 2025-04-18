@@ -19,6 +19,7 @@ internal sealed class SseWriter(string? messageEndpoint = null, BoundedChannelOp
 
     private Utf8JsonWriter? _jsonWriter;
     private Task? _sseWriteTask;
+    private CancellationToken? _sseWriteToken;
 
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private bool _disposed;
@@ -32,6 +33,7 @@ internal sealed class SseWriter(string? messageEndpoint = null, BoundedChannelOp
             throw new InvalidOperationException("You must call RunAsync before calling SendMessageAsync.");
         }
 
+        _sseWriteToken = cancellationToken;
         _sseWriteTask = SseFormatter.WriteAsync(_messages.Reader.ReadAllAsync(cancellationToken), sseResponseStream, WriteJsonRpcMessageToBuffer, cancellationToken);
         return _sseWriteTask;
     }
@@ -71,9 +73,12 @@ internal sealed class SseWriter(string? messageEndpoint = null, BoundedChannelOp
                 await _sseWriteTask.ConfigureAwait(false);
             }
         }
+        catch (OperationCanceledException) when (_sseWriteToken?.IsCancellationRequested == true)
+        {
+            // Ignore exceptions caused by intentional cancellation during shutdown.
+        }
         finally
         {
-            _jsonWriter?.Dispose();
             _disposed = true;
         }
     }

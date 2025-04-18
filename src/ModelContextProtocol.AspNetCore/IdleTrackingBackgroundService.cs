@@ -1,49 +1,71 @@
 ﻿using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using ModelContextProtocol.Protocol.Transport;
 
 namespace ModelContextProtocol.AspNetCore;
 
-internal sealed class IdleTrackingBackgroundService(StreamableHttpHandler handler, IOptions<HttpServerTransportOptions> options) : BackgroundService
+internal sealed partial class IdleTrackingBackgroundService(
+    StreamableHttpHandler handler,
+    IOptions<HttpServerTransportOptions> options,
+    ILogger<IdleTrackingBackgroundService> logger) : BackgroundService
 {
+    // Without the following line, the compiler will complain about the parameter being unused
+    // despite the source generator.
+    private ILogger _logger = logger;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var timeProvider = options.Value.TimeProvider;
         var timer = new PeriodicTimer(TimeSpan.FromSeconds(5), timeProvider);
 
-        while (!stoppingToken.IsCancellationRequested && await timer.WaitForNextTickAsync(stoppingToken))
+        try
         {
-            var idleActivityCutoff = timeProvider.GetUtcNow().Ticks - options.Value.IdleTimeout.Ticks;
-
-            foreach (var (_, session) in handler.Sessions)
+            while (!stoppingToken.IsCancellationRequested && await timer.WaitForNextTickAsync(stoppingToken))
             {
-                if (session.IsActive || session.LastActivityTicks > idleActivityCutoff)
-                {
-                    continue;
-                }
+                var idleActivityCutoff = timeProvider.GetUtcNow().Ticks - options.Value.IdleTimeout.Ticks;
 
-                if (handler.Sessions.TryRemove(session.Id, out var removedSession))
+                foreach (var (_, session) in handler.Sessions)
                 {
-                    await removedSession.DisposeAsync();
+                    if (session.IsActive || session.LastActivityTicks > idleActivityCutoff)
+                    {
+                        continue;
+                    }
+
+                    if (handler.Sessions.TryRemove(session.Id, out var removedSession))
+                    {
+                        await DisposeSessionAsync(removedSession);
+                    }
                 }
             }
         }
-    }
-
-    public override async Task StopAsync(CancellationToken cancellationToken)
-    {
-        try
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+        }
+        finally
         {
             foreach (var (sessionKey, _) in handler.Sessions)
             {
                 if (handler.Sessions.TryRemove(sessionKey, out var session))
                 {
-                    await session.DisposeAsync();
+                    await DisposeSessionAsync(session);
                 }
             }
         }
-        finally
+    }
+
+    private async Task DisposeSessionAsync(HttpMcpSession<StreamableHttpServerTransport> session)
+    {
+        try
         {
-            await base.StopAsync(cancellationToken);
+            await session.DisposeAsync();
+        }
+        catch (Exception ex)
+        {
+            LogSessionDisposeError(session.Id, ex);
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error disposing the IMcpServer for session {sessionId}.")]
+    private partial void LogSessionDisposeError(string sessionId, Exception ex);
 }
