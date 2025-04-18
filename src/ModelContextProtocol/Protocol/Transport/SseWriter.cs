@@ -18,11 +18,13 @@ internal sealed class SseWriter(string? messageEndpoint = null, BoundedChannelOp
     });
 
     private Utf8JsonWriter? _jsonWriter;
-    private Task? _sseWriteTask;
-    private CancellationToken? _sseWriteToken;
+    private Task? _writeTask;
+    private CancellationToken? _writeCancellationToken;
 
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private bool _disposed;
+
+    public Func<IAsyncEnumerable<SseItem<JsonRpcMessage?>>, CancellationToken, IAsyncEnumerable<SseItem<JsonRpcMessage?>>>? MessageFilter { get; set; }
 
     public Task WriteAllAsync(Stream sseResponseStream, CancellationToken cancellationToken)
     {
@@ -33,9 +35,16 @@ internal sealed class SseWriter(string? messageEndpoint = null, BoundedChannelOp
             throw new InvalidOperationException("You must call RunAsync before calling SendMessageAsync.");
         }
 
-        _sseWriteToken = cancellationToken;
-        _sseWriteTask = SseFormatter.WriteAsync(_messages.Reader.ReadAllAsync(cancellationToken), sseResponseStream, WriteJsonRpcMessageToBuffer, cancellationToken);
-        return _sseWriteTask;
+        _writeCancellationToken = cancellationToken;
+
+        var messages = _messages.Reader.ReadAllAsync(cancellationToken);
+        if (MessageFilter is not null)
+        {
+            messages = MessageFilter(messages, cancellationToken);
+        }
+
+        _writeTask = SseFormatter.WriteAsync(messages, sseResponseStream, WriteJsonRpcMessageToBuffer, cancellationToken);
+        return _writeTask;
     }
 
     public async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
@@ -65,20 +74,21 @@ internal sealed class SseWriter(string? messageEndpoint = null, BoundedChannelOp
             return;
         }
 
-        _messages.Writer.TryComplete();
+        _messages.Writer.Complete();
         try
         {
-            if (_sseWriteTask is not null)
+            if (_writeTask is not null)
             {
-                await _sseWriteTask.ConfigureAwait(false);
+                await _writeTask.ConfigureAwait(false);
             }
         }
-        catch (OperationCanceledException) when (_sseWriteToken?.IsCancellationRequested == true)
+        catch (OperationCanceledException) when (_writeCancellationToken?.IsCancellationRequested == true)
         {
             // Ignore exceptions caused by intentional cancellation during shutdown.
         }
         finally
         {
+            _jsonWriter?.Dispose();
             _disposed = true;
         }
     }

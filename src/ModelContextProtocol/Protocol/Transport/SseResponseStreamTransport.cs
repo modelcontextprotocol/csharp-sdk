@@ -92,7 +92,7 @@ public sealed class SseResponseStreamTransport(Stream sseResponseStream, string?
 
         if (!_isConnected)
         {
-            throw new McpException($"Transport is not connected. Make sure to call {nameof(RunAsync)} first.");
+            throw new InvalidOperationException($"Transport is not connected. Make sure to call {nameof(RunAsync)} first.");
         }
 
         await _incomingChannel.Writer.WriteAsync(message, cancellationToken).ConfigureAwait(false);

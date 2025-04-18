@@ -4,6 +4,8 @@ using ModelContextProtocol.Utils.Json;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.IO.Pipelines;
+using System.Net.ServerSentEvents;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading.Channels;
 
@@ -17,6 +19,7 @@ internal sealed class StreamableHttpPostTransport(ChannelWriter<JsonRpcMessage>?
 {
     private readonly SseWriter _sseWriter = new();
     private readonly ConcurrentDictionary<RequestId, JsonRpcRequest> _pendingRequests = [];
+    private long _pendingRequestCount;
     private bool _receivedRequest;
 
     // REVIEW: Should we introduce a send-only interface for RelatedTransport?
@@ -32,17 +35,15 @@ internal sealed class StreamableHttpPostTransport(ChannelWriter<JsonRpcMessage>?
         // The incomingChannel is null to handle the potential client GET request to handle unsolicited JsonRpcMessages.
         if (incomingChannel is not null)
         {
-            // Full duplex messages are not supported by the Streamable HTTP spec, but it would be easy for us to support
-            // by running OnPostBodyReceivedAsync in parallel to the response writing loop in HandleSseRequestAsync.
             await OnPostBodyReceivedAsync(httpBodies.Input, cancellationToken).ConfigureAwait(false);
         }
 
         if (!_receivedRequest)
         {
-            // No requests were received, so we don't need to write anything to the SSE stream.
             return false;
         }
 
+        _sseWriter.MessageFilter = StopOnFinalResponseFilter;
         await _sseWriter.WriteAllAsync(httpBodies.Output.AsStream(), cancellationToken).ConfigureAwait(false);
         return true;
     }
@@ -50,20 +51,28 @@ internal sealed class StreamableHttpPostTransport(ChannelWriter<JsonRpcMessage>?
     public async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         await _sseWriter.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
-
-        if (message is JsonRpcResponse response)
-        {
-            if (_pendingRequests.TryRemove(response.Id, out _) && _pendingRequests.IsEmpty)
-            {
-                // Complete the SSE response stream now that all pending requests have been processed.
-                await _sseWriter.DisposeAsync().ConfigureAwait(false);
-            }
-        }
     }
 
     public async ValueTask DisposeAsync()
     {
         await _sseWriter.DisposeAsync().ConfigureAwait(false);
+    }
+
+    private async IAsyncEnumerable<SseItem<JsonRpcMessage?>> StopOnFinalResponseFilter(IAsyncEnumerable<SseItem<JsonRpcMessage?>> messages, [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await foreach (var message in messages.WithCancellation(cancellationToken))
+        {
+            yield return message;
+
+            if (message.Data is JsonRpcResponse response)
+            {
+                if (_pendingRequests.TryRemove(response.Id, out _) && Interlocked.Decrement(ref _pendingRequestCount) == 0)
+                {
+                    // Complete the SSE response stream now that all pending requests have been processed.
+                    break;
+                }
+            }
+        }
     }
 
     private async ValueTask OnPostBodyReceivedAsync(PipeReader streamableHttpRequestBody, CancellationToken cancellationToken)
@@ -88,13 +97,16 @@ internal sealed class StreamableHttpPostTransport(ChannelWriter<JsonRpcMessage>?
     {
         if (message is null)
         {
-            throw new McpException("Received invalid null message.");
+            throw new InvalidOperationException("Received invalid null message.");
         }
 
         if (message is JsonRpcRequest request)
         {
             _receivedRequest = true;
-            _pendingRequests[request.Id] = request;
+            if (_pendingRequests.TryAdd(request.Id, request))
+            {
+                Interlocked.Increment(ref _pendingRequestCount);
+            }
         }
 
         message.RelatedTransport = this;

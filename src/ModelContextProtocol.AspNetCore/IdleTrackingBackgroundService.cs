@@ -10,9 +10,8 @@ internal sealed partial class IdleTrackingBackgroundService(
     IOptions<HttpServerTransportOptions> options,
     ILogger<IdleTrackingBackgroundService> logger) : BackgroundService
 {
-    // Without the following line, the compiler will complain about the parameter being unused
-    // despite the source generator.
-    private ILogger _logger = logger;
+    // The compiler will complain about the parameter being unused otherwise despite the source generator.
+    private ILogger _ = logger;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -34,6 +33,7 @@ internal sealed partial class IdleTrackingBackgroundService(
 
                     if (handler.Sessions.TryRemove(session.Id, out var removedSession))
                     {
+                        LogSessionIdle(removedSession.Id);
                         await DisposeSessionAsync(removedSession);
                     }
                 }
@@ -44,11 +44,14 @@ internal sealed partial class IdleTrackingBackgroundService(
         }
         finally
         {
-            foreach (var (sessionKey, _) in handler.Sessions)
+            if (stoppingToken.IsCancellationRequested)
             {
-                if (handler.Sessions.TryRemove(sessionKey, out var session))
+                foreach (var (sessionKey, _) in handler.Sessions)
                 {
-                    await DisposeSessionAsync(session);
+                    if (handler.Sessions.TryRemove(sessionKey, out var session))
+                    {
+                        await DisposeSessionAsync(session);
+                    }
                 }
             }
         }
@@ -65,6 +68,9 @@ internal sealed partial class IdleTrackingBackgroundService(
             LogSessionDisposeError(session.Id, ex);
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Closing idle session {sessionId}.")]
+    private partial void LogSessionIdle(string sessionId);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Error disposing the IMcpServer for session {sessionId}.")]
     private partial void LogSessionDisposeError(string sessionId, Exception ex);

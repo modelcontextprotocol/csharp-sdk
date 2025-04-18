@@ -48,7 +48,7 @@ public sealed class StreamableHttpServerTransport : ITransport
     {
         if (Interlocked.Exchange(ref _getRequestStarted, 1) == 1)
         {
-            throw new McpException("Session resumption is not yet supported. Please start a new session.");
+            throw new InvalidOperationException("Session resumption is not yet supported. Please start a new session.");
         }
 
         using var getCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token, cancellationToken);
