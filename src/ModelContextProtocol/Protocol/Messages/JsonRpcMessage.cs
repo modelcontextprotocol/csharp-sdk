@@ -23,10 +23,13 @@ public abstract class JsonRpcMessage
     public string JsonRpc { get; init; } = "2.0";
 
     /// <summary>
-    /// If set, the transport the JsonRpcMessage was received on or should be sent over. This is used to support the
-    /// Streamable HTTP transport where the specification states that the server SHOULD include JSON-RPC responses in
-    /// the HTTP response body for the POST request containing the corresponding JSON-RPC request.
+    /// Gets or sets the transport the <see cref="JsonRpcMessage"/> was received on or should be sent over.
     /// </summary>
+    /// <remarks>
+    /// This is used to support the Streamable HTTP transport where the specification states that the server
+    /// SHOULD include JSON-RPC responses in the HTTP response body for the POST request containing
+    /// the corresponding JSON-RPC request. It may be <see langword="null"/> for other transports.
+    /// </remarks>
     [JsonIgnore]
     public ITransport? RelatedTransport { get; set; }
 }

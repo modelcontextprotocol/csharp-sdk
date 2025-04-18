@@ -1,6 +1,7 @@
 ﻿using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
+using System.Diagnostics;
 
 namespace ModelContextProtocol.Server;
 
@@ -22,12 +23,14 @@ internal sealed class DestinationBoundMcpServer(McpServer server, ITransport? tr
 
     public Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
+        Debug.Assert(message.RelatedTransport is null);
         message.RelatedTransport = transport;
         return server.SendMessageAsync(message, cancellationToken);
     }
 
     public Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default)
     {
+        Debug.Assert(request.RelatedTransport is null);
         request.RelatedTransport = transport;
         return server.SendRequestAsync(request, cancellationToken);
     }

@@ -27,7 +27,7 @@ internal sealed partial class IdleTrackingBackgroundService(
         {
             while (!stoppingToken.IsCancellationRequested && await timer.WaitForNextTickAsync(stoppingToken))
             {
-                var idleActivityCutoff = timeProvider.GetUtcNow().Ticks - options.Value.IdleTimeout.Ticks;
+                var idleActivityCutoff = timeProvider.GetTimestamp() - options.Value.IdleTimeout.Ticks;
 
                 var idleCount = 0;
                 foreach (var (_, session) in handler.Sessions)
@@ -41,7 +41,8 @@ internal sealed partial class IdleTrackingBackgroundService(
                     idleCount++;
                     if (idleCount == MaxIdleSessionCount)
                     {
-                        // By checking for exact equality in this log, we log it at most once every 5 seconds.
+                        // Emit critical log at most once every 5 seconds the idle count it exceeded, 
+                        //since the IdleTimeout will no longer be respected.
                         LogMaxSessionIdleCountExceeded();
                     }
                     else if (idleCount < MaxIdleSessionCount && session.LastActivityTicks > idleActivityCutoff)

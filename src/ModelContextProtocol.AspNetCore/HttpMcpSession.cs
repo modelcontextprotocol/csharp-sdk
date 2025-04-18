@@ -18,9 +18,7 @@ internal sealed class HttpMcpSession<TTransport>(string sessionId, TTransport tr
     public CancellationToken SessionClosed => _disposeCts.Token;
 
     public bool IsActive => !SessionClosed.IsCancellationRequested && _referenceCount > 0;
-    public long LastActivityTicks { get; private set; } = timeProvider.GetUtcNow().UtcTicks;
-
-    public bool TryStartGetRequest() => Interlocked.Exchange(ref _getRequestStarted, 1) == 0;
+    public long LastActivityTicks { get; private set; } = timeProvider.GetTimestamp();
 
     public IMcpServer? Server { get; set; }
     public Task? ServerRunTask { get; set; }
@@ -30,6 +28,8 @@ internal sealed class HttpMcpSession<TTransport>(string sessionId, TTransport tr
         Interlocked.Increment(ref _referenceCount);
         return new UnreferenceDisposable(this, timeProvider);
     }
+
+    public bool TryStartGetRequest() => Interlocked.Exchange(ref _getRequestStarted, 1) == 0;
 
     public async ValueTask DisposeAsync()
     {
@@ -86,7 +86,7 @@ internal sealed class HttpMcpSession<TTransport>(string sessionId, TTransport tr
         {
             if (Interlocked.Decrement(ref session._referenceCount) == 0)
             {
-                session.LastActivityTicks = timeProvider.GetUtcNow().UtcTicks;
+                session.LastActivityTicks = timeProvider.GetTimestamp();
             }
         }
     }

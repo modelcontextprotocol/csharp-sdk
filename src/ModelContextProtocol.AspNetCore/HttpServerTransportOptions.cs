@@ -27,7 +27,6 @@ public class HttpServerTransportOptions
     /// MCP session. This is checked in background every 5 seconds. A client trying to resume a session will
     /// receive a 404 status code and should restart their session. A client can keep their session open by
     /// keeping a GET request open. The default value is set to 2 minutes.
-    /// minutes.
     /// </summary>
     public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromMinutes(2);
 

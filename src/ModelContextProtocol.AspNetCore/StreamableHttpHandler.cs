@@ -49,8 +49,9 @@ internal sealed class StreamableHttpHandler(
         }
 
         using var _ = session.AcquireReference();
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, session.SessionClosed);
         InitializeSseResponse(context);
-        var wroteResponse = await session.Transport.HandlePostRequest(new HttpDuplexPipe(context), context.RequestAborted);
+        var wroteResponse = await session.Transport.HandlePostRequest(new HttpDuplexPipe(context), cts.Token);
         if (!wroteResponse)
         {
             // We wound up writing nothing, so there should be no Content-Type response header.
@@ -126,10 +127,9 @@ internal sealed class StreamableHttpHandler(
             return existingSession;
         }
 
-        // I'd consider making our ErrorCodes type public and reference that, but -32001 isn't part of the MCP standard.
-        // This is what the typescript-sdk currently does. One of the few other usages I found was from some
-        // Ethereum JSON-RPC documentation and this JSON-RPC library from Microsoft called StreamJsonRpc where it's called
-        // JsonRpcErrorCode.NoMarshaledObjectFound
+        // -32001 isn't part of the MCP standard, but this is what the typescript-sdk currently does.
+        // One of the few other usages I found was from some Ethereum JSON-RPC documentation and this
+        // JSON-RPC library from Microsoft called StreamJsonRpc where it's called JsonRpcErrorCode.NoMarshaledObjectFound
         // https://learn.microsoft.com/dotnet/api/streamjsonrpc.protocol.jsonrpcerrorcode?view=streamjsonrpc-2.9#fields
         await WriteJsonRpcErrorAsync(context, "Session not found", StatusCodes.Status404NotFound, 32001);
         return null;
@@ -217,7 +217,7 @@ internal sealed class StreamableHttpHandler(
 
     private static JsonTypeInfo<T> GetRequiredJsonTypeInfo<T>() => (JsonTypeInfo<T>)McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(T));
 
-    private class HttpDuplexPipe(HttpContext context) : IDuplexPipe
+    private sealed class HttpDuplexPipe(HttpContext context) : IDuplexPipe
     {
         public PipeReader Input => context.Request.BodyReader;
         public PipeWriter Output => context.Response.BodyWriter;
