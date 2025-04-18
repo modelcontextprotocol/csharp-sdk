@@ -2,7 +2,6 @@
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
 using System.Buffers;
-using System.Collections.Concurrent;
 using System.IO.Pipelines;
 using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
@@ -18,9 +17,7 @@ namespace ModelContextProtocol.Protocol.Transport;
 internal sealed class StreamableHttpPostTransport(ChannelWriter<JsonRpcMessage>? incomingChannel, IDuplexPipe httpBodies) : ITransport
 {
     private readonly SseWriter _sseWriter = new();
-    private readonly ConcurrentDictionary<RequestId, JsonRpcRequest> _pendingRequests = [];
-    private long _pendingRequestCount;
-    private bool _receivedRequest;
+    private readonly HashSet<RequestId> _pendingRequests = [];
 
     // REVIEW: Should we introduce a send-only interface for RelatedTransport?
     public ChannelReader<JsonRpcMessage> MessageReader => throw new NotSupportedException("JsonRpcMessage.RelatedTransport should only be used for sending messages.");
@@ -38,7 +35,7 @@ internal sealed class StreamableHttpPostTransport(ChannelWriter<JsonRpcMessage>?
             await OnPostBodyReceivedAsync(httpBodies.Input, cancellationToken).ConfigureAwait(false);
         }
 
-        if (!_receivedRequest)
+        if (_pendingRequests.Count == 0)
         {
             return false;
         }
@@ -66,7 +63,7 @@ internal sealed class StreamableHttpPostTransport(ChannelWriter<JsonRpcMessage>?
 
             if (message.Data is JsonRpcResponse response)
             {
-                if (_pendingRequests.TryRemove(response.Id, out _) && Interlocked.Decrement(ref _pendingRequestCount) == 0)
+                if (_pendingRequests.Remove(response.Id) && _pendingRequests.Count == 0)
                 {
                     // Complete the SSE response stream now that all pending requests have been processed.
                     break;
@@ -102,11 +99,7 @@ internal sealed class StreamableHttpPostTransport(ChannelWriter<JsonRpcMessage>?
 
         if (message is JsonRpcRequest request)
         {
-            _receivedRequest = true;
-            if (_pendingRequests.TryAdd(request.Id, request))
-            {
-                Interlocked.Increment(ref _pendingRequestCount);
-            }
+            _pendingRequests.Add(request.Id);
         }
 
         message.RelatedTransport = this;
