@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Utils;
 
@@ -17,6 +18,8 @@ public sealed class RequestContext<TParams>
     /// <summary>The server with which this instance is associated.</summary>
     private IMcpServer _server;
 
+    private HttpRequest _contextRequest;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="RequestContext{TParams}"/> class with the specified server.
     /// </summary>
@@ -27,6 +30,7 @@ public sealed class RequestContext<TParams>
 
         _server = server;
         Services = server.Services;
+        _contextRequest = server.ContextRequest;
     }
 
     /// <summary>Gets or sets the server with which this instance is associated.</summary>
@@ -51,4 +55,15 @@ public sealed class RequestContext<TParams>
 
     /// <summary>Gets or sets the parameters associated with this request.</summary>
     public TParams? Params { get; set; }
+
+    /// <summary>Gets or sets the HTTP request associated with this context.</summary>
+    public HttpRequest ContextRequest 
+    {
+        get => _contextRequest;
+        set
+        {
+            Throw.IfNull(value);
+            _contextRequest = value;
+        }
+    }
 }

@@ -79,7 +79,7 @@ internal sealed class StreamableHttpHandler(
 
             try
             {
-                await using var mcpServer = McpServerFactory.Create(transport, mcpServerOptions, loggerFactory, context.RequestServices);
+                await using var mcpServer = McpServerFactory.Create(transport, mcpServerOptions, context.Request, loggerFactory, context.RequestServices);
                 context.Features.Set(mcpServer);
 
                 var runSessionAsync = httpMcpServerOptions.Value.RunSessionHandler ?? RunSessionAsync;

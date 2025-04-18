@@ -20,6 +20,7 @@
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.3" />
     <PackageVersion Include="System.IO.Pipelines" Version="8.0.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.Http" Version="2.3.0" />
   </ItemGroup>
 
   <!-- Product dependencies .NET 9 -->
@@ -27,6 +28,7 @@
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.4" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.4" />
     <PackageVersion Include="System.IO.Pipelines" Version="9.0.4" />
+    <PackageVersion Include="Microsoft.AspNetCore.Http" Version="2.3.0" />
   </ItemGroup>
 
   <!-- Product dependencies shared -->

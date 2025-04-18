@@ -31,6 +31,11 @@
     <PackageReference Include="System.IO.Pipelines" />
   </ItemGroup>
 
+  <!-- Dependencies only needed by netstandard2.0 or net8.0 -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0' or '$(TargetFramework)' == 'net9.0'">
+    <PackageReference Include="Microsoft.AspNetCore.Http"/>
+  </ItemGroup>
+
   <!-- Dependencies needed by all -->
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" />

@@ -1,3 +1,6 @@
+#if NET8_0_OR_GREATER
+using Microsoft.AspNetCore.Http;
+#endif
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Utils;
 using Microsoft.Extensions.Logging;
@@ -18,6 +21,7 @@ public static class McpServerFactory
     /// </summary>
     /// <param name="transport">Transport to use for the server representing an already-established MCP session.</param>
     /// <param name="serverOptions">Configuration options for this server, including capabilities. </param>
+    /// <param name="contextRequest">Httprequest of the caller context</param>
     /// <param name="loggerFactory">Logger factory to use for logging. If null, logging will be disabled.</param>
     /// <param name="serviceProvider">Optional service provider to create new instances of tools and other dependencies.</param>
     /// <returns>An <see cref="IMcpServer"/> instance that should be disposed when no longer needed.</returns>
@@ -26,12 +30,14 @@ public static class McpServerFactory
     public static IMcpServer Create(
         ITransport transport,
         McpServerOptions serverOptions,
+        HttpRequest contextRequest,
         ILoggerFactory? loggerFactory = null,
         IServiceProvider? serviceProvider = null)
     {
         Throw.IfNull(transport);
         Throw.IfNull(serverOptions);
+        Throw.IfNull(contextRequest);
 
-        return new McpServer(transport, serverOptions, loggerFactory, serviceProvider);
+        return new McpServer(transport, serverOptions, contextRequest, loggerFactory, serviceProvider);
     }
 }
