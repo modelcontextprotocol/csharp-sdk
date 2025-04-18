@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using ModelContextProtocol.Protocol.Types;
 
 namespace ModelContextProtocol.Server;
@@ -59,4 +60,9 @@ public interface IMcpServer : IMcpEndpoint
     /// Runs the server, listening for and handling client requests.
     /// </summary>
     Task RunAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the HTTP request associated with this server instance.
+    /// </summary>
+    HttpRequest ContextRequest { get; }
 }

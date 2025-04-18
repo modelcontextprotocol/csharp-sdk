@@ -1,3 +1,6 @@
+#if NET8_0_OR_GREATER
+using Microsoft.AspNetCore.Http;
+#endif
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol.Messages;
@@ -30,6 +33,8 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
     private string _endpointName;
     private int _started;
 
+    private HttpRequest _contextRequest;
+
     /// <summary>Holds a boxed <see cref="LoggingLevel"/> value for the server.</summary>
     /// <remarks>
     /// Initialized to non-null the first time SetLevel is used. This is stored as a strong box
@@ -43,14 +48,16 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
     /// <param name="transport">Transport to use for the server representing an already-established session.</param>
     /// <param name="options">Configuration options for this server, including capabilities.
     /// Make sure to accurately reflect exactly what capabilities the server supports and does not support.</param>
+    /// <param name="contextRequest">Httprequest of the caller context</param>
     /// <param name="loggerFactory">Logger factory to use for logging</param>
     /// <param name="serviceProvider">Optional service provider to use for dependency injection</param>
     /// <exception cref="McpException">The server was incorrectly configured.</exception>
-    public McpServer(ITransport transport, McpServerOptions options, ILoggerFactory? loggerFactory, IServiceProvider? serviceProvider)
+    public McpServer(ITransport transport, McpServerOptions options, HttpRequest contextRequest, ILoggerFactory? loggerFactory, IServiceProvider? serviceProvider)
         : base(loggerFactory)
     {
         Throw.IfNull(transport);
         Throw.IfNull(options);
+        Throw.IfNull(contextRequest);
 
         options ??= new();
 
@@ -59,6 +66,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         Services = serviceProvider;
         _endpointName = $"Server ({options.ServerInfo?.Name ?? DefaultImplementation.Name} {options.ServerInfo?.Version ?? DefaultImplementation.Version})";
         _servicesScopePerRequest = options.ScopeRequests;
+        _contextRequest = contextRequest;
 
         // Configure all request handlers based on the supplied options.
         SetInitializeHandler(options);
@@ -119,6 +127,8 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
     /// <inheritdoc />
     public LoggingLevel? LoggingLevel => _loggingLevel?.Value;
+
+    public HttpRequest ContextRequest => _contextRequest;
 
     /// <inheritdoc />
     public async Task RunAsync(CancellationToken cancellationToken = default)
@@ -509,7 +519,8 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
                     new RequestContext<TParams>(this)
                     {
                         Services = scope?.ServiceProvider ?? Services,
-                        Params = args
+                        Params = args,
+                        ContextRequest = _contextRequest
                     },
                     cancellationToken).ConfigureAwait(false);
             }
