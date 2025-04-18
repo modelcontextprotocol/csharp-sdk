@@ -46,13 +46,17 @@ internal sealed partial class IdleTrackingBackgroundService(
         {
             if (stoppingToken.IsCancellationRequested)
             {
+                List<Task> disposeSessionTasks = [];
+
                 foreach (var (sessionKey, _) in handler.Sessions)
                 {
                     if (handler.Sessions.TryRemove(sessionKey, out var session))
                     {
-                        await DisposeSessionAsync(session);
+                        disposeSessionTasks.Add(DisposeSessionAsync(session));
                     }
                 }
+
+                await Task.WhenAll(disposeSessionTasks);
             }
         }
     }

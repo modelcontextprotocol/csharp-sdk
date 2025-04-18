@@ -33,7 +33,28 @@ internal sealed class HttpMcpSession<TTransport>(string sessionId, TTransport tr
 
     public async ValueTask DisposeAsync()
     {
-        await Transport.DisposeAsync();
+        try
+        {
+            await _disposeCts.CancelAsync();
+
+            if (ServerRunTask is not null)
+            {
+                await ServerRunTask;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            if (Server is not null)
+            {
+                await Server.DisposeAsync();
+            }
+
+            await Transport.DisposeAsync();
+            _disposeCts.Dispose();
+        }
     }
 
     public bool HasSameUserId(ClaimsPrincipal user)
