@@ -20,6 +20,7 @@ public class StreamableHttpTests(ITestOutputHelper outputHelper) : KestrelInMemo
         McpServerTool.Create(EchoAsync),
         McpServerTool.Create(LongRunningAsync),
         McpServerTool.Create(Progress),
+        McpServerTool.Create(Throw),
     ];
 
     private WebApplication? _app;
@@ -154,7 +155,7 @@ public class StreamableHttpTests(ITestOutputHelper outputHelper) : KestrelInMemo
     }
 
     [Fact]
-    public async Task SingleJsonRpcRequest_IsHandled_WithCompleteSseResponse()
+    public async Task InitializeJsonRpcRequest_IsHandled_WithCompleteSseResponse()
     {
         await StartAsync();
         await CallInitializeAndValidateAsync();
@@ -191,6 +192,20 @@ public class StreamableHttpTests(ITestOutputHelper outputHelper) : KestrelInMemo
         }
 
         Assert.Equal(2, eventCount);
+    }
+
+    [Fact]
+    public async Task SingleJsonRpcRequest_ThatThrowsIsHandled_WithCompleteSseResponse()
+    {
+        await StartAsync();
+        await CallInitializeAndValidateAsync();
+
+        var response = await HttpClient.PostAsync("", JsonContent(CallTool("throw")), TestContext.Current.CancellationToken);
+        var rpcError = await AssertSingleSseResponseAsync(response);
+
+        var error = AssertType<CallToolResponse>(rpcError.Result);
+        var content = Assert.Single(error.Content);
+        Assert.Contains("'throw'", content.Text);
     }
 
     [Fact]
@@ -485,5 +500,11 @@ public class StreamableHttpTests(ITestOutputHelper outputHelper) : KestrelInMemo
         }
 
         return "done";
+    }
+
+    [McpServerTool(Name = "throw")]
+    private static void Throw()
+    {
+        throw new Exception();
     }
 }
