@@ -101,7 +101,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
                         BindParameter = (pi, args) =>
                             GetRequestContext(args)?.Services?.GetService(pi.ParameterType) ??
                             (pi.HasDefaultValue ? null :
-                             throw new ArgumentException("No service of the requested type was found.")),
+                             throw new InvalidOperationException("No service of the requested type was found.")),
                     };
                 }
 
@@ -113,7 +113,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
                         BindParameter = (pi, args) =>
                             (GetRequestContext(args)?.Services as IKeyedServiceProvider)?.GetKeyedService(pi.ParameterType, keyedAttr.Key) ??
                             (pi.HasDefaultValue ? null :
-                             throw new ArgumentException("No service of the requested type was found.")),
+                             throw new InvalidOperationException("No service of the requested type was found.")),
                     };
                 }
 

@@ -31,10 +31,10 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
                                 {
                                     NextCursor = "abc",
                                     Prompts = [new()
-                        {
-                            Name = "FirstCustomPrompt",
-                            Description = "First prompt returned by custom handler",
-                        }],
+                                    {
+                                        Name = "FirstCustomPrompt",
+                                        Description = "First prompt returned by custom handler",
+                                    }],
                                 };
 
                             case "abc":
@@ -42,10 +42,10 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
                                 {
                                     NextCursor = "def",
                                     Prompts = [new()
-                        {
-                            Name = "SecondCustomPrompt",
-                            Description = "Second prompt returned by custom handler",
-                        }],
+                                    {
+                                        Name = "SecondCustomPrompt",
+                                        Description = "Second prompt returned by custom handler",
+                                    }],
                                 };
 
                             case "def":
@@ -53,14 +53,14 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
                                 {
                                     NextCursor = null,
                                     Prompts = [new()
-                        {
-                            Name = "FinalCustomPrompt",
-                            Description = "Final prompt returned by custom handler",
-                        }],
+                                    {
+                                        Name = "FinalCustomPrompt",
+                                        Description = "Final prompt returned by custom handler",
+                                    }],
                                 };
 
                             default:
-                                throw new Exception("Unexpected cursor");
+                                throw new McpException($"Unexpected cursor: '{cursor}'", McpErrorCode.InvalidParams);
                         }
                     })
         .WithGetPromptHandler(async (request, cancellationToken) =>
@@ -76,7 +76,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
                     };
 
                 default:
-                    throw new Exception($"Unknown prompt '{request.Params?.Name}'");
+                    throw new McpException($"Unknown prompt '{request.Params?.Name}'", McpErrorCode.InvalidParams);
             }
         })
         .WithPrompts<SimplePrompts>();
@@ -194,7 +194,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
             nameof(SimplePrompts.ReturnsChatMessages),
             cancellationToken: TestContext.Current.CancellationToken));
 
-        Assert.Contains("Missing required parameter", e.Message);
+        Assert.Equal(McpErrorCode.InternalError, e.ErrorCode);
     }
 
     [Fact]

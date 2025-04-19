@@ -42,6 +42,6 @@ public interface IClientTransport
     /// This method is used by <see cref="McpClientFactory"/> to initialize the connection.
     /// </para>
     /// </remarks>
-    /// <exception cref="McpTransportException">The transport connection could not be established.</exception>
+    /// <exception cref="InvalidOperationException">The transport connection could not be established.</exception>
     Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default);
 }

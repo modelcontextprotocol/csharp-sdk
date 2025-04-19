@@ -198,7 +198,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
     }
 
     [Fact]
-    public async Task EmptyAdditionalHeadersKey_Throws_InvalidOpearionException()
+    public async Task EmptyAdditionalHeadersKey_Throws_InvalidOperationException()
     {
         Builder.Services.AddMcpServer()
             .WithHttpTransport();
@@ -269,7 +269,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
                 await Results.BadRequest("Session not started.").ExecuteAsync(context);
                 return;
             }
-            var message = (IJsonRpcMessage?)await context.Request.ReadFromJsonAsync(McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(IJsonRpcMessage)), context.RequestAborted);
+            var message = (JsonRpcMessage?)await context.Request.ReadFromJsonAsync(McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)), context.RequestAborted);
             if (message is null)
             {
                 await Results.BadRequest("No message in request body.").ExecuteAsync(context);

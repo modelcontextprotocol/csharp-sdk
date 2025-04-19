@@ -88,7 +88,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                         };
 
                     default:
-                        throw new Exception("Unexpected cursor");
+                        throw new McpException($"Unexpected cursor: '{cursor}'", McpErrorCode.InvalidParams);
                 }
             })
             .WithCallToolHandler(async (request, cancellationToken) =>
@@ -104,7 +104,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                         };
 
                     default:
-                        throw new Exception($"Unknown tool '{request.Params?.Name}'");
+                        throw new McpException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams);
                 }
             })
             .WithTools<EchoTool>(serializerOptions: BuilderToolsJsonContext.Default.Options);
@@ -596,11 +596,22 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
 
         McpClientTool progressTool = tools.First(t => t.Name == nameof(EchoTool.SendsProgressNotifications));
 
+        TaskCompletionSource tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int remainingNotifications = 10;
+
         ConcurrentQueue<ProgressNotification> notifications = new();
         await using (client.RegisterNotificationHandler(NotificationMethods.ProgressNotification, (notification, cancellationToken) =>
         {
-            ProgressNotification pn = JsonSerializer.Deserialize<ProgressNotification>(notification.Params, McpJsonUtilities.DefaultOptions)!;
-            notifications.Enqueue(pn);
+            if (JsonSerializer.Deserialize<ProgressNotification>(notification.Params, McpJsonUtilities.DefaultOptions) is { } pn &&
+                pn.ProgressToken == new ProgressToken("abc123"))
+            {
+                notifications.Enqueue(pn);
+                if (Interlocked.Decrement(ref remainingNotifications) == 0)
+                {
+                    tcs.SetResult();
+                }
+            }
+
             return default;
         }))
         {
@@ -613,8 +624,8 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                 },
                 cancellationToken: TestContext.Current.CancellationToken);
 
+            await tcs.Task;
             Assert.Contains("done", JsonSerializer.Serialize(result, McpJsonUtilities.DefaultOptions));
-            SpinWait.SpinUntil(() => notifications.Count == 10, TimeSpan.FromSeconds(10));
         }
 
         ProgressNotification[] array = notifications.OrderBy(n => n.Progress.Progress).ToArray();

@@ -216,6 +216,7 @@ public class SseClientTransportTests : LoggedTest
 
         await session.DisposeAsync();
 
-        Assert.False(session.IsConnected);
+        var transportBase = Assert.IsAssignableFrom<TransportBase>(session);
+        Assert.False(transportBase.IsConnected);
     }
 }

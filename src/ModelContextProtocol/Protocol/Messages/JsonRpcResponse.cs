@@ -16,16 +16,8 @@ namespace ModelContextProtocol.Protocol.Messages;
 /// This class represents a successful response with a result. For error responses, see <see cref="JsonRpcError"/>.
 /// </para>
 /// </remarks>
-public record JsonRpcResponse : IJsonRpcMessageWithId
+public class JsonRpcResponse : JsonRpcMessageWithId
 {
-    /// <inheritdoc />
-    [JsonPropertyName("jsonrpc")]
-    public string JsonRpc { get; init; } = "2.0";
-
-    /// <inheritdoc />
-    [JsonPropertyName("id")]
-    public required RequestId Id { get; init; }
-
     /// <summary>
     /// Gets the result of the method invocation.
     /// </summary>

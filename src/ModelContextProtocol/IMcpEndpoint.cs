@@ -45,7 +45,7 @@ public interface IMcpEndpoint : IAsyncDisposable
     /// Sends a JSON-RPC message to the connected endpoint.
     /// </summary>
     /// <param name="message">
-    /// The JSON-RPC message to send. This can be any type that implements IJsonRpcMessage, such as 
+    /// The JSON-RPC message to send. This can be any type that implements JsonRpcMessage, such as
     /// JsonRpcRequest, JsonRpcResponse, JsonRpcNotification, or JsonRpcError.
     /// </param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
@@ -63,7 +63,7 @@ public interface IMcpEndpoint : IAsyncDisposable
     /// The method will serialize the message and transmit it using the underlying transport mechanism.
     /// </para>
     /// </remarks>
-    Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default);
+    Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default);
 
     /// <summary>Registers a handler to be invoked when a notification for the specified method is received.</summary>
     /// <param name="method">The notification method.</param>
