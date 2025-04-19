@@ -28,12 +28,19 @@ public static class McpEndpointRouteBuilderExtensions
             throw new InvalidOperationException("You must call WithHttpTransport(). Unable to find required services. Call builder.Services.AddMcpServer().WithHttpTransport() in application startup code.");
 
         var mcpGroup = endpoints.MapGroup(pattern);
+
         var streamableHttpGroup = mcpGroup.MapGroup("")
-            .WithDisplayName(b => $"MCP Streamable HTTP | {b.DisplayName}")
-            .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status404NotFound, typeof(JsonRpcError), contentTypes: ["application/json"]));
+          .WithDisplayName(b => $"MCP Streamable HTTP | {b.DisplayName}")
+          .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status404NotFound, typeof(JsonRpcError), contentTypes: ["application/json"]));
 
+        streamableHttpGroup.MapPost("mcp", streamableHttpHandler.HandlePostRequestAsync)
+            .WithMetadata(new AcceptsMetadata(["application/json"]))
+            .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["text/event-stream"]))
+            .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status202Accepted));
+        streamableHttpGroup.MapGet("mcp", streamableHttpHandler.HandleGetRequestAsync)
+            .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["text/event-stream"]));
+        streamableHttpGroup.MapDelete("mcp", streamableHttpHandler.HandleDeleteRequestAsync);
 
-        var routeGroup = endpoints.MapGroup(pattern);
         if (occupyRootUrl)
         {
             streamableHttpGroup.MapPost("", streamableHttpHandler.HandlePostRequestAsync)
