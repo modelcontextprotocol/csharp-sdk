@@ -32,13 +32,18 @@ public static class McpEndpointRouteBuilderExtensions
             .WithDisplayName(b => $"MCP Streamable HTTP | {b.DisplayName}")
             .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status404NotFound, typeof(JsonRpcError), contentTypes: ["application/json"]));
 
-        streamableHttpGroup.MapPost("", streamableHttpHandler.HandlePostRequestAsync)
-            .WithMetadata(new AcceptsMetadata(["application/json"]))
-            .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["text/event-stream"]))
-            .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status202Accepted));
-        streamableHttpGroup.MapGet("", streamableHttpHandler.HandleGetRequestAsync)
-            .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["text/event-stream"]));
-        streamableHttpGroup.MapDelete("", streamableHttpHandler.HandleDeleteRequestAsync);
+
+        var routeGroup = endpoints.MapGroup(pattern);
+        if (occupyRootUrl)
+        {
+            streamableHttpGroup.MapPost("", streamableHttpHandler.HandlePostRequestAsync)
+                .WithMetadata(new AcceptsMetadata(["application/json"]))
+                .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["text/event-stream"]))
+                .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status202Accepted));
+            streamableHttpGroup.MapGet("", streamableHttpHandler.HandleGetRequestAsync)
+                .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["text/event-stream"]));
+            streamableHttpGroup.MapDelete("", streamableHttpHandler.HandleDeleteRequestAsync);
+        }
 
         // Map legacy HTTP with SSE endpoints.
         var sseHandler = endpoints.ServiceProvider.GetRequiredService<SseHandler>();
