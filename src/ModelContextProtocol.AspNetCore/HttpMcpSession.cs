@@ -47,13 +47,18 @@ internal sealed class HttpMcpSession<TTransport>(string sessionId, TTransport tr
         }
         finally
         {
-            if (Server is not null)
+            try
             {
-                await Server.DisposeAsync();
+                if (Server is not null)
+                {
+                    await Server.DisposeAsync();
+                }
             }
-
-            await Transport.DisposeAsync();
-            _disposeCts.Dispose();
+            finally
+            {
+                await Transport.DisposeAsync();
+                _disposeCts.Dispose();
+            }
         }
     }
 

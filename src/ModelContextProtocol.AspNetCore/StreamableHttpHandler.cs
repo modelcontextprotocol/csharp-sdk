@@ -29,9 +29,9 @@ internal sealed class StreamableHttpHandler(
     public async Task HandlePostRequestAsync(HttpContext context)
     {
         // The Streamable HTTP spec mandates the client MUST accept both application/json and text/event-stream.
-        // ASP.NET Core Minimal APIs mostly ry to stay out of the business of response content negotiation, so
-        // we have to do this manually. The spec doesn't mandate that servers MUST reject these requests, but it's
-        // probably good to at least start out trying to be strict.
+        // ASP.NET Core Minimal APIs mostly try to stay out of the business of response content negotiation,
+        // so we have to do this manually. The spec doesn't mandate that servers MUST reject these requests,
+        // but it's probably good to at least start out trying to be strict.
         var acceptHeader = context.Request.Headers.Accept.ToString();
         if (!acceptHeader.Contains("application/json", StringComparison.Ordinal) ||
             !acceptHeader.Contains("text/event-stream", StringComparison.Ordinal))
@@ -49,9 +49,8 @@ internal sealed class StreamableHttpHandler(
         }
 
         using var _ = session.AcquireReference();
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, session.SessionClosed);
         InitializeSseResponse(context);
-        var wroteResponse = await session.Transport.HandlePostRequest(new HttpDuplexPipe(context), cts.Token);
+        var wroteResponse = await session.Transport.HandlePostRequest(new HttpDuplexPipe(context), context.RequestAborted);
         if (!wroteResponse)
         {
             // We wound up writing nothing, so there should be no Content-Type response header.
@@ -105,12 +104,6 @@ internal sealed class StreamableHttpHandler(
         }
     }
 
-    private void InitializeSessionResponse(HttpContext context, HttpMcpSession<StreamableHttpServerTransport> session)
-    {
-        context.Response.Headers["mcp-session-id"] = session.Id;
-        context.Features.Set(session.Server);
-    }
-
     private async ValueTask<HttpMcpSession<StreamableHttpServerTransport>?> GetSessionAsync(HttpContext context, string sessionId)
     {
         if (Sessions.TryGetValue(sessionId, out var existingSession))
@@ -138,11 +131,10 @@ internal sealed class StreamableHttpHandler(
     private async ValueTask<HttpMcpSession<StreamableHttpServerTransport>?> GetOrCreateSessionAsync(HttpContext context)
     {
         var sessionId = context.Request.Headers["mcp-session-id"].ToString();
-        HttpMcpSession<StreamableHttpServerTransport>? session;
 
         if (string.IsNullOrEmpty(sessionId))
         {
-            session = await CreateSessionAsync(context);
+            var session = await CreateSessionAsync(context);
 
             if (!Sessions.TryAdd(session.Id, session))
             {
@@ -193,6 +185,12 @@ internal sealed class StreamableHttpHandler(
             },
         };
         return Results.Json(jsonRpcError, s_errorTypeInfo, statusCode: statusCode).ExecuteAsync(context);
+    }
+
+    private void InitializeSessionResponse(HttpContext context, HttpMcpSession<StreamableHttpServerTransport> session)
+    {
+        context.Response.Headers["mcp-session-id"] = session.Id;
+        context.Features.Set(session.Server);
     }
 
     internal static void InitializeSseResponse(HttpContext context)

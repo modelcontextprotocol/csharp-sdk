@@ -51,8 +51,8 @@ public sealed class StreamableHttpServerTransport : ITransport
             throw new InvalidOperationException("Session resumption is not yet supported. Please start a new session.");
         }
 
-        using var getCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token, cancellationToken);
-        await _sseWriter.WriteAllAsync(sseResponseStream, getCts.Token).ConfigureAwait(false);
+        // We do not need to reference _disposeCts like in HandlePostRequest, because the session ending completes the _sseWriter gracefully.
+        await _sseWriter.WriteAllAsync(sseResponseStream, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

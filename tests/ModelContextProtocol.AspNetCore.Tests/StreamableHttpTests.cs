@@ -312,9 +312,20 @@ public class StreamableHttpTests(ITestOutputHelper outputHelper) : KestrelInMemo
         for (int i = 0; i < longRunningToolTasks.Length; i++)
         {
             longRunningToolTasks[i] = CallLongRunningToolAsync();
+        }
+
+        var getResponse = await HttpClient.GetAsync("", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+
+        for (int i = 0; i < longRunningToolTasks.Length; i++)
+        {
             Assert.False(longRunningToolTasks[i].IsCompleted);
         }
+
         await HttpClient.DeleteAsync("", TestContext.Current.CancellationToken);
+
+        // Get request should complete gracefully.
+        var sseResponseBody = await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Empty(sseResponseBody);
 
         // Currently, the OCE thrown by the canceled session is unhandled and turned into a 500 error by Kestrel.
         // The spec suggests sending CancelledNotifications. That would be good, but we can do that later.

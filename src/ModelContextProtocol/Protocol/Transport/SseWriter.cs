@@ -51,7 +51,7 @@ internal sealed class SseWriter(string? messageEndpoint = null, BoundedChannelOp
     {
         Throw.IfNull(message);
 
-        using var _ = await _disposeLock.LockAsync().ConfigureAwait(false);
+        using var _ = await _disposeLock.LockAsync(cancellationToken).ConfigureAwait(false);
 
         if (_disposed)
         {
