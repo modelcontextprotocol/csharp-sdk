@@ -59,6 +59,7 @@ public class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelInMemoryTe
     [Theory]
     [InlineData("/a", "/a/sse")]
     [InlineData("/a/", "/a/sse")]
+    [InlineData("/a/b", "/a/b/sse")]
     public async Task CanConnect_WithMcpClient_AfterCustomizingRoute(string routePattern, string requestPath)
     {
         Builder.Services.AddMcpServer(options =>
