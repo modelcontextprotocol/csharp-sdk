@@ -38,7 +38,7 @@ internal static class Diagnostics
     };
 #endif
 
-    internal static ActivityContext ExtractActivityContext(this DistributedContextPropagator propagator, IJsonRpcMessage message)
+    internal static ActivityContext ExtractActivityContext(this DistributedContextPropagator propagator, JsonRpcMessage message)
     {
         propagator.ExtractTraceIdAndState(message, ExtractContext, out var traceparent, out var tracestate);
         ActivityContext.TryParse(traceparent, tracestate, true, out var activityContext);
@@ -71,7 +71,7 @@ internal static class Diagnostics
         }
     }
 
-    internal static void InjectActivityContext(this DistributedContextPropagator propagator, Activity? activity, IJsonRpcMessage message)
+    internal static void InjectActivityContext(this DistributedContextPropagator propagator, Activity? activity, JsonRpcMessage message)
     {
         // noop if activity is null
         propagator.Inject(activity, message, InjectContext);
@@ -100,7 +100,7 @@ internal static class Diagnostics
         }
     }
 
-    internal static bool ShouldInstrumentMessage(IJsonRpcMessage message) =>
+    internal static bool ShouldInstrumentMessage(JsonRpcMessage message) =>
         ActivitySource.HasListeners() &&
         message switch
         {

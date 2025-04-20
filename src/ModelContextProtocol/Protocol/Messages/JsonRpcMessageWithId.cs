@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace ModelContextProtocol.Protocol.Messages;
 
 /// <summary>
@@ -10,7 +12,7 @@ namespace ModelContextProtocol.Protocol.Messages;
 /// The ID is used to correlate requests with their responses, allowing asynchronous
 /// communication where multiple requests can be sent without waiting for responses.
 /// </remarks>
-public interface IJsonRpcMessageWithId : IJsonRpcMessage
+public abstract class JsonRpcMessageWithId : JsonRpcMessage
 {
     /// <summary>
     /// Gets the message identifier.
@@ -18,5 +20,6 @@ public interface IJsonRpcMessageWithId : IJsonRpcMessage
     /// <remarks>
     /// Each ID is expected to be unique within the context of a given session.
     /// </remarks>
-    RequestId Id { get; }
+    [JsonPropertyName("id")]
+    public RequestId Id { get; init; }
 }

@@ -41,7 +41,7 @@ public static class McpEndpointExtensions
         string method,
         TParameters parameters,
         JsonSerializerOptions? serializerOptions = null,
-        RequestId? requestId = null,
+        RequestId requestId = default,
         CancellationToken cancellationToken = default)
         where TResult : notnull
     {
@@ -72,7 +72,7 @@ public static class McpEndpointExtensions
         TParameters parameters,
         JsonTypeInfo<TParameters> parametersTypeInfo,
         JsonTypeInfo<TResult> resultTypeInfo,
-        RequestId? requestId = null,
+        RequestId requestId = default,
         CancellationToken cancellationToken = default)
         where TResult : notnull
     {
@@ -83,14 +83,10 @@ public static class McpEndpointExtensions
 
         JsonRpcRequest jsonRpcRequest = new()
         {
+            Id = requestId,
             Method = method,
             Params = JsonSerializer.SerializeToNode(parameters, parametersTypeInfo),
         };
-
-        if (requestId is { } id)
-        {
-            jsonRpcRequest.Id = id;
-        }
 
         JsonRpcResponse response = await endpoint.SendRequestAsync(jsonRpcRequest, cancellationToken).ConfigureAwait(false);
         return JsonSerializer.Deserialize(response.Result, resultTypeInfo) ?? throw new JsonException("Unexpected JSON result in response.");

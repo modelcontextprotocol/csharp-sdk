@@ -154,7 +154,7 @@ public sealed partial class StdioClientTransport : IClientTransport
             if (!processStarted)
             {
                 LogTransportProcessStartFailed(logger, endpointName);
-                throw new McpTransportException("Failed to start MCP server process");
+                throw new InvalidOperationException("Failed to start MCP server process");
             }
 
             LogTransportProcessStarted(logger, endpointName, process.Id);
@@ -176,7 +176,7 @@ public sealed partial class StdioClientTransport : IClientTransport
                 LogTransportShutdownFailed(logger, endpointName, ex2);
             }
 
-            throw new McpTransportException("Failed to connect transport", ex);
+            throw new InvalidOperationException("Failed to connect transport", ex);
         }
     }
 

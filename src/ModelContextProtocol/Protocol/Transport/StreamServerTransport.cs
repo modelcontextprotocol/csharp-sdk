@@ -56,31 +56,31 @@ public class StreamServerTransport : TransportBase
     }
 
     /// <inheritdoc/>
-    public override async Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
+    public override async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         if (!IsConnected)
         {
-            throw new McpTransportException("Transport is not connected");
+            throw new InvalidOperationException("Transport is not connected");
         }
 
         using var _ = await _sendLock.LockAsync(cancellationToken).ConfigureAwait(false);
 
         string id = "(no id)";
-        if (message is IJsonRpcMessageWithId messageWithId)
+        if (message is JsonRpcMessageWithId messageWithId)
         {
             id = messageWithId.Id.ToString();
         }
 
         try
         {
-            await JsonSerializer.SerializeAsync(_outputStream, message, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(IJsonRpcMessage)), cancellationToken).ConfigureAwait(false);
+            await JsonSerializer.SerializeAsync(_outputStream, message, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)), cancellationToken).ConfigureAwait(false);
             await _outputStream.WriteAsync(s_newlineBytes, cancellationToken).ConfigureAwait(false);
             await _outputStream.FlushAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             LogTransportSendFailed(Name, id, ex);
-            throw new McpTransportException("Failed to send message", ex);
+            throw new InvalidOperationException("Failed to send message", ex);
         }
     }
 
@@ -109,10 +109,10 @@ public class StreamServerTransport : TransportBase
 
                 try
                 {
-                    if (JsonSerializer.Deserialize(line, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(IJsonRpcMessage))) is IJsonRpcMessage message)
+                    if (JsonSerializer.Deserialize(line, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage))) is JsonRpcMessage message)
                     {
                         string messageId = "(no id)";
-                        if (message is IJsonRpcMessageWithId messageWithId)
+                        if (message is JsonRpcMessageWithId messageWithId)
                         {
                             messageId = messageWithId.Id.ToString();
                         }

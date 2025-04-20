@@ -6,7 +6,7 @@ using System.Text.Json.Serialization;
 namespace ModelContextProtocol.Utils.Json;
 
 /// <summary>
-/// Provides a <see cref="JsonConverter"/> for <see cref="IJsonRpcMessage"/> messages,
+/// Provides a <see cref="JsonConverter"/> for <see cref="JsonRpcMessage"/> messages,
 /// handling polymorphic deserialization of different message types.
 /// </summary>
 /// <remarks>
@@ -26,10 +26,10 @@ namespace ModelContextProtocol.Utils.Json;
 /// </para>
 /// </remarks>
 [EditorBrowsable(EditorBrowsableState.Never)]
-public sealed class JsonRpcMessageConverter : JsonConverter<IJsonRpcMessage>
+public sealed class JsonRpcMessageConverter : JsonConverter<JsonRpcMessage>
 {
     /// <inheritdoc/>
-    public override IJsonRpcMessage? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    public override JsonRpcMessage? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType != JsonTokenType.StartObject)
         {
@@ -87,7 +87,7 @@ public sealed class JsonRpcMessageConverter : JsonConverter<IJsonRpcMessage>
     }
 
     /// <inheritdoc/>
-    public override void Write(Utf8JsonWriter writer, IJsonRpcMessage value, JsonSerializerOptions options)
+    public override void Write(Utf8JsonWriter writer, JsonRpcMessage value, JsonSerializerOptions options)
     {
         switch (value)
         {

@@ -94,7 +94,7 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
-    public async Task RequestSamplingAsync_Should_Throw_McpException_If_Client_Does_Not_Support_Sampling()
+    public async Task RequestSamplingAsync_Should_Throw_Exception_If_Client_Does_Not_Support_Sampling()
     {
         // Arrange
         await using var transport = new TestServerTransport();
@@ -104,7 +104,7 @@ public class McpServerTests : LoggedTest
         var action = () => server.RequestSamplingAsync(new CreateMessageRequestParams { Messages = [] }, CancellationToken.None);
 
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentException>("server", action);
+        await Assert.ThrowsAsync<InvalidOperationException>(action);
     }
 
     [Fact]
@@ -130,7 +130,7 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
-    public async Task RequestRootsAsync_Should_Throw_McpException_If_Client_Does_Not_Support_Roots()
+    public async Task RequestRootsAsync_Should_Throw_Exception_If_Client_Does_Not_Support_Roots()
     {
         // Arrange
         await using var transport = new TestServerTransport();
@@ -138,7 +138,7 @@ public class McpServerTests : LoggedTest
         SetClientCapabilities(server, new ClientCapabilities());
 
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentException>("server", () => server.RequestRootsAsync(new ListRootsRequestParams(), CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => server.RequestRootsAsync(new ListRootsRequestParams(), CancellationToken.None));
     }
 
     [Fact]
@@ -507,7 +507,7 @@ public class McpServerTests : LoggedTest
         await using var transport = new TestServerTransport();
         var options = CreateOptions(serverCapabilities);
 
-        Assert.Throws<McpException>(() => McpServerFactory.Create(transport, options, LoggerFactory));
+        Assert.Throws<InvalidOperationException>(() => McpServerFactory.Create(transport, options, LoggerFactory));
     }
 
     [Fact]
@@ -515,7 +515,7 @@ public class McpServerTests : LoggedTest
     {
         await using var server = new TestServerForIChatClient(supportsSampling: false);
 
-        Assert.Throws<ArgumentException>("server", () => server.AsSamplingChatClient());
+        Assert.Throws<InvalidOperationException>(server.AsSamplingChatClient);
     }
 
     [Fact]
@@ -619,7 +619,7 @@ public class McpServerTests : LoggedTest
         public McpServerOptions ServerOptions => throw new NotImplementedException();
         public IServiceProvider? Services => throw new NotImplementedException();
         public LoggingLevel? LoggingLevel => throw new NotImplementedException();
-        public Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default) =>
+        public Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
         public Task RunAsync(CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
