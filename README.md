@@ -60,7 +60,7 @@ You can find samples demonstrating how to use ModelContextProtocol with an LLM S
 
 Clients can connect to any MCP server, not just ones created using this library. The protocol is designed to be server-agnostic, so you can use this library to connect to any compliant server.
 
-Tools can be exposed easily as `AIFunction` instances so that they are immediately usable with `IChatClient`s.
+Tools can be exposed easily as `McpClientTool` instances so that they are immediately usable with `IChatClient`s.
 
 ```csharp
 // Get available functions.
