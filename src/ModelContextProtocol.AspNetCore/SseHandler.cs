@@ -112,7 +112,6 @@ internal sealed class SseHandler(
 
         if (contextedMessage.Params != null)
         {
-
             var headersDictionary = context.Request.Headers.ToDictionary(
                 header => header.Key,
                 header => header.Value.ToString()
