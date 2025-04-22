@@ -162,7 +162,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
         {
             Name = options?.Name ?? function.Name,
             Description = options?.Description ?? function.Description,
-            InputSchema = function.JsonSchema,     
+            InputSchema = FilterJsonSchema(function.JsonSchema),
         };
 
         if (options is not null)
@@ -218,6 +218,45 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
         }
 
         return newOptions;
+    }
+
+    /// <summary>
+    /// Filters a JsonElement containing a schema to only include allowed properties: "type", "properties", and "required".
+    /// </summary>
+    private static JsonElement FilterJsonSchema(JsonElement schema)
+    {
+        using var memoryStream = new MemoryStream();
+        using var writer = new Utf8JsonWriter(memoryStream);
+
+        writer.WriteStartObject();
+
+        // Include "type" property if it exists
+        if (schema.TryGetProperty("type", out var typeElement))
+        {
+            writer.WritePropertyName("type");
+            typeElement.WriteTo(writer);
+        }
+
+        // Include "properties" property if it exists
+        if (schema.TryGetProperty("properties", out var propertiesElement))
+        {
+            writer.WritePropertyName("properties");
+            propertiesElement.WriteTo(writer);
+        }
+
+        // Include "required" property if it exists
+        if (schema.TryGetProperty("required", out var requiredElement))
+        {
+            writer.WritePropertyName("required");
+            requiredElement.WriteTo(writer);
+        }
+
+        writer.WriteEndObject();
+        writer.Flush();
+
+        memoryStream.Position = 0;
+        using var document = JsonDocument.Parse(memoryStream.ToArray());
+        return document.RootElement.Clone();
     }
 
     /// <summary>Gets the <see cref="AIFunction"/> wrapped by this tool.</summary>
