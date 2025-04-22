@@ -8,6 +8,8 @@ using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils.Json;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Text.Json.Serialization.Metadata;
+using System.Text.Json;
 
 namespace ModelContextProtocol.AspNetCore;
 
@@ -103,6 +105,22 @@ internal sealed class SseHandler(
         {
             await Results.BadRequest("No message in request body.").ExecuteAsync(context);
             return;
+        }
+
+        // Store headers
+        JsonRpcRequest contextedMessage = ((JsonRpcRequest)message);
+
+        if (contextedMessage.Params != null)
+        {
+
+            var headersDictionary = context.Request.Headers.ToDictionary(
+                header => header.Key,
+                header => header.Value.ToString()
+            );
+            var jsonTypeInfo = McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(Dictionary<string, string>))
+                                as JsonTypeInfo<Dictionary<string, string>> ?? throw new InvalidOperationException("Failed to get typeinfo.");
+
+            contextedMessage.Params["RequestHeaders"] = JsonSerializer.SerializeToNode(headersDictionary, jsonTypeInfo);
         }
 
         await httpMcpSession.Transport.OnMessageReceivedAsync(message, context.RequestAborted);

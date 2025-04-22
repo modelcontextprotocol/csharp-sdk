@@ -26,4 +26,10 @@ public class CallToolRequestParams : RequestParams
     /// </remarks>
     [JsonPropertyName("arguments")]
     public IReadOnlyDictionary<string, JsonElement>? Arguments { get; init; }
+
+    /// <summary>
+    /// Gets or sets the client request headers.
+    /// </summary>
+    [JsonPropertyName("requestHeaders")]
+    public Dictionary<string, string>? RequestHeaders { get; set; }
 }
