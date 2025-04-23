@@ -53,7 +53,7 @@ public class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelInMemoryTe
         Assert.NotNull(eventLine);
         Assert.Equal("event: endpoint", eventLine);
         Assert.NotNull(dataLine);
-        Assert.Equal($"data: message", dataLine[..dataLine.IndexOf('?')]);
+        Assert.Equal($"data: {pattern}/message", dataLine[..dataLine.IndexOf('?')]);
     }
 
     [Theory]
