@@ -1,9 +1,13 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Time.Testing;
+using Microsoft.Net.Http.Headers;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
 using ModelContextProtocol.Utils.Json;
 using System.Net;
 using System.Net.ServerSentEvents;
@@ -27,8 +31,6 @@ public class StreamableHttpTests(ITestOutputHelper outputHelper) : KestrelInMemo
 
     private async Task StartAsync()
     {
-        AddDefaultHttpClientRequestHeaders();
-
         Builder.Services.AddMcpServer(options =>
         {
             options.ServerInfo = new Implementation
@@ -43,6 +45,9 @@ public class StreamableHttpTests(ITestOutputHelper outputHelper) : KestrelInMemo
         _app.MapMcp();
 
         await _app.StartAsync(TestContext.Current.CancellationToken);
+
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("application/json"));
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
     }
 
     public async ValueTask DisposeAsync()
@@ -52,6 +57,31 @@ public class StreamableHttpTests(ITestOutputHelper outputHelper) : KestrelInMemo
             await _app.DisposeAsync();
         }
         base.Dispose();
+    }
+
+    [Fact]
+    public async Task NegativeNonInfiniteIdleTimeout_Throws_ArgumentOutOfRangeException()
+    {
+        Builder.Services.AddMcpServer().WithHttpTransport(options =>
+        {
+            options.IdleTimeout = TimeSpan.MinValue;
+        });
+
+        var ex = await Assert.ThrowsAnyAsync<ArgumentOutOfRangeException>(StartAsync);
+        Assert.Contains("IdleTimeout", ex.Message);
+    }
+
+
+    [Fact]
+    public async Task NegativeMaxIdleSessionCount_Throws_ArgumentOutOfRangeException()
+    {
+        Builder.Services.AddMcpServer().WithHttpTransport(options =>
+        {
+            options.MaxIdleSessionCount = -1;
+        });
+
+        var ex = await Assert.ThrowsAnyAsync<ArgumentOutOfRangeException>(StartAsync);
+        Assert.Contains("MaxIdleSessionCount", ex.Message);
     }
 
     [Fact]
@@ -74,26 +104,16 @@ public class StreamableHttpTests(ITestOutputHelper outputHelper) : KestrelInMemo
         Assert.Equal(HttpStatusCode.UnsupportedMediaType, response.StatusCode);
     }
 
-    [Fact]
-    public async Task PostRequest_IsNotAcceptable_WithoutApplicationJsonAcceptHeader()
+    [Theory]
+    [InlineData("text/event-stream")]
+    [InlineData("application/json")]
+    [InlineData("application/json-text/event-stream")]
+    public async Task PostRequest_IsNotAcceptable_WithSingleAcceptHeader(string singleAcceptValue)
     {
         await StartAsync();
 
         HttpClient.DefaultRequestHeaders.Accept.Clear();
-        HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
-
-        using var response = await HttpClient.PostAsync("", JsonContent(InitializeRequest), TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.NotAcceptable, response.StatusCode);
-    }
-
-
-    [Fact]
-    public async Task PostRequest_IsNotAcceptable_WithoutTextEventStreamAcceptHeader()
-    {
-        await StartAsync();
-
-        HttpClient.DefaultRequestHeaders.Accept.Clear();
-        HttpClient.DefaultRequestHeaders.Accept.Add(new("text/json"));
+        HttpClient.DefaultRequestHeaders.TryAddWithoutValidation(HeaderNames.Accept, singleAcceptValue);
 
         using var response = await HttpClient.PostAsync("", JsonContent(InitializeRequest), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotAcceptable, response.StatusCode);
@@ -131,7 +151,6 @@ public class StreamableHttpTests(ITestOutputHelper outputHelper) : KestrelInMemo
     [Fact]
     public async Task InitializeRequest_Matches_CustomRoute()
     {
-        AddDefaultHttpClientRequestHeaders();
         Builder.Services.AddMcpServer().WithHttpTransport();
         await using var app = Builder.Build();
 
@@ -139,6 +158,8 @@ public class StreamableHttpTests(ITestOutputHelper outputHelper) : KestrelInMemo
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("application/json"));
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
         using var response = await HttpClient.PostAsync("/custom-route", JsonContent(InitializeRequest), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
@@ -372,10 +393,99 @@ public class StreamableHttpTests(ITestOutputHelper outputHelper) : KestrelInMemo
         Assert.Equal(11, currentSseItem);
     }
 
-    private void AddDefaultHttpClientRequestHeaders()
+    [Fact]
+    public async Task IdleSessions_ArePruned_AfterIdleTimeout()
     {
-        HttpClient.DefaultRequestHeaders.Accept.Add(new("application/json"));
-        HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
+        var fakeTimeProvider = new FakeTimeProvider();
+        Builder.Services.AddMcpServer().WithHttpTransport(options =>
+        {
+            Assert.Equal(TimeSpan.FromHours(2), options.IdleTimeout);
+            options.TimeProvider = fakeTimeProvider;
+        });
+
+        await StartAsync();
+        await CallInitializeAndValidateAsync();
+        await CallEchoAndValidateAsync();
+
+        // Add 5 seconds to idle timeout to account for the interval of the PeriodicTimer.
+        fakeTimeProvider.Advance(TimeSpan.FromHours(2) + TimeSpan.FromSeconds(5));
+
+        using var response = await HttpClient.PostAsync("", JsonContent(EchoRequest), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task IdleSessions_AreNotPruned_WithInfiniteIdleTimeoutWhileUnderMaxIdleSessionCount()
+    {
+        var fakeTimeProvider = new FakeTimeProvider();
+        Builder.Services.AddMcpServer().WithHttpTransport(options =>
+        {
+            options.IdleTimeout = Timeout.InfiniteTimeSpan;
+            options.TimeProvider = fakeTimeProvider;
+        });
+
+        await StartAsync();
+        await CallInitializeAndValidateAsync();
+        await CallEchoAndValidateAsync();
+
+        fakeTimeProvider.Advance(TimeSpan.FromDays(1));
+
+        // Echo still works because the session has not been pruned.
+        await CallEchoAndValidateAsync();
+    }
+
+    [Fact]
+    public async Task IdleSessionsPastMaxIdleSessionCount_ArePruned_LongestIdleFirstDespiteIdleTimeout()
+    {
+        var fakeTimeProvider = new FakeTimeProvider();
+        Builder.Services.AddMcpServer().WithHttpTransport(options =>
+        {
+            options.IdleTimeout = Timeout.InfiniteTimeSpan;
+            options.MaxIdleSessionCount = 2;
+            options.TimeProvider = fakeTimeProvider;
+        });
+
+        var mockLoggerProvider = new MockLoggerProvider();
+        Builder.Logging.AddProvider(mockLoggerProvider);
+
+        await StartAsync();
+
+        // Start first session.
+        var firstSessionId = await CallInitializeAndValidateAsync();
+
+        // Start a second session to trigger pruning of the original session.
+        fakeTimeProvider.Advance(TimeSpan.FromTicks(1));
+        var secondSessionId = await CallInitializeAndValidateAsync();
+
+        Assert.NotEqual(firstSessionId, secondSessionId);
+
+        // First session ID still works, since we allow up to 2 idle sessions.
+        fakeTimeProvider.Advance(TimeSpan.FromTicks(1));
+        SetSessionId(firstSessionId);
+        await CallEchoAndValidateAsync();
+
+        // Start a third session to trigger pruning of the first session.
+        fakeTimeProvider.Advance(TimeSpan.FromTicks(1));
+        var thirdSessionId = await CallInitializeAndValidateAsync();
+
+        Assert.NotEqual(secondSessionId, thirdSessionId);
+
+        // Pruning of the second session results in a 404 since we used the first session more recently.
+        fakeTimeProvider.Advance(TimeSpan.FromSeconds(10));
+        SetSessionId(secondSessionId);
+        using var response = await HttpClient.PostAsync("", JsonContent(EchoRequest), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+
+        // But the first and third session IDs should still work.
+        SetSessionId(firstSessionId);
+        await CallEchoAndValidateAsync();
+
+        SetSessionId(thirdSessionId);
+        await CallEchoAndValidateAsync();
+
+        // TODO: Verify there is a critical log message about the session being pruned.
+        var logMessage = Assert.Single(mockLoggerProvider.LogMessages, m => m.LogLevel == LogLevel.Critical);
+        Assert.StartsWith("Exceeded maximum of 2 idle sessions.", logMessage.Message);
     }
 
     private static StringContent JsonContent(string json) => new StringContent(json, Encoding.UTF8, "application/json");
@@ -448,7 +558,7 @@ public class StreamableHttpTests(ITestOutputHelper outputHelper) : KestrelInMemo
 
     private string CallToolWithProgressToken(string toolName, string arguments = "{}") =>
         Request("tools/call", $$$"""
-            {"name":"{{{toolName}}}","arguments":{{{arguments}}}, "_meta":{"progressToken": "abc123"}}
+            {"name":"{{{toolName}}}","arguments":{{{arguments}}},"_meta":{"progressToken":"abc123"}}
             """);
 
     private static InitializeResult AssertServerInfo(JsonRpcResponse rpcResponse)
@@ -468,13 +578,21 @@ public class StreamableHttpTests(ITestOutputHelper outputHelper) : KestrelInMemo
         return callToolResponse;
     }
 
-    private async Task CallInitializeAndValidateAsync()
+    private async Task<string> CallInitializeAndValidateAsync()
     {
+        HttpClient.DefaultRequestHeaders.Remove("mcp-session-id");
         using var response = await HttpClient.PostAsync("", JsonContent(InitializeRequest), TestContext.Current.CancellationToken);
         var rpcResponse = await AssertSingleSseResponseAsync(response);
         AssertServerInfo(rpcResponse);
 
         var sessionId = Assert.Single(response.Headers.GetValues("mcp-session-id"));
+        SetSessionId(sessionId);
+        return sessionId;
+    }
+
+    private void SetSessionId(string sessionId)
+    {
+        HttpClient.DefaultRequestHeaders.Remove("mcp-session-id");
         HttpClient.DefaultRequestHeaders.Add("mcp-session-id", sessionId);
     }
 

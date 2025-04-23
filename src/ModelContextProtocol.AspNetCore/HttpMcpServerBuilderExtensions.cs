@@ -22,6 +22,7 @@ public static class HttpMcpServerBuilderExtensions
     public static IMcpServerBuilder WithHttpTransport(this IMcpServerBuilder builder, Action<HttpServerTransportOptions>? configureOptions = null)
     {
         ArgumentNullException.ThrowIfNull(builder);
+
         builder.Services.TryAddSingleton<StreamableHttpHandler>();
         builder.Services.TryAddSingleton<SseHandler>();
         builder.Services.AddHostedService<IdleTrackingBackgroundService>();

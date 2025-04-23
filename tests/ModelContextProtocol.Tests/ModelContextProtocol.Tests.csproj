@@ -25,6 +25,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\Common\**\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="coverlet.collector">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
@@ -53,13 +57,6 @@
     <ProjectReference Include="..\..\src\ModelContextProtocol\ModelContextProtocol.csproj" />
     <ProjectReference Include="..\ModelContextProtocol.TestServer\ModelContextProtocol.TestServer.csproj" />
     <ProjectReference Include="..\..\samples\TestServerWithHosting\TestServerWithHosting.csproj" />
-  </ItemGroup>
-
-  <!-- Dependencies only needed by net472 -->
-  <ItemGroup Condition="'$(TargetFramework)' == 'net472'">
-    <Compile Include="..\..\src\Common\Throw.cs" Link="Utils\Throw.cs" />
-    <Compile Include="..\..\src\Common\Polyfills\**\*.cs" />
-    <PackageReference Include="System.Net.Http" />
   </ItemGroup>
 
   <ItemGroup>

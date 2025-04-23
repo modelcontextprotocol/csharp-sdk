@@ -8,28 +8,39 @@ namespace ModelContextProtocol.AspNetCore;
 internal sealed partial class IdleTrackingBackgroundService(
     StreamableHttpHandler handler,
     IOptions<HttpServerTransportOptions> options,
+    IHostApplicationLifetime appLifetime,
     ILogger<IdleTrackingBackgroundService> logger) : BackgroundService
 {
     // The compiler will complain about the parameter being unused otherwise despite the source generator.
     private ILogger _logger = logger;
 
-    // We can make this configurable once we properly harden the MCP server. In the meantime, anyone running
-    // this should be taking a cattle not pets approach to their servers and be able to launch more processes
-    // to handle more than 10,000 idle sessions at a time.
-    private const int MaxIdleSessionCount = 10_000;
-
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var timeProvider = options.Value.TimeProvider;
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5), timeProvider);
+        // Still run loop given infinite IdleTimeout to enforce the MaxIdleSessionCount and assist graceful shutdown.
+        if (options.Value.IdleTimeout != Timeout.InfiniteTimeSpan)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(options.Value.IdleTimeout, TimeSpan.Zero);
+        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(options.Value.MaxIdleSessionCount, 0);
 
         try
         {
+            var timeProvider = options.Value.TimeProvider;
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5), timeProvider);
+
+            var idleTimeoutTicks = options.Value.IdleTimeout.Ticks;
+            var maxIdleSessionCount = options.Value.MaxIdleSessionCount;
+
+            var idleSessions = new SortedSet<(string SessionId, long Timestamp)>(SessionTimestampComparer.Instance);
+
             while (!stoppingToken.IsCancellationRequested && await timer.WaitForNextTickAsync(stoppingToken))
             {
-                var idleActivityCutoff = timeProvider.GetTimestamp() - options.Value.IdleTimeout.Ticks;
+                var idleActivityCutoff = idleTimeoutTicks switch
+                {
+                    < 0 => long.MinValue,
+                    var ticks => timeProvider.GetTimestamp() - ticks,
+                };
 
-                var idleCount = 0;
                 foreach (var (_, session) in handler.Sessions)
                 {
                     if (session.IsActive || session.SessionClosed.IsCancellationRequested)
@@ -38,26 +49,32 @@ internal sealed partial class IdleTrackingBackgroundService(
                         continue;
                     }
 
-                    idleCount++;
-                    if (idleCount == MaxIdleSessionCount)
+                    if (session.LastActivityTicks < idleActivityCutoff)
                     {
-                        // Emit critical log at most once every 5 seconds the idle count it exceeded, 
-                        //since the IdleTimeout will no longer be respected.
-                        LogMaxSessionIdleCountExceeded();
-                    }
-                    else if (idleCount < MaxIdleSessionCount && session.LastActivityTicks > idleActivityCutoff)
-                    {
+                        RemoveAndCloseSession(session.Id);
                         continue;
                     }
 
-                    if (handler.Sessions.TryRemove(session.Id, out var removedSession))
-                    {
-                        LogSessionIdle(removedSession.Id);
+                    idleSessions.Add((session.Id, session.LastActivityTicks));
 
-                        // Don't slow down the idle tracking loop. DisposeSessionAsync logs. We only await during graceful shutdown.
-                        _ = DisposeSessionAsync(removedSession);
+                    // Emit critical log at most once every 5 seconds the idle count it exceeded,
+                    // since the IdleTimeout will no longer be respected.
+                    if (idleSessions.Count == maxIdleSessionCount + 1)
+                    {
+                        LogMaxSessionIdleCountExceeded(maxIdleSessionCount);
                     }
                 }
+
+                if (idleSessions.Count > maxIdleSessionCount)
+                {
+                    var sessionsToPrune = idleSessions.ToArray()[..^maxIdleSessionCount];
+                    foreach (var (id, _) in sessionsToPrune)
+                    {
+                        RemoveAndCloseSession(id);
+                    }
+                }
+
+                idleSessions.Clear();
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -65,7 +82,7 @@ internal sealed partial class IdleTrackingBackgroundService(
         }
         finally
         {
-            if (stoppingToken.IsCancellationRequested)
+            try
             {
                 List<Task> disposeSessionTasks = [];
 
@@ -79,7 +96,29 @@ internal sealed partial class IdleTrackingBackgroundService(
 
                 await Task.WhenAll(disposeSessionTasks);
             }
+            finally
+            {
+                if (!stoppingToken.IsCancellationRequested)
+                {
+                    // Something went terribly wrong. A very unexpected exception must be bubbling up, but let's ensure we also stop the application,
+                    // so that it hopefully gets looked at and restarted. This shouldn't really be reachable.
+                    appLifetime.StopApplication();
+                    IdleTrackingBackgroundServiceStoppedUnexpectedly();
+                }
+            }
         }
+    }
+
+    private void RemoveAndCloseSession(string sessionId)
+    {
+        if (!handler.Sessions.TryRemove(sessionId, out var session))
+        {
+            return;
+        }
+
+        LogSessionIdle(session.Id);
+        // Don't slow down the idle tracking loop. DisposeSessionAsync logs. We only await during graceful shutdown.
+        _ = DisposeSessionAsync(session);
     }
 
     private async Task DisposeSessionAsync(HttpMcpSession<StreamableHttpServerTransport> session)
@@ -94,12 +133,28 @@ internal sealed partial class IdleTrackingBackgroundService(
         }
     }
 
+    private sealed class SessionTimestampComparer : IComparer<(string SessionId, long Timestamp)>
+    {
+        public static SessionTimestampComparer Instance { get; } = new();
+
+        public int Compare((string SessionId, long Timestamp) x, (string SessionId, long Timestamp) y) =>
+            x.Timestamp.CompareTo(y.Timestamp) switch
+            {
+                // Use a SessionId comparison as tiebreaker to ensure uniqueness in the SortedSet.
+                0 => string.CompareOrdinal(x.SessionId, y.SessionId),
+                var timestampComparison => timestampComparison,
+            };
+    }
+
     [LoggerMessage(Level = LogLevel.Information, Message = "Closing idle session {sessionId}.")]
     private partial void LogSessionIdle(string sessionId);
 
-    [LoggerMessage(Level = LogLevel.Critical, Message = "Exceeded static maximum of 10,000 idle connections. Now clearing all inactive connections regardless of timeout.")]
-    private partial void LogMaxSessionIdleCountExceeded();
-
-    [LoggerMessage(Level = LogLevel.Error, Message = "Error disposing the IMcpServer for session {sessionId}.")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error disposing session {sessionId}.")]
     private partial void LogSessionDisposeError(string sessionId, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Critical, Message = "Exceeded maximum of {maxIdleSessionCount} idle sessions. Now closing sessions active more recently than configured IdleTimeout.")]
+    private partial void LogMaxSessionIdleCountExceeded(int maxIdleSessionCount);
+
+    [LoggerMessage(Level = LogLevel.Critical, Message = "The IdleTrackingBackgroundService has stopped unexpectedly.")]
+    private partial void IdleTrackingBackgroundServiceStoppedUnexpectedly();
 }
