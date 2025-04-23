@@ -50,7 +50,7 @@ foreach (var tool in await client.ListToolsAsync())
 var result = await client.CallToolAsync(
     "echo",
     new Dictionary<string, object?>() { ["message"] = "Hello MCP!" },
-    CancellationToken.None);
+    cancellationToken:CancellationToken.None);
 
 // echo always returns one and only one text content object
 Console.WriteLine(result.Content.First(c => c.Type == "text").Text);
@@ -220,7 +220,7 @@ await server.RunAsync();
 
 ## Acknowledgements
 
-The starting point for this library was a project called [mcpdotnet](https://github.com/PederHP/mcpdotnet), initiated by [Peder Holdgaard Pederson](https://github.com/PederHP). We are grateful for the work done by Peder and other contributors to that repository, which created a solid foundation for this library.
+The starting point for this library was a project called [mcpdotnet](https://github.com/PederHP/mcpdotnet), initiated by [Peder Holdgaard Pedersen](https://github.com/PederHP). We are grateful for the work done by Peder and other contributors to that repository, which created a solid foundation for this library.
 
 ## License
 
