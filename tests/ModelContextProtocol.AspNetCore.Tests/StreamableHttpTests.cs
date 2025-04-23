@@ -483,7 +483,6 @@ public class StreamableHttpTests(ITestOutputHelper outputHelper) : KestrelInMemo
         SetSessionId(thirdSessionId);
         await CallEchoAndValidateAsync();
 
-        // TODO: Verify there is a critical log message about the session being pruned.
         var logMessage = Assert.Single(mockLoggerProvider.LogMessages, m => m.LogLevel == LogLevel.Critical);
         Assert.StartsWith("Exceeded maximum of 2 idle sessions.", logMessage.Message);
     }
