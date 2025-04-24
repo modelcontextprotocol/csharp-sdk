@@ -64,7 +64,7 @@ internal sealed class StreamableHttpHandler(
     public async Task HandleGetRequestAsync(HttpContext context)
     {
         var acceptHeaders = context.Request.GetTypedHeaders().Accept;
-        if (!acceptHeaders.Contains(ApplicationJsonMediaType))
+        if (!acceptHeaders.Contains(TextEventStreamMediaType))
         {
             await WriteJsonRpcErrorAsync(context,
                 "Not Acceptable: Client must accept text/event-stream",

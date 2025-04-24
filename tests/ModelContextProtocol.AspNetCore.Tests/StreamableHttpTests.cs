@@ -125,7 +125,7 @@ public class StreamableHttpTests(ITestOutputHelper outputHelper) : KestrelInMemo
         await StartAsync();
 
         HttpClient.DefaultRequestHeaders.Accept.Clear();
-        HttpClient.DefaultRequestHeaders.Accept.Add(new("text/json"));
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("application/json"));
 
         using var response = await HttpClient.GetAsync("", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotAcceptable, response.StatusCode);
