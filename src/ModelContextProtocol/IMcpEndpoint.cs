@@ -34,7 +34,8 @@ public interface IMcpEndpoint : IAsyncDisposable
     /// <param name="request">The JSON-RPC request to send.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task containing the endpoint's response.</returns>
-    /// <exception cref="McpException">The transport is not connected, or another error occurs during request processing.</exception>
+    /// <exception cref="InvalidOperationException">The transport is not connected, or another error occurs during request processing.</exception>
+    /// <exception cref="McpException">An error occured during request processing.</exception>
     /// <remarks>
     /// This method provides low-level access to send raw JSON-RPC requests. For most use cases,
     /// consider using the strongly-typed extension methods that provide a more convenient API.
@@ -50,7 +51,7 @@ public interface IMcpEndpoint : IAsyncDisposable
     /// </param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous send operation.</returns>
-    /// <exception cref="McpException">The transport is not connected.</exception>
+    /// <exception cref="InvalidOperationException">The transport is not connected.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="message"/> is <see langword="null"/>.</exception>
     /// <remarks>
     /// <para>
