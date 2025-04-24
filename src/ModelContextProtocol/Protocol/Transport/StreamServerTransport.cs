@@ -111,15 +111,7 @@ public class StreamServerTransport : TransportBase
                 {
                     if (JsonSerializer.Deserialize(line, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage))) is JsonRpcMessage message)
                     {
-                        string messageId = "(no id)";
-                        if (message is JsonRpcMessageWithId messageWithId)
-                        {
-                            messageId = messageWithId.Id.ToString();
-                        }
-
-                        LogTransportReceivedMessage(Name, messageId);
                         await WriteMessageAsync(message, shutdownToken).ConfigureAwait(false);
-                        LogTransportMessageWritten(Name, messageId);
                     }
                     else
                     {

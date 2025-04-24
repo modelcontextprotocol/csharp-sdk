@@ -1,3 +1,5 @@
+using static System.Net.WebRequestMethods;
+
 namespace ModelContextProtocol.Protocol.Transport;
 
 /// <summary>
@@ -31,12 +33,19 @@ public record SseClientTransportOptions
     }
 
     /// <summary>
+    /// Gets or sets a value indicating whether to use "Streamable HTTP" for the transport rather than "HTTP with SSE". Defaults to false.
+    /// <see href="https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http">Streamable HTTP transport specification</see>.
+    /// <see href="https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse">HTTP with SSE transport specification</see>.
+    /// </summary>
+    public bool UseStreamableHttp { get; init; }
+
+    /// <summary>
     /// Gets a transport identifier used for logging purposes.
     /// </summary>
     public string? Name { get; init; }
 
     /// <summary>
-    /// Gets or sets a timeout used to establish the initial connection to the SSE server.
+    /// Gets or sets a timeout used to establish the initial connection to the SSE server. Defaults to 30 seconds.
     /// </summary>
     /// <remarks>
     /// This timeout controls how long the client waits for:

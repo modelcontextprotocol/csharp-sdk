@@ -18,10 +18,9 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
     // multiple tests, so this dispatches the output to the current test.
     private readonly DelegatingTestOutputHelper _delegatingTestOutputHelper = new();
 
-    private SseClientTransportOptions DefaultTransportOptions { get; } = new()
+    private SseClientTransportOptions DefaultTransportOptions { get; set; } = new()
     {
-        Endpoint = new Uri("http://localhost/sse"),
-        Name = "TestServer",
+        Endpoint = new("http://localhost/"),
     };
 
     public SseServerIntegrationTestFixture()
@@ -37,8 +36,9 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
 
         HttpClient = new HttpClient(socketsHttpHandler)
         {
-            BaseAddress = DefaultTransportOptions.Endpoint,
+            BaseAddress = new("http://localhost/"),
         };
+
         _serverTask = Program.MainAsync([], new XunitLoggerProvider(_delegatingTestOutputHelper), _inMemoryTransport, _stopCts.Token);
     }
 
@@ -53,9 +53,10 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
             TestContext.Current.CancellationToken);
     }
 
-    public void Initialize(ITestOutputHelper output)
+    public void Initialize(ITestOutputHelper output, SseClientTransportOptions clientTransportOptions)
     {
         _delegatingTestOutputHelper.CurrentTestOutputHelper = output;
+        DefaultTransportOptions = clientTransportOptions;
     }
 
     public void TestCompleted()

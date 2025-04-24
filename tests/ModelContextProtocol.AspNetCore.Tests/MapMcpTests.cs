@@ -11,13 +11,18 @@ using System.Security.Claims;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
 
-public class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelInMemoryTest(testOutputHelper)
+public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelInMemoryTest(testOutputHelper)
 {
-    private async Task<IMcpClient> ConnectAsync(string? path = "/sse")
+    protected abstract bool UseStreamableHttp { get; }
+
+    protected async Task<IMcpClient> ConnectAsync(string? path = null)
     {
+        path ??= UseStreamableHttp ? "/" : "/sse";
+
         var sseClientTransportOptions = new SseClientTransportOptions()
         {
             Endpoint = new Uri($"http://localhost{path}"),
+            UseStreamableHttp = UseStreamableHttp,
         };
         await using var transport = new SseClientTransport(sseClientTransportOptions, HttpClient, LoggerFactory);
         return await McpClientFactory.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
@@ -56,65 +61,6 @@ public class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelInMemoryTe
         Assert.Equal($"data: {pattern}/message", dataLine[..dataLine.IndexOf('?')]);
     }
 
-    [Theory]
-    [InlineData("/a", "/a/sse")]
-    [InlineData("/a/", "/a/sse")]
-    [InlineData("/a/b", "/a/b/sse")]
-    public async Task CanConnect_WithMcpClient_AfterCustomizingRoute(string routePattern, string requestPath)
-    {
-        Builder.Services.AddMcpServer(options =>
-        {
-            options.ServerInfo = new()
-            {
-                Name = "TestCustomRouteServer",
-                Version = "1.0.0",
-            };
-        }).WithHttpTransport();
-        await using var app = Builder.Build();
-
-        app.MapMcp(routePattern);
-
-        await app.StartAsync(TestContext.Current.CancellationToken);
-
-        var mcpClient = await ConnectAsync(requestPath);
-
-        Assert.Equal("TestCustomRouteServer", mcpClient.ServerInfo.Name);
-    }
-
-    [Fact]
-    public async Task Can_UseHttpContextAccessor_InTool()
-    {
-        Builder.Services.AddMcpServer().WithHttpTransport().WithTools<EchoHttpContextUserTools>();
-
-        Builder.Services.AddHttpContextAccessor();
-
-        await using var app = Builder.Build();
-
-        app.Use(next =>
-        {
-            return async context =>
-            {
-                context.User = CreateUser("TestUser");
-                await next(context);
-            };
-        });
-
-        app.MapMcp();
-
-        await app.StartAsync(TestContext.Current.CancellationToken);
-
-        var mcpClient = await ConnectAsync();
-
-        var response = await mcpClient.CallToolAsync(
-            "EchoWithUserName",
-            new Dictionary<string, object?>() { ["message"] = "Hello world!" },
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        var content = Assert.Single(response.Content);
-        Assert.Equal("TestUser: Hello world!", content.Text);
-    }
-
-
     [Fact]
     public async Task Messages_FromNewUser_AreRejected()
     {
@@ -144,13 +90,13 @@ public class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelInMemoryTe
         Assert.Equal(HttpStatusCode.Forbidden, httpRequestException.StatusCode);
     }
 
-    private ClaimsPrincipal CreateUser(string name)
+    protected ClaimsPrincipal CreateUser(string name)
         => new ClaimsPrincipal(new ClaimsIdentity(
             [new Claim("name", name), new Claim(ClaimTypes.NameIdentifier, name)],
             "TestAuthType", "name", "role"));
 
     [McpServerToolType]
-    private class EchoHttpContextUserTools(IHttpContextAccessor contextAccessor)
+    protected class EchoHttpContextUserTools(IHttpContextAccessor contextAccessor)
     {
         [McpServerTool, Description("Echoes the input back to the client with their user name.")]
         public string EchoWithUserName(string message)

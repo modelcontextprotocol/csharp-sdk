@@ -61,7 +61,7 @@ internal sealed class StreamableHttpPostTransport(ChannelWriter<JsonRpcMessage>?
         {
             yield return message;
 
-            if (message.Data is JsonRpcResponse response)
+            if (message.Data is JsonRpcMessageWithId response)
             {
                 if (_pendingRequests.Remove(response.Id) && _pendingRequests.Count == 0)
                 {

@@ -146,15 +146,7 @@ internal class StreamClientSessionTransport : TransportBase
             var message = (JsonRpcMessage?)JsonSerializer.Deserialize(line.AsSpan().Trim(), McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)));
             if (message != null)
             {
-                string messageId = "(no id)";
-                if (message is JsonRpcMessageWithId messageWithId)
-                {
-                    messageId = messageWithId.Id.ToString();
-                }
-
-                LogTransportReceivedMessage(Name, messageId);
                 await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
-                LogTransportMessageWritten(Name, messageId);
             }
             else
             {

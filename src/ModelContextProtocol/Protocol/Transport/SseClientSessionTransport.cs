@@ -87,40 +87,17 @@ internal sealed partial class SseClientSessionTransport : TransportBase
             messageId = messageWithId.Id.ToString();
         }
 
-        var httpRequestMessage = new HttpRequestMessage(HttpMethod.Post, _messageEndpoint)
+        using var httpRequestMessage = new HttpRequestMessage(HttpMethod.Post, _messageEndpoint)
         {
             Content = content,
         };
-        CopyAdditionalHeaders(httpRequestMessage.Headers);
+        StreamableHttpClientSessionTransport.CopyAdditionalHeaders(httpRequestMessage.Headers, _options.AdditionalHeaders);
         var response = await _httpClient.SendAsync(httpRequestMessage, cancellationToken).ConfigureAwait(false);
 
         response.EnsureSuccessStatusCode();
 
         var responseContent = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 
-        // Check if the message was an initialize request
-        if (message is JsonRpcRequest request && request.Method == RequestMethods.Initialize)
-        {
-            // If the response is not a JSON-RPC response, it is an SSE message
-            if (string.IsNullOrEmpty(responseContent) || responseContent.Equals("accepted", StringComparison.OrdinalIgnoreCase))
-            {
-                LogAcceptedPost(Name, messageId);
-                // The response will arrive as an SSE message
-            }
-            else
-            {
-                JsonRpcResponse initializeResponse = JsonSerializer.Deserialize(responseContent, McpJsonUtilities.JsonContext.Default.JsonRpcResponse) ??
-                    throw new InvalidOperationException("Failed to initialize client");
-
-                LogTransportReceivedMessage(Name, messageId);
-                await WriteMessageAsync(initializeResponse, cancellationToken).ConfigureAwait(false);
-                LogTransportMessageWritten(Name, messageId);
-            }
-
-            return;
-        }
-
-        // Otherwise, check if the response was accepted (the response will come as an SSE message)
         if (string.IsNullOrEmpty(responseContent) || responseContent.Equals("accepted", StringComparison.OrdinalIgnoreCase))
         {
             LogAcceptedPost(Name, messageId);
@@ -177,17 +154,13 @@ internal sealed partial class SseClientSessionTransport : TransportBase
         }
     }
 
-    internal Uri? MessageEndpoint => _messageEndpoint;
-
-    internal SseClientTransportOptions Options => _options;
-
     private async Task ReceiveMessagesAsync(CancellationToken cancellationToken)
     {
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, _sseEndpoint);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
-            CopyAdditionalHeaders(request.Headers);
+            StreamableHttpClientSessionTransport.CopyAdditionalHeaders(request.Headers, _options.AdditionalHeaders);
 
             using var response = await _httpClient.SendAsync(
                 request,
@@ -251,15 +224,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
                 return;
             }
 
-            string messageId = "(no id)";
-            if (message is JsonRpcMessageWithId messageWithId)
-            {
-                messageId = messageWithId.Id.ToString();
-            }
-
-            LogTransportReceivedMessage(Name, messageId);
             await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
-            LogTransportMessageWritten(Name, messageId);
         }
         catch (JsonException ex)
         {
@@ -288,20 +253,6 @@ internal sealed partial class SseClientSessionTransport : TransportBase
         // Set connected state
         SetConnected(true);
         _connectionEstablished.TrySetResult(true);
-    }
-
-    private void CopyAdditionalHeaders(HttpRequestHeaders headers)
-    {
-        if (_options.AdditionalHeaders is not null)
-        {
-            foreach (var header in _options.AdditionalHeaders)
-            {
-                if (!headers.TryAddWithoutValidation(header.Key, header.Value))
-                {
-                    throw new InvalidOperationException($"Failed to add header '{header.Key}' with value '{header.Value}' from {nameof(SseClientTransportOptions.AdditionalHeaders)}.");
-                }
-            }
-        }
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} accepted SSE transport POST for message ID '{MessageId}'.")]

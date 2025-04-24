@@ -121,52 +121,6 @@ public class SseClientTransportTests : LoggedTest
     }
 
     [Fact]
-    public async Task SendMessageAsync_Handles_Accepted_Json_RPC_Response()
-    {
-        using var mockHttpHandler = new MockHttpHandler();
-        using var httpClient = new HttpClient(mockHttpHandler);
-        await using var transport = new SseClientTransport(_transportOptions, httpClient, LoggerFactory);
-
-        var eventSourcePipe = new Pipe();
-        var eventSourceData = "event: endpoint\r\ndata: /sseendpoint\r\n\r\n"u8;
-        eventSourceData.CopyTo(eventSourcePipe.Writer.GetSpan(eventSourceData.Length));
-        eventSourcePipe.Writer.Advance(eventSourceData.Length);
-        await eventSourcePipe.Writer.FlushAsync(TestContext.Current.CancellationToken);
-
-        var firstCall = true;
-        mockHttpHandler.RequestHandler = (request) =>
-        {
-            if (request.Method == HttpMethod.Post && request.RequestUri?.AbsoluteUri == "http://localhost:8080/sseendpoint")
-            {
-                return Task.FromResult(new HttpResponseMessage
-                {
-                    StatusCode = HttpStatusCode.OK,
-                    Content = new StringContent("{\"jsonrpc\":\"2.0\", \"id\": \"44\", \"result\": null}")
-                });
-            }
-            else
-            {
-                if (!firstCall)
-                    throw new IOException("Abort");
-                else
-                    firstCall = false;
-
-                return Task.FromResult(new HttpResponseMessage
-                {
-                    StatusCode = HttpStatusCode.OK,
-                    Content = new StreamContent(eventSourcePipe.Reader.AsStream()),
-                });
-            }
-        };
-
-        await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
-
-        await session.SendMessageAsync(new JsonRpcRequest() { Method = RequestMethods.Initialize, Id = new RequestId(44) }, CancellationToken.None);
-        Assert.True(true);
-        eventSourcePipe.Writer.Complete();
-    }
-
-    [Fact]
     public async Task ReceiveMessagesAsync_Handles_Messages()
     {
         using var mockHttpHandler = new MockHttpHandler();
