@@ -31,7 +31,8 @@ internal sealed partial class IdleTrackingBackgroundService(
             var idleTimeoutTicks = options.Value.IdleTimeout.Ticks;
             var maxIdleSessionCount = options.Value.MaxIdleSessionCount;
 
-            var idleSessions = new SortedSet<(string SessionId, long Timestamp)>(SessionTimestampComparer.Instance);
+            // The default ValueTuple Comparer will check the first item then the second which preserves both order and uniqueness.
+            var idleSessions = new SortedSet<(long Timestamp, string SessionId)>();
 
             while (!stoppingToken.IsCancellationRequested && await timer.WaitForNextTickAsync(stoppingToken))
             {
@@ -55,7 +56,7 @@ internal sealed partial class IdleTrackingBackgroundService(
                         continue;
                     }
 
-                    idleSessions.Add((session.Id, session.LastActivityTicks));
+                    idleSessions.Add((session.LastActivityTicks, session.Id));
 
                     // Emit critical log at most once every 5 seconds the idle count it exceeded,
                     // since the IdleTimeout will no longer be respected.
@@ -68,7 +69,7 @@ internal sealed partial class IdleTrackingBackgroundService(
                 if (idleSessions.Count > maxIdleSessionCount)
                 {
                     var sessionsToPrune = idleSessions.ToArray()[..^maxIdleSessionCount];
-                    foreach (var (id, _) in sessionsToPrune)
+                    foreach (var (_, id) in sessionsToPrune)
                     {
                         RemoveAndCloseSession(id);
                     }
@@ -131,19 +132,6 @@ internal sealed partial class IdleTrackingBackgroundService(
         {
             LogSessionDisposeError(session.Id, ex);
         }
-    }
-
-    private sealed class SessionTimestampComparer : IComparer<(string SessionId, long Timestamp)>
-    {
-        public static SessionTimestampComparer Instance { get; } = new();
-
-        public int Compare((string SessionId, long Timestamp) x, (string SessionId, long Timestamp) y) =>
-            x.Timestamp.CompareTo(y.Timestamp) switch
-            {
-                // Use a SessionId comparison as tiebreaker to ensure uniqueness in the SortedSet.
-                0 => string.CompareOrdinal(x.SessionId, y.SessionId),
-                var timestampComparison => timestampComparison,
-            };
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Closing idle session {sessionId}.")]

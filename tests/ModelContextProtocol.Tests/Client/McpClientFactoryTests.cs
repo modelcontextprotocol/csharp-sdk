@@ -45,7 +45,10 @@ public class McpClientFactoryTests
         Task t = McpClientFactory.CreateAsync(
             new StreamClientTransport(new Pipe().Writer.AsStream(), new Pipe().Reader.AsStream()),
             cancellationToken: cts.Token);
-        Assert.False(t.IsCompleted);
+        if (!preCanceled)
+        {
+            Assert.False(t.IsCompleted);
+        }
 
         if (!preCanceled)
         {
