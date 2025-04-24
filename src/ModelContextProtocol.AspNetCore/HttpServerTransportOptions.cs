@@ -34,9 +34,9 @@ public class HttpServerTransportOptions
     /// The maximum number of idle sessions to track. This is used to limit the number of sessions that can be idle at once.
     /// Past this limit, the server will log a critical error and terminate the oldest idle sessions even if they have not reached
     /// their <see cref="IdleTimeout"/> until the idle session count is below this limit. Clients that keep their session open by
-    /// keeping a GET request open will not count towards this limit. The default value is set to 10,000 sessions.
+    /// keeping a GET request open will not count towards this limit. The default value is set to 100,000 sessions.
     /// </summary>
-    public int MaxIdleSessionCount { get; set; } = 10_000;
+    public int MaxIdleSessionCount { get; set; } = 100_000;
 
     /// <summary>
     /// Used for testing the <see cref="IdleTimeout"/>.
