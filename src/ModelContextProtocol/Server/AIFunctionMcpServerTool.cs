@@ -151,6 +151,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
                     return null;
                 }
             },
+            JsonSchemaCreateOptions = options?.SchemaCreateOptions,
         };
 
     /// <summary>Creates an <see cref="McpServerTool"/> that wraps the specified <see cref="AIFunction"/>.</summary>
