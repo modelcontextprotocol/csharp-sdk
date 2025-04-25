@@ -360,19 +360,21 @@ public partial class McpServerToolTests
     {
         AIJsonSchemaCreateOptions schemaCreateOptions = new ()
         {
-            RequireAllProperties = false
+            TransformSchemaNode = (context, node) =>
+            {
+                node["text"] = "1234";
+                return node;
+            },
         };
 
-        McpServerTool tool = McpServerTool.Create((int num1, int num2 = 42) =>
+        McpServerTool tool = McpServerTool.Create((int num, string str) =>
         {
-            return num2.ToString();
+            return "42";
         }, new() { SchemaCreateOptions = schemaCreateOptions });
 
-        Assert.Collection(
-            tool.ProtocolTool.InputSchema.GetProperty("required").EnumerateArray().Select(x => x.GetString()),
-            [
-                x => Assert.Equal("num1", x),
-            ]
+        Assert.All(
+            tool.ProtocolTool.InputSchema.GetProperty("properties").EnumerateObject(),
+            x => Assert.True(x.Value.TryGetProperty("text", out JsonElement value) && value.ToString() == "1234")
         );
     }
 
