@@ -9,6 +9,30 @@ public class MapMcpSseTests(ITestOutputHelper outputHelper) : MapMcpTests(output
     protected override bool UseStreamableHttp => false;
 
     [Theory]
+    [InlineData("/mcp")]
+    [InlineData("/mcp/secondary")]
+    public async Task Allows_Customizing_Route(string pattern)
+    {
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless);
+        await using var app = Builder.Build();
+
+        app.MapMcp(pattern);
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        using var response = await HttpClient.GetAsync($"http://localhost{pattern}/sse", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+        response.EnsureSuccessStatusCode();
+        using var sseStream = await response.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
+        using var sseStreamReader = new StreamReader(sseStream, System.Text.Encoding.UTF8);
+        var eventLine = await sseStreamReader.ReadLineAsync(TestContext.Current.CancellationToken);
+        var dataLine = await sseStreamReader.ReadLineAsync(TestContext.Current.CancellationToken);
+        Assert.NotNull(eventLine);
+        Assert.Equal("event: endpoint", eventLine);
+        Assert.NotNull(dataLine);
+        Assert.Equal($"data: {pattern}/message", dataLine[..dataLine.IndexOf('?')]);
+    }
+
+    [Theory]
     [InlineData("/a", "/a/sse")]
     [InlineData("/a/", "/a/sse")]
     [InlineData("/a/b", "/a/b/sse")]

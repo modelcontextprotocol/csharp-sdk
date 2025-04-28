@@ -23,6 +23,13 @@ public class HttpServerTransportOptions
     public Func<HttpContext, IMcpServer, CancellationToken, Task>? RunSessionHandler { get; set; }
 
     /// <summary>
+    /// Gets or sets whether the server should run in a stateless mode that does not require all requests for a given session
+    /// to arrive to the same ASP.NET Core application process. If true, the /sse endpoint will be disabled, and
+    /// client capabilities will be round-tripped as part of the mcp-session-id header instead of stored in memory. Defaults to false.
+    /// </summary>
+    public bool Stateless { get; set; }
+
+    /// <summary>
     /// Represents the duration of time the server will wait between any active requests before timing out an
     /// MCP session. This is checked in background every 5 seconds. A client trying to resume a session will
     /// receive a 404 status code and should restart their session. A client can keep their session open by

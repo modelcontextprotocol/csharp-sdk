@@ -35,7 +35,8 @@ public class JsonRpcRequest : JsonRpcMessageWithId
             JsonRpc = JsonRpc,
             Id = id,
             Method = Method,
-            Params = Params
+            Params = Params,
+            RelatedTransport = RelatedTransport,
         };
     }
 }

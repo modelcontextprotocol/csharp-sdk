@@ -65,4 +65,26 @@ public class McpServerOptions
     /// handler will be invoked within a new service scope.
     /// </remarks>
     public bool ScopeRequests { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets preexisting knowledge about the client including its name and version to help support
+    /// stateless Streamable HTTP servers that encode this knowledge in the mcp-session-id header.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When not specified, this information sourced from the client's initialize request.
+    /// </para>
+    /// </remarks>
+    public Implementation? KnownClientInfo { get; set; }
+
+    /// <summary>
+    /// Gets or sets preexisting knowledge about the client client capabilities to help support
+    /// stateless Streamable HTTP servers that encode this knowledge in the mcp-session-id header.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When not specified, this information sourced from the client's initialize request.
+    /// </para>
+    /// </remarks>
+    public ClientCapabilities? KnownClientCapabilities { get; set; }
 }

@@ -17,7 +17,7 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 
 public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper)
 {
-    private SseClientTransportOptions DefaultTransportOptions = new()
+    private readonly SseClientTransportOptions DefaultTransportOptions = new()
     {
         Endpoint = new Uri("http://localhost/sse"),
         Name = "In-memory Test Server",

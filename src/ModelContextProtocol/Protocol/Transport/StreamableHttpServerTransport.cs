@@ -1,4 +1,5 @@
 using ModelContextProtocol.Protocol.Messages;
+using ModelContextProtocol.Protocol.Types;
 using System.IO.Pipelines;
 using System.Threading.Channels;
 
@@ -37,6 +38,21 @@ public sealed class StreamableHttpServerTransport : ITransport
     private int _getRequestStarted;
 
     /// <summary>
+    /// Gets the capabilities supported by the client if it was received by <see cref="HandlePostRequest(IDuplexPipe, CancellationToken)"/>.
+    /// </summary>
+    public ClientCapabilities? ClientCapabilities { get; internal set; }
+
+    /// <summary>
+    /// Gets the version and implementation information of the connected client if it was received by <see cref="HandlePostRequest(IDuplexPipe, CancellationToken)"/>.
+    /// </summary>
+    public Implementation? ClientInfo { get; internal set; }
+
+    /// <inheritdoc/>
+    public ChannelReader<JsonRpcMessage> MessageReader => _incomingChannel.Reader;
+
+    internal ChannelWriter<JsonRpcMessage> MessageWriter => _incomingChannel.Writer;
+
+    /// <summary>
     /// Handles an optional SSE GET request a client using the Streamable HTTP transport might make by
     /// writing any unsolicited JSON-RPC messages sent via <see cref="SendMessageAsync"/>
     /// to the SSE response stream until cancellation is requested or the transport is disposed.
@@ -63,19 +79,16 @@ public sealed class StreamableHttpServerTransport : ITransport
     /// <param name="httpBodies">The duplex pipe facilitates the reading and writing of HTTP request and response data.</param>
     /// <param name="cancellationToken">This token allows for the operation to be canceled if needed.</param>
     /// <returns>
-    /// True, if data was written to the respond body.
+    /// True, if data was written to the response body.
     /// False, if nothing was written because the request body did not contain any <see cref="JsonRpcRequest"/> messages to respond to.
     /// The HTTP application should typically respond with an empty "202 Accepted" response in this scenario.
     /// </returns>
     public async Task<bool> HandlePostRequest(IDuplexPipe httpBodies, CancellationToken cancellationToken)
     {
         using var postCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token, cancellationToken);
-        await using var postTransport = new StreamableHttpPostTransport(_incomingChannel.Writer, httpBodies);
+        await using var postTransport = new StreamableHttpPostTransport(this, httpBodies);
         return await postTransport.RunAsync(postCts.Token).ConfigureAwait(false);
     }
-
-    /// <inheritdoc/>
-    public ChannelReader<JsonRpcMessage> MessageReader => _incomingChannel.Reader;
 
     /// <inheritdoc/>
     public async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
@@ -86,14 +99,20 @@ public sealed class StreamableHttpServerTransport : ITransport
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
-        _disposeCts.Cancel();
         try
         {
-            await _sseWriter.DisposeAsync().ConfigureAwait(false);
+            await _disposeCts.CancelAsync();
         }
         finally
         {
-            _disposeCts.Dispose();
+            try
+            {
+                await _sseWriter.DisposeAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                _disposeCts.Dispose();
+            }
         }
     }
 }

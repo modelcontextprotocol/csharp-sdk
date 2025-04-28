@@ -3,6 +3,7 @@ using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils.Json;
 using Serilog;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 
@@ -378,6 +379,26 @@ public class Program
         };
     }
 
+    private static void HandleStatelessMcp(IApplicationBuilder app)
+    {
+        var serviceCollection = new ServiceCollection();
+        serviceCollection.AddLogging();
+        serviceCollection.AddSingleton(app.ApplicationServices.GetRequiredService<ILoggerFactory>());
+        serviceCollection.AddSingleton(app.ApplicationServices.GetRequiredService<DiagnosticListener>());
+        serviceCollection.AddRoutingCore();
+
+        serviceCollection.AddMcpServer(ConfigureOptions).WithHttpTransport(options => options.Stateless = true);
+
+        var appBuilder = new ApplicationBuilder(serviceCollection.BuildServiceProvider());
+        appBuilder.UseRouting();
+        appBuilder.UseEndpoints(innerEndpoints =>
+        {
+            innerEndpoints.MapMcp("/stateless");
+        });
+
+        app.Run(appBuilder.Build());
+    }
+
     public static async Task MainAsync(string[] args, ILoggerProvider? loggerProvider = null, IConnectionListenerFactory? kestrelTransport = null, CancellationToken cancellationToken = default)
     {
         Console.WriteLine("Starting server...");
@@ -418,6 +439,9 @@ public class Program
         var app = builder.Build();
         app.UseRouting();
         app.UseEndpoints(_ => { });
+
+        // Handle the /stateless endpoint if no other endpoints have been matched by the call to UseRouting above.
+        HandleStatelessMcp(app);
 
         app.MapMcp();
 
