@@ -44,7 +44,7 @@ builder.Services
         {
             Resources =
             [
-                new ModelContextProtocol.Protocol.Types.Resource { Name = "Static Text Resource", Description = "A static text resource", MimeType = "text/plain", Uri = "test://direct/text/resource" },
+                new ModelContextProtocol.Protocol.Types.Resource { Name = "Direct Text Resource", Description = "A direct text resource", MimeType = "text/plain", Uri = "test://direct/text/resource" },
             ]
         };
     })
@@ -68,7 +68,7 @@ builder.Services
             {
                 Contents = [new TextResourceContents
                 {
-                    Text = "This is a static resource",
+                    Text = "This is a direct resource",
                     MimeType = "text/plain",
                     Uri = uri,
                 }]
