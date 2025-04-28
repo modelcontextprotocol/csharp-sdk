@@ -44,7 +44,7 @@ builder.Services
         {
             Resources =
             [
-                new ModelContextProtocol.Protocol.Types.Resource { Name = "Static Resource", Description = "A static resource", Uri = "test://static/resource/" }
+                new ModelContextProtocol.Protocol.Types.Resource { Name = "Static Text Resource", Description = "A static text resource", MimeType = "text/plain", Uri = "test://direct/text/resource" },
             ]
         };
     })
