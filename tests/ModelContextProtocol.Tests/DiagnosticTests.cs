@@ -68,14 +68,10 @@ public class DiagnosticTests
         Assert.Equal(clientListToolsCall.SpanId, serverListToolsCall.ParentSpanId);
         Assert.Equal(clientListToolsCall.TraceId, serverListToolsCall.TraceId);
 
-        // Validate that the client trace context encoded to request.params.traceparent
+        // Validate that the client trace context encoded to request.params._meta[traceparent]
         using var listToolsJson = JsonDocument.Parse(clientToServerLog.First(s => s.Contains("\"method\":\"tools/list\"")));
-        var traceparent = listToolsJson.RootElement.GetProperty("params").GetProperty("traceparent").GetString();
-        Assert.NotNull(traceparent);
-
-        var parts = traceparent.Split('-');
-        Assert.Equal(clientListToolsCall.TraceId.ToString(), parts[1]);
-        Assert.Equal(clientListToolsCall.SpanId.ToString(), parts[2]);
+        var metaJson = listToolsJson.RootElement.GetProperty("params").GetProperty("_meta").GetRawText();
+        Assert.Equal($$"""{"traceparent":"00-{{clientListToolsCall.TraceId}}-{{clientListToolsCall.SpanId}}-01"}""", metaJson);
     }
 
     [Fact]
