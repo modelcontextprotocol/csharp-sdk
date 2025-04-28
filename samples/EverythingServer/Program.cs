@@ -62,7 +62,7 @@ builder.Services
     {
         var uri = ctx.Params?.Uri;
 
-        if (uri?.StartsWith("test://static/resource/") == true)
+        if (uri == "test://direct/text/resource")
         {
             return new ReadResourceResult
             {
