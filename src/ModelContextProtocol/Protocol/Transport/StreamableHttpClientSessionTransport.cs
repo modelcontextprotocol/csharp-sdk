@@ -104,8 +104,12 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
         if (rpcRequest.Method == RequestMethods.Initialize && rpcResponseCandidate is JsonRpcResponse)
         {
-            // We've successfully initialized! Copy session-id and start GET request.
-            _mcpSessionId = response.Headers.GetValues("mcp-session-id").Single();
+            // We've successfully initialized! Copy session-id and start GET request if any.
+            if (response.Headers.TryGetValues("mcp-session-id", out var sessionIdValues))
+            {
+                _mcpSessionId = sessionIdValues.FirstOrDefault();
+            }
+
             _getReceiveTask = ReceiveUnsolicitedMessagesAsync();
         }
     }

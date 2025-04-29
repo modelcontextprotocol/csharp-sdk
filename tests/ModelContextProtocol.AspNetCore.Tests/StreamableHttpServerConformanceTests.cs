@@ -18,7 +18,7 @@ using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
 
-public class StreamableHttpTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper), IAsyncDisposable
+public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper), IAsyncDisposable
 {
     private static McpServerTool[] Tools { get; } = [
         McpServerTool.Create(EchoAsync),
@@ -35,7 +35,7 @@ public class StreamableHttpTests(ITestOutputHelper outputHelper) : KestrelInMemo
         {
             options.ServerInfo = new Implementation
             {
-                Name = nameof(StreamableHttpTests),
+                Name = nameof(StreamableHttpServerConformanceTests),
                 Version = "73",
             };
         }).WithTools(Tools).WithHttpTransport();
@@ -563,7 +563,7 @@ public class StreamableHttpTests(ITestOutputHelper outputHelper) : KestrelInMemo
     private static InitializeResult AssertServerInfo(JsonRpcResponse rpcResponse)
     {
         var initializeResult = AssertType<InitializeResult>(rpcResponse.Result);
-        Assert.Equal(nameof(StreamableHttpTests), initializeResult.ServerInfo.Name);
+        Assert.Equal(nameof(StreamableHttpServerConformanceTests), initializeResult.ServerInfo.Name);
         Assert.Equal("73", initializeResult.ServerInfo.Version);
         return initializeResult;
     }
