@@ -779,7 +779,7 @@ public static class McpClientExtensions
     }
 
     /// <summary>
-    /// Invokes a tool on the server
+    /// Invokes a tool on the server.
     /// </summary>
     /// <param name="client">The client instance used to communicate with the MCP server.</param>
     /// <param name="toolName">The name of the tool to call on the server..</param>
