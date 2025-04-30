@@ -37,7 +37,7 @@ public abstract partial class TransportBase : ITransport
         _messageChannel = Channel.CreateUnbounded<JsonRpcMessage>(new UnboundedChannelOptions
         {
             SingleReader = true,
-            SingleWriter = true,
+            SingleWriter = false,
         });
     }
 
@@ -76,8 +76,11 @@ public abstract partial class TransportBase : ITransport
             throw new InvalidOperationException("Transport is not connected");
         }
 
-        var messageId = (message as JsonRpcMessageWithId)?.Id.ToString() ?? "(no id)";
-        LogTransportReceivedMessage(Name, messageId);
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            var messageId = (message as JsonRpcMessageWithId)?.Id.ToString() ?? "(no id)";
+            LogTransportReceivedMessage(Name, messageId);
+        }
 
         await _messageChannel.Writer.WriteAsync(message, cancellationToken).ConfigureAwait(false);
     }

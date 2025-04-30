@@ -23,9 +23,9 @@ internal sealed class StreamableHttpHandler(
     ILoggerFactory loggerFactory,
     IServiceProvider applicationServices)
 {
-    private static JsonTypeInfo<JsonRpcError> s_errorTypeInfo = GetRequiredJsonTypeInfo<JsonRpcError>();
-    private static MediaTypeHeaderValue ApplicationJsonMediaType = new("application/json");
-    private static MediaTypeHeaderValue TextEventStreamMediaType = new("text/event-stream");
+    private static readonly JsonTypeInfo<JsonRpcError> s_errorTypeInfo = GetRequiredJsonTypeInfo<JsonRpcError>();
+    private static readonly MediaTypeHeaderValue s_applicationJsonMediaType = new("application/json");
+    private static readonly MediaTypeHeaderValue s_textEventStreamMediaType = new("text/event-stream");
 
     public ConcurrentDictionary<string, HttpMcpSession<StreamableHttpServerTransport>> Sessions { get; } = new(StringComparer.Ordinal);
 
@@ -36,7 +36,7 @@ internal sealed class StreamableHttpHandler(
         // so we have to do this manually. The spec doesn't mandate that servers MUST reject these requests,
         // but it's probably good to at least start out trying to be strict.
         var acceptHeaders = context.Request.GetTypedHeaders().Accept;
-        if (!acceptHeaders.Contains(ApplicationJsonMediaType) || !acceptHeaders.Contains(TextEventStreamMediaType))
+        if (!acceptHeaders.Contains(s_applicationJsonMediaType) || !acceptHeaders.Contains(s_textEventStreamMediaType))
         {
             await WriteJsonRpcErrorAsync(context,
                 "Not Acceptable: Client must accept both application/json and text/event-stream",
@@ -64,7 +64,7 @@ internal sealed class StreamableHttpHandler(
     public async Task HandleGetRequestAsync(HttpContext context)
     {
         var acceptHeaders = context.Request.GetTypedHeaders().Accept;
-        if (!acceptHeaders.Contains(TextEventStreamMediaType))
+        if (!acceptHeaders.Contains(s_textEventStreamMediaType))
         {
             await WriteJsonRpcErrorAsync(context,
                 "Not Acceptable: Client must accept text/event-stream",

@@ -10,7 +10,6 @@ using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils.Json;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
@@ -110,9 +109,43 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
 
         var echoTool = Assert.Single(tools);
         Assert.Equal("echo", echoTool.Name);
-        var response = await echoTool.InvokeAsync(new() { ["message"] = "Hello world!" }, TestContext.Current.CancellationToken);
+        await CallEchoAndValidateAsync(echoTool);
+    }
+
+
+    [Fact]
+    public async Task CanCallToolConcurrently()
+    {
+        await StartAsync();
+
+        await using var transport = new SseClientTransport(new()
+        {
+            Endpoint = new("http://localhost/mcp"),
+            UseStreamableHttp = true,
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClientFactory.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        var echoTool = Assert.Single(tools);
+        Assert.Equal("echo", echoTool.Name);
+
+        var echoTasks = new Task[100];
+        for (int i = 0; i < echoTasks.Length; i++)
+        {
+            echoTasks[i] = CallEchoAndValidateAsync(echoTool);
+        }
+
+        await Task.WhenAll(echoTasks);
+    }
+
+    private static async Task CallEchoAndValidateAsync(McpClientTool echoTool)
+    {
+        var response = await echoTool.CallAsync(new Dictionary<string, object?>() { ["message"] = "Hello world!" }, cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(response);
-        Assert.Contains("Hello world!", response.ToString());
+        var content = Assert.Single(response.Content);
+        Assert.Equal("text", content.Type);
+        Assert.Equal("Hello world!", content.Text);
     }
 
     public async ValueTask DisposeAsync()

@@ -1,5 +1,3 @@
-using static System.Net.WebRequestMethods;
-
 namespace ModelContextProtocol.Protocol.Transport;
 
 /// <summary>

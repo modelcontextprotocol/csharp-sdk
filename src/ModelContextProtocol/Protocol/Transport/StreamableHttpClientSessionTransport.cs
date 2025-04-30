@@ -5,8 +5,13 @@ using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
 using System.Net.Http.Headers;
 using System.Net.ServerSentEvents;
-using System.Text;
 using System.Text.Json;
+
+#if NET
+using System.Net.Http.Json;
+#else
+using System.Text;
+#endif
 
 namespace ModelContextProtocol.Protocol.Transport;
 
@@ -15,8 +20,8 @@ namespace ModelContextProtocol.Protocol.Transport;
 /// </summary>
 internal sealed partial class StreamableHttpClientSessionTransport : TransportBase
 {
-    private static MediaTypeWithQualityHeaderValue ApplicationJsonMediaType = new("application/json");
-    private static MediaTypeWithQualityHeaderValue TextEventStreamMediaType = new("text/event-stream");
+    private static readonly MediaTypeWithQualityHeaderValue s_applicationJsonMediaType = new("application/json");
+    private static readonly MediaTypeWithQualityHeaderValue s_textEventStreamMediaType = new("text/event-stream");
 
     private readonly HttpClient _httpClient;
     private readonly SseClientTransportOptions _options;
@@ -51,23 +56,27 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         using var sendCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _connectionCts.Token);
         cancellationToken = sendCts.Token;
 
+#if NET
+        using var content = JsonContent.Create(message, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonRpcMessage>());
+#else
         using var content = new StringContent(
             JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage),
             Encoding.UTF8,
             "application/json"
         );
+#endif
 
         using var httpRequestMessage = new HttpRequestMessage(HttpMethod.Post, _options.Endpoint)
         {
             Content = content,
             Headers =
             {
-                Accept = { ApplicationJsonMediaType, TextEventStreamMediaType },
+                Accept = { s_applicationJsonMediaType, s_textEventStreamMediaType },
             },
         };
 
         CopyAdditionalHeaders(httpRequestMessage.Headers, _options.AdditionalHeaders, _mcpSessionId);
-        var response = await _httpClient.SendAsync(httpRequestMessage, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        using var response = await _httpClient.SendAsync(httpRequestMessage, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
 
         response.EnsureSuccessStatusCode();
 
@@ -77,18 +86,11 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         if (response.Content.Headers.ContentType?.MediaType == "application/json")
         {
             var responseContent = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            if (responseContent.StartsWith("["))
-            {
-                rpcResponseCandidate = await ProcessJsonRpcBatch(responseContent, rpcRequest, cancellationToken).ConfigureAwait(false);
-            }
-            else
-            {
-                rpcResponseCandidate = await ProcessMessageAsync(responseContent, cancellationToken).ConfigureAwait(false);
-            }
+            rpcResponseCandidate = await ProcessMessageAsync(responseContent, cancellationToken).ConfigureAwait(false);
         }
         else if (response.Content.Headers.ContentType?.MediaType == "text/event-stream")
         {
-            var responseBodyStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var responseBodyStream = await response.Content.ReadAsStreamAsync(cancellationToken);
             rpcResponseCandidate = await ProcessSseResponseAsync(responseBodyStream, rpcRequest, cancellationToken).ConfigureAwait(false);
         }
 
@@ -145,7 +147,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
     {
         // Send a GET request to handle any unsolicited messages not sent over a POST response.
         using var request = new HttpRequestMessage(HttpMethod.Get, _options.Endpoint);
-        request.Headers.Accept.Add(TextEventStreamMediaType);
+        request.Headers.Accept.Add(s_textEventStreamMediaType);
         CopyAdditionalHeaders(request.Headers, _options.AdditionalHeaders, _mcpSessionId);
 
         using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, _connectionCts.Token).ConfigureAwait(false);
@@ -156,8 +158,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
             return;
         }
 
-        response.EnsureSuccessStatusCode();
-        var responseStream = await response.Content.ReadAsStreamAsync(_connectionCts.Token).ConfigureAwait(false);
+        using var responseStream = await response.Content.ReadAsStreamAsync(_connectionCts.Token).ConfigureAwait(false);
         await ProcessSseResponseAsync(responseStream, relatedRpcRequest: null, _connectionCts.Token).ConfigureAwait(false);
     }
 
@@ -178,37 +179,6 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
             {
                 return messageWithId;
             }
-        }
-
-        return null;
-    }
-
-    private async Task<JsonRpcMessageWithId?> ProcessJsonRpcBatch(string arrayData, JsonRpcRequest? relatedRpcRequest, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var batch = JsonSerializer.Deserialize(arrayData, McpJsonUtilities.JsonContext.Default.JsonRpcMessageArray);
-            if (batch is null)
-            {
-                throw new Exception("Unreachable! We already checked arrayData started with '['");
-            }
-
-            JsonRpcMessageWithId? relatedRpcResponse = null;
-
-            foreach (var message in batch!)
-            {
-                await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
-                if (message is JsonRpcMessageWithId messageWithId && relatedRpcRequest?.Id == messageWithId.Id)
-                {
-                    relatedRpcResponse = messageWithId;
-                }
-            }
-
-            return relatedRpcResponse;
-        }
-        catch (JsonException ex)
-        {
-            LogJsonException(ex, arrayData);
         }
 
         return null;
