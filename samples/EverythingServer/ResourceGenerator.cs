@@ -6,7 +6,7 @@ static class ResourceGenerator
 {
     private static readonly List<Resource> _resources = Enumerable.Range(1, 100).Select(i =>
         {
-            var uri = $"test://static/resource/{i}";
+            var uri = $"test://template/resource/{i}";
             if (i % 2 != 0)
             {
                 return new Resource

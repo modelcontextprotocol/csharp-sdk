@@ -3,7 +3,9 @@ using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using Moq;
+using System.ComponentModel;
 using System.Reflection;
+using System.Text.Json;
 
 namespace ModelContextProtocol.Tests.Server;
 
@@ -314,6 +316,30 @@ public class McpServerPromptTests
         await Assert.ThrowsAsync<InvalidOperationException>(async () => await prompt.GetAsync(
             new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),
             TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task SupportsSchemaCreateOptions()
+    {
+        AIJsonSchemaCreateOptions schemaCreateOptions = new()
+        {
+            TransformSchemaNode = (context, node) =>
+            {
+                node["description"] = "1234";
+                return node;
+            }
+        };
+
+        McpServerPrompt prompt = McpServerPrompt.Create(([Description("argument1")] int num, [Description("argument2")] string str) =>
+        {
+            return new ChatMessage(ChatRole.User, "Hello");
+        }, new() { SchemaCreateOptions = schemaCreateOptions });
+
+        Assert.NotNull(prompt.ProtocolPrompt.Arguments);
+        Assert.All(
+            prompt.ProtocolPrompt.Arguments,
+            x => Assert.Equal("1234", x.Description)
+        );
     }
 
     private sealed class MyService;

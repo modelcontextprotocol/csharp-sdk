@@ -38,13 +38,23 @@ builder.Services
     .WithTools<TinyImageTool>()
     .WithPrompts<ComplexPromptType>()
     .WithPrompts<SimplePromptType>()
+    .WithListResourcesHandler(async (ctx, ct) =>
+    {
+        return new ListResourcesResult
+        {
+            Resources =
+            [
+                new ModelContextProtocol.Protocol.Types.Resource { Name = "Direct Text Resource", Description = "A direct text resource", MimeType = "text/plain", Uri = "test://direct/text/resource" },
+            ]
+        };
+    })
     .WithListResourceTemplatesHandler(async (ctx, ct) =>
     {
         return new ListResourceTemplatesResult
         {
             ResourceTemplates =
             [
-                new ResourceTemplate { Name = "Static Resource", Description = "A static resource with a numeric ID", UriTemplate = "test://static/resource/{id}" }
+                new ResourceTemplate { Name = "Template Resource", Description = "A template resource with a numeric ID", UriTemplate = "test://template/resource/{id}" }
             ]
         };
     })
@@ -52,12 +62,25 @@ builder.Services
     {
         var uri = ctx.Params?.Uri;
 
-        if (uri is null || !uri.StartsWith("test://static/resource/"))
+        if (uri == "test://direct/text/resource")
+        {
+            return new ReadResourceResult
+            {
+                Contents = [new TextResourceContents
+                {
+                    Text = "This is a direct resource",
+                    MimeType = "text/plain",
+                    Uri = uri,
+                }]
+            };
+        }
+
+        if (uri is null || !uri.StartsWith("test://template/resource/"))
         {
             throw new NotSupportedException($"Unknown resource: {uri}");
         }
 
-        int index = int.Parse(uri["test://static/resource/".Length..]) - 1;
+        int index = int.Parse(uri["test://template/resource/".Length..]) - 1;
 
         if (index < 0 || index >= ResourceGenerator.Resources.Count)
         {

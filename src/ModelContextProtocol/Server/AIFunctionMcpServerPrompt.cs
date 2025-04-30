@@ -130,6 +130,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
                     return null;
                 }
             },
+            JsonSchemaCreateOptions = options?.SchemaCreateOptions,
         };
 
     /// <summary>Creates an <see cref="McpServerPrompt"/> that wraps the specified <see cref="AIFunction"/>.</summary>

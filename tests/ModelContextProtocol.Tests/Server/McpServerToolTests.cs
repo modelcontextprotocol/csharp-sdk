@@ -355,6 +355,29 @@ public partial class McpServerToolTests
         Assert.Equal("image", result.Content[1].Type);
     }
 
+    [Fact]
+    public async Task SupportsSchemaCreateOptions()
+    {
+        AIJsonSchemaCreateOptions schemaCreateOptions = new ()
+        {
+            TransformSchemaNode = (context, node) =>
+            {
+                node["text"] = "1234";
+                return node;
+            },
+        };
+
+        McpServerTool tool = McpServerTool.Create((int num, string str) =>
+        {
+            return "42";
+        }, new() { SchemaCreateOptions = schemaCreateOptions });
+
+        Assert.All(
+            tool.ProtocolTool.InputSchema.GetProperty("properties").EnumerateObject(),
+            x => Assert.True(x.Value.TryGetProperty("text", out JsonElement value) && value.ToString() == "1234")
+        );
+    }
+
     private sealed class MyService;
 
     private class DisposableToolType : IDisposable
