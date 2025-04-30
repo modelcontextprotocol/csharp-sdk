@@ -753,7 +753,7 @@ internal sealed partial class McpSession : IDisposable
     [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received unexpected {MessageType} message type.")]
     private partial void LogEndpointHandlerUnexpectedMessageType(string endpointName, string messageType);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received request for method '{Method}', but not handler is available.")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received request for method '{Method}', but no handler is available.")]
     private partial void LogNoHandlerFoundForRequest(string endpointName, string method);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "{EndpointName} waiting for response to request '{RequestId}' for method '{Method}'.")]
