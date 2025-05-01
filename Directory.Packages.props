@@ -1,8 +1,8 @@
 <Project>
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
-    <System10Version>10.0.0-preview.2.25163.2</System10Version>
-    <MicrosoftExtensionsAIVersion>9.4.0-preview.1.25207.5</MicrosoftExtensionsAIVersion>
+    <System10Version>10.0.0-preview.3.25171.5</System10Version>
+    <MicrosoftExtensionsAIVersion>9.4.3-preview.1.25230.7</MicrosoftExtensionsAIVersion>
   </PropertyGroup>
 
   <!-- Product dependencies netstandard -->

@@ -68,6 +68,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
             Description = options?.Description,
             MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
             SerializerOptions = options?.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
+            Services = options?.Services,
             ConfigureParameterBinding = pi =>
             {
                 if (pi.ParameterType == typeof(RequestContext<GetPromptRequestParams>))
@@ -85,35 +86,6 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
                     {
                         ExcludeFromSchema = true,
                         BindParameter = (pi, args) => GetRequestContext(args)?.Server,
-                    };
-                }
-
-                // We assume that if the services used to create the prompt support a particular type,
-                // so too do the services associated with the server. This is the same basic assumption
-                // made in ASP.NET.
-                if (options?.Services is { } services &&
-                    services.GetService<IServiceProviderIsService>() is { } ispis &&
-                    ispis.IsService(pi.ParameterType))
-                {
-                    return new()
-                    {
-                        ExcludeFromSchema = true,
-                        BindParameter = (pi, args) =>
-                            GetRequestContext(args)?.Services?.GetService(pi.ParameterType) ??
-                            (pi.HasDefaultValue ? null :
-                             throw new InvalidOperationException("No service of the requested type was found.")),
-                    };
-                }
-
-                if (pi.GetCustomAttribute<FromKeyedServicesAttribute>() is { } keyedAttr)
-                {
-                    return new()
-                    {
-                        ExcludeFromSchema = true,
-                        BindParameter = (pi, args) =>
-                            (GetRequestContext(args)?.Services as IKeyedServiceProvider)?.GetKeyedService(pi.ParameterType, keyedAttr.Key) ??
-                            (pi.HasDefaultValue ? null :
-                             throw new InvalidOperationException("No service of the requested type was found.")),
                     };
                 }
 

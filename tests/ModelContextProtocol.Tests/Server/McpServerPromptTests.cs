@@ -61,7 +61,7 @@ public class McpServerPromptTests
         Assert.Contains("something", prompt.ProtocolPrompt.Arguments?.Select(a => a.Name) ?? []);
         Assert.DoesNotContain("actualMyService", prompt.ProtocolPrompt.Arguments?.Select(a => a.Name) ?? []);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await prompt.GetAsync(
+        await Assert.ThrowsAsync<ArgumentNullException>(async () => await prompt.GetAsync(
             new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),
             TestContext.Current.CancellationToken));
 
