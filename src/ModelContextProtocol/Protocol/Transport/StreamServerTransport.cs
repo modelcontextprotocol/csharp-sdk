@@ -51,7 +51,7 @@ public class StreamServerTransport : TransportBase
         _inputReader = new StreamReader(inputStream, Encoding.UTF8);
         _outputStream = outputStream;
 
-        SetConnected(true);
+        SetConnected();
         _readLoopCompleted = Task.Run(ReadMessagesAsync, _shutdownCts.Token);
     }
 
@@ -60,7 +60,7 @@ public class StreamServerTransport : TransportBase
     {
         if (!IsConnected)
         {
-            throw new InvalidOperationException("Transport is not connected");
+            throw new InvalidOperationException("Transport is not connected.");
         }
 
         using var _ = await _sendLock.LockAsync(cancellationToken).ConfigureAwait(false);
@@ -80,13 +80,14 @@ public class StreamServerTransport : TransportBase
         catch (Exception ex)
         {
             LogTransportSendFailed(Name, id, ex);
-            throw new InvalidOperationException("Failed to send message", ex);
+            throw new IOException("Failed to send message.", ex);
         }
     }
 
     private async Task ReadMessagesAsync()
     {
         CancellationToken shutdownToken = _shutdownCts.Token;
+        Exception? error = null;
         try
         {
             LogTransportEnteringReadMessagesLoop(Name);
@@ -140,10 +141,11 @@ public class StreamServerTransport : TransportBase
         catch (Exception ex)
         {
             LogTransportReadMessagesFailed(Name, ex);
+            error = ex;
         }
         finally
         {
-            SetConnected(false);
+            SetDisconnected(error);
         }
     }
 
@@ -183,7 +185,7 @@ public class StreamServerTransport : TransportBase
         }
         finally
         {
-            SetConnected(false);
+            SetDisconnected();
             LogTransportShutDown(Name);
         }
 

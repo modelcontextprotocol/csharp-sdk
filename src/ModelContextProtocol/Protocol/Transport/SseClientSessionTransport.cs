@@ -137,7 +137,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
         }
         finally
         {
-            SetConnected(false);
+            SetDisconnected();
         }
     }
 
@@ -203,7 +203,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
         }
         finally
         {
-            SetConnected(false);
+            SetDisconnected();
         }
     }
 
@@ -251,7 +251,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
         _messageEndpoint = new Uri(_sseEndpoint, data);
 
         // Set connected state
-        SetConnected(true);
+        SetConnected();
         _connectionEstablished.TrySetResult(true);
     }
 

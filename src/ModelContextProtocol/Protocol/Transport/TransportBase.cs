@@ -1,7 +1,8 @@
+using System.Diagnostics;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
-using ModelContextProtocol.Protocol.Messages;
 using Microsoft.Extensions.Logging.Abstractions;
+using ModelContextProtocol.Protocol.Messages;
 
 namespace ModelContextProtocol.Protocol.Transport;
 
@@ -23,7 +24,14 @@ public abstract partial class TransportBase : ITransport
 {
     private readonly Channel<JsonRpcMessage> _messageChannel;
     private readonly ILogger _logger;
-    private int _isConnected;
+    private volatile int _state = StateInitial;
+
+    /// <summary>The transport has not yet been connected.</summary>
+    private const int StateInitial = 0;
+    /// <summary>The transport is connected.</summary>
+    private const int StateConnected = 1;
+    /// <summary>The transport was previously connected and is now disconnected.</summary>
+    private const int StateDisconnected = 2;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="TransportBase"/> class.
@@ -53,7 +61,7 @@ public abstract partial class TransportBase : ITransport
     protected string Name { get; }
 
     /// <inheritdoc/>
-    public bool IsConnected => _isConnected == 1;
+    public bool IsConnected => _state == StateConnected;
 
     /// <inheritdoc/>
     public ChannelReader<JsonRpcMessage> MessageReader => _messageChannel.Reader;
@@ -73,7 +81,7 @@ public abstract partial class TransportBase : ITransport
     {
         if (!IsConnected)
         {
-            throw new InvalidOperationException("Transport is not connected");
+            throw new InvalidOperationException("Transport is not connected.");
         }
 
         if (_logger.IsEnabled(LogLevel.Debug))
@@ -82,24 +90,61 @@ public abstract partial class TransportBase : ITransport
             LogTransportReceivedMessage(Name, messageId);
         }
 
-        await _messageChannel.Writer.WriteAsync(message, cancellationToken).ConfigureAwait(false);
+        bool wrote = _messageChannel.Writer.TryWrite(message);
+        Debug.Assert(wrote || !IsConnected, "_messageChannel is unbounded; this should only ever return false if the channel has been closed.");
     }
 
     /// <summary>
-    /// Sets the connected state of the transport.
+    /// Sets the transport to a connected state.
     /// </summary>
-    /// <param name="isConnected">Whether the transport is connected.</param>
-    protected void SetConnected(bool isConnected)
+    protected void SetConnected()
     {
-        var newIsConnected = isConnected ? 1 : 0;
-        if (Interlocked.Exchange(ref _isConnected, newIsConnected) == newIsConnected)
+        while (true)
         {
-            return;
-        }
+            int state = _state;
+            switch (state)
+            {
+                case StateInitial:
+                    if (Interlocked.CompareExchange(ref _state, StateConnected, StateInitial) == StateInitial)
+                    {
+                        return;
+                    }
+                    break;
 
-        if (!isConnected)
+                case StateConnected:
+                    return;
+                
+                case StateDisconnected:
+                    throw new InvalidOperationException("Transport is already disconnected and can't be reconnected.");
+
+                default:
+                    Debug.Fail($"Unexpected state: {state}");
+                    return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Sets the transport to a disconnected state.
+    /// </summary>
+    /// <param name="error">Optional error information associated with the transport disconnecting. Should be <see langwor="null"/> if the disconnect was graceful and expected.</param>
+    protected void SetDisconnected(Exception? error = null)
+    {
+        int state = _state;
+        switch (state)
         {
-            _messageChannel.Writer.Complete();
+            case StateInitial:
+            case StateConnected:
+                _state = StateDisconnected;
+                _messageChannel.Writer.TryComplete(error);
+                break;
+
+            case StateDisconnected:
+                return;
+
+            default:
+                Debug.Fail($"Unexpected state: {state}");
+                break;
         }
     }
 

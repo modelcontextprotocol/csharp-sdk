@@ -53,7 +53,7 @@ internal class StreamClientSessionTransport : TransportBase
         _readTask = readTask.Unwrap();
         readTask.Start();
 
-        SetConnected(true);
+        SetConnected();
     }
 
     /// <inheritdoc/>
@@ -61,7 +61,7 @@ internal class StreamClientSessionTransport : TransportBase
     {
         if (!IsConnected)
         {
-            throw new InvalidOperationException("Transport is not connected");
+            throw new InvalidOperationException("Transport is not connected.");
         }
 
         string id = "(no id)";
@@ -82,31 +82,22 @@ internal class StreamClientSessionTransport : TransportBase
         catch (Exception ex)
         {
             LogTransportSendFailed(Name, id, ex);
-            throw new InvalidOperationException("Failed to send message", ex);
+            throw new IOException("Failed to send message", ex);
         }
     }
 
     /// <inheritdoc/>
-    /// <summary>
-    /// Asynchronously releases all resources used by the stream client session transport.
-    /// </summary>
-    /// <returns>A task that represents the asynchronous dispose operation.</returns>
-    /// <remarks>
-    /// This method cancels ongoing operations and waits for the read task to complete
-    /// before marking the transport as disconnected. It calls <see cref="CleanupAsync"/> 
-    /// to perform the actual cleanup work.
-    /// After disposal, the transport can no longer be used to send or receive messages.
-    /// </remarks>
-    public override ValueTask DisposeAsync() =>
-        CleanupAsync(CancellationToken.None);
+    public override ValueTask DisposeAsync() => 
+        CleanupAsync(cancellationToken: CancellationToken.None);
 
     private async Task ReadMessagesAsync(CancellationToken cancellationToken)
     {
+        Exception? error = null;
         try
         {
             LogTransportEnteringReadMessagesLoop(Name);
 
-            while (!cancellationToken.IsCancellationRequested)
+            while (true)
             {
                 if (await _serverOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false) is not string line)
                 {
@@ -130,12 +121,13 @@ internal class StreamClientSessionTransport : TransportBase
         }
         catch (Exception ex)
         {
+            error = ex;
             LogTransportReadMessagesFailed(Name, ex);
         }
         finally
         {
             _readTask = null;
-            await CleanupAsync(cancellationToken).ConfigureAwait(false);
+            await CleanupAsync(error, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -166,7 +158,7 @@ internal class StreamClientSessionTransport : TransportBase
         }
     }
 
-    protected virtual async ValueTask CleanupAsync(CancellationToken cancellationToken)
+    protected virtual async ValueTask CleanupAsync(Exception? error = null, CancellationToken cancellationToken = default)
     {
         LogTransportShuttingDown(Name);
 
@@ -191,7 +183,7 @@ internal class StreamClientSessionTransport : TransportBase
             }
         }
 
-        SetConnected(false);
+        SetDisconnected(error);
         LogTransportShutDown(Name);
     }
 }

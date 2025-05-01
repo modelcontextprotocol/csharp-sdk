@@ -9,54 +9,51 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
 {
     private readonly StdioClientTransportOptions _options;
     private readonly Process _process;
+    private readonly Queue<string> _stderrRollingLog;
+    private int _cleanedUp = 0;
 
-    public StdioClientSessionTransport(StdioClientTransportOptions options, Process process, string endpointName, ILoggerFactory? loggerFactory)
+    public StdioClientSessionTransport(StdioClientTransportOptions options, Process process, string endpointName, Queue<string> stderrRollingLog, ILoggerFactory? loggerFactory)
         : base(process.StandardInput, process.StandardOutput, endpointName, loggerFactory)
     {
         _process = process;
         _options = options;
+        _stderrRollingLog = stderrRollingLog;
     }
 
     /// <inheritdoc/>
-    /// <remarks>
-    /// <para>
-    /// For stdio-based transports, this implementation first verifies that the underlying process 
-    /// is still running before attempting to send the message. If the process has exited or cannot
-    /// be accessed, a <see cref="InvalidOperationException"/> is thrown with details about the failure.
-    /// </para>
-    /// <para>
-    /// After verifying the process state, this method delegates to the base class implementation
-    /// to handle the actual message serialization and transmission to the process's standard input stream.
-    /// </para>
-    /// </remarks>
-    /// <exception cref="InvalidOperationException">
-    /// Thrown when the underlying process has exited or cannot be accessed.
-    /// </exception>
     public override async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
-        Exception? processException = null;
-        bool hasExited = false;
         try
         {
-            hasExited = _process.HasExited;
+            await base.SendMessageAsync(message, cancellationToken);
         }
-        catch (Exception e)
+        catch (IOException)
         {
-            processException = e;
-            hasExited = true;
-        }
+            // We failed to send due to an I/O error. If the server process has exited, which is then very likely the cause
+            // for the I/O error, we should throw an exception for that instead.
+            if (await GetUnexpectedExitExceptionAsync(cancellationToken).ConfigureAwait(false) is Exception processExitException)
+            {
+                throw processExitException;
+            }
 
-        if (hasExited)
-        {
-            throw new InvalidOperationException("Transport is not connected", processException);
+            throw;
         }
-
-        await base.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
-    protected override ValueTask CleanupAsync(CancellationToken cancellationToken)
+    protected override async ValueTask CleanupAsync(Exception? error = null, CancellationToken cancellationToken = default)
     {
+        // Only clean up once.
+        if (Interlocked.Exchange(ref _cleanedUp, 1) != 0)
+        {
+            return;
+        }
+
+        // We've not yet forcefully terminated the server. If it's already shut down, something went wrong,
+        // so create an exception with details about that.
+        error ??= await GetUnexpectedExitExceptionAsync(cancellationToken).ConfigureAwait(false);
+
+        // Now terminate the server process.
         try
         {
             StdioClientTransport.DisposeProcess(_process, processRunning: true, _options.ShutdownTimeout, Name);
@@ -66,6 +63,41 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
             LogTransportShutdownFailed(Name, ex);
         }
 
-        return base.CleanupAsync(cancellationToken);
+        // And handle cleanup in the base type.
+        await base.CleanupAsync(error, cancellationToken);
+    }
+
+    private async ValueTask<Exception?> GetUnexpectedExitExceptionAsync(CancellationToken cancellationToken)
+    {
+        if (!StdioClientTransport.HasExited(_process))
+        {
+            return null;
+        }
+
+        Debug.Assert(StdioClientTransport.HasExited(_process));
+        try
+        {
+            // The process has exited, but we still need to ensure stderr has been flushed.
+#if NET
+            await _process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+#else
+            _process.WaitForExit();
+#endif
+        }
+        catch { }
+
+        string errorMessage = "MCP server process exited unexpectedly.";
+        lock (_stderrRollingLog)
+        {
+            if (_stderrRollingLog.Count > 0)
+            {
+                errorMessage =
+                    $"{errorMessage}{Environment.NewLine}" +
+                    $"Server's stderr tail:{Environment.NewLine}" +
+                    $"{string.Join(Environment.NewLine, _stderrRollingLog)}";
+            }
+        }
+
+        return new IOException(errorMessage);
     }
 }
