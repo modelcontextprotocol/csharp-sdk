@@ -70,7 +70,7 @@ internal class StreamClientSessionTransport : TransportBase
             id = messageWithId.Id.ToString();
         }
 
-        var json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)));
+        var json = JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage);
 
         using var _ = await _sendLock.LockAsync(cancellationToken).ConfigureAwait(false);
         try

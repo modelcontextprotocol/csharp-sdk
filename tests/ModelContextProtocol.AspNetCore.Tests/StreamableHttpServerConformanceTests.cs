@@ -183,39 +183,6 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     }
 
     [Fact]
-    public async Task BatchedJsonRpcRequests_IsHandled_WithCompleteSseResponse()
-    {
-        await StartAsync();
-
-        using var response = await HttpClient.PostAsync("", JsonContent($"[{InitializeRequest},{EchoRequest}]"), TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var eventCount = 0;
-        await foreach (var sseEvent in ReadSseAsync(response.Content))
-        {
-            var jsonRpcResponse = JsonSerializer.Deserialize(sseEvent, GetJsonTypeInfo<JsonRpcResponse>());
-            Assert.NotNull(jsonRpcResponse);
-            var responseId = Assert.IsType<long>(jsonRpcResponse.Id.Id);
-
-            switch (responseId)
-            {
-                case 1:
-                    AssertServerInfo(jsonRpcResponse);
-                    break;
-                case 2:
-                    AssertEchoResponse(jsonRpcResponse);
-                    break;
-                default:
-                    throw new Exception($"Unexpected response ID: {jsonRpcResponse.Id}");
-            }
-
-            eventCount++;
-        }
-
-        Assert.Equal(2, eventCount);
-    }
-
-    [Fact]
     public async Task SingleJsonRpcRequest_ThatThrowsIsHandled_WithCompleteSseResponse()
     {
         await StartAsync();

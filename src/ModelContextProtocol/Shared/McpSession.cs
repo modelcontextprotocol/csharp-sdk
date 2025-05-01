@@ -75,7 +75,7 @@ internal sealed partial class McpSession : IDisposable
             StdioClientSessionTransport or StdioServerTransport => "stdio",
             StreamClientSessionTransport or StreamServerTransport => "stream",
             SseClientSessionTransport or SseResponseStreamTransport => "sse",
-            StreamableHttpServerTransport or StreamableHttpPostTransport => "http",
+            StreamableHttpClientSessionTransport or StreamableHttpServerTransport or StreamableHttpPostTransport => "http",
             _ => "unknownTransport"
         };
 

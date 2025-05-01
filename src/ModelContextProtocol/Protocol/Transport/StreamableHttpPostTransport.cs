@@ -32,7 +32,9 @@ internal sealed class StreamableHttpPostTransport(ChannelWriter<JsonRpcMessage>?
         // The incomingChannel is null to handle the potential client GET request to handle unsolicited JsonRpcMessages.
         if (incomingChannel is not null)
         {
-            await OnPostBodyReceivedAsync(httpBodies.Input, cancellationToken).ConfigureAwait(false);
+            var message = await JsonSerializer.DeserializeAsync(httpBodies.Input.AsStream(),
+                McpJsonUtilities.JsonContext.Default.JsonRpcMessage, cancellationToken).ConfigureAwait(false);
+            await OnMessageReceivedAsync(message, cancellationToken).ConfigureAwait(false);
         }
 
         if (_pendingRequests.Count == 0)
@@ -72,24 +74,6 @@ internal sealed class StreamableHttpPostTransport(ChannelWriter<JsonRpcMessage>?
         }
     }
 
-    private async ValueTask OnPostBodyReceivedAsync(PipeReader streamableHttpRequestBody, CancellationToken cancellationToken)
-    {
-        if (!await IsJsonArrayAsync(streamableHttpRequestBody, cancellationToken).ConfigureAwait(false))
-        {
-            var message = await JsonSerializer.DeserializeAsync(streamableHttpRequestBody.AsStream(), McpJsonUtilities.JsonContext.Default.JsonRpcMessage, cancellationToken).ConfigureAwait(false);
-            await OnMessageReceivedAsync(message, cancellationToken).ConfigureAwait(false);
-        }
-        else
-        {
-            // Batched JSON-RPC message
-            var messages = JsonSerializer.DeserializeAsyncEnumerable(streamableHttpRequestBody.AsStream(), McpJsonUtilities.JsonContext.Default.JsonRpcMessage, cancellationToken).ConfigureAwait(false);
-            await foreach (var message in messages.WithCancellation(cancellationToken))
-            {
-                await OnMessageReceivedAsync(message, cancellationToken).ConfigureAwait(false);
-            }
-        }
-    }
-
     private async ValueTask OnMessageReceivedAsync(JsonRpcMessage? message, CancellationToken cancellationToken)
     {
         if (message is null)
@@ -107,28 +91,5 @@ internal sealed class StreamableHttpPostTransport(ChannelWriter<JsonRpcMessage>?
         // Really an assertion. This doesn't get called when incomingChannel is null for GET requests.
         Throw.IfNull(incomingChannel);
         await incomingChannel.WriteAsync(message, cancellationToken).ConfigureAwait(false);
-    }
-
-    private async ValueTask<bool> IsJsonArrayAsync(PipeReader requestBody, CancellationToken cancellationToken)
-    {
-        // REVIEW: Should we bother trimming whitespace before checking for '['?
-        var firstCharacterResult = await requestBody.ReadAtLeastAsync(1, cancellationToken).ConfigureAwait(false);
-
-        try
-        {
-            if (firstCharacterResult.Buffer.Length == 0)
-            {
-                return false;
-            }
-
-            Span<byte> firstCharBuffer = stackalloc byte[1];
-            firstCharacterResult.Buffer.Slice(0, 1).CopyTo(firstCharBuffer);
-            return firstCharBuffer[0] == (byte)'[';
-        }
-        finally
-        {
-            // Never consume data when checking for '['. System.Text.Json still needs to consume it.
-            requestBody.AdvanceTo(firstCharacterResult.Buffer.Start);
-        }
     }
 }
