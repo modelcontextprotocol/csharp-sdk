@@ -98,10 +98,7 @@ var app = builder.Build();
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Map MCP endpoints with authorization
-// Note: The SDK will automatically map /.well-known/oauth-protected-resource 
-// and make it accessible without authorization
-app.MapMcp();
+app.MapMcp().RequireAuthorization(McpAuthenticationDefaults.AuthenticationScheme);
 
 Console.WriteLine("Starting MCP server with authorization at http://localhost:7071");
 Console.WriteLine("PRM Document URL: http://localhost:7071/.well-known/oauth-protected-resource");

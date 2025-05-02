@@ -65,9 +65,6 @@ public static class McpEndpointRouteBuilderExtensions
                 .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["application/json"]))
                 .AllowAnonymous()
                 .WithDisplayName("MCP Resource Metadata");
-            
-            // Apply authorization to MCP endpoints
-            mcpGroup.RequireAuthorization(McpAuthenticationDefaults.AuthenticationScheme);
         }
 
         return mcpGroup;
