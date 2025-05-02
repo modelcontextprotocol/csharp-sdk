@@ -59,10 +59,8 @@ public static class McpEndpointRouteBuilderExtensions
             // Authorization is configured, so automatically map the OAuth protected resource endpoint
             var resourceMetadataService = endpoints.ServiceProvider.GetRequiredService<ResourceMetadataService>();
             
-            // Use an AOT-compatible approach with a statically compiled RequestDelegate
             var handler = new ResourceMetadataEndpointHandler(resourceMetadataService);
             
-            // Get the options to use the default resource metadata URI
             var options = endpoints.ServiceProvider.GetRequiredService<IOptions<McpAuthenticationOptions>>();
             var metadataPath = options.Value.ResourceMetadataUri.ToString();
             
