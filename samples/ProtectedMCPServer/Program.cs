@@ -119,7 +119,7 @@ Console.WriteLine("3. Tokens will be logged to the console for debugging");
 Console.WriteLine();
 Console.WriteLine("Press Ctrl+C to stop the server");
 
-await app.RunAsync();
+app.Run("http://localhost:7071/");
 
 // Simple auth handler that accepts any non-empty token for testing
 // In a real app, you'd use a JWT handler or other proper authentication
