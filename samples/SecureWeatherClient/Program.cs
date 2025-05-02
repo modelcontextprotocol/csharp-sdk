@@ -1,4 +1,3 @@
-// filepath: c:\Users\ddelimarsky\source\csharp-sdk-anm\samples\SecureWeatherClient\Program.cs
 using System.Net.Http;
 using System.Threading.Tasks;
 using ModelContextProtocol.Auth;
