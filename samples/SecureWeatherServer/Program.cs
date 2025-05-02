@@ -111,16 +111,18 @@ Console.WriteLine("Starting MCP server with authorization at http://localhost:70
 Console.WriteLine("PRM Document URL: http://localhost:7071/.well-known/oauth-protected-resource");
 
 Console.WriteLine();
+Console.WriteLine("Testing mode: Server will accept ANY non-empty token for authentication");
+Console.WriteLine();
 Console.WriteLine("To test the server:");
 Console.WriteLine("1. Use an MCP client that supports authorization");
-Console.WriteLine("2. When prompted for authorization, enter 'valid_token' to gain access");
-Console.WriteLine("3. Any other token value will be rejected with a 401 Unauthorized");
+Console.WriteLine("2. The server will accept any non-empty token sent by the client");
+Console.WriteLine("3. Tokens will be logged to the console for debugging");
 Console.WriteLine();
 Console.WriteLine("Press Ctrl+C to stop the server");
 
 await app.RunAsync();
 
-// Simple auth handler that validates a test token
+// Simple auth handler that accepts any non-empty token for testing
 // In a real app, you'd use a JWT handler or other proper authentication
 class SimpleAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions>
 {
@@ -149,11 +151,14 @@ class SimpleAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions>
         
         var token = headerValue["Bearer ".Length..].Trim();
         
-        // Validate the token - in a real app, this would validate a JWT
-        if (token != "valid_token")
+        // Accept any non-empty token for testing purposes
+        if (string.IsNullOrEmpty(token))
         {
-            return Task.FromResult(AuthenticateResult.Fail("Invalid token"));
+            return Task.FromResult(AuthenticateResult.Fail("Token cannot be empty"));
         }
+        
+        // Log the received token for debugging
+        Console.WriteLine($"Received and accepted token: {token}");
         
         // Create a claims identity with required claims
         var claims = new[]
