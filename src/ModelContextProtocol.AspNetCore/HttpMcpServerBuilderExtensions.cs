@@ -94,13 +94,3 @@ public static class HttpMcpServerBuilderExtensions
         return builder;
     }
 }
-
-/// <summary>
-/// Marker class to indicate that MCP authorization has been configured.
-/// </summary>
-internal class McpAuthorizationMarker { }
-
-/// <summary>
-/// Marker class to indicate that MCP authentication response middleware should be used.
-/// </summary>
-internal class McpAuthenticationResponseMarker { }

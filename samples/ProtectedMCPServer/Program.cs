@@ -1,8 +1,7 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
-using ModelContextProtocol.AspNetCore;
-using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.AspNetCore.Auth;
+using ModelContextProtocol.Protocol.Types;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 
