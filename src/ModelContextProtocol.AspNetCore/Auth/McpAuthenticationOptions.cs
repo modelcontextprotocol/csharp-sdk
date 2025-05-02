@@ -8,13 +8,15 @@ namespace ModelContextProtocol.AspNetCore.Auth;
 /// </summary>
 public class McpAuthenticationOptions : AuthenticationSchemeOptions
 {
+    private static readonly Uri DefaultResourceMetadataUri = new("/.well-known/oauth-protected-resource", UriKind.Relative);
+
     /// <summary>
     /// The URI to the resource metadata document.
     /// </summary>
     /// <remarks>
     /// This URI will be included in the WWW-Authenticate header when a 401 response is returned.
     /// </remarks>
-    public Uri? ResourceMetadataUri { get; set; }
+    public Uri ResourceMetadataUri { get; set; } = DefaultResourceMetadataUri;
 
     /// <summary>
     /// Gets or sets the protected resource metadata.

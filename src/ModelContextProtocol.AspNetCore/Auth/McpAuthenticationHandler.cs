@@ -43,7 +43,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
 
         // Generate the full resource metadata URL based on the current request
         var baseUrl = $"{Request.Scheme}://{Request.Host}";
-        var metadataPath = Options.ResourceMetadataUri?.ToString() ?? "/.well-known/oauth-protected-resource";
+        var metadataPath = Options.ResourceMetadataUri.ToString();
         var metadataUrl = metadataPath.StartsWith("http", StringComparison.OrdinalIgnoreCase)
             ? metadataPath
             : $"{baseUrl}{metadataPath}";

@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.AspNetCore.Auth;
 using ModelContextProtocol.Protocol.Messages;
@@ -61,7 +62,11 @@ public static class McpEndpointRouteBuilderExtensions
             // Use an AOT-compatible approach with a statically compiled RequestDelegate
             var handler = new ResourceMetadataEndpointHandler(resourceMetadataService);
             
-            sseGroup.MapGet("/.well-known/oauth-protected-resource", handler.HandleRequest)
+            // Get the options to use the default resource metadata URI
+            var options = endpoints.ServiceProvider.GetRequiredService<IOptions<McpAuthenticationOptions>>();
+            var metadataPath = options.Value.ResourceMetadataUri.ToString();
+            
+            sseGroup.MapGet(metadataPath, handler.HandleRequest)
                 .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["application/json"]))
                 .AllowAnonymous()
                 .WithDisplayName("MCP Resource Metadata");
