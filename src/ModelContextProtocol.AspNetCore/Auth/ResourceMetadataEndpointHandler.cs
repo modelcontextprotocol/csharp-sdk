@@ -1,24 +1,22 @@
-﻿using Microsoft.AspNetCore.Http;
-using ModelContextProtocol.AspNetCore.Auth;
+using Microsoft.AspNetCore.Http;
 
-namespace Microsoft.AspNetCore.Builder;
+namespace ModelContextProtocol.AspNetCore.Auth;
 
-public static partial class McpEndpointRouteBuilderExtensions
+/// <summary>
+/// Handles the resource metadata endpoint requests in an AOT-compatible way.
+/// </summary>
+internal sealed class ResourceMetadataEndpointHandler
 {
-    // This class handles the resource metadata endpoint in an AOT-compatible way
-    private sealed class ResourceMetadataEndpointHandler
+    private readonly ResourceMetadataService _resourceMetadataService;
+    
+    public ResourceMetadataEndpointHandler(ResourceMetadataService resourceMetadataService)
     {
-        private readonly ResourceMetadataService _resourceMetadataService;
-        
-        public ResourceMetadataEndpointHandler(ResourceMetadataService resourceMetadataService)
-        {
-            _resourceMetadataService = resourceMetadataService;
-        }
-        
-        public Task HandleRequest(HttpContext httpContext)
-        {
-            var result = _resourceMetadataService.HandleResourceMetadataRequest(httpContext);
-            return result.ExecuteAsync(httpContext);
-        }
+        _resourceMetadataService = resourceMetadataService;
+    }
+    
+    public Task HandleRequest(HttpContext httpContext)
+    {
+        var result = _resourceMetadataService.HandleResourceMetadataRequest(httpContext);
+        return result.ExecuteAsync(httpContext);
     }
 }

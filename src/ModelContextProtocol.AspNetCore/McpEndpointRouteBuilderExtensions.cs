@@ -1,5 +1,4 @@
-﻿using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
+﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,7 +12,7 @@ namespace Microsoft.AspNetCore.Builder;
 /// <summary>
 /// Provides extension methods for <see cref="IEndpointRouteBuilder"/> to add MCP endpoints.
 /// </summary>
-public static partial class McpEndpointRouteBuilderExtensions
+public static class McpEndpointRouteBuilderExtensions
 {
     /// <summary>
     /// Sets up endpoints for handling MCP Streamable HTTP transport.
