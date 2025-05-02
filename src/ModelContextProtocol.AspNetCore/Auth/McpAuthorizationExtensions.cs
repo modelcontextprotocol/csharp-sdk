@@ -6,7 +6,7 @@ namespace ModelContextProtocol.AspNetCore.Auth;
 /// <summary>
 /// Extension methods for adding MCP authorization support to ASP.NET Core applications.
 /// </summary>
-public static class McpAuthorizationExtensions
+public static class McpAuthenticationExtensions
 {
     /// <summary>
     /// Adds MCP authorization support to the application.
