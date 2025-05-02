@@ -15,11 +15,6 @@ builder.Services.AddAuthentication(options =>
 })
 .AddScheme<AuthenticationSchemeOptions, SimpleAuthHandler>("Bearer", options => { })
 .AddMcp(options => {
-    // Ensure ResourceMetadataUri matches the actual mapping in McpEndpointRouteBuilderExtensions.cs
-    options.ResourceMetadataUri = new Uri("/.well-known/oauth-protected-resource", UriKind.Relative);
-    
-    // Configure the resource metadata using our enhanced options
-    options.ResourceMetadata.Resource = new Uri("http://localhost:7071");
     options.ResourceMetadata.AuthorizationServers.Add(new Uri("https://login.microsoftonline.com/a2213e1c-e51e-4304-9a0d-effe57f31655/v2.0"));
     options.ResourceMetadata.BearerMethodsSupported.Add("header");
     options.ResourceMetadata.ScopesSupported.AddRange(["weather.read", "weather.write"]);
