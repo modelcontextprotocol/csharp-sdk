@@ -52,17 +52,17 @@ public static class HttpMcpServerBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
         
-        // Register the resource metadata service
-        builder.Services.TryAddSingleton<ResourceMetadataService>();
+        // Create and register the resource metadata service
+        var resourceMetadataService = new ResourceMetadataService();
         
-        // Configure the resource metadata if provided
+        // Apply configuration directly to the instance
         if (configureMetadata != null)
         {
-            builder.Services.Configure<ResourceMetadataService>(service => 
-            {
-                service.ConfigureMetadata(configureMetadata);
-            });
+            resourceMetadataService.ConfigureMetadata(configureMetadata);
         }
+        
+        // Register the configured instance as a singleton
+        builder.Services.AddSingleton(resourceMetadataService);
         
         // Mark the service as having authorization enabled
         builder.Services.AddSingleton<McpAuthorizationMarker>();
