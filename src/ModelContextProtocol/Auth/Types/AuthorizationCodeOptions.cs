@@ -1,4 +1,4 @@
-namespace ModelContextProtocol.Auth;
+namespace ModelContextProtocol.Auth.Types;
 
 /// <summary>
 /// Configuration options for the authorization code flow.

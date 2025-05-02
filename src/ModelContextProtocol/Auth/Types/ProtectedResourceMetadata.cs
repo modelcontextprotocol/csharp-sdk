@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace ModelContextProtocol.Auth;
+namespace ModelContextProtocol.Auth.Types;
 
 /// <summary>
 /// Represents the resource metadata for OAuth authorization.

@@ -1,3 +1,4 @@
+using ModelContextProtocol.Auth.Types;
 using System.Net;
 using System.Net.Http.Headers;
 

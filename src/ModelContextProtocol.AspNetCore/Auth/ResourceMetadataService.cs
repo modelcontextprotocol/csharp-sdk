@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Http;
-using ModelContextProtocol.Auth;
+using ModelContextProtocol.Auth.Types;
 using ModelContextProtocol.Utils.Json;
 
 namespace ModelContextProtocol.AspNetCore.Auth;

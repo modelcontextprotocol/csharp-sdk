@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Collections.Concurrent;
+using ModelContextProtocol.Auth.Types;
 
 namespace ModelContextProtocol.Auth;
 
