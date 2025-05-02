@@ -1,10 +1,45 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
+using ModelContextProtocol.AspNetCore.Auth;
 using ModelContextProtocol.Protocol.Types;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Configure authentication to use MCP for challenges
+builder.Services.AddAuthentication(options => 
+{
+    options.DefaultScheme = "Bearer";
+    options.DefaultChallengeScheme = McpAuthenticationDefaults.AuthenticationScheme; // Use MCP for challenges
+})
+.AddScheme<AuthenticationSchemeOptions, SimpleAuthHandler>("Bearer", options => { })
+.AddMcp(options => {
+    // Configure MCP authentication options with the resource metadata URI
+    options.ResourceMetadataUri = new Uri("/.well-known/oauth-protected-resource", UriKind.Relative);
+    
+    // Configure the resource metadata using our enhanced options
+    options.ResourceMetadata.Resource = new Uri("http://localhost:7071");
+    options.ResourceMetadata.AuthorizationServers.Add(new Uri("https://login.microsoftonline.com/a2213e1c-e51e-4304-9a0d-effe57f31655/v2.0"));
+    options.ResourceMetadata.BearerMethodsSupported.Add("header");
+    options.ResourceMetadata.ScopesSupported.AddRange(["weather.read", "weather.write"]);
+    options.ResourceMetadata.ResourceDocumentation = new Uri("https://docs.example.com/api/weather");
+});
+
+// Add authorization services
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(McpAuthenticationDefaults.AuthenticationScheme, policy =>
+    {
+        policy.RequireAuthenticatedUser();
+    });
+});
+
+// Don't forget to register the ResourceMetadataService
+builder.Services.AddSingleton<ResourceMetadataService>();
+
+// IMPORTANT: Register the McpAuthorizationMarker to enable authorization on MCP endpoints
+builder.Services.AddSingleton<McpAuthorizationMarker>();
 
 // Configure MCP Server
 builder.Services.AddMcpServer(options =>
@@ -64,16 +99,7 @@ builder.Services.AddMcpServer(options =>
         }
     };
 })
-.WithHttpTransport()
-.WithAuthorization(metadata => 
-{
-    metadata.AuthorizationServers.Add(new Uri("https://login.microsoftonline.com/a2213e1c-e51e-4304-9a0d-effe57f31655/v2.0"));
-    metadata.BearerMethodsSupported.Add("header");
-    metadata.ScopesSupported.AddRange(["weather.read", "weather.write"]);
-    
-    // Add optional documentation
-    metadata.ResourceDocumentation = new Uri("https://docs.example.com/api/weather");
-});
+.WithHttpTransport();
 
 var app = builder.Build();
 
@@ -151,8 +177,6 @@ class SimpleAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions>
         return Task.FromResult(AuthenticateResult.Success(ticket));
     }
 
-    protected override Task HandleChallengeAsync(AuthenticationProperties properties)
-    {
-        return base.HandleChallengeAsync(properties);
-    }
+    // The MCP authentication handler will handle challenges
+    // so we don't need to implement HandleChallengeAsync here
 }

@@ -1,7 +1,6 @@
 ﻿using Microsoft.Extensions.DependencyInjection.Extensions;
 using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.AspNetCore.Auth;
-using ModelContextProtocol.Auth.Types;
 using ModelContextProtocol.Server;
 
 namespace Microsoft.Extensions.DependencyInjection;
@@ -34,63 +33,6 @@ public static class HttpMcpServerBuilderExtensions
             builder.Services.Configure(configureOptions);
         }
 
-        return builder;
-    }
-    
-    /// <summary>
-    /// Adds OAuth authorization support to the MCP server.
-    /// </summary>
-    /// <param name="builder">The builder instance.</param>
-    /// <param name="configureMetadata">An action to configure the resource metadata.</param>
-    /// <param name="configureOptions">An action to configure authentication options.</param>
-    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    public static IMcpServerBuilder WithAuthorization(
-        this IMcpServerBuilder builder, 
-        Action<ProtectedResourceMetadata>? configureMetadata = null,
-        Action<McpAuthenticationOptions>? configureOptions = null)
-    {
-        ArgumentNullException.ThrowIfNull(builder);
-        
-        // Create and register the resource metadata service
-        var resourceMetadataService = new ResourceMetadataService();
-        
-        // Apply configuration directly to the instance
-        if (configureMetadata != null)
-        {
-            resourceMetadataService.ConfigureMetadata(configureMetadata);
-        }
-        
-        // Register the configured instance as a singleton
-        builder.Services.AddSingleton(resourceMetadataService);
-        
-        // Mark the service as having authorization enabled
-        builder.Services.AddSingleton<McpAuthorizationMarker>();
-        
-        // Add authentication with the MCP authentication handler
-        builder.Services.AddAuthentication()
-            .AddMcp(options => 
-            {
-                // Default to the standard OAuth protected resource endpoint
-                options.ResourceMetadataUri = new Uri("/.well-known/oauth-protected-resource", UriKind.Relative);
-                
-                // Apply custom configuration if provided
-                configureOptions?.Invoke(options);
-            });
-        
-        // Add authorization services
-        builder.Services.AddAuthorization(options =>
-        {
-            options.AddPolicy("McpAuth", policy =>
-            {
-                policy.RequireAuthenticatedUser();
-            });
-        });
-        
-        // Register the middleware for automatically adding WWW-Authenticate headers
-        // Store in DI that we need to use the middleware
-        builder.Services.AddSingleton<McpAuthenticationResponseMarker>();
-        
         return builder;
     }
 }

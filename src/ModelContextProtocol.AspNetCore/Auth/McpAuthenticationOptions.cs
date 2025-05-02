@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication;
+using ModelContextProtocol.Auth.Types;
 
 namespace ModelContextProtocol.AspNetCore.Auth;
 
@@ -10,5 +11,17 @@ public class McpAuthenticationOptions : AuthenticationSchemeOptions
     /// <summary>
     /// The URI to the resource metadata document.
     /// </summary>
+    /// <remarks>
+    /// This URI will be included in the WWW-Authenticate header when a 401 response is returned.
+    /// </remarks>
     public Uri? ResourceMetadataUri { get; set; }
+
+    /// <summary>
+    /// Gets or sets the protected resource metadata.
+    /// </summary>
+    /// <remarks>
+    /// This contains the OAuth metadata for the protected resource, including authorization servers,
+    /// supported scopes, and other information needed for clients to authenticate.
+    /// </remarks>
+    public ProtectedResourceMetadata ResourceMetadata { get; set; } = new ProtectedResourceMetadata();
 }

@@ -67,7 +67,7 @@ public static class McpEndpointRouteBuilderExtensions
                 .WithDisplayName("MCP Resource Metadata");
             
             // Apply authorization to MCP endpoints
-            mcpGroup.RequireAuthorization("McpAuth");
+            mcpGroup.RequireAuthorization(McpAuthenticationDefaults.AuthenticationScheme);
         }
 
         return mcpGroup;

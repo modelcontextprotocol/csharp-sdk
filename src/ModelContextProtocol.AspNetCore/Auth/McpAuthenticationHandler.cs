@@ -51,11 +51,25 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         // Initialize properties if null
         properties ??= new AuthenticationProperties();
         
+        // Set up the resource URI if not already configured, using the current request as a fallback
+        if (Options.ResourceMetadata.Resource == null)
+        {
+            Options.ResourceMetadata.Resource = new Uri($"{Request.Scheme}://{Request.Host}");
+        }
+        
+        // Configure the resource metadata service with our metadata
+        _resourceMetadataService.ConfigureMetadata(metadata => {
+            metadata.Resource = Options.ResourceMetadata.Resource;
+            metadata.AuthorizationServers = Options.ResourceMetadata.AuthorizationServers;
+            metadata.BearerMethodsSupported = Options.ResourceMetadata.BearerMethodsSupported;
+            metadata.ScopesSupported = Options.ResourceMetadata.ScopesSupported;
+            metadata.ResourceDocumentation = Options.ResourceMetadata.ResourceDocumentation;
+        });
+        
         // Set the WWW-Authenticate header with the resource_metadata
         string headerValue = $"Bearer realm=\"{Scheme.Name}\"";
         headerValue += $", resource_metadata=\"{metadataUrl}\"";
         
-        // Use Headers.Append with a StringValues object
         Response.Headers["WWW-Authenticate"] = headerValue;
         
         // Store the resource_metadata in properties in case other handlers need it
