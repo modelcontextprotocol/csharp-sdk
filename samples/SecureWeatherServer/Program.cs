@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.AspNetCore.Auth;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 
@@ -75,8 +76,13 @@ builder.Services.AddMcpServer(options =>
 });
 
 // Configure authentication using the built-in authentication system
-builder.Services.AddAuthentication("Bearer")
-    .AddScheme<AuthenticationSchemeOptions, SimpleAuthHandler>("Bearer", options => { });
+// Register "Bearer" scheme with our SimpleAuthHandler and set it as the default scheme
+builder.Services.AddAuthentication(options => 
+{
+    options.DefaultScheme = "Bearer";
+    options.DefaultChallengeScheme = "Bearer"; // Ensure challenges use Bearer scheme
+})
+.AddScheme<AuthenticationSchemeOptions, SimpleAuthHandler>("Bearer", options => { });
 
 // Add authorization policy for MCP
 builder.Services.AddAuthorization(options =>
@@ -117,12 +123,17 @@ await app.RunAsync();
 // In a real app, you'd use a JWT handler or other proper authentication
 class SimpleAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions>
 {
+    // Directly inject the ResourceMetadataService instead of the options
+    private readonly ResourceMetadataService _resourceMetadataService;
+
     public SimpleAuthHandler(
         IOptionsMonitor<AuthenticationSchemeOptions> options,
         ILoggerFactory logger,
-        UrlEncoder encoder) 
+        UrlEncoder encoder,
+        ResourceMetadataService resourceMetadataService) 
         : base(options, logger, encoder)
     {
+        _resourceMetadataService = resourceMetadataService;
     }
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
@@ -161,5 +172,20 @@ class SimpleAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions>
         var ticket = new AuthenticationTicket(principal, "Bearer");
         
         return Task.FromResult(AuthenticateResult.Success(ticket));
+    }
+
+    protected override Task HandleChallengeAsync(AuthenticationProperties properties)
+    {
+        // Always include the resource_metadata in the WWW-Authenticate header
+        var baseUrl = $"{Request.Scheme}://{Request.Host}";
+        var metadataUrl = $"{baseUrl}/.well-known/oauth-protected-resource";
+            
+        // Add WWW-Authenticate header with resource_metadata
+        Response.Headers.WWWAuthenticate = $"Bearer resource_metadata=\"{metadataUrl}\"";
+        
+        // Set 401 status code
+        Response.StatusCode = 401;
+        
+        return Task.CompletedTask;
     }
 }
