@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.AspNetCore;
+using ModelContextProtocol.AspNetCore.Auth;
+using ModelContextProtocol.Auth;
 using ModelContextProtocol.Protocol.Messages;
 using System.Diagnostics.CodeAnalysis;
 
@@ -49,6 +51,20 @@ public static class McpEndpointRouteBuilderExtensions
         sseGroup.MapPost("/message", sseHandler.HandleMessageRequestAsync)
             .WithMetadata(new AcceptsMetadata(["application/json"]))
             .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status202Accepted));
+
+        // Check if authentication/authorization is configured
+        var authMarker = endpoints.ServiceProvider.GetService<McpAuthorizationMarker>();
+        if (authMarker != null)
+        {
+            // Authorization is configured, so automatically map the OAuth protected resource endpoint
+            var resourceMetadataService = endpoints.ServiceProvider.GetRequiredService<ResourceMetadataService>();
+            
+            // Map the OAuth protected resource endpoint
+            endpoints.MapMcpResourceMetadata("/.well-known/oauth-protected-resource");
+            
+            // Apply authorization to MCP endpoints
+            mcpGroup.RequireAuthorization("McpAuth");
+        }
 
         return mcpGroup;
     }

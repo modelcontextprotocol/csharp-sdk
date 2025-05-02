@@ -1,0 +1,14 @@
+<!-- filepath: c:\Users\ddelimarsky\source\csharp-sdk-anm\samples\SecureWeatherServer\SecureWeatherServer.csproj -->
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ModelContextProtocol.AspNetCore\ModelContextProtocol.AspNetCore.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,373 @@
+// filepath: c:\Users\ddelimarsky\source\csharp-sdk-anm\src\ModelContextProtocol\Auth\OAuthAuthenticationService.cs
+using System.Net;
+using System.Net.Http.Headers;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using ModelContextProtocol.Utils.Json;
+
+namespace ModelContextProtocol.Auth;
+
+/// <summary>
+/// Provides functionality for OAuth authentication in MCP clients.
+/// </summary>
+public class OAuthAuthenticationService
+{
+    private static readonly HttpClient _httpClient = new();
+    
+    /// <summary>
+    /// Handles the OAuth authentication flow when a 401 Unauthorized response is received.
+    /// </summary>
+    /// <param name="resourceUri">The URI of the resource being accessed.</param>
+    /// <param name="wwwAuthenticateHeader">The WWW-Authenticate header from the 401 response.</param>
+    /// <param name="redirectUri">The URI to redirect to after authentication.</param>
+    /// <param name="clientId">The client ID to use for authentication, or null to register a new client.</param>
+    /// <param name="clientName">The client name to use for registration.</param>
+    /// <param name="scopes">The requested scopes.</param>
+    /// <returns>The OAuth token response.</returns>
+    public async Task<OAuthTokenResponse> HandleAuthenticationAsync(
+        Uri resourceUri,
+        string wwwAuthenticateHeader,
+        Uri redirectUri,
+        string? clientId = null,
+        string? clientName = null,
+        IEnumerable<string>? scopes = null)
+    {
+        // Extract resource metadata URL from WWW-Authenticate header
+        var resourceMetadataUri = ExtractResourceMetadataUri(wwwAuthenticateHeader);
+        if (resourceMetadataUri == null)
+        {
+            throw new InvalidOperationException("Resource metadata URI not found in WWW-Authenticate header.");
+        }
+
+        // Get resource metadata
+        var resourceMetadata = await GetResourceMetadataAsync(resourceMetadataUri);
+        
+        // Verify that the resource in the metadata matches the server's FQDN
+        VerifyResourceUri(resourceUri, resourceMetadata.Resource);
+        
+        // Get the first authorization server
+        if (resourceMetadata.AuthorizationServers.Count == 0)
+        {
+            throw new InvalidOperationException("No authorization servers found in resource metadata.");
+        }
+        
+        var authServerUri = resourceMetadata.AuthorizationServers[0];
+        
+        // Get authorization server metadata
+        var authServerMetadata = await DiscoverAuthorizationServerMetadataAsync(authServerUri);
+        
+        // Register client if needed
+        string effectiveClientId;
+        string? clientSecret = null;
+        
+        if (string.IsNullOrEmpty(clientId) && authServerMetadata.RegistrationEndpoint != null)
+        {
+            var registrationResponse = await RegisterClientAsync(
+                authServerMetadata.RegistrationEndpoint, 
+                redirectUri,
+                clientName ?? "MCP Client",
+                scopes);
+            
+            effectiveClientId = registrationResponse.ClientId;
+            clientSecret = registrationResponse.ClientSecret;
+        }
+        else if (string.IsNullOrEmpty(clientId))
+        {
+            throw new InvalidOperationException("Client ID not provided and registration endpoint not available.");
+        }
+        else
+        {
+            // We know clientId is not null or empty at this point, but the compiler doesn't
+            // so we need to use the null-forgiving operator
+            effectiveClientId = clientId!;
+        }
+        
+        // Perform authorization code flow with PKCE
+        var tokenResponse = await PerformAuthorizationCodeFlowAsync(
+            authServerMetadata,
+            effectiveClientId, // This is now guaranteed to be non-null
+            clientSecret,
+            redirectUri,
+            scopes?.ToList() ?? resourceMetadata.ScopesSupported);
+        
+        return tokenResponse;
+    }
+    
+    private Uri? ExtractResourceMetadataUri(string wwwAuthenticateHeader)
+    {
+        if (string.IsNullOrEmpty(wwwAuthenticateHeader))
+        {
+            return null;
+        }
+        
+        // Parse the WWW-Authenticate header to extract the resource_metadata parameter
+        if (wwwAuthenticateHeader.Contains("resource_metadata="))
+        {
+            var resourceMetadataStart = wwwAuthenticateHeader.IndexOf("resource_metadata=") + "resource_metadata=".Length;
+            var resourceMetadataEnd = wwwAuthenticateHeader.IndexOf("\"", resourceMetadataStart + 1);
+            if (resourceMetadataEnd > resourceMetadataStart)
+            {
+                var resourceMetadataUri = wwwAuthenticateHeader.Substring(resourceMetadataStart + 1, resourceMetadataEnd - resourceMetadataStart - 1);
+                return new Uri(resourceMetadataUri);
+            }
+        }
+        
+        return null;
+    }
+    
+    private async Task<ProtectedResourceMetadata> GetResourceMetadataAsync(Uri resourceMetadataUri)
+    {
+        var response = await _httpClient.GetAsync(resourceMetadataUri);
+        response.EnsureSuccessStatusCode();
+        
+        var json = await response.Content.ReadAsStringAsync();
+        var resourceMetadata = JsonSerializer.Deserialize(json, McpJsonUtilities.DefaultOptions.GetTypeInfo<ProtectedResourceMetadata>());
+        if (resourceMetadata == null)
+        {
+            throw new InvalidOperationException("Failed to parse resource metadata.");
+        }
+        
+        return resourceMetadata;
+    }
+    
+    private void VerifyResourceUri(Uri resourceUri, Uri metadataResourceUri)
+    {
+        // Verify that the resource in the metadata matches the server's FQDN
+        if (!(Uri.Compare(resourceUri, metadataResourceUri, UriComponents.SchemeAndServer, UriFormat.Unescaped, StringComparison.OrdinalIgnoreCase) == 0))
+        {
+            throw new InvalidOperationException($"Resource URI in metadata ({metadataResourceUri}) does not match the server URI ({resourceUri}).");
+        }
+    }
+    
+    private async Task<AuthorizationServerMetadata> DiscoverAuthorizationServerMetadataAsync(Uri authServerUri)
+    {
+        // Try common well-known endpoints
+        var openIdConfigUri = new Uri(authServerUri, ".well-known/openid-configuration");
+        var oauthConfigUri = new Uri(authServerUri, ".well-known/oauth-authorization-server");
+        
+        // Try OpenID Connect configuration endpoint first
+        try
+        {
+            var response = await _httpClient.GetAsync(openIdConfigUri);
+            if (response.IsSuccessStatusCode)
+            {
+                var json = await response.Content.ReadAsStringAsync();
+                var metadata = JsonSerializer.Deserialize(json, McpJsonUtilities.DefaultOptions.GetTypeInfo<AuthorizationServerMetadata>());
+                if (metadata != null)
+                {
+                    return metadata;
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // Try next endpoint
+        }
+        
+        // Try OAuth 2.0 authorization server metadata endpoint
+        try
+        {
+            var response = await _httpClient.GetAsync(oauthConfigUri);
+            if (response.IsSuccessStatusCode)
+            {
+                var json = await response.Content.ReadAsStringAsync();
+                var metadata = JsonSerializer.Deserialize(json, McpJsonUtilities.DefaultOptions.GetTypeInfo<AuthorizationServerMetadata>());
+                if (metadata != null)
+                {
+                    return metadata;
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // No more endpoints to try
+        }
+        
+        throw new InvalidOperationException("Could not discover authorization server metadata. Neither OpenID Connect nor OAuth 2.0 well-known endpoints returned valid metadata.");
+    }
+    
+    private async Task<ClientRegistrationResponse> RegisterClientAsync(Uri registrationEndpoint, Uri redirectUri, string clientName, IEnumerable<string>? scopes)
+    {
+        var request = new ClientRegistrationRequest
+        {
+            RedirectUris = new List<string> { redirectUri.ToString() },
+            ClientName = clientName,
+            TokenEndpointAuthMethod = "client_secret_basic",
+            GrantTypes = new List<string> { "authorization_code", "refresh_token" },
+            ResponseTypes = new List<string> { "code" },
+            Scope = scopes != null ? string.Join(" ", scopes) : null
+        };
+        
+        var json = JsonSerializer.Serialize(request, McpJsonUtilities.DefaultOptions.GetTypeInfo<ClientRegistrationRequest>());
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        
+        var response = await _httpClient.PostAsync(registrationEndpoint, content);
+        response.EnsureSuccessStatusCode();
+        
+        var responseJson = await response.Content.ReadAsStringAsync();
+        var registrationResponse = JsonSerializer.Deserialize(responseJson, McpJsonUtilities.DefaultOptions.GetTypeInfo<ClientRegistrationResponse>());
+        if (registrationResponse == null)
+        {
+            throw new InvalidOperationException("Failed to parse client registration response.");
+        }
+        
+        return registrationResponse;
+    }
+    
+    private async Task<OAuthTokenResponse> PerformAuthorizationCodeFlowAsync(
+        AuthorizationServerMetadata authServerMetadata,
+        string clientId,
+        string? clientSecret,
+        Uri redirectUri,
+        IEnumerable<string> scopes)
+    {
+        // Generate PKCE code verifier and challenge
+        var codeVerifier = GenerateCodeVerifier();
+        var codeChallenge = GenerateCodeChallenge(codeVerifier);
+        
+        // Build authorization URL
+        var authorizationUrl = BuildAuthorizationUrl(
+            authServerMetadata.AuthorizationEndpoint,
+            clientId,
+            redirectUri,
+            codeChallenge,
+            scopes);
+        
+        // At this point, in a real application, you would redirect the user to the authorizationUrl
+        // and then handle the callback to redirectUri with the authorization code.
+        // For this implementation, we'll assume the code is obtained externally and passed to us.
+        
+        // Since we can't actually perform the browser interaction in this service,
+        // we'll throw with instructions
+        throw new NotImplementedException(
+            $"Authorization requires user interaction. Please direct the user to: {authorizationUrl}\n" +
+            $"After authorization, the user will be redirected to: {redirectUri}?code=[authorization_code]\n" +
+            $"You need to handle this redirect and extract the authorization code to complete the flow.");
+        
+        // In a real implementation, after getting the authorization code:
+        // var authorizationCode = GetAuthorizationCodeFromRedirect();
+        // return await ExchangeAuthorizationCodeForTokenAsync(
+        //     authServerMetadata.TokenEndpoint,
+        //     clientId,
+        //     clientSecret,
+        //     redirectUri,
+        //     authorizationCode,
+        //     codeVerifier);
+    }
+    
+    private string GenerateCodeVerifier()
+    {
+        // Generate a cryptographically random code verifier
+        var bytes = new byte[64];
+        using var rng = RandomNumberGenerator.Create();
+        rng.GetBytes(bytes);
+        
+        // Base64url encode the random bytes
+        var base64 = Convert.ToBase64String(bytes);
+        var base64Url = base64
+            .Replace('+', '-')
+            .Replace('/', '_')
+            .Replace("=", "");
+        
+        return base64Url;
+    }
+    
+    private string GenerateCodeChallenge(string codeVerifier)
+    {
+        // Create code challenge using S256 method
+        using var sha256 = SHA256.Create();
+        var challengeBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(codeVerifier));
+        
+        // Base64url encode the hash
+        var base64 = Convert.ToBase64String(challengeBytes);
+        var base64Url = base64
+            .Replace('+', '-')
+            .Replace('/', '_')
+            .Replace("=", "");
+        
+        return base64Url;
+    }
+    
+    private string BuildAuthorizationUrl(
+        Uri authorizationEndpoint,
+        string clientId,
+        Uri redirectUri,
+        string codeChallenge,
+        IEnumerable<string> scopes)
+    {
+        var scopeString = string.Join(" ", scopes);
+        
+        var queryParams = new Dictionary<string, string>
+        {
+            ["client_id"] = clientId,
+            ["response_type"] = "code",
+            ["redirect_uri"] = redirectUri.ToString(),
+            ["scope"] = scopeString,
+            ["code_challenge"] = codeChallenge,
+            ["code_challenge_method"] = "S256",
+            ["state"] = GenerateRandomString(16) // Used for CSRF protection
+        };
+        
+        var queryString = string.Join("&", queryParams.Select(p => $"{WebUtility.UrlEncode(p.Key)}={WebUtility.UrlEncode(p.Value)}"));
+        return $"{authorizationEndpoint}?{queryString}";
+    }
+    
+    private string GenerateRandomString(int length)
+    {
+        var bytes = new byte[length];
+        using var rng = RandomNumberGenerator.Create();
+        rng.GetBytes(bytes);
+        return Convert.ToBase64String(bytes)
+            .Replace('+', '-')
+            .Replace('/', '_')
+            .Replace("=", "")
+            .Substring(0, length);
+    }
+    
+    // This method would be used in a real implementation after receiving the authorization code
+    private async Task<OAuthTokenResponse> ExchangeAuthorizationCodeForTokenAsync(
+        Uri tokenEndpoint,
+        string clientId,
+        string? clientSecret,
+        Uri redirectUri,
+        string authorizationCode,
+        string codeVerifier)
+    {
+        var tokenRequest = new Dictionary<string, string>
+        {
+            ["grant_type"] = "authorization_code",
+            ["code"] = authorizationCode,
+            ["redirect_uri"] = redirectUri.ToString(),
+            ["client_id"] = clientId,
+            ["code_verifier"] = codeVerifier
+        };
+        
+        var requestContent = new FormUrlEncodedContent(tokenRequest);
+        
+        HttpResponseMessage response;
+        if (!string.IsNullOrEmpty(clientSecret))
+        {
+            // Add client authentication if secret is available
+            var authValue = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{clientId}:{clientSecret}"));
+            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authValue);
+            response = await _httpClient.PostAsync(tokenEndpoint, requestContent);
+            _httpClient.DefaultRequestHeaders.Authorization = null;
+        }
+        else
+        {
+            response = await _httpClient.PostAsync(tokenEndpoint, requestContent);
+        }
+        
+        response.EnsureSuccessStatusCode();
+        
+        var json = await response.Content.ReadAsStringAsync();
+        var tokenResponse = JsonSerializer.Deserialize(json, McpJsonUtilities.DefaultOptions.GetTypeInfo<OAuthTokenResponse>());
+        if (tokenResponse == null)
+        {
+            throw new InvalidOperationException("Failed to parse token response.");
+        }
+        
+        return tokenResponse;
+    }
+}
