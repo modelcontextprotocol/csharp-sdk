@@ -1,6 +1,9 @@
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Protocol.Types;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+using System.Security.Claims;
+using System.Text.Encodings.Web;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -68,6 +71,7 @@ builder.Services.AddMcpServer(options =>
     // Configure the OAuth metadata for this server
     metadata.AuthorizationServers.Add(new Uri("https://auth.example.com"));
 
+    
     // Define the scopes this server supports
     metadata.ScopesSupported.AddRange(["weather.read", "weather.write"]);
     
@@ -75,26 +79,9 @@ builder.Services.AddMcpServer(options =>
     metadata.ResourceDocumentation = new Uri("https://docs.example.com/api/weather");
 });
 
-// Configure authentication
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        // In a real app, you would configure proper JWT validation
-        options.Events = new JwtBearerEvents
-        {
-            OnMessageReceived = context =>
-            {
-                // Simple demo authentication - in a real app, use proper JWT validation
-                var token = context.Request.Headers.Authorization.ToString().Replace("Bearer ", "");
-                if (token == "valid_token")
-                {
-                    // For demo purposes, simulate successful auth with a valid token
-                    context.Success();
-                }
-                return Task.CompletedTask;
-            }
-        };
-    });
+// Configure authentication using the built-in authentication system
+builder.Services.AddAuthentication("Bearer")
+    .AddScheme<AuthenticationSchemeOptions, SimpleAuthHandler>("Bearer", options => { });
 
 // Add authorization policy for MCP
 builder.Services.AddAuthorization(options =>
@@ -130,3 +117,54 @@ Console.WriteLine();
 Console.WriteLine("Press Ctrl+C to stop the server");
 
 await app.RunAsync();
+
+// Simple auth handler that validates a test token
+// In a real app, you'd use a JWT handler or other proper authentication
+class SimpleAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions>
+{
+    public SimpleAuthHandler(
+        IOptionsMonitor<AuthenticationSchemeOptions> options,
+        ILoggerFactory logger,
+        UrlEncoder encoder) 
+        : base(options, logger, encoder)
+    {
+    }
+
+    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+    {
+        // Get the Authorization header
+        if (!Request.Headers.TryGetValue("Authorization", out var authHeader))
+        {
+            return Task.FromResult(AuthenticateResult.Fail("Authorization header missing"));
+        }
+        
+        // Parse the token
+        var headerValue = authHeader.ToString();
+        if (!headerValue.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        {
+            return Task.FromResult(AuthenticateResult.Fail("Bearer token missing"));
+        }
+        
+        var token = headerValue["Bearer ".Length..].Trim();
+        
+        // Validate the token - in a real app, this would validate a JWT
+        if (token != "valid_token")
+        {
+            return Task.FromResult(AuthenticateResult.Fail("Invalid token"));
+        }
+        
+        // Create a claims identity with required claims
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.Name, "demo_user"),
+            new Claim(ClaimTypes.NameIdentifier, "user123"),
+            new Claim("scope", "weather.read")
+        };
+        
+        var identity = new ClaimsIdentity(claims, "Bearer");
+        var principal = new ClaimsPrincipal(identity);
+        var ticket = new AuthenticationTicket(principal, "Bearer");
+        
+        return Task.FromResult(AuthenticateResult.Success(ticket));
+    }
+}
