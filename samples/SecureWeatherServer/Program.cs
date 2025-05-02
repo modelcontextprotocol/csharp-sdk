@@ -68,14 +68,9 @@ builder.Services.AddMcpServer(options =>
 .WithHttpTransport()
 .WithAuthorization(metadata => 
 {
-    // Configure the OAuth metadata for this server
-    metadata.AuthorizationServers.Add(new Uri("https://auth.example.com"));
-
-    
-    // Define the scopes this server supports
+    metadata.AuthorizationServers.Add(new Uri("https://login.microsoftonline.com/a2213e1c-e51e-4304-9a0d-effe57f31655/v2.0"));
     metadata.ScopesSupported.AddRange(["weather.read", "weather.write"]);
-    
-    // Add optional documentation
+    metadata.BearerMethodsSupported.Add("header");
     metadata.ResourceDocumentation = new Uri("https://docs.example.com/api/weather");
 });
 

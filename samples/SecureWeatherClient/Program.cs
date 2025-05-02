@@ -30,7 +30,7 @@ class Program
         };
 
         var httpClient = new HttpClient(oauthHandler);
-        var serverUrl = "http://localhost:55598/sse"; // Default server URL
+        var serverUrl = "http://localhost:7071/sse"; // Default server URL
 
         // Allow the user to specify a different server URL
         Console.WriteLine($"Server URL (press Enter for default: {serverUrl}):");
