@@ -73,7 +73,7 @@ public static class McpClientExtensions
     /// <param name="httpClient">The HTTP client.</param>
     /// <param name="response">The HTTP response with the 401 status code.</param>
     /// <returns>The OAuth token response if authentication was successful.</returns>
-    public static async Task<OAuthTokenResponse> HandleUnauthorizedResponseAsync(
+    public static async Task<OAuthToken> HandleUnauthorizedResponseAsync(
         this HttpClient httpClient,
         HttpResponseMessage response)
     {
@@ -144,35 +144,4 @@ public static class McpClientExtensions
             }
         }
     }
-}
-
-/// <summary>
-/// Configuration for OAuth authorization.
-/// </summary>
-public class AuthorizationConfig
-{
-    /// <summary>
-    /// The URI to redirect to after authentication.
-    /// </summary>
-    public Uri RedirectUri { get; set; } = null!;
-    
-    /// <summary>
-    /// The client ID to use for authentication, or null to register a new client.
-    /// </summary>
-    public string? ClientId { get; set; }
-    
-    /// <summary>
-    /// The client name to use for registration.
-    /// </summary>
-    public string? ClientName { get; set; }
-    
-    /// <summary>
-    /// The requested scopes.
-    /// </summary>
-    public IEnumerable<string>? Scopes { get; set; }
-    
-    /// <summary>
-    /// The handler to invoke when authorization is required.
-    /// </summary>
-    public Func<Uri, Task<string>>? AuthorizationHandler { get; set; }
 }

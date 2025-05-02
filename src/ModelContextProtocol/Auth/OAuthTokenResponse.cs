@@ -5,7 +5,7 @@ namespace ModelContextProtocol.Auth;
 /// <summary>
 /// Represents an OAuth token response.
 /// </summary>
-public class OAuthTokenResponse
+public class OAuthToken
 {
     /// <summary>
     /// The access token issued by the authorization server.

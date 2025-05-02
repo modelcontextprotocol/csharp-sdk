@@ -10,7 +10,7 @@ namespace SecureWeatherClient;
 class Program
 {
     // The URI for our OAuth redirect - in a real app, this would be a registered URI or a local server
-    private static readonly Uri RedirectUri = new("http://localhost:8888/oauth-callback");
+    private static readonly Uri RedirectUri = new("http://localhost:1170/oauth-callback");
 
     static async Task Main(string[] args)
     {
@@ -20,14 +20,19 @@ class Program
 
         // Create an HTTP client with OAuth handling
         var oauthHandler = new OAuthDelegatingHandler(
+            clientId: "04f79824-ab56-4511-a7cb-d7deaea92dc0",
             redirectUri: RedirectUri,
-            clientName: "SecureWeatherClient", 
-            scopes: new[] { "weather.read" },
-            authorizationHandler: HandleAuthorizationRequestAsync);
+            clientName: "SecureWeatherClient",
+            scopes: ["weather.read"],
+            authorizationHandler: HandleAuthorizationRequestAsync)
+        {
+            // The OAuth handler needs an inner handler
+            InnerHandler = new HttpClientHandler()
+        };
 
         var httpClient = new HttpClient(oauthHandler);
-        var serverUrl = "http://localhost:5000"; // Default server URL
-        
+        var serverUrl = "http://localhost:55598/sse"; // Default server URL
+
         // Allow the user to specify a different server URL
         Console.WriteLine($"Server URL (press Enter for default: {serverUrl}):");
         var userInput = Console.ReadLine();
@@ -35,17 +40,27 @@ class Program
         {
             serverUrl = userInput;
         }
-        
+
         Console.WriteLine();
         Console.WriteLine($"Connecting to weather server at {serverUrl}...");
-        
-        // Create an MCP client with the server URL
-        var client = new McpClient(new Uri(serverUrl), httpClient);
 
         try
         {
+            // Create SseClientTransportOptions with the server URL
+            var transportOptions = new SseClientTransportOptions
+            {
+                Endpoint = new Uri(serverUrl),
+                Name = "Secure Weather Client"
+            };
+
+            // Create SseClientTransport with our authenticated HTTP client
+            var transport = new SseClientTransport(transportOptions, httpClient);
+
+            // Create an MCP client using the factory method with our transport
+            var client = await McpClientFactory.CreateAsync(transport);
+
             // Get the list of available tools
-            var tools = await client.GetToolsAsync();
+            var tools = await client.ListToolsAsync();
             if (tools.Count == 0)
             {
                 Console.WriteLine("No tools available on the server.");
@@ -54,55 +69,14 @@ class Program
 
             Console.WriteLine($"Found {tools.Count} tools on the server.");
             Console.WriteLine();
-
-            // Find the weather tool
-            var weatherTool = tools.FirstOrDefault(t => t.Name == "get_weather");
-            if (weatherTool == null)
-            {
-                Console.WriteLine("The server does not provide a weather tool.");
-                return;
-            }
-
-            // Get the weather for different locations
-            string[] locations = { "New York", "London", "Tokyo", "Sydney", "Moscow" };
-
-            foreach (var location in locations)
-            {
-                try
-                {
-                    Console.WriteLine($"Getting weather for {location}...");
-                    var result = await client.InvokeToolAsync(weatherTool.Name, new Dictionary<string, object>
-                    {
-                        ["location"] = location
-                    });
-
-                    if (result.TryGetValue("temperature", out var temperature) &&
-                        result.TryGetValue("conditions", out var conditions) &&
-                        result.TryGetValue("humidity", out var humidity) &&
-                        result.TryGetValue("windSpeed", out var windSpeed))
-                    {
-                        Console.WriteLine($"Weather in {location}:");
-                        Console.WriteLine($"  Temperature: {temperature}°C");
-                        Console.WriteLine($"  Conditions: {conditions}");
-                        Console.WriteLine($"  Humidity: {humidity}%");
-                        Console.WriteLine($"  Wind speed: {windSpeed} km/h");
-                    }
-                    else
-                    {
-                        Console.WriteLine($"Invalid response format for {location}");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error getting weather for {location}: {ex.Message}");
-                }
-
-                Console.WriteLine();
-            }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error: {ex.Message}");
+            if (ex.InnerException != null)
+            {
+                Console.WriteLine($"Inner error: {ex.InnerException.Message}");
+            }
         }
 
         Console.WriteLine("Press any key to exit...");
@@ -124,13 +98,13 @@ class Program
         Console.WriteLine();
         Console.WriteLine("After authentication, you will be redirected to a page with a code.");
         Console.WriteLine("Please enter the code parameter from the URL:");
-        
+
         var authorizationCode = Console.ReadLine();
         if (string.IsNullOrWhiteSpace(authorizationCode))
         {
             throw new InvalidOperationException("Authorization code is required.");
         }
-        
+
         return Task.FromResult(authorizationCode);
     }
 }

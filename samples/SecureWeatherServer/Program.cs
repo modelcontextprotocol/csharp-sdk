@@ -1,33 +1,132 @@
-using SecureWeatherServer.Tools;
-using System.Net.Http.Headers;
+using ModelContextProtocol.AspNetCore;
+using ModelContextProtocol.Protocol.Types;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddMcpServer()
-    .WithHttpTransport()
-    .WithTools<WeatherTools>()
-    .WithAuthorization(metadata =>
+// Configure MCP Server
+builder.Services.AddMcpServer(options =>
+{
+    options.ServerInstructions = "This is an MCP server with OAuth authorization enabled.";
+
+    // Configure regular server capabilities like tools, prompts, resources
+    options.Capabilities = new()
     {
-        metadata.AuthorizationServers.Add(new Uri("https://auth.example.com"));
-        metadata.ScopesSupported.AddRange(["weather.read", "weather.write"]);
-        metadata.ResourceDocumentation = new Uri("https://docs.example.com/api/weather");
+        Tools = new()
+        {
+            // Simple Echo tool
+            CallToolHandler = (request, cancellationToken) =>
+            {
+                if (request.Params?.Name == "echo")
+                {
+                    if (request.Params.Arguments?.TryGetValue("message", out var message) is not true)
+                    {
+                        throw new Exception("It happens.");
+                    }
+
+                    return new ValueTask<CallToolResponse>(new CallToolResponse()
+                    {
+                        Content = [new Content() { Text = $"Echo: {message}", Type = "text" }]
+                    });
+                }
+
+                // Protected tool that requires authorization
+                if (request.Params?.Name == "protected-data")
+                {
+                    // This tool will only be accessible to authenticated clients
+                    return new ValueTask<CallToolResponse>(new CallToolResponse()
+                    {
+                        Content = [new Content() { Text = "This is protected data that only authorized clients can access" }]
+                    });
+                }
+
+                throw new Exception("It happens.");
+            },
+
+            ListToolsHandler = async (_, _) => new()
+            {
+                Tools =
+                [
+                    new()
+                    {
+                        Name = "echo",
+                        Description = "Echoes back the message you send"
+                    },
+                    new()
+                    {
+                        Name = "protected-data",
+                        Description = "Returns protected data that requires authorization"
+                    }
+                ]
+            }
+        }
+    };
+})
+.WithHttpTransport()
+.WithAuthorization(metadata => 
+{
+    // Configure the OAuth metadata for this server
+    metadata.AuthorizationServers.Add(new Uri("https://auth.example.com"));
+
+    // Define the scopes this server supports
+    metadata.ScopesSupported.AddRange(["weather.read", "weather.write"]);
+    
+    // Add optional documentation
+    metadata.ResourceDocumentation = new Uri("https://docs.example.com/api/weather");
+});
+
+// Configure authentication
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        // In a real app, you would configure proper JWT validation
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                // Simple demo authentication - in a real app, use proper JWT validation
+                var token = context.Request.Headers.Authorization.ToString().Replace("Bearer ", "");
+                if (token == "valid_token")
+                {
+                    // For demo purposes, simulate successful auth with a valid token
+                    context.Success();
+                }
+                return Task.CompletedTask;
+            }
+        };
     });
 
-builder.Services.AddSingleton(_ =>
+// Add authorization policy for MCP
+builder.Services.AddAuthorization(options =>
 {
-    var client = new HttpClient() { BaseAddress = new Uri("https://api.weather.gov") };
-    client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("weather-tool", "1.0"));
-    return client;
+    options.AddPolicy("McpAuth", policy =>
+    {
+        policy.RequireAuthenticatedUser();
+        policy.RequireClaim("scope", "weather.read");
+    });
 });
 
 var app = builder.Build();
 
-app.UseCors(policy => policy
-    .AllowAnyOrigin()
-    .AllowAnyMethod()
-    .AllowAnyHeader());
-
+// Set up the middleware pipeline
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.Run();
+// Map MCP endpoints with authorization
+app.MapMcp();
+
+// Configure the server URL
+app.Urls.Add("http://localhost:7071");
+
+Console.WriteLine("Starting MCP server with authorization at http://localhost:7071");
+Console.WriteLine("PRM Document URL: http://localhost:7071/.well-known/oauth-protected-resource");
+
+Console.WriteLine();
+Console.WriteLine("To test the server:");
+Console.WriteLine("1. Use an MCP client that supports authorization");
+Console.WriteLine("2. When prompted for authorization, enter 'valid_token' to gain access");
+Console.WriteLine("3. Any other token value will be rejected with a 401 Unauthorized");
+Console.WriteLine();
+Console.WriteLine("Press Ctrl+C to stop the server");
+
+await app.RunAsync();

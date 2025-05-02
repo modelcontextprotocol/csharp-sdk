@@ -24,7 +24,7 @@ public class OAuthAuthenticationService
     /// <param name="clientName">The client name to use for registration.</param>
     /// <param name="scopes">The requested scopes.</param>
     /// <returns>The OAuth token response.</returns>
-    public async Task<OAuthTokenResponse> HandleAuthenticationAsync(
+    public async Task<OAuthToken> HandleAuthenticationAsync(
         Uri resourceUri,
         string wwwAuthenticateHeader,
         Uri redirectUri,
@@ -214,7 +214,7 @@ public class OAuthAuthenticationService
         return registrationResponse;
     }
     
-    private async Task<OAuthTokenResponse> PerformAuthorizationCodeFlowAsync(
+    private async Task<OAuthToken> PerformAuthorizationCodeFlowAsync(
         AuthorizationServerMetadata authServerMetadata,
         string clientId,
         string? clientSecret,
@@ -325,7 +325,7 @@ public class OAuthAuthenticationService
     }
     
     // This method would be used in a real implementation after receiving the authorization code
-    private async Task<OAuthTokenResponse> ExchangeAuthorizationCodeForTokenAsync(
+    private async Task<OAuthToken> ExchangeAuthorizationCodeForTokenAsync(
         Uri tokenEndpoint,
         string clientId,
         string? clientSecret,
@@ -361,7 +361,7 @@ public class OAuthAuthenticationService
         response.EnsureSuccessStatusCode();
         
         var json = await response.Content.ReadAsStringAsync();
-        var tokenResponse = JsonSerializer.Deserialize(json, McpJsonUtilities.DefaultOptions.GetTypeInfo<OAuthTokenResponse>());
+        var tokenResponse = JsonSerializer.Deserialize(json, McpJsonUtilities.DefaultOptions.GetTypeInfo<OAuthToken>());
         if (tokenResponse == null)
         {
             throw new InvalidOperationException("Failed to parse token response.");

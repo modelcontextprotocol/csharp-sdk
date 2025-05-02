@@ -127,7 +127,7 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(AuthorizationServerMetadata))]
     [JsonSerializable(typeof(ClientRegistrationRequest))]
     [JsonSerializable(typeof(ClientRegistrationResponse))]
-    [JsonSerializable(typeof(OAuthTokenResponse))]
+    [JsonSerializable(typeof(OAuthToken))]
     [JsonSerializable(typeof(ProtectedResourceMetadata))]
 
     [ExcludeFromCodeCoverage]

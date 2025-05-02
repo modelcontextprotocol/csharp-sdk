@@ -13,7 +13,7 @@ public class OAuthDelegatingHandler : DelegatingHandler
     private readonly string? _clientName;
     private readonly IEnumerable<string>? _scopes;
     private readonly Func<Uri, Task<string>>? _authorizationHandler;
-    private OAuthTokenResponse? _tokenResponse;
+    private OAuthToken? _tokenResponse;
     
     /// <summary>
     /// Initializes a new instance of the <see cref="OAuthDelegatingHandler"/> class.
@@ -66,7 +66,7 @@ public class OAuthDelegatingHandler : DelegatingHandler
     /// Manually set an OAuth token to use for subsequent requests.
     /// </summary>
     /// <param name="tokenResponse">The OAuth token response.</param>
-    public void SetToken(OAuthTokenResponse tokenResponse)
+    public void SetToken(OAuthToken tokenResponse)
     {
         _tokenResponse = tokenResponse;
     }
