@@ -164,66 +164,6 @@ public static class OAuthAuthorizationHelpers
     }
     
     /// <summary>
-    /// Exchanges an authorization code for an OAuth token.
-    /// </summary>
-    /// <param name="tokenEndpoint">The token endpoint URI.</param>
-    /// <param name="clientId">The client ID.</param>
-    /// <param name="clientSecret">The client secret, if any.</param>
-    /// <param name="redirectUri">The redirect URI used in the authorization request.</param>
-    /// <param name="authorizationCode">The authorization code received from the authorization server.</param>
-    /// <param name="codeVerifier">The PKCE code verifier.</param>
-    /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
-    /// <returns>The OAuth token response.</returns>
-    public static async Task<OAuthToken> ExchangeAuthorizationCodeForTokenAsync(
-        Uri tokenEndpoint,
-        string clientId,
-        string? clientSecret,
-        Uri redirectUri,
-        string authorizationCode,
-        string codeVerifier,
-        CancellationToken cancellationToken = default)
-    {
-        var tokenRequest = new Dictionary<string, string>
-        {
-            ["grant_type"] = "authorization_code",
-            ["code"] = authorizationCode,
-            ["redirect_uri"] = redirectUri.ToString(),
-            ["client_id"] = clientId,
-            ["code_verifier"] = codeVerifier
-        };
-        
-        var requestContent = new FormUrlEncodedContent(tokenRequest);
-        
-        HttpResponseMessage response;
-        if (!string.IsNullOrEmpty(clientSecret))
-        {
-            // Add client authentication if secret is available
-            var authValue = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{clientId}:{clientSecret}"));
-            using var request = new HttpRequestMessage(HttpMethod.Post, tokenEndpoint)
-            {
-                Content = requestContent
-            };
-            request.Headers.Authorization = new AuthenticationHeaderValue("Basic", authValue);
-            response = await _httpClient.SendAsync(request, cancellationToken);
-        }
-        else
-        {
-            response = await _httpClient.PostAsync(tokenEndpoint, requestContent, cancellationToken);
-        }
-        
-        response.EnsureSuccessStatusCode();
-        
-        var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        var tokenResponse = JsonSerializer.Deserialize(json, McpJsonUtilities.DefaultOptions.GetTypeInfo<OAuthToken>());
-        if (tokenResponse == null)
-        {
-            throw new InvalidOperationException("Failed to parse token response.");
-        }
-        
-        return tokenResponse;
-    }
-    
-    /// <summary>
     /// Creates a complete OAuth authorization code flow handler that automatically exchanges the code for a token.
     /// </summary>
     /// <param name="tokenEndpoint">The token endpoint URI.</param>
@@ -249,13 +189,16 @@ public static class OAuthAuthorizationHelpers
     {
         var codeHandler = CreateHttpListenerCallback(openBrowser, hostname, listenPort, redirectPath);
         
+        // Create an OAuth authentication service to handle token exchange
+        var authService = new OAuthAuthenticationService();
+        
         return async (authorizationUri) =>
         {
             // First get the authorization code
             string authorizationCode = await codeHandler(authorizationUri);
             
-            // Then exchange it for a token
-            return await ExchangeAuthorizationCodeForTokenAsync(
+            // Let the authentication service handle the token exchange
+            return await authService.HandleAuthorizationCodeAsync(
                 tokenEndpoint,
                 clientId,
                 clientSecret,

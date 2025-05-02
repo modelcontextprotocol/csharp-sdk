@@ -116,6 +116,37 @@ public class OAuthAuthenticationService
         return tokenResponse;
     }
     
+    /// <summary>
+    /// Handles the exchange of an authorization code for an OAuth token.
+    /// </summary>
+    /// <param name="tokenEndpoint">The token endpoint URI.</param>
+    /// <param name="clientId">The client ID.</param>
+    /// <param name="clientSecret">The client secret, if any.</param>
+    /// <param name="redirectUri">The redirect URI used in the authorization request.</param>
+    /// <param name="authorizationCode">The authorization code received from the authorization server.</param>
+    /// <param name="codeVerifier">The PKCE code verifier.</param>
+    /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
+    /// <returns>The OAuth token response.</returns>
+    public async Task<OAuthToken> HandleAuthorizationCodeAsync(
+        Uri tokenEndpoint,
+        string clientId,
+        string? clientSecret,
+        Uri redirectUri,
+        string authorizationCode,
+        string codeVerifier,
+        CancellationToken cancellationToken = default)
+    {
+        // Simply call our private implementation
+        return await ExchangeAuthorizationCodeForTokenAsync(
+            tokenEndpoint,
+            clientId,
+            clientSecret,
+            redirectUri,
+            authorizationCode,
+            codeVerifier,
+            cancellationToken);
+    }
+    
     private Uri? ExtractResourceMetadataUri(string wwwAuthenticateHeader)
     {
         if (string.IsNullOrEmpty(wwwAuthenticateHeader))
@@ -356,14 +387,25 @@ public class OAuthAuthenticationService
             .Substring(0, length);
     }
     
-    // This method would be used in a real implementation after receiving the authorization code
+    /// <summary>
+    /// Exchanges an authorization code for an OAuth token.
+    /// </summary>
+    /// <param name="tokenEndpoint">The token endpoint URI.</param>
+    /// <param name="clientId">The client ID.</param>
+    /// <param name="clientSecret">The client secret, if any.</param>
+    /// <param name="redirectUri">The redirect URI used in the authorization request.</param>
+    /// <param name="authorizationCode">The authorization code received from the authorization server.</param>
+    /// <param name="codeVerifier">The PKCE code verifier.</param>
+    /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
+    /// <returns>The OAuth token response.</returns>
     private async Task<OAuthToken> ExchangeAuthorizationCodeForTokenAsync(
         Uri tokenEndpoint,
         string clientId,
         string? clientSecret,
         Uri redirectUri,
         string authorizationCode,
-        string codeVerifier)
+        string codeVerifier,
+        CancellationToken cancellationToken = default)
     {
         var tokenRequest = new Dictionary<string, string>
         {
@@ -381,18 +423,21 @@ public class OAuthAuthenticationService
         {
             // Add client authentication if secret is available
             var authValue = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{clientId}:{clientSecret}"));
-            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authValue);
-            response = await _httpClient.PostAsync(tokenEndpoint, requestContent);
-            _httpClient.DefaultRequestHeaders.Authorization = null;
+            using var request = new HttpRequestMessage(HttpMethod.Post, tokenEndpoint)
+            {
+                Content = requestContent
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Basic", authValue);
+            response = await _httpClient.SendAsync(request, cancellationToken);
         }
         else
         {
-            response = await _httpClient.PostAsync(tokenEndpoint, requestContent);
+            response = await _httpClient.PostAsync(tokenEndpoint, requestContent, cancellationToken);
         }
         
         response.EnsureSuccessStatusCode();
         
-        var json = await response.Content.ReadAsStringAsync();
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
         var tokenResponse = JsonSerializer.Deserialize(json, McpJsonUtilities.DefaultOptions.GetTypeInfo<OAuthToken>());
         if (tokenResponse == null)
         {
