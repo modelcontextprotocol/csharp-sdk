@@ -1,19 +1,19 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
-using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.AspNetCore.Auth;
 using ModelContextProtocol.Auth;
 using ModelContextProtocol.Protocol.Messages;
 using System.Diagnostics.CodeAnalysis;
 
-namespace Microsoft.AspNetCore.Builder;
+namespace ModelContextProtocol.AspNetCore;
 
 /// <summary>
 /// Provides extension methods for <see cref="IEndpointRouteBuilder"/> to add MCP endpoints.
 /// </summary>
-public static class McpEndpointRouteBuilderExtensions
+public static partial class McpEndpointRouteBuilderExtensions
 {
     /// <summary>
     /// Sets up endpoints for handling MCP Streamable HTTP transport.
@@ -59,8 +59,13 @@ public static class McpEndpointRouteBuilderExtensions
             // Authorization is configured, so automatically map the OAuth protected resource endpoint
             var resourceMetadataService = endpoints.ServiceProvider.GetRequiredService<ResourceMetadataService>();
             
-            // Map the OAuth protected resource endpoint
-            endpoints.MapMcpResourceMetadata("/.well-known/oauth-protected-resource");
+            // Use an AOT-compatible approach with a statically compiled RequestDelegate
+            var handler = new ResourceMetadataEndpointHandler(resourceMetadataService);
+            
+            sseGroup.MapGet("/.well-known/oauth-protected-resource", handler.HandleRequest)
+                .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["application/json"]))
+                .AllowAnonymous()
+                .WithDisplayName("MCP Resource Metadata");
             
             // Apply authorization to MCP endpoints
             mcpGroup.RequireAuthorization("McpAuth");
