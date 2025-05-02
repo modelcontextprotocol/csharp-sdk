@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
-using ModelContextProtocol.AspNetCore.Auth;
 using ModelContextProtocol.Protocol.Types;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
@@ -79,7 +78,6 @@ builder.Services.AddMcpServer(options =>
 var app = builder.Build();
 
 app.UseAuthentication();
-app.UseMcpAuthenticationResponse();
 app.UseAuthorization();
 
 // Map MCP endpoints with authorization
