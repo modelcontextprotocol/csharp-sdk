@@ -103,9 +103,6 @@ app.UseAuthorization();
 // Map MCP endpoints with authorization
 app.MapMcp();
 
-// Configure the server URL
-app.Urls.Add("http://localhost:7071");
-
 Console.WriteLine("Starting MCP server with authorization at http://localhost:7071");
 Console.WriteLine("PRM Document URL: http://localhost:7071/.well-known/oauth-protected-resource");
 
