@@ -64,14 +64,3 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         return base.HandleChallengeAsync(properties);
     }
 }
-
-/// <summary>
-/// Options for the MCP authentication handler.
-/// </summary>
-public class McpAuthenticationOptions : AuthenticationSchemeOptions
-{
-    /// <summary>
-    /// The URI to the resource metadata document.
-    /// </summary>
-    public Uri? ResourceMetadataUri { get; set; }
-}
