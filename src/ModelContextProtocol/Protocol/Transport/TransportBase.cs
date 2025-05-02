@@ -115,7 +115,7 @@ public abstract partial class TransportBase : ITransport
                     return;
                 
                 case StateDisconnected:
-                    throw new InvalidOperationException("Transport is already disconnected and can't be reconnected.");
+                    throw new IOException("Transport is already disconnected and can't be reconnected.");
 
                 default:
                     Debug.Fail($"Unexpected state: {state}");

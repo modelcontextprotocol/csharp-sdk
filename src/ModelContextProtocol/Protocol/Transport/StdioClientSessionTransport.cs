@@ -86,13 +86,21 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
         }
         catch { }
 
-        string errorMessage = "MCP server process exited unexpectedly.";
+        string errorMessage = "MCP server process exited unexpectedly";
+
+        string? exitCode = null;
+        try
+        {
+            exitCode = $" (exit code: {(uint)_process.ExitCode})";
+        }
+        catch { }
+
         lock (_stderrRollingLog)
         {
             if (_stderrRollingLog.Count > 0)
             {
                 errorMessage =
-                    $"{errorMessage}{Environment.NewLine}" +
+                    $"{errorMessage}{exitCode}{Environment.NewLine}" +
                     $"Server's stderr tail:{Environment.NewLine}" +
                     $"{string.Join(Environment.NewLine, _stderrRollingLog)}";
             }

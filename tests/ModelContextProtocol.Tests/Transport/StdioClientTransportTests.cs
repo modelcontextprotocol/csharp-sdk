@@ -1,5 +1,6 @@
 ﻿using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Transport;
+using System.Runtime.InteropServices;
 
 namespace ModelContextProtocol.Tests.Transport;
 
@@ -8,13 +9,13 @@ public class StdioClientTransportTests
     [Fact]
     public async Task CreateAsync_ValidProcessInvalidServer_Throws()
     {
-        StdioClientTransport transport = new(new() { Command = "echo", Arguments = ["this is a test", "1>&2"] });
+        string id = Guid.NewGuid().ToString("N");
+
+        StdioClientTransport transport = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
+            new(new() { Command = "cmd", Arguments = ["/C", $"echo \"{id}\" >&2"] }) :
+            new(new() { Command = "ls", Arguments = [id] });
 
         IOException e = await Assert.ThrowsAsync<IOException>(() => McpClientFactory.CreateAsync(transport, cancellationToken: TestContext.Current.CancellationToken));
-        string exStr = e.ToString();
-        if (!exStr.Contains("this is a test"))
-        {
-            throw new Exception($"Expected error message not found in exception: {exStr}");
-        }
+        Assert.Contains(id, e.ToString());
     }
 }

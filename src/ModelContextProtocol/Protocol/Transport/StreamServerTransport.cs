@@ -60,7 +60,7 @@ public class StreamServerTransport : TransportBase
     {
         if (!IsConnected)
         {
-            throw new InvalidOperationException("Transport is not connected.");
+            return;
         }
 
         using var _ = await _sendLock.LockAsync(cancellationToken).ConfigureAwait(false);

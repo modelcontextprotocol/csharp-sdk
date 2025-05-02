@@ -59,11 +59,6 @@ internal class StreamClientSessionTransport : TransportBase
     /// <inheritdoc/>
     public override async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
-        if (!IsConnected)
-        {
-            throw new InvalidOperationException("Transport is not connected.");
-        }
-
         string id = "(no id)";
         if (message is JsonRpcMessageWithId messageWithId)
         {
@@ -82,7 +77,7 @@ internal class StreamClientSessionTransport : TransportBase
         catch (Exception ex)
         {
             LogTransportSendFailed(Name, id, ex);
-            throw new IOException("Failed to send message", ex);
+            throw new IOException("Failed to send message.", ex);
         }
     }
 
