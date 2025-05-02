@@ -14,7 +14,7 @@ public static class McpAuthenticationExtensions
     /// <param name="builder">The authentication builder.</param>
     /// <param name="configureOptions">An action to configure MCP authentication options.</param>
     /// <returns>The authentication builder for chaining.</returns>
-    public static AuthenticationBuilder AddMcpAuthorization(
+    public static AuthenticationBuilder AddMcp(
         this AuthenticationBuilder builder,
         Action<McpAuthenticationOptions>? configureOptions = null)
     {
