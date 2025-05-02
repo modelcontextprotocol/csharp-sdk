@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System;
 using System.Text.Encodings.Web;
+using System.Threading.Tasks;
 
 namespace ModelContextProtocol.AspNetCore.Auth;
 
@@ -10,15 +12,19 @@ namespace ModelContextProtocol.AspNetCore.Auth;
 /// </summary>
 public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationOptions>
 {
+    private readonly ResourceMetadataService _resourceMetadataService;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="McpAuthenticationHandler"/> class.
     /// </summary>
     public McpAuthenticationHandler(
         IOptionsMonitor<McpAuthenticationOptions> options,
         ILoggerFactory logger,
-        UrlEncoder encoder)
+        UrlEncoder encoder,
+        ResourceMetadataService resourceMetadataService)
         : base(options, logger, encoder)
     {
+        _resourceMetadataService = resourceMetadataService;
     }
 
     /// <inheritdoc />
@@ -32,12 +38,30 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
     /// <inheritdoc />
     protected override Task HandleChallengeAsync(AuthenticationProperties properties)
     {
-        if (Options.ResourceMetadataUri != null)
-        {
-            Response.Headers.WWWAuthenticate = $"Bearer resource_metadata=\"{Options.ResourceMetadataUri}\"";
-        }
+        // Set the response status code
+        Response.StatusCode = 401; // Unauthorized
+
+        // Generate the full resource metadata URL based on the current request
+        var baseUrl = $"{Request.Scheme}://{Request.Host}";
+        var metadataPath = Options.ResourceMetadataUri?.ToString() ?? "/.well-known/oauth-protected-resource";
+        var metadataUrl = metadataPath.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? metadataPath
+            : $"{baseUrl}{metadataPath}";
+
+        // Initialize properties if null
+        properties ??= new AuthenticationProperties();
         
-        return Task.CompletedTask;
+        // Set the WWW-Authenticate header with the resource_metadata
+        string headerValue = $"Bearer realm=\"{Scheme.Name}\"";
+        headerValue += $", resource_metadata=\"{metadataUrl}\"";
+        
+        // Use Headers.Append with a StringValues object
+        Response.Headers["WWW-Authenticate"] = headerValue;
+        
+        // Store the resource_metadata in properties in case other handlers need it
+        properties.Items["resource_metadata"] = metadataUrl;
+        
+        return base.HandleChallengeAsync(properties);
     }
 }
 

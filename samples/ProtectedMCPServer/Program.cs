@@ -76,23 +76,23 @@ builder.Services.AddMcpServer(options =>
     metadata.ResourceDocumentation = new Uri("https://docs.example.com/api/weather");
 });
 
-// Configure authentication using the built-in authentication system
-builder.Services.AddAuthentication(options => 
-{
-    options.DefaultScheme = "Bearer";
-    options.DefaultChallengeScheme = "Bearer"; // Ensure challenges use Bearer scheme
-})
-.AddScheme<AuthenticationSchemeOptions, SimpleAuthHandler>("Bearer", options => { });
+// // Configure authentication using the built-in authentication system
+// builder.Services.AddAuthentication(options => 
+// {
+//     options.DefaultScheme = "Bearer";
+//     options.DefaultChallengeScheme = "Bearer"; // Ensure challenges use Bearer scheme
+// })
+// .AddScheme<AuthenticationSchemeOptions, SimpleAuthHandler>("Bearer", options => { });
 
-// Add authorization policy for MCP
-builder.Services.AddAuthorization(options =>
-{
-    options.AddPolicy("McpAuth", policy =>
-    {
-        policy.RequireAuthenticatedUser();
-        policy.RequireClaim("scope", "weather.read");
-    });
-});
+//// Add authorization policy for MCP
+//builder.Services.AddAuthorization(options =>
+//{
+//    options.AddPolicy("McpAuth", policy =>
+//    {
+//        policy.RequireAuthenticatedUser();
+//        policy.RequireClaim("scope", "weather.read");
+//    });
+//});
 
 var app = builder.Build();
 
@@ -173,8 +173,6 @@ class SimpleAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions>
 
     protected override Task HandleChallengeAsync(AuthenticationProperties properties)
     {
-        // No need to manually set WWW-Authenticate header anymore - handled by middleware
-        Response.StatusCode = 401;
-        return Task.CompletedTask;
+        return base.HandleChallengeAsync(properties);
     }
 }

@@ -9,11 +9,13 @@ namespace ModelContextProtocol.AspNetCore.Auth;
 public static class McpWebApplicationExtensions
 {
     /// <summary>
-    /// Adds the MCP authentication response middleware to the application pipeline.
-    /// This middleware automatically adds the resource_metadata field to WWW-Authenticate headers in 401 responses.
+    /// This method maintains compatibility with existing code that calls UseMcpAuthenticationResponse.
+    /// The actual middleware functionality is now handled by the McpAuthenticationHandler as part of
+    /// the standard ASP.NET Core authentication pipeline.
     /// </summary>
     /// <remarks>
-    /// This middleware should be registered AFTER UseAuthentication() but BEFORE UseAuthorization().
+    /// While this method is still required for backward compatibility, its functionality
+    /// is now fully implemented by the McpAuthenticationHandler.
     /// </remarks>
     /// <param name="app">The web application.</param>
     /// <returns>The web application for chaining.</returns>
@@ -26,6 +28,8 @@ public static class McpWebApplicationExtensions
                 "Make sure you call AddMcpServer().WithAuthorization() first.");
         }
         
-        return app.UseMiddleware<McpAuthenticationResponseMiddleware>();
+        // Return the app directly without adding middleware, as the functionality
+        // is now provided by the McpAuthenticationHandler
+        return app;
     }
 }
