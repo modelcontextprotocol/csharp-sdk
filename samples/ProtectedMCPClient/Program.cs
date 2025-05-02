@@ -18,7 +18,7 @@ class Program
         var authConfig = new AuthorizationConfig
         {
             ClientId = "04f79824-ab56-4511-a7cb-d7deaea92dc0",
-            Scopes = ["User.Read"]
+            Scopes = ["api://167b4284-3f92-4436-92ed-38b38f83ae08/weather.read"]
         }.UseHttpListener(hostname: "localhost", listenPort: 1170);
 
         // Create an HTTP client with OAuth handling

@@ -32,9 +32,6 @@ builder.Services.AddAuthorization(options =>
     });
 });
 
-// Don't forget to register the ResourceMetadataService
-builder.Services.AddSingleton<ResourceMetadataService>();
-
 // Configure MCP Server
 builder.Services.AddMcpServer()
 .WithTools<WeatherTools>()
