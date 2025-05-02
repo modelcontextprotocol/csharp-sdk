@@ -15,7 +15,7 @@ builder.Services.AddAuthentication(options =>
 })
 .AddScheme<AuthenticationSchemeOptions, SimpleAuthHandler>("Bearer", options => { })
 .AddMcp(options => {
-    // Configure MCP authentication options with the resource metadata URI
+    // Ensure ResourceMetadataUri matches the actual mapping in McpEndpointRouteBuilderExtensions.cs
     options.ResourceMetadataUri = new Uri("/.well-known/oauth-protected-resource", UriKind.Relative);
     
     // Configure the resource metadata using our enhanced options
@@ -37,9 +37,6 @@ builder.Services.AddAuthorization(options =>
 
 // Don't forget to register the ResourceMetadataService
 builder.Services.AddSingleton<ResourceMetadataService>();
-
-// IMPORTANT: Register the McpAuthorizationMarker to enable authorization on MCP endpoints
-builder.Services.AddSingleton<McpAuthorizationMarker>();
 
 // Configure MCP Server
 builder.Services.AddMcpServer(options =>
@@ -107,6 +104,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 // Map MCP endpoints with authorization
+// Note: The SDK will automatically map /.well-known/oauth-protected-resource 
+// and make it accessible without authorization
 app.MapMcp();
 
 Console.WriteLine("Starting MCP server with authorization at http://localhost:7071");

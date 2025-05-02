@@ -41,6 +41,10 @@ public static class McpAuthenticationExtensions
         Action<McpAuthenticationOptions>? configureOptions = null)
     {
         builder.Services.TryAddSingleton<ResourceMetadataService>();
+        
+        // Register the marker to indicate that MCP authorization is configured
+        // This will be used by MapMcp to apply authorization to endpoints
+        builder.Services.TryAddSingleton<McpAuthorizationMarker>();
 
         return builder.AddScheme<McpAuthenticationOptions, McpAuthenticationHandler>(
             authenticationScheme, 
