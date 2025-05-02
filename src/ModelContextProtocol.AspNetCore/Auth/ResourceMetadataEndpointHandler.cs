@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Http;
 using ModelContextProtocol.AspNetCore.Auth;
 
-namespace ModelContextProtocol.AspNetCore;
+namespace Microsoft.AspNetCore.Builder;
 
 public static partial class McpEndpointRouteBuilderExtensions
 {

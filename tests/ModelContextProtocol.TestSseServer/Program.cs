@@ -1,5 +1,4 @@
 ﻿using Microsoft.AspNetCore.Connections;
-using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils.Json;

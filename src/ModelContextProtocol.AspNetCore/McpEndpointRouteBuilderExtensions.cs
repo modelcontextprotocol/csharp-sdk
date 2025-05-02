@@ -3,12 +3,12 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.AspNetCore.Auth;
-using ModelContextProtocol.Auth;
 using ModelContextProtocol.Protocol.Messages;
 using System.Diagnostics.CodeAnalysis;
 
-namespace ModelContextProtocol.AspNetCore;
+namespace Microsoft.AspNetCore.Builder;
 
 /// <summary>
 /// Provides extension methods for <see cref="IEndpointRouteBuilder"/> to add MCP endpoints.
