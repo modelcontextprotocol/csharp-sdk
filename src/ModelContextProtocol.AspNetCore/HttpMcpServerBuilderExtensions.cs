@@ -87,6 +87,10 @@ public static class HttpMcpServerBuilderExtensions
             });
         });
         
+        // Register the middleware for automatically adding WWW-Authenticate headers
+        // Store in DI that we need to use the middleware
+        builder.Services.AddSingleton<McpAuthenticationResponseMarker>();
+        
         return builder;
     }
 }
@@ -95,3 +99,8 @@ public static class HttpMcpServerBuilderExtensions
 /// Marker class to indicate that MCP authorization has been configured.
 /// </summary>
 internal class McpAuthorizationMarker { }
+
+/// <summary>
+/// Marker class to indicate that MCP authentication response middleware should be used.
+/// </summary>
+internal class McpAuthenticationResponseMarker { }

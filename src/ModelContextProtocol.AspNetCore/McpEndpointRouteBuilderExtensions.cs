@@ -56,6 +56,18 @@ public static partial class McpEndpointRouteBuilderExtensions
         var authMarker = endpoints.ServiceProvider.GetService<McpAuthorizationMarker>();
         if (authMarker != null)
         {
+            // Check if the authentication response middleware is configured
+            var authResponseMarker = endpoints.ServiceProvider.GetService<McpAuthenticationResponseMarker>();
+            if (authResponseMarker != null)
+            {
+                // Register the middleware to automatically add WWW-Authenticate headers to 401 responses
+                // We need to add this middleware to the parent app, not just the endpoint group
+                if (endpoints is IApplicationBuilder app)
+                {
+                    app.UseWwwAuthenticateHeaderMiddleware();
+                }
+            }
+
             // Authorization is configured, so automatically map the OAuth protected resource endpoint
             var resourceMetadataService = endpoints.ServiceProvider.GetRequiredService<ResourceMetadataService>();
             

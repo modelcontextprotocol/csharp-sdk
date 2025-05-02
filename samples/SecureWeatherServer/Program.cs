@@ -70,13 +70,14 @@ builder.Services.AddMcpServer(options =>
 .WithAuthorization(metadata => 
 {
     metadata.AuthorizationServers.Add(new Uri("https://login.microsoftonline.com/a2213e1c-e51e-4304-9a0d-effe57f31655/v2.0"));
-    metadata.ScopesSupported.AddRange(["weather.read", "weather.write"]);
     metadata.BearerMethodsSupported.Add("header");
+    metadata.ScopesSupported.AddRange(["weather.read", "weather.write"]);
+    
+    // Add optional documentation
     metadata.ResourceDocumentation = new Uri("https://docs.example.com/api/weather");
 });
 
 // Configure authentication using the built-in authentication system
-// Register "Bearer" scheme with our SimpleAuthHandler and set it as the default scheme
 builder.Services.AddAuthentication(options => 
 {
     options.DefaultScheme = "Bearer";
@@ -96,8 +97,8 @@ builder.Services.AddAuthorization(options =>
 
 var app = builder.Build();
 
-// Set up the middleware pipeline
 app.UseAuthentication();
+app.UseMcpAuthenticationResponse();
 app.UseAuthorization();
 
 // Map MCP endpoints with authorization
@@ -123,17 +124,12 @@ await app.RunAsync();
 // In a real app, you'd use a JWT handler or other proper authentication
 class SimpleAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions>
 {
-    // Directly inject the ResourceMetadataService instead of the options
-    private readonly ResourceMetadataService _resourceMetadataService;
-
     public SimpleAuthHandler(
         IOptionsMonitor<AuthenticationSchemeOptions> options,
         ILoggerFactory logger,
-        UrlEncoder encoder,
-        ResourceMetadataService resourceMetadataService) 
+        UrlEncoder encoder) 
         : base(options, logger, encoder)
     {
-        _resourceMetadataService = resourceMetadataService;
     }
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
@@ -176,16 +172,8 @@ class SimpleAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions>
 
     protected override Task HandleChallengeAsync(AuthenticationProperties properties)
     {
-        // Always include the resource_metadata in the WWW-Authenticate header
-        var baseUrl = $"{Request.Scheme}://{Request.Host}";
-        var metadataUrl = $"{baseUrl}/.well-known/oauth-protected-resource";
-            
-        // Add WWW-Authenticate header with resource_metadata
-        Response.Headers.WWWAuthenticate = $"Bearer resource_metadata=\"{metadataUrl}\"";
-        
-        // Set 401 status code
+        // No need to manually set WWW-Authenticate header anymore - handled by middleware
         Response.StatusCode = 401;
-        
         return Task.CompletedTask;
     }
 }
