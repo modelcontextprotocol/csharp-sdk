@@ -167,7 +167,4 @@ class SimpleAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions>
         
         return Task.FromResult(AuthenticateResult.Success(ticket));
     }
-
-    // The MCP authentication handler will handle challenges
-    // so we don't need to implement HandleChallengeAsync here
 }
