@@ -19,7 +19,11 @@ public static class McpAuthenticationExtensions
         this AuthenticationBuilder builder,
         Action<McpAuthenticationOptions>? configureOptions = null)
     {
-        return AddMcp(builder, "McpAuth", "MCP Authentication", configureOptions);
+        return AddMcp(
+            builder, 
+            McpAuthenticationDefaults.AuthenticationScheme, 
+            McpAuthenticationDefaults.DisplayName, 
+            configureOptions);
     }
 
     /// <summary>
