@@ -1,4 +1,3 @@
-// filepath: c:\Users\ddelimarsky\source\csharp-sdk-anm\src\ModelContextProtocol\Auth\AuthorizationHandlers.cs
 using System.Security.Cryptography;
 using System.Text;
 

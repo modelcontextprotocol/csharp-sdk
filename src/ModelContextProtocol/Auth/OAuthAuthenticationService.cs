@@ -1,4 +1,3 @@
-// filepath: c:\Users\ddelimarsky\source\csharp-sdk-anm\src\ModelContextProtocol\Auth\OAuthAuthenticationService.cs
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;

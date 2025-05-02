@@ -1,4 +1,3 @@
-// filepath: c:\Users\ddelimarsky\source\csharp-sdk-anm\src\ModelContextProtocol\Auth\McpClientExtensions.cs
 using System.Net.Http.Headers;
 using System.Collections.Concurrent;
 

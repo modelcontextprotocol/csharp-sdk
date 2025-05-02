@@ -1,4 +1,3 @@
-// filepath: c:\Users\ddelimarsky\source\csharp-sdk-anm\src\ModelContextProtocol\Auth\AuthorizationServerMetadata.cs
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Auth;
