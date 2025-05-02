@@ -69,7 +69,7 @@ public static class HttpMcpServerBuilderExtensions
         
         // Add authentication with the MCP authentication handler
         builder.Services.AddAuthentication()
-            .AddMcpAuthorization(options => 
+            .AddMcp(options => 
             {
                 // Default to the standard OAuth protected resource endpoint
                 options.ResourceMetadataUri = new Uri("/.well-known/oauth-protected-resource", UriKind.Relative);
