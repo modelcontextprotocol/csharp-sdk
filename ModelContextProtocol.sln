@@ -56,9 +56,9 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModelContextProtocol.AspNet
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModelContextProtocol.AspNetCore.Tests", "tests\ModelContextProtocol.AspNetCore.Tests\ModelContextProtocol.AspNetCore.Tests.csproj", "{85557BA6-3D29-4C95-A646-2A972B1C2F25}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SecureWeatherClient", "samples\SecureWeatherClient\SecureWeatherClient.csproj", "{CF41BB82-4E3E-5E86-BCB6-0DF3A1B48CF2}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProtectedMCPClient", "samples\ProtectedMCPClient\ProtectedMCPClient.csproj", "{CF41BB82-4E3E-5E86-BCB6-0DF3A1B48CF2}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SecureWeatherServer", "samples\SecureWeatherServer\SecureWeatherServer.csproj", "{80944644-54DC-2AFF-C60E-9885AD81E509}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProtectedMCPServer", "samples\ProtectedMCPServer\ProtectedMCPServer.csproj", "{80944644-54DC-2AFF-C60E-9885AD81E509}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

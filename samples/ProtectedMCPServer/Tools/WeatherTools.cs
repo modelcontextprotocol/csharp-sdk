@@ -4,7 +4,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Text.Json;
 
-namespace SecureWeatherServer.Tools;
+namespace ProtectedMCPServer.Tools;
 
 [McpServerToolType]
 public sealed class WeatherTools

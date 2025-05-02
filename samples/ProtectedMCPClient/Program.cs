@@ -4,7 +4,7 @@ using ModelContextProtocol.Auth;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Transport;
 
-namespace SecureWeatherClient;
+namespace ProtectedMCPClient;
 
 class Program
 {

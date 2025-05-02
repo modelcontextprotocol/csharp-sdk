@@ -1,6 +1,6 @@
 {
   "profiles": {
-    "SecureWeatherServer": {
+    "ProtectedMCPServer": {
       "commandName": "Project",
       "launchBrowser": true,
       "environmentVariables": {
