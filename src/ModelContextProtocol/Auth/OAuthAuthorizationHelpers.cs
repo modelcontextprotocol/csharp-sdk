@@ -1,8 +1,13 @@
 using System;
+using System.Collections.Generic;
 using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using ModelContextProtocol.Utils.Json;
 
 namespace ModelContextProtocol.Auth;
 
@@ -11,6 +16,8 @@ namespace ModelContextProtocol.Auth;
 /// </summary>
 public static class OAuthAuthorizationHelpers
 {
+    private static readonly HttpClient _httpClient = new();
+
     /// <summary>
     /// Creates an HTTP listener callback for handling OAuth 2.0 authorization code flow.
     /// </summary>
@@ -153,6 +160,108 @@ public static class OAuthAuthorizationHelpers
                 // Ensure the listener is stopped when we're done
                 listener.Stop();
             }
+        };
+    }
+    
+    /// <summary>
+    /// Exchanges an authorization code for an OAuth token.
+    /// </summary>
+    /// <param name="tokenEndpoint">The token endpoint URI.</param>
+    /// <param name="clientId">The client ID.</param>
+    /// <param name="clientSecret">The client secret, if any.</param>
+    /// <param name="redirectUri">The redirect URI used in the authorization request.</param>
+    /// <param name="authorizationCode">The authorization code received from the authorization server.</param>
+    /// <param name="codeVerifier">The PKCE code verifier.</param>
+    /// <param name="cancellationToken">A cancellation token to cancel the operation.</param>
+    /// <returns>The OAuth token response.</returns>
+    public static async Task<OAuthToken> ExchangeAuthorizationCodeForTokenAsync(
+        Uri tokenEndpoint,
+        string clientId,
+        string? clientSecret,
+        Uri redirectUri,
+        string authorizationCode,
+        string codeVerifier,
+        CancellationToken cancellationToken = default)
+    {
+        var tokenRequest = new Dictionary<string, string>
+        {
+            ["grant_type"] = "authorization_code",
+            ["code"] = authorizationCode,
+            ["redirect_uri"] = redirectUri.ToString(),
+            ["client_id"] = clientId,
+            ["code_verifier"] = codeVerifier
+        };
+        
+        var requestContent = new FormUrlEncodedContent(tokenRequest);
+        
+        HttpResponseMessage response;
+        if (!string.IsNullOrEmpty(clientSecret))
+        {
+            // Add client authentication if secret is available
+            var authValue = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{clientId}:{clientSecret}"));
+            using var request = new HttpRequestMessage(HttpMethod.Post, tokenEndpoint)
+            {
+                Content = requestContent
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Basic", authValue);
+            response = await _httpClient.SendAsync(request, cancellationToken);
+        }
+        else
+        {
+            response = await _httpClient.PostAsync(tokenEndpoint, requestContent, cancellationToken);
+        }
+        
+        response.EnsureSuccessStatusCode();
+        
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        var tokenResponse = JsonSerializer.Deserialize(json, McpJsonUtilities.DefaultOptions.GetTypeInfo<OAuthToken>());
+        if (tokenResponse == null)
+        {
+            throw new InvalidOperationException("Failed to parse token response.");
+        }
+        
+        return tokenResponse;
+    }
+    
+    /// <summary>
+    /// Creates a complete OAuth authorization code flow handler that automatically exchanges the code for a token.
+    /// </summary>
+    /// <param name="tokenEndpoint">The token endpoint URI.</param>
+    /// <param name="clientId">The client ID.</param>
+    /// <param name="clientSecret">The client secret, if any.</param>
+    /// <param name="redirectUri">The redirect URI used in the authorization request.</param>
+    /// <param name="codeVerifier">The PKCE code verifier.</param>
+    /// <param name="openBrowser">A function that opens a browser with the given URL.</param>
+    /// <param name="hostname">The hostname to listen on. Defaults to "localhost".</param>
+    /// <param name="listenPort">The port to listen on. Defaults to 8888.</param>
+    /// <param name="redirectPath">The redirect path for the HTTP listener. Defaults to "/callback".</param>
+    /// <returns>A function that takes an authorization URI and returns a task that resolves to the OAuth token.</returns>
+    public static Func<Uri, Task<OAuthToken>> CreateCompleteOAuthFlowHandler(
+        Uri tokenEndpoint,
+        string clientId,
+        string? clientSecret,
+        Uri redirectUri,
+        string codeVerifier,
+        Func<string, Task> openBrowser,
+        string hostname = "localhost",
+        int listenPort = 8888,
+        string redirectPath = "/callback")
+    {
+        var codeHandler = CreateHttpListenerCallback(openBrowser, hostname, listenPort, redirectPath);
+        
+        return async (authorizationUri) =>
+        {
+            // First get the authorization code
+            string authorizationCode = await codeHandler(authorizationUri);
+            
+            // Then exchange it for a token
+            return await ExchangeAuthorizationCodeForTokenAsync(
+                tokenEndpoint,
+                clientId,
+                clientSecret,
+                redirectUri,
+                authorizationCode,
+                codeVerifier);
         };
     }
 }

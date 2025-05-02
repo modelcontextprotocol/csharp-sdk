@@ -96,52 +96,26 @@ public static class McpClientExtensions
             throw new InvalidOperationException("The HTTP client has not been configured for authorization handling. Call ConfigureAuthorizationHandler() first.");
         }
         
-        // Create OAuthAuthenticationService
-        var authService = new OAuthAuthenticationService();
+        // Create OAuthAuthenticationService - use appropriate constructor based on whether we have a handler
+        OAuthAuthenticationService authService = config.AuthorizationHandler != null
+            ? new OAuthAuthenticationService(config.AuthorizationHandler)
+            : new OAuthAuthenticationService();
         
         // Get resource URI
         var resourceUri = response.RequestMessage?.RequestUri ?? throw new InvalidOperationException("Request URI is not available.");
         
         // Start the authentication flow
-        try
-        {
-            var tokenResponse = await authService.HandleAuthenticationAsync(
-                resourceUri,
-                wwwAuthenticateHeader,
-                config.RedirectUri,
-                config.ClientId,
-                config.ClientName,
-                config.Scopes);
-            
-            // Attach the access token to future requests
-            httpClient.AttachToken(tokenResponse.AccessToken);
-            
-            return tokenResponse;
-        }
-        catch (NotImplementedException ex) when (ex.Message.Contains("Authorization requires user interaction"))
-        {
-            // Extract the authorization URL from the exception message
-            var authUrlStart = ex.Message.IndexOf("http");
-            var authUrlEnd = ex.Message.IndexOf("\n", authUrlStart);
-            var authUrl = ex.Message.Substring(authUrlStart, authUrlEnd - authUrlStart);
-            
-            // Check if a handler is registered
-            if (config.AuthorizationHandler != null)
-            {
-                // Call the handler to get the authorization code
-                var authCode = await config.AuthorizationHandler(new Uri(authUrl));
-                
-                // In a real implementation, we would use the authorization code to get a token
-                // For now, throw an exception with instructions
-                throw new NotImplementedException(
-                    "Authorization code acquired, but token exchange is not implemented. " +
-                    "In a real implementation, this would call ExchangeAuthorizationCodeForTokenAsync.");
-            }
-            else
-            {
-                // Re-throw the original exception
-                throw;
-            }
-        }
+        var tokenResponse = await authService.HandleAuthenticationAsync(
+            resourceUri,
+            wwwAuthenticateHeader,
+            config.RedirectUri,
+            config.ClientId,
+            config.ClientName,
+            config.Scopes);
+        
+        // Attach the access token to future requests
+        httpClient.AttachToken(tokenResponse.AccessToken);
+        
+        return tokenResponse;
     }
 }

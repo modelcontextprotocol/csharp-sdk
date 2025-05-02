@@ -13,6 +13,23 @@ namespace ModelContextProtocol.Auth;
 public class OAuthAuthenticationService
 {
     private static readonly HttpClient _httpClient = new();
+    private readonly Func<Uri, Task<string>>? _authorizationHandler;
+    
+    /// <summary>
+    /// Initializes a new instance of the <see cref="OAuthAuthenticationService"/> class.
+    /// </summary>
+    public OAuthAuthenticationService()
+    {
+    }
+    
+    /// <summary>
+    /// Initializes a new instance of the <see cref="OAuthAuthenticationService"/> class with an authorization handler.
+    /// </summary>
+    /// <param name="authorizationHandler">A handler to invoke when authorization is required.</param>
+    public OAuthAuthenticationService(Func<Uri, Task<string>> authorizationHandler)
+    {
+        _authorizationHandler = authorizationHandler ?? throw new ArgumentNullException(nameof(authorizationHandler));
+    }
     
     /// <summary>
     /// Handles the OAuth authentication flow when a 401 Unauthorized response is received.
@@ -23,6 +40,7 @@ public class OAuthAuthenticationService
     /// <param name="clientId">The client ID to use for authentication, or null to register a new client.</param>
     /// <param name="clientName">The client name to use for registration.</param>
     /// <param name="scopes">The requested scopes.</param>
+    /// <param name="authorizationHandler">A handler to invoke when authorization is required. If not provided, the handler from the constructor will be used.</param>
     /// <returns>The OAuth token response.</returns>
     public async Task<OAuthToken> HandleAuthenticationAsync(
         Uri resourceUri,
@@ -30,8 +48,12 @@ public class OAuthAuthenticationService
         Uri redirectUri,
         string? clientId = null,
         string? clientName = null,
-        IEnumerable<string>? scopes = null)
+        IEnumerable<string>? scopes = null,
+        Func<Uri, Task<string>>? authorizationHandler = null)
     {
+        // Use the provided authorization handler or fall back to the one from the constructor
+        var effectiveAuthHandler = authorizationHandler ?? _authorizationHandler;
+        
         // Extract resource metadata URL from WWW-Authenticate header
         var resourceMetadataUri = ExtractResourceMetadataUri(wwwAuthenticateHeader);
         if (resourceMetadataUri == null)
@@ -88,7 +110,8 @@ public class OAuthAuthenticationService
             effectiveClientId, // This is now guaranteed to be non-null
             clientSecret,
             redirectUri,
-            scopes?.ToList() ?? resourceMetadata.ScopesSupported);
+            scopes?.ToList() ?? resourceMetadata.ScopesSupported,
+            effectiveAuthHandler);
         
         return tokenResponse;
     }
@@ -219,7 +242,8 @@ public class OAuthAuthenticationService
         string clientId,
         string? clientSecret,
         Uri redirectUri,
-        IEnumerable<string> scopes)
+        IEnumerable<string> scopes,
+        Func<Uri, Task<string>>? authorizationHandler)
     {
         // Generate PKCE code verifier and challenge
         var codeVerifier = GenerateCodeVerifier();
@@ -233,26 +257,34 @@ public class OAuthAuthenticationService
             codeChallenge,
             scopes);
         
-        // At this point, in a real application, you would redirect the user to the authorizationUrl
-        // and then handle the callback to redirectUri with the authorization code.
-        // For this implementation, we'll assume the code is obtained externally and passed to us.
+        // Check if an authorization handler is available
+        if (authorizationHandler != null)
+        {
+            try
+            {
+                // Get the authorization code using the provided handler
+                string authorizationCode = await authorizationHandler(new Uri(authorizationUrl));
+                
+                // Exchange the authorization code for a token
+                return await ExchangeAuthorizationCodeForTokenAsync(
+                    authServerMetadata.TokenEndpoint,
+                    clientId,
+                    clientSecret,
+                    redirectUri,
+                    authorizationCode,
+                    codeVerifier);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to complete OAuth authorization flow: {ex.Message}", ex);
+            }
+        }
         
-        // Since we can't actually perform the browser interaction in this service,
-        // we'll throw with instructions
+        // No authorization handler available, throw with instructions
         throw new NotImplementedException(
             $"Authorization requires user interaction. Please direct the user to: {authorizationUrl}\n" +
             $"After authorization, the user will be redirected to: {redirectUri}?code=[authorization_code]\n" +
             $"You need to handle this redirect and extract the authorization code to complete the flow.");
-        
-        // In a real implementation, after getting the authorization code:
-        // var authorizationCode = GetAuthorizationCodeFromRedirect();
-        // return await ExchangeAuthorizationCodeForTokenAsync(
-        //     authServerMetadata.TokenEndpoint,
-        //     clientId,
-        //     clientSecret,
-        //     redirectUri,
-        //     authorizationCode,
-        //     codeVerifier);
     }
     
     private string GenerateCodeVerifier()
