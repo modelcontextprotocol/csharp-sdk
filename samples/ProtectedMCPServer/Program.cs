@@ -1,20 +1,22 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.AspNetCore.Auth;
-using ModelContextProtocol.Protocol.Types;
+using ProtectedMCPServer.Tools;
+using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Configure authentication to use MCP for challenges
-builder.Services.AddAuthentication(options => 
+builder.Services.AddAuthentication(options =>
 {
     options.DefaultScheme = "Bearer";
     options.DefaultChallengeScheme = McpAuthenticationDefaults.AuthenticationScheme; // Use MCP for challenges
 })
 .AddScheme<AuthenticationSchemeOptions, SimpleAuthHandler>("Bearer", options => { })
-.AddMcp(options => {
+.AddMcp(options =>
+{
     options.ResourceMetadata.AuthorizationServers.Add(new Uri("https://login.microsoftonline.com/a2213e1c-e51e-4304-9a0d-effe57f31655/v2.0"));
     options.ResourceMetadata.BearerMethodsSupported.Add("header");
     options.ResourceMetadata.ScopesSupported.AddRange(["weather.read", "weather.write"]);
@@ -34,64 +36,16 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddSingleton<ResourceMetadataService>();
 
 // Configure MCP Server
-builder.Services.AddMcpServer(options =>
-{
-    options.ServerInstructions = "This is an MCP server with OAuth authorization enabled.";
-
-    // Configure regular server capabilities like tools, prompts, resources
-    options.Capabilities = new()
-    {
-        Tools = new()
-        {
-            // Simple Echo tool
-            CallToolHandler = (request, cancellationToken) =>
-            {
-                if (request.Params?.Name == "echo")
-                {
-                    if (request.Params.Arguments?.TryGetValue("message", out var message) is not true)
-                    {
-                        throw new Exception("It happens.");
-                    }
-
-                    return new ValueTask<CallToolResponse>(new CallToolResponse()
-                    {
-                        Content = [new Content() { Text = $"Echo: {message}", Type = "text" }]
-                    });
-                }
-
-                // Protected tool that requires authorization
-                if (request.Params?.Name == "protected-data")
-                {
-                    // This tool will only be accessible to authenticated clients
-                    return new ValueTask<CallToolResponse>(new CallToolResponse()
-                    {
-                        Content = [new Content() { Text = "This is protected data that only authorized clients can access" }]
-                    });
-                }
-
-                throw new Exception("It happens.");
-            },
-
-            ListToolsHandler = async (_, _) => new()
-            {
-                Tools =
-                [
-                    new()
-                    {
-                        Name = "echo",
-                        Description = "Echoes back the message you send"
-                    },
-                    new()
-                    {
-                        Name = "protected-data",
-                        Description = "Returns protected data that requires authorization"
-                    }
-                ]
-            }
-        }
-    };
-})
+builder.Services.AddMcpServer()
+.WithTools<WeatherTools>()
 .WithHttpTransport();
+
+builder.Services.AddSingleton(_ =>
+{
+    var client = new HttpClient() { BaseAddress = new Uri("https://api.weather.gov") };
+    client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("weather-tool", "1.0"));
+    return client;
+});
 
 var app = builder.Build();
 
@@ -122,7 +76,7 @@ class SimpleAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions>
     public SimpleAuthHandler(
         IOptionsMonitor<AuthenticationSchemeOptions> options,
         ILoggerFactory logger,
-        UrlEncoder encoder) 
+        UrlEncoder encoder)
         : base(options, logger, encoder)
     {
     }
@@ -134,25 +88,25 @@ class SimpleAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions>
         {
             return Task.FromResult(AuthenticateResult.Fail("Authorization header missing"));
         }
-        
+
         // Parse the token
         var headerValue = authHeader.ToString();
         if (!headerValue.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
         {
             return Task.FromResult(AuthenticateResult.Fail("Bearer token missing"));
         }
-        
+
         var token = headerValue["Bearer ".Length..].Trim();
-        
+
         // Accept any non-empty token for testing purposes
         if (string.IsNullOrEmpty(token))
         {
             return Task.FromResult(AuthenticateResult.Fail("Token cannot be empty"));
         }
-        
+
         // Log the received token for debugging
         Console.WriteLine($"Received and accepted token: {token}");
-        
+
         // Create a claims identity with required claims
         var claims = new[]
         {
@@ -160,11 +114,11 @@ class SimpleAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions>
             new Claim(ClaimTypes.NameIdentifier, "user123"),
             new Claim("scope", "weather.read")
         };
-        
+
         var identity = new ClaimsIdentity(claims, "Bearer");
         var principal = new ClaimsPrincipal(identity);
         var ticket = new AuthenticationTicket(principal, "Bearer");
-        
+
         return Task.FromResult(AuthenticateResult.Success(ticket));
     }
 }
