@@ -40,36 +40,21 @@ public static class McpAuthenticationExtensions
         string displayName,
         Action<McpAuthenticationOptions>? configureOptions = null)
     {
-        // Create options instance to pass to ResourceMetadataService
-        var options = new McpAuthenticationOptions();
-        configureOptions?.Invoke(options);
-                
-        // Register ResourceMetadataService with options
-        builder.Services.AddSingleton(sp => {
-            var service = new ResourceMetadataService();
-
-            // Configure the service with the resource metadata from options
-            service.ConfigureMetadata(metadata => {
-                metadata.Resource = options.ResourceMetadata.Resource;
-                metadata.AuthorizationServers = options.ResourceMetadata.AuthorizationServers;
-                metadata.BearerMethodsSupported = options.ResourceMetadata.BearerMethodsSupported;
-                metadata.ScopesSupported = options.ResourceMetadata.ScopesSupported;
-                metadata.ResourceDocumentation = options.ResourceMetadata.ResourceDocumentation;
-            });
-            
-            return service;
-        });
-        
-        builder.Services.TryAddSingleton<McpAuthorizationMarker>();
+        if (configureOptions != null)
+        {
+            if (authenticationScheme == McpAuthenticationDefaults.AuthenticationScheme)
+            {
+                builder.Services.Configure(configureOptions);
+            }
+            else
+            {
+                builder.Services.Configure(authenticationScheme, configureOptions);
+            }
+        }
 
         return builder.AddScheme<McpAuthenticationOptions, McpAuthenticationHandler>(
-            authenticationScheme, 
-            displayName, 
-            opt => {
-                if (configureOptions != null)
-                {
-                    configureOptions(opt);
-                }
-            });
+            authenticationScheme,
+            displayName,
+            options => { }); // No-op to avoid overriding
     }
 }

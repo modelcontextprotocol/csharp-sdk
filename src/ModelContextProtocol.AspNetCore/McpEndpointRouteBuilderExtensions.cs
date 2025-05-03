@@ -52,24 +52,6 @@ public static class McpEndpointRouteBuilderExtensions
             .WithMetadata(new AcceptsMetadata(["application/json"]))
             .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status202Accepted));
 
-        // Check if authentication/authorization is configured
-        var authMarker = endpoints.ServiceProvider.GetService<McpAuthorizationMarker>();
-        if (authMarker != null)
-        {
-            // Authorization is configured, so automatically map the OAuth protected resource endpoint
-            var resourceMetadataService = endpoints.ServiceProvider.GetRequiredService<ResourceMetadataService>();
-            
-            var handler = new ResourceMetadataEndpointHandler(resourceMetadataService);
-            
-            var options = endpoints.ServiceProvider.GetRequiredService<IOptions<McpAuthenticationOptions>>();
-            var metadataPath = options.Value.ResourceMetadataUri.ToString();
-            
-            sseGroup.MapGet(metadataPath, handler.HandleRequest)
-                .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["application/json"]))
-                .AllowAnonymous()
-                .WithDisplayName("MCP Resource Metadata");
-        }
-
         return mcpGroup;
     }
 }
