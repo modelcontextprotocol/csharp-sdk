@@ -363,11 +363,12 @@ public partial class OAuthService
         var bytes = new byte[length];
         using var rng = RandomNumberGenerator.Create();
         rng.GetBytes(bytes);
-        return Convert.ToBase64String(bytes)
-            .Replace('+', '-')
-            .Replace('/', '_')
-            .Replace("=", "")
-            .Substring(0, length);
+        
+        // Use the optimized Base64UrlHelpers for encoding
+        string base64Url = Base64UrlHelpers.Encode(bytes);
+        
+        // Ensure we return exactly the requested length
+        return base64Url.Substring(0, Math.Min(base64Url.Length, length));
     }
     
     // This method would be used in a real implementation after receiving the authorization code
