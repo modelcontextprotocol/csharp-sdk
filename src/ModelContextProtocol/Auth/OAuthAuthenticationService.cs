@@ -17,6 +17,31 @@ public class OAuthAuthenticationService
     private readonly Func<Uri, Task<string>>? _authorizationHandler;
     
     /// <summary>
+    /// Represents the PKCE code challenge and verifier for an authorization flow.
+    /// </summary>
+    public class PkceValues
+    {
+        /// <summary>
+        /// The code verifier used to generate the code challenge.
+        /// </summary>
+        public string CodeVerifier { get; }
+        
+        /// <summary>
+        /// The code challenge sent to the authorization server.
+        /// </summary>
+        public string CodeChallenge { get; }
+        
+        /// <summary>
+        /// Initializes a new instance of the <see cref="PkceValues"/> class.
+        /// </summary>
+        public PkceValues(string codeVerifier, string codeChallenge)
+        {
+            CodeVerifier = codeVerifier;
+            CodeChallenge = codeChallenge;
+        }
+    }
+    
+    /// <summary>
     /// Initializes a new instance of the <see cref="OAuthAuthenticationService"/> class.
     /// </summary>
     public OAuthAuthenticationService()
@@ -30,6 +55,59 @@ public class OAuthAuthenticationService
     public OAuthAuthenticationService(Func<Uri, Task<string>> authorizationHandler)
     {
         _authorizationHandler = authorizationHandler ?? throw new ArgumentNullException(nameof(authorizationHandler));
+    }
+    
+    /// <summary>
+    /// Generates new PKCE values.
+    /// </summary>
+    /// <returns>A <see cref="PkceValues"/> instance containing the code verifier and challenge.</returns>
+    public static PkceValues GeneratePkceValues()
+    {
+        var codeVerifier = GenerateCodeVerifier();
+        var codeChallenge = GenerateCodeChallenge(codeVerifier);
+        return new PkceValues(codeVerifier, codeChallenge);
+    }
+    
+    /// <summary>
+    /// Generates a cryptographically random code verifier for PKCE.
+    /// </summary>
+    /// <returns>A base64url encoded string to be used as the code verifier.</returns>
+    public static string GenerateCodeVerifier()
+    {
+        // Generate a cryptographically random code verifier
+        var bytes = new byte[64];
+        using var rng = RandomNumberGenerator.Create();
+        rng.GetBytes(bytes);
+        
+        // Base64url encode the random bytes
+        var base64 = Convert.ToBase64String(bytes);
+        var base64Url = base64
+            .Replace('+', '-')
+            .Replace('/', '_')
+            .Replace("=", "");
+        
+        return base64Url;
+    }
+    
+    /// <summary>
+    /// Generates a code challenge from a code verifier using the S256 method.
+    /// </summary>
+    /// <param name="codeVerifier">The code verifier to generate the challenge from.</param>
+    /// <returns>A base64url encoded SHA256 hash of the code verifier.</returns>
+    public static string GenerateCodeChallenge(string codeVerifier)
+    {
+        // Create code challenge using S256 method
+        using var sha256 = SHA256.Create();
+        var challengeBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(codeVerifier));
+        
+        // Base64url encode the hash
+        var base64 = Convert.ToBase64String(challengeBytes);
+        var base64Url = base64
+            .Replace('+', '-')
+            .Replace('/', '_')
+            .Replace("=", "");
+        
+        return base64Url;
     }
     
     /// <summary>
@@ -251,16 +329,15 @@ public class OAuthAuthenticationService
         IEnumerable<string> scopes,
         Func<Uri, Task<string>>? authorizationHandler)
     {
-        // Generate PKCE code verifier and challenge
-        var codeVerifier = GenerateCodeVerifier();
-        var codeChallenge = GenerateCodeChallenge(codeVerifier);
+        // Generate PKCE values using our public method
+        var pkceValues = GeneratePkceValues();
         
         // Build authorization URL
         var authorizationUrl = BuildAuthorizationUrl(
             authServerMetadata.AuthorizationEndpoint,
             clientId,
             redirectUri,
-            codeChallenge,
+            pkceValues.CodeChallenge,
             scopes);
         
         // Check if an authorization handler is available
@@ -278,7 +355,7 @@ public class OAuthAuthenticationService
                     clientSecret,
                     redirectUri,
                     authorizationCode,
-                    codeVerifier);
+                    pkceValues.CodeVerifier);
             }
             catch (Exception ex)
             {
@@ -291,39 +368,6 @@ public class OAuthAuthenticationService
             $"Authorization requires user interaction. Please direct the user to: {authorizationUrl}\n" +
             $"After authorization, the user will be redirected to: {redirectUri}?code=[authorization_code]\n" +
             $"You need to handle this redirect and extract the authorization code to complete the flow.");
-    }
-    
-    private string GenerateCodeVerifier()
-    {
-        // Generate a cryptographically random code verifier
-        var bytes = new byte[64];
-        using var rng = RandomNumberGenerator.Create();
-        rng.GetBytes(bytes);
-        
-        // Base64url encode the random bytes
-        var base64 = Convert.ToBase64String(bytes);
-        var base64Url = base64
-            .Replace('+', '-')
-            .Replace('/', '_')
-            .Replace("=", "");
-        
-        return base64Url;
-    }
-    
-    private string GenerateCodeChallenge(string codeVerifier)
-    {
-        // Create code challenge using S256 method
-        using var sha256 = SHA256.Create();
-        var challengeBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(codeVerifier));
-        
-        // Base64url encode the hash
-        var base64 = Convert.ToBase64String(challengeBytes);
-        var base64Url = base64
-            .Replace('+', '-')
-            .Replace('/', '_')
-            .Replace("=", "");
-        
-        return base64Url;
     }
     
     private string BuildAuthorizationUrl(
