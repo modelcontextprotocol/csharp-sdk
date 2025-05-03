@@ -82,14 +82,18 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
     /// </summary>
     private async Task HandleResourceMetadataRequestAsync()
     {
-        // Get a copy of the resource metadata from options to avoid modifying the original
+        // Get resource metadata from options, using the dynamic provider if available
         var options = _optionsMonitor.CurrentValue;
+        var resourceMetadata = options.GetResourceMetadata(Request.HttpContext);
+        
+        // Create a copy to avoid modifying the original
         var metadata = new ProtectedResourceMetadata
         {
-            AuthorizationServers = [.. options.ResourceMetadata.AuthorizationServers],
-            BearerMethodsSupported = [.. options.ResourceMetadata.BearerMethodsSupported],
-            ScopesSupported = [.. options.ResourceMetadata.ScopesSupported],
-            ResourceDocumentation = options.ResourceMetadata.ResourceDocumentation
+            AuthorizationServers = [.. resourceMetadata.AuthorizationServers],
+            BearerMethodsSupported = [.. resourceMetadata.BearerMethodsSupported],
+            ScopesSupported = [.. resourceMetadata.ScopesSupported],
+            ResourceDocumentation = resourceMetadata.ResourceDocumentation,
+            Resource = resourceMetadata.Resource
         };
         
         // Set default resource if not set
@@ -130,7 +134,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         
         // Set the WWW-Authenticate header with the resource_metadata
         string headerValue = $"Bearer realm=\"{Scheme.Name}\"";
-        headerValue += $", resource_metadata=\"{Uri.EscapeDataString(rawPrmDocumentUri)}\"";
+        headerValue += $", resource_metadata=\"{rawPrmDocumentUri}\"";
         
         Response.Headers["WWW-Authenticate"] = headerValue;
         

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using ModelContextProtocol.AspNetCore.Auth;
+using ModelContextProtocol.Auth.Types;
 using ProtectedMCPServer.Tools;
 using System.Net.Http.Headers;
 using System.Security.Claims;
@@ -67,11 +68,21 @@ builder.Services.AddAuthentication(options =>
 })
 .AddMcp(options =>
 {
-    // Configure the MCP authentication with the same Entra ID server
-    options.ResourceMetadata.AuthorizationServers.Add(new Uri($"{instance}{tenantId}/v2.0"));
-    options.ResourceMetadata.BearerMethodsSupported.Add("header");
-    options.ResourceMetadata.ScopesSupported.AddRange(["api://167b4284-3f92-4436-92ed-38b38f83ae08/weather.read"]);
-    options.ResourceMetadata.ResourceDocumentation = new Uri("https://docs.example.com/api/weather");
+    options.ResourceMetadataProvider = context => 
+    {
+        var metadata = new ProtectedResourceMetadata
+        {
+            BearerMethodsSupported = { "header" },
+            ResourceDocumentation = new Uri("https://docs.example.com/api/weather"),
+            AuthorizationServers = { new Uri($"{instance}{tenantId}/v2.0") }
+        };
+
+        metadata.ScopesSupported.AddRange(new[] {
+            "api://167b4284-3f92-4436-92ed-38b38f83ae08/weather.read" 
+        });
+        
+        return metadata;
+    };
 });
 
 // Add authorization services
@@ -104,15 +115,18 @@ app.MapMcp().RequireAuthorization(McpAuthenticationDefaults.AuthenticationScheme
 
 Console.WriteLine("Starting MCP server with authorization at http://localhost:7071");
 Console.WriteLine("PRM Document URL: http://localhost:7071/.well-known/oauth-protected-resource");
+Console.WriteLine("  - This endpoint returns different metadata based on the client type!");
+Console.WriteLine("  - Try with different User-Agent headers or add ?mobile query parameter");
 
 Console.WriteLine();
 Console.WriteLine("Entra ID (Azure AD) JWT token validation is configured");
 Console.WriteLine();
-Console.WriteLine("To test the server:");
-Console.WriteLine("1. Use an MCP client that supports OAuth flow with Microsoft Entra ID");
-Console.WriteLine("2. The client should obtain a token for audience: api://weather-api");
-Console.WriteLine("3. The token should be issued by Microsoft Entra ID tenant: " + tenantId);
-Console.WriteLine("4. Include this token in the Authorization header of requests");
+Console.WriteLine("To test the server with different client types:");
+Console.WriteLine("1. Standard client: No special headers needed");
+Console.WriteLine("2. Mobile client: Add 'mobile' in User-Agent or use ?mobile query parameter");
+Console.WriteLine("3. Partner client: Include 'partner' in User-Agent or add X-Partner-API header");
+Console.WriteLine();
+Console.WriteLine("Each client type will receive different authorization requirements!");
 Console.WriteLine();
 Console.WriteLine("Press Ctrl+C to stop the server");
 
