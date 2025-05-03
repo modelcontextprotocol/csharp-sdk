@@ -1,9 +1,7 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using System;
 using System.Text.Encodings.Web;
-using System.Threading.Tasks;
 
 namespace ModelContextProtocol.AspNetCore.Auth;
 
@@ -12,19 +10,15 @@ namespace ModelContextProtocol.AspNetCore.Auth;
 /// </summary>
 public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationOptions>
 {
-    private readonly ResourceMetadataService _resourceMetadataService;
-
     /// <summary>
     /// Initializes a new instance of the <see cref="McpAuthenticationHandler"/> class.
     /// </summary>
     public McpAuthenticationHandler(
         IOptionsMonitor<McpAuthenticationOptions> options,
         ILoggerFactory logger,
-        UrlEncoder encoder,
-        ResourceMetadataService resourceMetadataService)
+        UrlEncoder encoder)
         : base(options, logger, encoder)
     {
-        _resourceMetadataService = resourceMetadataService;
     }
 
     /// <inheritdoc />
