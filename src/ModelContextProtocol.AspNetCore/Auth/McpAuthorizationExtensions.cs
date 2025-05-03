@@ -40,15 +40,36 @@ public static class McpAuthenticationExtensions
         string displayName,
         Action<McpAuthenticationOptions>? configureOptions = null)
     {
-        builder.Services.TryAddSingleton<ResourceMetadataService>();
+        // Create options instance to pass to ResourceMetadataService
+        var options = new McpAuthenticationOptions();
+        configureOptions?.Invoke(options);
+                
+        // Register ResourceMetadataService with options
+        builder.Services.AddSingleton(sp => {
+            var service = new ResourceMetadataService();
+
+            // Configure the service with the resource metadata from options
+            service.ConfigureMetadata(metadata => {
+                metadata.Resource = options.ResourceMetadata.Resource;
+                metadata.AuthorizationServers = options.ResourceMetadata.AuthorizationServers;
+                metadata.BearerMethodsSupported = options.ResourceMetadata.BearerMethodsSupported;
+                metadata.ScopesSupported = options.ResourceMetadata.ScopesSupported;
+                metadata.ResourceDocumentation = options.ResourceMetadata.ResourceDocumentation;
+            });
+            
+            return service;
+        });
         
-        // Register the marker to indicate that MCP authorization is configured
-        // This will be used by MapMcp to apply authorization to endpoints
         builder.Services.TryAddSingleton<McpAuthorizationMarker>();
 
         return builder.AddScheme<McpAuthenticationOptions, McpAuthenticationHandler>(
             authenticationScheme, 
             displayName, 
-            configureOptions ?? (options => { }));
+            opt => {
+                if (configureOptions != null)
+                {
+                    configureOptions(opt);
+                }
+            });
     }
 }
