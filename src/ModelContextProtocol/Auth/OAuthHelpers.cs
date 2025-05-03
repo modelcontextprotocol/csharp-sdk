@@ -30,31 +30,14 @@ public static class OAuthHelpers
         int listenPort = 8888,
         string redirectPath = "/callback")
     {
-        return async (Uri authorizationUri) =>
+        return async authorizationUri =>
         {
-            string redirectUri = $"http://{hostname}:{listenPort}{redirectPath}";
-            
-            // Add the redirect_uri parameter to the authorization URI if it's not already present
-            string authUrl = authorizationUri.ToString();
-            if (!authUrl.Contains("redirect_uri="))
-            {
-                var separator = authUrl.Contains("?") ? "&" : "?";
-                authUrl = $"{authUrl}{separator}redirect_uri={WebUtility.UrlEncode(redirectUri)}";
-            }
-            
-            var authCodeTcs = new TaskCompletionSource<string>();
-            
             // Ensure the path has a trailing slash for the HttpListener prefix
-            string listenerPrefix = $"http://{hostname}:{listenPort}{redirectPath}";
-            if (!listenerPrefix.EndsWith("/"))
-            {
-                listenerPrefix += "/";
-            }
+            var listenerPrefix = $"http://{hostname}:{listenPort}{redirectPath.TrimEnd('/')}/";
 
             using var listener = new HttpListener();
             listener.Prefixes.Add(listenerPrefix);
-            
-            // Start the listener BEFORE opening the browser
+
             try
             {
                 listener.Start();
@@ -64,101 +47,84 @@ public static class OAuthHelpers
                 throw new InvalidOperationException($"Failed to start HTTP listener on {listenerPrefix}: {ex.Message}");
             }
 
-            // Create a cancellation token source with a timeout
             using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
             
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    // GetContextAsync doesn't accept a cancellation token, so we need to handle cancellation manually
-                    var contextTask = listener.GetContextAsync();
-                    var completedTask = await Task.WhenAny(contextTask, Task.Delay(Timeout.Infinite, cts.Token));
-                    
-                    if (completedTask == contextTask)
-                    {
-                        var context = await contextTask;
-                        var request = context.Request;
-                        var response = context.Response;
-
-                        string? code = request.QueryString["code"];
-                        string? error = request.QueryString["error"];
-                        string html;
-                        string? resultCode = null;
-
-                        if (!string.IsNullOrEmpty(error))
-                        {
-                            html = $"<html><body><h1>Authorization Failed</h1><p>Error: {WebUtility.HtmlEncode(error)}</p></body></html>";
-                        }
-                        else if (string.IsNullOrEmpty(code))
-                        {
-                            html = "<html><body><h1>Authorization Failed</h1><p>No authorization code received.</p></body></html>";
-                        }
-                        else
-                        {
-                            html = "<html><body><h1>Authorization Successful</h1><p>You may now close this window.</p></body></html>";
-                            resultCode = code;
-                        }
-
-                        try
-                        {
-                            // Send response to browser
-                            byte[] buffer = Encoding.UTF8.GetBytes(html);
-                            response.ContentType = "text/html";
-                            response.ContentLength64 = buffer.Length;
-                            response.OutputStream.Write(buffer, 0, buffer.Length);
-                            
-                            // IMPORTANT: Explicitly close the response to ensure it's fully sent
-                            response.Close();
-                            
-                            // Now that we've finished processing the browser response,
-                            // we can safely signal completion or failure with the auth code
-                            if (resultCode != null)
-                            {
-                                authCodeTcs.TrySetResult(resultCode);
-                            }
-                            else if (!string.IsNullOrEmpty(error))
-                            {
-                                authCodeTcs.TrySetException(new InvalidOperationException($"Authorization failed: {error}"));
-                            }
-                            else
-                            {
-                                authCodeTcs.TrySetException(new InvalidOperationException("No authorization code received"));
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            authCodeTcs.TrySetException(new InvalidOperationException($"Error processing browser response: {ex.Message}"));
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    authCodeTcs.TrySetException(ex);
-                }
-            });
-
-            // Now open the browser AFTER the listener is started
-            await openBrowser(authUrl);
+            await openBrowser(authorizationUri.ToString());
 
             try
             {
-                // Use a timeout to avoid hanging indefinitely
-                string authCode = await authCodeTcs.Task.WaitAsync(cts.Token);
-                return authCode;
-            }
-            catch (OperationCanceledException)
-            {
-                throw new InvalidOperationException("Authorization timed out after 5 minutes.");
+                var contextTask = listener.GetContextAsync();
+                var completedTask = await Task.WhenAny(contextTask, Task.Delay(Timeout.Infinite, cts.Token));
+                
+                if (completedTask != contextTask)
+                {
+                    throw new InvalidOperationException("Authorization timed out after 5 minutes.");
+                }
+
+                var context = await contextTask;
+                return ProcessCallback(context);
             }
             finally
             {
-                // Ensure the listener is stopped when we're done
                 listener.Stop();
             }
         };
     }
-    
+
+    /// <summary>
+    /// Processes the HTTP callback and extracts the authorization code.
+    /// </summary>
+    private static string ProcessCallback(HttpListenerContext context)
+    {
+        var request = context.Request;
+        var response = context.Response;
+
+        string? code = request.QueryString["code"];
+        string? error = request.QueryString["error"];
+        string html;
+
+        if (!string.IsNullOrEmpty(error))
+        {
+            html = $"<html><body><h1>Authorization Failed</h1><p>Error: {WebUtility.HtmlEncode(error)}</p></body></html>";
+            SendResponse(response, html);
+            throw new InvalidOperationException($"Authorization failed: {error}");
+        }
+        
+        if (string.IsNullOrEmpty(code))
+        {
+            html = "<html><body><h1>Authorization Failed</h1><p>No authorization code received.</p></body></html>";
+            SendResponse(response, html);
+            throw new InvalidOperationException("No authorization code received");
+        }
+        
+        html = "<html><body><h1>Authorization Successful</h1><p>You may now close this window.</p></body></html>";
+        SendResponse(response, html);
+        return code;
+    }
+
+    /// <summary>
+    /// Sends an HTML response to the browser.
+    /// </summary>
+    private static void SendResponse(HttpListenerResponse response, string html)
+    {
+        try
+        {
+            byte[] buffer = Encoding.UTF8.GetBytes(html);
+            response.ContentType = "text/html";
+            response.ContentLength64 = buffer.Length;
+            response.OutputStream.Write(buffer, 0, buffer.Length);
+            
+            // IMPORTANT: Explicitly close the response to ensure it's fully sent
+            response.Close();
+        }
+        catch
+        {
+            // Silently handle errors - we're already in an error handling path
+            // and can't throw further exceptions or log to the console in a library
+            // TODO: Need a better implementation here.
+        }
+    }
+
     /// <summary>
     /// Exchanges an authorization code for an OAuth token.
     /// </summary>
