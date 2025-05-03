@@ -38,22 +38,28 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
 
         // Generate the full resource metadata URL based on the current request
         var baseUrl = $"{Request.Scheme}://{Request.Host}";
-        var metadataPath = Options.ResourceMetadataUri.ToString();
-        var metadataUrl = metadataPath.StartsWith("http", StringComparison.OrdinalIgnoreCase)
-            ? metadataPath
-            : $"{baseUrl}{metadataPath}";
+        
+        // Properly parse and validate the ResourceMetadataUri
+        if (!Uri.TryCreate(Options.ResourceMetadataUri.ToString(), UriKind.Absolute, out var prmDocumentUri))
+            throw new InvalidOperationException("Invalid ResourceMetadataUri in options.");
+
+        // Verify that the URI scheme starts with "http"
+        if (!prmDocumentUri.Scheme.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("ResourceMetadataUri must use HTTP or HTTPS scheme.");
+
+        var rawPrmDocumentUri = prmDocumentUri.ToString();
 
         // Initialize properties if null
         properties ??= new AuthenticationProperties();
         
         // Set the WWW-Authenticate header with the resource_metadata
         string headerValue = $"Bearer realm=\"{Scheme.Name}\"";
-        headerValue += $", resource_metadata=\"{metadataUrl}\"";
+        headerValue += $", resource_metadata=\"{rawPrmDocumentUri}\"";
         
         Response.Headers["WWW-Authenticate"] = headerValue;
         
         // Store the resource_metadata in properties in case other handlers need it
-        properties.Items["resource_metadata"] = metadataUrl;
+        properties.Items["resource_metadata"] = rawPrmDocumentUri;
         
         return base.HandleChallengeAsync(properties);
     }
