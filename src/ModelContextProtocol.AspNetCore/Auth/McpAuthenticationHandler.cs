@@ -130,7 +130,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         
         // Set the WWW-Authenticate header with the resource_metadata
         string headerValue = $"Bearer realm=\"{Scheme.Name}\"";
-        headerValue += $", resource_metadata=\"{rawPrmDocumentUri}\"";
+        headerValue += $", resource_metadata=\"{Uri.EscapeDataString(rawPrmDocumentUri)}\"";
         
         Response.Headers["WWW-Authenticate"] = headerValue;
         
