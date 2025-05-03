@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using ModelContextProtocol.Auth.Types;
+using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
 
 namespace ModelContextProtocol.Auth;
@@ -54,14 +55,8 @@ public partial class OAuthService
         using var rng = RandomNumberGenerator.Create();
         rng.GetBytes(bytes);
         
-        // Base64url encode the random bytes
-        var base64 = Convert.ToBase64String(bytes);
-        var base64Url = base64
-            .Replace('+', '-')
-            .Replace('/', '_')
-            .Replace("=", "");
-        
-        return base64Url;
+        // Use the optimized Base64UrlHelpers for encoding
+        return Base64UrlHelpers.Encode(bytes);
     }
     
     /// <summary>
@@ -75,14 +70,8 @@ public partial class OAuthService
         using var sha256 = SHA256.Create();
         var challengeBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(codeVerifier));
         
-        // Base64url encode the hash
-        var base64 = Convert.ToBase64String(challengeBytes);
-        var base64Url = base64
-            .Replace('+', '-')
-            .Replace('/', '_')
-            .Replace("=", "");
-        
-        return base64Url;
+        // Use the optimized Base64UrlHelpers for encoding
+        return Base64UrlHelpers.Encode(challengeBytes);
     }
     
     /// <summary>
