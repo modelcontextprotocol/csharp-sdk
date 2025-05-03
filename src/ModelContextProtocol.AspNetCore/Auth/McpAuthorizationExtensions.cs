@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using ModelContextProtocol.AspNetCore.Auth;
 
 namespace Microsoft.Extensions.DependencyInjection;

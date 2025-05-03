@@ -2,9 +2,7 @@
 using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using ModelContextProtocol.AspNetCore;
-using ModelContextProtocol.AspNetCore.Auth;
 using ModelContextProtocol.Protocol.Messages;
 using System.Diagnostics.CodeAnalysis;
 
