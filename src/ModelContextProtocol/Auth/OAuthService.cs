@@ -416,4 +416,82 @@ public partial class OAuthService
         
         return tokenResponse;
     }
+
+    /// <summary>
+    /// Refreshes an OAuth access token using a refresh token.
+    /// </summary>
+    /// <param name="tokenEndpoint">The token endpoint URI from the authorization server metadata.</param>
+    /// <param name="clientId">The client ID to use for authentication.</param>
+    /// <param name="clientSecret">The client secret to use for authentication, if available.</param>
+    /// <param name="refreshToken">The refresh token to use for obtaining a new access token.</param>
+    /// <param name="scopes">Optional scopes to request. If not provided, the server will use the same scopes as the original token.</param>
+    /// <returns>A new OAuth token response containing a new access token and potentially a new refresh token.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when required parameters are null.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when the token refresh fails.</exception>
+    public async Task<OAuthToken> RefreshAccessTokenAsync(
+        Uri tokenEndpoint,
+        string clientId,
+        string? clientSecret,
+        string refreshToken,
+        IEnumerable<string>? scopes = null)
+    {
+        if (tokenEndpoint == null) throw new ArgumentNullException(nameof(tokenEndpoint));
+        if (string.IsNullOrEmpty(clientId)) throw new ArgumentNullException(nameof(clientId));
+        if (string.IsNullOrEmpty(refreshToken)) throw new ArgumentNullException(nameof(refreshToken));
+
+        var tokenRequest = new Dictionary<string, string>
+        {
+            ["grant_type"] = "refresh_token",
+            ["refresh_token"] = refreshToken,
+            ["client_id"] = clientId
+        };
+
+        // Add scopes if provided
+        if (scopes != null)
+        {
+            tokenRequest["scope"] = string.Join(" ", scopes);
+        }
+
+        var requestContent = new FormUrlEncodedContent(tokenRequest);
+        
+        HttpResponseMessage response;
+        if (!string.IsNullOrEmpty(clientSecret))
+        {
+            // Add client authentication if secret is available
+            var authValue = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{clientId}:{clientSecret}"));
+            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authValue);
+            response = await _httpClient.PostAsync(tokenEndpoint, requestContent);
+            _httpClient.DefaultRequestHeaders.Authorization = null;
+        }
+        else
+        {
+            response = await _httpClient.PostAsync(tokenEndpoint, requestContent);
+        }
+
+        try
+        {
+            response.EnsureSuccessStatusCode();
+            
+            var json = await response.Content.ReadAsStringAsync();
+            var tokenResponse = JsonSerializer.Deserialize(json, McpJsonUtilities.DefaultOptions.GetTypeInfo<OAuthToken>());
+            if (tokenResponse == null)
+            {
+                throw new InvalidOperationException("Failed to parse token response.");
+            }
+            
+            // Some authorization servers might not return a new refresh token
+            // If no new refresh token is provided, keep the old one
+            if (string.IsNullOrEmpty(tokenResponse.RefreshToken))
+            {
+                tokenResponse.RefreshToken = refreshToken;
+            }
+            
+            return tokenResponse;
+        }
+        catch (HttpRequestException ex)
+        {
+            string errorContent = await response.Content.ReadAsStringAsync();
+            throw new InvalidOperationException($"Failed to refresh access token: {ex.Message}. Response: {errorContent}", ex);
+        }
+    }
 }
