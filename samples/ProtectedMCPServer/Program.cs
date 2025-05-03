@@ -77,7 +77,10 @@ builder.Services.AddAuthentication(options =>
 // Add authorization services
 builder.Services.AddAuthorization(options =>
 {
-    options.AddMcpPolicy();
+    // Modify the MCP policy to include both MCP and JWT Bearer schemes
+    // This ensures the bearer token is properly authenticated while maintaining MCP for challenges
+    options.AddMcpPolicy(configurePolicy: builder => 
+        builder.AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme));
 });
 
 // Configure MCP Server

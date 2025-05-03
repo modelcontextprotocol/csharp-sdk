@@ -48,6 +48,36 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
     }
 
     /// <summary>
+    /// Gets the base URL from the current request, including scheme, host, and path base.
+    /// </summary>
+    private string GetBaseUrl() => $"{Request.Scheme}://{Request.Host}{Request.PathBase}";
+
+    /// <summary>
+    /// Gets the absolute URI for the resource metadata endpoint.
+    /// </summary>
+    private string GetAbsoluteResourceMetadataUri()
+    {
+        var options = _optionsMonitor.CurrentValue;
+        var resourceMetadataUri = options.ResourceMetadataUri;
+        
+        if (resourceMetadataUri.IsAbsoluteUri)
+        {
+            return resourceMetadataUri.ToString();
+        }
+        
+        // For relative URIs, combine with the base URL
+        string baseUrl = GetBaseUrl();
+        string resourceMetadataPath = resourceMetadataUri.ToString();
+        
+        if (!Uri.TryCreate(baseUrl + resourceMetadataPath, UriKind.Absolute, out var absoluteUri))
+        {
+            throw new InvalidOperationException("Could not create absolute URI for resource metadata.");
+        }
+        
+        return absoluteUri.ToString();
+    }
+
+    /// <summary>
     /// Handles the resource metadata request.
     /// </summary>
     private async Task HandleResourceMetadataRequestAsync()
@@ -65,10 +95,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         // Set default resource if not set
         if (metadata.Resource == null)
         {
-            var request = Request;
-            var hostString = request.Host.Value;
-            var scheme = request.Scheme;
-            metadata.Resource = new Uri($"{scheme}://{hostString}");
+            metadata.Resource = new Uri(GetBaseUrl());
         }
         
         Response.StatusCode = StatusCodes.Status200OK;
@@ -95,29 +122,8 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         // Set the response status code
         Response.StatusCode = StatusCodes.Status401Unauthorized;
 
-        // Get the current options to ensure we have the latest values
-        var options = _optionsMonitor.CurrentValue;
-        
-        // Generate the full resource metadata URL based on the current request
-        var baseUrl = $"{Request.Scheme}://{Request.Host}";
-        
-        string resourceMetadataUriString = options.ResourceMetadataUri.ToString();
-        string rawPrmDocumentUri;
-        
-        // Check if the URI is relative or absolute
-        if (options.ResourceMetadataUri.IsAbsoluteUri)
-        {
-            rawPrmDocumentUri = resourceMetadataUriString;
-        }
-        else
-        {
-            // For relative URIs, combine with the base URL
-            if (!Uri.TryCreate(baseUrl + resourceMetadataUriString, UriKind.Absolute, out var absoluteUri))
-            {
-                throw new InvalidOperationException("Could not create absolute URI for resource metadata.");
-            }
-            rawPrmDocumentUri = absoluteUri.ToString();
-        }
+        // Get the absolute URI for the resource metadata
+        string rawPrmDocumentUri = GetAbsoluteResourceMetadataUri();
 
         // Initialize properties if null
         properties ??= new AuthenticationProperties();
