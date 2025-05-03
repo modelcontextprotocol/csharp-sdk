@@ -165,10 +165,15 @@ public class OAuthAuthenticationService
     
     private async Task<AuthorizationServerMetadata> DiscoverAuthorizationServerMetadataAsync(Uri authServerUri)
     {
-        // Try common well-known endpoints
-        var openIdConfigUri = new Uri(authServerUri, ".well-known/openid-configuration");
-        var oauthConfigUri = new Uri(authServerUri, ".well-known/oauth-authorization-server");
-        
+        // Ensure the authServerUri ends with a trailing slash
+        var baseUri = authServerUri.AbsoluteUri.EndsWith("/")
+            ? authServerUri
+            : new Uri(authServerUri.AbsoluteUri + "/");
+
+        // Now combine with the well-known endpoints
+        var openIdConfigUri = new Uri(baseUri, ".well-known/openid-configuration");
+        var oauthConfigUri = new Uri(baseUri, ".well-known/oauth-authorization-server");
+
         // Try OpenID Connect configuration endpoint first
         try
         {

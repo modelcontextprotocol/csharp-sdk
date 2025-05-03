@@ -17,7 +17,7 @@ class Program
         // Create the authorization config with HTTP listener
         var authConfig = new AuthorizationConfig
         {
-            ClientId = "04f79824-ab56-4511-a7cb-d7deaea92dc0",
+            ClientId = "6ad97b5f-7a7b-413f-8603-7a3517d4adb8",
             Scopes = ["api://167b4284-3f92-4436-92ed-38b38f83ae08/weather.read"]
         }.UseHttpListener(hostname: "localhost", listenPort: 1170);
 

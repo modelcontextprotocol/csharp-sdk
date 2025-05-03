@@ -1,25 +1,76 @@
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.Extensions.Options;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
 using ModelContextProtocol.AspNetCore.Auth;
 using ProtectedMCPServer.Tools;
 using System.Net.Http.Headers;
 using System.Security.Claims;
-using System.Text.Encodings.Web;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configure authentication to use MCP for challenges
+// Define Entra ID (Azure AD) configuration
+var tenantId = "a2213e1c-e51e-4304-9a0d-effe57f31655"; // This is the tenant ID from your existing configuration
+var instance = "https://login.microsoftonline.com/";
+
+// Configure authentication to use MCP for challenges and Entra ID JWT Bearer for token validation
 builder.Services.AddAuthentication(options =>
 {
-    options.DefaultScheme = "Bearer";
+    options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
     options.DefaultChallengeScheme = McpAuthenticationDefaults.AuthenticationScheme; // Use MCP for challenges
 })
-.AddScheme<AuthenticationSchemeOptions, SimpleAuthHandler>("Bearer", options => { })
+.AddJwtBearer(options =>
+{
+    // Configure for Entra ID (Azure AD) token validation
+    options.Authority = $"{instance}{tenantId}/v2.0";
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        // Configure validation parameters for Entra ID tokens
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+
+        // Default audience - you should replace this with your actual app/API registration ID
+        ValidAudience = "167b4284-3f92-4436-92ed-38b38f83ae08",
+
+        // This validates that tokens come from your Entra ID tenant
+        ValidIssuer = $"{instance}{tenantId}/v2.0",
+
+        // These claims are used by the app for identity representation
+        NameClaimType = "name",
+        RoleClaimType = "roles"
+    };
+
+    // Enable metadata-based issuer key retrieval
+    options.MetadataAddress = $"{instance}{tenantId}/v2.0/.well-known/openid-configuration";
+
+    // Add development mode debug logging for token validation
+    options.Events = new JwtBearerEvents
+    {
+        OnTokenValidated = context =>
+        {
+            var name = context.Principal?.Identity?.Name ?? "unknown";
+            var email = context.Principal?.FindFirstValue("preferred_username") ?? "unknown";
+            Console.WriteLine($"Token validated for: {name} ({email})");
+            return Task.CompletedTask;
+        },
+        OnAuthenticationFailed = context =>
+        {
+            Console.WriteLine($"Authentication failed: {context.Exception.Message}");
+            return Task.CompletedTask;
+        },
+        OnChallenge = context =>
+        {
+            Console.WriteLine($"Challenging client to authenticate with Entra ID");
+            return Task.CompletedTask;
+        }
+    };
+})
 .AddMcp(options =>
 {
-    options.ResourceMetadata.AuthorizationServers.Add(new Uri("https://login.microsoftonline.com/a2213e1c-e51e-4304-9a0d-effe57f31655/v2.0"));
+    // Configure the MCP authentication with the same Entra ID server
+    options.ResourceMetadata.AuthorizationServers.Add(new Uri($"{instance}{tenantId}/v2.0"));
     options.ResourceMetadata.BearerMethodsSupported.Add("header");
-    options.ResourceMetadata.ScopesSupported.AddRange(["weather.read", "weather.write"]);
+    options.ResourceMetadata.ScopesSupported.AddRange(["api://167b4284-3f92-4436-92ed-38b38f83ae08/weather.read"]);
     options.ResourceMetadata.ResourceDocumentation = new Uri("https://docs.example.com/api/weather");
 });
 
@@ -55,67 +106,14 @@ Console.WriteLine("Starting MCP server with authorization at http://localhost:70
 Console.WriteLine("PRM Document URL: http://localhost:7071/.well-known/oauth-protected-resource");
 
 Console.WriteLine();
-Console.WriteLine("Testing mode: Server will accept ANY non-empty token for authentication");
+Console.WriteLine("Entra ID (Azure AD) JWT token validation is configured");
 Console.WriteLine();
 Console.WriteLine("To test the server:");
-Console.WriteLine("1. Use an MCP client that supports authorization");
-Console.WriteLine("2. The server will accept any non-empty token sent by the client");
-Console.WriteLine("3. Tokens will be logged to the console for debugging");
+Console.WriteLine("1. Use an MCP client that supports OAuth flow with Microsoft Entra ID");
+Console.WriteLine("2. The client should obtain a token for audience: api://weather-api");
+Console.WriteLine("3. The token should be issued by Microsoft Entra ID tenant: " + tenantId);
+Console.WriteLine("4. Include this token in the Authorization header of requests");
 Console.WriteLine();
 Console.WriteLine("Press Ctrl+C to stop the server");
 
 app.Run("http://localhost:7071/");
-
-// Simple auth handler that accepts any non-empty token for testing
-// In a real app, you'd use a JWT handler or other proper authentication
-class SimpleAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions>
-{
-    public SimpleAuthHandler(
-        IOptionsMonitor<AuthenticationSchemeOptions> options,
-        ILoggerFactory logger,
-        UrlEncoder encoder)
-        : base(options, logger, encoder)
-    {
-    }
-
-    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
-    {
-        // Get the Authorization header
-        if (!Request.Headers.TryGetValue("Authorization", out var authHeader))
-        {
-            return Task.FromResult(AuthenticateResult.Fail("Authorization header missing"));
-        }
-
-        // Parse the token
-        var headerValue = authHeader.ToString();
-        if (!headerValue.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-        {
-            return Task.FromResult(AuthenticateResult.Fail("Bearer token missing"));
-        }
-
-        var token = headerValue["Bearer ".Length..].Trim();
-
-        // Accept any non-empty token for testing purposes
-        if (string.IsNullOrEmpty(token))
-        {
-            return Task.FromResult(AuthenticateResult.Fail("Token cannot be empty"));
-        }
-
-        // Log the received token for debugging
-        Console.WriteLine($"Received and accepted token: {token}");
-
-        // Create a claims identity with required claims
-        var claims = new[]
-        {
-            new Claim(ClaimTypes.Name, "demo_user"),
-            new Claim(ClaimTypes.NameIdentifier, "user123"),
-            new Claim("scope", "weather.read")
-        };
-
-        var identity = new ClaimsIdentity(claims, "Bearer");
-        var principal = new ClaimsPrincipal(identity);
-        var ticket = new AuthenticationTicket(principal, "Bearer");
-
-        return Task.FromResult(AuthenticateResult.Success(ticket));
-    }
-}
