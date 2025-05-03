@@ -11,6 +11,15 @@ public class McpAuthenticationOptions : AuthenticationSchemeOptions
     private static readonly Uri DefaultResourceMetadataUri = new("/.well-known/oauth-protected-resource", UriKind.Relative);
 
     /// <summary>
+    /// Gets or sets the events used to handle authentication events.
+    /// </summary>
+    public new McpAuthenticationEvents Events
+    {
+        get { return (McpAuthenticationEvents)base.Events!; }
+        set { base.Events = value; }
+    }
+
+    /// <summary>
     /// The URI to the resource metadata document.
     /// </summary>
     /// <remarks>
