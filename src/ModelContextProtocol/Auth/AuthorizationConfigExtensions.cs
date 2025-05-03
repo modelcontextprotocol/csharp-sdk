@@ -60,11 +60,19 @@ public static class AuthorizationConfigExtensions
     
     /// <summary>
     /// Default implementation to open a URL in the default browser.
+    /// Only allows http and https URLs to be opened for security reasons.
     /// </summary>
     private static Task DefaultOpenBrowser(string url)
     {
         try
         {
+            // Validate that the URL is using http or https protocol
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || 
+                (uri.Scheme != "http" && uri.Scheme != "https"))
+            {
+                return Task.FromException(new ArgumentException("Only HTTP or HTTPS URLs can be opened.", nameof(url)));
+            }
+
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 // On Windows, use the built-in Process.Start for URLs
