@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Text.Encodings.Web;
@@ -33,7 +34,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
     protected override Task HandleChallengeAsync(AuthenticationProperties properties)
     {
         // Set the response status code
-        Response.StatusCode = 401; // Unauthorized
+        Response.StatusCode = StatusCodes.Status401Unauthorized;
 
         // Generate the full resource metadata URL based on the current request
         var baseUrl = $"{Request.Scheme}://{Request.Host}";
