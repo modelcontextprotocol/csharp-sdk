@@ -98,9 +98,9 @@ public static class McpClientExtensions
         }
         
         // Create OAuthAuthenticationService - use appropriate constructor based on whether we have a handler
-        OAuthAuthenticationService authService = config.AuthorizationHandler != null
-            ? new OAuthAuthenticationService(config.AuthorizationHandler)
-            : new OAuthAuthenticationService();
+        OAuthService authService = config.AuthorizationHandler != null
+            ? new OAuthService(config.AuthorizationHandler)
+            : new OAuthService();
         
         // Get resource URI
         var resourceUri = response.RequestMessage?.RequestUri ?? throw new InvalidOperationException("Request URI is not available.");

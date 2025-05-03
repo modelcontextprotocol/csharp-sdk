@@ -49,7 +49,7 @@ public static class AuthorizationConfigExtensions
         openBrowser ??= DefaultOpenBrowser;
         
         // Configure the handler
-        config.AuthorizationHandler = OAuthAuthorizationHelpers.CreateHttpListenerCallback(
+        config.AuthorizationHandler = OAuthHelpers.CreateHttpListenerCallback(
             openBrowser,
             hostname,
             listenPort,

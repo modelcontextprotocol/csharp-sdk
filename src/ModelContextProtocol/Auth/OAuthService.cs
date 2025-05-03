@@ -11,48 +11,23 @@ namespace ModelContextProtocol.Auth;
 /// <summary>
 /// Provides functionality for OAuth authentication in MCP clients.
 /// </summary>
-public class OAuthAuthenticationService
+public partial class OAuthService
 {
     private static readonly HttpClient _httpClient = new();
     private readonly Func<Uri, Task<string>>? _authorizationHandler;
     
     /// <summary>
-    /// Represents the PKCE code challenge and verifier for an authorization flow.
+    /// Initializes a new instance of the <see cref="OAuthService"/> class.
     /// </summary>
-    public class PkceValues
-    {
-        /// <summary>
-        /// The code verifier used to generate the code challenge.
-        /// </summary>
-        public string CodeVerifier { get; }
-        
-        /// <summary>
-        /// The code challenge sent to the authorization server.
-        /// </summary>
-        public string CodeChallenge { get; }
-        
-        /// <summary>
-        /// Initializes a new instance of the <see cref="PkceValues"/> class.
-        /// </summary>
-        public PkceValues(string codeVerifier, string codeChallenge)
-        {
-            CodeVerifier = codeVerifier;
-            CodeChallenge = codeChallenge;
-        }
-    }
-    
-    /// <summary>
-    /// Initializes a new instance of the <see cref="OAuthAuthenticationService"/> class.
-    /// </summary>
-    public OAuthAuthenticationService()
+    public OAuthService()
     {
     }
     
     /// <summary>
-    /// Initializes a new instance of the <see cref="OAuthAuthenticationService"/> class with an authorization handler.
+    /// Initializes a new instance of the <see cref="OAuthService"/> class with an authorization handler.
     /// </summary>
     /// <param name="authorizationHandler">A handler to invoke when authorization is required.</param>
-    public OAuthAuthenticationService(Func<Uri, Task<string>> authorizationHandler)
+    public OAuthService(Func<Uri, Task<string>> authorizationHandler)
     {
         _authorizationHandler = authorizationHandler ?? throw new ArgumentNullException(nameof(authorizationHandler));
     }

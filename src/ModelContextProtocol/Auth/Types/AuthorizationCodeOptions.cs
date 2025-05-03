@@ -38,7 +38,7 @@ public class AuthorizationCodeOptions
     /// <summary>
     /// PKCE values for the authorization flow.
     /// </summary>
-    public OAuthAuthenticationService.PkceValues PkceValues { get; set; } = null!;
+    public PkceValues PkceValues { get; set; } = null!;
     
     /// <summary>
     /// A state value to protect against CSRF attacks.
