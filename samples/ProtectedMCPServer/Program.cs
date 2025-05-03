@@ -77,10 +77,7 @@ builder.Services.AddAuthentication(options =>
 // Add authorization services
 builder.Services.AddAuthorization(options =>
 {
-    options.AddPolicy(McpAuthenticationDefaults.AuthenticationScheme, policy =>
-    {
-        policy.RequireAuthenticatedUser();
-    });
+    options.AddMcpPolicy();
 });
 
 // Configure MCP Server
