@@ -14,26 +14,26 @@ class Program
         Console.WriteLine("==================================================");
         Console.WriteLine();
 
-        // Create the authorization config with HTTP listener
-        var authConfig = new AuthorizationConfig
-        {
-            ClientId = "6ad97b5f-7a7b-413f-8603-7a3517d4adb8",
-            Scopes = ["api://167b4284-3f92-4436-92ed-38b38f83ae08/weather.read"]
-        }.UseHttpListener(hostname: "localhost", listenPort: 1170);
+        //// Create the authorization config with HTTP listener
+        //var authConfig = new AuthorizationConfig
+        //{
+        //    ClientId = "6ad97b5f-7a7b-413f-8603-7a3517d4adb8",
+        //    Scopes = ["api://167b4284-3f92-4436-92ed-38b38f83ae08/weather.read"]
+        //}.UseHttpListener(hostname: "localhost", listenPort: 1170);
 
-        // Create an HTTP client with OAuth handling
-        var oauthHandler = new OAuthDelegatingHandler(
-            redirectUri: authConfig.RedirectUri,
-            clientId: authConfig.ClientId,
-            clientName: authConfig.ClientName,
-            scopes: authConfig.Scopes,
-            authorizationHandler: authConfig.AuthorizationHandler)
-        {
-            // The OAuth handler needs an inner handler
-            InnerHandler = new HttpClientHandler()
-        };
+        //// Create an HTTP client with OAuth handling
+        //var oauthHandler = new OAuthDelegatingHandler(
+        //    redirectUri: authConfig.RedirectUri,
+        //    clientId: authConfig.ClientId,
+        //    clientName: authConfig.ClientName,
+        //    scopes: authConfig.Scopes,
+        //    authorizationHandler: authConfig.AuthorizationHandler)
+        //{
+        //    // The OAuth handler needs an inner handler
+        //    InnerHandler = new HttpClientHandler()
+        //};
 
-        var httpClient = new HttpClient(oauthHandler);
+        var httpClient = new HttpClient();
         var serverUrl = "http://localhost:7071/sse"; // Default server URL
 
         // Allow the user to specify a different server URL
