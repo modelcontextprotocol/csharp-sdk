@@ -1,4 +1,3 @@
-using System.Net.Http;
 using System.Net.Http.Headers;
 
 namespace ModelContextProtocol.Authentication;

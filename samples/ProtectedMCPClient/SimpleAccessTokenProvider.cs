@@ -22,6 +22,7 @@ public class SimpleAccessTokenProvider : IAccessTokenProvider
     /// <inheritdoc />
     public Task<string?> GetAuthenticationTokenAsync(Uri resourceUri, CancellationToken cancellationToken = default)
     {
+        Console.WriteLine("Tried to get a token!");
         // In a real implementation, you might use different tokens for different resources,
         // or refresh tokens when they're about to expire
         return Task.FromResult<string?>(_apiKey);
