@@ -16,15 +16,6 @@ class Program
         // Create a standard HttpClient with authentication configured
         var serverUrl = "http://localhost:7071/sse"; // Default server URL
 
-        // Ask for the API key
-        Console.WriteLine("Enter your API key (or press Enter to use default):");
-        var apiKey = Console.ReadLine();
-        if (string.IsNullOrWhiteSpace(apiKey))
-        {
-            apiKey = "demo-api-key-12345"; // Default API key for demonstration
-            Console.WriteLine($"Using default API key: {apiKey}");
-        }
-
         // Allow the user to specify a different server URL
         Console.WriteLine($"Server URL (press Enter for default: {serverUrl}):");
         var userInput = Console.ReadLine();
@@ -34,7 +25,7 @@ class Program
         }
 
         // Create a single HttpClient with authentication configured
-        var tokenProvider = new SimpleAccessTokenProvider(apiKey, new Uri(serverUrl));
+        var tokenProvider = new SimpleAccessTokenProvider(new Uri(serverUrl));
         var httpClient = new HttpClient().UseAuthenticationProvider(tokenProvider);
 
         Console.WriteLine();
