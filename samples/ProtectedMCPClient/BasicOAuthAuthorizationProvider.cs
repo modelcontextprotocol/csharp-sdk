@@ -10,7 +10,9 @@ using System.Web;
 namespace ProtectedMCPClient;
 
 /// <summary>
-/// A simple implementation of an OAuth authorization provider for MCP.
+/// A simple implementation of an OAuth authorization provider for MCP. This does not do any token
+/// caching or any advanced token protection - it acquires a token and server metadata and holds it
+/// in memory as-is. This is NOT PRODUCTION READY and MUST NOT BE USED IN PRODUCTION.
 /// </summary>
 /// <remarks>
 /// Initializes a new instance of the <see cref="BasicOAuthAuthorizationProvider"/> class.
@@ -30,6 +32,7 @@ public class BasicOAuthAuthorizationProvider(
     
     // Single token storage
     private TokenContainer? _token;
+
     // Store auth server metadata separately so token only stores token data
     private AuthorizationServerMetadata? _authServerMetadata;
 

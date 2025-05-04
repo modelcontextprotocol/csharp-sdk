@@ -52,10 +52,14 @@ class Program
             Console.WriteLine($"Found {tools.Count} tools on the server.");
             Console.WriteLine();
 
-            if (tools.Any(t => t.Name == "protected-data"))
+            if (tools.Any(t => t.Name == "GetAlerts"))
             {
-                Console.WriteLine("Calling protected-data tool...");
-                var result = await client.CallToolAsync("protected-data");
+                Console.WriteLine("Calling GetAlerts tool...");
+                // Update the dictionary to match the expected type IReadOnlyDictionary<string, object?>?
+                var result = await client.CallToolAsync(
+                    "GetAlerts",
+                    new Dictionary<string, object?> { { "state", "WA" } }
+                );
                 Console.WriteLine("Result: " + result.Content[0].Text);
                 Console.WriteLine();
             }
