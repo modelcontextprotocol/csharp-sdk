@@ -22,7 +22,6 @@ class Program
 
         var authHandler = new AuthorizationDelegatingHandler(tokenProvider, "Bearer")
         {
-            // 3. Set the inner handler (the handler that actually sends the request)
             InnerHandler = new HttpClientHandler() 
         };
 
@@ -39,7 +38,6 @@ class Program
                 Name = "Secure Weather Client"
             };
 
-            // Use the single, pre-configured HttpClient
             var transport = new SseClientTransport(transportOptions, httpClient);
 
             var client = await McpClientFactory.CreateAsync(transport);
@@ -57,13 +55,12 @@ class Program
             if (tools.Any(t => t.Name == "GetAlerts"))
             {
                 Console.WriteLine("Calling GetAlerts tool...");
-                // Update the dictionary to match the expected type IReadOnlyDictionary<string, object?>?
+
                 var result = await client.CallToolAsync(
                     "GetAlerts",
                     new Dictionary<string, object?> { { "state", "WA" } }
                 );
 
-                //var result = await client.CallToolAsync("GetAuthorizationInfo");
                 Console.WriteLine("Result: " + result.Content[0].Text);
                 Console.WriteLine();
             }
