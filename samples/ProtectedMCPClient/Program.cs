@@ -13,7 +13,11 @@ class Program
 
         var serverUrl = "http://localhost:7071/sse";
 
-        var tokenProvider = new BasicOAuthAuthorizationProvider(new Uri(serverUrl));
+        var tokenProvider = new BasicOAuthAuthorizationProvider(new Uri(serverUrl), 
+            clientId: "6ad97b5f-7a7b-413f-8603-7a3517d4adb8",
+            redirectUri: new Uri("http://localhost:1179/callback"),
+            scopes: new List<string> { "api://167b4284-3f92-4436-92ed-38b38f83ae08/weather.read" });
+
         var httpClient = new HttpClient().UseMcpAuthorizationProvider(tokenProvider);
 
         Console.WriteLine();

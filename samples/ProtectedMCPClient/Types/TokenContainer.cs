@@ -9,4 +9,14 @@ internal class TokenContainer
     public string? RefreshToken { get; set; }
     public int ExpiresIn { get; set; }
     public string TokenType { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Gets or sets the timestamp when the token was obtained.
+    /// </summary>
+    public DateTimeOffset ObtainedAt { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the timestamp when the token expires.
+    /// </summary>
+    public DateTimeOffset ExpiresAt { get; set; }
 }
