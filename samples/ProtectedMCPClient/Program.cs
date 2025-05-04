@@ -13,7 +13,7 @@ class Program
 
         var serverUrl = "http://localhost:7071/sse";
 
-        var tokenProvider = new SimpleAccessTokenProvider(new Uri(serverUrl));
+        var tokenProvider = new BasicOAuthAuthorizationProvider(new Uri(serverUrl));
         var httpClient = new HttpClient().UseMcpAuthorizationProvider(tokenProvider);
 
         Console.WriteLine();

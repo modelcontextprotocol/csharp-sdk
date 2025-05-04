@@ -16,16 +16,26 @@ namespace ProtectedMCPClient.Utils
             CancellationToken cancellationToken = default)
         {
             using var httpClient = new HttpClient();
-
-            // Try OpenID Connect configuration endpoint first, then OAuth Authorization Server Metadata endpoint
-            string[] wellKnownEndpoints = {
-            "/.well-known/openid-configuration",
-            "/.well-known/oauth-authorization-server"
-        };
-
-            foreach (var endpoint in wellKnownEndpoints)
+            
+            // Make sure the base URL ends with a slash to correctly append well-known paths
+            string baseUrl = authorizationServerUrl.ToString();
+            if (!baseUrl.EndsWith("/"))
             {
-                var metadataUrl = new Uri(authorizationServerUrl, endpoint);
+                baseUrl += "/";
+            }
+            
+            // Try OpenID Connect configuration endpoint first, then OAuth Authorization Server Metadata endpoint
+            string[] wellKnownPaths = {
+                ".well-known/openid-configuration",
+                ".well-known/oauth-authorization-server"
+            };
+
+            foreach (var path in wellKnownPaths)
+            {
+                // Simply combine the base URL (now with trailing slash) with the path (without leading slash)
+                var metadataUrl = new Uri(baseUrl + path);
+                Console.WriteLine($"Trying authorization server metadata endpoint: {metadataUrl}");
+                
                 var metadata = await TryFetchMetadataAsync(httpClient, metadataUrl, cancellationToken);
                 if (metadata != null)
                 {
@@ -54,13 +64,17 @@ namespace ProtectedMCPClient.Utils
                 if (response.IsSuccessStatusCode)
                 {
                     var content = await response.Content.ReadAsStreamAsync();
-                    return await JsonSerializer.DeserializeAsync<AuthorizationServerMetadata>(content, new JsonSerializerOptions() {  WriteIndented = true },
+                    return await JsonSerializer.DeserializeAsync<AuthorizationServerMetadata>(content,
+                        new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true,
+                        },
                         cancellationToken);
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Ignore exceptions and return null
+                Console.WriteLine($"Error fetching metadata from {metadataUrl}: {ex.Message}");
             }
 
             return null;

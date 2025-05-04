@@ -15,7 +15,7 @@ namespace ProtectedMCPClient;
 /// A simple implementation of IAccessTokenProvider that uses a fixed API key.
 /// This is just for demonstration purposes.
 /// </summary>
-public partial class SimpleAccessTokenProvider : IMcpAuthorizationProvider
+public partial class BasicOAuthAuthorizationProvider : IMcpAuthorizationProvider
 {
     private readonly ConcurrentDictionary<string, TokenContainer> _tokenCache = new();
     private readonly Uri _serverUrl;
@@ -23,7 +23,7 @@ public partial class SimpleAccessTokenProvider : IMcpAuthorizationProvider
     private readonly string _clientSecret;
     private readonly Uri _redirectUri;
 
-    public SimpleAccessTokenProvider(Uri serverUrl, string clientId = "demo-client", string clientSecret = "", Uri? redirectUri = null)
+    public BasicOAuthAuthorizationProvider(Uri serverUrl, string clientId = "demo-client", string clientSecret = "", Uri? redirectUri = null)
     {
         _serverUrl = serverUrl ?? throw new ArgumentNullException(nameof(serverUrl));
         _clientId = clientId;
