@@ -29,7 +29,12 @@ public partial class BasicOAuthAuthorizationProvider(
     Uri? redirectUri = null,
     IEnumerable<string>? scopes = null) : IMcpAuthorizationProvider
 {
+    // Cache for tokens, keyed by the canonical resource URI from resource metadata
     private readonly ConcurrentDictionary<string, TokenContainer> _tokenCache = new();
+    
+    // Cache for resource metadata, keyed by the request URI
+    private readonly ConcurrentDictionary<string, ProtectedResourceMetadata> _resourceMetadataCache = new();
+    
     private readonly Uri _serverUrl = serverUrl ?? throw new ArgumentNullException(nameof(serverUrl));
     private readonly Uri _redirectUri = redirectUri ?? new Uri("http://localhost:8080/callback");
     private readonly IEnumerable<string> _scopes = scopes ?? Array.Empty<string>();
@@ -37,25 +42,35 @@ public partial class BasicOAuthAuthorizationProvider(
     /// <inheritdoc />
     public async Task<string?> GetCredentialAsync(Uri resourceUri, CancellationToken cancellationToken = default)
     {
-        Console.WriteLine($"Getting authentication token for {resourceUri}");
+        Console.WriteLine($"Getting credential for resource URI: {resourceUri}");
+        
+        // First, get the resource metadata to determine the canonical resource URI
+        var resourceMetadata = await GetCachedResourceMetadataAsync(resourceUri, cancellationToken);
+        if (resourceMetadata == null)
+        {
+            Console.WriteLine("Failed to get resource metadata, cannot authenticate");
+            return null;
+        }
+        
+        // Use the canonical resource URI from the metadata as the cache key
+        string resourceKey = resourceMetadata.Resource.ToString();
+        Console.WriteLine($"Using canonical resource key: {resourceKey}");
         
         // Check if we have a valid cached token
-        string resourceKey = resourceUri.ToString();
         if (_tokenCache.TryGetValue(resourceKey, out var tokenInfo))
         {
             // Check if the token is still valid or needs to be refreshed
             if (tokenInfo.ExpiresAt > DateTimeOffset.UtcNow.AddMinutes(5)) // 5-minute buffer
             {
                 Console.WriteLine("Using cached token");
+                // Return just the access token, not the token type + access token
                 return tokenInfo.AccessToken;
             }
             else if (!string.IsNullOrEmpty(tokenInfo.RefreshToken))
             {
                 Console.WriteLine("Token expired, attempting to refresh");
                 
-                // Get the authorization server metadata for the resource
-                var resourceMetadata = await GetResourceMetadataAsync(resourceUri, cancellationToken);
-                if (resourceMetadata?.AuthorizationServers?.Count > 0)
+                if (resourceMetadata.AuthorizationServers?.Count > 0)
                 {
                     var authServerUrl = resourceMetadata.AuthorizationServers[0];
                     var authServerMetadata = await AuthorizationServerUtils.FetchAuthorizationServerMetadataAsync(
@@ -73,6 +88,7 @@ public partial class BasicOAuthAuthorizationProvider(
                         {
                             _tokenCache[resourceKey] = refreshedToken;
                             Console.WriteLine("Token refreshed successfully");
+                            // Return just the access token, not the token type + access token
                             return refreshedToken.AccessToken;
                         }
                         else
@@ -91,11 +107,47 @@ public partial class BasicOAuthAuthorizationProvider(
             _tokenCache.TryRemove(resourceKey, out _);
         }
 
-        // We don't have a valid token and need to get a new one
-        Console.WriteLine("No valid token available");
+        // We don't have a valid token - let the 401 handler trigger the auth flow
+        Console.WriteLine("No valid token available for: " + resourceKey);
         return null;
     }
-    
+
+    /// <summary>
+    /// Gets resource metadata, using the cache if available.
+    /// </summary>
+    /// <param name="resourceUri">The URI of the protected resource.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>The protected resource metadata.</returns>
+    private async Task<ProtectedResourceMetadata?> GetCachedResourceMetadataAsync(Uri resourceUri, CancellationToken cancellationToken)
+    {
+        string requestUriKey = resourceUri.ToString();
+        
+        // Check if we already have cached metadata for this URI
+        if (_resourceMetadataCache.TryGetValue(requestUriKey, out var cachedMetadata))
+        {
+            Console.WriteLine($"Using cached resource metadata for: {requestUriKey}");
+            return cachedMetadata;
+        }
+        
+        // If not in cache, fetch the metadata
+        var metadata = await GetResourceMetadataAsync(resourceUri, cancellationToken);
+        if (metadata != null)
+        {
+            // Cache the metadata using the request URI as the key
+            _resourceMetadataCache[requestUriKey] = metadata;
+            
+            // Also cache using any alternate forms of the URI that might be used
+            if (resourceUri.ToString() != metadata.Resource.ToString())
+            {
+                _resourceMetadataCache[metadata.Resource.ToString()] = metadata;
+            }
+            
+            Console.WriteLine($"Cached resource metadata for {requestUriKey} -> {metadata.Resource}");
+        }
+        
+        return metadata;
+    }
+
     /// <summary>
     /// Refreshes an OAuth token using the refresh token.
     /// </summary>
@@ -145,14 +197,8 @@ public partial class BasicOAuthAuthorizationProvider(
                 
                 if (tokenResponse != null)
                 {
-                    // Set the time when the token was obtained
+                    // Set the time when the token was obtained - ExpiresAt will be calculated automatically
                     tokenResponse.ObtainedAt = DateTimeOffset.UtcNow;
-                    
-                    // Calculate expiration time if not set
-                    if (tokenResponse.ExpiresIn > 0 && tokenResponse.ExpiresAt == default)
-                    {
-                        tokenResponse.ExpiresAt = tokenResponse.ObtainedAt.AddSeconds(tokenResponse.ExpiresIn);
-                    }
                     
                     // Preserve the refresh token if the response doesn't include a new one
                     if (string.IsNullOrEmpty(tokenResponse.RefreshToken))
@@ -226,6 +272,24 @@ public partial class BasicOAuthAuthorizationProvider(
                 _serverUrl,
                 cancellationToken);
             
+            if (resourceMetadata == null)
+            {
+                Console.WriteLine("Failed to extract resource metadata from response");
+                return false;
+            }
+            
+            // Cache the resource metadata for future use
+            string requestUriKey = response.RequestMessage?.RequestUri?.ToString() ?? string.Empty;
+            if (!string.IsNullOrEmpty(requestUriKey))
+            {
+                _resourceMetadataCache[requestUriKey] = resourceMetadata;
+                
+                // Also cache with the canonical resource URI
+                _resourceMetadataCache[resourceMetadata.Resource.ToString()] = resourceMetadata;
+                
+                Console.WriteLine($"Cached resource metadata for {requestUriKey} -> {resourceMetadata.Resource}");
+            }
+            
             // If we get here, the resource metadata is valid and matches our server
             Console.WriteLine($"Successfully validated resource metadata for: {resourceMetadata.Resource}");
             
@@ -247,9 +311,11 @@ public partial class BasicOAuthAuthorizationProvider(
                     
                     if (token != null)
                     {
-                        // Store the token in the cache
+                        // Store the token in the cache using the canonical resource URI from metadata
                         string resourceKey = resourceMetadata.Resource.ToString();
+                        Console.WriteLine($"Storing token with canonical resource key: {resourceKey}");
                         _tokenCache[resourceKey] = token;
+                        
                         Console.WriteLine("Successfully obtained a new token");
                         return true;
                     }
@@ -543,14 +609,8 @@ public partial class BasicOAuthAuthorizationProvider(
                 
                 if (tokenResponse != null)
                 {
-                    // Set the time when the token was obtained
+                    // Set the time when the token was obtained - ExpiresAt will be calculated automatically
                     tokenResponse.ObtainedAt = DateTimeOffset.UtcNow;
-                    
-                    // Calculate expiration time if not set
-                    if (tokenResponse.ExpiresIn > 0 && tokenResponse.ExpiresAt == default)
-                    {
-                        tokenResponse.ExpiresAt = tokenResponse.ObtainedAt.AddSeconds(tokenResponse.ExpiresIn);
-                    }
                     
                     Console.WriteLine("Token exchange successful");
                     return tokenResponse;
