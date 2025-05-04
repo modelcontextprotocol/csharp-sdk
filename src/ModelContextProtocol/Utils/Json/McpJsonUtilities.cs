@@ -124,7 +124,6 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(UnsubscribeRequestParams))]
     [JsonSerializable(typeof(IReadOnlyDictionary<string, object>))]
 
-    [JsonSerializable(typeof(AuthorizationServerMetadata))]
     [JsonSerializable(typeof(ProtectedResourceMetadata))]
 
     [ExcludeFromCodeCoverage]

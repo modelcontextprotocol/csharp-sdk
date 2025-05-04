@@ -4,7 +4,7 @@ namespace ModelContextProtocol.Authentication;
 /// Defines an interface for providing authentication for requests.
 /// This is the main extensibility point for authentication in MCP clients.
 /// </summary>
-public interface IAccessTokenProvider
+public interface ITokenProvider
 {
     /// <summary>
     /// Gets an authentication token or credential for authenticating requests to a resource.
@@ -12,7 +12,7 @@ public interface IAccessTokenProvider
     /// <param name="resourceUri">The URI of the resource requiring authentication.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>An authentication token string or null if no token could be obtained.</returns>
-    Task<string?> GetAuthenticationTokenAsync(Uri resourceUri, CancellationToken cancellationToken = default);
+    Task<string?> GetTokenAsync(Uri resourceUri, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Handles a 401 Unauthorized response from a resource.

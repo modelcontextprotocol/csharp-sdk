@@ -1,4 +1,4 @@
-namespace ProtectedMCPClient;
+namespace ProtectedMCPClient.Types;
 
 /// <summary>
 /// Represents a token response from the OAuth server.

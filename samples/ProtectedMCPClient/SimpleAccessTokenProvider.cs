@@ -1,5 +1,7 @@
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Types.Authentication;
+using ProtectedMCPClient.Types;
+using ProtectedMCPClient.Utils;
 using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
@@ -13,7 +15,7 @@ namespace ProtectedMCPClient;
 /// A simple implementation of IAccessTokenProvider that uses a fixed API key.
 /// This is just for demonstration purposes.
 /// </summary>
-public partial class SimpleAccessTokenProvider : IAccessTokenProvider
+public partial class SimpleAccessTokenProvider : ITokenProvider
 {
     private readonly ConcurrentDictionary<string, TokenContainer> _tokenCache = new();
     private readonly Uri _serverUrl;
@@ -30,7 +32,7 @@ public partial class SimpleAccessTokenProvider : IAccessTokenProvider
     }
 
     /// <inheritdoc />
-    public async Task<string?> GetAuthenticationTokenAsync(Uri resourceUri, CancellationToken cancellationToken = default)
+    public async Task<string?> GetTokenAsync(Uri resourceUri, CancellationToken cancellationToken = default)
     {
         Console.WriteLine($"Getting authentication token for {resourceUri}");
         
@@ -51,7 +53,7 @@ public partial class SimpleAccessTokenProvider : IAccessTokenProvider
         try
         {
             // Use AuthenticationUtils to handle the 401 challenge
-            var resourceMetadata = await AuthenticationUtils.ExtractProtectedResourceMetadata(
+            var resourceMetadata = await AuthorizationHelpers.ExtractProtectedResourceMetadata(
                 response,
                 _serverUrl,
                 cancellationToken);
@@ -67,7 +69,7 @@ public partial class SimpleAccessTokenProvider : IAccessTokenProvider
                 Console.WriteLine($"Using authorization server: {authServerUrl}");
                 
                 // Fetch authorization server metadata
-                var authServerMetadata = await AuthenticationUtils.FetchAuthorizationServerMetadataAsync(
+                var authServerMetadata = await AuthorizationServerUtils.FetchAuthorizationServerMetadataAsync(
                     authServerUrl, cancellationToken);
                 
                 if (authServerMetadata != null)

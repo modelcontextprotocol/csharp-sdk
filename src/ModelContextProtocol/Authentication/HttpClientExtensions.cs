@@ -20,7 +20,7 @@ public static class HttpClientExtensions
     /// <item>Retries the request with the new token if token refresh is successful</item>
     /// </list>
     /// </remarks>
-    public static HttpClient UseAuthenticationProvider(this HttpClient httpClient, IAccessTokenProvider tokenProvider, string scheme = "Bearer")
+    public static HttpClient UseAuthenticationProvider(this HttpClient httpClient, ITokenProvider tokenProvider, string scheme = "Bearer")
     {
         if (httpClient == null)
             throw new ArgumentNullException(nameof(httpClient));
@@ -40,7 +40,7 @@ public static class HttpClientExtensions
         }
 
         // Create our authentication delegating handler with the token provider
-        var authHandler = new AuthenticationDelegatingHandler(tokenProvider, scheme)
+        var authHandler = new AuthorizationDelegatingHandler(tokenProvider, scheme)
         {
             InnerHandler = handler
         };

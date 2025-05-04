@@ -5,17 +5,17 @@ namespace ModelContextProtocol.Authentication;
 /// <summary>
 /// A delegating handler that adds authentication tokens to requests and handles 401 responses.
 /// </summary>
-internal class AuthenticationDelegatingHandler : DelegatingHandler
+internal class AuthorizationDelegatingHandler : DelegatingHandler
 {
-    private readonly IAccessTokenProvider _tokenProvider;
+    private readonly ITokenProvider _tokenProvider;
     private readonly string _scheme;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="AuthenticationDelegatingHandler"/> class.
+    /// Initializes a new instance of the <see cref="AuthorizationDelegatingHandler"/> class.
     /// </summary>
     /// <param name="tokenProvider">The provider that supplies authentication tokens.</param>
     /// <param name="scheme">The authentication scheme to use, e.g., "Bearer".</param>
-    public AuthenticationDelegatingHandler(IAccessTokenProvider tokenProvider, string scheme)
+    public AuthorizationDelegatingHandler(ITokenProvider tokenProvider, string scheme)
     {
         _tokenProvider = tokenProvider ?? throw new ArgumentNullException(nameof(tokenProvider));
         _scheme = scheme ?? throw new ArgumentNullException(nameof(scheme));
@@ -29,7 +29,7 @@ internal class AuthenticationDelegatingHandler : DelegatingHandler
         // Add the authentication token to the request if not already present
         if (request.Headers.Authorization == null)
         {
-            await AddAuthenticationHeaderAsync(request, cancellationToken);
+            await AddAuthorizationHeaderAsync(request, cancellationToken);
         }
 
         // Send the request through the inner handler
@@ -49,7 +49,7 @@ internal class AuthenticationDelegatingHandler : DelegatingHandler
                 var retryRequest = await CloneHttpRequestMessageAsync(request);
 
                 // Get a new token
-                await AddAuthenticationHeaderAsync(retryRequest, cancellationToken);
+                await AddAuthorizationHeaderAsync(retryRequest, cancellationToken);
 
                 // Send the retry request
                 return await base.SendAsync(retryRequest, cancellationToken);
@@ -62,11 +62,11 @@ internal class AuthenticationDelegatingHandler : DelegatingHandler
     /// <summary>
     /// Adds an authorization header to the request.
     /// </summary>
-    private async Task AddAuthenticationHeaderAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    private async Task AddAuthorizationHeaderAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         if (request.RequestUri != null)
         {
-            var token = await _tokenProvider.GetAuthenticationTokenAsync(request.RequestUri, cancellationToken);
+            var token = await _tokenProvider.GetTokenAsync(request.RequestUri, cancellationToken);
             if (!string.IsNullOrEmpty(token))
             {
                 request.Headers.Authorization = new AuthenticationHeaderValue(_scheme, token);
