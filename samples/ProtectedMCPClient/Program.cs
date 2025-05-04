@@ -13,10 +13,8 @@ class Program
 
         var serverUrl = "http://localhost:7071/sse";
 
-        // Create a single HttpClient instance to be shared
         var httpClient = new HttpClient();
 
-        // Pass the HttpClient to the authorization provider
         var tokenProvider = new BasicOAuthAuthorizationProvider(
             new Uri(serverUrl), 
             clientId: "6ad97b5f-7a7b-413f-8603-7a3517d4adb8",
@@ -60,6 +58,8 @@ class Program
                     "GetAlerts",
                     new Dictionary<string, object?> { { "state", "WA" } }
                 );
+
+                //var result = await client.CallToolAsync("GetAuthorizationInfo");
                 Console.WriteLine("Result: " + result.Content[0].Text);
                 Console.WriteLine();
             }
