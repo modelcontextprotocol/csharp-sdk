@@ -10,53 +10,12 @@ namespace ModelContextProtocol.Authentication;
 public static class AuthenticationUtils
 {
     /// <summary>
-    /// Extracts protected resource metadata from an unauthorized response.
-    /// </summary>
-    /// <param name="response">The HTTP response containing the WWW-Authenticate header.</param>
-    /// <returns>The extracted ProtectedResourceMetadata, or null if it couldn't be extracted.</returns>
-    public static ProtectedResourceMetadata? ExtractProtectedResourceMetadata(HttpResponseMessage response)
-    {
-        if (response.StatusCode != System.Net.HttpStatusCode.Unauthorized)
-        {
-            return null;
-        }
-
-        // Extract the WWW-Authenticate header
-        if (!response.Headers.WwwAuthenticate.Any())
-        {
-            return null;
-        }
-
-        // Look for the Bearer authentication scheme with resource_metadata parameter
-        foreach (var header in response.Headers.WwwAuthenticate)
-        {
-            if (header.Scheme.Equals("Bearer", StringComparison.OrdinalIgnoreCase))
-            {
-                var parameters = header.Parameter;
-                if (string.IsNullOrEmpty(parameters))
-                {
-                    continue;
-                }
-
-                // Parse the parameters to find resource_metadata
-                var resourceMetadataUrl = ParseWwwAuthenticateParameters(parameters, "resource_metadata");
-                if (resourceMetadataUrl != null)
-                {
-                    return FetchProtectedResourceMetadataAsync(new Uri(resourceMetadataUrl)).GetAwaiter().GetResult();
-                }
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
     /// Fetches the protected resource metadata from the provided URL.
     /// </summary>
     /// <param name="metadataUrl">The URL to fetch the metadata from.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>The fetched ProtectedResourceMetadata, or null if it couldn't be fetched.</returns>
-    public static async Task<ProtectedResourceMetadata?> FetchProtectedResourceMetadataAsync(
+    private static async Task<ProtectedResourceMetadata?> FetchProtectedResourceMetadataAsync(
         Uri metadataUrl, 
         CancellationToken cancellationToken = default)
     {
@@ -145,7 +104,7 @@ public static class AuthenticationUtils
     /// <param name="protectedResourceMetadata">The metadata to verify.</param>
     /// <param name="serverUrl">The server URL to compare against.</param>
     /// <returns>True if the resource URI matches the server, otherwise false.</returns>
-    public static bool VerifyResourceMatch(ProtectedResourceMetadata protectedResourceMetadata, Uri serverUrl)
+    private static bool VerifyResourceMatch(ProtectedResourceMetadata protectedResourceMetadata, Uri serverUrl)
     {
         if (protectedResourceMetadata.Resource == null || serverUrl == null)
         {
@@ -171,7 +130,7 @@ public static class AuthenticationUtils
     /// <returns>The resource metadata if the resource matches the server, otherwise throws an exception.</returns>
     /// <exception cref="InvalidOperationException">Thrown when the response is not a 401, lacks a WWW-Authenticate header,
     /// lacks a resource_metadata parameter, the metadata can't be fetched, or the resource URI doesn't match the server URL.</exception>
-    public static async Task<ProtectedResourceMetadata> HandleAuthenticationChallengeAsync(
+    public static async Task<ProtectedResourceMetadata> ExtractProtectedResourceMetadata(
         HttpResponseMessage response,
         Uri serverUrl,
         CancellationToken cancellationToken = default)
@@ -238,14 +197,14 @@ public static class AuthenticationUtils
     /// <param name="parameters">The parameter string from the WWW-Authenticate header.</param>
     /// <param name="parameterName">The name of the parameter to extract.</param>
     /// <returns>The value of the parameter, or null if not found.</returns>
-    public static string? ParseWwwAuthenticateParameters(string parameters, string parameterName)
+    private static string? ParseWwwAuthenticateParameters(string parameters, string parameterName)
     {
         // Handle parameters in the format: param1="value1", param2="value2"
         var paramDict = parameters.Split(',')
             .Select(p => p.Trim())
             .Select(p => 
             {
-                var parts = p.Split(new[] { '=' }, 2);
+                var parts = p.Split(['='], 2);
                 if (parts.Length != 2)
                 {
                     return new KeyValuePair<string, string>(string.Empty, string.Empty);

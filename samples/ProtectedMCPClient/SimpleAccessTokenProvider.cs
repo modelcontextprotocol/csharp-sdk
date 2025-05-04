@@ -33,7 +33,7 @@ public class SimpleAccessTokenProvider : IAccessTokenProvider
         try
         {
             // Use the updated AuthenticationChallengeHandler to handle the 401 challenge
-            var resourceMetadata = await AuthenticationUtils.HandleAuthenticationChallengeAsync(
+            var resourceMetadata = await AuthenticationUtils.ExtractProtectedResourceMetadata(
                 response,
                 _serverUrl,
                 cancellationToken);
