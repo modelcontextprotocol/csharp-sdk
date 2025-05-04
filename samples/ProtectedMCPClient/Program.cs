@@ -13,12 +13,19 @@ class Program
 
         var serverUrl = "http://localhost:7071/sse";
 
-        var tokenProvider = new BasicOAuthAuthorizationProvider(new Uri(serverUrl), 
+        // Create a single HttpClient instance to be shared
+        var httpClient = new HttpClient();
+
+        // Pass the HttpClient to the authorization provider
+        var tokenProvider = new BasicOAuthAuthorizationProvider(
+            new Uri(serverUrl), 
             clientId: "6ad97b5f-7a7b-413f-8603-7a3517d4adb8",
             redirectUri: new Uri("http://localhost:1179/callback"),
-            scopes: new List<string> { "api://167b4284-3f92-4436-92ed-38b38f83ae08/weather.read" });
+            scopes: new List<string> { "api://167b4284-3f92-4436-92ed-38b38f83ae08/weather.read" },
+            httpClient: httpClient);
 
-        var httpClient = new HttpClient().UseMcpAuthorizationProvider(tokenProvider);
+        // Use the same HttpClient instance with the authentication provider
+        var authenticatedClient = httpClient.UseMcpAuthorizationProvider(tokenProvider);
 
         Console.WriteLine();
         Console.WriteLine($"Connecting to weather server at {serverUrl}...");
@@ -31,7 +38,7 @@ class Program
                 Name = "Secure Weather Client"
             };
 
-            var transport = new SseClientTransport(transportOptions, httpClient);
+            var transport = new SseClientTransport(transportOptions, authenticatedClient);
 
             var client = await McpClientFactory.CreateAsync(transport);
 

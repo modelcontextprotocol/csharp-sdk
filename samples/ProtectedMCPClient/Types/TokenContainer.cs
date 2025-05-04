@@ -28,6 +28,7 @@ internal class TokenContainer
     /// <summary>
     /// Gets or sets the timestamp when the token was obtained.
     /// </summary>
+    [JsonIgnore]
     public DateTimeOffset ObtainedAt { get; set; }
     
     /// <summary>

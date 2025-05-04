@@ -1,8 +1,6 @@
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Types.Authentication;
 using ProtectedMCPClient.Types;
-using ProtectedMCPClient.Utils;
-using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
@@ -17,247 +15,45 @@ namespace ProtectedMCPClient;
 /// <remarks>
 /// Initializes a new instance of the <see cref="BasicOAuthAuthorizationProvider"/> class.
 /// </remarks>
-/// <param name="serverUrl">The server URL.</param>
-/// <param name="clientId">The OAuth client ID.</param>
-/// <param name="clientSecret">The OAuth client secret.</param>
-/// <param name="redirectUri">The OAuth redirect URI.</param>
-/// <param name="scopes">The OAuth scopes required by the application.</param>
-public partial class BasicOAuthAuthorizationProvider(
+public class BasicOAuthAuthorizationProvider(
     Uri serverUrl,
     string clientId = "demo-client",
     string clientSecret = "",
     Uri? redirectUri = null,
-    IEnumerable<string>? scopes = null) : IMcpAuthorizationProvider
+    IEnumerable<string>? scopes = null,
+    HttpClient? httpClient = null) : IMcpAuthorizationProvider
 {
-    // Cache for tokens, keyed by the canonical resource URI from resource metadata
-    private readonly ConcurrentDictionary<string, TokenContainer> _tokenCache = new();
-    
-    // Cache for resource metadata, keyed by the request URI
-    private readonly ConcurrentDictionary<string, ProtectedResourceMetadata> _resourceMetadataCache = new();
-    
     private readonly Uri _serverUrl = serverUrl ?? throw new ArgumentNullException(nameof(serverUrl));
     private readonly Uri _redirectUri = redirectUri ?? new Uri("http://localhost:8080/callback");
-    private readonly IEnumerable<string> _scopes = scopes ?? Array.Empty<string>();
+    private readonly List<string> _scopes = scopes?.ToList() ?? new List<string>();
+    private readonly HttpClient _httpClient = httpClient ?? new HttpClient();
+    
+    // Single token storage
+    private TokenContainer? _token;
+    // Store auth server metadata separately so token only stores token data
+    private AuthorizationServerMetadata? _authServerMetadata;
 
     /// <inheritdoc />
     public async Task<string?> GetCredentialAsync(Uri resourceUri, CancellationToken cancellationToken = default)
     {
-        Console.WriteLine($"Getting credential for resource URI: {resourceUri}");
-        
-        // First, get the resource metadata to determine the canonical resource URI
-        var resourceMetadata = await GetCachedResourceMetadataAsync(resourceUri, cancellationToken);
-        if (resourceMetadata == null)
+        // Return the token if it's valid
+        if (_token != null && _token.ExpiresAt > DateTimeOffset.UtcNow.AddMinutes(5))
         {
-            Console.WriteLine("Failed to get resource metadata, cannot authenticate");
-            return null;
+            return _token.AccessToken;
         }
         
-        // Use the canonical resource URI from the metadata as the cache key
-        string resourceKey = resourceMetadata.Resource.ToString();
-        Console.WriteLine($"Using canonical resource key: {resourceKey}");
-        
-        // Check if we have a valid cached token
-        if (_tokenCache.TryGetValue(resourceKey, out var tokenInfo))
+        // Try to refresh the token if we have a refresh token
+        if (_token?.RefreshToken != null && _authServerMetadata != null)
         {
-            // Check if the token is still valid or needs to be refreshed
-            if (tokenInfo.ExpiresAt > DateTimeOffset.UtcNow.AddMinutes(5)) // 5-minute buffer
+            var newToken = await RefreshTokenAsync(_token.RefreshToken, _authServerMetadata, cancellationToken);
+            if (newToken != null)
             {
-                Console.WriteLine("Using cached token");
-                // Return just the access token, not the token type + access token
-                return tokenInfo.AccessToken;
-            }
-            else if (!string.IsNullOrEmpty(tokenInfo.RefreshToken))
-            {
-                Console.WriteLine("Token expired, attempting to refresh");
-                
-                if (resourceMetadata.AuthorizationServers?.Count > 0)
-                {
-                    var authServerUrl = resourceMetadata.AuthorizationServers[0];
-                    var authServerMetadata = await AuthorizationServerUtils.FetchAuthorizationServerMetadataAsync(
-                        authServerUrl, cancellationToken);
-                        
-                    if (authServerMetadata != null)
-                    {
-                        // Refresh the token
-                        var refreshedToken = await RefreshTokenAsync(
-                            authServerMetadata, 
-                            tokenInfo.RefreshToken, 
-                            cancellationToken);
-                            
-                        if (refreshedToken != null)
-                        {
-                            _tokenCache[resourceKey] = refreshedToken;
-                            Console.WriteLine("Token refreshed successfully");
-                            // Return just the access token, not the token type + access token
-                            return refreshedToken.AccessToken;
-                        }
-                        else
-                        {
-                            Console.WriteLine("Token refresh failed, will need to re-authenticate");
-                        }
-                    }
-                }
-            }
-            else
-            {
-                Console.WriteLine("Token expired and no refresh token available");
-            }
-            
-            // Remove expired token from cache
-            _tokenCache.TryRemove(resourceKey, out _);
-        }
-
-        // We don't have a valid token - let the 401 handler trigger the auth flow
-        Console.WriteLine("No valid token available for: " + resourceKey);
-        return null;
-    }
-
-    /// <summary>
-    /// Gets resource metadata, using the cache if available.
-    /// </summary>
-    /// <param name="resourceUri">The URI of the protected resource.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>The protected resource metadata.</returns>
-    private async Task<ProtectedResourceMetadata?> GetCachedResourceMetadataAsync(Uri resourceUri, CancellationToken cancellationToken)
-    {
-        string requestUriKey = resourceUri.ToString();
-        
-        // Check if we already have cached metadata for this URI
-        if (_resourceMetadataCache.TryGetValue(requestUriKey, out var cachedMetadata))
-        {
-            Console.WriteLine($"Using cached resource metadata for: {requestUriKey}");
-            return cachedMetadata;
-        }
-        
-        // If not in cache, fetch the metadata
-        var metadata = await GetResourceMetadataAsync(resourceUri, cancellationToken);
-        if (metadata != null)
-        {
-            // Cache the metadata using the request URI as the key
-            _resourceMetadataCache[requestUriKey] = metadata;
-            
-            // Also cache using any alternate forms of the URI that might be used
-            if (resourceUri.ToString() != metadata.Resource.ToString())
-            {
-                _resourceMetadataCache[metadata.Resource.ToString()] = metadata;
-            }
-            
-            Console.WriteLine($"Cached resource metadata for {requestUriKey} -> {metadata.Resource}");
-        }
-        
-        return metadata;
-    }
-
-    /// <summary>
-    /// Refreshes an OAuth token using the refresh token.
-    /// </summary>
-    /// <param name="authServerMetadata">The authorization server metadata.</param>
-    /// <param name="refreshToken">The refresh token to use.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>The new token information if successful, otherwise null.</returns>
-    private async Task<TokenContainer?> RefreshTokenAsync(
-        AuthorizationServerMetadata authServerMetadata,
-        string refreshToken,
-        CancellationToken cancellationToken)
-    {
-        using var httpClient = new HttpClient();
-        
-        // Set up the request to the token endpoint
-        var requestContent = new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["grant_type"] = "refresh_token",
-            ["refresh_token"] = refreshToken,
-            ["client_id"] = clientId
-        });
-        
-        // Add client authentication if we have a client secret
-        if (!string.IsNullOrEmpty(clientSecret))
-        {
-            var authHeader = Convert.ToBase64String(
-                Encoding.UTF8.GetBytes($"{clientId}:{clientSecret}"));
-            httpClient.DefaultRequestHeaders.Authorization = 
-                new AuthenticationHeaderValue("Basic", authHeader);
-        }
-        
-        try
-        {
-            // Make the token refresh request
-            var response = await httpClient.PostAsync(
-                authServerMetadata.TokenEndpoint, 
-                requestContent, 
-                cancellationToken);
-            
-            if (response.IsSuccessStatusCode)
-            {
-                // Parse the token response
-                var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
-                var tokenResponse = JsonSerializer.Deserialize<TokenContainer>(
-                    responseJson, 
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                
-                if (tokenResponse != null)
-                {
-                    // Set the time when the token was obtained - ExpiresAt will be calculated automatically
-                    tokenResponse.ObtainedAt = DateTimeOffset.UtcNow;
-                    
-                    // Preserve the refresh token if the response doesn't include a new one
-                    if (string.IsNullOrEmpty(tokenResponse.RefreshToken))
-                    {
-                        tokenResponse.RefreshToken = refreshToken;
-                    }
-                    
-                    return tokenResponse;
-                }
-            }
-            else
-            {
-                Console.WriteLine($"Token refresh failed: {response.StatusCode}");
-                var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-                Console.WriteLine($"Error: {errorContent}");
+                _token = newToken;
+                return _token.AccessToken;
             }
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Exception during token refresh: {ex.Message}");
-        }
         
-        return null;
-    }
-    
-    /// <summary>
-    /// Gets the metadata for a protected resource.
-    /// </summary>
-    /// <param name="resourceUri">The URI of the protected resource.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>The protected resource metadata.</returns>
-    private async Task<ProtectedResourceMetadata?> GetResourceMetadataAsync(Uri resourceUri, CancellationToken cancellationToken)
-    {
-        try
-        {
-            using var httpClient = new HttpClient();
-            
-            // Make a HEAD request to the resource to get the WWW-Authenticate header
-            var request = new HttpRequestMessage(HttpMethod.Head, resourceUri);
-            var response = await httpClient.SendAsync(request, cancellationToken);
-            
-            // Handle 401 Unauthorized response, which should contain the challenge
-            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-            {
-                return await AuthorizationHelpers.ExtractProtectedResourceMetadata(
-                    response,
-                    _serverUrl,
-                    cancellationToken);
-            }
-            else
-            {
-                Console.WriteLine($"Resource request did not return expected 401 status: {response.StatusCode}");
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error getting resource metadata: {ex.Message}");
-        }
-        
+        // No valid token - auth handler will trigger the 401 flow
         return null;
     }
 
@@ -266,205 +62,178 @@ public partial class BasicOAuthAuthorizationProvider(
     {
         try
         {
-            // Use AuthenticationUtils to handle the 401 challenge
+            // Get the metadata from the challenge
             var resourceMetadata = await AuthorizationHelpers.ExtractProtectedResourceMetadata(
-                response,
-                _serverUrl,
-                cancellationToken);
+                response, _serverUrl, cancellationToken);
             
-            if (resourceMetadata == null)
+            if (resourceMetadata?.AuthorizationServers?.Count > 0)
             {
-                Console.WriteLine("Failed to extract resource metadata from response");
-                return false;
-            }
-            
-            // Cache the resource metadata for future use
-            string requestUriKey = response.RequestMessage?.RequestUri?.ToString() ?? string.Empty;
-            if (!string.IsNullOrEmpty(requestUriKey))
-            {
-                _resourceMetadataCache[requestUriKey] = resourceMetadata;
-                
-                // Also cache with the canonical resource URI
-                _resourceMetadataCache[resourceMetadata.Resource.ToString()] = resourceMetadata;
-                
-                Console.WriteLine($"Cached resource metadata for {requestUriKey} -> {resourceMetadata.Resource}");
-            }
-            
-            // If we get here, the resource metadata is valid and matches our server
-            Console.WriteLine($"Successfully validated resource metadata for: {resourceMetadata.Resource}");
-            
-            // Follow the authorization flow as described in the specs
-            if (resourceMetadata.AuthorizationServers?.Count > 0) 
-            {
-                // Get the first authorization server
-                var authServerUrl = resourceMetadata.AuthorizationServers[0];
-                Console.WriteLine($"Using authorization server: {authServerUrl}");
-                
-                // Fetch authorization server metadata
-                var authServerMetadata = await AuthorizationServerUtils.FetchAuthorizationServerMetadataAsync(
-                    authServerUrl, cancellationToken);
+                // Get auth server metadata
+                var authServerMetadata = await GetAuthServerMetadataAsync(
+                    resourceMetadata.AuthorizationServers[0], cancellationToken);
                 
                 if (authServerMetadata != null)
                 {
-                    // Perform the OAuth authorization code flow with PKCE
-                    var token = await PerformAuthorizationCodeFlowAsync(authServerMetadata, resourceMetadata, cancellationToken);
+                    // Store auth server metadata for future refresh operations
+                    _authServerMetadata = authServerMetadata;
                     
+                    // Do the OAuth flow
+                    var token = await DoAuthorizationCodeFlowAsync(authServerMetadata, cancellationToken);
                     if (token != null)
                     {
-                        // Store the token in the cache using the canonical resource URI from metadata
-                        string resourceKey = resourceMetadata.Resource.ToString();
-                        Console.WriteLine($"Storing token with canonical resource key: {resourceKey}");
-                        _tokenCache[resourceKey] = token;
-                        
-                        Console.WriteLine("Successfully obtained a new token");
+                        _token = token;
                         return true;
                     }
                 }
-                else
-                {
-                    Console.WriteLine("Failed to fetch authorization server metadata");
-                }
             }
             
-            Console.WriteLine("API key is valid, but might not have sufficient permissions.");
-            return false;
-        }
-        catch (InvalidOperationException ex)
-        {
-            // Log the specific error about why the challenge handling failed
-            Console.WriteLine($"Authentication challenge failed: {ex.Message}");
             return false;
         }
         catch (Exception ex)
         {
-            // Log any unexpected errors
-            Console.WriteLine($"Unexpected error during authentication challenge: {ex.Message}");
+            Console.WriteLine($"Error handling auth challenge: {ex.Message}");
             return false;
         }
     }
 
-    /// <summary>
-    /// Performs the OAuth authorization code flow with PKCE.
-    /// </summary>
-    /// <param name="authServerMetadata">The authorization server metadata.</param>
-    /// <param name="resourceMetadata">The protected resource metadata.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>The token information if successful, otherwise null.</returns>
-    private async Task<TokenContainer?> PerformAuthorizationCodeFlowAsync(
+    private async Task<AuthorizationServerMetadata?> GetAuthServerMetadataAsync(Uri authServerUri, CancellationToken cancellationToken)
+    {
+        // Ensure trailing slash
+        var baseUrl = authServerUri.ToString();
+        if (!baseUrl.EndsWith("/")) baseUrl += "/";
+        
+        // Try both well-known endpoints
+        foreach (var path in new[] { ".well-known/openid-configuration", ".well-known/oauth-authorization-server" })
+        {
+            try
+            {
+                var response = await _httpClient.GetAsync(new Uri(baseUrl + path), cancellationToken);
+                if (response.IsSuccessStatusCode)
+                {
+                    var json = await response.Content.ReadAsStringAsync(cancellationToken);
+                    var metadata = JsonSerializer.Deserialize<AuthorizationServerMetadata>(
+                        json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    
+                    if (metadata != null) return metadata;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error fetching auth server metadata from {path}: {ex.Message}");
+            }
+        }
+        
+        return null;
+    }
+
+    private async Task<TokenContainer?> RefreshTokenAsync(string refreshToken, AuthorizationServerMetadata authServerMetadata, CancellationToken cancellationToken)
+    {
+        var requestContent = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["grant_type"] = "refresh_token",
+            ["refresh_token"] = refreshToken,
+            ["client_id"] = clientId
+        });
+        
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.TokenEndpoint)
+            {
+                Content = requestContent
+            };
+            
+            // Add client auth if we have a secret
+            if (!string.IsNullOrEmpty(clientSecret))
+            {
+                var authValue = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{clientId}:{clientSecret}"));
+                request.Headers.Authorization = new AuthenticationHeaderValue("Basic", authValue);
+            }
+            
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var json = await response.Content.ReadAsStringAsync(cancellationToken);
+                var tokenResponse = JsonSerializer.Deserialize<TokenContainer>(
+                    json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                
+                if (tokenResponse != null)
+                {
+                    // Set obtained time and preserve refresh token if needed
+                    tokenResponse.ObtainedAt = DateTimeOffset.UtcNow;
+                    if (string.IsNullOrEmpty(tokenResponse.RefreshToken))
+                    {
+                        tokenResponse.RefreshToken = refreshToken;
+                    }
+                    
+                    return tokenResponse;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error refreshing token: {ex.Message}");
+        }
+        
+        return null;
+    }
+
+    private async Task<TokenContainer?> DoAuthorizationCodeFlowAsync(
         AuthorizationServerMetadata authServerMetadata, 
-        ProtectedResourceMetadata resourceMetadata,
         CancellationToken cancellationToken)
     {
-        // Generate PKCE code challenge
+        // Generate PKCE values
         var codeVerifier = GenerateCodeVerifier();
         var codeChallenge = GenerateCodeChallenge(codeVerifier);
         
-        // Build the authorization URL
-        var authorizationUrl = BuildAuthorizationUrl(authServerMetadata, codeChallenge, resourceMetadata);
-        Console.WriteLine($"Authorization URL: {authorizationUrl}");
+        // Build the auth URL
+        var authUrl = BuildAuthorizationUrl(authServerMetadata, codeChallenge);
         
-        // Start a local HTTP listener to receive the authorization code callback
-        var authorizationCode = await StartLocalAuthorizationServerAsync(authorizationUrl, _redirectUri, cancellationToken);
+        // Get auth code
+        var authCode = await GetAuthorizationCodeAsync(authUrl, cancellationToken);
+        if (string.IsNullOrEmpty(authCode)) return null;
         
-        if (string.IsNullOrEmpty(authorizationCode))
-        {
-            Console.WriteLine("Failed to get authorization code from server");
-            return null;
-        }
-        
-        Console.WriteLine($"Received authorization code: {authorizationCode[..Math.Min(6, authorizationCode.Length)]}...");
-        
-        // Exchange the authorization code for tokens
-        return await ExchangeCodeForTokenAsync(authServerMetadata, authorizationCode, codeVerifier, cancellationToken);
+        // Exchange for token
+        return await ExchangeCodeForTokenAsync(authServerMetadata, authCode, codeVerifier, cancellationToken);
     }
     
-    /// <summary>
-    /// Starts a local HTTP server to receive the authorization code from the OAuth redirect.
-    /// </summary>
-    /// <param name="authorizationUrl">The authorization URL to redirect the user to.</param>
-    /// <param name="redirectUri">The redirect URI where the authorization code will be sent.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>The authorization code if successful, otherwise null.</returns>
-    private async Task<string?> StartLocalAuthorizationServerAsync(Uri authorizationUrl, Uri redirectUri, CancellationToken cancellationToken)
+    private Uri BuildAuthorizationUrl(AuthorizationServerMetadata authServerMetadata, string codeChallenge)
     {
-        // Extract the redirect URI path including the query string
-        var redirectUriWithPath = redirectUri.AbsoluteUri;
+        var queryParams = HttpUtility.ParseQueryString(string.Empty);
+        queryParams["client_id"] = clientId;
+        queryParams["redirect_uri"] = _redirectUri.ToString();
+        queryParams["response_type"] = "code";
+        queryParams["code_challenge"] = codeChallenge;
+        queryParams["code_challenge_method"] = "S256";
         
-        // For the listener prefix, we want just the scheme, host, and port part
-        var listenerPrefix = redirectUri.GetLeftPart(UriPartial.Authority);
-        
-        // Make sure the listener prefix has a trailing slash
-        if (!listenerPrefix.EndsWith("/"))
+        if (_scopes.Any())
         {
-            listenerPrefix += "/";
+            queryParams["scope"] = string.Join(" ", _scopes);
         }
         
-        Console.WriteLine($"Setting up HTTP listener with prefix: {listenerPrefix}");
+        var uriBuilder = new UriBuilder(authServerMetadata.AuthorizationEndpoint);
+        uriBuilder.Query = queryParams.ToString();
+        return uriBuilder.Uri;
+    }
+    
+    private async Task<string?> GetAuthorizationCodeAsync(Uri authorizationUrl, CancellationToken cancellationToken)
+    {
+        var listenerPrefix = _redirectUri.GetLeftPart(UriPartial.Authority);
+        if (!listenerPrefix.EndsWith("/")) listenerPrefix += "/";
         
         using var listener = new System.Net.HttpListener();
         listener.Prefixes.Add(listenerPrefix);
         
         try
         {
-            // Start the listener first
             listener.Start();
-            Console.WriteLine("HTTP listener started");
             
-            // Create a cancellation token source with timeout
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, cancellationToken);
-            
-            // Open the browser to the authorization URL
-            Console.WriteLine($"Opening browser to: {authorizationUrl}");
+            // Open browser to the authorization URL
             OpenBrowser(authorizationUrl);
             
-            // Race the HTTP callback against the timeout token
-            var contextTask = listener.GetContextAsync();
-            var completedTask = await Task.WhenAny(contextTask, Task.Delay(Timeout.Infinite, linkedCts.Token));
+            // Get the authorization code
+            var context = await listener.GetContextAsync();
             
-            if (completedTask != contextTask)
-            {
-                Console.WriteLine("Authorization timed out");
-                return null;
-            }
-            
-            // Get the completed HTTP context
-            var context = await contextTask;
-            
-            // Process the callback response
-            return ProcessAuthorizationCallback(context);
-        }
-        catch (TaskCanceledException)
-        {
-            Console.WriteLine("Authorization was canceled");
-            return null;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error during authorization: {ex.Message}");
-            return null;
-        }
-        finally
-        {
-            // Ensure the listener is stopped
-            if (listener.IsListening)
-            {
-                listener.Stop();
-                Console.WriteLine("HTTP listener stopped");
-            }
-        }
-    }
-    
-    /// <summary>
-    /// Process the callback from the authorization server.
-    /// </summary>
-    /// <param name="context">The HTTP context from the callback.</param>
-    /// <returns>The authorization code if present, otherwise null.</returns>
-    private string? ProcessAuthorizationCallback(System.Net.HttpListenerContext context)
-    {
-        try
-        {
-            // Parse the query string to get the authorization code
+            // Parse the response
             var query = HttpUtility.ParseQueryString(context.Request.Url?.Query ?? string.Empty);
             var code = query["code"];
             var error = query["error"];
@@ -477,42 +246,87 @@ public partial class BasicOAuthAuthorizationProvider(
             context.Response.OutputStream.Write(buffer, 0, buffer.Length);
             context.Response.Close();
             
-            // Check for errors
             if (!string.IsNullOrEmpty(error))
             {
-                Console.WriteLine($"Authorization error: {error}");
+                Console.WriteLine($"Auth error: {error}");
                 return null;
             }
             
-            // Return the authorization code
-            if (!string.IsNullOrEmpty(code))
+            return code;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error getting auth code: {ex.Message}");
+            return null;
+        }
+        finally
+        {
+            if (listener.IsListening) listener.Stop();
+        }
+    }
+    
+    private async Task<TokenContainer?> ExchangeCodeForTokenAsync(
+        AuthorizationServerMetadata authServerMetadata,
+        string authorizationCode,
+        string codeVerifier,
+        CancellationToken cancellationToken)
+    {
+        var requestContent = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["grant_type"] = "authorization_code",
+            ["code"] = authorizationCode,
+            ["redirect_uri"] = _redirectUri.ToString(),
+            ["client_id"] = clientId,
+            ["code_verifier"] = codeVerifier
+        });
+        
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.TokenEndpoint)
             {
-                Console.WriteLine($"Received authorization code: {code[..Math.Min(6, code.Length)]}...");
-                return code;
+                Content = requestContent
+            };
+            
+            // Add client auth if we have a secret
+            if (!string.IsNullOrEmpty(clientSecret))
+            {
+                var authValue = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{clientId}:{clientSecret}"));
+                request.Headers.Authorization = new AuthenticationHeaderValue("Basic", authValue);
+            }
+            
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var json = await response.Content.ReadAsStringAsync(cancellationToken);
+                var tokenResponse = JsonSerializer.Deserialize<TokenContainer>(
+                    json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                
+                if (tokenResponse != null)
+                {
+                    // Set the time when the token was obtained
+                    tokenResponse.ObtainedAt = DateTimeOffset.UtcNow;
+                    return tokenResponse;
+                }
             }
             else
             {
-                Console.WriteLine("No authorization code received");
-                return null;
+                Console.WriteLine($"Token exchange failed: {response.StatusCode}");
+                var error = await response.Content.ReadAsStringAsync(cancellationToken);
+                Console.WriteLine($"Error: {error}");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error processing callback: {ex.Message}");
-            return null;
+            Console.WriteLine($"Exception during token exchange: {ex.Message}");
         }
+        
+        return null;
     }
-
-    /// <summary>
-    /// Opens the system browser to the specified URL.
-    /// </summary>
-    /// <param name="url">The URL to open in the browser.</param>
+    
     private void OpenBrowser(Uri url)
     {
         try
         {
-            // Use the default system browser to open the URL
-            Console.WriteLine($"Opening browser to {url}");
             var psi = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = url.ToString(),
@@ -523,117 +337,10 @@ public partial class BasicOAuthAuthorizationProvider(
         catch (Exception ex)
         {
             Console.WriteLine($"Error opening browser: {ex.Message}");
-            Console.WriteLine($"Please manually browse to: {url}");
+            Console.WriteLine($"Please manually navigate to: {url}");
         }
     }
-
-    /// <summary>
-    /// Builds the authorization URL for the authorization code flow.
-    /// </summary>
-    private Uri BuildAuthorizationUrl(
-        AuthorizationServerMetadata authServerMetadata, 
-        string codeChallenge,
-        ProtectedResourceMetadata resourceMetadata)
-    {
-        var queryParams = HttpUtility.ParseQueryString(string.Empty);
-        queryParams["client_id"] = clientId;
-        queryParams["redirect_uri"] = _redirectUri.ToString();
-        queryParams["response_type"] = "code";
-        queryParams["code_challenge"] = codeChallenge;
-        queryParams["code_challenge_method"] = "S256";
-        
-        // Use the scopes provided in the constructor
-        if (_scopes.Any())
-        {
-            queryParams["scope"] = string.Join(" ", _scopes);
-        }
-        // If no scopes were provided, fall back to the resource metadata scopes
-        else if (resourceMetadata.ScopesSupported.Count > 0)
-        {
-            queryParams["scope"] = string.Join(" ", resourceMetadata.ScopesSupported);
-            Console.WriteLine("Warning: Using scopes from resource metadata. It's recommended to provide scopes in the constructor instead.");
-        }
-        
-        // Create the authorization URL
-        var uriBuilder = new UriBuilder(authServerMetadata.AuthorizationEndpoint);
-        uriBuilder.Query = queryParams.ToString();
-        
-        return uriBuilder.Uri;
-    }
-
-    /// <summary>
-    /// Exchanges an authorization code for an access token.
-    /// </summary>
-    private async Task<TokenContainer?> ExchangeCodeForTokenAsync(
-        AuthorizationServerMetadata authServerMetadata,
-        string authorizationCode,
-        string codeVerifier,
-        CancellationToken cancellationToken)
-    {
-        using var httpClient = new HttpClient();
-        
-        // Set up the request to the token endpoint
-        var requestContent = new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["grant_type"] = "authorization_code",
-            ["code"] = authorizationCode,
-            ["redirect_uri"] = _redirectUri.ToString(),
-            ["client_id"] = clientId,
-            ["code_verifier"] = codeVerifier
-        });
-        
-        // Add client authentication if we have a client secret
-        if (!string.IsNullOrEmpty(clientSecret))
-        {
-            var authHeader = Convert.ToBase64String(
-                Encoding.UTF8.GetBytes($"{clientId}:{clientSecret}"));
-            httpClient.DefaultRequestHeaders.Authorization = 
-                new AuthenticationHeaderValue("Basic", authHeader);
-        }
-        
-        try
-        {
-            // Make the token request
-            var response = await httpClient.PostAsync(
-                authServerMetadata.TokenEndpoint, 
-                requestContent, 
-                cancellationToken);
-            
-            if (response.IsSuccessStatusCode)
-            {
-                // Parse the token response
-                var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
-                var tokenResponse = JsonSerializer.Deserialize<TokenContainer>(
-                    responseJson, 
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                
-                if (tokenResponse != null)
-                {
-                    // Set the time when the token was obtained - ExpiresAt will be calculated automatically
-                    tokenResponse.ObtainedAt = DateTimeOffset.UtcNow;
-                    
-                    Console.WriteLine("Token exchange successful");
-                    return tokenResponse;
-                }
-            }
-            else
-            {
-                Console.WriteLine($"Token request failed: {response.StatusCode}");
-                var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-                Console.WriteLine($"Error: {errorContent}");
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Exception during token exchange: {ex.Message}");
-        }
-        
-        return null;
-    }
-
-    /// <summary>
-    /// Generates a random code verifier for PKCE.
-    /// </summary>
+    
     private string GenerateCodeVerifier()
     {
         var bytes = new byte[32];
@@ -644,10 +351,7 @@ public partial class BasicOAuthAuthorizationProvider(
             .Replace('+', '-')
             .Replace('/', '_');
     }
-
-    /// <summary>
-    /// Generates a code challenge from a code verifier using SHA256.
-    /// </summary>
+    
     private string GenerateCodeChallenge(string codeVerifier)
     {
         using var sha256 = SHA256.Create();
