@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
-using ModelContextProtocol.AspNetCore.Auth;
-using ModelContextProtocol.Auth.Types;
+using ModelContextProtocol.AspNetCore.Authentication;
+using ModelContextProtocol.Types.Authentication;
 using ProtectedMCPServer.Tools;
 using System.Net.Http.Headers;
 using System.Security.Claims;

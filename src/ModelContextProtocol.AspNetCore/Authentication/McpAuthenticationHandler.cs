@@ -2,11 +2,11 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using ModelContextProtocol.Auth.Types;
+using ModelContextProtocol.Types.Authentication;
 using ModelContextProtocol.Utils.Json;
 using System.Text.Encodings.Web;
 
-namespace ModelContextProtocol.AspNetCore.Auth;
+namespace ModelContextProtocol.AspNetCore.Authentication;
 
 /// <summary>
 /// Authentication handler for MCP protocol that adds resource metadata to challenge responses

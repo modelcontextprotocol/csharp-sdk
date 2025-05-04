@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
-using ModelContextProtocol.Auth.Types;
+using ModelContextProtocol.Types.Authentication;
 
-namespace ModelContextProtocol.AspNetCore.Auth;
+namespace ModelContextProtocol.AspNetCore.Authentication;
 
 /// <summary>
 /// Options for the MCP authentication handler.

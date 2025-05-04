@@ -1,6 +1,3 @@
-using System.Net.Http;
-using System.Threading.Tasks;
-using ModelContextProtocol.Auth;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Transport;
 

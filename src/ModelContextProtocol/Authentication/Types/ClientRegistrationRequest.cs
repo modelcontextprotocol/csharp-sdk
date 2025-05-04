@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace ModelContextProtocol.Auth.Types;
+namespace ModelContextProtocol.Types.Authentication;
 
 /// <summary>
 /// Represents the client registration request metadata.

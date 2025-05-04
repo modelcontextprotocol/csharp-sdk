@@ -1,4 +1,4 @@
-namespace ModelContextProtocol.AspNetCore.Auth;
+namespace ModelContextProtocol.AspNetCore.Authentication;
 
 /// <summary>
 /// Default values used by MCP authentication.
