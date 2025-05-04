@@ -5,7 +5,7 @@ namespace ModelContextProtocol.Authentication;
 /// <summary>
 /// A delegating handler that adds authentication tokens to requests and handles 401 responses.
 /// </summary>
-internal class AuthorizationDelegatingHandler : DelegatingHandler
+public class AuthorizationDelegatingHandler : DelegatingHandler
 {
     private readonly IMcpAuthorizationProvider _tokenProvider;
     private readonly string _scheme;

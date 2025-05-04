@@ -22,13 +22,12 @@ public class BasicOAuthAuthorizationProvider(
     string clientId = "demo-client",
     string clientSecret = "",
     Uri? redirectUri = null,
-    IEnumerable<string>? scopes = null,
-    HttpClient? httpClient = null) : IMcpAuthorizationProvider
+    IEnumerable<string>? scopes = null) : IMcpAuthorizationProvider
 {
     private readonly Uri _serverUrl = serverUrl ?? throw new ArgumentNullException(nameof(serverUrl));
     private readonly Uri _redirectUri = redirectUri ?? new Uri("http://localhost:8080/callback");
     private readonly List<string> _scopes = scopes?.ToList() ?? new List<string>();
-    private readonly HttpClient _httpClient = httpClient ?? new HttpClient();
+    private readonly HttpClient _httpClient = new HttpClient();
     
     // Single token storage
     private TokenContainer? _token;
