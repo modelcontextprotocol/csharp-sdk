@@ -1,5 +1,7 @@
+using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Transport;
+using System.Diagnostics;
 
 namespace ProtectedMCPClient;
 
@@ -7,31 +9,21 @@ class Program
 {
     static async Task Main(string[] args)
     {
-        Console.WriteLine("MCP Secure Weather Client with OAuth Authentication");
-        Console.WriteLine("==================================================");
+        Console.WriteLine("MCP Secure Weather Client with Authentication");
+        Console.WriteLine("==============================================");
         Console.WriteLine();
 
-        //// Create the authorization config with HTTP listener
-        //var authConfig = new AuthorizationConfig
-        //{
-        //    ClientId = "6ad97b5f-7a7b-413f-8603-7a3517d4adb8",
-        //    Scopes = ["api://167b4284-3f92-4436-92ed-38b38f83ae08/weather.read"]
-        //}.UseHttpListener(hostname: "localhost", listenPort: 1170);
-
-        //// Create an HTTP client with OAuth handling
-        //var oauthHandler = new OAuthDelegatingHandler(
-        //    redirectUri: authConfig.RedirectUri,
-        //    clientId: authConfig.ClientId,
-        //    clientName: authConfig.ClientName,
-        //    scopes: authConfig.Scopes,
-        //    authorizationHandler: authConfig.AuthorizationHandler)
-        //{
-        //    // The OAuth handler needs an inner handler
-        //    InnerHandler = new HttpClientHandler()
-        //};
-
-        var httpClient = new HttpClient();
+        // Create a standard HttpClient with authentication configured
         var serverUrl = "http://localhost:7071/sse"; // Default server URL
+
+        // Ask for the API key
+        Console.WriteLine("Enter your API key (or press Enter to use default):");
+        var apiKey = Console.ReadLine();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            apiKey = "demo-api-key-12345"; // Default API key for demonstration
+            Console.WriteLine($"Using default API key: {apiKey}");
+        }
 
         // Allow the user to specify a different server URL
         Console.WriteLine($"Server URL (press Enter for default: {serverUrl}):");
@@ -41,10 +33,14 @@ class Program
             serverUrl = userInput;
         }
 
+        // Create a single HttpClient with authentication configured
+        var tokenProvider = new SimpleAccessTokenProvider(apiKey, new Uri(serverUrl));
+        var httpClient = new HttpClient().UseAuthenticationProvider(tokenProvider);
+
         Console.WriteLine();
         Console.WriteLine($"Connecting to weather server at {serverUrl}...");
-        Console.WriteLine("When prompted for authorization, a browser window will open automatically.");
-        Console.WriteLine("Complete the authentication in the browser, and this application will continue automatically.");
+        Console.WriteLine("When prompted for authorization, the challenge will be verified automatically.");
+        Console.WriteLine("If required, you'll be guided through any necessary authentication steps.");
         Console.WriteLine();
 
         try
@@ -82,6 +78,15 @@ class Program
                 Console.WriteLine();
             }
         }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            // Handle authentication failures specifically
+            Console.WriteLine("Authentication failed. The server returned a 401 Unauthorized response.");
+            Console.WriteLine($"Details: {ex.Message}");
+            
+            // Additional handling for 401 - could add manual authentication retry here
+            Console.WriteLine("You might need to provide a different API key or authentication credentials.");
+        }
         catch (Exception ex)
         {
             Console.WriteLine($"Error: {ex.Message}");
@@ -89,6 +94,11 @@ class Program
             {
                 Console.WriteLine($"Inner error: {ex.InnerException.Message}");
             }
+            
+            // Print stack trace in debug builds
+            #if DEBUG
+            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+            #endif
         }
 
         Console.WriteLine("Press any key to exit...");
