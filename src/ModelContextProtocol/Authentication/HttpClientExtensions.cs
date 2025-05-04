@@ -20,7 +20,7 @@ public static class HttpClientExtensions
     /// <item>Retries the request with the new token if token refresh is successful</item>
     /// </list>
     /// </remarks>
-    public static HttpClient UseAuthenticationProvider(this HttpClient httpClient, ITokenProvider tokenProvider, string scheme = "Bearer")
+    public static HttpClient UseMcpAuthorizationProvider(this HttpClient httpClient, IMcpAuthorizationProvider tokenProvider, string scheme = "Bearer")
     {
         if (httpClient == null)
             throw new ArgumentNullException(nameof(httpClient));

@@ -1,7 +1,6 @@
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Transport;
-using System.Diagnostics;
 
 namespace ProtectedMCPClient;
 
@@ -9,47 +8,29 @@ class Program
 {
     static async Task Main(string[] args)
     {
-        Console.WriteLine("MCP Secure Weather Client with Authentication");
-        Console.WriteLine("==============================================");
+        Console.WriteLine("Protected MCP Weather Server");
         Console.WriteLine();
 
-        // Create a standard HttpClient with authentication configured
-        var serverUrl = "http://localhost:7071/sse"; // Default server URL
+        var serverUrl = "http://localhost:7071/sse";
 
-        // Allow the user to specify a different server URL
-        Console.WriteLine($"Server URL (press Enter for default: {serverUrl}):");
-        var userInput = Console.ReadLine();
-        if (!string.IsNullOrWhiteSpace(userInput))
-        {
-            serverUrl = userInput;
-        }
-
-        // Create a single HttpClient with authentication configured
         var tokenProvider = new SimpleAccessTokenProvider(new Uri(serverUrl));
-        var httpClient = new HttpClient().UseAuthenticationProvider(tokenProvider);
+        var httpClient = new HttpClient().UseMcpAuthorizationProvider(tokenProvider);
 
         Console.WriteLine();
         Console.WriteLine($"Connecting to weather server at {serverUrl}...");
-        Console.WriteLine("When prompted for authorization, the challenge will be verified automatically.");
-        Console.WriteLine("If required, you'll be guided through any necessary authentication steps.");
-        Console.WriteLine();
 
         try
         {
-            // Create SseClientTransportOptions with the server URL
             var transportOptions = new SseClientTransportOptions
             {
                 Endpoint = new Uri(serverUrl),
                 Name = "Secure Weather Client"
             };
 
-            // Create SseClientTransport with our authenticated HTTP client
             var transport = new SseClientTransport(transportOptions, httpClient);
 
-            // Create an MCP client using the factory method with our transport
             var client = await McpClientFactory.CreateAsync(transport);
 
-            // Get the list of available tools
             var tools = await client.ListToolsAsync();
             if (tools.Count == 0)
             {
@@ -60,7 +41,6 @@ class Program
             Console.WriteLine($"Found {tools.Count} tools on the server.");
             Console.WriteLine();
 
-            // Call the protected-data tool which requires authentication
             if (tools.Any(t => t.Name == "protected-data"))
             {
                 Console.WriteLine("Calling protected-data tool...");

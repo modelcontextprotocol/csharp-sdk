@@ -15,7 +15,7 @@ namespace ProtectedMCPClient;
 /// A simple implementation of IAccessTokenProvider that uses a fixed API key.
 /// This is just for demonstration purposes.
 /// </summary>
-public partial class SimpleAccessTokenProvider : ITokenProvider
+public partial class SimpleAccessTokenProvider : IMcpAuthorizationProvider
 {
     private readonly ConcurrentDictionary<string, TokenContainer> _tokenCache = new();
     private readonly Uri _serverUrl;
@@ -32,7 +32,7 @@ public partial class SimpleAccessTokenProvider : ITokenProvider
     }
 
     /// <inheritdoc />
-    public async Task<string?> GetTokenAsync(Uri resourceUri, CancellationToken cancellationToken = default)
+    public async Task<string?> GetCredentialAsync(Uri resourceUri, CancellationToken cancellationToken = default)
     {
         Console.WriteLine($"Getting authentication token for {resourceUri}");
         

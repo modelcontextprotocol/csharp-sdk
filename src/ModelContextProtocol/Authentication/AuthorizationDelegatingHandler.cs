@@ -7,7 +7,7 @@ namespace ModelContextProtocol.Authentication;
 /// </summary>
 internal class AuthorizationDelegatingHandler : DelegatingHandler
 {
-    private readonly ITokenProvider _tokenProvider;
+    private readonly IMcpAuthorizationProvider _tokenProvider;
     private readonly string _scheme;
 
     /// <summary>
@@ -15,7 +15,7 @@ internal class AuthorizationDelegatingHandler : DelegatingHandler
     /// </summary>
     /// <param name="tokenProvider">The provider that supplies authentication tokens.</param>
     /// <param name="scheme">The authentication scheme to use, e.g., "Bearer".</param>
-    public AuthorizationDelegatingHandler(ITokenProvider tokenProvider, string scheme)
+    public AuthorizationDelegatingHandler(IMcpAuthorizationProvider tokenProvider, string scheme)
     {
         _tokenProvider = tokenProvider ?? throw new ArgumentNullException(nameof(tokenProvider));
         _scheme = scheme ?? throw new ArgumentNullException(nameof(scheme));
@@ -66,7 +66,7 @@ internal class AuthorizationDelegatingHandler : DelegatingHandler
     {
         if (request.RequestUri != null)
         {
-            var token = await _tokenProvider.GetTokenAsync(request.RequestUri, cancellationToken);
+            var token = await _tokenProvider.GetCredentialAsync(request.RequestUri, cancellationToken);
             if (!string.IsNullOrEmpty(token))
             {
                 request.Headers.Authorization = new AuthenticationHeaderValue(_scheme, token);
