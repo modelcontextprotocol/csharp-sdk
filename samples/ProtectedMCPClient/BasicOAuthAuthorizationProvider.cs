@@ -26,13 +26,11 @@ public class BasicOAuthAuthorizationProvider(
 {
     private readonly Uri _serverUrl = serverUrl ?? throw new ArgumentNullException(nameof(serverUrl));
     private readonly Uri _redirectUri = redirectUri ?? new Uri("http://localhost:8080/callback");
-    private readonly List<string> _scopes = scopes?.ToList() ?? new List<string>();
-    private readonly HttpClient _httpClient = new HttpClient();
+    private readonly List<string> _scopes = scopes?.ToList() ?? [];
+    private readonly HttpClient _httpClient = new();
     
-    // Single token storage
     private TokenContainer? _token;
 
-    // Store auth server metadata separately so token only stores token data
     private AuthorizationServerMetadata? _authServerMetadata;
 
     public string AuthorizationScheme => "Bearer";
@@ -82,7 +80,7 @@ public class BasicOAuthAuthorizationProvider(
                     _authServerMetadata = authServerMetadata;
                     
                     // Do the OAuth flow
-                    var token = await DoAuthorizationCodeFlowAsync(authServerMetadata, cancellationToken);
+                    var token = await InitiateAuthorizationCodeFlowAsync(authServerMetadata, cancellationToken);
                     if (token != null)
                     {
                         _token = token;
@@ -102,11 +100,9 @@ public class BasicOAuthAuthorizationProvider(
 
     private async Task<AuthorizationServerMetadata?> GetAuthServerMetadataAsync(Uri authServerUri, CancellationToken cancellationToken)
     {
-        // Ensure trailing slash
         var baseUrl = authServerUri.ToString();
         if (!baseUrl.EndsWith("/")) baseUrl += "/";
         
-        // Try both well-known endpoints
         foreach (var path in new[] { ".well-known/openid-configuration", ".well-known/oauth-authorization-server" })
         {
             try
@@ -145,8 +141,7 @@ public class BasicOAuthAuthorizationProvider(
             {
                 Content = requestContent
             };
-            
-            // Add client auth if we have a secret
+
             if (!string.IsNullOrEmpty(clientSecret))
             {
                 var authValue = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{clientId}:{clientSecret}"));
@@ -162,7 +157,6 @@ public class BasicOAuthAuthorizationProvider(
                 
                 if (tokenResponse != null)
                 {
-                    // Set obtained time and preserve refresh token if needed
                     tokenResponse.ObtainedAt = DateTimeOffset.UtcNow;
                     if (string.IsNullOrEmpty(tokenResponse.RefreshToken))
                     {
@@ -181,22 +175,18 @@ public class BasicOAuthAuthorizationProvider(
         return null;
     }
 
-    private async Task<TokenContainer?> DoAuthorizationCodeFlowAsync(
+    private async Task<TokenContainer?> InitiateAuthorizationCodeFlowAsync(
         AuthorizationServerMetadata authServerMetadata, 
         CancellationToken cancellationToken)
     {
-        // Generate PKCE values
         var codeVerifier = GenerateCodeVerifier();
         var codeChallenge = GenerateCodeChallenge(codeVerifier);
         
-        // Build the auth URL
         var authUrl = BuildAuthorizationUrl(authServerMetadata, codeChallenge);
         
-        // Get auth code
         var authCode = await GetAuthorizationCodeAsync(authUrl, cancellationToken);
         if (string.IsNullOrEmpty(authCode)) return null;
         
-        // Exchange for token
         return await ExchangeCodeForTokenAsync(authServerMetadata, authCode, codeVerifier, cancellationToken);
     }
     
@@ -231,18 +221,14 @@ public class BasicOAuthAuthorizationProvider(
         {
             listener.Start();
             
-            // Open browser to the authorization URL
             OpenBrowser(authorizationUrl);
             
-            // Get the authorization code
             var context = await listener.GetContextAsync();
             
-            // Parse the response
             var query = HttpUtility.ParseQueryString(context.Request.Url?.Query ?? string.Empty);
             var code = query["code"];
             var error = query["error"];
             
-            // Send a response to the browser
             string responseHtml = "<html><body><h1>Authentication complete</h1><p>You can close this window now.</p></body></html>";
             byte[] buffer = Encoding.UTF8.GetBytes(responseHtml);
             context.Response.ContentLength64 = buffer.Length;
@@ -291,7 +277,6 @@ public class BasicOAuthAuthorizationProvider(
                 Content = requestContent
             };
             
-            // Add client auth if we have a secret
             if (!string.IsNullOrEmpty(clientSecret))
             {
                 var authValue = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{clientId}:{clientSecret}"));
@@ -307,7 +292,6 @@ public class BasicOAuthAuthorizationProvider(
                 
                 if (tokenResponse != null)
                 {
-                    // Set the time when the token was obtained
                     tokenResponse.ObtainedAt = DateTimeOffset.UtcNow;
                     return tokenResponse;
                 }
