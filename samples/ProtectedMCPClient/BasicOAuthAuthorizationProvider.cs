@@ -30,38 +30,35 @@ public class BasicOAuthAuthorizationProvider(
     private readonly HttpClient _httpClient = new();
     
     private TokenContainer? _token;
-
     private AuthorizationServerMetadata? _authServerMetadata;
 
-    public string AuthorizationScheme => "Bearer";
+    /// <inheritdoc />
+    public IEnumerable<string> SupportedSchemes => new[] { "DPoP" };
 
     /// <inheritdoc />
-    public async Task<string?> GetCredentialAsync(Uri resourceUri, CancellationToken cancellationToken = default)
+    public Task<string?> GetCredentialAsync(string scheme, Uri resourceUri, CancellationToken cancellationToken = default)
     {
-        // Return the token if it's valid
-        if (_token != null && _token.ExpiresAt > DateTimeOffset.UtcNow.AddMinutes(5))
+        // This provider only supports Bearer tokens
+        if (scheme != "Bearer")
         {
-            return _token.AccessToken;
+            return Task.FromResult<string?>(null);
         }
-        
-        // Try to refresh the token if we have a refresh token
-        if (_token?.RefreshToken != null && _authServerMetadata != null)
-        {
-            var newToken = await RefreshTokenAsync(_token.RefreshToken, _authServerMetadata, cancellationToken);
-            if (newToken != null)
-            {
-                _token = newToken;
-                return _token.AccessToken;
-            }
-        }
-        
-        // No valid token - auth handler will trigger the 401 flow
-        return null;
+
+        return GetBearerTokenAsync(cancellationToken);
     }
 
     /// <inheritdoc />
-    public async Task<bool> HandleUnauthorizedResponseAsync(HttpResponseMessage response, CancellationToken cancellationToken = default)
+    public async Task<(bool Success, string? RecommendedScheme)> HandleUnauthorizedResponseAsync(
+        HttpResponseMessage response, 
+        string scheme,
+        CancellationToken cancellationToken = default)
     {
+        // This provider only supports Bearer scheme
+        if (scheme != "Bearer")
+        {
+            return (false, null);
+        }
+
         try
         {
             // Get the metadata from the challenge
@@ -84,20 +81,43 @@ public class BasicOAuthAuthorizationProvider(
                     if (token != null)
                     {
                         _token = token;
-                        return true;
+                        return (true, "Bearer");
                     }
                 }
             }
             
-            return false;
+            return (false, null);
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error handling auth challenge: {ex.Message}");
-            return false;
+            return (false, null);
         }
     }
 
+    private async Task<string?> GetBearerTokenAsync(CancellationToken cancellationToken = default)
+    {
+        // Return the token if it's valid
+        if (_token != null && _token.ExpiresAt > DateTimeOffset.UtcNow.AddMinutes(5))
+        {
+            return _token.AccessToken;
+        }
+        
+        // Try to refresh the token if we have a refresh token
+        if (_token?.RefreshToken != null && _authServerMetadata != null)
+        {
+            var newToken = await RefreshTokenAsync(_token.RefreshToken, _authServerMetadata, cancellationToken);
+            if (newToken != null)
+            {
+                _token = newToken;
+                return _token.AccessToken;
+            }
+        }
+        
+        // No valid token - auth handler will trigger the 401 flow
+        return null;
+    }
+    
     private async Task<AuthorizationServerMetadata?> GetAuthServerMetadataAsync(Uri authServerUri, CancellationToken cancellationToken)
     {
         var baseUrl = authServerUri.ToString();
