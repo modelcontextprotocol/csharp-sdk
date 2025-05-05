@@ -35,6 +35,8 @@ public class BasicOAuthAuthorizationProvider(
     // Store auth server metadata separately so token only stores token data
     private AuthorizationServerMetadata? _authServerMetadata;
 
+    public string AuthorizationScheme => "Bearer";
+
     /// <inheritdoc />
     public async Task<string?> GetCredentialAsync(Uri resourceUri, CancellationToken cancellationToken = default)
     {

@@ -7,6 +7,16 @@ namespace ModelContextProtocol.Authentication;
 public interface IMcpAuthorizationProvider
 {
     /// <summary>
+    /// Gets the authentication scheme to use with credentials from this provider.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Common values include "Bearer" for JWT tokens and "Basic" for username/password authentication.
+    /// </para>
+    /// </remarks>
+    string AuthorizationScheme { get; }
+
+    /// <summary>
     /// Gets an authentication token or credential for authenticating requests to a resource.
     /// </summary>
     /// <param name="resourceUri">The URI of the resource requiring authentication.</param>

@@ -18,14 +18,7 @@ class Program
             clientId: "6ad97b5f-7a7b-413f-8603-7a3517d4adb8",
             redirectUri: new Uri("http://localhost:1179/callback"),
             scopes: new List<string> { "api://167b4284-3f92-4436-92ed-38b38f83ae08/weather.read" }
-            );
-
-        var authHandler = new AuthorizationDelegatingHandler(tokenProvider, "Bearer")
-        {
-            InnerHandler = new HttpClientHandler() 
-        };
-
-        var httpClient = new HttpClient(authHandler);
+        );
 
         Console.WriteLine();
         Console.WriteLine($"Connecting to weather server at {serverUrl}...");
@@ -38,7 +31,7 @@ class Program
                 Name = "Secure Weather Client"
             };
 
-            var transport = new SseClientTransport(transportOptions, httpClient);
+            var transport = new SseClientTransport(transportOptions, tokenProvider);
 
             var client = await McpClientFactory.CreateAsync(transport);
 

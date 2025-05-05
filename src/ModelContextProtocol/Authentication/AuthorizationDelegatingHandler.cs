@@ -7,18 +7,15 @@ namespace ModelContextProtocol.Authentication;
 /// </summary>
 public class AuthorizationDelegatingHandler : DelegatingHandler
 {
-    private readonly IMcpAuthorizationProvider _tokenProvider;
-    private readonly string _scheme;
+    private readonly IMcpAuthorizationProvider _authorizationProvider;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AuthorizationDelegatingHandler"/> class.
     /// </summary>
-    /// <param name="tokenProvider">The provider that supplies authentication tokens.</param>
-    /// <param name="scheme">The authentication scheme to use, e.g., "Bearer".</param>
-    public AuthorizationDelegatingHandler(IMcpAuthorizationProvider tokenProvider, string scheme)
+    /// <param name="authorizationProvider">The provider that supplies authentication tokens.</param>
+    public AuthorizationDelegatingHandler(IMcpAuthorizationProvider authorizationProvider)
     {
-        _tokenProvider = tokenProvider ?? throw new ArgumentNullException(nameof(tokenProvider));
-        _scheme = scheme ?? throw new ArgumentNullException(nameof(scheme));
+        _authorizationProvider = authorizationProvider ?? throw new ArgumentNullException(nameof(authorizationProvider));
     }
 
     /// <summary>
@@ -39,7 +36,7 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
         if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
         {
             // Try to handle the unauthorized response
-            var handled = await _tokenProvider.HandleUnauthorizedResponseAsync(
+            var handled = await _authorizationProvider.HandleUnauthorizedResponseAsync(
                 response,
                 cancellationToken);
 
@@ -66,10 +63,10 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
     {
         if (request.RequestUri != null)
         {
-            var token = await _tokenProvider.GetCredentialAsync(request.RequestUri, cancellationToken);
+            var token = await _authorizationProvider.GetCredentialAsync(request.RequestUri, cancellationToken);
             if (!string.IsNullOrEmpty(token))
             {
-                request.Headers.Authorization = new AuthenticationHeaderValue(_scheme, token);
+                request.Headers.Authorization = new AuthenticationHeaderValue(_authorizationProvider.AuthorizationScheme, token);
             }
         }
     }

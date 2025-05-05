@@ -1,5 +1,7 @@
 namespace ModelContextProtocol.Protocol.Transport;
 
+using ModelContextProtocol.Authentication;
+
 /// <summary>
 /// Provides options for configuring <see cref="SseClientTransport"/> instances.
 /// </summary>

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Utils;
 
 namespace ModelContextProtocol.Protocol.Transport;
@@ -49,6 +50,32 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
         _loggerFactory = loggerFactory;
         _ownsHttpClient = ownsHttpClient;
         Name = transportOptions.Name ?? transportOptions.Endpoint.ToString();
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SseClientTransport"/> class with authentication support.
+    /// </summary>
+    /// <param name="transportOptions">Configuration options for the transport.</param>
+    /// <param name="authorizationProvider">The authorization provider to use for authentication.</param>
+    /// <param name="loggerFactory">Logger factory for creating loggers used for diagnostic output during transport operations.</param>
+    public SseClientTransport(SseClientTransportOptions transportOptions, IMcpAuthorizationProvider authorizationProvider, ILoggerFactory? loggerFactory = null)
+    {
+        Throw.IfNull(transportOptions);
+        Throw.IfNull(authorizationProvider);
+
+        _options = transportOptions;
+        _loggerFactory = loggerFactory;
+        Name = transportOptions.Name ?? transportOptions.Endpoint.ToString();
+
+        // Create an auth handler with the authorization provider
+        var authHandler = new AuthorizationDelegatingHandler(authorizationProvider)
+        {
+            InnerHandler = new HttpClientHandler()
+        };
+        
+        // Create an HttpClient with the auth handler
+        _httpClient = new HttpClient(authHandler);
+        _ownsHttpClient = true;
     }
 
     /// <inheritdoc />
