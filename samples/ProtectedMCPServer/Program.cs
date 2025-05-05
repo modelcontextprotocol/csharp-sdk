@@ -14,8 +14,8 @@ var instance = "https://login.microsoftonline.com/";
 
 builder.Services.AddAuthentication(options =>
 {
-    options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
     options.DefaultChallengeScheme = McpAuthenticationDefaults.AuthenticationScheme;
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
 })
 .AddJwtBearer(options =>
 {
@@ -51,10 +51,6 @@ builder.Services.AddAuthentication(options =>
         OnChallenge = context =>
         {
             Console.WriteLine($"Challenging client to authenticate with Entra ID");
-            
-            // Skip the default Bearer header - MCP handler will provide the complete one
-            context.HandleResponse();
-            
             return Task.CompletedTask;
         }
     };
@@ -76,41 +72,9 @@ builder.Services.AddAuthentication(options =>
         
         return metadata;
     };
-    
-    // Specify authentication schemes that this server supports
-    options.SupportedAuthenticationSchemes.Add("Bearer");
-    options.SupportedAuthenticationSchemes.Add("Basic");
-    
-    // For a server that doesn't want to support Bearer, you would simply not add it:
-    // options.SupportedAuthenticationSchemes.Add("Basic");
-    // options.SupportedAuthenticationSchemes.Add("Digest");
-    
-    // You can also use the dynamic provider for more flexible scheme selection:
-    /*
-    options.SupportedAuthenticationSchemesProvider = context =>
-    {
-        // You can use context information to determine which schemes to offer
-        var schemes = new List<string>();
-        
-        // Add Bearer for most clients
-        schemes.Add("Bearer");
-        
-        // Example of conditional scheme based on client type or other factors
-        if (context.Request.Headers.UserAgent.ToString().Contains("SpecialClient"))
-        {
-            schemes.Add("Basic");
-        }
-        
-        return schemes;
-    };
-    */
 });
 
-builder.Services.AddAuthorization(options =>
-{
-    options.AddMcpPolicy(configurePolicy: builder => 
-        builder.AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme));
-});
+builder.Services.AddAuthorization();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddMcpServer()
@@ -129,7 +93,8 @@ var app = builder.Build();
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapMcp().RequireAuthorization(McpAuthenticationDefaults.AuthenticationScheme);
+// Use the default MCP policy name that we've configured
+app.MapMcp().RequireAuthorization();
 
 Console.WriteLine($"Starting MCP server with authorization at {serverUrl}");
 Console.WriteLine($"PRM Document URL: {serverUrl}.well-known/oauth-protected-resource");

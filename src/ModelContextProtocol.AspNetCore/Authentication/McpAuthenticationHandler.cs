@@ -113,11 +113,19 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
     }
 
     /// <inheritdoc />
-    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+    protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        // This handler doesn't perform authentication - it only adds resource metadata to challenges
-        // The actual authentication will be handled by the bearer token handler or other authentication handlers
-        return Task.FromResult(AuthenticateResult.NoResult());
+        // If ForwardAuthenticate is set, forward the authentication to the specified scheme
+        if (!string.IsNullOrEmpty(Options.ForwardAuthenticate) && 
+            Options.ForwardAuthenticate != Scheme.Name)
+        {
+            // Simply forward the authentication request to the specified scheme and return its result
+            // This ensures we don't interfere with the authentication process
+            return await Context.AuthenticateAsync(Options.ForwardAuthenticate);
+        }
+
+        // If no forwarding is configured, this handler doesn't perform authentication
+        return AuthenticateResult.NoResult();
     }
 
     /// <inheritdoc />
@@ -135,24 +143,9 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         // Store the resource_metadata in properties in case other handlers need it
         properties.Items["resource_metadata"] = rawPrmDocumentUri;
         
-        // Get supported schemes from the options
-        var options = _optionsMonitor.CurrentValue;
-        var supportedSchemes = options.GetSupportedAuthenticationSchemes(Request.HttpContext).ToList();
-
-        // If no schemes are explicitly defined, don't add any WWW-Authenticate headers
-        if (supportedSchemes.Count == 0)
-        {
-            return base.HandleChallengeAsync(properties);
-        }
-        
-        // Add headers for each supported authentication scheme
-        foreach (var scheme in supportedSchemes)
-        {
-            // For all schemes, include the realm and resource metadata
-            // This allows discovery of OAuth capabilities regardless of the authentication scheme
-            string headerValue = $"{scheme} realm=\"{Scheme.Name}\", resource_metadata=\"{rawPrmDocumentUri}\"";
-            Response.Headers.Append("WWW-Authenticate", headerValue);
-        }
+        // Add the WWW-Authenticate header with Bearer scheme and resource metadata
+        string headerValue = $"Bearer realm=\"{Scheme.Name}\", resource_metadata=\"{rawPrmDocumentUri}\"";
+        Response.Headers.Append("WWW-Authenticate", headerValue);
         
         return base.HandleChallengeAsync(properties);
     }
