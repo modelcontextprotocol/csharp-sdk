@@ -24,7 +24,8 @@ public class McpAuthenticationOptions : AuthenticationSchemeOptions
     /// The URI to the resource metadata document.
     /// </summary>
     /// <remarks>
-    /// This URI will be included in the WWW-Authenticate header when a 401 response is returned.
+    /// This URI will be included in the WWW-Authenticate header when a 401 response is returned
+    /// and Bearer authentication is supported.
     /// </remarks>
     public Uri ResourceMetadataUri { get; set; } = DefaultResourceMetadataUri;
 
@@ -49,6 +50,26 @@ public class McpAuthenticationOptions : AuthenticationSchemeOptions
     public Func<HttpContext, ProtectedResourceMetadata>? ResourceMetadataProvider { get; set; }
 
     /// <summary>
+    /// Gets or sets the authentication schemes supported by this server.
+    /// </summary>
+    /// <remarks>
+    /// When set, these schemes will be included in WWW-Authenticate headers during an authentication challenge.
+    /// By default, this is empty and must be populated with the authentication schemes your server supports.
+    /// If Bearer is included, the resource metadata URI will be included in its parameters.
+    /// </remarks>
+    public List<string> SupportedAuthenticationSchemes { get; set; } = new List<string>();
+    
+    /// <summary>
+    /// Gets or sets a delegate that dynamically provides authentication schemes based on the HTTP context.
+    /// </summary>
+    /// <remarks>
+    /// When set, this delegate will be called to determine which authentication schemes to include
+    /// in WWW-Authenticate headers during an authentication challenge. This takes precedence over the static
+    /// <see cref="SupportedAuthenticationSchemes"/> property.
+    /// </remarks>
+    public Func<HttpContext, IEnumerable<string>>? SupportedAuthenticationSchemesProvider { get; set; }
+
+    /// <summary>
     /// Gets the resource metadata for the current request.
     /// </summary>
     /// <param name="context">The HTTP context for the current request.</param>
@@ -61,5 +82,20 @@ public class McpAuthenticationOptions : AuthenticationSchemeOptions
         }
 
         return ResourceMetadata;
+    }
+    
+    /// <summary>
+    /// Gets the supported authentication schemes for the current request.
+    /// </summary>
+    /// <param name="context">The HTTP context for the current request.</param>
+    /// <returns>The authentication schemes supported for the current request.</returns>
+    internal IEnumerable<string> GetSupportedAuthenticationSchemes(HttpContext context)
+    {
+        if (SupportedAuthenticationSchemesProvider != null)
+        {
+            return SupportedAuthenticationSchemesProvider(context);
+        }
+
+        return SupportedAuthenticationSchemes;
     }
 }

@@ -33,7 +33,7 @@ public class BasicOAuthAuthorizationProvider(
     private AuthorizationServerMetadata? _authServerMetadata;
 
     /// <inheritdoc />
-    public IEnumerable<string> SupportedSchemes => new[] { "DPoP" };
+    public IEnumerable<string> SupportedSchemes => new[] { "Bearer" };
 
     /// <inheritdoc />
     public Task<string?> GetCredentialAsync(string scheme, Uri resourceUri, CancellationToken cancellationToken = default)

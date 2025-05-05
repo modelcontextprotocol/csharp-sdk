@@ -132,14 +132,27 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         // Initialize properties if null
         properties ??= new AuthenticationProperties();
         
-        // Set the WWW-Authenticate header with the resource_metadata
-        string headerValue = $"Bearer realm=\"{Scheme.Name}\"";
-        headerValue += $", resource_metadata=\"{rawPrmDocumentUri}\"";
-        
-        Response.Headers["WWW-Authenticate"] = headerValue;
-        
         // Store the resource_metadata in properties in case other handlers need it
         properties.Items["resource_metadata"] = rawPrmDocumentUri;
+        
+        // Get supported schemes from the options
+        var options = _optionsMonitor.CurrentValue;
+        var supportedSchemes = options.GetSupportedAuthenticationSchemes(Request.HttpContext).ToList();
+
+        // If no schemes are explicitly defined, don't add any WWW-Authenticate headers
+        if (supportedSchemes.Count == 0)
+        {
+            return base.HandleChallengeAsync(properties);
+        }
+        
+        // Add headers for each supported authentication scheme
+        foreach (var scheme in supportedSchemes)
+        {
+            // For all schemes, include the realm and resource metadata
+            // This allows discovery of OAuth capabilities regardless of the authentication scheme
+            string headerValue = $"{scheme} realm=\"{Scheme.Name}\", resource_metadata=\"{rawPrmDocumentUri}\"";
+            Response.Headers.Append("WWW-Authenticate", headerValue);
+        }
         
         return base.HandleChallengeAsync(properties);
     }
