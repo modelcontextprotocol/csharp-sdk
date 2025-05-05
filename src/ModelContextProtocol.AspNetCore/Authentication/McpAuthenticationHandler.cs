@@ -131,9 +131,6 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
     /// <inheritdoc />
     protected override Task HandleChallengeAsync(AuthenticationProperties properties)
     {
-        // Set the response status code
-        Response.StatusCode = StatusCodes.Status401Unauthorized;
-
         // Get the absolute URI for the resource metadata
         string rawPrmDocumentUri = GetAbsoluteResourceMetadataUri();
 
