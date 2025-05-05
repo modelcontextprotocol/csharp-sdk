@@ -110,16 +110,9 @@ public static class AuthorizationHelpers
             throw new InvalidOperationException("The WWW-Authenticate header does not contain a resource_metadata parameter");
         }
 
-        Uri metadataUri = new Uri(resourceMetadataUrl);
+        Uri metadataUri = new(resourceMetadataUrl);
         
-        // Fetch the resource metadata
-        var metadata = await FetchProtectedResourceMetadataAsync(metadataUri, cancellationToken);
-        if (metadata == null)
-        {
-            throw new InvalidOperationException($"Failed to fetch resource metadata from {resourceMetadataUrl}");
-        }
-
-        // Verify the resource matches the server
+        var metadata = await FetchProtectedResourceMetadataAsync(metadataUri, cancellationToken) ?? throw new InvalidOperationException($"Failed to fetch resource metadata from {resourceMetadataUrl}");
         if (!VerifyResourceMatch(metadata, serverUrl))
         {
             throw new InvalidOperationException(

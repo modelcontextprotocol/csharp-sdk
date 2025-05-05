@@ -25,10 +25,8 @@ public static class McpAuthorizationExtensions
             .RequireAuthenticatedUser()
             .AddAuthenticationSchemes(McpAuthenticationDefaults.AuthenticationScheme);
 
-        // Allow additional configuration if provided
         configurePolicy?.Invoke(policyBuilder);
 
-        // Add the configured policy
         options.AddPolicy(policyName, policyBuilder.Build());
 
         return options;
@@ -53,16 +51,13 @@ public static class McpAuthorizationExtensions
             return AddMcpPolicy(options, policyName, configurePolicy);
         }
 
-        // Create a policy builder with MCP and additional authentication schemes
         var allSchemes = new[] { McpAuthenticationDefaults.AuthenticationScheme }.Concat(additionalSchemes).ToArray();
         
         var policyBuilder = new AuthorizationPolicyBuilder(allSchemes)
             .RequireAuthenticatedUser();
 
-        // Allow additional configuration if provided
         configurePolicy?.Invoke(policyBuilder);
 
-        // Add the configured policy
         options.AddPolicy(policyName, policyBuilder.Build());
 
         return options;

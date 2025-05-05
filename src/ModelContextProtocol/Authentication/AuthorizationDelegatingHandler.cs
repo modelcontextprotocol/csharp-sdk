@@ -23,32 +23,25 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
     /// </summary>
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        // Add the authentication token to the request if not already present
         if (request.Headers.Authorization == null)
         {
             await AddAuthorizationHeaderAsync(request, cancellationToken);
         }
 
-        // Send the request through the inner handler
         var response = await base.SendAsync(request, cancellationToken);
 
-        // Handle unauthorized responses
         if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
         {
-            // Try to handle the unauthorized response
             var handled = await _authorizationProvider.HandleUnauthorizedResponseAsync(
                 response,
                 cancellationToken);
 
             if (handled)
             {
-                // If the unauthorized response was handled, retry the request
                 var retryRequest = await CloneHttpRequestMessageAsync(request);
 
-                // Get a new token
                 await AddAuthorizationHeaderAsync(retryRequest, cancellationToken);
 
-                // Send the retry request
                 return await base.SendAsync(retryRequest, cancellationToken);
             }
         }
