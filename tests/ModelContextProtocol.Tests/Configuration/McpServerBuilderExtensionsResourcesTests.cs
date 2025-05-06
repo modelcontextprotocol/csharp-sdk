@@ -110,7 +110,7 @@ public class McpServerBuilderExtensionsResourcesTests(ITestOutputHelper testOutp
             (notification, token) =>
             {
                 changeReceived.SetResult(notification);
-                return changeReceived.Task;
+                return default;
             });
 
         // Act
