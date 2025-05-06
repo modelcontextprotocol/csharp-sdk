@@ -61,6 +61,7 @@ public class ToolsCapability : IListCapability<McpServerTool>
     /// </remarks>
     [JsonIgnore]
     public McpServerPrimitiveCollection<McpServerTool>? ToolCollection { get; set; }
+    
     McpServerPrimitiveCollection<McpServerTool>? IListCapability<McpServerTool>.Collection
     {
         get => ToolCollection;

@@ -3,6 +3,7 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Messages;
+using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Tests.Configuration;
@@ -13,17 +14,21 @@ public class McpServerBuilderExtensionsResourcesTests(ITestOutputHelper testOutp
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
         mcpServerBuilder = mcpServerBuilder.WithResources(
-            new FakeFileInfo()
+            new FakeMcpServerResource()
             {
-                Name = "test",
-                PhysicalPath = "test.txt",
-                Length = 0,
+                ProtocolResource = new()
+                {
+                    Name = "test",
+                    Uri = "test.txt",
+                },
             },
-            new FakeFileInfo()
+            new FakeMcpServerResource()
             {
-                Name = "test2",
-                PhysicalPath = "test2.txt",
-                Length = 0,
+                ProtocolResource = new()
+                {
+                    Name = "test2",
+                    Uri = "test2.txt",
+                },
             });
         base.ConfigureServices(services, mcpServerBuilder);
     }
@@ -43,6 +48,27 @@ public class McpServerBuilderExtensionsResourcesTests(ITestOutputHelper testOutp
         public Stream CreateReadStream() => new MemoryStream();
     }
 
+    private class FakeMcpServerResource : McpServerResource
+    {
+        public override required Resource ProtocolResource { get; init; } = new()
+        {
+            Name = "test",
+            Uri = "test.txt",
+        };
+
+        public override Task<IFileInfo> GetFileInfoAsync(
+            RequestContext<ReadResourceRequestParams> request,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IFileInfo>(new FakeFileInfo()
+            {
+                Name = request?.Params?.Uri ?? "test.txt",
+                PhysicalPath = request?.Params?.Uri ?? "test.txt",
+                Length = 0,
+            });
+        }
+    }
+
     [Fact]
     public void Adds_Resources_To_Server()
     {        
@@ -50,8 +76,8 @@ public class McpServerBuilderExtensionsResourcesTests(ITestOutputHelper testOutp
         var resources = serverOptions?.Capabilities?.Resources?.ResourceCollection;
         Assert.NotNull(resources);
         Assert.Equal(2, resources.Count);
-        Assert.Equal("test", resources["test"].Name);
-        Assert.Equal("test2", resources["test2"].Name);
+        Assert.Equal("test", resources["test"].ProtocolResource.Name);
+        Assert.Equal("test2", resources["test2"].ProtocolResource.Name);
     }
 
     [Fact]
@@ -92,7 +118,7 @@ public class McpServerBuilderExtensionsResourcesTests(ITestOutputHelper testOutp
         Assert.NotNull(resources);
         Assert.Equal(2, resources.Count);
 
-        serverOptions?.Capabilities?.Resources?.ResourceCollection?.Add(new McpServerResource
+        serverOptions?.Capabilities?.Resources?.ResourceCollection?.Add(new FakeMcpServerResource
         {
             ProtocolResource = new()
             {

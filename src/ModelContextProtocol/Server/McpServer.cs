@@ -29,7 +29,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
     /// rather than a nullable to be able to manipulate it atomically.
     /// </remarks>
     private StrongBox<LoggingLevel>? _loggingLevel;
-    private readonly List<Disposable> _disposables = [];
+    private readonly List<Action> _disposables = [];
 
     /// <summary>
     /// Creates a new instance of <see cref="McpServer"/>.
@@ -63,6 +63,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         SetPingHandler();
 
         var capabilities = options.Capabilities;
+
         // Register any notification handlers that were provided.
         if (capabilities?.NotificationHandlers is { } notificationHandlers)
         {
@@ -120,7 +121,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
     {
         foreach (var disposable in _disposables)
         {
-            disposable.Dispose();
+            disposable();
         }
         _disposables.Clear();
         await base.DisposeUnsynchronizedAsync().ConfigureAwait(false);
@@ -203,7 +204,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             return result;
         };
 
-        var isMissingListResourceHandlers = originalListResourcesHandler is not { } && listResourceTemplatesHandler is not { };
+        var isMissingListResourceHandlers = originalListResourcesHandler is null && listResourceTemplatesHandler is null;
         if (resourceCollection is not { IsEmpty: false } && (isMissingListResourceHandlers || readResourceHandler is not { }))
         {
             throw new McpException("Resources capability was enabled, but ListResources, ListResourceTemplates, and/or ReadResource handlers were not specified.");
@@ -485,7 +486,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             void ChangedDelegate(object? sender, EventArgs e)
                 => _ = this.SendNotificationAsync(methodName);
             collection.Changed += ChangedDelegate;
-            _disposables.Add(new(() => collection.Changed -= ChangedDelegate));
+            _disposables.Add(() => collection.Changed -= ChangedDelegate);
         }
     }
 
