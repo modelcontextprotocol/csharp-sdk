@@ -36,7 +36,7 @@ public static class McpServerExtensions
 
         if (server.ClientCapabilities?.Sampling is null)
         {
-            throw new ArgumentException("Client connected to the server does not support sampling.", nameof(server));
+            throw new InvalidOperationException("Client does not support sampling.");
         }
 
         return server.SendRequestAsync(
@@ -142,7 +142,7 @@ public static class McpServerExtensions
                 ModelPreferences = modelPreferences,
             }, cancellationToken).ConfigureAwait(false);
 
-        return new(new ChatMessage(new(result.Role), [result.Content.ToAIContent()]))
+        return new(new ChatMessage(result.Role is Role.User ? ChatRole.User : ChatRole.Assistant, [result.Content.ToAIContent()]))
         {
             ModelId = result.Model,
             FinishReason = result.StopReason switch
@@ -166,7 +166,7 @@ public static class McpServerExtensions
 
         if (server.ClientCapabilities?.Sampling is null)
         {
-            throw new ArgumentException("Client connected to the server does not support sampling.", nameof(server));
+            throw new InvalidOperationException("Client does not support sampling.");
         }
 
         return new SamplingChatClient(server);
@@ -204,7 +204,7 @@ public static class McpServerExtensions
 
         if (server.ClientCapabilities?.Roots is null)
         {
-            throw new ArgumentException("Client connected to the server does not support roots.", nameof(server));
+            throw new InvalidOperationException("Client does not support roots.");
         }
 
         return server.SendRequestAsync(

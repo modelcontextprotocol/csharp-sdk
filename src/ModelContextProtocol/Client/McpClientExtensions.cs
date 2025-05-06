@@ -145,7 +145,7 @@ public static class McpClientExtensions
     /// </para>
     /// <para>
     /// Every iteration through the returned <see cref="IAsyncEnumerable{McpClientTool}"/>
-    /// will result in requerying the server and yielding the sequence of available tools.
+    /// will result in re-querying the server and yielding the sequence of available tools.
     /// </para>
     /// </remarks>
     /// <example>
@@ -248,7 +248,7 @@ public static class McpClientExtensions
     /// </para>
     /// <para>
     /// Every iteration through the returned <see cref="IAsyncEnumerable{McpClientPrompt}"/>
-    /// will result in requerying the server and yielding the sequence of available prompts.
+    /// will result in re-querying the server and yielding the sequence of available prompts.
     /// </para>
     /// </remarks>
     /// <example>
@@ -396,7 +396,7 @@ public static class McpClientExtensions
     /// </para>
     /// <para>
     /// Every iteration through the returned <see cref="IAsyncEnumerable{ResourceTemplate}"/>
-    /// will result in requerying the server and yielding the sequence of available resource templates.
+    /// will result in re-querying the server and yielding the sequence of available resource templates.
     /// </para>
     /// </remarks>
     /// <example>
@@ -510,7 +510,7 @@ public static class McpClientExtensions
     /// </para>
     /// <para>
     /// Every iteration through the returned <see cref="IAsyncEnumerable{Resource}"/>
-    /// will result in requerying the server and yielding the sequence of available resources.
+    /// will result in re-querying the server and yielding the sequence of available resources.
     /// </para>
     /// </remarks>
     /// <example>
@@ -779,12 +779,17 @@ public static class McpClientExtensions
     }
 
     /// <summary>
-    /// Invokes a tool on the server
+    /// Invokes a tool on the server.
     /// </summary>
     /// <param name="client">The client instance used to communicate with the MCP server.</param>
     /// <param name="toolName">The name of the tool to call on the server..</param>
-    /// <param name="arguments">Optional dictionary of arguments to pass to the tool. Each key represents a parameter name,
+    /// <param name="arguments">An optional dictionary of arguments to pass to the tool. Each key represents a parameter name,
     /// and its associated value represents the argument value.
+    /// </param>
+    /// <param name="progress">
+    /// An optional <see cref="IProgress{T}"/> to have progress notifications reported to it. Setting this to a non-<see langword="null"/>
+    /// value will result in a progress token being included in the call, and any resulting progress notifications during the operation
+    /// routed to this instance.
     /// </param>
     /// <param name="serializerOptions">
     /// The JSON serialization options governing argument serialization. If <see langword="null"/>, the default serialization options will be used.
@@ -812,6 +817,7 @@ public static class McpClientExtensions
         this IMcpClient client,
         string toolName,
         IReadOnlyDictionary<string, object?>? arguments = null,
+        IProgress<ProgressNotificationValue>? progress = null,
         JsonSerializerOptions? serializerOptions = null,
         CancellationToken cancellationToken = default)
     {
@@ -820,12 +826,56 @@ public static class McpClientExtensions
         serializerOptions ??= McpJsonUtilities.DefaultOptions;
         serializerOptions.MakeReadOnly();
 
+        if (progress is not null)
+        {
+            return SendRequestWithProgressAsync(client, toolName, arguments, progress, serializerOptions, cancellationToken);
+        }
+
         return client.SendRequestAsync(
             RequestMethods.ToolsCall,
-            new() { Name = toolName, Arguments = ToArgumentsDictionary(arguments, serializerOptions) },
+            new()
+            {
+                Name = toolName,
+                Arguments = ToArgumentsDictionary(arguments, serializerOptions),
+            },
             McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
             McpJsonUtilities.JsonContext.Default.CallToolResponse,
             cancellationToken: cancellationToken);
+
+        static async Task<CallToolResponse> SendRequestWithProgressAsync(
+            IMcpClient client,
+            string toolName,
+            IReadOnlyDictionary<string, object?>? arguments,
+            IProgress<ProgressNotificationValue> progress,
+            JsonSerializerOptions serializerOptions,
+            CancellationToken cancellationToken)
+        {
+            ProgressToken progressToken = new(Guid.NewGuid().ToString("N"));
+
+            await using var _ = client.RegisterNotificationHandler(NotificationMethods.ProgressNotification,
+                (notification, cancellationToken) =>
+                {
+                    if (JsonSerializer.Deserialize(notification.Params, McpJsonUtilities.JsonContext.Default.ProgressNotification) is { } pn &&
+                        pn.ProgressToken == progressToken)
+                    {
+                        progress.Report(pn.Progress);
+                    }
+
+                    return default;
+                }).ConfigureAwait(false);
+
+            return await client.SendRequestAsync(
+                RequestMethods.ToolsCall,
+                new()
+                {
+                    Name = toolName,
+                    Arguments = ToArgumentsDictionary(arguments, serializerOptions),
+                    Meta = new() { ProgressToken = progressToken },
+                },
+                McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
+                McpJsonUtilities.JsonContext.Default.CallToolResponse,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <summary>
@@ -926,7 +976,7 @@ public static class McpClientExtensions
         {
             Content = content,
             Model = chatResponse.ModelId ?? "unknown",
-            Role = lastMessage?.Role == ChatRole.User ? "user" : "assistant",
+            Role = lastMessage?.Role == ChatRole.User ? Role.User : Role.Assistant,
             StopReason = chatResponse.FinishReason == ChatFinishReason.Length ? "maxTokens" : "endTurn",
         };
     }
@@ -948,7 +998,7 @@ public static class McpClientExtensions
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="chatClient"/> is <see langword="null"/>.</exception>
-    public static Func<CreateMessageRequestParams?, IProgress<ProgressNotificationValue>, CancellationToken, Task<CreateMessageResult>> CreateSamplingHandler(
+    public static Func<CreateMessageRequestParams?, IProgress<ProgressNotificationValue>, CancellationToken, ValueTask<CreateMessageResult>> CreateSamplingHandler(
         this IChatClient chatClient)
     {
         Throw.IfNull(chatClient);

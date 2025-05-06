@@ -1,8 +1,9 @@
-using ModelContextProtocol.Protocol.Types;
-using ModelContextProtocol.Utils.Json;
 using Microsoft.Extensions.AI;
-using System.Text.Json;
+using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Utils;
+using ModelContextProtocol.Utils.Json;
 using System.Collections.ObjectModel;
+using System.Text.Json;
 
 namespace ModelContextProtocol.Client;
 
@@ -36,14 +37,22 @@ public sealed class McpClientTool : AIFunction
     private readonly IMcpClient _client;
     private readonly string _name;
     private readonly string _description;
+    private readonly IProgress<ProgressNotificationValue>? _progress;
 
-    internal McpClientTool(IMcpClient client, Tool tool, JsonSerializerOptions serializerOptions, string? name = null, string? description = null)
+    internal McpClientTool(
+        IMcpClient client,
+        Tool tool,
+        JsonSerializerOptions serializerOptions,
+        string? name = null,
+        string? description = null,
+        IProgress<ProgressNotificationValue>? progress = null)
     {
         _client = client;
         ProtocolTool = tool;
         JsonSerializerOptions = serializerOptions;
         _name = name ?? tool.Name;
         _description = description ?? tool.Description ?? string.Empty;
+        _progress = progress;
     }
 
     /// <summary>
@@ -77,9 +86,52 @@ public sealed class McpClientTool : AIFunction
     protected async override ValueTask<object?> InvokeCoreAsync(
         AIFunctionArguments arguments, CancellationToken cancellationToken)
     {
-        CallToolResponse result = await _client.CallToolAsync(ProtocolTool.Name, arguments, JsonSerializerOptions, cancellationToken: cancellationToken).ConfigureAwait(false);
+        CallToolResponse result = await CallAsync(arguments, _progress, JsonSerializerOptions, cancellationToken).ConfigureAwait(false);
         return JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.CallToolResponse);
     }
+
+    /// <summary>
+    /// Invokes the tool on the server.
+    /// </summary>
+    /// <param name="arguments">An optional dictionary of arguments to pass to the tool. Each key represents a parameter name,
+    /// and its associated value represents the argument value.
+    /// </param>
+    /// <param name="progress">
+    /// An optional <see cref="IProgress{T}"/> to have progress notifications reported to it. Setting this to a non-<see langword="null"/>
+    /// value will result in a progress token being included in the call, and any resulting progress notifications during the operation
+    /// routed to this instance.
+    /// </param>
+    /// <param name="serializerOptions">
+    /// The JSON serialization options governing argument serialization. If <see langword="null"/>, the default serialization options will be used.
+    /// </param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>
+    /// A task containing the <see cref="CallToolResponse"/> from the tool execution. The response includes
+    /// the tool's output content, which may be structured data, text, or an error message.
+    /// </returns>
+    /// <remarks>
+    /// The base <see cref="AIFunction.InvokeAsync"/> method is overridden to invoke this <see cref="CallAsync"/> method.
+    /// The only difference in behavior is <see cref="AIFunction.InvokeAsync"/> will serialize the resulting <see cref="CallToolResponse"/>"/>
+    /// such that the <see cref="object"/> returned is a <see cref="JsonElement"/> containing the serialized <see cref="CallToolResponse"/>.
+    /// This <see cref="CallToolResponse"/> method is intended to be called directly by user code, whereas the base <see cref="AIFunction.InvokeAsync"/>
+    /// is intended to be used polymorphically via the base class, typically as part of an <see cref="IChatClient"/> operation.
+    /// </remarks>
+    /// <exception cref="McpException">The server could not find the requested tool, or the server encountered an error while processing the request.</exception>
+    /// <example>
+    /// <code>
+    /// var result = await tool.CallAsync(
+    ///     new Dictionary&lt;string, object?&gt;
+    ///     {
+    ///         ["message"] = "Hello MCP!"
+    ///     });
+    /// </code>
+    /// </example>
+    public Task<CallToolResponse> CallAsync(
+        IReadOnlyDictionary<string, object?>? arguments = null,
+        IProgress<ProgressNotificationValue>? progress = null,
+        JsonSerializerOptions? serializerOptions = null,
+        CancellationToken cancellationToken = default) =>
+        _client.CallToolAsync(ProtocolTool.Name, arguments, progress, serializerOptions, cancellationToken);
 
     /// <summary>
     /// Creates a new instance of the tool but modified to return the specified name from its <see cref="Name"/> property.
@@ -105,10 +157,8 @@ public sealed class McpClientTool : AIFunction
     /// the value returned from this instance's <see cref="AITool.Name"/>.
     /// </para>
     /// </remarks>
-    public McpClientTool WithName(string name)
-    {
-        return new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, name, _description);
-    }
+    public McpClientTool WithName(string name) =>
+        new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, name, _description, _progress);
 
     /// <summary>
     /// Creates a new instance of the tool but modified to return the specified description from its <see cref="Description"/> property.
@@ -131,8 +181,30 @@ public sealed class McpClientTool : AIFunction
     /// </para>
     /// </remarks>
     /// <returns>A new instance of <see cref="McpClientTool"/> with the provided description.</returns>
-    public McpClientTool WithDescription(string description)
+    public McpClientTool WithDescription(string description) =>
+        new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, _name, description, _progress);
+
+    /// <summary>
+    /// Creates a new instance of the tool but modified to report progress via the specified <see cref="IProgress{T}"/>.
+    /// </summary>
+    /// <param name="progress">The <see cref="IProgress{T}"/> to which progress notifications should be reported.</param>
+    /// <remarks>
+    /// <para>
+    /// Adding an <see cref="IProgress{T}"/> to the tool does not impact how it is reported to any AI model.
+    /// Rather, when the tool is invoked, the request to the MCP server will include a unique progress token,
+    /// and any progress notifications issued by the server with that progress token while the operation is in
+    /// flight will be reported to the <paramref name="progress"/> instance.
+    /// </para>
+    /// <para>
+    /// Only one <see cref="IProgress{T}"/> can be specified at a time. Calling <see cref="WithProgress"/> again
+    /// will overwrite any previously specified progress instance.
+    /// </para>
+    /// </remarks>
+    /// <returns>A new instance of <see cref="McpClientTool"/>, configured with the provided progress instance.</returns>
+    public McpClientTool WithProgress(IProgress<ProgressNotificationValue> progress)
     {
-        return new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, _name, description);
+        Throw.IfNull(progress);
+
+        return new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, _name, _description, progress);
     }
 }

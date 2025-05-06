@@ -34,7 +34,7 @@ public class ToolsCapability : IListCapability<McpServerTool>
     /// and the tools from the collection will be combined to form the complete list of available tools.
     /// </remarks>
     [JsonIgnore]
-    public Func<RequestContext<ListToolsRequestParams>, CancellationToken, Task<ListToolsResult>>? ListToolsHandler { get; set; }
+    public Func<RequestContext<ListToolsRequestParams>, CancellationToken, ValueTask<ListToolsResult>>? ListToolsHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.ToolsCall"/> requests.
@@ -46,7 +46,7 @@ public class ToolsCapability : IListCapability<McpServerTool>
     /// being called and its arguments, and should return a <see cref="CallToolResponse"/> with the execution results.
     /// </remarks>
     [JsonIgnore]
-    public Func<RequestContext<CallToolRequestParams>, CancellationToken, Task<CallToolResponse>>? CallToolHandler { get; set; }
+    public Func<RequestContext<CallToolRequestParams>, CancellationToken, ValueTask<CallToolResponse>>? CallToolHandler { get; set; }
 
     /// <summary>
     /// Gets or sets a collection of tools served by the server.

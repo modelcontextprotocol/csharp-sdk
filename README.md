@@ -31,7 +31,7 @@ To get started writing a client, the `McpClientFactory.CreateAsync` method is us
 to a server. Once you have an `IMcpClient`, you can interact with it, such as to enumerate all available tools and invoke tools.
 
 ```csharp
-var clientTransport = new StdioClientTransport(new()
+var clientTransport = new StdioClientTransport(new StdioClientTransportOptions
 {
     Name = "Everything",
     Command = "npx",
@@ -50,7 +50,7 @@ foreach (var tool in await client.ListToolsAsync())
 var result = await client.CallToolAsync(
     "echo",
     new Dictionary<string, object?>() { ["message"] = "Hello MCP!" },
-    CancellationToken.None);
+    cancellationToken:CancellationToken.None);
 
 // echo always returns one and only one text content object
 Console.WriteLine(result.Content.First(c => c.Type == "text").Text);
@@ -60,7 +60,7 @@ You can find samples demonstrating how to use ModelContextProtocol with an LLM S
 
 Clients can connect to any MCP server, not just ones created using this library. The protocol is designed to be server-agnostic, so you can use this library to connect to any compliant server.
 
-Tools can be exposed easily as `AIFunction` instances so that they are immediately usable with `IChatClient`s.
+Tools can be easily exposed for immediate use by `IChatClient`s, because `McpClientTool` inherits from `AIFunction`.
 
 ```csharp
 // Get available functions.
@@ -163,10 +163,10 @@ using System.Text.Json;
 
 McpServerOptions options = new()
 {
-    ServerInfo = new() { Name = "MyServer", Version = "1.0.0" },
-    Capabilities = new()
+    ServerInfo = new Implementation() { Name = "MyServer", Version = "1.0.0" },
+    Capabilities = new ServerCapabilities()
     {
-        Tools = new()
+        Tools = new ToolsCapability()
         {
             ListToolsHandler = (request, cancellationToken) =>
                 Task.FromResult(new ListToolsResult()
@@ -199,7 +199,7 @@ McpServerOptions options = new()
                 {
                     if (request.Params.Arguments?.TryGetValue("message", out var message) is not true)
                     {
-                        throw new McpServerException("Missing required argument 'message'");
+                        throw new McpException("Missing required argument 'message'");
                     }
 
                     return Task.FromResult(new CallToolResponse()
@@ -208,7 +208,7 @@ McpServerOptions options = new()
                     });
                 }
 
-                throw new McpServerException($"Unknown tool: '{request.Params?.Name}'");
+                throw new McpException($"Unknown tool: '{request.Params?.Name}'");
             },
         }
     },
@@ -220,7 +220,7 @@ await server.RunAsync();
 
 ## Acknowledgements
 
-The starting point for this library was a project called [mcpdotnet](https://github.com/PederHP/mcpdotnet), initiated by [Peder Holdgaard Pederson](https://github.com/PederHP). We are grateful for the work done by Peder and other contributors to that repository, which created a solid foundation for this library.
+The starting point for this library was a project called [mcpdotnet](https://github.com/PederHP/mcpdotnet), initiated by [Peder Holdgaard Pedersen](https://github.com/PederHP). We are grateful for the work done by Peder and other contributors to that repository, which created a solid foundation for this library.
 
 ## License
 

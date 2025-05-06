@@ -25,7 +25,7 @@ public abstract class ClientServerTestBase : LoggedTest, IAsyncDisposable
             .AddMcpServer()
             .WithStreamServerTransport(_clientToServerPipe.Reader.AsStream(), _serverToClientPipe.Writer.AsStream());
         ConfigureServices(sc, _builder);
-        ServiceProvider = sc.BuildServiceProvider();
+        ServiceProvider = sc.BuildServiceProvider(validateScopes: true);
 
         _cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         Server = ServiceProvider.GetRequiredService<IMcpServer>();
@@ -62,7 +62,7 @@ public abstract class ClientServerTestBase : LoggedTest, IAsyncDisposable
         Dispose();
     }
 
-    protected async Task<IMcpClient> CreateMcpClientForServer(McpClientOptions? options = null)
+    protected async Task<IMcpClient> CreateMcpClientForServer()
     {
         return await McpClientFactory.CreateAsync(
             new StreamClientTransport(

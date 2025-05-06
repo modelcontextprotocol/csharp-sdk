@@ -1,9 +1,12 @@
 ﻿using Microsoft.AspNetCore.Connections;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Utils.Json;
 using Serilog;
 using System.Text;
 using System.Text.Json;
+
+#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
 
 namespace ModelContextProtocol.TestSseServer;
 
@@ -103,9 +106,9 @@ public class Program
         {
             Tools = new()
             {
-                ListToolsHandler = (request, cancellationToken) =>
+                ListToolsHandler = async (request, cancellationToken) =>
                 {
-                    return Task.FromResult(new ListToolsResult()
+                    return new ListToolsResult()
                     {
                         Tools = 
                         [
@@ -124,7 +127,7 @@ public class Program
                                         },
                                         "required": ["message"]
                                     }
-                                    """),
+                                    """, McpJsonUtilities.DefaultOptions),
                             },
                             new Tool()
                             {
@@ -145,22 +148,22 @@ public class Program
                                         },
                                         "required": ["prompt", "maxTokens"]
                                     }
-                                    """),
+                                    """, McpJsonUtilities.DefaultOptions),
                             }
                         ]
-                    });
+                    };
                 },
                 CallToolHandler = async (request, cancellationToken) =>
                 {
                     if (request.Params is null)
                     {
-                        throw new McpException("Missing required parameter 'name'");
+                        throw new McpException("Missing required parameter 'name'", McpErrorCode.InvalidParams);
                     }
                     if (request.Params.Name == "echo")
                     {
                         if (request.Params.Arguments is null || !request.Params.Arguments.TryGetValue("message", out var message))
                         {
-                            throw new McpException("Missing required argument 'message'");
+                            throw new McpException("Missing required argument 'message'", McpErrorCode.InvalidParams);
                         }
                         return new CallToolResponse()
                         {
@@ -173,7 +176,7 @@ public class Program
                             !request.Params.Arguments.TryGetValue("prompt", out var prompt) || 
                             !request.Params.Arguments.TryGetValue("maxTokens", out var maxTokens))
                         {
-                            throw new McpException("Missing required arguments 'prompt' and 'maxTokens'");
+                            throw new McpException("Missing required arguments 'prompt' and 'maxTokens'", McpErrorCode.InvalidParams);
                         }
                         var sampleResult = await request.Server.RequestSamplingAsync(CreateRequestSamplingParams(prompt.ToString(), "sampleLLM", Convert.ToInt32(maxTokens.ToString())),
                             cancellationToken);
@@ -185,16 +188,16 @@ public class Program
                     }
                     else
                     {
-                        throw new McpException($"Unknown tool: {request.Params.Name}");
+                        throw new McpException($"Unknown tool: '{request.Params.Name}'", McpErrorCode.InvalidParams);
                     }
                 }
             },
             Resources = new()
             {
-                ListResourceTemplatesHandler = (request, cancellationToken) =>
+                ListResourceTemplatesHandler = async (request, cancellationToken) =>
                 {
 
-                    return Task.FromResult(new ListResourceTemplatesResult()
+                    return new ListResourceTemplatesResult()
                     {
                         ResourceTemplates = [
                             new ResourceTemplate()
@@ -203,10 +206,10 @@ public class Program
                                 Name = "Dynamic Resource",
                             }
                         ]
-                    });
+                    };
                 },
 
-                ListResourcesHandler = (request, cancellationToken) =>
+                ListResourcesHandler = async (request, cancellationToken) =>
                 {
                     int startIndex = 0;
                     var requestParams = request.Params ?? new();
@@ -217,9 +220,9 @@ public class Program
                             var startIndexAsString = Encoding.UTF8.GetString(Convert.FromBase64String(requestParams.Cursor));
                             startIndex = Convert.ToInt32(startIndexAsString);
                         }
-                        catch
+                        catch (Exception e)
                         {
-                            throw new McpException("Invalid cursor");
+                            throw new McpException($"Invalid cursor: '{requestParams.Cursor}'", e, McpErrorCode.InvalidParams);
                         }
                     }
                     
@@ -230,17 +233,18 @@ public class Program
                     {
                         nextCursor = Convert.ToBase64String(Encoding.UTF8.GetBytes(endIndex.ToString()));
                     }
-                    return Task.FromResult(new ListResourcesResult()
+
+                    return new ListResourcesResult()
                     {
                         NextCursor = nextCursor,
                         Resources = resources.GetRange(startIndex, endIndex - startIndex)
-                    });
+                    };
                 },
-                ReadResourceHandler =(request, cancellationToken) =>
+                ReadResourceHandler = async (request, cancellationToken) =>
                 {
                     if (request.Params?.Uri is null)
                     {
-                        throw new McpException("Missing required argument 'uri'");
+                        throw new McpException("Missing required argument 'uri'", McpErrorCode.InvalidParams);
                     }
 
                     if (request.Params.Uri.StartsWith("test://dynamic/resource/"))
@@ -248,9 +252,10 @@ public class Program
                         var id = request.Params.Uri.Split('/').LastOrDefault();
                         if (string.IsNullOrEmpty(id))
                         {
-                            throw new McpException("Invalid resource URI");
+                            throw new McpException($"Invalid resource URI: '{request.Params.Uri}'", McpErrorCode.InvalidParams);
                         }
-                        return Task.FromResult(new ReadResourceResult()
+
+                        return new ReadResourceResult()
                         {
                             Contents = [
                                 new TextResourceContents()
@@ -260,23 +265,23 @@ public class Program
                                     Text = $"Dynamic resource {id}: This is a plaintext resource"
                                 }
                             ]
-                        });
+                        };
                     }
 
                     ResourceContents? contents = resourceContents.FirstOrDefault(r => r.Uri == request.Params.Uri) ?? 
-                        throw new McpException("Resource not found");
+                        throw new McpException($"Resource not found: '{request.Params.Uri}'", McpErrorCode.InvalidParams);
                     
-                    return Task.FromResult(new ReadResourceResult()
+                    return new ReadResourceResult()
                     {
                         Contents = [contents]
-                    });
+                    };
                 }
             },
             Prompts = new()
             {
-                ListPromptsHandler = (request, cancellationToken) =>
+                ListPromptsHandler = async (request, cancellationToken) =>
                 {
-                    return Task.FromResult(new ListPromptsResult()
+                    return new ListPromptsResult()
                     {
                         Prompts = [
                             new Prompt()
@@ -305,13 +310,13 @@ public class Program
                                 }
                             }
                         ]
-                    });
+                    };
                 },
-                GetPromptHandler = (request, cancellationToken) =>
+                GetPromptHandler = async (request, cancellationToken) =>
                 {
                     if (request.Params is null)
                     {
-                        throw new McpException("Missing required parameter 'name'");
+                        throw new McpException("Missing required parameter 'name'", McpErrorCode.InvalidParams);
                     }
                     List<PromptMessage> messages = new();
                     if (request.Params.Name == "simple_prompt")
@@ -361,13 +366,13 @@ public class Program
                     }
                     else
                     {
-                        throw new McpException($"Unknown prompt: {request.Params.Name}");
+                        throw new McpException($"Unknown prompt: {request.Params.Name}", McpErrorCode.InvalidParams);
                     }
 
-                    return Task.FromResult(new GetPromptResult()
+                    return new GetPromptResult()
                     {
                         Messages = messages
-                    });
+                    };
                 }
             },
         };
@@ -407,7 +412,8 @@ public class Program
             builder.Logging.AddProvider(loggerProvider);
         }
 
-        builder.Services.AddMcpServer(ConfigureOptions);
+        builder.Services.AddMcpServer(ConfigureOptions)
+            .WithHttpTransport();
 
         var app = builder.Build();
         app.UseRouting();

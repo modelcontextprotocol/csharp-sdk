@@ -1,8 +1,6 @@
-using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Utils;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ModelContextProtocol.Client;
 
@@ -14,7 +12,7 @@ namespace ModelContextProtocol.Client;
 /// that connect to MCP servers. It handles the creation and connection
 /// of appropriate implementations through the supplied transport.
 /// </remarks>
-public static class McpClientFactory
+public static partial class McpClientFactory
 {
     /// <summary>Creates an <see cref="IMcpClient"/>, connecting it to the specified server.</summary>
     /// <param name="clientTransport">The transport instance used to communicate with the server.</param>
@@ -35,21 +33,24 @@ public static class McpClientFactory
     {
         Throw.IfNull(clientTransport);
 
-        string endpointName = clientTransport.Name;
-        var logger = loggerFactory?.CreateLogger(typeof(McpClientFactory)) ?? NullLogger.Instance;
-        logger.CreatingClient(endpointName);
-
         McpClient client = new(clientTransport, clientOptions, loggerFactory);
         try
         {
             await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
-            logger.ClientCreated(endpointName);
-            return client;
+            if (loggerFactory?.CreateLogger(typeof(McpClientFactory)) is ILogger logger)
+            {
+                logger.LogClientCreated(client.EndpointName);
+            }
         }
         catch
         {
             await client.DisposeAsync().ConfigureAwait(false);
             throw;
         }
+
+        return client;
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} client created and connected.")]
+    private static partial void LogClientCreated(this ILogger logger, string endpointName);
 }

@@ -2,6 +2,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Utils.Json;
 using Moq;
 using System.Reflection;
 using System.Text.Json;
@@ -9,7 +10,7 @@ using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Tests.Server;
 
-public class McpServerToolTests
+public partial class McpServerToolTests
 {
     [Fact]
     public void Create_InvalidArgs_Throws()
@@ -36,10 +37,10 @@ public class McpServerToolTests
             return "42";
         });
 
-        Assert.DoesNotContain("server", JsonSerializer.Serialize(tool.ProtocolTool.InputSchema));
+        Assert.DoesNotContain("server", JsonSerializer.Serialize(tool.ProtocolTool.InputSchema, McpJsonUtilities.DefaultOptions));
 
         var result = await tool.InvokeAsync(
-            new RequestContext<CallToolRequestParams>(mockServer.Object, null),
+            new RequestContext<CallToolRequestParams>(mockServer.Object),
             TestContext.Current.CancellationToken);
         Assert.Equal("42", result.Content[0].Text);
     }
@@ -86,19 +87,17 @@ public class McpServerToolTests
 
         McpServerTool tool = services.GetRequiredService<McpServerTool>();
 
-        Assert.DoesNotContain("actualMyService", JsonSerializer.Serialize(tool.ProtocolTool.InputSchema));
+        Assert.DoesNotContain("actualMyService", JsonSerializer.Serialize(tool.ProtocolTool.InputSchema, McpJsonUtilities.DefaultOptions));
 
         Mock<IMcpServer> mockServer = new();
 
         var result = await tool.InvokeAsync(
-            new RequestContext<CallToolRequestParams>(mockServer.Object, null),
+            new RequestContext<CallToolRequestParams>(mockServer.Object),
             TestContext.Current.CancellationToken);
         Assert.True(result.IsError);
 
-        mockServer.SetupGet(x => x.Services).Returns(services);
-
         result = await tool.InvokeAsync(
-            new RequestContext<CallToolRequestParams>(mockServer.Object, null),
+            new RequestContext<CallToolRequestParams>(mockServer.Object) { Services = services },
             TestContext.Current.CancellationToken);
         Assert.Equal("42", result.Content[0].Text);
     }
@@ -119,7 +118,7 @@ public class McpServerToolTests
         }, new() { Services = services });
 
         var result = await tool.InvokeAsync(
-            new RequestContext<CallToolRequestParams>(null!, null),
+            new RequestContext<CallToolRequestParams>(new Mock<IMcpServer>().Object),
             TestContext.Current.CancellationToken);
         Assert.Equal("42", result.Content[0].Text);
     }
@@ -127,12 +126,14 @@ public class McpServerToolTests
     [Fact]
     public async Task SupportsDisposingInstantiatedDisposableTargets()
     {
+        McpServerToolCreateOptions options = new() { SerializerOptions = JsonContext2.Default.Options };
         McpServerTool tool1 = McpServerTool.Create(
             typeof(DisposableToolType).GetMethod(nameof(DisposableToolType.InstanceMethod))!,
-            typeof(DisposableToolType));
+            typeof(DisposableToolType),
+            options);
 
         var result = await tool1.InvokeAsync(
-            new RequestContext<CallToolRequestParams>(null!, null),
+            new RequestContext<CallToolRequestParams>(new Mock<IMcpServer>().Object),
             TestContext.Current.CancellationToken);
         Assert.Equal("""{"disposals":1}""", result.Content[0].Text);
     }
@@ -140,12 +141,14 @@ public class McpServerToolTests
     [Fact]
     public async Task SupportsAsyncDisposingInstantiatedAsyncDisposableTargets()
     {
+        McpServerToolCreateOptions options = new() { SerializerOptions = JsonContext2.Default.Options };
         McpServerTool tool1 = McpServerTool.Create(
             typeof(AsyncDisposableToolType).GetMethod(nameof(AsyncDisposableToolType.InstanceMethod))!,
-            typeof(AsyncDisposableToolType));
+            typeof(AsyncDisposableToolType),
+            options);
 
         var result = await tool1.InvokeAsync(
-            new RequestContext<CallToolRequestParams>(null!, null),
+            new RequestContext<CallToolRequestParams>(new Mock<IMcpServer>().Object),
             TestContext.Current.CancellationToken);
         Assert.Equal("""{"asyncDisposals":1}""", result.Content[0].Text);
     }
@@ -153,12 +156,14 @@ public class McpServerToolTests
     [Fact]
     public async Task SupportsAsyncDisposingInstantiatedAsyncDisposableAndDisposableTargets()
     {
+        McpServerToolCreateOptions options = new() { SerializerOptions = JsonContext2.Default.Options };
         McpServerTool tool1 = McpServerTool.Create(
             typeof(AsyncDisposableAndDisposableToolType).GetMethod(nameof(AsyncDisposableAndDisposableToolType.InstanceMethod))!,
-            typeof(AsyncDisposableAndDisposableToolType));
+            typeof(AsyncDisposableAndDisposableToolType),
+            options);
 
         var result = await tool1.InvokeAsync(
-            new RequestContext<CallToolRequestParams>(null!, null),
+            new RequestContext<CallToolRequestParams>(new Mock<IMcpServer>().Object),
             TestContext.Current.CancellationToken);
         Assert.Equal("""{"asyncDisposals":1,"disposals":0}""", result.Content[0].Text);
     }
@@ -179,7 +184,7 @@ public class McpServerToolTests
         });
 
         var result = await tool.InvokeAsync(
-            new RequestContext<CallToolRequestParams>(mockServer.Object, null),
+            new RequestContext<CallToolRequestParams>(mockServer.Object),
             TestContext.Current.CancellationToken);
 
         Assert.Equal(3, result.Content.Count);
@@ -216,7 +221,7 @@ public class McpServerToolTests
         });
 
         var result = await tool.InvokeAsync(
-            new RequestContext<CallToolRequestParams>(mockServer.Object, null),
+            new RequestContext<CallToolRequestParams>(mockServer.Object),
             TestContext.Current.CancellationToken);
 
         Assert.Single(result.Content);
@@ -244,7 +249,7 @@ public class McpServerToolTests
             return (string?)null;
         });
         var result = await tool.InvokeAsync(
-            new RequestContext<CallToolRequestParams>(mockServer.Object, null),
+            new RequestContext<CallToolRequestParams>(mockServer.Object),
             TestContext.Current.CancellationToken);
         Assert.Empty(result.Content);
     }
@@ -259,7 +264,7 @@ public class McpServerToolTests
             return "42";
         });
         var result = await tool.InvokeAsync(
-            new RequestContext<CallToolRequestParams>(mockServer.Object, null),
+            new RequestContext<CallToolRequestParams>(mockServer.Object),
             TestContext.Current.CancellationToken);
         Assert.Single(result.Content);
         Assert.Equal("42", result.Content[0].Text);
@@ -276,7 +281,7 @@ public class McpServerToolTests
             return new List<string>() { "42", "43" };
         });
         var result = await tool.InvokeAsync(
-            new RequestContext<CallToolRequestParams>(mockServer.Object, null),
+            new RequestContext<CallToolRequestParams>(mockServer.Object),
             TestContext.Current.CancellationToken);
         Assert.Equal(2, result.Content.Count);
         Assert.Equal("42", result.Content[0].Text);
@@ -295,7 +300,7 @@ public class McpServerToolTests
             return new Content { Text = "42", Type = "text" };
         });
         var result = await tool.InvokeAsync(
-            new RequestContext<CallToolRequestParams>(mockServer.Object, null),
+            new RequestContext<CallToolRequestParams>(mockServer.Object),
             TestContext.Current.CancellationToken);
         Assert.Single(result.Content);
         Assert.Equal("42", result.Content[0].Text);
@@ -312,7 +317,7 @@ public class McpServerToolTests
             return new List<Content>() { new() { Text = "42", Type = "text" }, new() { Data = "1234", Type = "image", MimeType = "image/png" } };
         });
         var result = await tool.InvokeAsync(
-            new RequestContext<CallToolRequestParams>(mockServer.Object, null),
+            new RequestContext<CallToolRequestParams>(mockServer.Object),
             TestContext.Current.CancellationToken);
         Assert.Equal(2, result.Content.Count);
         Assert.Equal("42", result.Content[0].Text);
@@ -338,7 +343,7 @@ public class McpServerToolTests
             return response;
         });
         var result = await tool.InvokeAsync(
-            new RequestContext<CallToolRequestParams>(mockServer.Object, null),
+            new RequestContext<CallToolRequestParams>(mockServer.Object),
             TestContext.Current.CancellationToken);
 
         Assert.Same(response, result);
@@ -348,6 +353,29 @@ public class McpServerToolTests
         Assert.Equal("text", result.Content[0].Type);
         Assert.Equal("1234", result.Content[1].Data);
         Assert.Equal("image", result.Content[1].Type);
+    }
+
+    [Fact]
+    public async Task SupportsSchemaCreateOptions()
+    {
+        AIJsonSchemaCreateOptions schemaCreateOptions = new ()
+        {
+            TransformSchemaNode = (context, node) =>
+            {
+                node["text"] = "1234";
+                return node;
+            },
+        };
+
+        McpServerTool tool = McpServerTool.Create((int num, string str) =>
+        {
+            return "42";
+        }, new() { SchemaCreateOptions = schemaCreateOptions });
+
+        Assert.All(
+            tool.ProtocolTool.InputSchema.GetProperty("properties").EnumerateObject(),
+            x => Assert.True(x.Value.TryGetProperty("text", out JsonElement value) && value.ToString() == "1234")
+        );
     }
 
     private sealed class MyService;
@@ -432,4 +460,10 @@ public class McpServerToolTests
             return this;
         }
     }
+
+    [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+    [JsonSerializable(typeof(DisposableToolType))]
+    [JsonSerializable(typeof(AsyncDisposableToolType))]
+    [JsonSerializable(typeof(AsyncDisposableAndDisposableToolType))]
+    partial class JsonContext2 : JsonSerializerContext;
 }

@@ -13,19 +13,19 @@ public class McpServerResourceTests
 
         services.AddMcpServer()
             .WithStdioServerTransport()
-            .WithListResourceTemplatesHandler((ctx, ct) =>
+            .WithListResourceTemplatesHandler(async (ctx, ct) =>
             {
-                return Task.FromResult(new ListResourceTemplatesResult
+                return new ListResourceTemplatesResult
                 {
                     ResourceTemplates =
                     [
                         new ResourceTemplate { Name = "Static Resource", Description = "A static resource with a numeric ID", UriTemplate = "test://static/resource/{id}" }
                     ]
-                });
+                };
             })
-            .WithReadResourceHandler((ctx, ct) =>
+            .WithReadResourceHandler(async (ctx, ct) =>
             {
-                return Task.FromResult(new ReadResourceResult
+                return new ReadResourceResult
                 {
                     Contents = [new TextResourceContents
                     {
@@ -33,7 +33,7 @@ public class McpServerResourceTests
                         Text = "Static Resource",
                         MimeType = "text/plain",
                     }]
-                });
+                };
             });
 
         var provider = services.BuildServiceProvider();
@@ -48,19 +48,19 @@ public class McpServerResourceTests
 
         services.AddMcpServer()
             .WithStdioServerTransport()
-            .WithListResourcesHandler((ctx, ct) =>
+            .WithListResourcesHandler(async (ctx, ct) =>
             {
-                return Task.FromResult(new ListResourcesResult
+                return new ListResourcesResult
                 {
                     Resources =
                     [
                         new Resource { Name = "Static Resource", Description = "A static resource with a numeric ID", Uri = "test://static/resource/foo.txt" }
                     ]
-                });
+                };
             })
-            .WithReadResourceHandler((ctx, ct) =>
+            .WithReadResourceHandler(async (ctx, ct) =>
             {
-                return Task.FromResult(new ReadResourceResult
+                return new ReadResourceResult
                 {
                     Contents = [new TextResourceContents
                     {
@@ -68,7 +68,7 @@ public class McpServerResourceTests
                         Text = "Static Resource",
                         MimeType = "text/plain",
                     }]
-                });
+                };
             });
 
         var provider = services.BuildServiceProvider();
@@ -82,9 +82,9 @@ public class McpServerResourceTests
         var services = new ServiceCollection();
         services.AddMcpServer()
             .WithStdioServerTransport()
-            .WithReadResourceHandler((ctx, ct) =>
+            .WithReadResourceHandler(async (ctx, ct) =>
             {
-                return Task.FromResult(new ReadResourceResult
+                return new ReadResourceResult
                 {
                     Contents = [new TextResourceContents
                     {
@@ -92,9 +92,9 @@ public class McpServerResourceTests
                         Text = "Static Resource",
                         MimeType = "text/plain",
                     }]
-                });
+                };
             });
         var sp = services.BuildServiceProvider();
-        Assert.Throws<McpException>(() => sp.GetRequiredService<IMcpServer>());
+        Assert.Throws<InvalidOperationException>(sp.GetRequiredService<IMcpServer>);
     }
 }

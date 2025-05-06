@@ -3,6 +3,7 @@ using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
+using ModelContextProtocol.Utils.Json;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -93,7 +94,7 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
-    public async Task RequestSamplingAsync_Should_Throw_McpException_If_Client_Does_Not_Support_Sampling()
+    public async Task RequestSamplingAsync_Should_Throw_Exception_If_Client_Does_Not_Support_Sampling()
     {
         // Arrange
         await using var transport = new TestServerTransport();
@@ -103,7 +104,7 @@ public class McpServerTests : LoggedTest
         var action = () => server.RequestSamplingAsync(new CreateMessageRequestParams { Messages = [] }, CancellationToken.None);
 
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentException>("server", action);
+        await Assert.ThrowsAsync<InvalidOperationException>(action);
     }
 
     [Fact]
@@ -129,7 +130,7 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
-    public async Task RequestRootsAsync_Should_Throw_McpException_If_Client_Does_Not_Support_Roots()
+    public async Task RequestRootsAsync_Should_Throw_Exception_If_Client_Does_Not_Support_Roots()
     {
         // Arrange
         await using var transport = new TestServerTransport();
@@ -137,7 +138,7 @@ public class McpServerTests : LoggedTest
         SetClientCapabilities(server, new ClientCapabilities());
 
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentException>("server", () => server.RequestRootsAsync(new ListRootsRequestParams(), CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => server.RequestRootsAsync(new ListRootsRequestParams(), CancellationToken.None));
     }
 
     [Fact]
@@ -185,7 +186,7 @@ public class McpServerTests : LoggedTest
             configureOptions: null,
             assertResult: response =>
             {
-                var result = JsonSerializer.Deserialize<InitializeResult>(response);
+                var result = JsonSerializer.Deserialize<InitializeResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result);
                 Assert.Equal("ModelContextProtocol.Tests", result.ServerInfo.Name);
                 Assert.Equal("1.0.0.0", result.ServerInfo.Version);
@@ -201,8 +202,8 @@ public class McpServerTests : LoggedTest
             {
                 Completions = new()
                 {
-                    CompleteHandler = (request, ct) =>
-                        Task.FromResult(new CompleteResult
+                    CompleteHandler = async (request, ct) =>
+                        new CompleteResult
                         {
                             Completion = new()
                             {
@@ -210,14 +211,14 @@ public class McpServerTests : LoggedTest
                                 Total = 2,
                                 HasMore = true
                             }
-                        })
+                        }
                 }
             },
             method: RequestMethods.CompletionComplete,
             configureOptions: null,
             assertResult: response =>
             {
-                var result = JsonSerializer.Deserialize<CompleteResult>(response);
+                var result = JsonSerializer.Deserialize<CompleteResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result?.Completion);
                 Assert.Equal(["test"], result.Completion.Values);
                 Assert.Equal(2, result.Completion.Total);
@@ -233,19 +234,19 @@ public class McpServerTests : LoggedTest
             {
                 Resources = new()
                 {
-                    ListResourceTemplatesHandler = (request, ct) =>
+                    ListResourceTemplatesHandler = async (request, ct) =>
                     {
-                        return Task.FromResult(new ListResourceTemplatesResult
+                        return new ListResourceTemplatesResult
                         {
                             ResourceTemplates = [new() { UriTemplate = "test", Name = "Test Resource" }]
-                        });
+                        };
                     },
-                    ListResourcesHandler = (request, ct) =>
+                    ListResourcesHandler = async (request, ct) =>
                     {
-                        return Task.FromResult(new ListResourcesResult
+                        return new ListResourcesResult
                         {
                             Resources = [new() { Uri = "test", Name = "Test Resource" }]
-                        });
+                        };
                     },
                     ReadResourceHandler = (request, ct) => throw new NotImplementedException(),
                 }
@@ -254,7 +255,7 @@ public class McpServerTests : LoggedTest
             configureOptions: null,
             assertResult: response =>
             {
-                var result = JsonSerializer.Deserialize<ListResourceTemplatesResult>(response);
+                var result = JsonSerializer.Deserialize<ListResourceTemplatesResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result?.ResourceTemplates);
                 Assert.NotEmpty(result.ResourceTemplates);
                 Assert.Equal("test", result.ResourceTemplates[0].UriTemplate);
@@ -269,12 +270,12 @@ public class McpServerTests : LoggedTest
             {
                 Resources = new()
                 {
-                    ListResourcesHandler = (request, ct) =>
+                    ListResourcesHandler = async (request, ct) =>
                     {
-                        return Task.FromResult(new ListResourcesResult
+                        return new ListResourcesResult
                         {
                             Resources = [new() { Uri = "test", Name = "Test Resource" }]
-                        });
+                        };
                     },
                     ReadResourceHandler = (request, ct) => throw new NotImplementedException(),
                 }
@@ -283,7 +284,7 @@ public class McpServerTests : LoggedTest
             configureOptions: null,
             assertResult: response =>
             {
-                var result = JsonSerializer.Deserialize<ListResourcesResult>(response);
+                var result = JsonSerializer.Deserialize<ListResourcesResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result?.Resources);
                 Assert.NotEmpty(result.Resources);
                 Assert.Equal("test", result.Resources[0].Uri);
@@ -304,12 +305,12 @@ public class McpServerTests : LoggedTest
             {
                 Resources = new()
                 {
-                    ReadResourceHandler = (request, ct) =>
+                    ReadResourceHandler = async (request, ct) =>
                     {
-                        return Task.FromResult(new ReadResourceResult
+                        return new ReadResourceResult
                         {
                             Contents = [new TextResourceContents { Text = "test" }]
-                        });
+                        };
                     },
                     ListResourcesHandler = (request, ct) => throw new NotImplementedException(),
                 }
@@ -318,7 +319,7 @@ public class McpServerTests : LoggedTest
             configureOptions: null,
             assertResult: response =>
             {
-                var result = JsonSerializer.Deserialize<ReadResourceResult>(response);
+                var result = JsonSerializer.Deserialize<ReadResourceResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result?.Contents);
                 Assert.NotEmpty(result.Contents);
 
@@ -341,12 +342,12 @@ public class McpServerTests : LoggedTest
             {
                 Prompts = new()
                 {
-                    ListPromptsHandler = (request, ct) =>
+                    ListPromptsHandler = async (request, ct) =>
                     {
-                        return Task.FromResult(new ListPromptsResult
+                        return new ListPromptsResult
                         {
                             Prompts = [new() { Name = "test" }]
-                        });
+                        };
                     },
                     GetPromptHandler = (request, ct) => throw new NotImplementedException(),
                 },
@@ -355,7 +356,7 @@ public class McpServerTests : LoggedTest
             configureOptions: null,
             assertResult: response =>
             {
-                var result = JsonSerializer.Deserialize<ListPromptsResult>(response);
+                var result = JsonSerializer.Deserialize<ListPromptsResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result?.Prompts);
                 Assert.NotEmpty(result.Prompts);
                 Assert.Equal("test", result.Prompts[0].Name);
@@ -376,7 +377,7 @@ public class McpServerTests : LoggedTest
             {
                 Prompts = new()
                 {
-                    GetPromptHandler = (request, ct) => Task.FromResult(new GetPromptResult { Description = "test" }),
+                    GetPromptHandler = async (request, ct) => new GetPromptResult { Description = "test" },
                     ListPromptsHandler = (request, ct) => throw new NotImplementedException(),
                 }
             },
@@ -384,7 +385,7 @@ public class McpServerTests : LoggedTest
             configureOptions: null,
             assertResult: response =>
             {
-                var result = JsonSerializer.Deserialize<GetPromptResult>(response);
+                var result = JsonSerializer.Deserialize<GetPromptResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result);
                 Assert.Equal("test", result.Description);
             });
@@ -404,12 +405,12 @@ public class McpServerTests : LoggedTest
             {
                 Tools = new()
                 {
-                    ListToolsHandler = (request, ct) =>
+                    ListToolsHandler = async (request, ct) =>
                     {
-                        return Task.FromResult(new ListToolsResult
+                        return new ListToolsResult
                         {
                             Tools = [new() { Name = "test" }]
-                        });
+                        };
                     },
                     CallToolHandler = (request, ct) => throw new NotImplementedException(),
                 }
@@ -418,7 +419,7 @@ public class McpServerTests : LoggedTest
             configureOptions: null,
             assertResult: response =>
             {
-                var result = JsonSerializer.Deserialize<ListToolsResult>(response);
+                var result = JsonSerializer.Deserialize<ListToolsResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result);
                 Assert.NotEmpty(result.Tools);
                 Assert.Equal("test", result.Tools[0].Name);
@@ -439,12 +440,12 @@ public class McpServerTests : LoggedTest
             {
                 Tools = new()
                 {
-                    CallToolHandler = (request, ct) =>
+                    CallToolHandler = async (request, ct) =>
                     {
-                        return Task.FromResult(new CallToolResponse
+                        return new CallToolResponse
                         {
                             Content = [new Content { Text = "test" }]
-                        });
+                        };
                     },
                     ListToolsHandler = (request, ct) => throw new NotImplementedException(),
                 }
@@ -453,7 +454,7 @@ public class McpServerTests : LoggedTest
             configureOptions: null,
             assertResult: response =>
             {
-                var result = JsonSerializer.Deserialize<CallToolResponse>(response);
+                var result = JsonSerializer.Deserialize<CallToolResponse>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result);
                 Assert.NotEmpty(result.Content);
                 Assert.Equal("test", result.Content[0].Text);
@@ -506,7 +507,7 @@ public class McpServerTests : LoggedTest
         await using var transport = new TestServerTransport();
         var options = CreateOptions(serverCapabilities);
 
-        Assert.Throws<McpException>(() => McpServerFactory.Create(transport, options, LoggerFactory));
+        Assert.Throws<InvalidOperationException>(() => McpServerFactory.Create(transport, options, LoggerFactory));
     }
 
     [Fact]
@@ -514,7 +515,7 @@ public class McpServerTests : LoggedTest
     {
         await using var server = new TestServerForIChatClient(supportsSampling: false);
 
-        Assert.Throws<ArgumentException>("server", () => server.AsSamplingChatClient());
+        Assert.Throws<InvalidOperationException>(server.AsSamplingChatClient);
     }
 
     [Fact]
@@ -581,7 +582,7 @@ public class McpServerTests : LoggedTest
 
         public Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken)
         {
-            CreateMessageRequestParams? rp = JsonSerializer.Deserialize<CreateMessageRequestParams>(request.Params);
+            CreateMessageRequestParams? rp = JsonSerializer.Deserialize<CreateMessageRequestParams>(request.Params, McpJsonUtilities.DefaultOptions);
 
             Assert.NotNull(rp);
             Assert.Equal(0.75f, rp.Temperature);
@@ -601,14 +602,14 @@ public class McpServerTests : LoggedTest
             {
                 Content = new() { Text = "The Eiffel Tower.", Type = "text" },
                 Model = "amazingmodel",
-                Role = "assistant",
+                Role = Role.Assistant,
                 StopReason = "endTurn",
             };
 
             return Task.FromResult(new JsonRpcResponse
             { 
                 Id = new RequestId("0"),
-                Result = JsonSerializer.SerializeToNode(result),
+                Result = JsonSerializer.SerializeToNode(result, McpJsonUtilities.DefaultOptions),
             });
         }
 
@@ -618,11 +619,11 @@ public class McpServerTests : LoggedTest
         public McpServerOptions ServerOptions => throw new NotImplementedException();
         public IServiceProvider? Services => throw new NotImplementedException();
         public LoggingLevel? LoggingLevel => throw new NotImplementedException();
-        public Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default) =>
+        public Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
         public Task RunAsync(CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
-        public IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, Task> handler) =>
+        public IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler) =>
             throw new NotImplementedException();
     }
 
@@ -638,7 +639,7 @@ public class McpServerTests : LoggedTest
             NotificationHandlers = [new(NotificationMethods.ProgressNotification, (notification, cancellationToken) =>
             {
                 notificationReceived.TrySetResult(notification);
-                return Task.CompletedTask;
+                return default;
             })],
         };
 
@@ -658,11 +659,11 @@ public class McpServerTests : LoggedTest
                     Total = 100,
                     Message = "Progress message",
                 },
-            }),
+            }, McpJsonUtilities.DefaultOptions),
         }, TestContext.Current.CancellationToken);
 
         var notification = await notificationReceived.Task;
-        var progress = JsonSerializer.Deserialize<ProgressNotification>(notification.Params);
+        var progress = JsonSerializer.Deserialize<ProgressNotification>(notification.Params, McpJsonUtilities.DefaultOptions);
         Assert.NotNull(progress);
         Assert.Equal("abc", progress.ProgressToken.ToString());
         Assert.Equal(50, progress.Progress.Progress);

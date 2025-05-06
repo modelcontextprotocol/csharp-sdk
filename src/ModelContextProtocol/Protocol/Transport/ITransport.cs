@@ -27,22 +27,6 @@ namespace ModelContextProtocol.Protocol.Transport;
 public interface ITransport : IAsyncDisposable
 {
     /// <summary>
-    /// Gets whether the transport is currently connected and able to send/receive messages.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// The <see cref="IsConnected"/> property indicates the current state of the transport connection.
-    /// When <see langword="true"/>, the transport is ready to send and receive messages. When <see langword="false"/>,
-    /// any attempt to send messages will typically result in exceptions being thrown.
-    /// </para>
-    /// <para>
-    /// The property transitions to <see langword="true"/> when the transport successfully establishes a connection,
-    /// and transitions to <see langword="false"/> when the transport is disposed or encounters a connection error.
-    /// </para>
-    /// </remarks>
-    bool IsConnected { get; }
-
-    /// <summary>
     /// Gets a channel reader for receiving messages from the transport.
     /// </summary>
     /// <remarks>
@@ -56,7 +40,7 @@ public interface ITransport : IAsyncDisposable
     /// any already transmitted messages are consumed.
     /// </para>
     /// </remarks>
-    ChannelReader<IJsonRpcMessage> MessageReader { get; }
+    ChannelReader<JsonRpcMessage> MessageReader { get; }
 
     /// <summary>
     /// Sends a JSON-RPC message through the transport.
@@ -76,5 +60,5 @@ public interface ITransport : IAsyncDisposable
     /// rather than accessing this method directly.
     /// </para>
     /// </remarks>
-    Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default);
+    Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default);
 }

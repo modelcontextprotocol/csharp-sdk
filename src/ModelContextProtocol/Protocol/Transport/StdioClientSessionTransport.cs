@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
-using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
+using System;
 using System.Diagnostics;
 
 namespace ModelContextProtocol.Protocol.Transport;
@@ -23,17 +23,17 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
     /// <para>
     /// For stdio-based transports, this implementation first verifies that the underlying process 
     /// is still running before attempting to send the message. If the process has exited or cannot
-    /// be accessed, a <see cref="McpTransportException"/> is thrown with details about the failure.
+    /// be accessed, a <see cref="InvalidOperationException"/> is thrown with details about the failure.
     /// </para>
     /// <para>
     /// After verifying the process state, this method delegates to the base class implementation
     /// to handle the actual message serialization and transmission to the process's standard input stream.
     /// </para>
     /// </remarks>
-    /// <exception cref="McpTransportException">
+    /// <exception cref="InvalidOperationException">
     /// Thrown when the underlying process has exited or cannot be accessed.
     /// </exception>
-    public override async Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
+    public override async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         Exception? processException = null;
         bool hasExited = false;
@@ -49,8 +49,7 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
 
         if (hasExited)
         {
-            Logger.TransportNotConnected(EndpointName);
-            throw new McpTransportException("Transport is not connected", processException);
+            throw new InvalidOperationException("Transport is not connected", processException);
         }
 
         await base.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
@@ -59,7 +58,14 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
     /// <inheritdoc/>
     protected override ValueTask CleanupAsync(CancellationToken cancellationToken)
     {
-        StdioClientTransport.DisposeProcess(_process, processRunning: true, Logger, _options.ShutdownTimeout, EndpointName);
+        try
+        {
+            StdioClientTransport.DisposeProcess(_process, processRunning: true, _options.ShutdownTimeout, Name);
+        }
+        catch (Exception ex)
+        {
+            LogTransportShutdownFailed(Name, ex);
+        }
 
         return base.CleanupAsync(cancellationToken);
     }

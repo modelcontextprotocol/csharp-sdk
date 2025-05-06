@@ -1,4 +1,5 @@
 ﻿using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Utils.Json;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Tests.Protocol;
@@ -57,7 +58,7 @@ public static class ProtocolTypeTests
     [InlineData(Role.Assistant, "\"assistant\"")]
     public static void SerializeRole_ShouldBeCamelCased(Role role, string expectedValue)
     {
-        var actualValue = JsonSerializer.Serialize(role);
+        var actualValue = JsonSerializer.Serialize(role, McpJsonUtilities.DefaultOptions);
 
         Assert.Equal(expectedValue, actualValue);
     }
@@ -73,7 +74,7 @@ public static class ProtocolTypeTests
     [InlineData(LoggingLevel.Emergency, "\"emergency\"")]
     public static void SerializeLoggingLevel_ShouldBeCamelCased(LoggingLevel level, string expectedValue)
     {
-        var actualValue = JsonSerializer.Serialize(level);
+        var actualValue = JsonSerializer.Serialize(level, McpJsonUtilities.DefaultOptions);
 
         Assert.Equal(expectedValue, actualValue);
     }
@@ -84,7 +85,7 @@ public static class ProtocolTypeTests
     [InlineData(ContextInclusion.AllServers, "\"allServers\"")]
     public static void ContextInclusion_ShouldBeCamelCased(ContextInclusion level, string expectedValue)
     {
-        var actualValue = JsonSerializer.Serialize(level);
+        var actualValue = JsonSerializer.Serialize(level, McpJsonUtilities.DefaultOptions);
 
         Assert.Equal(expectedValue, actualValue);
     }

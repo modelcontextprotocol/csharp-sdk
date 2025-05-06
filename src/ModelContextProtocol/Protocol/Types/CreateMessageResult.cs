@@ -50,5 +50,5 @@ public class CreateMessageResult
     /// Gets or sets the role of the user who generated the message.
     /// </summary>
     [JsonPropertyName("role")]
-    public required string Role { get; init; }
+    public required Role Role { get; init; }
 }

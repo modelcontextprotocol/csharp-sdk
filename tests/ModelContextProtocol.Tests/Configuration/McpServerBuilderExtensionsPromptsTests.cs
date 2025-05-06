@@ -6,13 +6,12 @@ using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
+using System.Text.Json.Serialization;
 using System.Threading.Channels;
-
-#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
 
 namespace ModelContextProtocol.Tests.Configuration;
 
-public class McpServerBuilderExtensionsPromptsTests : ClientServerTestBase
+public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBase
 {
     public McpServerBuilderExtensionsPromptsTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
@@ -32,10 +31,10 @@ public class McpServerBuilderExtensionsPromptsTests : ClientServerTestBase
                                 {
                                     NextCursor = "abc",
                                     Prompts = [new()
-                        {
-                            Name = "FirstCustomPrompt",
-                            Description = "First prompt returned by custom handler",
-                        }],
+                                    {
+                                        Name = "FirstCustomPrompt",
+                                        Description = "First prompt returned by custom handler",
+                                    }],
                                 };
 
                             case "abc":
@@ -43,10 +42,10 @@ public class McpServerBuilderExtensionsPromptsTests : ClientServerTestBase
                                 {
                                     NextCursor = "def",
                                     Prompts = [new()
-                        {
-                            Name = "SecondCustomPrompt",
-                            Description = "Second prompt returned by custom handler",
-                        }],
+                                    {
+                                        Name = "SecondCustomPrompt",
+                                        Description = "Second prompt returned by custom handler",
+                                    }],
                                 };
 
                             case "def":
@@ -54,14 +53,14 @@ public class McpServerBuilderExtensionsPromptsTests : ClientServerTestBase
                                 {
                                     NextCursor = null,
                                     Prompts = [new()
-                        {
-                            Name = "FinalCustomPrompt",
-                            Description = "Final prompt returned by custom handler",
-                        }],
+                                    {
+                                        Name = "FinalCustomPrompt",
+                                        Description = "Final prompt returned by custom handler",
+                                    }],
                                 };
 
                             default:
-                                throw new Exception("Unexpected cursor");
+                                throw new McpException($"Unexpected cursor: '{cursor}'", McpErrorCode.InvalidParams);
                         }
                     })
         .WithGetPromptHandler(async (request, cancellationToken) =>
@@ -77,7 +76,7 @@ public class McpServerBuilderExtensionsPromptsTests : ClientServerTestBase
                     };
 
                 default:
-                    throw new Exception($"Unknown prompt '{request.Params?.Name}'");
+                    throw new McpException($"Unknown prompt '{request.Params?.Name}'", McpErrorCode.InvalidParams);
             }
         })
         .WithPrompts<SimplePrompts>();
@@ -97,7 +96,7 @@ public class McpServerBuilderExtensionsPromptsTests : ClientServerTestBase
     [Fact]
     public async Task Can_List_And_Call_Registered_Prompts()
     {
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         var prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
         Assert.Equal(6, prompts.Count);
@@ -126,7 +125,7 @@ public class McpServerBuilderExtensionsPromptsTests : ClientServerTestBase
     [Fact]
     public async Task Can_Be_Notified_Of_Prompt_Changes()
     {
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         var prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
         Assert.Equal(6, prompts.Count);
@@ -143,7 +142,7 @@ public class McpServerBuilderExtensionsPromptsTests : ClientServerTestBase
         await using (client.RegisterNotificationHandler("notifications/prompts/list_changed", (notification, cancellationToken) =>
             {
                 listChanged.Writer.TryWrite(notification);
-                return Task.CompletedTask;
+                return default;
             }))
         {
             serverPrompts.Add(newPrompt);
@@ -167,7 +166,7 @@ public class McpServerBuilderExtensionsPromptsTests : ClientServerTestBase
     [Fact]
     public async Task Throws_When_Prompt_Fails()
     {
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         await Assert.ThrowsAsync<McpException>(async () => await client.GetPromptAsync(
             nameof(SimplePrompts.ThrowsException),
@@ -177,7 +176,7 @@ public class McpServerBuilderExtensionsPromptsTests : ClientServerTestBase
     [Fact]
     public async Task Throws_Exception_On_Unknown_Prompt()
     {
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         var e = await Assert.ThrowsAsync<McpException>(async () => await client.GetPromptAsync(
             "NotRegisteredPrompt",
@@ -189,13 +188,13 @@ public class McpServerBuilderExtensionsPromptsTests : ClientServerTestBase
     [Fact]
     public async Task Throws_Exception_Missing_Parameter()
     {
-        IMcpClient client = await CreateMcpClientForServer();
+        await using IMcpClient client = await CreateMcpClientForServer();
 
         var e = await Assert.ThrowsAsync<McpException>(async () => await client.GetPromptAsync(
             nameof(SimplePrompts.ReturnsChatMessages),
             cancellationToken: TestContext.Current.CancellationToken));
 
-        Assert.Contains("Missing required parameter", e.Message);
+        Assert.Equal(McpErrorCode.InternalError, e.ErrorCode);
     }
 
     [Fact]
@@ -203,6 +202,7 @@ public class McpServerBuilderExtensionsPromptsTests : ClientServerTestBase
     {
         IMcpServerBuilder builder = new ServiceCollection().AddMcpServer();
 
+        Assert.Throws<ArgumentNullException>("prompts", () => builder.WithPrompts((IEnumerable<McpServerPrompt>)null!));
         Assert.Throws<ArgumentNullException>("promptTypes", () => builder.WithPrompts((IEnumerable<Type>)null!));
 
         IMcpServerBuilder nullBuilder = null!;
@@ -216,6 +216,7 @@ public class McpServerBuilderExtensionsPromptsTests : ClientServerTestBase
     {
         IMcpServerBuilder builder = new ServiceCollection().AddMcpServer();
 
+        builder.WithPrompts(prompts: []); // no exception
         builder.WithPrompts(promptTypes: []); // no exception
         builder.WithPrompts<object>(); // no exception even though no prompts exposed
         builder.WithPromptsFromAssembly(typeof(AIFunction).Assembly); // no exception even though no prompts exposed
@@ -237,13 +238,15 @@ public class McpServerBuilderExtensionsPromptsTests : ClientServerTestBase
         ServiceCollection sc = new();
         sc.AddMcpServer()
             .WithPrompts<SimplePrompts>()
-            .WithPrompts<MorePrompts>();
+            .WithPrompts<MorePrompts>(JsonContext4.Default.Options)
+            .WithPrompts([McpServerPrompt.Create(() => "42", new() { Name = "Returns42" })]);
         IServiceProvider services = sc.BuildServiceProvider();
 
         Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == nameof(SimplePrompts.ReturnsChatMessages));
         Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == nameof(SimplePrompts.ThrowsException));
         Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == nameof(SimplePrompts.ReturnsString));
         Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == nameof(MorePrompts.AnotherPrompt));
+        Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == "Returns42");
     }
 
     [McpServerPromptType]
@@ -270,7 +273,7 @@ public class McpServerBuilderExtensionsPromptsTests : ClientServerTestBase
     public sealed class MorePrompts
     {
         [McpServerPrompt]
-        public static PromptMessage AnotherPrompt() =>
+        public static PromptMessage AnotherPrompt(ObjectWithId id) =>
             new PromptMessage
             {
                 Role = Role.User,
@@ -282,4 +285,8 @@ public class McpServerBuilderExtensionsPromptsTests : ClientServerTestBase
     {
         public string Id { get; set; } = Guid.NewGuid().ToString("N");
     }
+
+    [JsonSerializable(typeof(ObjectWithId))]
+    [JsonSerializable(typeof(PromptMessage))]
+    partial class JsonContext4 : JsonSerializerContext;
 }

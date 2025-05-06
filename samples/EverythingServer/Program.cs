@@ -8,6 +8,13 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
+using OpenTelemetry;
+using OpenTelemetry.Logs;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+
+#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Logging.AddConsole(consoleLogOptions =>
@@ -31,26 +38,49 @@ builder.Services
     .WithTools<TinyImageTool>()
     .WithPrompts<ComplexPromptType>()
     .WithPrompts<SimplePromptType>()
-    .WithListResourceTemplatesHandler((ctx, ct) =>
+    .WithListResourcesHandler(async (ctx, ct) =>
     {
-        return Task.FromResult(new ListResourceTemplatesResult
+        return new ListResourcesResult
+        {
+            Resources =
+            [
+                new ModelContextProtocol.Protocol.Types.Resource { Name = "Direct Text Resource", Description = "A direct text resource", MimeType = "text/plain", Uri = "test://direct/text/resource" },
+            ]
+        };
+    })
+    .WithListResourceTemplatesHandler(async (ctx, ct) =>
+    {
+        return new ListResourceTemplatesResult
         {
             ResourceTemplates =
             [
-                new ResourceTemplate { Name = "Static Resource", Description = "A static resource with a numeric ID", UriTemplate = "test://static/resource/{id}" }
+                new ResourceTemplate { Name = "Template Resource", Description = "A template resource with a numeric ID", UriTemplate = "test://template/resource/{id}" }
             ]
-        });
+        };
     })
-    .WithReadResourceHandler((ctx, ct) =>
+    .WithReadResourceHandler(async (ctx, ct) =>
     {
         var uri = ctx.Params?.Uri;
 
-        if (uri is null || !uri.StartsWith("test://static/resource/"))
+        if (uri == "test://direct/text/resource")
+        {
+            return new ReadResourceResult
+            {
+                Contents = [new TextResourceContents
+                {
+                    Text = "This is a direct resource",
+                    MimeType = "text/plain",
+                    Uri = uri,
+                }]
+            };
+        }
+
+        if (uri is null || !uri.StartsWith("test://template/resource/"))
         {
             throw new NotSupportedException($"Unknown resource: {uri}");
         }
 
-        int index = int.Parse(uri["test://static/resource/".Length..]) - 1;
+        int index = int.Parse(uri["test://template/resource/".Length..]) - 1;
 
         if (index < 0 || index >= ResourceGenerator.Resources.Count)
         {
@@ -61,7 +91,7 @@ builder.Services
 
         if (resource.MimeType == "text/plain")
         {
-            return Task.FromResult(new ReadResourceResult
+            return new ReadResourceResult
             {
                 Contents = [new TextResourceContents
                 {
@@ -69,11 +99,11 @@ builder.Services
                     MimeType = resource.MimeType,
                     Uri = resource.Uri,
                 }]
-            });
+            };
         }
         else
         {
-            return Task.FromResult(new ReadResourceResult
+            return new ReadResourceResult
             {
                 Contents = [new BlobResourceContents
                 {
@@ -81,7 +111,7 @@ builder.Services
                     MimeType = resource.MimeType,
                     Uri = resource.Uri,
                 }]
-            });
+            };
         }
     })
     .WithSubscribeToResourcesHandler(async (ctx, ct) =>
@@ -106,16 +136,16 @@ builder.Services
 
         return new EmptyResult();
     })
-    .WithUnsubscribeFromResourcesHandler((ctx, ct) =>
+    .WithUnsubscribeFromResourcesHandler(async (ctx, ct) =>
     {
         var uri = ctx.Params?.Uri;
         if (uri is not null)
         {
             subscriptions.Remove(uri);
         }
-        return Task.FromResult(new EmptyResult());
+        return new EmptyResult();
     })
-    .WithCompleteHandler((ctx, ct) =>
+    .WithCompleteHandler(async (ctx, ct) =>
     {
         var exampleCompletions = new Dictionary<string, IEnumerable<string>>
         {
@@ -128,7 +158,7 @@ builder.Services
         {
             throw new NotSupportedException($"Params are required.");
         }
-        
+
         var @ref = @params.Ref;
         var argument = @params.Argument;
 
@@ -138,15 +168,15 @@ builder.Services
 
             if (resourceId is null)
             {
-                return Task.FromResult(new CompleteResult());
+                return new CompleteResult();
             }
 
             var values = exampleCompletions["resourceId"].Where(id => id.StartsWith(argument.Value));
 
-            return Task.FromResult(new CompleteResult
+            return new CompleteResult
             {
-                Completion = new Completion { Values = [..values], HasMore = false, Total = values.Count() }
-            });
+                Completion = new Completion { Values = [.. values], HasMore = false, Total = values.Count() }
+            };
         }
 
         if (@ref.Type == "ref/prompt")
@@ -157,10 +187,10 @@ builder.Services
             }
 
             var values = value.Where(value => value.StartsWith(argument.Value));
-            return Task.FromResult(new CompleteResult
+            return new CompleteResult
             {
-                Completion = new Completion { Values = [..values], HasMore = false, Total = values.Count() }
-            });
+                Completion = new Completion { Values = [.. values], HasMore = false, Total = values.Count() }
+            };
         }
 
         throw new NotSupportedException($"Unknown reference type: {@ref.Type}");
@@ -169,21 +199,27 @@ builder.Services
     {
         if (ctx.Params?.Level is null)
         {
-            throw new McpException("Missing required argument 'level'");
+            throw new McpException("Missing required argument 'level'", McpErrorCode.InvalidParams);
         }
 
         _minimumLoggingLevel = ctx.Params.Level;
 
         await ctx.Server.SendNotificationAsync("notifications/message", new
-            {
-                Level = "debug",
-                Logger = "test-server",
-                Data = $"Logging level set to {_minimumLoggingLevel}",
-            }, cancellationToken: ct);
+        {
+            Level = "debug",
+            Logger = "test-server",
+            Data = $"Logging level set to {_minimumLoggingLevel}",
+        }, cancellationToken: ct);
 
         return new EmptyResult();
-    })
-    ;
+    });
+
+ResourceBuilder resource = ResourceBuilder.CreateDefault().AddService("everything-server");
+builder.Services.AddOpenTelemetry()
+    .WithTracing(b => b.AddSource("*").AddHttpClientInstrumentation().SetResourceBuilder(resource))
+    .WithMetrics(b => b.AddMeter("*").AddHttpClientInstrumentation().SetResourceBuilder(resource))
+    .WithLogging(b => b.SetResourceBuilder(resource))
+    .UseOtlpExporter();
 
 builder.Services.AddSingleton(subscriptions);
 builder.Services.AddHostedService<SubscriptionMessageSender>();

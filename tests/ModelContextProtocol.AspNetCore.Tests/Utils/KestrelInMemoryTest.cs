@@ -2,8 +2,9 @@
 using Microsoft.AspNetCore.Connections;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using ModelContextProtocol.Tests.Utils;
 
-namespace ModelContextProtocol.Tests.Utils;
+namespace ModelContextProtocol.AspNetCore.Tests.Utils;
 
 public class KestrelInMemoryTest : LoggedTest
 {
@@ -18,21 +19,28 @@ public class KestrelInMemoryTest : LoggedTest
         Builder.Services.RemoveAll<IConnectionListenerFactory>();
         Builder.Services.AddSingleton<IConnectionListenerFactory>(_inMemoryTransport);
         Builder.Services.AddSingleton(LoggerProvider);
-    }
 
-    public WebApplicationBuilder Builder { get; }
-
-    public HttpClient CreateHttpClient()
-    {
-        var socketsHttpHandler = new SocketsHttpHandler()
+        HttpClient = new HttpClient(new SocketsHttpHandler()
         {
             ConnectCallback = (context, token) =>
             {
                 var connection = _inMemoryTransport.CreateConnection();
                 return new(connection.ClientStream);
             },
+        })
+        {
+            BaseAddress = new Uri("http://localhost:5000/"),
+            Timeout = TimeSpan.FromSeconds(10),
         };
+    }
 
-        return new HttpClient(socketsHttpHandler);
+    public WebApplicationBuilder Builder { get; }
+
+    public HttpClient HttpClient { get; }
+
+    public override void Dispose()
+    {
+        HttpClient.Dispose();
+        base.Dispose();
     }
 }

@@ -41,7 +41,7 @@ public class PromptsCapability : IListCapability<McpServerPrompt>
     /// along with any prompts defined in <see cref="PromptCollection"/>.
     /// </remarks>
     [JsonIgnore]
-    public Func<RequestContext<ListPromptsRequestParams>, CancellationToken, Task<ListPromptsResult>>? ListPromptsHandler { get; set; }
+    public Func<RequestContext<ListPromptsRequestParams>, CancellationToken, ValueTask<ListPromptsResult>>? ListPromptsHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.PromptsGet"/> requests.
@@ -58,7 +58,7 @@ public class PromptsCapability : IListCapability<McpServerPrompt>
     /// </para>
     /// </remarks>
     [JsonIgnore]
-    public Func<RequestContext<GetPromptRequestParams>, CancellationToken, Task<GetPromptResult>>? GetPromptHandler { get; set; }
+    public Func<RequestContext<GetPromptRequestParams>, CancellationToken, ValueTask<GetPromptResult>>? GetPromptHandler { get; set; }
 
     /// <summary>
     /// Gets or sets a collection of prompts that will be served by the server.

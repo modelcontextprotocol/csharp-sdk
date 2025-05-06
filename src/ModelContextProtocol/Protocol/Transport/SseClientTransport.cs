@@ -57,6 +57,11 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
     /// <inheritdoc />
     public async Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default)
     {
+        if (_options.UseStreamableHttp)
+        {
+            return new StreamableHttpClientSessionTransport(_options, _httpClient, _loggerFactory, Name);
+        }
+
         var sessionTransport = new SseClientSessionTransport(_options, _httpClient, _loggerFactory, Name);
 
         try

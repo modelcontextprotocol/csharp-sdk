@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using ModelContextProtocol.Logging;
 using ModelContextProtocol.Utils;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -24,7 +23,7 @@ namespace ModelContextProtocol.Protocol.Transport;
 /// and environment variables, handling output, and properly terminating the process when the transport is closed.
 /// </para>
 /// </remarks>
-public sealed class StdioClientTransport : IClientTransport
+public sealed partial class StdioClientTransport : IClientTransport
 {
     private readonly StdioClientTransportOptions _options;
     private readonly ILoggerFactory? _loggerFactory;
@@ -68,7 +67,7 @@ public sealed class StdioClientTransport : IClientTransport
         ILogger logger = (ILogger?)_loggerFactory?.CreateLogger<StdioClientTransport>() ?? NullLogger.Instance;
         try
         {
-            logger.TransportConnecting(endpointName);
+            LogTransportConnecting(logger, endpointName);
 
             UTF8Encoding noBomUTF8 = new(encoderShouldEmitUTF8Identifier: false);
 
@@ -114,14 +113,22 @@ public sealed class StdioClientTransport : IClientTransport
                 }
             }
 
-            logger.CreateProcessForTransport(endpointName, _options.Command,
-                startInfo.Arguments, string.Join(", ", startInfo.Environment.Select(kvp => kvp.Key + "=" + kvp.Value)),
-                startInfo.WorkingDirectory, _options.ShutdownTimeout.ToString());
+            if (logger.IsEnabled(LogLevel.Trace))
+            {
+                LogCreateProcessForTransportSensitive(logger, endpointName, _options.Command,
+                    startInfo.Arguments,
+                    string.Join(", ", startInfo.Environment.Select(kvp => $"{kvp.Key}={kvp.Value}")),
+                    startInfo.WorkingDirectory);
+            }
+            else
+            {
+                LogCreateProcessForTransport(logger, endpointName, _options.Command);
+            }
 
             process = new() { StartInfo = startInfo };
 
             // Set up error logging
-            process.ErrorDataReceived += (sender, args) => logger.ReadStderr(endpointName, args.Data ?? "(no data)");
+            process.ErrorDataReceived += (sender, args) => LogReadStderr(logger, endpointName, args.Data ?? "(no data)");
 
             // We need both stdin and stdout to use a no-BOM UTF-8 encoding. On .NET Core,
             // we can use ProcessStartInfo.StandardOutputEncoding/StandardInputEncoding, but
@@ -146,11 +153,11 @@ public sealed class StdioClientTransport : IClientTransport
 
             if (!processStarted)
             {
-                logger.TransportProcessStartFailed(endpointName);
-                throw new McpTransportException("Failed to start MCP server process");
+                LogTransportProcessStartFailed(logger, endpointName);
+                throw new InvalidOperationException("Failed to start MCP server process");
             }
 
-            logger.TransportProcessStarted(endpointName, process.Id);
+            LogTransportProcessStarted(logger, endpointName, process.Id);
 
             process.BeginErrorReadLine();
 
@@ -158,14 +165,23 @@ public sealed class StdioClientTransport : IClientTransport
         }
         catch (Exception ex)
         {
-            logger.TransportConnectFailed(endpointName, ex);
-            DisposeProcess(process, processStarted, logger, _options.ShutdownTimeout, endpointName);
-            throw new McpTransportException("Failed to connect transport", ex);
+            LogTransportConnectFailed(logger, endpointName, ex);
+
+            try
+            {
+                DisposeProcess(process, processStarted, _options.ShutdownTimeout, endpointName);
+            }
+            catch (Exception ex2)
+            {
+                LogTransportShutdownFailed(logger, endpointName, ex2);
+            }
+
+            throw new InvalidOperationException("Failed to connect transport", ex);
         }
     }
 
     internal static void DisposeProcess(
-        Process? process, bool processRunning, ILogger logger, TimeSpan shutdownTimeout, string endpointName)
+        Process? process, bool processRunning, TimeSpan shutdownTimeout, string endpointName)
     {
         if (process is not null)
         {
@@ -188,13 +204,8 @@ public sealed class StdioClientTransport : IClientTransport
                     // Wait for the process to exit.
                     // Kill the while process tree because the process may spawn child processes
                     // and Node.js does not kill its children when it exits properly.
-                    logger.TransportWaitingForShutdown(endpointName);
                     process.KillTree(shutdownTimeout);
                 }
-            }
-            catch (Exception ex)
-            {
-                logger.TransportShutdownFailed(endpointName, ex);
             }
             finally
             {
@@ -202,4 +213,28 @@ public sealed class StdioClientTransport : IClientTransport
             }
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} connecting.")]
+    private static partial void LogTransportConnecting(ILogger logger, string endpointName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} starting server process. Command: '{Command}'.")]
+    private static partial void LogCreateProcessForTransport(ILogger logger, string endpointName, string command);
+
+    [LoggerMessage(Level = LogLevel.Trace, Message = "{EndpointName} starting server process. Command: '{Command}', Arguments: {Arguments}, Environment: {Environment}, Working directory: {WorkingDirectory}.")]
+    private static partial void LogCreateProcessForTransportSensitive(ILogger logger, string endpointName, string command, string? arguments, string environment, string workingDirectory);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} failed to start server process.")]
+    private static partial void LogTransportProcessStartFailed(ILogger logger, string endpointName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} received stderr log: '{Data}'.")]
+    private static partial void LogReadStderr(ILogger logger, string endpointName, string data);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} started server process with PID {ProcessId}.")]
+    private static partial void LogTransportProcessStarted(ILogger logger, string endpointName, int processId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} connect failed.")]
+    private static partial void LogTransportConnectFailed(ILogger logger, string endpointName, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} shutdown failed.")]
+    private static partial void LogTransportShutdownFailed(ILogger logger, string endpointName, Exception exception);
 }

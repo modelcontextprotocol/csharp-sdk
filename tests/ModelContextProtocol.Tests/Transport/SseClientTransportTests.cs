@@ -17,8 +17,6 @@ public class SseClientTransportTests : LoggedTest
         {
             Endpoint = new Uri("http://localhost:8080"),
             ConnectionTimeout = TimeSpan.FromSeconds(2),
-            MaxReconnectAttempts = 3,
-            ReconnectDelay = TimeSpan.FromMilliseconds(50),
             Name = "Test Server",
             AdditionalHeaders = new Dictionary<string, string>
             {
@@ -76,15 +74,12 @@ public class SseClientTransportTests : LoggedTest
         mockHttpHandler.RequestHandler = (request) =>
         {
             retries++;
-            throw new InvalidOperationException("Test exception");
+            throw new Exception("Test exception");
         };
 
-        var action = async () => await transport.ConnectAsync();
-
-        var exception = await Assert.ThrowsAsync<McpTransportException>(action);
-        Assert.Equal("Exceeded reconnect limit", exception.Message);
-
-        Assert.Equal(_transportOptions.MaxReconnectAttempts, retries);
+        var exception = await Assert.ThrowsAsync<Exception>(() => transport.ConnectAsync(TestContext.Current.CancellationToken));
+        Assert.Equal("Test exception", exception.Message);
+        Assert.Equal(1, retries);
     }
 
     [Fact]
@@ -123,52 +118,6 @@ public class SseClientTransportTests : LoggedTest
         await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
         await session.SendMessageAsync(new JsonRpcRequest() { Method = RequestMethods.Initialize, Id = new RequestId(44) }, CancellationToken.None);
         Assert.True(true);
-    }
-
-    [Fact]
-    public async Task SendMessageAsync_Handles_Accepted_Json_RPC_Response()
-    {
-        using var mockHttpHandler = new MockHttpHandler();
-        using var httpClient = new HttpClient(mockHttpHandler);
-        await using var transport = new SseClientTransport(_transportOptions, httpClient, LoggerFactory);
-
-        var eventSourcePipe = new Pipe();
-        var eventSourceData = "event: endpoint\r\ndata: /sseendpoint\r\n\r\n"u8;
-        eventSourceData.CopyTo(eventSourcePipe.Writer.GetSpan(eventSourceData.Length));
-        eventSourcePipe.Writer.Advance(eventSourceData.Length);
-        await eventSourcePipe.Writer.FlushAsync(TestContext.Current.CancellationToken);
-
-        var firstCall = true;
-        mockHttpHandler.RequestHandler = (request) =>
-        {
-            if (request.Method == HttpMethod.Post && request.RequestUri?.AbsoluteUri == "http://localhost:8080/sseendpoint")
-            {
-                return Task.FromResult(new HttpResponseMessage
-                {
-                    StatusCode = HttpStatusCode.OK,
-                    Content = new StringContent("{\"jsonrpc\":\"2.0\", \"id\": \"44\", \"result\": null}")
-                });
-            }
-            else
-            {
-                if (!firstCall)
-                    throw new IOException("Abort");
-                else
-                    firstCall = false;
-
-                return Task.FromResult(new HttpResponseMessage
-                {
-                    StatusCode = HttpStatusCode.OK,
-                    Content = new StreamContent(eventSourcePipe.Reader.AsStream()),
-                });
-            }
-        };
-
-        await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
-
-        await session.SendMessageAsync(new JsonRpcRequest() { Method = RequestMethods.Initialize, Id = new RequestId(44) }, CancellationToken.None);
-        Assert.True(true);
-        eventSourcePipe.Writer.Complete();
     }
 
     [Fact]
@@ -221,6 +170,7 @@ public class SseClientTransportTests : LoggedTest
 
         await session.DisposeAsync();
 
-        Assert.False(session.IsConnected);
+        var transportBase = Assert.IsAssignableFrom<TransportBase>(session);
+        Assert.False(transportBase.IsConnected);
     }
 }

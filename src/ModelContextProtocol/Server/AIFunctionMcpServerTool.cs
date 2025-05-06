@@ -67,6 +67,8 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             Name = options?.Name ?? method.GetCustomAttribute<McpServerToolAttribute>()?.Name,
             Description = options?.Description,
             MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
+            SerializerOptions = options?.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
+            Services = options?.Services,
             ConfigureParameterBinding = pi =>
             {
                 if (pi.ParameterType == typeof(RequestContext<CallToolRequestParams>))
@@ -108,35 +110,6 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
                     };
                 }
 
-                // We assume that if the services used to create the tool support a particular type,
-                // so too do the services associated with the server. This is the same basic assumption
-                // made in ASP.NET.
-                if (options?.Services is { } services &&
-                    services.GetService<IServiceProviderIsService>() is { } ispis &&
-                    ispis.IsService(pi.ParameterType))
-                {
-                    return new()
-                    {
-                        ExcludeFromSchema = true,
-                        BindParameter = (pi, args) =>
-                            GetRequestContext(args)?.Server?.Services?.GetService(pi.ParameterType) ??
-                            (pi.HasDefaultValue ? null :
-                             throw new ArgumentException("No service of the requested type was found.")),
-                    };
-                }
-
-                if (pi.GetCustomAttribute<FromKeyedServicesAttribute>() is { } keyedAttr)
-                {
-                    return new()
-                    {
-                        ExcludeFromSchema = true,
-                        BindParameter = (pi, args) =>
-                            (GetRequestContext(args)?.Server?.Services as IKeyedServiceProvider)?.GetKeyedService(pi.ParameterType, keyedAttr.Key) ??
-                            (pi.HasDefaultValue ? null :
-                             throw new ArgumentException("No service of the requested type was found.")),
-                    };
-                }
-
                 return default;
 
                 static RequestContext<CallToolRequestParams>? GetRequestContext(AIFunctionArguments args)
@@ -150,6 +123,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
                     return null;
                 }
             },
+            JsonSchemaCreateOptions = options?.SchemaCreateOptions,
         };
 
     /// <summary>Creates an <see cref="McpServerTool"/> that wraps the specified <see cref="AIFunction"/>.</summary>
@@ -236,7 +210,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
     public override Tool ProtocolTool { get; }
 
     /// <inheritdoc />
-    public override async Task<CallToolResponse> InvokeAsync(
+    public override async ValueTask<CallToolResponse> InvokeAsync(
         RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(request);
@@ -244,7 +218,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
 
         AIFunctionArguments arguments = new()
         {
-            Services = request.Server?.Services,
+            Services = request.Services,
             Context = new Dictionary<object, object?>() { [typeof(RequestContext<CallToolRequestParams>)] = request }
         };
 
@@ -264,10 +238,14 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            return new CallToolResponse()
+            string errorMessage = e is McpException ?
+                $"An error occurred invoking '{request.Params?.Name}': {e.Message}" :
+                $"An error occurred invoking '{request.Params?.Name}'.";
+
+            return new()
             {
                 IsError = true,
-                Content = [new() { Text = $"An error occurred invoking '{request.Params?.Name}'.", Type = "text" }],
+                Content = [new() { Text = errorMessage, Type = "text" }],
             };
         }
 
@@ -314,7 +292,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             {
                 Content = [new()
                 {
-                    Text = JsonSerializer.Serialize(result, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(object))),
+                    Text = JsonSerializer.Serialize(result, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))),
                     Type = "text"
                 }]
             },

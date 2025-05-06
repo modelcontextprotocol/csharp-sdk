@@ -2,7 +2,7 @@
 using System.Net;
 using System.Threading.Channels;
 
-namespace ModelContextProtocol.Tests.Utils;
+namespace ModelContextProtocol.AspNetCore.Tests.Utils;
 
 public sealed class KestrelInMemoryTransport : IConnectionListenerFactory, IConnectionListener
 {

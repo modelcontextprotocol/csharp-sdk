@@ -77,19 +77,19 @@ public class DockerEverythingServerTests(ITestOutputHelper testOutputHelper) : L
             {
                 Sampling = new()
                 {
-                    SamplingHandler = (_, _, _) =>
+                    SamplingHandler = async (_, _, _) =>
                     {
                         samplingHandlerCalls++;
-                        return Task.FromResult(new CreateMessageResult
+                        return new CreateMessageResult
                         {
                             Model = "test-model",
-                            Role = "assistant",
+                            Role = Role.Assistant,
                             Content = new Content
                             {
                                 Type = "text",
                                 Text = "Test response"
                             }
-                        });
+                        };
                     },
                 },
             },

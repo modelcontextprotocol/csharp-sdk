@@ -160,7 +160,7 @@ public class StdioServerTransportTests : LoggedTest
         var chineseResult = Encoding.UTF8.GetString(output.ToArray()).Trim();
         var expectedChinese = JsonSerializer.Serialize(chineseMessage, McpJsonUtilities.DefaultOptions);
         Assert.Equal(expectedChinese, chineseResult);
-        Assert.Contains(JsonSerializer.Serialize(chineseText), chineseResult);
+        Assert.Contains(JsonSerializer.Serialize(chineseText, McpJsonUtilities.DefaultOptions), chineseResult);
 
         // Test 2: Emoji (non-BMP Unicode using surrogate pairs)
         var emojiText = "🔍 🚀 👍"; // Magnifying glass, rocket, thumbs up

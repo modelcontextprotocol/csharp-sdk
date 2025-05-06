@@ -1,9 +1,9 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
+using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Net.ServerSentEvents;
 using System.Text;
@@ -14,9 +14,8 @@ namespace ModelContextProtocol.Protocol.Transport;
 /// <summary>
 /// The ServerSideEvents client transport implementation
 /// </summary>
-internal sealed class SseClientSessionTransport : TransportBase
+internal sealed partial class SseClientSessionTransport : TransportBase
 {
-    private readonly string _endpointName;
     private readonly HttpClient _httpClient;
     private readonly SseClientTransportOptions _options;
     private readonly Uri _sseEndpoint;
@@ -35,7 +34,7 @@ internal sealed class SseClientSessionTransport : TransportBase
     /// <param name="loggerFactory">Logger factory for creating loggers.</param>
     /// <param name="endpointName">The endpoint name used for logging purposes.</param>
     public SseClientSessionTransport(SseClientTransportOptions transportOptions, HttpClient httpClient, ILoggerFactory? loggerFactory, string endpointName)
-        : base(loggerFactory)
+        : base(endpointName, loggerFactory)
     {
         Throw.IfNull(transportOptions);
         Throw.IfNull(httpClient);
@@ -45,102 +44,76 @@ internal sealed class SseClientSessionTransport : TransportBase
         _httpClient = httpClient;
         _connectionCts = new CancellationTokenSource();
         _logger = (ILogger?)loggerFactory?.CreateLogger<SseClientTransport>() ?? NullLogger.Instance;
-        _connectionEstablished = new TaskCompletionSource<bool>();
-        _endpointName = endpointName;
+        _connectionEstablished = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
     /// <inheritdoc/>
     public async Task ConnectAsync(CancellationToken cancellationToken = default)
     {
+        Debug.Assert(!IsConnected);
         try
         {
-            if (IsConnected)
-            {
-                _logger.TransportAlreadyConnected(_endpointName);
-                throw new McpTransportException("Transport is already connected");
-            }
-
             // Start message receiving loop
             _receiveTask = ReceiveMessagesAsync(_connectionCts.Token);
 
-            _logger.TransportReadingMessages(_endpointName);
-
             await _connectionEstablished.Task.WaitAsync(_options.ConnectionTimeout, cancellationToken).ConfigureAwait(false);
-        }
-        catch (McpTransportException)
-        {
-            // Rethrow transport exceptions
-            throw;
         }
         catch (Exception ex)
         {
-            _logger.TransportConnectFailed(_endpointName, ex);
+            LogTransportConnectFailed(Name, ex);
             await CloseAsync().ConfigureAwait(false);
-            throw new McpTransportException("Failed to connect transport", ex);
+            throw new InvalidOperationException("Failed to connect transport", ex);
         }
     }
 
     /// <inheritdoc/>
     public override async Task SendMessageAsync(
-        IJsonRpcMessage message,
+        JsonRpcMessage message,
         CancellationToken cancellationToken = default)
     {
         if (_messageEndpoint == null)
             throw new InvalidOperationException("Transport not connected");
 
         using var content = new StringContent(
-            JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.IJsonRpcMessage),
+            JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage),
             Encoding.UTF8,
             "application/json"
         );
 
         string messageId = "(no id)";
 
-        if (message is IJsonRpcMessageWithId messageWithId)
+        if (message is JsonRpcMessageWithId messageWithId)
         {
             messageId = messageWithId.Id.ToString();
         }
 
-        var response = await _httpClient.PostAsync(
-            _messageEndpoint,
-            content,
-            cancellationToken
-        ).ConfigureAwait(false);
+        using var httpRequestMessage = new HttpRequestMessage(HttpMethod.Post, _messageEndpoint)
+        {
+            Content = content,
+        };
+        StreamableHttpClientSessionTransport.CopyAdditionalHeaders(httpRequestMessage.Headers, _options.AdditionalHeaders);
+        var response = await _httpClient.SendAsync(httpRequestMessage, cancellationToken).ConfigureAwait(false);
 
         response.EnsureSuccessStatusCode();
 
         var responseContent = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 
-        // Check if the message was an initialize request
-        if (message is JsonRpcRequest request && request.Method == RequestMethods.Initialize)
-        {
-            // If the response is not a JSON-RPC response, it is an SSE message
-            if (string.IsNullOrEmpty(responseContent) || responseContent.Equals("accepted", StringComparison.OrdinalIgnoreCase))
-            {
-                _logger.SSETransportPostAccepted(_endpointName, messageId);
-                // The response will arrive as an SSE message
-            }
-            else
-            {
-                JsonRpcResponse initializeResponse = JsonSerializer.Deserialize(responseContent, McpJsonUtilities.JsonContext.Default.JsonRpcResponse) ??
-                    throw new McpTransportException("Failed to initialize client");
-
-                _logger.TransportReceivedMessageParsed(_endpointName, messageId);
-                await WriteMessageAsync(initializeResponse, cancellationToken).ConfigureAwait(false);
-                _logger.TransportMessageWritten(_endpointName, messageId);
-            }
-            return;
-        }
-
-        // Otherwise, check if the response was accepted (the response will come as an SSE message)
         if (string.IsNullOrEmpty(responseContent) || responseContent.Equals("accepted", StringComparison.OrdinalIgnoreCase))
         {
-            _logger.SSETransportPostAccepted(_endpointName, messageId);
+            LogAcceptedPost(Name, messageId);
         }
         else
         {
-            _logger.SSETransportPostNotAccepted(_endpointName, messageId, responseContent);
-            throw new McpTransportException("Failed to send message");
+            if (_logger.IsEnabled(LogLevel.Trace))
+            {
+                LogRejectedPostSensitive(Name, messageId, responseContent);
+            }
+            else
+            {
+                LogRejectedPost(Name, messageId);
+            }
+
+            throw new InvalidOperationException("Failed to send message");
         }
     }
 
@@ -150,12 +123,17 @@ internal sealed class SseClientSessionTransport : TransportBase
         {
             await _connectionCts.CancelAsync().ConfigureAwait(false);
 
-            if (_receiveTask != null)
+            try
             {
-                await _receiveTask.ConfigureAwait(false);
+                if (_receiveTask != null)
+                {
+                    await _receiveTask.ConfigureAwait(false);
+                }
             }
-
-            _connectionCts.Dispose();
+            finally
+            {
+                _connectionCts.Dispose();
+            }
         }
         finally
         {
@@ -176,139 +154,113 @@ internal sealed class SseClientSessionTransport : TransportBase
         }
     }
 
-    internal Uri? MessageEndpoint => _messageEndpoint;
-
-    internal SseClientTransportOptions Options => _options;
-
     private async Task ReceiveMessagesAsync(CancellationToken cancellationToken)
     {
-        int reconnectAttempts = 0;
-
-        while (!cancellationToken.IsCancellationRequested && !IsConnected)
+        try
         {
-            try
+            using var request = new HttpRequestMessage(HttpMethod.Get, _sseEndpoint);
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+            StreamableHttpClientSessionTransport.CopyAdditionalHeaders(request.Headers, _options.AdditionalHeaders);
+
+            using var response = await _httpClient.SendAsync(
+                request,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken
+            ).ConfigureAwait(false);
+
+            response.EnsureSuccessStatusCode();
+
+            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+            await foreach (SseItem<string> sseEvent in SseParser.Create(stream).EnumerateAsync(cancellationToken).ConfigureAwait(false))
             {
-                using var request = new HttpRequestMessage(HttpMethod.Get, _sseEndpoint);
-                request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
-
-                using var response = await _httpClient.SendAsync(
-                    request,
-                    HttpCompletionOption.ResponseHeadersRead,
-                    cancellationToken
-                ).ConfigureAwait(false);
-
-                response.EnsureSuccessStatusCode();
-
-                using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-
-                await foreach (SseItem<string> sseEvent in SseParser.Create(stream).EnumerateAsync(cancellationToken).ConfigureAwait(false))
+                switch (sseEvent.EventType)
                 {
-                    switch (sseEvent.EventType)
-                    {
-                        case "endpoint":
-                            HandleEndpointEvent(sseEvent.Data);
-                            break;
+                    case "endpoint":
+                        HandleEndpointEvent(sseEvent.Data);
+                        break;
 
-                        case "message":
-                            await ProcessSseMessage(sseEvent.Data, cancellationToken).ConfigureAwait(false);
-                            break;
-                    }
+                    case "message":
+                        await ProcessSseMessage(sseEvent.Data, cancellationToken).ConfigureAwait(false);
+                        break;
                 }
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                _logger.TransportReadMessagesCancelled(_endpointName);
-                // Normal shutdown
-            }
-            catch (IOException) when (cancellationToken.IsCancellationRequested)
-            {
-                _logger.TransportReadMessagesCancelled(_endpointName);
-                // Normal shutdown
-            }
-            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
-            {
-                _logger.TransportConnectionError(_endpointName, ex);
-
-                reconnectAttempts++;
-                if (reconnectAttempts >= _options.MaxReconnectAttempts)
-                {
-                    throw new McpTransportException("Exceeded reconnect limit", ex);
-                }
-
-                await Task.Delay(_options.ReconnectDelay, cancellationToken).ConfigureAwait(false);
             }
         }
-
-        SetConnected(false);
+        catch (Exception ex)
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                // Normal shutdown
+                LogTransportReadMessagesCancelled(Name);
+                _connectionEstablished.TrySetCanceled(cancellationToken);
+            }
+            else
+            {
+                LogTransportReadMessagesFailed(Name, ex);
+                _connectionEstablished.TrySetException(ex);
+                throw;
+            }
+        }
+        finally
+        {
+            SetConnected(false);
+        }
     }
 
     private async Task ProcessSseMessage(string data, CancellationToken cancellationToken)
     {
         if (!IsConnected)
         {
-            _logger.TransportMessageReceivedBeforeConnected(_endpointName, data);
+            LogTransportMessageReceivedBeforeConnected(Name);
             return;
         }
 
         try
         {
-            var message = JsonSerializer.Deserialize(data, McpJsonUtilities.JsonContext.Default.IJsonRpcMessage);
+            var message = JsonSerializer.Deserialize(data, McpJsonUtilities.JsonContext.Default.JsonRpcMessage);
             if (message == null)
             {
-                _logger.TransportMessageParseUnexpectedType(_endpointName, data);
+                LogTransportMessageParseUnexpectedTypeSensitive(Name, data);
                 return;
             }
 
-            string messageId = "(no id)";
-            if (message is IJsonRpcMessageWithId messageWithId)
-            {
-                messageId = messageWithId.Id.ToString();
-            }
-
-            _logger.TransportReceivedMessageParsed(_endpointName, messageId);
             await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
-            _logger.TransportMessageWritten(_endpointName, messageId);
         }
         catch (JsonException ex)
         {
-            _logger.TransportMessageParseFailed(_endpointName, data, ex);
+            if (_logger.IsEnabled(LogLevel.Trace))
+            {
+                LogTransportMessageParseFailedSensitive(Name, data, ex);
+            }
+            else
+            {
+                LogTransportMessageParseFailed(Name, ex);
+            }
         }
     }
 
     private void HandleEndpointEvent(string data)
     {
-        try
+        if (string.IsNullOrEmpty(data))
         {
-            if (string.IsNullOrEmpty(data))
-            {
-                _logger.TransportEndpointEventInvalid(_endpointName, data);
-                return;
-            }
-
-            // Check if data is absolute URI
-            if (data.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || data.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-            {
-                // Since the endpoint is an absolute URI, we can use it directly
-                _messageEndpoint = new Uri(data);
-            }
-            else
-            {
-                // If the endpoint is a relative URI, we need to combine it with the relative path of the SSE endpoint
-                var baseUriBuilder = new UriBuilder(_sseEndpoint);
-
-
-                // Instead of manually concatenating strings, use the Uri class's composition capabilities
-                _messageEndpoint = new Uri(baseUriBuilder.Uri, data);
-            }
-
-            // Set connected state
-            SetConnected(true);
-            _connectionEstablished.TrySetResult(true);
+            LogTransportEndpointEventInvalid(Name);
+            return;
         }
-        catch (JsonException ex)
-        {
-            _logger.TransportEndpointEventParseFailed(_endpointName, data, ex);
-            throw new McpTransportException("Failed to parse endpoint event", ex);
-        }
+
+        // If data is an absolute URL, the Uri will be constructed entirely from it and not the _sseEndpoint.
+        _messageEndpoint = new Uri(_sseEndpoint, data);
+
+        // Set connected state
+        SetConnected(true);
+        _connectionEstablished.TrySetResult(true);
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} accepted SSE transport POST for message ID '{MessageId}'.")]
+    private partial void LogAcceptedPost(string endpointName, string messageId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} rejected SSE transport POST for message ID '{MessageId}'.")]
+    private partial void LogRejectedPost(string endpointName, string messageId);
+
+    [LoggerMessage(Level = LogLevel.Trace, Message = "{EndpointName} rejected SSE transport POST for message ID '{MessageId}'. Server response: '{responseContent}'.")]
+    private partial void LogRejectedPostSensitive(string endpointName, string messageId, string responseContent);
 }

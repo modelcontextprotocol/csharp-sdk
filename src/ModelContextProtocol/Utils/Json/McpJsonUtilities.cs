@@ -82,7 +82,8 @@ public static partial class McpJsonUtilities
         NumberHandling = JsonNumberHandling.AllowReadingFromString)]
     
     // JSON-RPC
-    [JsonSerializable(typeof(IJsonRpcMessage))]
+    [JsonSerializable(typeof(JsonRpcMessage))]
+    [JsonSerializable(typeof(JsonRpcMessage[]))]
     [JsonSerializable(typeof(JsonRpcRequest))]
     [JsonSerializable(typeof(JsonRpcNotification))]
     [JsonSerializable(typeof(JsonRpcResponse))]
