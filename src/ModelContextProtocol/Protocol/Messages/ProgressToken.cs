@@ -39,7 +39,7 @@ public readonly struct ProgressToken : IEquatable<ProgressToken>
     public override string? ToString() =>
         _token is string stringValue ? stringValue :
         _token is long longValue ? longValue.ToString(CultureInfo.InvariantCulture) :
-        null;
+        string.Empty;
 
     /// <inheritdoc />
     public bool Equals(ProgressToken other) => Equals(_token, other._token);
