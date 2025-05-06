@@ -2,6 +2,8 @@
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
+namespace EverythingServer;
+
 internal class SubscriptionMessageSender(IMcpServer server, HashSet<string> subscriptions) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
