@@ -1,4 +1,3 @@
-using ModelContextProtocol.Types.Authentication;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
 using System.Text.Json;

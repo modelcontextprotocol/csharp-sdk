@@ -1,10 +1,10 @@
-using System.Net.Http.Headers;
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using ModelContextProtocol.AspNetCore.Authentication;
-using ModelContextProtocol.Types.Authentication;
+using ModelContextProtocol.Authentication;
 using ProtectedMCPServer.Tools;
+using System.Net.Http.Headers;
+using System.Security.Claims;
 
 var builder = WebApplication.CreateBuilder(args);
 

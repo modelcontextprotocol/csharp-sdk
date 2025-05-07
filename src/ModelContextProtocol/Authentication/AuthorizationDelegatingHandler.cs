@@ -1,4 +1,3 @@
-using ModelContextProtocol.Authentication.Types;
 using ModelContextProtocol.Utils;
 using System.Net.Http.Headers;
 
@@ -79,11 +78,9 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
             {
                 if (serverSchemes.Count > 0)
                 {
-                    throw new AuthenticationSchemeMismatchException(
+                    throw new InvalidOperationException(
                         $"No matching authentication scheme found. Server supports: [{string.Join(", ", serverSchemes)}], " +
-                        $"Provider supports: [{string.Join(", ", supportedSchemes)}].",
-                        serverSchemes,
-                        supportedSchemes);
+                        $"Provider supports: [{string.Join(", ", supportedSchemes)}].");
                 }
 
                 // If the server didn't specify any schemes, use the provider's default

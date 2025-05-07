@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace ModelContextProtocol.Types.Authentication;
+namespace ModelContextProtocol.Authentication;
 
 /// <summary>
 /// Represents the resource metadata for OAuth authorization as defined in RFC 9396.

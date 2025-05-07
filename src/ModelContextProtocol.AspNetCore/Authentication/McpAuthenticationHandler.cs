@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using ModelContextProtocol.Types.Authentication;
+using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Utils.Json;
 using System.Text.Encodings.Web;
 

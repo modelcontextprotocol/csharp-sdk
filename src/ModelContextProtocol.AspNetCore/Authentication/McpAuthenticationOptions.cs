@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
-using ModelContextProtocol.Types.Authentication;
+using ModelContextProtocol.Authentication;
 
 namespace ModelContextProtocol.AspNetCore.Authentication;
 

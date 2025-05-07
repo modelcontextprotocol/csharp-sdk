@@ -1,5 +1,5 @@
 ﻿using Microsoft.Extensions.AI;
-using ModelContextProtocol.Types.Authentication;
+using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Types;
 using System.Diagnostics.CodeAnalysis;
