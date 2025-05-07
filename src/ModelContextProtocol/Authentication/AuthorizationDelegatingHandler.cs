@@ -56,20 +56,25 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
             }
             else
             {
-                // Try to find any matching scheme between server and provider
-                bestSchemeMatch = serverSchemes.FirstOrDefault(scheme => supportedSchemes.Contains(scheme));
+                // Try to find any matching scheme between server and provider using a HashSet for O(N) time complexity
+                // Convert the supported schemes to a HashSet for O(1) lookups
+                var supportedSchemesSet = new HashSet<string>(supportedSchemes, StringComparer.OrdinalIgnoreCase);
                 
-                // If still no match, default to the provider's preferred scheme
-                if (bestSchemeMatch == null && serverSchemes.Count > 0)
+                // Find the first server scheme that's in our supported set
+                bestSchemeMatch = serverSchemes.FirstOrDefault(scheme => supportedSchemesSet.Contains(scheme));
+                
+                // If no match was found, either throw an exception or use default
+                if (bestSchemeMatch is null)
                 {
-                    throw new AuthenticationSchemeMismatchException(
-                        $"No matching authentication scheme found. Server supports: [{string.Join(", ", serverSchemes)}], " +
-                        $"Provider supports: [{string.Join(", ", supportedSchemes)}].",
-                        serverSchemes,
-                        supportedSchemes);
-                }
-                else if (bestSchemeMatch == null)
-                {
+                    if (serverSchemes.Count > 0)
+                    {
+                        throw new AuthenticationSchemeMismatchException(
+                            $"No matching authentication scheme found. Server supports: [{string.Join(", ", serverSchemes)}], " +
+                            $"Provider supports: [{string.Join(", ", supportedSchemes)}].",
+                            serverSchemes,
+                            supportedSchemes);
+                    }
+
                     // If the server didn't specify any schemes, use the provider's default
                     bestSchemeMatch = supportedSchemes.FirstOrDefault();
                 }
