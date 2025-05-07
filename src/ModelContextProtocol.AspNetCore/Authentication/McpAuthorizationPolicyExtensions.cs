@@ -51,7 +51,7 @@ public static class McpAuthorizationExtensions
             return AddMcpPolicy(options, policyName, configurePolicy);
         }
 
-        var allSchemes = new[] { McpAuthenticationDefaults.AuthenticationScheme }.Concat(additionalSchemes).ToArray();
+        string[] allSchemes = [McpAuthenticationDefaults.AuthenticationScheme, ..additionalSchemes];
         
         var policyBuilder = new AuthorizationPolicyBuilder(allSchemes)
             .RequireAuthenticatedUser();
