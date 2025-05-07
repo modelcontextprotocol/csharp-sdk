@@ -34,10 +34,10 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
     {
         if (request.Headers.Authorization == null)
         {
-            await AddAuthorizationHeaderAsync(request, _currentScheme, cancellationToken);
+            await AddAuthorizationHeaderAsync(request, _currentScheme, cancellationToken).ConfigureAwait(false);
         }
 
-        var response = await base.SendAsync(request, cancellationToken);
+        var response = await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
         if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
         {
@@ -82,16 +82,16 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
                 var (handled, recommendedScheme) = await _authorizationProvider.HandleUnauthorizedResponseAsync(
                     response,
                     bestSchemeMatch,
-                    cancellationToken);
+                    cancellationToken).ConfigureAwait(false);
 
                 if (handled)
                 {
-                    var retryRequest = await CloneHttpRequestMessageAsync(request);
+                    var retryRequest = await CloneHttpRequestMessageAsync(request).ConfigureAwait(false);
                     
                     _currentScheme = recommendedScheme ?? bestSchemeMatch;
                     
-                    await AddAuthorizationHeaderAsync(retryRequest, _currentScheme, cancellationToken);
-                    return await base.SendAsync(retryRequest, cancellationToken);
+                    await AddAuthorizationHeaderAsync(retryRequest, _currentScheme, cancellationToken).ConfigureAwait(false);
+                    return await base.SendAsync(retryRequest, cancellationToken).ConfigureAwait(false);
                 }
                 else
                 {
@@ -136,7 +136,7 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
     {
         if (request.RequestUri != null)
         {
-            var token = await _authorizationProvider.GetCredentialAsync(scheme, request.RequestUri, cancellationToken);
+            var token = await _authorizationProvider.GetCredentialAsync(scheme, request.RequestUri, cancellationToken).ConfigureAwait(false);
             if (!string.IsNullOrEmpty(token))
             {
                 request.Headers.Authorization = new AuthenticationHeaderValue(scheme, token);
@@ -160,7 +160,7 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
         // Copy the request content if present
         if (request.Content != null)
         {
-            var contentBytes = await request.Content.ReadAsByteArrayAsync();
+            var contentBytes = await request.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
             var cloneContent = new ByteArrayContent(contentBytes);
 
             // Copy the content headers

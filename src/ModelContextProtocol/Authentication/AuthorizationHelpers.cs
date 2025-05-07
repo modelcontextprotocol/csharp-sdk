@@ -22,13 +22,13 @@ public static class AuthorizationHelpers
         using var httpClient = new HttpClient();
         try
         {
-            var response = await httpClient.GetAsync(metadataUrl, cancellationToken);
+            var response = await httpClient.GetAsync(metadataUrl, cancellationToken).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
             
-            var content = await response.Content.ReadAsStreamAsync();
+            var content = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
             return await JsonSerializer.DeserializeAsync(content, 
                 McpJsonUtilities.JsonContext.Default.ProtectedResourceMetadata, 
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
         catch (Exception)
         {
@@ -112,7 +112,7 @@ public static class AuthorizationHelpers
 
         Uri metadataUri = new(resourceMetadataUrl);
         
-        var metadata = await FetchProtectedResourceMetadataAsync(metadataUri, cancellationToken) ?? throw new InvalidOperationException($"Failed to fetch resource metadata from {resourceMetadataUrl}");
+        var metadata = await FetchProtectedResourceMetadataAsync(metadataUri, cancellationToken).ConfigureAwait(false) ?? throw new InvalidOperationException($"Failed to fetch resource metadata from {resourceMetadataUrl}");
         if (!VerifyResourceMatch(metadata, serverUrl))
         {
             throw new InvalidOperationException(
