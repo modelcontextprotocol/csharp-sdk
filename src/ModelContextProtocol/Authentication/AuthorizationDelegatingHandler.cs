@@ -89,14 +89,7 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
                     
                     // Use the recommended scheme if provided, otherwise use our best match
                     string schemeToUse = recommendedScheme ?? bestSchemeMatch;
-                    if (!string.IsNullOrEmpty(recommendedScheme))
-                    {
-                        _currentScheme = recommendedScheme;
-                    }
-                    else
-                    {
-                        _currentScheme = bestSchemeMatch;
-                    }
+                    _currentScheme = !string.IsNullOrEmpty(recommendedScheme) ? recommendedScheme :  bestSchemeMatch;
 
                     await AddAuthorizationHeaderAsync(retryRequest, schemeToUse, cancellationToken);
                     return await base.SendAsync(retryRequest, cancellationToken);
