@@ -17,7 +17,9 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
     /// <param name="authorizationProvider">The provider that supplies authentication tokens.</param>
     public AuthorizationDelegatingHandler(IMcpAuthorizationProvider authorizationProvider)
     {
-        _authorizationProvider = authorizationProvider ?? throw new ArgumentNullException(nameof(authorizationProvider));
+        Throw.IfNull(authorizationProvider);
+
+        _authorizationProvider = authorizationProvider;
         
         // Select first supported scheme as the default
         _currentScheme = _authorizationProvider.SupportedSchemes.FirstOrDefault();
