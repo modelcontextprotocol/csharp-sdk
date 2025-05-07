@@ -44,7 +44,6 @@ public abstract class ResourceContents
     [JsonPropertyName("mimeType")]
     public string? MimeType { get; set; }
 
-
     /// <summary>
     /// Provides a <see cref="JsonConverter"/> for <see cref="ResourceContents"/>.
     /// </summary>

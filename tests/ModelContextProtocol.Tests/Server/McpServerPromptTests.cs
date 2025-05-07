@@ -5,7 +5,6 @@ using ModelContextProtocol.Server;
 using Moq;
 using System.ComponentModel;
 using System.Reflection;
-using System.Text.Json;
 
 namespace ModelContextProtocol.Tests.Server;
 

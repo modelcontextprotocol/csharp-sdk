@@ -1,8 +1,8 @@
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
+using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text.Json;
@@ -27,7 +27,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
     }
 
     /// <summary>
-    /// Creates an <see cref="McpServerPrompt"/> instance for a method, specified via a <see cref="Delegate"/> instance.
+    /// Creates an <see cref="McpServerPrompt"/> instance for a method, specified via a <see cref="MethodInfo"/> instance.
     /// </summary>
     public static new AIFunctionMcpServerPrompt Create(
         MethodInfo method,
@@ -44,7 +44,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
     }
 
     /// <summary>
-    /// Creates an <see cref="McpServerPrompt"/> instance for a method, specified via a <see cref="Delegate"/> instance.
+    /// Creates an <see cref="McpServerPrompt"/> instance for a method, specified via a <see cref="MethodInfo"/> instance.
     /// </summary>
     public static new AIFunctionMcpServerPrompt Create(
         MethodInfo method,
@@ -86,6 +86,27 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
                     {
                         ExcludeFromSchema = true,
                         BindParameter = (pi, args) => GetRequestContext(args)?.Server,
+                    };
+                }
+
+                if (pi.ParameterType == typeof(IProgress<ProgressNotificationValue>))
+                {
+                    // Bind IProgress<ProgressNotificationValue> to the progress token in the request,
+                    // if there is one. If we can't get one, return a nop progress.
+                    return new()
+                    {
+                        ExcludeFromSchema = true,
+                        BindParameter = (pi, args) =>
+                        {
+                            var requestContent = GetRequestContext(args);
+                            if (requestContent?.Server is { } server &&
+                                requestContent?.Params?.Meta?.ProgressToken is { } progressToken)
+                            {
+                                return new TokenProgress(server, progressToken);
+                            }
+
+                            return NullProgress.Instance;
+                        },
                     };
                 }
 
@@ -138,13 +159,18 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
         return new AIFunctionMcpServerPrompt(function, prompt);
     }
 
-    private static McpServerPromptCreateOptions? DeriveOptions(MethodInfo method, McpServerPromptCreateOptions? options)
+    private static McpServerPromptCreateOptions DeriveOptions(MethodInfo method, McpServerPromptCreateOptions? options)
     {
         McpServerPromptCreateOptions newOptions = options?.Clone() ?? new();
 
-        if (method.GetCustomAttribute<McpServerPromptAttribute>() is { } attr)
+        if (method.GetCustomAttribute<McpServerPromptAttribute>() is { } promptAttr)
         {
-            newOptions.Name ??= attr.Name;
+            newOptions.Name ??= promptAttr.Name;
+        }
+
+        if (method.GetCustomAttribute<DescriptionAttribute>() is { } descAttr)
+        {
+            newOptions.Description ??= descAttr.Description;
         }
 
         return newOptions;
@@ -167,18 +193,6 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
     public override Prompt ProtocolPrompt { get; }
 
     /// <inheritdoc />
-    /// <remarks>
-    /// This implementation invokes the underlying <see cref="AIFunction"/> with the request arguments, and processes
-    /// the result to create a standardized <see cref="GetPromptResult"/>. The method supports various return types from
-    /// the underlying function:
-    /// <list type="bullet">
-    ///   <item><description>Direct <see cref="GetPromptResult"/> instances are returned as-is</description></item>
-    ///   <item><description>String values are converted to a single user message</description></item>
-    ///   <item><description>Single <see cref="PromptMessage"/> objects are wrapped in a result</description></item>
-    ///   <item><description>Collections of <see cref="PromptMessage"/> objects are combined in a result</description></item>
-    ///   <item><description><see cref="ChatMessage"/> objects are converted to prompt messages</description></item>
-    /// </list>
-    /// </remarks>
     public override async ValueTask<GetPromptResult> GetAsync(
         RequestContext<GetPromptRequestParams> request, CancellationToken cancellationToken = default)
     {

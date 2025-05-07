@@ -1,7 +1,6 @@
 ﻿using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
-using System.Buffers;
 using System.IO.Pipelines;
 using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;

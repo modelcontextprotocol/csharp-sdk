@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol.Messages;
-using System;
 using System.Diagnostics;
 
 namespace ModelContextProtocol.Protocol.Transport;

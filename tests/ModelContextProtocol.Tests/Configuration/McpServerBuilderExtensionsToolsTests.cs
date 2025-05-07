@@ -664,7 +664,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
             },
             cancellationToken: TestContext.Current.CancellationToken);
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => invokeTask);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await invokeTask);
     }
 
     [McpServerToolType]

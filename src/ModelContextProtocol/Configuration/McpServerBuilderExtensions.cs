@@ -297,6 +297,303 @@ public static partial class McpServerBuilderExtensions
     }
     #endregion
 
+    #region WithResources
+    private const string WithResourcesRequiresUnreferencedCodeMessage =
+        $"The non-generic {nameof(WithResources)} and {nameof(WithResourcesFromAssembly)} methods require dynamic lookup of member metadata" +
+        $"and may not work in Native AOT. Use the generic {nameof(WithResources)} method instead.";
+
+    /// <summary>Adds <see cref="McpServerResource"/> instances to the service collection backing <paramref name="builder"/>.</summary>
+    /// <typeparam name="TResourceTemplateType">The resource type.</typeparam>
+    /// <param name="builder">The builder instance.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// This method discovers all instance and static methods and properties (public and non-public) on the specified <typeparamref name="TResourceTemplateType"/>
+    /// type, where the members are attributed as <see cref="McpServerResourceAttribute"/>, and adds an <see cref="McpServerResource"/>
+    /// instance for each. For instance members, an instance will be constructed for each invocation of the resource.
+    /// </remarks>
+    public static IMcpServerBuilder WithResources<[DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods |
+        DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties |
+        DynamicallyAccessedMemberTypes.PublicConstructors)] TResourceTemplateType>(
+        this IMcpServerBuilder builder)
+    {
+        Throw.IfNull(builder);
+
+        foreach (var resourceMethod in typeof(TResourceTemplateType).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
+        {
+            if (resourceMethod.GetCustomAttribute<McpServerResourceAttribute>() is not null)
+            {
+                AddResource(builder, resourceMethod);
+            }
+        }
+
+        foreach (var resourceProperty in typeof(TResourceTemplateType).GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
+        {
+            if (resourceProperty.GetCustomAttribute<McpServerResourceAttribute>() is not null &&
+                resourceProperty.GetGetMethod() is { } resourceMethod)
+            {
+                AddResource(builder, resourceMethod);
+            }
+        }
+
+        return builder;
+
+        static void AddResource(IMcpServerBuilder builder, MethodInfo resourceMethod)
+        {
+            builder.Services.AddSingleton((Func<IServiceProvider, McpServerResource>)(resourceMethod.IsStatic ?
+                services => McpServerResource.Create(resourceMethod, options: new() { Services = services }) :
+                services => McpServerResource.Create(resourceMethod, typeof(TResourceTemplateType), new() { Services = services })));
+        }
+    }
+
+    /// <summary>Adds <see cref="McpServerResource"/> instances to the service collection backing <paramref name="builder"/>.</summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="resources">The <see cref="McpServerResource"/> instances to add to the server.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="resources"/> is <see langword="null"/>.</exception>
+    public static IMcpServerBuilder WithResources(this IMcpServerBuilder builder, IEnumerable<McpServerResource> resources)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(resources);
+
+        foreach (var resource in resources)
+        {
+            if (resource is not null)
+            {
+                builder.Services.AddSingleton(resource);
+            }
+        }
+
+        return builder;
+    }
+
+    /// <summary>Adds <see cref="McpServerResource"/> instances to the service collection backing <paramref name="builder"/>.</summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="resourceTemplateTypes">Types with marked methods to add as resources to the server.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="resourceTemplateTypes"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// This method discovers all instance and static methods and properties (public and non-public) on the specified <paramref name="resourceTemplateTypes"/>
+    /// types, where the methods are attributed as <see cref="McpServerResourceAttribute"/>, and adds an <see cref="McpServerResource"/>
+    /// instance for each. For instance methods, an instance will be constructed for each invocation of the resource.
+    /// </remarks>
+    [RequiresUnreferencedCode(WithResourcesRequiresUnreferencedCodeMessage)]
+    public static IMcpServerBuilder WithResources(this IMcpServerBuilder builder, IEnumerable<Type> resourceTemplateTypes)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(resourceTemplateTypes);
+
+        foreach (var resourceTemplateType in resourceTemplateTypes)
+        {
+            if (resourceTemplateType is not null)
+            {
+                foreach (var resourceMethod in resourceTemplateType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
+                {
+                    if (resourceMethod.GetCustomAttribute<McpServerResourceAttribute>() is not null)
+                    {
+                        AddResource(builder, resourceTemplateType, resourceMethod);
+                    }
+                }
+
+                foreach (var resourceProperty in resourceTemplateType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
+                {
+                    if (resourceProperty.GetCustomAttribute<McpServerResourceAttribute>() is not null &&
+                        resourceProperty.GetGetMethod() is { } resourceMethod)
+                    {
+                        AddResource(builder, resourceTemplateType, resourceMethod);
+                    }
+                }
+
+                static void AddResource(IMcpServerBuilder builder, Type resourceTemplateType, MethodInfo resourceMethod)
+                {
+                    builder.Services.AddSingleton((Func<IServiceProvider, McpServerResource>)(resourceMethod.IsStatic ?
+                        services => McpServerResource.Create(resourceMethod, options: new() { Services = services }) :
+                        services => McpServerResource.Create(resourceMethod, resourceTemplateType, new() { Services = services })));
+                }
+            }
+        }
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds types marked with the <see cref="McpServerResourceTemplateTypeAttribute"/> attribute from the given assembly as resources to the server.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="resourceAssembly">The assembly to load the types from. If <see langword="null"/>, the calling assembly will be used.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This method scans the specified assembly (or the calling assembly if none is provided) for classes
+    /// marked with the <see cref="McpServerResourceTemplateTypeAttribute"/>. It then discovers all members within those
+    /// classes that are marked with the <see cref="McpServerResourceAttribute"/> and registers them as <see cref="McpServerResource"/>s 
+    /// in the <paramref name="builder"/>'s <see cref="IServiceCollection"/>.
+    /// </para>
+    /// <para>
+    /// The method automatically handles both static and instance members. For instance members, a new instance
+    /// of the containing class will be constructed for each invocation of the resource.
+    /// </para>
+    /// <para>
+    /// Resources registered through this method can be discovered by clients using the <c>list_resources</c> request
+    /// and invoked using the <c>read_resource</c> request.
+    /// </para>
+    /// <para>
+    /// Note that this method performs reflection at runtime and may not work in Native AOT scenarios. For
+    /// Native AOT compatibility, consider using the generic <see cref="WithResources{TResourceTemplateType}"/> method instead.
+    /// </para>
+    /// </remarks>
+    [RequiresUnreferencedCode(WithResourcesRequiresUnreferencedCodeMessage)]
+    public static IMcpServerBuilder WithResourcesFromAssembly(this IMcpServerBuilder builder, Assembly? resourceAssembly = null)
+    {
+        Throw.IfNull(builder);
+
+        resourceAssembly ??= Assembly.GetCallingAssembly();
+
+        return builder.WithResources(
+            from t in resourceAssembly.GetTypes()
+            where t.GetCustomAttribute<McpServerResourceTemplateTypeAttribute>() is not null
+            select t);
+    }
+    #endregion
+
+    #region WithResourceTemplates
+    private const string WithResourceTemplatesRequiresUnreferencedCodeMessage =
+        $"The non-generic {nameof(WithResourceTemplates)} and {nameof(WithResourceTemplatesFromAssembly)} methods require dynamic lookup of member metadata" +
+        $"and may not work in Native AOT. Use the generic {nameof(WithResourceTemplates)} method instead.";
+
+    /// <summary>Adds <see cref="McpServerResourceTemplate"/> instances to the service collection backing <paramref name="builder"/>.</summary>
+    /// <typeparam name="TResourceTemplateType">The resource template type.</typeparam>
+    /// <param name="builder">The builder instance.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// This method discovers all instance and static methods (public and non-public) on the specified <typeparamref name="TResourceTemplateType"/>
+    /// type, where the members are attributed as <see cref="McpServerResourceTemplateAttribute"/>, and adds an <see cref="McpServerResourceTemplate"/>
+    /// instance for each. For instance members, an instance will be constructed for each invocation of the resource template.
+    /// </remarks>
+    public static IMcpServerBuilder WithResourceTemplates<[DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods |
+        DynamicallyAccessedMemberTypes.PublicConstructors)] TResourceTemplateType>(
+        this IMcpServerBuilder builder)
+    {
+        Throw.IfNull(builder);
+
+        foreach (var resourceTemplateMethod in typeof(TResourceTemplateType).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
+        {
+            if (resourceTemplateMethod.GetCustomAttribute<McpServerResourceAttribute>() is not null)
+            {
+                builder.Services.AddSingleton((Func<IServiceProvider, McpServerResourceTemplate>)(resourceTemplateMethod.IsStatic ?
+                    services => McpServerResourceTemplate.Create(resourceTemplateMethod, options: new() { Services = services }) :
+                    services => McpServerResourceTemplate.Create(resourceTemplateMethod, typeof(TResourceTemplateType), new() { Services = services })));
+            }
+        }
+
+        return builder;
+    }
+
+    /// <summary>Adds <see cref="McpServerResourceTemplate"/> instances to the service collection backing <paramref name="builder"/>.</summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="resourcetemplates">The <see cref="McpServerResourceTemplate"/> instances to add to the server.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="resourcetemplates"/> is <see langword="null"/>.</exception>
+    public static IMcpServerBuilder WithResourceTemplates(this IMcpServerBuilder builder, IEnumerable<McpServerResourceTemplate> resourcetemplates)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(resourcetemplates);
+
+        foreach (var resourceTemplate in resourcetemplates)
+        {
+            if (resourceTemplate is not null)
+            {
+                builder.Services.AddSingleton(resourceTemplate);
+            }
+        }
+
+        return builder;
+    }
+
+    /// <summary>Adds <see cref="McpServerResourceTemplate"/> instances to the service collection backing <paramref name="builder"/>.</summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="resourceTemplateTypes">Types with marked methods to add as resource templates to the server.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="resourceTemplateTypes"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// This method discovers all instance and static methods (public and non-public) on the specified <paramref name="resourceTemplateTypes"/>
+    /// types, where the methods are attributed as <see cref="McpServerResourceTemplateAttribute"/>, and adds an <see cref="McpServerResourceTemplate"/>
+    /// instance for each. For instance methods, an instance will be constructed for each invocation of the resource template.
+    /// </remarks>
+    [RequiresUnreferencedCode(WithResourceTemplatesRequiresUnreferencedCodeMessage)]
+    public static IMcpServerBuilder WithResourceTemplates(this IMcpServerBuilder builder, IEnumerable<Type> resourceTemplateTypes)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(resourceTemplateTypes);
+
+        foreach (var resourceTemplateType in resourceTemplateTypes)
+        {
+            if (resourceTemplateType is not null)
+            {
+                foreach (var resourceTemplateMethod in resourceTemplateType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
+                {
+                    if (resourceTemplateMethod.GetCustomAttribute<McpServerResourceAttribute>() is not null)
+                    {
+                        builder.Services.AddSingleton((Func<IServiceProvider, McpServerResourceTemplate>)(resourceTemplateMethod.IsStatic ?
+                            services => McpServerResourceTemplate.Create(resourceTemplateMethod, options: new() { Services = services }) :
+                            services => McpServerResourceTemplate.Create(resourceTemplateMethod, resourceTemplateType, new() { Services = services })));
+                    }
+                }
+            }
+        }
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds types marked with the <see cref="McpServerResourceTemplateTypeAttribute"/> attribute from the given assembly as resource templates to the server.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="resourceAssembly">The assembly to load the types from. If <see langword="null"/>, the calling assembly will be used.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This method scans the specified assembly (or the calling assembly if none is provided) for classes
+    /// marked with the <see cref="McpServerResourceTemplateTypeAttribute"/>. It then discovers all members within those
+    /// classes that are marked with the <see cref="McpServerResourceTemplateAttribute"/> and registers them as <see cref="McpServerResourceTemplate"/>s 
+    /// in the <paramref name="builder"/>'s <see cref="IServiceCollection"/>.
+    /// </para>
+    /// <para>
+    /// The method automatically handles both static and instance members. For instance members, a new instance
+    /// of the containing class will be constructed for each invocation of the resource template.
+    /// </para>
+    /// <para>
+    /// Resource templates registered through this method can be discovered by clients using the <c>list_resourcetemplates</c> request
+    /// and invoked using the <c>read_resource</c> request.
+    /// </para>
+    /// <para>
+    /// Note that this method performs reflection at runtime and may not work in Native AOT scenarios. For
+    /// Native AOT compatibility, consider using the generic <see cref="WithResourceTemplates{TResourceTemplateType}"/> method instead.
+    /// </para>
+    /// </remarks>
+    [RequiresUnreferencedCode(WithResourceTemplatesRequiresUnreferencedCodeMessage)]
+    public static IMcpServerBuilder WithResourceTemplatesFromAssembly(this IMcpServerBuilder builder, Assembly? resourceAssembly = null)
+    {
+        Throw.IfNull(builder);
+
+        resourceAssembly ??= Assembly.GetCallingAssembly();
+
+        return builder.WithResourceTemplates(
+            from t in resourceAssembly.GetTypes()
+            where t.GetCustomAttribute<McpServerResourceTemplateTypeAttribute>() is not null
+            select t);
+    }
+    #endregion
+
     #region Handlers
     /// <summary>
     /// Configures a handler for listing resource templates available from the Model Context Protocol server.

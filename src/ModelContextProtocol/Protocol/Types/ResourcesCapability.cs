@@ -87,4 +87,32 @@ public class ResourcesCapability
     /// </remarks>
     [JsonIgnore]
     public Func<RequestContext<UnsubscribeRequestParams>, CancellationToken, ValueTask<EmptyResult>>? UnsubscribeFromResourcesHandler { get; set; }
+
+    /// <summary>
+    /// Gets or sets a collection of resources served by the server.
+    /// </summary>
+    /// <remarks>
+    /// Resources will specified via <see cref="ResourceCollection"/> augment the <see cref="ListResourcesHandler"/> and
+    /// <see cref="ReadResourceHandler"/>, if provided. ListResources requests will output information about every resource
+    /// in <see cref="ResourceCollection"/> and then also any resources output by <see cref="ListResourcesHandler"/>, if it's
+    /// non-<see langword="null"/>. ReadResource requests will first check <see cref="ResourceCollection"/> for the exact resource
+    /// being requested, will then fall back to <see cref="ResourceTemplateCollection"/> if no exact match could be found, and if the resource 
+    /// is still not found, any specified <see cref="ReadResourceHandler"/> will be invoked as a fallback.
+    /// </remarks>
+    [JsonIgnore]
+    public McpServerPrimitiveCollection<McpServerResource>? ResourceCollection { get; set; }
+
+    /// <summary>
+    /// Gets or sets a collection of resource templates served by the server.
+    /// </summary>
+    /// <remarks>
+    /// Resource templates will specified via <see cref="ResourceTemplateCollection"/> augment the <see cref="ListResourceTemplatesHandler"/> and
+    /// <see cref="ReadResourceHandler"/>, if provided. ListResourceTemplates requests will output information about every resource template
+    /// in <see cref="ResourceTemplateCollection"/> and then also any resources output by <see cref="ListResourceTemplatesHandler"/>, if it's
+    /// non-<see langword="null"/>. ReadResource requests will first check <see cref="ResourceCollection"/> for the exact resource
+    /// being requested, will then fall back to <see cref="ResourceTemplateCollection"/> if no exact match could be found, and if the resource 
+    /// is still not found, any specified <see cref="ReadResourceHandler"/> will be invoked as a fallback.
+    /// </remarks>
+    [JsonIgnore]
+    public McpServerPrimitiveCollection<McpServerResourceTemplate>? ResourceTemplateCollection { get; set; }
 }

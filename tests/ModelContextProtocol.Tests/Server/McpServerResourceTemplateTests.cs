@@ -1,0 +1,544 @@
+﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Server;
+using Moq;
+using System.Reflection;
+using System.Text.Json.Serialization;
+
+namespace ModelContextProtocol.Tests.Server;
+
+public partial class McpServerResourceTemplateTests
+{
+    [Fact]
+    public void CanCreateServerWithResourceTemplates()
+    {
+        var services = new ServiceCollection();
+
+        services.AddMcpServer()
+            .WithStdioServerTransport()
+            .WithListResourceTemplatesHandler(async (ctx, ct) =>
+            {
+                return new ListResourceTemplatesResult
+                {
+                    ResourceTemplates =
+                    [
+                        new ResourceTemplate { Name = "Static Resource", Description = "A static resource with a numeric ID", UriTemplate = "test://static/resource/{id}" }
+                    ]
+                };
+            })
+            .WithReadResourceHandler(async (ctx, ct) =>
+            {
+                return new ReadResourceResult
+                {
+                    Contents = [new TextResourceContents
+                    {
+                        Uri = ctx.Params!.Uri!,
+                        Text = "Static Resource",
+                        MimeType = "text/plain",
+                    }]
+                };
+            });
+
+        var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IMcpServer>();
+    }
+
+    [Fact]
+    public void CreatingReadHandlerWithNoListHandlerSucceeds()
+    {
+        var services = new ServiceCollection();
+        services.AddMcpServer()
+            .WithStdioServerTransport()
+            .WithReadResourceHandler(async (ctx, ct) =>
+            {
+                return new ReadResourceResult
+                {
+                    Contents = [new TextResourceContents
+                    {
+                        Uri = ctx.Params!.Uri!,
+                        Text = "Static Resource",
+                        MimeType = "text/plain",
+                    }]
+                };
+            });
+        var sp = services.BuildServiceProvider();
+
+        sp.GetRequiredService<IMcpServer>();
+    }
+
+    [Fact]
+    public void Create_InvalidArgs_Throws()
+    {
+        Assert.Throws<ArgumentNullException>("function", () => McpServerResourceTemplate.Create((AIFunction)null!, new() { UriTemplate = "test://hello" }));
+        Assert.Throws<ArgumentNullException>("method", () => McpServerResourceTemplate.Create((MethodInfo)null!));
+        Assert.Throws<ArgumentNullException>("method", () => McpServerResourceTemplate.Create((MethodInfo)null!, typeof(object)));
+        Assert.Throws<ArgumentNullException>("targetType", () => McpServerResourceTemplate.Create(typeof(McpServerResourceTemplateTests).GetMethod(nameof(Create_InvalidArgs_Throws))!, (Type)null!));
+        Assert.Throws<ArgumentNullException>("method", () => McpServerResourceTemplate.Create((Delegate)null!));
+
+        Assert.NotNull(McpServerResourceTemplate.Create(typeof(DisposableResourceType).GetMethod(nameof(DisposableResourceType.InstanceMethod))!, new DisposableResourceType()));
+        Assert.NotNull(McpServerResourceTemplate.Create(typeof(DisposableResourceType).GetMethod(nameof(DisposableResourceType.StaticMethod))!));
+        Assert.Throws<ArgumentNullException>("target", () => McpServerResourceTemplate.Create(typeof(DisposableResourceType).GetMethod(nameof(DisposableResourceType.InstanceMethod))!, target: null!));
+    }
+
+    [Fact]
+    public async Task UriTemplate_CreatedFromParameters_LotsOfTypesSupported()
+    {
+        const string Name = "Hello";
+        McpServerResourceTemplate t;
+        ReadResourceResult? result;
+        IMcpServer server = new Mock<IMcpServer>().Object;
+
+        t = McpServerResourceTemplate.Create(() => "42", new() { Name = Name });
+        Assert.Equal($"resource://{Name}", t.ProtocolResourceTemplate.UriTemplate);
+        result = await t.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(server) { Params = new() { Uri = $"resource://{Name}" } }, 
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal("42", ((TextResourceContents)result.Contents[0]).Text);
+
+        t = McpServerResourceTemplate.Create((IMcpServer server) => "42", new() { Name = Name });
+        Assert.Equal($"resource://{Name}", t.ProtocolResourceTemplate.UriTemplate);
+        result = await t.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(server) { Params = new() { Uri = $"resource://{Name}" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal("42", ((TextResourceContents)result.Contents[0]).Text);
+
+        t = McpServerResourceTemplate.Create((string arg1) => arg1, new() { Name = Name });
+        Assert.Equal($"resource://{Name}{{?arg1}}", t.ProtocolResourceTemplate.UriTemplate);
+        result = await t.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(server) { Params = new() { Uri = $"resource://{Name}?arg1=wOrLd" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal("wOrLd", ((TextResourceContents)result.Contents[0]).Text);
+
+        t = McpServerResourceTemplate.Create((string arg1, string? arg2 = null) => arg1 + arg2, new() { Name = Name });
+        Assert.Equal($"resource://{Name}{{?arg1,arg2}}", t.ProtocolResourceTemplate.UriTemplate);
+        result = await t.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(server) { Params = new() { Uri = $"resource://{Name}?arg1=wo&arg2=rld" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal("world", ((TextResourceContents)result.Contents[0]).Text);
+
+        t = McpServerResourceTemplate.Create((object a1, bool a2, char a3, byte a4, sbyte a5) => a1.ToString() + a2 + a3 + a4 + a5, new() { Name = Name });
+        Assert.Equal($"resource://{Name}{{?a1,a2,a3,a4,a5}}", t.ProtocolResourceTemplate.UriTemplate);
+        result = await t.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(server) { Params = new() { Uri = $"resource://{Name}?a1=hi&a2=true&a3=s&a4=12&a5=34" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal("hiTrues1234", ((TextResourceContents)result.Contents[0]).Text);
+
+        t = McpServerResourceTemplate.Create((ushort a1, short a2, uint a3, int a4, ulong a5) => (a1 + a2 + a3 + a4 + (long)a5).ToString(), new() { Name = Name });
+        Assert.Equal($"resource://{Name}{{?a1,a2,a3,a4,a5}}", t.ProtocolResourceTemplate.UriTemplate);
+        result = await t.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(server) { Params = new() { Uri = $"resource://{Name}?a1=10&a2=20&a3=30&a4=40&a5=50" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal("150", ((TextResourceContents)result.Contents[0]).Text);
+
+        t = McpServerResourceTemplate.Create((long a1, float a2, double a3, decimal a4, TimeSpan a5) => a5.ToString(), new() { Name = Name });
+        Assert.Equal($"resource://{Name}{{?a1,a2,a3,a4,a5}}", t.ProtocolResourceTemplate.UriTemplate);
+        result = await t.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(server) { Params = new() { Uri = $"resource://{Name}?a1=1&a2=2&a3=3&a4=4&a5=5" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal("5.00:00:00", ((TextResourceContents)result.Contents[0]).Text);
+
+        t = McpServerResourceTemplate.Create((DateTime a1, DateTimeOffset a2, Uri a3, Guid a4, Version a5) => a4.ToString("N") + a5, new() { Name = Name });
+        Assert.Equal($"resource://{Name}{{?a1,a2,a3,a4,a5}}", t.ProtocolResourceTemplate.UriTemplate);
+        result = await t.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(server) { Params = new() { Uri = $"resource://{Name}?a1={DateTime.UtcNow:r}&a2={DateTimeOffset.UtcNow:r}&a3=http%3A%2F%2Ftest&a4=14e5f43d-0d41-47d6-8207-8249cf669e41&a5=1.2.3.4" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal("14e5f43d0d4147d682078249cf669e411.2.3.4", ((TextResourceContents)result.Contents[0]).Text);
+
+        t = McpServerResourceTemplate.Create((Half a2, Int128 a3, UInt128 a4, IntPtr a5) => (a3 + (Int128)a4 + a5).ToString(), new() { Name = Name });
+        Assert.Equal($"resource://{Name}{{?a2,a3,a4,a5}}", t.ProtocolResourceTemplate.UriTemplate);
+        result = await t.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(server) { Params = new() { Uri = $"resource://{Name}?a2=1.0&a3=3&a4=4&a5=5" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal("12", ((TextResourceContents)result.Contents[0]).Text);
+
+        t = McpServerResourceTemplate.Create((UIntPtr a1, DateOnly a2, TimeOnly a3) => a1.ToString(), new() { Name = Name });
+        Assert.Equal($"resource://{Name}{{?a1,a2,a3}}", t.ProtocolResourceTemplate.UriTemplate);
+        result = await t.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(server) { Params = new() { Uri = $"resource://{Name}?a1=123&a2=0001-02-03&a3=01%3A02%3A03" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal("123", ((TextResourceContents)result.Contents[0]).Text);
+
+        t = McpServerResourceTemplate.Create((bool? a2, char? a3, byte? a4, sbyte? a5) => a2?.ToString() + a3 + a4 + a5, new() { Name = Name });
+        Assert.Equal($"resource://{Name}{{?a2,a3,a4,a5}}", t.ProtocolResourceTemplate.UriTemplate);
+        result = await t.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(server) { Params = new() { Uri = $"resource://{Name}?a2=true&a3=s&a4=12&a5=34" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal("Trues1234", ((TextResourceContents)result.Contents[0]).Text);
+
+        t = McpServerResourceTemplate.Create((ushort? a1, short? a2, uint? a3, int? a4, ulong? a5) => (a1 + a2 + a3 + a4 + (long?)a5).ToString(), new() { Name = Name });
+        Assert.Equal($"resource://{Name}{{?a1,a2,a3,a4,a5}}", t.ProtocolResourceTemplate.UriTemplate);
+        result = await t.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(server) { Params = new() { Uri = $"resource://{Name}?a1=10&a2=20&a3=30&a4=40&a5=50" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal("150", ((TextResourceContents)result.Contents[0]).Text);
+
+        t = McpServerResourceTemplate.Create((long? a1, float? a2, double? a3, decimal? a4, TimeSpan? a5) => a5?.ToString(), new() { Name = Name });
+        Assert.Equal($"resource://{Name}{{?a1,a2,a3,a4,a5}}", t.ProtocolResourceTemplate.UriTemplate);
+        result = await t.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(server) { Params = new() { Uri = $"resource://{Name}?a1=1&a2=2&a3=3&a4=4&a5=5" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal("5.00:00:00", ((TextResourceContents)result.Contents[0]).Text);
+
+        t = McpServerResourceTemplate.Create((DateTime? a1, DateTimeOffset? a2, Guid? a4) => a4?.ToString("N"), new() { Name = Name });
+        Assert.Equal($"resource://{Name}{{?a1,a2,a4}}", t.ProtocolResourceTemplate.UriTemplate);
+        result = await t.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(server) { Params = new() { Uri = $"resource://{Name}?a1={DateTime.UtcNow:r}&a2={DateTimeOffset.UtcNow:r}&a4=14e5f43d-0d41-47d6-8207-8249cf669e41" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal("14e5f43d0d4147d682078249cf669e41", ((TextResourceContents)result.Contents[0]).Text);
+
+        t = McpServerResourceTemplate.Create((Half? a2, Int128? a3, UInt128? a4, IntPtr? a5) => (a3 + (Int128?)a4 + a5).ToString(), new() { Name = Name });
+        Assert.Equal($"resource://{Name}{{?a2,a3,a4,a5}}", t.ProtocolResourceTemplate.UriTemplate);
+        result = await t.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(server) { Params = new() { Uri = $"resource://{Name}?a2=1.0&a3=3&a4=4&a5=5" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal("12", ((TextResourceContents)result.Contents[0]).Text);
+
+        t = McpServerResourceTemplate.Create((UIntPtr? a1, DateOnly? a2, TimeOnly? a3) => a1?.ToString(), new() { Name = Name });
+        Assert.Equal($"resource://{Name}{{?a1,a2,a3}}", t.ProtocolResourceTemplate.UriTemplate);
+        result = await t.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(server) { Params = new() { Uri = $"resource://{Name}?a1=123&a2=0001-02-03&a3=01%3A02%3A03" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal("123", ((TextResourceContents)result.Contents[0]).Text);
+    }
+
+    [Theory]
+    [InlineData("resource://Hello?arg1=42&arg2=84")]
+    [InlineData("resource://Hello?arg1=42&arg2=84&arg3=123")]
+    [InlineData("resource://Hello#fragment")]
+    public async Task UriTemplate_NonMatchingUri_ReturnsNull(string uri)
+    {
+        McpServerResourceTemplate t = McpServerResourceTemplate.Create((string arg1) => arg1, new() { Name = "Hello" });
+        Assert.Equal("resource://Hello{?arg1}", t.ProtocolResourceTemplate.UriTemplate);
+        Assert.Null(await t.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(new Mock<IMcpServer>().Object) { Params = new() { Uri = uri } },
+            TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData("resource://Hello?arg1=test")]
+    [InlineData("resource://Hello?arg2=test")]
+    public async Task UriTemplate_MissingParameter_Throws(string uri)
+    {
+        McpServerResourceTemplate t = McpServerResourceTemplate.Create((string arg1, int arg2) => arg1, new() { Name = "Hello" });
+        Assert.Equal("resource://Hello{?arg1,arg2}", t.ProtocolResourceTemplate.UriTemplate);
+        await Assert.ThrowsAsync<ArgumentException>(async () => await t.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(new Mock<IMcpServer>().Object) { Params = new() { Uri = uri } },
+            TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task UriTemplate_MissingOptionalParameter_Succeeds()
+    {
+        McpServerResourceTemplate t = McpServerResourceTemplate.Create((string? arg1 = null, int? arg2 = null) => arg1 + arg2, new() { Name = "Hello" });
+        Assert.Equal("resource://Hello{?arg1,arg2}", t.ProtocolResourceTemplate.UriTemplate);
+
+        ReadResourceResult? result;
+
+        result = await t.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(new Mock<IMcpServer>().Object) { Params = new() { Uri = "resource://Hello" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal("", ((TextResourceContents)result.Contents[0]).Text);
+
+        result = await t.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(new Mock<IMcpServer>().Object) { Params = new() { Uri = "resource://Hello?arg1=first" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal("first", ((TextResourceContents)result.Contents[0]).Text);
+
+        result = await t.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(new Mock<IMcpServer>().Object) { Params = new() { Uri = "resource://Hello?arg2=42" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal("42", ((TextResourceContents)result.Contents[0]).Text);
+
+        result = await t.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(new Mock<IMcpServer>().Object) { Params = new() { Uri = "resource://Hello?arg1=first&arg2=42" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal("first42", ((TextResourceContents)result.Contents[0]).Text);
+    }
+
+    [Fact]
+    public async Task SupportsIMcpServer()
+    {
+        Mock<IMcpServer> mockServer = new();
+
+        McpServerResourceTemplate resource = McpServerResourceTemplate.Create((IMcpServer server) =>
+        {
+            Assert.Same(mockServer.Object, server);
+            return "42";
+        }, new() { Name = "Test" });
+
+        var result = await resource.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(mockServer.Object) { Params = new() { Uri = "resource://Test" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal("42", ((TextResourceContents)result.Contents[0]).Text);
+    }
+
+    [Theory]
+    [InlineData(ServiceLifetime.Singleton)]
+    [InlineData(ServiceLifetime.Scoped)]
+    [InlineData(ServiceLifetime.Transient)]
+    public async Task SupportsServiceFromDI(ServiceLifetime injectedArgumentLifetime)
+    {
+        MyService singletonService = new();
+
+        ServiceCollection sc = new();
+        switch (injectedArgumentLifetime)
+        {
+            case ServiceLifetime.Singleton:
+                sc.AddSingleton(singletonService);
+                break;
+
+            case ServiceLifetime.Scoped:
+                sc.AddScoped(_ => new MyService());
+                break;
+
+            case ServiceLifetime.Transient:
+                sc.AddTransient(_ => new MyService());
+                break;
+        }
+
+        sc.AddSingleton(services =>
+        {
+            return McpServerResourceTemplate.Create((MyService actualMyService) =>
+            {
+                Assert.NotNull(actualMyService);
+                if (injectedArgumentLifetime == ServiceLifetime.Singleton)
+                {
+                    Assert.Same(singletonService, actualMyService);
+                }
+
+                return "42";
+            }, new() { Services = services, Name = "Test" });
+        });
+
+        IServiceProvider services = sc.BuildServiceProvider();
+
+        McpServerResourceTemplate resource = services.GetRequiredService<McpServerResourceTemplate>();
+
+        Mock<IMcpServer> mockServer = new();
+
+        await Assert.ThrowsAsync<ArgumentNullException>(async () => await resource.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(mockServer.Object) { Params = new() { Uri = "resource://Test" } },
+            TestContext.Current.CancellationToken));
+
+        var result = await resource.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(mockServer.Object) { Services = services, Params = new() { Uri = "resource://Test" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal("42", ((TextResourceContents)result.Contents[0]).Text);
+    }
+
+    [Fact]
+    public async Task SupportsOptionalServiceFromDI()
+    {
+        MyService expectedMyService = new();
+
+        ServiceCollection sc = new();
+        sc.AddSingleton(expectedMyService);
+        IServiceProvider services = sc.BuildServiceProvider();
+
+        McpServerResourceTemplate resource = McpServerResourceTemplate.Create((MyService? actualMyService = null) =>
+        {
+            Assert.Null(actualMyService);
+            return "42";
+        }, new() { Services = services, Name = "Test" });
+
+        var result = await resource.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(new Mock<IMcpServer>().Object) { Params = new() { Uri = "resource://Test" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal("42", ((TextResourceContents)result.Contents[0]).Text);
+    }
+
+    [Fact]
+    public async Task SupportsDisposingInstantiatedDisposableTargets()
+    {
+        int before = DisposableResourceType.Disposals;
+
+        McpServerResourceTemplate resource1 = McpServerResourceTemplate.Create(
+            typeof(DisposableResourceType).GetMethod(nameof(DisposableResourceType.InstanceMethod))!,
+            typeof(DisposableResourceType),
+            new() { Name = "Test" });
+
+        var result = await resource1.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(new Mock<IMcpServer>().Object) { Params = new() { Uri = "resource://Test" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal("0", ((TextResourceContents)result.Contents[0]).Text);
+
+        Assert.Equal(1, DisposableResourceType.Disposals);
+    }
+
+    [Fact]
+    public async Task CanReturnReadResult()
+    {
+        Mock<IMcpServer> mockServer = new();
+        McpServerResourceTemplate resource = McpServerResourceTemplate.Create((IMcpServer server) =>
+        {
+            Assert.Same(mockServer.Object, server);
+            return new ReadResourceResult() { Contents = new List<ResourceContents>() { new TextResourceContents() { Text = "hello" } } };
+        }, new() { Name = "Test" });
+        var result = await resource.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(mockServer.Object) { Params = new() { Uri = "resource://Test" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Single(result.Contents);
+        Assert.Equal("hello", ((TextResourceContents)result.Contents[0]).Text);
+    }
+
+    [Fact]
+    public async Task CanReturnResourceContents()
+    {
+        Mock<IMcpServer> mockServer = new();
+        McpServerResourceTemplate resource = McpServerResourceTemplate.Create((IMcpServer server) =>
+        {
+            Assert.Same(mockServer.Object, server);
+            return new TextResourceContents() { Text = "hello" };
+        }, new() { Name = "Test" });
+        var result = await resource.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(mockServer.Object) { Params = new() { Uri = "resource://Test" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Single(result.Contents);
+        Assert.Equal("hello", ((TextResourceContents)result.Contents[0]).Text);
+    }
+
+    [Fact]
+    public async Task CanReturnCollectionOfResourceContents()
+    {
+        Mock<IMcpServer> mockServer = new();
+        McpServerResourceTemplate resource = McpServerResourceTemplate.Create((IMcpServer server) =>
+        {
+            Assert.Same(mockServer.Object, server);
+            return new List<ResourceContents>()
+            {
+                new TextResourceContents() { Text = "hello" },
+                new BlobResourceContents() { Blob = Convert.ToBase64String(new byte[] { 1, 2, 3 }) },
+            };
+        }, new() { Name = "Test" });
+        var result = await resource.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(mockServer.Object) { Params = new() { Uri = "resource://Test" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal(2, result.Contents.Count);
+        Assert.Equal("hello", ((TextResourceContents)result.Contents[0]).Text);
+        Assert.Equal(Convert.ToBase64String(new byte[] { 1, 2, 3 }), ((BlobResourceContents)result.Contents[1]).Blob);
+    }
+
+    [Fact]
+    public async Task CanReturnString()
+    {
+        Mock<IMcpServer> mockServer = new();
+        McpServerResourceTemplate resource = McpServerResourceTemplate.Create((IMcpServer server) =>
+        {
+            Assert.Same(mockServer.Object, server);
+            return "42";
+        }, new() { Name = "Test" });
+        var result = await resource.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(mockServer.Object) { Params = new() { Uri = "resource://Test" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Single(result.Contents);
+        Assert.Equal("42", ((TextResourceContents)result.Contents[0]).Text);
+    }
+
+    [Fact]
+    public async Task CanReturnCollectionOfStrings()
+    {
+        Mock<IMcpServer> mockServer = new();
+        McpServerResourceTemplate resource = McpServerResourceTemplate.Create((IMcpServer server) =>
+        {
+            Assert.Same(mockServer.Object, server);
+            return new List<string>() { "42", "43" };
+        }, new() { Name = "Test" });
+        var result = await resource.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(mockServer.Object) { Params = new() { Uri = "resource://Test" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal(2, result.Contents.Count);
+        Assert.Equal("42", ((TextResourceContents)result.Contents[0]).Text);
+        Assert.Equal("43", ((TextResourceContents)result.Contents[1]).Text);
+    }
+
+    [Fact]
+    public async Task CanReturnDataContent()
+    {
+        Mock<IMcpServer> mockServer = new();
+        McpServerResourceTemplate resource = McpServerResourceTemplate.Create((IMcpServer server) =>
+        {
+            Assert.Same(mockServer.Object, server);
+            return new DataContent(new byte[] { 0, 1, 2 }, "application/octet-stream");
+        }, new() { Name = "Test" });
+        var result = await resource.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(mockServer.Object) { Params = new() { Uri = "resource://Test" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Single(result.Contents);
+        Assert.Equal(Convert.ToBase64String(new byte[] { 0, 1, 2 }), ((BlobResourceContents)result.Contents[0]).Blob);
+        Assert.Equal("application/octet-stream", ((BlobResourceContents)result.Contents[0]).MimeType);
+    }
+
+    [Fact]
+    public async Task CanReturnCollectionOfAIContent()
+    {
+        Mock<IMcpServer> mockServer = new();
+        McpServerResourceTemplate resource = McpServerResourceTemplate.Create((IMcpServer server) =>
+        {
+            Assert.Same(mockServer.Object, server);
+            return new List<AIContent>()
+            {
+                new TextContent("hello!"),
+                new DataContent(new byte[] { 4, 5, 6 }, "application/json"),
+            };
+        }, new() { Name = "Test" });
+        var result = await resource.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(mockServer.Object) { Params = new() { Uri = "resource://Test" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal(2, result.Contents.Count);
+        Assert.Equal("hello!", ((TextResourceContents)result.Contents[0]).Text);
+        Assert.Equal(Convert.ToBase64String(new byte[] { 4, 5, 6 }), ((BlobResourceContents)result.Contents[1]).Blob);
+        Assert.Equal("application/json", ((BlobResourceContents)result.Contents[1]).MimeType);
+    }
+
+    private sealed class MyService;
+
+    private class DisposableResourceType : IDisposable
+    {
+        public static int Disposals { get; private set; }
+
+        public void Dispose() => Disposals++;
+
+        [McpServerResourceTemplate(UriTemplate = "test://static/resource/instanceMethod")]
+        public object InstanceMethod() => Disposals.ToString();
+
+        [McpServerResourceTemplate(UriTemplate = "test://static/resource/staticMethod")]
+        public static object StaticMethod() => "42";
+    }
+
+    [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+    [JsonSerializable(typeof(DisposableResourceType))]
+    partial class JsonContext6 : JsonSerializerContext;
+}

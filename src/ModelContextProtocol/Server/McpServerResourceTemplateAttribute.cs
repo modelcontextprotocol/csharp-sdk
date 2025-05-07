@@ -1,0 +1,129 @@
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Protocol.Messages;
+using ModelContextProtocol.Protocol.Types;
+
+namespace ModelContextProtocol.Server;
+
+/// <summary>
+/// Used to indicate that a method or property should be considered an <see cref="McpServerResourceTemplate"/>.
+/// </summary>
+/// <remarks>
+/// <para>
+/// This attribute is applied to methods or properties that should be exposed as resources in the Model Context Protocol. When a class 
+/// containing methods marked with this attribute is registered with <see cref="McpServerBuilderExtensions"/>,
+/// these methods or properties become available as resources that can be called by MCP clients.
+/// </para>
+/// <para>
+/// When methods are provided directly to <see cref="M:McpServerResourceTemplate.Create"/>, the attribute is not required.
+/// </para>
+/// <para>
+/// Resource read requests do not contain arguments, only a URI. However, resource methods may accept parameters that will be bound
+/// to arguments based on their type.
+/// <list type="bullet">
+///   <item>
+///     <description>
+///       <see cref="CancellationToken"/> parameters are automatically bound to a <see cref="CancellationToken"/> provided by the
+///       <see cref="IMcpServer"/> and that respects any <see cref="CancelledNotification"/>s sent by the client for this operation's
+///       <see cref="RequestId"/>.
+///     </description>
+///   </item>
+///   <item>
+///     <description>
+///       <see cref="IServiceProvider"/> parameters are bound from the <see cref="RequestContext{GetResourceRequestParams}"/> for this request.
+///     </description>
+///   </item>
+///   <item>
+///     <description>
+///       <see cref="IMcpServer"/> parameters are bound directly to the <see cref="IMcpServer"/> instance associated
+///       with this request's <see cref="RequestContext{CallResourceRequestParams}"/>. Such parameters may be used to understand
+///       what server is being used to process the request, and to interact with the client issuing the request to that server.
+///     </description>
+///   </item>
+///   <item>
+///     <description>
+///       <see cref="IProgress{ProgressNotificationValue}"/> parameters accepting <see cref="ProgressNotificationValue"/> values
+///       are bound to an <see cref="IProgress{ProgressNotificationValue}"/> instance manufactured to forward progress notifications
+///       from the resource to the client. If the client included a <see cref="ProgressToken"/> in their request, progress reports issued
+///       to this instance will propagate to the client as <see cref="NotificationMethods.ProgressNotification"/> notifications with
+///       that token. If the client did not include a <see cref="ProgressToken"/>, the instance will ignore any progress reports issued to it.
+///     </description>
+///   </item>
+///   <item>
+///     <description>
+///       When the <see cref="McpServerResource"/> is constructed, it may be passed an <see cref="IServiceProvider"/> via 
+///       <see cref="McpServerResourceCreateOptions.Services"/>. Any parameter that can be satisfied by that <see cref="IServiceProvider"/>
+///       according to <see cref="IServiceProviderIsService"/> will be resolved from the <see cref="IServiceProvider"/> provided to the 
+///       resource invocation rather than from the argument collection.
+///     </description>
+///   </item>
+///   <item>
+///     <description>
+///       Any parameter attributed with <see cref="FromKeyedServicesAttribute"/> will similarly be resolved from the 
+///       <see cref="IServiceProvider"/> provided to the resource invocation rather than from the argument collection.
+///     </description>
+///   </item>
+/// </list>
+/// </para>
+/// <para>
+/// Further, the URI itself contains arguments formatted into the URI template. These arguments are bound to <see cref="string"/>
+/// parameters of the corresponding name in the method signature.
+/// </para>
+/// <para>
+/// Return values from a method are used to create the <see cref="ReadResourceResult"/> that is sent back to the client:
+/// </para>
+/// <list type="table">
+///   <item>
+///     <term><see cref="ResourceContents"/></term>
+///     <description>Wrapped in a list containing the single <see cref="ResourceContents"/>.</description>
+///   </item>
+///   <item>
+///     <term><see cref="TextContent"/></term>
+///     <description>Converted to a list containing a single <see cref="TextResourceContents"/>.</description>
+///   </item>
+///   <item>
+///     <term><see cref="DataContent"/></term>
+///     <description>Converted to a list containing a single <see cref="BlobResourceContents"/>.</description>
+///   </item>
+///   <item>
+///     <term><see cref="string"/></term>
+///     <description>Converted to a list containing a single <see cref="TextResourceContents"/>.</description>
+///   </item>
+///   <item>
+///     <term><see cref="IEnumerable{ResourceContents}"/> of <see cref="ResourceContents"/></term>
+///     <description>Returned directly as a list of <see cref="ResourceContents"/>.</description>
+///   </item>
+///   <item>
+///     <term><see cref="IEnumerable{AIContent}"/> of <see cref="AIContent"/></term>
+///     <description>Converted to a list containing a <see cref="TextResourceContents"/> for each <see cref="TextContent"/> and a <see cref="BlobResourceContents"/> for each <see cref="DataContent"/>.</description>
+///   </item>
+///   <item>
+///     <term><see cref="IEnumerable{String}"/> of <see cref="string"/></term>
+///     <description>Converted to a list containing a <see cref="TextResourceContents"/>, one for each <see cref="string"/>.</description>
+///   </item>
+/// </list>
+/// <para>
+/// Other returned types will result in an <see cref="InvalidOperationException"/> being thrown.
+/// </para>
+/// </remarks>
+[AttributeUsage(AttributeTargets.Method)]
+public sealed class McpServerResourceTemplateAttribute : Attribute
+{
+    /// <summary>
+    /// Initializes a new instance of the <see cref="McpServerResourceTemplateAttribute"/> class.
+    /// </summary>
+    public McpServerResourceTemplateAttribute()
+    {
+    }
+
+    /// <summary>Gets or sets the URI template of the resource.</summary>
+    /// <remarks>If <see langword="null"/>, a URI will be derived from <see cref="Name"/> and the method's parameter names.</remarks>
+    public string? UriTemplate { get; set; }
+
+    /// <summary>Gets or sets the name of the resource.</summary>
+    /// <remarks>If <see langword="null"/>, the method name will be used.</remarks>
+    public string? Name { get; set; }
+
+    /// <summary>Gets or sets the MIME (media) type of the resource.</summary>
+    public string? MimeType { get; set; }
+}

@@ -5,7 +5,6 @@ using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Shared;
 using ModelContextProtocol.Utils.Json;
 using System.Text.Json;
-using System.Threading;
 
 namespace ModelContextProtocol.Client;
 

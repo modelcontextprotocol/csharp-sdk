@@ -220,5 +220,5 @@ public abstract class McpServerTool : IMcpServerPrimitive
     public override string ToString() => ProtocolTool.Name;
 
     /// <inheritdoc />
-    string IMcpServerPrimitive.Name => ProtocolTool.Name;
+    string IMcpServerPrimitive.Id => ProtocolTool.Name;
 }

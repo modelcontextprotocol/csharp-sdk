@@ -36,7 +36,7 @@ public static class McpEndpointExtensions
     /// <param name="serializerOptions">The options governing request serialization.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous operation. The task result contains the deserialized result.</returns>
-    public static Task<TResult> SendRequestAsync<TParameters, TResult>(
+    public static ValueTask<TResult> SendRequestAsync<TParameters, TResult>(
         this IMcpEndpoint endpoint,
         string method,
         TParameters parameters,
@@ -66,7 +66,7 @@ public static class McpEndpointExtensions
     /// <param name="requestId">The request id for the request.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous operation. The task result contains the deserialized result.</returns>
-    internal static async Task<TResult> SendRequestAsync<TParameters, TResult>(
+    internal static async ValueTask<TResult> SendRequestAsync<TParameters, TResult>(
         this IMcpEndpoint endpoint,
         string method,
         TParameters parameters,
