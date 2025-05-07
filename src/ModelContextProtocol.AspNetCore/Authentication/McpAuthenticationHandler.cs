@@ -97,10 +97,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         };
         
         // Set default resource if not set
-        if (metadata.Resource == null)
-        {
-            metadata.Resource = new Uri(GetBaseUrl());
-        }
+        metadata.Resource ??= new Uri(GetBaseUrl());
         
         Response.StatusCode = StatusCodes.Status200OK;
         Response.ContentType = "application/json";
