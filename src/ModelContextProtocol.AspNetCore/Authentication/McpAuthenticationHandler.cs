@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Utils.Json;
 using System.Text.Encodings.Web;
+using System.Text.Json;
 
 namespace ModelContextProtocol.AspNetCore.Authentication;
 
@@ -102,7 +103,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         Response.StatusCode = StatusCodes.Status200OK;
         Response.ContentType = "application/json";
         
-        var json = System.Text.Json.JsonSerializer.Serialize(
+        var json = JsonSerializer.Serialize(
             metadata, 
             McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(ProtectedResourceMetadata)));
         
