@@ -71,13 +71,9 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
         }
         else
         {
-            // Try to find any matching scheme between server and provider using a HashSet for O(N) time complexity
-            // Convert the supported schemes to a HashSet for O(1) lookups
-            var supportedSchemesSet = new HashSet<string>(supportedSchemes, StringComparer.OrdinalIgnoreCase);
-            
             // Find the first server scheme that's in our supported set
-            bestSchemeMatch = serverSchemes.FirstOrDefault(scheme => supportedSchemesSet.Contains(scheme));
-            
+            bestSchemeMatch = serverSchemes.Intersect(supportedSchemes, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+
             // If no match was found, either throw an exception or use default
             if (bestSchemeMatch is null)
             {

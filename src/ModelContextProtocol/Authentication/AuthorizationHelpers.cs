@@ -22,7 +22,8 @@ public static class AuthorizationHelpers
         using var httpClient = new HttpClient();
         try
         {
-            var response = await httpClient.GetAsync(metadataUrl, cancellationToken).ConfigureAwait(false);
+            var request = new HttpRequestMessage(HttpMethod.Get, metadataUrl);
+            var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
             
             var content = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
