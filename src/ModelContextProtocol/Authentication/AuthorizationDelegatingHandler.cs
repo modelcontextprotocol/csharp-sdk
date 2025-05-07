@@ -22,11 +22,8 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
         _authorizationProvider = authorizationProvider;
         
         // Select first supported scheme as the default
-        _currentScheme = _authorizationProvider.SupportedSchemes.FirstOrDefault();
-        if (_currentScheme == null)
-        {
+        _currentScheme = _authorizationProvider.SupportedSchemes.FirstOrDefault() ??
             throw new ArgumentException("Authorization provider must support at least one authentication scheme.", nameof(authorizationProvider));
-        }
     }
 
     /// <summary>
