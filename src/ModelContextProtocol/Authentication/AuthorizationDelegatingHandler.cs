@@ -11,6 +11,7 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
 {
     private readonly IMcpAuthorizationProvider _authorizationProvider;
     private string _currentScheme;
+    private static readonly char[] SchemeSplitDelimiters = { ' ', ',' };
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AuthorizationDelegatingHandler"/> class.
@@ -123,7 +124,7 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
             {
                 // Extract the scheme from the WWW-Authenticate header
                 // Format is typically: "Scheme param1=value1, param2=value2"
-                string scheme = authHeader.Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries)[0];
+                string scheme = authHeader.Split(SchemeSplitDelimiters, StringSplitOptions.RemoveEmptyEntries)[0];
                 if (!string.IsNullOrEmpty(scheme))
                 {
                     serverSchemes.Add(scheme);
