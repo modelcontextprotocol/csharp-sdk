@@ -4,7 +4,7 @@ namespace ModelContextProtocol.Authentication;
 /// Defines an interface for providing authentication for requests.
 /// This is the main extensibility point for authentication in MCP clients.
 /// </summary>
-public interface IMcpAuthorizationProvider
+public interface ITokenProvider
 {
     /// <summary>
     /// Gets the collection of authentication schemes supported by this provider.

@@ -14,23 +14,53 @@ namespace ProtectedMCPClient;
 /// caching or any advanced token protection - it acquires a token and server metadata and holds it
 /// in memory as-is. This is NOT PRODUCTION READY and MUST NOT BE USED IN PRODUCTION.
 /// </summary>
-/// <remarks>
-/// Initializes a new instance of the <see cref="BasicOAuthAuthorizationProvider"/> class.
-/// </remarks>
-public class BasicOAuthAuthorizationProvider(
-    Uri serverUrl,
-    string clientId = "demo-client",
-    string clientSecret = "",
-    Uri? redirectUri = null,
-    IEnumerable<string>? scopes = null) : IMcpAuthorizationProvider
+public class BasicOAuthAuthorizationProvider : ITokenProvider
 {
-    private readonly Uri _serverUrl = serverUrl ?? throw new ArgumentNullException(nameof(serverUrl));
-    private readonly Uri _redirectUri = redirectUri ?? new Uri("http://localhost:8080/callback");
-    private readonly List<string> _scopes = scopes?.ToList() ?? [];
-    private readonly HttpClient _httpClient = new();
+    private readonly Uri _serverUrl;
+    private readonly Uri _redirectUri;
+    private readonly List<string> _scopes;
+    private readonly string _clientId;
+    private readonly string _clientSecret;
+    private readonly HttpClient _httpClient;
+    private readonly AuthorizationHelpers _authorizationHelpers;
+    
+    // Client name for IHttpClientFactory used by the BasicOAuthAuthorizationProvider
+    public const string HttpClientName = "ProtectedMCPClient.OAuth";
     
     private TokenContainer? _token;
     private AuthorizationServerMetadata? _authServerMetadata;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="BasicOAuthAuthorizationProvider"/> class.
+    /// </summary>
+    /// <param name="serverUrl">The MCP server URL.</param>
+    /// <param name="httpClientFactory">The HTTP client factory to use for creating HTTP clients.</param>
+    /// <param name="authorizationHelpers">The authorization helpers.</param>
+    /// <param name="clientId">OAuth client ID.</param>
+    /// <param name="clientSecret">OAuth client secret.</param>
+    /// <param name="redirectUri">OAuth redirect URI.</param>
+    /// <param name="scopes">OAuth scopes.</param>
+    public BasicOAuthAuthorizationProvider(
+        Uri serverUrl,
+        IHttpClientFactory httpClientFactory,
+        AuthorizationHelpers authorizationHelpers,
+        string clientId = "demo-client",
+        string clientSecret = "",
+        Uri? redirectUri = null,
+        IEnumerable<string>? scopes = null)
+    {
+        _serverUrl = serverUrl ?? throw new ArgumentNullException(nameof(serverUrl));
+        if (httpClientFactory == null) throw new ArgumentNullException(nameof(httpClientFactory));
+        _authorizationHelpers = authorizationHelpers ?? throw new ArgumentNullException(nameof(authorizationHelpers));
+        
+        // Get the HttpClient once during construction instead of for each request
+        _httpClient = httpClientFactory.CreateClient(HttpClientName);
+        
+        _redirectUri = redirectUri ?? new Uri("http://localhost:8080/callback");
+        _scopes = scopes?.ToList() ?? [];
+        _clientId = clientId;
+        _clientSecret = clientSecret;
+    }
 
     /// <inheritdoc />
     public IEnumerable<string> SupportedSchemes => new[] { "Bearer" };
@@ -61,8 +91,8 @@ public class BasicOAuthAuthorizationProvider(
 
         try
         {
-            // Get the metadata from the challenge
-            var resourceMetadata = await AuthorizationHelpers.ExtractProtectedResourceMetadata(
+            // Get the metadata from the challenge using the instance-based AuthorizationHelpers
+            var resourceMetadata = await _authorizationHelpers.ExtractProtectedResourceMetadata(
                 response, _serverUrl, cancellationToken);
             
             if (resourceMetadata?.AuthorizationServers?.Count > 0)
@@ -152,7 +182,7 @@ public class BasicOAuthAuthorizationProvider(
         {
             ["grant_type"] = "refresh_token",
             ["refresh_token"] = refreshToken,
-            ["client_id"] = clientId
+            ["client_id"] = _clientId
         });
         
         try
@@ -162,9 +192,9 @@ public class BasicOAuthAuthorizationProvider(
                 Content = requestContent
             };
 
-            if (!string.IsNullOrEmpty(clientSecret))
+            if (!string.IsNullOrEmpty(_clientSecret))
             {
-                var authValue = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{clientId}:{clientSecret}"));
+                var authValue = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_clientId}:{_clientSecret}"));
                 request.Headers.Authorization = new AuthenticationHeaderValue("Basic", authValue);
             }
             
@@ -213,7 +243,7 @@ public class BasicOAuthAuthorizationProvider(
     private Uri BuildAuthorizationUrl(AuthorizationServerMetadata authServerMetadata, string codeChallenge)
     {
         var queryParams = HttpUtility.ParseQueryString(string.Empty);
-        queryParams["client_id"] = clientId;
+        queryParams["client_id"] = _clientId;
         queryParams["redirect_uri"] = _redirectUri.ToString();
         queryParams["response_type"] = "code";
         queryParams["code_challenge"] = codeChallenge;
@@ -286,7 +316,7 @@ public class BasicOAuthAuthorizationProvider(
             ["grant_type"] = "authorization_code",
             ["code"] = authorizationCode,
             ["redirect_uri"] = _redirectUri.ToString(),
-            ["client_id"] = clientId,
+            ["client_id"] = _clientId,
             ["code_verifier"] = codeVerifier
         });
         
@@ -297,9 +327,9 @@ public class BasicOAuthAuthorizationProvider(
                 Content = requestContent
             };
             
-            if (!string.IsNullOrEmpty(clientSecret))
+            if (!string.IsNullOrEmpty(_clientSecret))
             {
-                var authValue = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{clientId}:{clientSecret}"));
+                var authValue = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_clientId}:{_clientSecret}"));
                 request.Headers.Authorization = new AuthenticationHeaderValue("Basic", authValue);
             }
             

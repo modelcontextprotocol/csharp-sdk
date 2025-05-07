@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol.Transport;
 
@@ -12,8 +14,33 @@ class Program
 
         var serverUrl = "http://localhost:7071/sse";
 
+        var services = new ServiceCollection();
+        services.AddHttpClient();
+        
+        var sharedHandler = new SocketsHttpHandler
+        {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+            PooledConnectionIdleTimeout = TimeSpan.FromMinutes(1)
+        };
+        
+        services.AddHttpClient(BasicOAuthAuthorizationProvider.HttpClientName)
+            .ConfigurePrimaryHttpMessageHandler(() => sharedHandler);
+            
+        services.AddHttpClient(AuthorizationHelpers.HttpClientName)
+            .ConfigurePrimaryHttpMessageHandler(() => sharedHandler);
+        
+        services.AddTransient<AuthorizationHelpers>();
+        
+        var serviceProvider = services.BuildServiceProvider();
+        
+        var httpClientFactory = serviceProvider.GetRequiredService<IHttpClientFactory>();
+        var authorizationHelpers = serviceProvider.GetRequiredService<AuthorizationHelpers>();
+
+        // Create the token provider with proper dependencies
         var tokenProvider = new BasicOAuthAuthorizationProvider(
-            new Uri(serverUrl), 
+            new Uri(serverUrl),
+            httpClientFactory,
+            authorizationHelpers,
             clientId: "6ad97b5f-7a7b-413f-8603-7a3517d4adb8",
             redirectUri: new Uri("http://localhost:1179/callback"),
             scopes: ["api://167b4284-3f92-4436-92ed-38b38f83ae08/weather.read"]

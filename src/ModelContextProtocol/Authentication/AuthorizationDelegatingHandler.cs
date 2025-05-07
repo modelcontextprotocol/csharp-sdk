@@ -9,7 +9,7 @@ namespace ModelContextProtocol.Authentication;
 /// </summary>
 public class AuthorizationDelegatingHandler : DelegatingHandler
 {
-    private readonly IMcpAuthorizationProvider _authorizationProvider;
+    private readonly ITokenProvider _authorizationProvider;
     private string _currentScheme;
     private static readonly char[] SchemeSplitDelimiters = { ' ', ',' };
 
@@ -17,7 +17,7 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
     /// Initializes a new instance of the <see cref="AuthorizationDelegatingHandler"/> class.
     /// </summary>
     /// <param name="authorizationProvider">The provider that supplies authentication tokens.</param>
-    public AuthorizationDelegatingHandler(IMcpAuthorizationProvider authorizationProvider)
+    public AuthorizationDelegatingHandler(ITokenProvider authorizationProvider)
     {
         Throw.IfNull(authorizationProvider);
 

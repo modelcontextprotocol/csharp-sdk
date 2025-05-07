@@ -58,7 +58,7 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
     /// <param name="transportOptions">Configuration options for the transport.</param>
     /// <param name="authorizationProvider">The authorization provider to use for authentication.</param>
     /// <param name="loggerFactory">Logger factory for creating loggers used for diagnostic output during transport operations.</param>
-    public SseClientTransport(SseClientTransportOptions transportOptions, IMcpAuthorizationProvider authorizationProvider, ILoggerFactory? loggerFactory = null)
+    public SseClientTransport(SseClientTransportOptions transportOptions, ITokenProvider authorizationProvider, ILoggerFactory? loggerFactory = null)
     {
         Throw.IfNull(transportOptions);
         Throw.IfNull(authorizationProvider);

@@ -1,4 +1,5 @@
 using ModelContextProtocol.Types.Authentication;
+using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
 using System.Text.Json;
 
@@ -7,23 +8,39 @@ namespace ModelContextProtocol.Authentication;
 /// <summary>
 /// Provides utility methods for handling authentication in MCP clients.
 /// </summary>
-public static class AuthorizationHelpers
+public class AuthorizationHelpers
 {
+    private readonly HttpClient _httpClient;
+    
+    /// <summary>
+    /// Client name for IHttpClientFactory used by the AuthorizationHelpers.
+    /// </summary>
+    public const string HttpClientName = "ModelContextProtocol.Authentication";
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="AuthorizationHelpers"/> class.
+    /// </summary>
+    /// <param name="httpClientFactory">The HTTP client factory to use for creating HTTP clients.</param>
+    public AuthorizationHelpers(IHttpClientFactory httpClientFactory)
+    {
+        Throw.IfNull(httpClientFactory);
+        _httpClient = httpClientFactory.CreateClient(HttpClientName);
+    }
+
     /// <summary>
     /// Fetches the protected resource metadata from the provided URL.
     /// </summary>
     /// <param name="metadataUrl">The URL to fetch the metadata from.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>The fetched ProtectedResourceMetadata, or null if it couldn't be fetched.</returns>
-    private static async Task<ProtectedResourceMetadata?> FetchProtectedResourceMetadataAsync(
+    private async Task<ProtectedResourceMetadata?> FetchProtectedResourceMetadataAsync(
         Uri metadataUrl, 
         CancellationToken cancellationToken = default)
     {
-        using var httpClient = new HttpClient();
         try
         {
             var request = new HttpRequestMessage(HttpMethod.Get, metadataUrl);
-            var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+            var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
             
             var content = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
@@ -69,7 +86,7 @@ public static class AuthorizationHelpers
     /// <returns>The resource metadata if the resource matches the server, otherwise throws an exception.</returns>
     /// <exception cref="InvalidOperationException">Thrown when the response is not a 401, lacks a WWW-Authenticate header,
     /// lacks a resource_metadata parameter, the metadata can't be fetched, or the resource URI doesn't match the server URL.</exception>
-    public static async Task<ProtectedResourceMetadata> ExtractProtectedResourceMetadata(
+    public async Task<ProtectedResourceMetadata> ExtractProtectedResourceMetadata(
         HttpResponseMessage response,
         Uri serverUrl,
         CancellationToken cancellationToken = default)
@@ -154,7 +171,7 @@ public static class AuthorizationHelpers
                 return new KeyValuePair<string, string>(key, value);
             })
             .Where(kvp => !string.IsNullOrEmpty(kvp.Key))
-            .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+            .ToDictionary();
 
         if (paramDict.TryGetValue(parameterName, out var value))
         {
