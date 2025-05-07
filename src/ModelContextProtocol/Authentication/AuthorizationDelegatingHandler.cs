@@ -1,4 +1,5 @@
 using ModelContextProtocol.Authentication.Types;
+using ModelContextProtocol.Utils;
 using System.Net.Http.Headers;
 
 namespace ModelContextProtocol.Authentication;
@@ -9,7 +10,7 @@ namespace ModelContextProtocol.Authentication;
 public class AuthorizationDelegatingHandler : DelegatingHandler
 {
     private readonly IMcpAuthorizationProvider _authorizationProvider;
-    private string? _currentScheme;
+    private string _currentScheme;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AuthorizationDelegatingHandler"/> class.
@@ -31,7 +32,7 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
     /// </summary>
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        if (request.Headers.Authorization == null && _currentScheme != null)
+        if (request.Headers.Authorization == null)
         {
             await AddAuthorizationHeaderAsync(request, _currentScheme, cancellationToken);
         }
@@ -87,11 +88,9 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
                 {
                     var retryRequest = await CloneHttpRequestMessageAsync(request);
                     
-                    // Use the recommended scheme if provided, otherwise use our best match
-                    string schemeToUse = recommendedScheme ?? bestSchemeMatch;
-                    _currentScheme = !string.IsNullOrEmpty(recommendedScheme) ? recommendedScheme :  bestSchemeMatch;
-
-                    await AddAuthorizationHeaderAsync(retryRequest, schemeToUse, cancellationToken);
+                    _currentScheme = recommendedScheme ?? bestSchemeMatch;
+                    
+                    await AddAuthorizationHeaderAsync(retryRequest, _currentScheme, cancellationToken);
                     return await base.SendAsync(retryRequest, cancellationToken);
                 }
                 else
