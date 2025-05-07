@@ -191,7 +191,7 @@ internal sealed class StreamableHttpHandler(
         }
         else
         {
-            // "(uninitialized stateless id)" is not written anywhere. We delay writing th mcp-session-id
+            // "(uninitialized stateless id)" is not written anywhere. We delay writing the mcp-session-id
             // until after we receive the initialize request with the client info we need to serialize.
             sessionId = "(uninitialized stateless id)";
             ScheduleStatelessSessionIdWrite(context, transport);
@@ -199,7 +199,7 @@ internal sealed class StreamableHttpHandler(
 
         var session = await CreateSessionAsync(context, transport, sessionId);
 
-        // The HttpMcpSession is not stored between requests in stateless mode. Instead the session is recreated from the mcp-session-id.
+        // The HttpMcpSession is not stored between requests in stateless mode. Instead, the session is recreated from the mcp-session-id.
         if (!HttpServerTransportOptions.Stateless)
         {
             if (!Sessions.TryAdd(sessionId, session))
@@ -224,8 +224,8 @@ internal sealed class StreamableHttpHandler(
 
             if (statelessId is not null)
             {
-                mcpServerOptions.KnownClientInfo = statelessId.ClientInfo;
-                mcpServerOptions.KnownClientCapabilities = statelessId.Capabilities;
+                mcpServerOptions.KnownClientInfo = statelessId.ClientInfo ?? mcpServerOptions.KnownClientInfo;
+                mcpServerOptions.KnownClientCapabilities = statelessId.Capabilities ?? mcpServerOptions.KnownClientCapabilities;
             }
 
             if (HttpServerTransportOptions.ConfigureSessionOptions is { } configureSessionOptions)

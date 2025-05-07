@@ -3,7 +3,6 @@ using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils.Json;
 using Serilog;
-using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 

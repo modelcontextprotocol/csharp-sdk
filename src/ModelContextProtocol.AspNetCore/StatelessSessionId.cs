@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.AspNetCore;
 
-internal class StatelessSessionId
+internal sealed class StatelessSessionId
 {
     [JsonPropertyName("capabilities")]
     public ClientCapabilities? Capabilities { get; init; }
