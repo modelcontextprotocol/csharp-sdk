@@ -58,7 +58,10 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
     /// <param name="transportOptions">Configuration options for the transport.</param>
     /// <param name="authorizationProvider">The authorization provider to use for authentication.</param>
     /// <param name="loggerFactory">Logger factory for creating loggers used for diagnostic output during transport operations.</param>
-    public SseClientTransport(SseClientTransportOptions transportOptions, ITokenProvider authorizationProvider, ILoggerFactory? loggerFactory = null)
+    /// <param name="baseMessageHandler">Optional. The base message handler to use under the authorization handler. 
+    /// If null, a new <see cref="HttpClientHandler"/> will be used. This allows for custom HTTP client pipelines (e.g., from HttpClientFactory) 
+    /// to be used in conjunction with the token-based authentication provided by <paramref name="authorizationProvider"/>.</param>
+    public SseClientTransport(SseClientTransportOptions transportOptions, ITokenProvider authorizationProvider, ILoggerFactory? loggerFactory = null, HttpMessageHandler? baseMessageHandler = null)
     {
         Throw.IfNull(transportOptions);
         Throw.IfNull(authorizationProvider);
@@ -67,13 +70,11 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
         _loggerFactory = loggerFactory;
         Name = transportOptions.Name ?? transportOptions.Endpoint.ToString();
 
-        // Create an auth handler with the authorization provider
         var authHandler = new AuthorizationDelegatingHandler(authorizationProvider)
         {
-            InnerHandler = new HttpClientHandler()
+            InnerHandler = baseMessageHandler ?? new HttpClientHandler()
         };
         
-        // Create an HttpClient with the auth handler
         _httpClient = new HttpClient(authHandler);
         _ownsHttpClient = true;
     }
