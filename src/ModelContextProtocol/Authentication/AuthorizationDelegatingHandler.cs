@@ -160,10 +160,7 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
                 // Extract the scheme from the WWW-Authenticate header
                 // Format is typically: "Scheme param1=value1, param2=value2"
                 string scheme = authHeader.Split(SchemeSplitDelimiters, StringSplitOptions.RemoveEmptyEntries)[0];
-                if (!string.IsNullOrEmpty(scheme))
-                {
-                    serverSchemes.Add(scheme);
-                }
+                serverSchemes.Add(scheme);
             }
         }
         
