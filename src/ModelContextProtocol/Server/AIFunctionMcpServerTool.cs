@@ -280,7 +280,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             IEnumerable<AIContent> contentItems => new()
             {
                 Content = [.. contentItems.Select(static item => item.ToContent())],
-                IsError = contentItems.Any(item => item is ErrorContent)
+                IsError = contentItems.All(item => item is ErrorContent) && contentItems.Any()
             },
             
             IEnumerable<Content> contents => new()
