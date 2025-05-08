@@ -193,6 +193,30 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
         return newOptions;
     }
 
+    private static CallToolResponse ConvertAiContentEnumerableToCallToolResponse(IEnumerable<AIContent> contentItems)
+    {
+        List<Content> contentList = [];
+        bool allErrorContent = true;
+        bool hasAny = false;
+
+        foreach (var item in contentItems)
+        {
+            contentList.Add(item.ToContent());
+            hasAny = true;
+
+            if (allErrorContent && item is not ErrorContent)
+            {
+                allErrorContent = false;
+            }
+        }
+
+        return new()
+        {
+            Content = contentList,
+            IsError = allErrorContent && hasAny
+        };
+    }
+
     /// <summary>Gets the <see cref="AIFunction"/> wrapped by this tool.</summary>
     internal AIFunction AIFunction { get; }
 
@@ -277,11 +301,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
                 Content = [.. texts.Select(x => new Content() { Type = "text", Text = x ?? string.Empty })]
             },
             
-            IEnumerable<AIContent> contentItems => new()
-            {
-                Content = [.. contentItems.Select(static item => item.ToContent())],
-                IsError = contentItems.All(item => item is ErrorContent) && contentItems.Any()
-            },
+            IEnumerable<AIContent> contentItems => ConvertAiContentEnumerableToCallToolResponse(contentItems),
             
             IEnumerable<Content> contents => new()
             {
