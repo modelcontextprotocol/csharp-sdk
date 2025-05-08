@@ -78,7 +78,7 @@ public class BasicOAuthAuthorizationProvider : ITokenProvider
     }
 
     /// <inheritdoc />
-    public async Task<(bool Success, string? RecommendedScheme)> HandleUnauthorizedResponseAsync(
+    public async Task<McpUnauthorizedResponseResult> HandleUnauthorizedResponseAsync(
         HttpResponseMessage response, 
         string scheme,
         CancellationToken cancellationToken = default)
@@ -86,7 +86,7 @@ public class BasicOAuthAuthorizationProvider : ITokenProvider
         // This provider only supports Bearer scheme
         if (scheme != "Bearer")
         {
-            return (false, null);
+            return new McpUnauthorizedResponseResult(false, null);
         }
 
         try
@@ -111,17 +111,17 @@ public class BasicOAuthAuthorizationProvider : ITokenProvider
                     if (token != null)
                     {
                         _token = token;
-                        return (true, "Bearer");
+                        return new McpUnauthorizedResponseResult(true, "Bearer");
                     }
                 }
             }
             
-            return (false, null);
+            return new McpUnauthorizedResponseResult(false, null);
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error handling auth challenge: {ex.Message}");
-            return (false, null);
+            return new McpUnauthorizedResponseResult(false, null);
         }
     }
 

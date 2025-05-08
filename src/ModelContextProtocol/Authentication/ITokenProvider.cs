@@ -38,10 +38,10 @@ public interface ITokenProvider
     /// <param name="scheme">The authentication scheme that was used when the unauthorized response was received.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>
-    /// A tuple containing a boolean indicating if the provider was able to handle the unauthorized response,
-    /// and the authentication scheme that should be used for the next attempt.
+    /// A result object indicating if the provider was able to handle the unauthorized response,
+    /// and the authentication scheme that should be used for the next attempt, if any.
     /// </returns>
-    Task<(bool Success, string? RecommendedScheme)> HandleUnauthorizedResponseAsync(
+    Task<McpUnauthorizedResponseResult> HandleUnauthorizedResponseAsync(
         HttpResponseMessage response, 
         string scheme,
         CancellationToken cancellationToken = default);
