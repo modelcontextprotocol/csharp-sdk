@@ -9,13 +9,23 @@ namespace ModelContextProtocol.Authentication;
 public class ProtectedResourceMetadata
 {
     /// <summary>
+    /// Initializes a new instance of the <see cref="ProtectedResourceMetadata"/> class.
+    /// </summary>
+    public ProtectedResourceMetadata()
+    {
+        AuthorizationServers = [];
+        BearerMethodsSupported = [];
+        ScopesSupported = [];
+    }
+
+    /// <summary>
     /// The resource URI.
     /// </summary>
     /// <remarks>
     /// REQUIRED. The protected resource's resource identifier.
     /// </remarks>
     [JsonPropertyName("resource")]
-    public Uri Resource { get; set; } = null!;
+    public required Uri Resource { get; init; }
     
     /// <summary>
     /// The list of authorization server URIs.
@@ -25,7 +35,7 @@ public class ProtectedResourceMetadata
     /// for authorization servers that can be used with this protected resource.
     /// </remarks>
     [JsonPropertyName("authorization_servers")]
-    public List<Uri> AuthorizationServers { get; set; } = new();
+    public List<Uri> AuthorizationServers { get; set; }
     
     /// <summary>
     /// The supported bearer token methods.
@@ -35,7 +45,7 @@ public class ProtectedResourceMetadata
     /// to the protected resource. Defined values are ["header", "body", "query"].
     /// </remarks>
     [JsonPropertyName("bearer_methods_supported")]
-    public List<string> BearerMethodsSupported { get; set; } = new();
+    public List<string> BearerMethodsSupported { get; set; }
     
     /// <summary>
     /// The supported scopes.
@@ -45,7 +55,7 @@ public class ProtectedResourceMetadata
     /// requests to request access to this protected resource.
     /// </remarks>
     [JsonPropertyName("scopes_supported")]
-    public List<string> ScopesSupported { get; set; } = new();
+    public List<string> ScopesSupported { get; set; }
     
     /// <summary>
     /// URL of the protected resource's JSON Web Key (JWK) Set document.
