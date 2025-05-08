@@ -14,7 +14,7 @@ namespace ProtectedMCPClient;
 /// caching or any advanced token protection - it acquires a token and server metadata and holds it
 /// in memory as-is. This is NOT PRODUCTION READY and MUST NOT BE USED IN PRODUCTION.
 /// </summary>
-public class BasicOAuthAuthorizationProvider : ITokenProvider
+public class BasicOAuthProvider : IMcpCredentialProvider
 {
     /// <summary>
     /// The Bearer authentication scheme.
@@ -38,7 +38,7 @@ public class BasicOAuthAuthorizationProvider : ITokenProvider
     private AuthorizationServerMetadata? _authServerMetadata;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="BasicOAuthAuthorizationProvider"/> class.
+    /// Initializes a new instance of the <see cref="BasicOAuthProvider"/> class.
     /// </summary>
     /// <param name="serverUrl">The MCP server URL.</param>
     /// <param name="httpClient">The HTTP client to use for OAuth requests. If null, a default HttpClient will be used.</param>
@@ -47,7 +47,7 @@ public class BasicOAuthAuthorizationProvider : ITokenProvider
     /// <param name="clientSecret">OAuth client secret.</param>
     /// <param name="redirectUri">OAuth redirect URI.</param>
     /// <param name="scopes">OAuth scopes.</param>
-    public BasicOAuthAuthorizationProvider(
+    public BasicOAuthProvider(
         Uri serverUrl,
         HttpClient? httpClient,
         AuthorizationHelpers? authorizationHelpers,

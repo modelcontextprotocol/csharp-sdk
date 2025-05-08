@@ -25,7 +25,7 @@ class Program
         
         // Create the token provider with our custom HttpClient, 
         // letting the AuthorizationHelpers be created automatically
-        var tokenProvider = new BasicOAuthAuthorizationProvider(
+        var tokenProvider = new BasicOAuthProvider(
             new Uri(serverUrl),
             httpClient,
             null, // AuthorizationHelpers will be created automatically

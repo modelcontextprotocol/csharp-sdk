@@ -8,23 +8,23 @@ namespace ModelContextProtocol.Authentication;
 /// </summary>
 public class AuthorizationDelegatingHandler : DelegatingHandler
 {
-    private readonly ITokenProvider _authorizationProvider;
+    private readonly IMcpCredentialProvider _credentialProvider;
     private string _currentScheme;
     private static readonly char[] SchemeSplitDelimiters = { ' ', ',' };
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AuthorizationDelegatingHandler"/> class.
     /// </summary>
-    /// <param name="authorizationProvider">The provider that supplies authentication tokens.</param>
-    public AuthorizationDelegatingHandler(ITokenProvider authorizationProvider)
+    /// <param name="credentialProvider">The provider that supplies authentication tokens.</param>
+    public AuthorizationDelegatingHandler(IMcpCredentialProvider credentialProvider)
     {
-        Throw.IfNull(authorizationProvider);
+        Throw.IfNull(credentialProvider);
 
-        _authorizationProvider = authorizationProvider;
+        _credentialProvider = credentialProvider;
         
         // Select first supported scheme as the default
-        _currentScheme = _authorizationProvider.SupportedSchemes.FirstOrDefault() ??
-            throw new ArgumentException("Authorization provider must support at least one authentication scheme.", nameof(authorizationProvider));
+        _currentScheme = _credentialProvider.SupportedSchemes.FirstOrDefault() ??
+            throw new ArgumentException("Authorization provider must support at least one authentication scheme.", nameof(credentialProvider));
     }
 
     /// <summary>
@@ -65,14 +65,14 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
         string schemeUsed = originalRequest.Headers.Authorization?.Scheme ?? _currentScheme ?? string.Empty;
         if (!string.IsNullOrEmpty(schemeUsed) && 
             serverSchemes.Contains(schemeUsed) && 
-            _authorizationProvider.SupportedSchemes.Contains(schemeUsed))
+            _credentialProvider.SupportedSchemes.Contains(schemeUsed))
         {
             bestSchemeMatch = schemeUsed;
         }
         else
         {
             // Find the first server scheme that's in our supported set
-            bestSchemeMatch = serverSchemes.Intersect(_authorizationProvider.SupportedSchemes, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+            bestSchemeMatch = serverSchemes.Intersect(_credentialProvider.SupportedSchemes, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
 
             // If no match was found, either throw an exception or use default
             if (bestSchemeMatch is null)
@@ -81,11 +81,11 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
                 {
                     throw new InvalidOperationException(
                         $"No matching authentication scheme found. Server supports: [{string.Join(", ", serverSchemes)}], " +
-                        $"Provider supports: [{string.Join(", ", _authorizationProvider.SupportedSchemes)}].");
+                        $"Provider supports: [{string.Join(", ", _credentialProvider.SupportedSchemes)}].");
                 }
 
                 // If the server didn't specify any schemes, use the provider's default
-                bestSchemeMatch = _authorizationProvider.SupportedSchemes.FirstOrDefault();
+                bestSchemeMatch = _credentialProvider.SupportedSchemes.FirstOrDefault();
             }
         }
 
@@ -93,7 +93,7 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
         if (bestSchemeMatch != null)
         {
             // Try to handle the 401 response with the selected scheme
-            var (handled, recommendedScheme) = await _authorizationProvider.HandleUnauthorizedResponseAsync(
+            var (handled, recommendedScheme) = await _credentialProvider.HandleUnauthorizedResponseAsync(
                 response,
                 bestSchemeMatch,
                 cancellationToken).ConfigureAwait(false);
@@ -174,7 +174,7 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
     {
         if (request.RequestUri != null)
         {
-            var token = await _authorizationProvider.GetCredentialAsync(scheme, request.RequestUri, cancellationToken).ConfigureAwait(false);
+            var token = await _credentialProvider.GetCredentialAsync(scheme, request.RequestUri, cancellationToken).ConfigureAwait(false);
             if (!string.IsNullOrEmpty(token))
             {
                 request.Headers.Authorization = new AuthenticationHeaderValue(scheme, token);

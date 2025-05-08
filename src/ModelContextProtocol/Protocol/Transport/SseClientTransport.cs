@@ -56,21 +56,21 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
     /// Initializes a new instance of the <see cref="SseClientTransport"/> class with authentication support.
     /// </summary>
     /// <param name="transportOptions">Configuration options for the transport.</param>
-    /// <param name="authorizationProvider">The authorization provider to use for authentication.</param>
+    /// <param name="credentialProvider">The authorization provider to use for authentication.</param>
     /// <param name="loggerFactory">Logger factory for creating loggers used for diagnostic output during transport operations.</param>
     /// <param name="baseMessageHandler">Optional. The base message handler to use under the authorization handler. 
     /// If null, a new <see cref="HttpClientHandler"/> will be used. This allows for custom HTTP client pipelines (e.g., from HttpClientFactory) 
-    /// to be used in conjunction with the token-based authentication provided by <paramref name="authorizationProvider"/>.</param>
-    public SseClientTransport(SseClientTransportOptions transportOptions, ITokenProvider authorizationProvider, ILoggerFactory? loggerFactory = null, HttpMessageHandler? baseMessageHandler = null)
+    /// to be used in conjunction with the token-based authentication provided by <paramref name="credentialProvider"/>.</param>
+    public SseClientTransport(SseClientTransportOptions transportOptions, IMcpCredentialProvider credentialProvider, ILoggerFactory? loggerFactory = null, HttpMessageHandler? baseMessageHandler = null)
     {
         Throw.IfNull(transportOptions);
-        Throw.IfNull(authorizationProvider);
+        Throw.IfNull(credentialProvider);
 
         _options = transportOptions;
         _loggerFactory = loggerFactory;
         Name = transportOptions.Name ?? transportOptions.Endpoint.ToString();
 
-        var authHandler = new AuthorizationDelegatingHandler(authorizationProvider)
+        var authHandler = new AuthorizationDelegatingHandler(credentialProvider)
         {
             InnerHandler = baseMessageHandler ?? new HttpClientHandler()
         };
