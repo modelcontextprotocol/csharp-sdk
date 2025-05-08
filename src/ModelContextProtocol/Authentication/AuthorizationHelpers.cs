@@ -230,45 +230,35 @@ public class AuthorizationHelpers
     /// <returns>The value of the parameter, or null if not found.</returns>
     private static string? ParseWwwAuthenticateParameters(string parameters, string parameterName)
     {
-        // More efficient parameter parsing that reduces allocations
-        ReadOnlySpan<char> parametersSpan = parameters.AsSpan();
-        ReadOnlySpan<char> searchParam = parameterName.AsSpan();
-        
-        // Fast path for common case - direct parameter search
-        int paramNameIndex = parametersSpan.IndexOf(searchParam, StringComparison.OrdinalIgnoreCase);
-        if (paramNameIndex == -1)
+        if (!parameters.Contains(parameterName, StringComparison.OrdinalIgnoreCase))
         {
             return null;
         }
 
-        // Use span-based parsing to reduce allocations
         var parts = parameters.Split(',');
         foreach (var part in parts)
         {
-            ReadOnlySpan<char> trimmedPart = part.AsSpan().Trim();
-            int equalsIndex = trimmedPart.IndexOf('=');
-            
-            if (equalsIndex <= 0 || equalsIndex == trimmedPart.Length - 1)
+            int equalsIndex = part.IndexOf('=');
+            if (equalsIndex <= 0 || equalsIndex == part.Length - 1)
             {
                 continue;
             }
             
-            ReadOnlySpan<char> key = trimmedPart.Slice(0, equalsIndex).Trim();
-            
-            if (key.IsEmpty || !key.Equals(searchParam, StringComparison.OrdinalIgnoreCase))
+            string key = part.Substring(0, equalsIndex).Trim();
+
+            if (string.IsNullOrEmpty(key) || !string.Equals(key, parameterName, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
-            
-            ReadOnlySpan<char> value = trimmedPart.Slice(equalsIndex + 1).Trim();
-            
-            // Remove quotes if present
+
+            string value = part.Substring(equalsIndex + 1).Trim();
+
             if (value.Length >= 2 && value[0] == '"' && value[^1] == '"')
             {
-                value = value.Slice(1, value.Length - 2);
+                value = value.Substring(1, value.Length - 2);
             }
             
-            return value.ToString();
+            return value;
         }
         
         return null;
