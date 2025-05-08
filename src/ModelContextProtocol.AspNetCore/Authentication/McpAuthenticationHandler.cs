@@ -16,6 +16,7 @@ namespace ModelContextProtocol.AspNetCore.Authentication;
 public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationOptions>, IAuthenticationRequestHandler
 {
     private readonly IOptionsMonitor<McpAuthenticationOptions> _optionsMonitor;
+    private string _resourceMetadataPath;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="McpAuthenticationHandler"/> class.
@@ -27,6 +28,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         : base(options, logger, encoder)
     {
         _optionsMonitor = options;
+        _resourceMetadataPath = options.CurrentValue.ResourceMetadataUri.ToString();
     }
 
     /// <inheritdoc />
@@ -34,11 +36,9 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
     {
         // Check if the request is for the resource metadata endpoint
         string requestPath = Request.Path.Value ?? string.Empty;
-        var options = _optionsMonitor.CurrentValue;
-        string resourceMetadataPath = options.ResourceMetadataUri.ToString();
         
         // If the path doesn't match, let the request continue through the pipeline
-        if (!string.Equals(requestPath, resourceMetadataPath, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(requestPath, _resourceMetadataPath, StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
@@ -61,6 +61,13 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         var options = _optionsMonitor.CurrentValue;
         var resourceMetadataUri = options.ResourceMetadataUri;
         
+        // If the options have changed, update the cached path
+        string currentPath = resourceMetadataUri.ToString();
+        if (_resourceMetadataPath != currentPath)
+        {
+            _resourceMetadataPath = currentPath;
+        }
+        
         if (resourceMetadataUri.IsAbsoluteUri)
         {
             return resourceMetadataUri.ToString();
@@ -68,9 +75,8 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         
         // For relative URIs, combine with the base URL
         string baseUrl = GetBaseUrl();
-        string resourceMetadataPath = resourceMetadataUri.ToString();
         
-        if (!Uri.TryCreate(baseUrl + resourceMetadataPath, UriKind.Absolute, out var absoluteUri))
+        if (!Uri.TryCreate(baseUrl + _resourceMetadataPath, UriKind.Absolute, out var absoluteUri))
         {
             throw new InvalidOperationException("Could not create absolute URI for resource metadata.");
         }
