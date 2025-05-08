@@ -24,8 +24,8 @@ public class BasicOAuthAuthorizationProvider : ITokenProvider
     private readonly HttpClient _httpClient;
     private readonly AuthorizationHelpers _authorizationHelpers;
     
-    // Client name for IHttpClientFactory used by the BasicOAuthAuthorizationProvider
-    public const string HttpClientName = "ProtectedMCPClient.OAuth";
+    // Lazy-initialized shared HttpClient for when no client is provided
+    private static readonly Lazy<HttpClient> _defaultHttpClient = new(() => new HttpClient());
     
     private TokenContainer? _token;
     private AuthorizationServerMetadata? _authServerMetadata;
@@ -34,7 +34,7 @@ public class BasicOAuthAuthorizationProvider : ITokenProvider
     /// Initializes a new instance of the <see cref="BasicOAuthAuthorizationProvider"/> class.
     /// </summary>
     /// <param name="serverUrl">The MCP server URL.</param>
-    /// <param name="httpClientFactory">The HTTP client factory to use for creating HTTP clients.</param>
+    /// <param name="httpClient">The HTTP client to use for OAuth requests. If null, a default HttpClient will be used.</param>
     /// <param name="authorizationHelpers">The authorization helpers.</param>
     /// <param name="clientId">OAuth client ID.</param>
     /// <param name="clientSecret">OAuth client secret.</param>
@@ -42,19 +42,16 @@ public class BasicOAuthAuthorizationProvider : ITokenProvider
     /// <param name="scopes">OAuth scopes.</param>
     public BasicOAuthAuthorizationProvider(
         Uri serverUrl,
-        IHttpClientFactory httpClientFactory,
-        AuthorizationHelpers authorizationHelpers,
+        HttpClient? httpClient,
+        AuthorizationHelpers? authorizationHelpers,
         string clientId = "demo-client",
         string clientSecret = "",
         Uri? redirectUri = null,
         IEnumerable<string>? scopes = null)
     {
         _serverUrl = serverUrl ?? throw new ArgumentNullException(nameof(serverUrl));
-        if (httpClientFactory == null) throw new ArgumentNullException(nameof(httpClientFactory));
-        _authorizationHelpers = authorizationHelpers ?? throw new ArgumentNullException(nameof(authorizationHelpers));
-        
-        // Get the HttpClient once during construction instead of for each request
-        _httpClient = httpClientFactory.CreateClient(HttpClientName);
+        _httpClient = httpClient ?? _defaultHttpClient.Value;
+        _authorizationHelpers = authorizationHelpers ?? new AuthorizationHelpers(_httpClient);
         
         _redirectUri = redirectUri ?? new Uri("http://localhost:8080/callback");
         _scopes = scopes?.ToList() ?? [];

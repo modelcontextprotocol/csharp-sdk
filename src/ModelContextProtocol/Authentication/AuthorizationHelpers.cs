@@ -10,20 +10,15 @@ namespace ModelContextProtocol.Authentication;
 public class AuthorizationHelpers
 {
     private readonly HttpClient _httpClient;
-    
-    /// <summary>
-    /// Client name for IHttpClientFactory used by the AuthorizationHelpers.
-    /// </summary>
-    public const string HttpClientName = "ModelContextProtocol.Authentication";
+    private static readonly Lazy<HttpClient> _defaultHttpClient = new(() => new HttpClient());
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AuthorizationHelpers"/> class.
     /// </summary>
-    /// <param name="httpClientFactory">The HTTP client factory to use for creating HTTP clients.</param>
-    public AuthorizationHelpers(IHttpClientFactory httpClientFactory)
+    /// <param name="httpClient">The HTTP client to use for requests. If null, a default HttpClient will be used.</param>
+    public AuthorizationHelpers(HttpClient? httpClient = null)
     {
-        Throw.IfNull(httpClientFactory);
-        _httpClient = httpClientFactory.CreateClient(HttpClientName);
+        _httpClient = httpClient ?? _defaultHttpClient.Value;
     }
 
     /// <summary>
@@ -155,7 +150,7 @@ public class AuthorizationHelpers
                 var parts = p.Split(['='], 2);
                 if (parts.Length != 2)
                 {
-                    return new KeyValuePair<string, string>(string.Empty, string.Empty);
+                    return new KeyValuePair<string, string?>(string.Empty, null);
                 }
                 
                 var key = parts[0].Trim();
@@ -167,16 +162,11 @@ public class AuthorizationHelpers
                     value = value.Substring(1, value.Length - 2);
                 }
                 
-                return new KeyValuePair<string, string>(key, value);
+                return new KeyValuePair<string, string?>(key, value);
             })
             .Where(kvp => !string.IsNullOrEmpty(kvp.Key))
             .ToDictionary();
 
-        if (paramDict.TryGetValue(parameterName, out var value))
-        {
-            return value;
-        }
-
-        return null;
+        return paramDict.TryGetValue(parameterName, out var value) ? value : null;
     }
 }

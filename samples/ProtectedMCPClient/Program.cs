@@ -14,33 +14,21 @@ class Program
 
         var serverUrl = "http://localhost:7071/sse";
 
-        var services = new ServiceCollection();
-        services.AddHttpClient();
-        
+        // We can customize a shared HttpClient with a custom handler if desired
         var sharedHandler = new SocketsHttpHandler
         {
             PooledConnectionLifetime = TimeSpan.FromMinutes(2),
             PooledConnectionIdleTimeout = TimeSpan.FromMinutes(1)
         };
         
-        services.AddHttpClient(BasicOAuthAuthorizationProvider.HttpClientName)
-            .ConfigurePrimaryHttpMessageHandler(() => sharedHandler);
-            
-        services.AddHttpClient(AuthorizationHelpers.HttpClientName)
-            .ConfigurePrimaryHttpMessageHandler(() => sharedHandler);
+        var httpClient = new HttpClient(sharedHandler);
         
-        services.AddTransient<AuthorizationHelpers>();
-        
-        var serviceProvider = services.BuildServiceProvider();
-        
-        var httpClientFactory = serviceProvider.GetRequiredService<IHttpClientFactory>();
-        var authorizationHelpers = serviceProvider.GetRequiredService<AuthorizationHelpers>();
-
-        // Create the token provider with proper dependencies
+        // Create the token provider with our custom HttpClient, 
+        // letting the AuthorizationHelpers be created automatically
         var tokenProvider = new BasicOAuthAuthorizationProvider(
             new Uri(serverUrl),
-            httpClientFactory,
-            authorizationHelpers,
+            httpClient,
+            null, // AuthorizationHelpers will be created automatically
             clientId: "6ad97b5f-7a7b-413f-8603-7a3517d4adb8",
             redirectUri: new Uri("http://localhost:1179/callback"),
             scopes: ["api://167b4284-3f92-4436-92ed-38b38f83ae08/weather.read"]
@@ -57,7 +45,11 @@ class Program
                 Name = "Secure Weather Client"
             };
 
-            var transport = new SseClientTransport(transportOptions, tokenProvider);
+            // Create a transport with authentication support using the correct constructor parameters
+            var transport = new SseClientTransport(
+                transportOptions,
+                tokenProvider
+            );
             var client = await McpClientFactory.CreateAsync(transport);
 
             var tools = await client.ListToolsAsync();
