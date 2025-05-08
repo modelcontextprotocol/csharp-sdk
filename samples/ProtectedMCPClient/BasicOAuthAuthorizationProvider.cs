@@ -239,6 +239,12 @@ public class BasicOAuthAuthorizationProvider : ITokenProvider
     
     private Uri BuildAuthorizationUrl(AuthorizationServerMetadata authServerMetadata, string codeChallenge)
     {
+        if (authServerMetadata.AuthorizationEndpoint.Scheme != Uri.UriSchemeHttp &&
+            authServerMetadata.AuthorizationEndpoint.Scheme != Uri.UriSchemeHttps)
+        {
+            throw new ArgumentException("AuthorizationEndpoint must use HTTP or HTTPS.", nameof(authServerMetadata));
+        }
+
         var queryParams = HttpUtility.ParseQueryString(string.Empty);
         queryParams["client_id"] = _clientId;
         queryParams["redirect_uri"] = _redirectUri.ToString();
