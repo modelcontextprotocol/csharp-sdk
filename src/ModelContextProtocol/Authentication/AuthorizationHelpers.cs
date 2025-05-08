@@ -1,4 +1,5 @@
-using ModelContextProtocol.Utils;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Utils.Json;
 using System.Text.Json;
 
@@ -10,15 +11,18 @@ namespace ModelContextProtocol.Authentication;
 public class AuthorizationHelpers
 {
     private readonly HttpClient _httpClient;
+    private readonly ILogger _logger;
     private static readonly Lazy<HttpClient> _defaultHttpClient = new(() => new HttpClient());
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AuthorizationHelpers"/> class.
     /// </summary>
     /// <param name="httpClient">The HTTP client to use for requests. If null, a default HttpClient will be used.</param>
-    public AuthorizationHelpers(HttpClient? httpClient = null)
+    /// <param name="logger">The logger to use. If null, a NullLogger will be used.</param>
+    public AuthorizationHelpers(HttpClient? httpClient = null, ILogger? logger = null)
     {
         _httpClient = httpClient ?? _defaultHttpClient.Value;
+        _logger = logger ?? NullLogger.Instance;
     }
 
     /// <summary>
@@ -42,8 +46,9 @@ public class AuthorizationHelpers
                 McpJsonUtilities.JsonContext.Default.ProtectedResourceMetadata, 
                 cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            _logger.LogError(ex, $"Failed to fetch protected resource metadata from {metadataUrl}");
             return null;
         }
     }
