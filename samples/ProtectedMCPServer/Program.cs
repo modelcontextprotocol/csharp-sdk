@@ -81,11 +81,11 @@ builder.Services.AddMcpServer()
 .WithTools<WeatherTools>()
 .WithHttpTransport();
 
-builder.Services.AddSingleton(_ =>
+// Configure HttpClientFactory for weather.gov API
+builder.Services.AddHttpClient("WeatherApi", client =>
 {
-    var client = new HttpClient() { BaseAddress = new Uri("https://api.weather.gov") };
+    client.BaseAddress = new Uri("https://api.weather.gov");
     client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("weather-tool", "1.0"));
-    return client;
 });
 
 var app = builder.Build();

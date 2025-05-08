@@ -9,11 +9,18 @@ namespace ProtectedMCPServer.Tools;
 [McpServerToolType]
 public sealed class WeatherTools
 {
+    private readonly IHttpClientFactory _httpClientFactory;
+
+    public WeatherTools(IHttpClientFactory httpClientFactory)
+    {
+        _httpClientFactory = httpClientFactory;
+    }
+
     [McpServerTool, Description("Get weather alerts for a US state.")]
-    public static async Task<string> GetAlerts(
-        HttpClient client,
+    public async Task<string> GetAlerts(
         [Description("The US state to get alerts for. Use the 2 letter abbreviation for the state (e.g. NY).")] string state)
     {
+        var client = _httpClientFactory.CreateClient("WeatherApi");
         using var jsonDocument = await client.ReadJsonDocumentAsync($"/alerts/active/area/{state}");
         var jsonElement = jsonDocument.RootElement;
         var alerts = jsonElement.GetProperty("features").EnumerateArray();
@@ -37,11 +44,11 @@ public sealed class WeatherTools
     }
 
     [McpServerTool, Description("Get weather forecast for a location.")]
-    public static async Task<string> GetForecast(
-        HttpClient client,
+    public async Task<string> GetForecast(
         [Description("Latitude of the location.")] double latitude,
         [Description("Longitude of the location.")] double longitude)
     {
+        var client = _httpClientFactory.CreateClient("WeatherApi");
         var pointUrl = string.Create(CultureInfo.InvariantCulture, $"/points/{latitude},{longitude}");
         using var jsonDocument = await client.ReadJsonDocumentAsync(pointUrl);
         var forecastUrl = jsonDocument.RootElement.GetProperty("properties").GetProperty("forecast").GetString()
