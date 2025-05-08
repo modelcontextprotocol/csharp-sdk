@@ -96,7 +96,7 @@ public class AuthorizationHelpers
         }
 
         // Extract the WWW-Authenticate header
-        if (!response.Headers.WwwAuthenticate.Any())
+        if (response.Headers.WwwAuthenticate.Count == 0)
         {
             throw new InvalidOperationException("The 401 response does not contain a WWW-Authenticate header");
         }
