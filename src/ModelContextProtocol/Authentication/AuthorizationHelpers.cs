@@ -37,7 +37,7 @@ public class AuthorizationHelpers
             var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
             
-            var content = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+            using var content = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
             return await JsonSerializer.DeserializeAsync(content, 
                 McpJsonUtilities.JsonContext.Default.ProtectedResourceMetadata, 
                 cancellationToken).ConfigureAwait(false);
