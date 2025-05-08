@@ -12,6 +12,22 @@ public class McpAuthenticationOptions : AuthenticationSchemeOptions
     private static readonly Uri DefaultResourceMetadataUri = new("/.well-known/oauth-protected-resource", UriKind.Relative);
 
     /// <summary>
+    /// Initializes a new instance of the <see cref="McpAuthenticationOptions"/> class.
+    /// </summary>
+    public McpAuthenticationOptions()
+    {
+        // Initialize the base property instead of hiding it with 'new'
+        base.ForwardAuthenticate = "Bearer";
+        
+        // Initialize properties in constructor instead of using property initializers
+        ResourceMetadataUri = DefaultResourceMetadataUri;
+        ResourceMetadata = new ProtectedResourceMetadata();
+        
+        // Initialize events
+        Events = new McpAuthenticationEvents();
+    }
+
+    /// <summary>
     /// Gets or sets the events used to handle authentication events.
     /// </summary>
     public new McpAuthenticationEvents Events
@@ -21,20 +37,12 @@ public class McpAuthenticationOptions : AuthenticationSchemeOptions
     }
 
     /// <summary>
-    /// Gets or sets the scheme to use for forward authentication.
-    /// </summary>
-    /// <remarks>
-    /// This is currently set as a constant to avoid adding a package dependency.
-    /// </remarks>
-    public new string ForwardAuthenticate { get; set; } = "Bearer";
-
-    /// <summary>
     /// The URI to the resource metadata document.
     /// </summary>
     /// <remarks>
     /// This URI will be included in the WWW-Authenticate header when a 401 response is returned.
     /// </remarks>
-    public Uri ResourceMetadataUri { get; set; } = DefaultResourceMetadataUri;
+    public Uri ResourceMetadataUri { get; set; }
 
     /// <summary>
     /// Gets or sets the static protected resource metadata.
@@ -44,7 +52,7 @@ public class McpAuthenticationOptions : AuthenticationSchemeOptions
     /// supported scopes, and other information needed for clients to authenticate.
     /// This property is used when <see cref="ResourceMetadataProvider"/> is not set.
     /// </remarks>
-    public ProtectedResourceMetadata ResourceMetadata { get; set; } = new ProtectedResourceMetadata();
+    public ProtectedResourceMetadata ResourceMetadata { get; set; }
 
     /// <summary>
     /// Gets or sets a delegate that dynamically provides resource metadata based on the HTTP context.
