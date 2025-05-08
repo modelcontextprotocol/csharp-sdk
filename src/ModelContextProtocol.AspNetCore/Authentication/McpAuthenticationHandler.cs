@@ -43,8 +43,9 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
             return false;
         }
 
-        // This is a request for resource metadata - handle it
-        await HandleResourceMetadataRequestAsync();
+        // Use the request's cancellation token if available
+        var cancellationToken = Request.HttpContext.RequestAborted;
+        await HandleResourceMetadataRequestAsync(cancellationToken);
         return true;
     }
 
@@ -87,7 +88,8 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
     /// <summary>
     /// Handles the resource metadata request.
     /// </summary>
-    private async Task HandleResourceMetadataRequestAsync()
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    private Task HandleResourceMetadataRequestAsync(CancellationToken cancellationToken = default)
     {
         // Get resource metadata from options, using the dynamic provider if available
         var options = _optionsMonitor.CurrentValue;
@@ -113,7 +115,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
             metadata, 
             McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(ProtectedResourceMetadata)));
         
-        await Response.WriteAsync(json);
+        return Response.WriteAsync(json, cancellationToken);
     }
 
     /// <inheritdoc />
