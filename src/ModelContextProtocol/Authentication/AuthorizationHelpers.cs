@@ -15,7 +15,7 @@ public class AuthorizationHelpers
     private static readonly Lazy<HttpClient> _defaultHttpClient = new(() => new HttpClient());
     
     /// <summary>
-    /// The common well-known path prefix for resource metadata.
+    /// The well-known path prefix for resource metadata.
     /// </summary>
     private static readonly string WellKnownPathPrefix = "/.well-known/";
 
@@ -82,30 +82,27 @@ public class AuthorizationHelpers
     }
     
     /// <summary>
-    /// Normalizes a URI for consistent comparison by removing ports and trailing slashes.
+    /// Normalizes a URI for consistent comparison.
     /// </summary>
     /// <param name="uri">The URI to normalize.</param>
     /// <returns>A normalized string representation of the URI.</returns>
     private static string NormalizeUri(Uri uri)
     {
-        // Create a builder that will normalize the URI
         var builder = new UriBuilder(uri)
         {
-            Port = -1  // Always remove port specification regardless of whether it's default or not
+            Port = -1  // Always remove port
         };
         
-        // Ensure consistent path representation (remove trailing slash if it's just "/")
         if (builder.Path == "/")
         {
             builder.Path = string.Empty;
         }
-        // Remove trailing slash for other paths
         else if (builder.Path.Length > 1 && builder.Path.EndsWith("/"))
         {
             builder.Path = builder.Path.TrimEnd('/');
         }
         
-        return builder.Uri.ToString().TrimEnd('/');
+        return builder.Uri.ToString();
     }
 
     /// <summary>
@@ -116,38 +113,27 @@ public class AuthorizationHelpers
     /// <exception cref="InvalidOperationException">Thrown when the URI does not contain a valid well-known path.</exception>
     private Uri ExtractBaseResourceUri(Uri metadataUri)
     {
-        // Get the absolute URI path to check for well-known path
-        string absoluteUriString = metadataUri.AbsoluteUri;
+        // Check for well-known path
+        int wellKnownIndex = metadataUri.AbsolutePath.IndexOf(WellKnownPathPrefix, StringComparison.OrdinalIgnoreCase);
         
-        // Find the well-known path index directly with string operations
-        // This avoids the allocation from WellKnownPathPrefix.AsSpan()
-        int wellKnownIndex = absoluteUriString.IndexOf(WellKnownPathPrefix, StringComparison.OrdinalIgnoreCase);
-        
-        // Validate that the URL contains the well-known path
-        if (wellKnownIndex <= 0)
+        // Validate the URL contains a valid well-known path
+        if (wellKnownIndex < 0)
         {
             throw new InvalidOperationException(
                 $"Resource metadata URL '{metadataUri}' does not contain a valid well-known path format (/.well-known/)");
         }
         
-        // Get just the path segment before .well-known directly on the URI
-        int wellKnownPathIndex = metadataUri.AbsolutePath.IndexOf(WellKnownPathPrefix, StringComparison.OrdinalIgnoreCase);
-        
-        // Create a new URI builder using the original scheme and authority
+        // Create URI with just the base part
         var baseUriBuilder = new UriBuilder(metadataUri)
         {
-            Path = wellKnownPathIndex > 0 ? metadataUri.AbsolutePath.Substring(0, wellKnownPathIndex) : "/",
+            Path = wellKnownIndex > 0 ? metadataUri.AbsolutePath.Substring(0, wellKnownIndex) : "/",
             Fragment = string.Empty,
-            Query = string.Empty
+            Query = string.Empty,
+            Port = -1 // Remove port
         };
         
-        // Ensure the path ends with exactly one slash for consistency
-        string path = baseUriBuilder.Path;
-        if (string.IsNullOrEmpty(path))
-        {
-            baseUriBuilder.Path = "/";
-        }
-        else if (!path.EndsWith("/"))
+        // Ensure path ends with a slash
+        if (!baseUriBuilder.Path.EndsWith("/"))
         {
             baseUriBuilder.Path += "/";
         }
@@ -230,35 +216,34 @@ public class AuthorizationHelpers
     /// <returns>The value of the parameter, or null if not found.</returns>
     private static string? ParseWwwAuthenticateParameters(string parameters, string parameterName)
     {
-        if (!parameters.Contains(parameterName, StringComparison.OrdinalIgnoreCase))
+        if (parameters.IndexOf(parameterName, StringComparison.OrdinalIgnoreCase) == -1)
         {
             return null;
         }
 
-        var parts = parameters.Split(',');
-        foreach (var part in parts)
+        foreach (var part in parameters.Split(','))
         {
-            int equalsIndex = part.IndexOf('=');
-            if (equalsIndex <= 0 || equalsIndex == part.Length - 1)
+            string trimmedPart = part.Trim();
+            int equalsIndex = trimmedPart.IndexOf('=');
+            
+            if (equalsIndex <= 0)
             {
                 continue;
             }
             
-            string key = part.Substring(0, equalsIndex).Trim();
-
-            if (string.IsNullOrEmpty(key) || !string.Equals(key, parameterName, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            string value = part.Substring(equalsIndex + 1).Trim();
-
-            if (value.Length >= 2 && value[0] == '"' && value[^1] == '"')
-            {
-                value = value.Substring(1, value.Length - 2);
-            }
+            string key = trimmedPart.Substring(0, equalsIndex).Trim();
             
-            return value;
+            if (string.Equals(key, parameterName, StringComparison.OrdinalIgnoreCase))
+            {
+                string value = trimmedPart.Substring(equalsIndex + 1).Trim();
+                
+                if (value.StartsWith("\"") && value.EndsWith("\""))
+                {
+                    value = value.Substring(1, value.Length - 2);
+                }
+                
+                return value;
+            }
         }
         
         return null;
