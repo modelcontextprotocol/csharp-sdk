@@ -193,30 +193,6 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
         return newOptions;
     }
 
-    private static CallToolResponse ConvertAiContentEnumerableToCallToolResponse(IEnumerable<AIContent> contentItems)
-    {
-        List<Content> contentList = [];
-        bool allErrorContent = true;
-        bool hasAny = false;
-
-        foreach (var item in contentItems)
-        {
-            contentList.Add(item.ToContent());
-            hasAny = true;
-
-            if (allErrorContent && item is not ErrorContent)
-            {
-                allErrorContent = false;
-            }
-        }
-
-        return new()
-        {
-            Content = contentList,
-            IsError = allErrorContent && hasAny
-        };
-    }
-
     /// <summary>Gets the <see cref="AIFunction"/> wrapped by this tool.</summary>
     internal AIFunction AIFunction { get; }
 
@@ -301,7 +277,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
                 Content = [.. texts.Select(x => new Content() { Type = "text", Text = x ?? string.Empty })]
             },
             
-            IEnumerable<AIContent> contentItems => ConvertAiContentEnumerableToCallToolResponse(contentItems),
+            IEnumerable<AIContent> contentItems => ConvertAIContentEnumerableToCallToolResponse(contentItems),
             
             IEnumerable<Content> contents => new()
             {
@@ -321,4 +297,27 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
         };
     }
 
+    private static CallToolResponse ConvertAIContentEnumerableToCallToolResponse(IEnumerable<AIContent> contentItems)
+    {
+        List<Content> contentList = [];
+        bool allErrorContent = true;
+        bool hasAny = false;
+
+        foreach (var item in contentItems)
+        {
+            contentList.Add(item.ToContent());
+            hasAny = true;
+
+            if (allErrorContent && item is not ErrorContent)
+            {
+                allErrorContent = false;
+            }
+        }
+
+        return new()
+        {
+            Content = contentList,
+            IsError = allErrorContent && hasAny
+        };
+    }
 }
