@@ -20,7 +20,7 @@ public class McpAuthenticationOptions : AuthenticationSchemeOptions
     {
         base.ForwardAuthenticate = "Bearer";
         ResourceMetadataUri = DefaultResourceMetadataUri;
-        _resourceMetadata = new ProtectedResourceMetadata();
+        _resourceMetadata = new ProtectedResourceMetadata() { Resource = new Uri("http://localhost") };
         Events = new McpAuthenticationEvents();
     }
 
@@ -47,7 +47,7 @@ public class McpAuthenticationOptions : AuthenticationSchemeOptions
     /// <remarks>
     /// This contains the OAuth metadata for the protected resource, including authorization servers,
     /// supported scopes, and other information needed for clients to authenticate.
-    /// Setting this property will automatically update the <see cref="ResourceMetadataProvider"/> 
+    /// Setting this property will automatically update the <see cref="ProtectedResourceMetadataProvider"/> 
     /// to return this static instance.
     /// </remarks>
     public ProtectedResourceMetadata ResourceMetadata
@@ -55,7 +55,7 @@ public class McpAuthenticationOptions : AuthenticationSchemeOptions
         get => _resourceMetadata;
         set
         {
-            _resourceMetadata = value ?? new ProtectedResourceMetadata();
+            _resourceMetadata = value ?? new ProtectedResourceMetadata() { Resource = new Uri("http://localhost") };
             // When static metadata is set, update the provider to use it
             _resourceMetadataProvider = _ => _resourceMetadata;
         }
@@ -69,7 +69,7 @@ public class McpAuthenticationOptions : AuthenticationSchemeOptions
     /// allowing dynamic customization based on the caller or other contextual information.
     /// This takes precedence over the static <see cref="ResourceMetadata"/> property.
     /// </remarks>
-    public Func<HttpContext, ProtectedResourceMetadata>? ResourceMetadataProvider
+    public Func<HttpContext, ProtectedResourceMetadata>? ProtectedResourceMetadataProvider
     {
         get => _resourceMetadataProvider;
         set => _resourceMetadataProvider = value ?? (_ => _resourceMetadata);
@@ -85,7 +85,7 @@ public class McpAuthenticationOptions : AuthenticationSchemeOptions
     /// </remarks>
     public McpAuthenticationOptions UseStaticResourceMetadata(ProtectedResourceMetadata metadata)
     {
-        ResourceMetadata = metadata ?? new ProtectedResourceMetadata();
+        ResourceMetadata = metadata ?? new ProtectedResourceMetadata() { Resource = new Uri("http://localhost") };
         return this;
     }
 
@@ -95,11 +95,11 @@ public class McpAuthenticationOptions : AuthenticationSchemeOptions
     /// <param name="provider">A delegate that returns resource metadata for a given HTTP context.</param>
     /// <returns>The current options instance for method chaining.</returns>
     /// <remarks>
-    /// This is a convenience method equivalent to setting the <see cref="ResourceMetadataProvider"/> property.
+    /// This is a convenience method equivalent to setting the <see cref="ProtectedResourceMetadataProvider"/> property.
     /// </remarks>
     public McpAuthenticationOptions UseDynamicResourceMetadata(Func<HttpContext, ProtectedResourceMetadata> provider)
     {
-        ResourceMetadataProvider = provider ?? throw new ArgumentNullException(nameof(provider));
+        ProtectedResourceMetadataProvider = provider ?? throw new ArgumentNullException(nameof(provider));
         return this;
     }
 

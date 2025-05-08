@@ -57,18 +57,19 @@ builder.Services.AddAuthentication(options =>
 })
 .AddMcp(options =>
 {
-    options.ResourceMetadataProvider = context => 
+    options.ProtectedResourceMetadataProvider = context => 
     {
         var metadata = new ProtectedResourceMetadata
         {
+            Resource = new Uri("http://localhost"),
             BearerMethodsSupported = { "header" },
             ResourceDocumentation = new Uri("https://docs.example.com/api/weather"),
             AuthorizationServers = { new Uri($"{instance}{tenantId}/v2.0") }
         };
 
-        metadata.ScopesSupported.AddRange(new[] {
+        metadata.ScopesSupported.AddRange([
             "api://167b4284-3f92-4436-92ed-38b38f83ae08/weather.read" 
-        });
+        ]);
         
         return metadata;
     };

@@ -98,15 +98,12 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         // Create a copy to avoid modifying the original
         var metadata = new ProtectedResourceMetadata
         {
+            Resource = resourceMetadata.Resource ?? new Uri(GetBaseUrl()),
             AuthorizationServers = [.. resourceMetadata.AuthorizationServers],
             BearerMethodsSupported = [.. resourceMetadata.BearerMethodsSupported],
             ScopesSupported = [.. resourceMetadata.ScopesSupported],
-            ResourceDocumentation = resourceMetadata.ResourceDocumentation,
-            Resource = resourceMetadata.Resource
+            ResourceDocumentation = resourceMetadata.ResourceDocumentation
         };
-        
-        // Set default resource if not set
-        metadata.Resource ??= new Uri(GetBaseUrl());
         
         Response.StatusCode = StatusCodes.Status200OK;
         Response.ContentType = "application/json";

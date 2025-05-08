@@ -31,8 +31,7 @@ public class BasicOAuthAuthorizationProvider : ITokenProvider
     
     // Lazy-initialized shared HttpClient for when no client is provided
     private static readonly Lazy<HttpClient> _defaultHttpClient = new(() => new HttpClient());
-    
-    // Cached JsonSerializerOptions to avoid recreating it for each deserialization
+
     private static readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
     
     private TokenContainer? _token;

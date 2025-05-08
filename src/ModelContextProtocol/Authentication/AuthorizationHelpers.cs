@@ -13,6 +13,11 @@ public class AuthorizationHelpers
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
     private static readonly Lazy<HttpClient> _defaultHttpClient = new(() => new HttpClient());
+    
+    /// <summary>
+    /// The common well-known path prefix for resource metadata.
+    /// </summary>
+    private static readonly string WellKnownPathPrefix = "/.well-known/";
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AuthorizationHelpers"/> class.
@@ -54,25 +59,100 @@ public class AuthorizationHelpers
     }
 
     /// <summary>
-    /// Verifies that the resource URI in the metadata matches the server URL.
+    /// Verifies that the resource URI in the metadata exactly matches the server URL as required by the RFC.
     /// </summary>
     /// <param name="protectedResourceMetadata">The metadata to verify.</param>
-    /// <param name="serverUrl">The server URL to compare against.</param>
-    /// <returns>True if the resource URI matches the server, otherwise false.</returns>
-    private static bool VerifyResourceMatch(ProtectedResourceMetadata protectedResourceMetadata, Uri serverUrl)
+    /// <param name="resourceLocation">The server URL to compare against.</param>
+    /// <returns>True if the resource URI exactly matches the server, otherwise false.</returns>
+    private static bool VerifyResourceMatch(ProtectedResourceMetadata protectedResourceMetadata, Uri resourceLocation)
     {
-        if (protectedResourceMetadata.Resource == null || serverUrl == null)
+        if (protectedResourceMetadata.Resource == null || resourceLocation == null)
         {
             return false;
         }
 
-        // Compare hosts using Uri properties directly
-        return Uri.Compare(
-            protectedResourceMetadata.Resource, 
-            serverUrl, 
-            UriComponents.Host, 
-            UriFormat.UriEscaped, 
-            StringComparison.OrdinalIgnoreCase) == 0;
+        // Per RFC: The resource value must be identical to the URL that the client used
+        // to make the request to the resource server. Compare entire URIs, not just the host.
+        
+        // Normalize the URIs to ensure consistent comparison
+        string normalizedMetadataResource = NormalizeUri(protectedResourceMetadata.Resource);
+        string normalizedResourceLocation = NormalizeUri(resourceLocation);
+        
+        return string.Equals(normalizedMetadataResource, normalizedResourceLocation, StringComparison.OrdinalIgnoreCase);
+    }
+    
+    /// <summary>
+    /// Normalizes a URI for consistent comparison by removing ports and trailing slashes.
+    /// </summary>
+    /// <param name="uri">The URI to normalize.</param>
+    /// <returns>A normalized string representation of the URI.</returns>
+    private static string NormalizeUri(Uri uri)
+    {
+        // Create a builder that will normalize the URI
+        var builder = new UriBuilder(uri)
+        {
+            Port = -1  // Always remove port specification regardless of whether it's default or not
+        };
+        
+        // Ensure consistent path representation (remove trailing slash if it's just "/")
+        if (builder.Path == "/")
+        {
+            builder.Path = string.Empty;
+        }
+        // Remove trailing slash for other paths
+        else if (builder.Path.Length > 1 && builder.Path.EndsWith("/"))
+        {
+            builder.Path = builder.Path.TrimEnd('/');
+        }
+        
+        return builder.Uri.ToString().TrimEnd('/');
+    }
+
+    /// <summary>
+    /// Extracts the base resource URI from a well-known path URL.
+    /// </summary>
+    /// <param name="metadataUri">The metadata URI containing a well-known path.</param>
+    /// <returns>The base URI without the well-known path component.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the URI does not contain a valid well-known path.</exception>
+    private Uri ExtractBaseResourceUri(Uri metadataUri)
+    {
+        // Get the absolute URI path to check for well-known path
+        string absoluteUriString = metadataUri.AbsoluteUri;
+        
+        // Find the well-known path index directly with string operations
+        // This avoids the allocation from WellKnownPathPrefix.AsSpan()
+        int wellKnownIndex = absoluteUriString.IndexOf(WellKnownPathPrefix, StringComparison.OrdinalIgnoreCase);
+        
+        // Validate that the URL contains the well-known path
+        if (wellKnownIndex <= 0)
+        {
+            throw new InvalidOperationException(
+                $"Resource metadata URL '{metadataUri}' does not contain a valid well-known path format (/.well-known/)");
+        }
+        
+        // Get just the path segment before .well-known directly on the URI
+        int wellKnownPathIndex = metadataUri.AbsolutePath.IndexOf(WellKnownPathPrefix, StringComparison.OrdinalIgnoreCase);
+        
+        // Create a new URI builder using the original scheme and authority
+        var baseUriBuilder = new UriBuilder(metadataUri)
+        {
+            Path = wellKnownPathIndex > 0 ? metadataUri.AbsolutePath.Substring(0, wellKnownPathIndex) : "/",
+            Fragment = string.Empty,
+            Query = string.Empty
+        };
+        
+        // Ensure the path ends with exactly one slash for consistency
+        string path = baseUriBuilder.Path;
+        if (string.IsNullOrEmpty(path))
+        {
+            baseUriBuilder.Path = "/";
+        }
+        else if (!path.EndsWith("/"))
+        {
+            baseUriBuilder.Path += "/";
+        }
+        
+        return baseUriBuilder.Uri;
     }
 
     /// <summary>
@@ -105,16 +185,10 @@ public class AuthorizationHelpers
         string? resourceMetadataUrl = null;
         foreach (var header in response.Headers.WwwAuthenticate)
         {
-            if (header.Scheme.Equals("Bearer", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(header.Scheme, "Bearer", StringComparison.OrdinalIgnoreCase) && 
+                !string.IsNullOrEmpty(header.Parameter))
             {
-                var parameters = header.Parameter;
-                if (string.IsNullOrEmpty(parameters))
-                {
-                    continue;
-                }
-
-                // Parse the parameters to find resource_metadata
-                resourceMetadataUrl = ParseWwwAuthenticateParameters(parameters, "resource_metadata");
+                resourceMetadataUrl = ParseWwwAuthenticateParameters(header.Parameter, "resource_metadata");
                 if (resourceMetadataUrl != null)
                 {
                     break;
@@ -129,11 +203,20 @@ public class AuthorizationHelpers
 
         Uri metadataUri = new(resourceMetadataUrl);
         
-        var metadata = await FetchProtectedResourceMetadataAsync(metadataUri, cancellationToken).ConfigureAwait(false) ?? throw new InvalidOperationException($"Failed to fetch resource metadata from {resourceMetadataUrl}");
-        if (!VerifyResourceMatch(metadata, serverUrl))
+        var metadata = await FetchProtectedResourceMetadataAsync(metadataUri, cancellationToken).ConfigureAwait(false);
+        if (metadata == null)
+        {
+            throw new InvalidOperationException($"Failed to fetch resource metadata from {resourceMetadataUrl}");
+        }
+        
+        // Extract the base URI from the metadata URL
+        Uri urlToValidate = ExtractBaseResourceUri(metadataUri);
+        _logger.LogDebug($"Validating resource metadata against base URL: {urlToValidate}");
+        
+        if (!VerifyResourceMatch(metadata, urlToValidate))
         {
             throw new InvalidOperationException(
-                $"Resource URI in metadata ({metadata.Resource}) does not match the server URI ({serverUrl})");
+                $"Resource URI in metadata ({metadata.Resource}) does not match the expected URI ({urlToValidate})");
         }
 
         return metadata;
@@ -147,38 +230,47 @@ public class AuthorizationHelpers
     /// <returns>The value of the parameter, or null if not found.</returns>
     private static string? ParseWwwAuthenticateParameters(string parameters, string parameterName)
     {
-        // Handle parameters in the format: param1="value1", param2="value2"
-        var paramParts = parameters.Split(',');
-        Dictionary<string, string?> paramDict = new(paramParts.Length);
+        // More efficient parameter parsing that reduces allocations
+        ReadOnlySpan<char> parametersSpan = parameters.AsSpan();
+        ReadOnlySpan<char> searchParam = parameterName.AsSpan();
         
-        foreach (var part in paramParts)
+        // Fast path for common case - direct parameter search
+        int paramNameIndex = parametersSpan.IndexOf(searchParam, StringComparison.OrdinalIgnoreCase);
+        if (paramNameIndex == -1)
         {
-            var trimmedPart = part.Trim();
-            var keyValuePair = trimmedPart.Split(['='], 2);
-            
-            if (keyValuePair.Length != 2)
-            {
-                continue;
-            }
-            
-            var key = keyValuePair[0].Trim();
-            if (string.IsNullOrEmpty(key))
-            {
-                continue;
-            }
-            
-            var value = keyValuePair[1].Trim();
-            
-            // Remove surrounding quotes if present
-            if (value.Length >= 2 && value[0] == '"' && value[^1] == '"')
-            {
-                value = value.Substring(1, value.Length - 2);
-            }
-            
-            paramDict[key] = value;
+            return null;
         }
 
-        paramDict.TryGetValue(parameterName, out var result);
-        return result;
+        // Use span-based parsing to reduce allocations
+        var parts = parameters.Split(',');
+        foreach (var part in parts)
+        {
+            ReadOnlySpan<char> trimmedPart = part.AsSpan().Trim();
+            int equalsIndex = trimmedPart.IndexOf('=');
+            
+            if (equalsIndex <= 0 || equalsIndex == trimmedPart.Length - 1)
+            {
+                continue;
+            }
+            
+            ReadOnlySpan<char> key = trimmedPart.Slice(0, equalsIndex).Trim();
+            
+            if (key.IsEmpty || !key.Equals(searchParam, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            
+            ReadOnlySpan<char> value = trimmedPart.Slice(equalsIndex + 1).Trim();
+            
+            // Remove quotes if present
+            if (value.Length >= 2 && value[0] == '"' && value[^1] == '"')
+            {
+                value = value.Slice(1, value.Length - 2);
+            }
+            
+            return value.ToString();
+        }
+        
+        return null;
     }
 }
