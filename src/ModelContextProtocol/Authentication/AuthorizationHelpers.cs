@@ -148,30 +148,37 @@ public class AuthorizationHelpers
     private static string? ParseWwwAuthenticateParameters(string parameters, string parameterName)
     {
         // Handle parameters in the format: param1="value1", param2="value2"
-        var paramDict = parameters.Split(',')
-            .Select(p => p.Trim())
-            .Select(p => 
+        var paramParts = parameters.Split(',');
+        Dictionary<string, string?> paramDict = new(paramParts.Length);
+        
+        foreach (var part in paramParts)
+        {
+            var trimmedPart = part.Trim();
+            var keyValuePair = trimmedPart.Split(['='], 2);
+            
+            if (keyValuePair.Length != 2)
             {
-                var parts = p.Split(['='], 2);
-                if (parts.Length != 2)
-                {
-                    return new KeyValuePair<string, string?>(string.Empty, null);
-                }
-                
-                var key = parts[0].Trim();
-                var value = parts[1].Trim();
-                
-                // Remove surrounding quotes if present
-                if (value.StartsWith("\"") && value.EndsWith("\""))
-                {
-                    value = value.Substring(1, value.Length - 2);
-                }
-                
-                return new KeyValuePair<string, string?>(key, value);
-            })
-            .Where(kvp => !string.IsNullOrEmpty(kvp.Key))
-            .ToDictionary();
+                continue;
+            }
+            
+            var key = keyValuePair[0].Trim();
+            if (string.IsNullOrEmpty(key))
+            {
+                continue;
+            }
+            
+            var value = keyValuePair[1].Trim();
+            
+            // Remove surrounding quotes if present
+            if (value.Length >= 2 && value[0] == '"' && value[^1] == '"')
+            {
+                value = value.Substring(1, value.Length - 2);
+            }
+            
+            paramDict[key] = value;
+        }
 
-        return paramDict.TryGetValue(parameterName, out var value) ? value : null;
+        paramDict.TryGetValue(parameterName, out var result);
+        return result;
     }
 }
