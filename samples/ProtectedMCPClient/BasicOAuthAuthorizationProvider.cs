@@ -16,6 +16,11 @@ namespace ProtectedMCPClient;
 /// </summary>
 public class BasicOAuthAuthorizationProvider : ITokenProvider
 {
+    /// <summary>
+    /// The Bearer authentication scheme.
+    /// </summary>
+    private const string BearerScheme = "Bearer";
+
     private readonly Uri _serverUrl;
     private readonly Uri _redirectUri;
     private readonly List<string> _scopes;
@@ -63,13 +68,13 @@ public class BasicOAuthAuthorizationProvider : ITokenProvider
     }
 
     /// <inheritdoc />
-    public IEnumerable<string> SupportedSchemes => new[] { "Bearer" };
+    public IEnumerable<string> SupportedSchemes => new[] { BearerScheme };
 
     /// <inheritdoc />
     public Task<string?> GetCredentialAsync(string scheme, Uri resourceUri, CancellationToken cancellationToken = default)
     {
         // This provider only supports Bearer tokens
-        if (scheme != "Bearer")
+        if (scheme != BearerScheme)
         {
             return Task.FromResult<string?>(null);
         }
@@ -84,7 +89,7 @@ public class BasicOAuthAuthorizationProvider : ITokenProvider
         CancellationToken cancellationToken = default)
     {
         // This provider only supports Bearer scheme
-        if (scheme != "Bearer")
+        if (scheme != BearerScheme)
         {
             return new McpUnauthorizedResponseResult(false, null);
         }
@@ -111,7 +116,7 @@ public class BasicOAuthAuthorizationProvider : ITokenProvider
                     if (token != null)
                     {
                         _token = token;
-                        return new McpUnauthorizedResponseResult(true, "Bearer");
+                        return new McpUnauthorizedResponseResult(true, BearerScheme);
                     }
                 }
             }
