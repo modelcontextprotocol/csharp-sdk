@@ -66,24 +66,4 @@ public class AuthorizationServerMetadata
     /// </summary>
     [JsonPropertyName("scopes_supported")]
     public List<string>? ScopesSupported { get; set; }
-
-    /// <summary>
-    /// Gets the response types supported by the authorization server or returns the default.
-    /// </summary>
-    public IReadOnlyList<string> GetResponseTypesSupported() => ResponseTypesSupported ?? new List<string> { "code" };
-
-    /// <summary>
-    /// Gets the grant types supported by the authorization server or returns the default.
-    /// </summary>
-    public IReadOnlyList<string> GetGrantTypesSupported() => GrantTypesSupported ?? new List<string> { "authorization_code", "refresh_token" };
-
-    /// <summary>
-    /// Gets the token endpoint authentication methods supported by the authorization server or returns the default.
-    /// </summary>
-    public IReadOnlyList<string> GetTokenEndpointAuthMethodsSupported() => TokenEndpointAuthMethodsSupported ?? new List<string> { "client_secret_basic" };
-
-    /// <summary>
-    /// Gets the code challenge methods supported by the authorization server or returns the default.
-    /// </summary>
-    public IReadOnlyList<string> GetCodeChallengeMethodsSupported() => CodeChallengeMethodsSupported ?? new List<string> { "S256" };
 }

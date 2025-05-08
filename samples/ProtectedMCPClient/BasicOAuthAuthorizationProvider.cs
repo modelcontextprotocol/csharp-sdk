@@ -27,6 +27,9 @@ public class BasicOAuthAuthorizationProvider : ITokenProvider
     // Lazy-initialized shared HttpClient for when no client is provided
     private static readonly Lazy<HttpClient> _defaultHttpClient = new(() => new HttpClient());
     
+    // Cached JsonSerializerOptions to avoid recreating it for each deserialization
+    private static readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
+    
     private TokenContainer? _token;
     private AuthorizationServerMetadata? _authServerMetadata;
 
@@ -159,9 +162,17 @@ public class BasicOAuthAuthorizationProvider : ITokenProvider
                 {
                     var json = await response.Content.ReadAsStringAsync(cancellationToken);
                     var metadata = JsonSerializer.Deserialize<AuthorizationServerMetadata>(
-                        json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                        json, _jsonOptions);
                     
-                    if (metadata != null) return metadata;
+                    if (metadata != null)
+                    {
+                        metadata.ResponseTypesSupported ??= ["code"];
+                        metadata.GrantTypesSupported ??= ["authorization_code", "refresh_token"];
+                        metadata.TokenEndpointAuthMethodsSupported ??= ["client_secret_basic"];
+                        metadata.CodeChallengeMethodsSupported ??= ["S256"];
+                        
+                        return metadata;
+                    }
                 }
             }
             catch (Exception ex)
@@ -200,7 +211,7 @@ public class BasicOAuthAuthorizationProvider : ITokenProvider
             {
                 var json = await response.Content.ReadAsStringAsync(cancellationToken);
                 var tokenResponse = JsonSerializer.Deserialize<TokenContainer>(
-                    json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    json, _jsonOptions);
                 
                 if (tokenResponse != null)
                 {
@@ -341,7 +352,7 @@ public class BasicOAuthAuthorizationProvider : ITokenProvider
             {
                 var json = await response.Content.ReadAsStringAsync(cancellationToken);
                 var tokenResponse = JsonSerializer.Deserialize<TokenContainer>(
-                    json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    json, _jsonOptions);
                 
                 if (tokenResponse != null)
                 {
