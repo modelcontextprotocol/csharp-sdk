@@ -59,19 +59,20 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
         var serverSchemes = ExtractServerSupportedSchemes(response);
 
         // Find the intersection between what the server supports and what our provider supports
-        var supportedSchemes = _authorizationProvider.SupportedSchemes.ToList();
         string? bestSchemeMatch = null;
 
         // First try to find a direct match with the current scheme if it's still valid
         string schemeUsed = originalRequest.Headers.Authorization?.Scheme ?? _currentScheme ?? string.Empty;
-        if (serverSchemes.Contains(schemeUsed) && supportedSchemes.Contains(schemeUsed))
+        if (!string.IsNullOrEmpty(schemeUsed) && 
+            serverSchemes.Contains(schemeUsed) && 
+            _authorizationProvider.SupportedSchemes.Contains(schemeUsed))
         {
             bestSchemeMatch = schemeUsed;
         }
         else
         {
             // Find the first server scheme that's in our supported set
-            bestSchemeMatch = serverSchemes.Intersect(supportedSchemes, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+            bestSchemeMatch = serverSchemes.Intersect(_authorizationProvider.SupportedSchemes, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
 
             // If no match was found, either throw an exception or use default
             if (bestSchemeMatch is null)
@@ -80,11 +81,11 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
                 {
                     throw new InvalidOperationException(
                         $"No matching authentication scheme found. Server supports: [{string.Join(", ", serverSchemes)}], " +
-                        $"Provider supports: [{string.Join(", ", supportedSchemes)}].");
+                        $"Provider supports: [{string.Join(", ", _authorizationProvider.SupportedSchemes)}].");
                 }
 
                 // If the server didn't specify any schemes, use the provider's default
-                bestSchemeMatch = supportedSchemes.FirstOrDefault();
+                bestSchemeMatch = _authorizationProvider.SupportedSchemes.FirstOrDefault();
             }
         }
 
@@ -148,9 +149,9 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
     /// <summary>
     /// Extracts the authentication schemes that the server supports from the WWW-Authenticate headers.
     /// </summary>
-    private static List<string> ExtractServerSupportedSchemes(HttpResponseMessage response)
+    private static HashSet<string> ExtractServerSupportedSchemes(HttpResponseMessage response)
     {
-        var serverSchemes = new List<string>();
+        var serverSchemes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         
         if (response.Headers.Contains("WWW-Authenticate"))
         {
