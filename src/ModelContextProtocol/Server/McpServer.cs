@@ -90,17 +90,11 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         }
 
         var resources = ServerOptions.Capabilities?.Resources?.ResourceCollection;
-        var resourceTemplates = ServerOptions.Capabilities?.Resources?.ResourceTemplateCollection;
-        if (resources is not null || resourceTemplates is not null)
+        if (resources is not null)
         {
             EventHandler changed = (sender, e) => _ = this.SendNotificationAsync(NotificationMethods.PromptListChangedNotification);
-            if (resources is not null) resources.Changed += changed;
-            if (resourceTemplates is not null) resourceTemplates.Changed += changed;
-            _disposables.Add(() =>
-            {
-                if (resources is not null) resources.Changed -= changed;
-                if (resourceTemplates is not null) resourceTemplates.Changed -= changed;
-            });
+            resources.Changed += changed;
+            _disposables.Add(() => resources.Changed -= changed);
         }
 
         // And initialize the session.
@@ -223,48 +217,41 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         var subscribeHandler = resourcesCapability.SubscribeToResourcesHandler ?? (static async (_, __) => new EmptyResult());
         var unsubscribeHandler = resourcesCapability.UnsubscribeFromResourcesHandler ?? (static async (_, __) => new EmptyResult());
         var resources = resourcesCapability.ResourceCollection;
-        var resourceTemplates = resourcesCapability.ResourceTemplateCollection;
         var listChanged = resourcesCapability.ListChanged;
         var subcribe = resourcesCapability.Subscribe;
 
         // Handle resources provided via DI.
-        if (resources is { IsEmpty: false } || resourceTemplates is { IsEmpty: false })
+        if (resources is { IsEmpty: false })
         {
-            if (resources is { IsEmpty: false })
+            var originalListResourcesHandler = listResourcesHandler;
+            listResourcesHandler = async (request, cancellationToken) =>
             {
-                var originalListResourcesHandler = listResourcesHandler;
-                listResourcesHandler = async (request, cancellationToken) =>
+                ListResourcesResult result = originalListResourcesHandler is not null ?
+                    await originalListResourcesHandler(request, cancellationToken).ConfigureAwait(false) :
+                    new();
+
+                if (request.Params?.Cursor is null)
                 {
-                    ListResourcesResult result = originalListResourcesHandler is not null ?
-                        await originalListResourcesHandler(request, cancellationToken).ConfigureAwait(false) :
-                        new();
+                    result.Resources.AddRange(resources.Select(t => t.ProtocolResource).OfType<Resource>());
+                }
 
-                    if (request.Params?.Cursor is null)
-                    {
-                        result.Resources.AddRange(resources.Select(t => t.ProtocolResource));
-                    }
+                return result;
+            };
 
-                    return result;
-                };
-            }
-
-            if (resourceTemplates is { IsEmpty: false })
+            var originalListResourceTemplatesHandler = listResourceTemplatesHandler;
+            listResourceTemplatesHandler = async (request, cancellationToken) =>
             {
-                var originalListResourceTemplatesHandler = listResourceTemplatesHandler;
-                listResourceTemplatesHandler = async (request, cancellationToken) =>
+                ListResourceTemplatesResult result = originalListResourceTemplatesHandler is not null ?
+                    await originalListResourceTemplatesHandler(request, cancellationToken).ConfigureAwait(false) :
+                    new();
+
+                if (request.Params?.Cursor is null)
                 {
-                    ListResourceTemplatesResult result = originalListResourceTemplatesHandler is not null ?
-                        await originalListResourceTemplatesHandler(request, cancellationToken).ConfigureAwait(false) :
-                        new();
+                    result.ResourceTemplates.AddRange(resources.Where(t => t.IsTemplated).Select(t => t.ProtocolResourceTemplate));
+                }
 
-                    if (request.Params?.Cursor is null)
-                    {
-                        result.ResourceTemplates.AddRange(resourceTemplates.Select(t => t.ProtocolResourceTemplate));
-                    }
-
-                    return result;
-                };
-            }
+                return result;
+            };
 
             // Synthesize read resource handler, which covers both resources and resource templates.
             var originalReadResourceHandler = readResourceHandler;
@@ -272,24 +259,23 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             {
                 if (request.Params?.Uri is string uri)
                 {
-                    // First try an exact match against resources.
-                    if (resources is { IsEmpty: false } &&
-                        resources.TryGetPrimitive(uri, out var resource))
+                    // First try an O(1) lookup by exact match.
+                    if (resources.TryGetPrimitive(uri, out var resource))
                     {
-                        return await resource.ReadAsync(request, cancellationToken).ConfigureAwait(false);
+                        if (await resource.ReadAsync(request, cancellationToken).ConfigureAwait(false) is { } result)
+                        {
+                            return result;
+                        }
                     }
 
-                    // Fall back to matching against resource templates. This is O(N) in the number of templates.
+                    // Fall back to an O(N) lookup, trying to match against each URI template.
                     // The number of templates is controlled by the server developer, and the number is expected to be
                     // not terribly large. If that changes, this can be tweaked to enable a more efficient lookup.
-                    if (resourceTemplates is { IsEmpty: false })
+                    foreach (var resourceTemplate in resources)
                     {
-                        foreach (var resourceTemplate in resourceTemplates)
+                        if (await resourceTemplate.ReadAsync(request, cancellationToken).ConfigureAwait(false) is { } result)
                         {
-                            if (await resourceTemplate.ReadAsync(request, cancellationToken).ConfigureAwait(false) is { } result)
-                            {
-                                return result;
-                            }
+                            return result;
                         }
                     }
                 }
@@ -308,7 +294,6 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         ServerCapabilities.Resources.ListResourceTemplatesHandler = listResourceTemplatesHandler;
         ServerCapabilities.Resources.ReadResourceHandler = readResourceHandler;
         ServerCapabilities.Resources.ResourceCollection = resources;
-        ServerCapabilities.Resources.ResourceTemplateCollection = resourceTemplates;
         ServerCapabilities.Resources.SubscribeToResourcesHandler = subscribeHandler;
         ServerCapabilities.Resources.UnsubscribeFromResourcesHandler = unsubscribeHandler;
         ServerCapabilities.Resources.ListChanged = listChanged;

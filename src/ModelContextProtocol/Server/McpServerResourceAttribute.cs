@@ -18,8 +18,8 @@ namespace ModelContextProtocol.Server;
 /// When methods are provided directly to <see cref="M:McpServerResource.Create"/>, the attribute is not required.
 /// </para>
 /// <para>
-/// Resource read requests do not contain arguments. However, resource methods may accept parameters that will be bound
-/// to arguments based on their type.
+/// Read resource requests do not contain separate arguments, only a URI. However, for templated resources, portions of that URI may be considered
+/// as arguments and may be bound to parameters. Further, resource methods may accept parameters that will be bound to arguments based on their type.
 /// <list type="bullet">
 ///   <item>
 ///     <description>
@@ -30,13 +30,13 @@ namespace ModelContextProtocol.Server;
 ///   </item>
 ///   <item>
 ///     <description>
-///       <see cref="IServiceProvider"/> parameters are bound from the <see cref="RequestContext{GetResourceRequestParams}"/> for this request.
+///       <see cref="IServiceProvider"/> parameters are bound from the <see cref="RequestContext{ReadResourceRequestParams}"/> for this request.
 ///     </description>
 ///   </item>
 ///   <item>
 ///     <description>
 ///       <see cref="IMcpServer"/> parameters are bound directly to the <see cref="IMcpServer"/> instance associated
-///       with this request's <see cref="RequestContext{CallResourceRequestParams}"/>. Such parameters may be used to understand
+///       with this request's <see cref="RequestContext{ReadResourceRequestParams}"/>. Such parameters may be used to understand
 ///       what server is being used to process the request, and to interact with the client issuing the request to that server.
 ///     </description>
 ///   </item>
@@ -63,13 +63,15 @@ namespace ModelContextProtocol.Server;
 ///       <see cref="IServiceProvider"/> provided to the resource invocation rather than from the argument collection.
 ///     </description>
 ///   </item>
+///   <item>
+///     <description>
+///       All other parameters are bound from the data in the URI.
+///     </description>
+///   </item>
 /// </list>
 /// </para>
 /// <para>
-/// All other parameters will result in an exception being thrown when attempting to create the resource.
-/// </para>
-/// <para>
-/// Return values from a method or property are used to create the <see cref="ReadResourceResult"/> that is sent back to the client:
+/// Return values from a method are used to create the <see cref="ReadResourceResult"/> that is sent back to the client:
 /// </para>
 /// <list type="table">
 ///   <item>
@@ -105,7 +107,7 @@ namespace ModelContextProtocol.Server;
 /// Other returned types will result in an <see cref="InvalidOperationException"/> being thrown.
 /// </para>
 /// </remarks>
-[AttributeUsage(AttributeTargets.Method | AttributeTargets.Property)]
+[AttributeUsage(AttributeTargets.Method)]
 public sealed class McpServerResourceAttribute : Attribute
 {
     /// <summary>
@@ -115,9 +117,15 @@ public sealed class McpServerResourceAttribute : Attribute
     {
     }
 
-    /// <summary>Gets or sets the URI of the resource.</summary>
-    /// <remarks>If <see langword="null"/>, a URI will be derived from <see cref="Name"/>.</remarks>
-    public string? Uri { get; set; }
+    /// <summary>Gets or sets the URI template of the resource.</summary>
+    /// <remarks>
+    /// If <see langword="null"/>, a URI will be derived from <see cref="Name"/> and the method's parameter names.
+    /// This template may, but doesn't have to, include parameters; if it does, this <see cref="McpServerResource"/>
+    /// will be considered a "resource template", and if it doesn't, it will be considered a "direct resource".
+    /// The former will be listed with <see cref="RequestMethods.ResourcesTemplatesList"/> requests and the latter
+    /// with <see cref="RequestMethods.ResourcesList"/> requests.
+    /// </remarks>
+    public string? UriTemplate { get; set; }
 
     /// <summary>Gets or sets the name of the resource.</summary>
     /// <remarks>If <see langword="null"/>, the method name will be used.</remarks>

@@ -2,17 +2,26 @@ using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
+using System.Collections.Concurrent;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Reflection;
+using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace ModelContextProtocol.Server;
 
-/// <summary>Provides an <see cref="McpServerResource"/> that's implemented via an <see cref="AIFunction"/>.</summary>
+/// <summary>Provides an <see cref="AIFunctionMcpServerResource"/> that's implemented via an <see cref="AIFunction"/>.</summary>
 internal sealed class AIFunctionMcpServerResource : McpServerResource
 {
+    private readonly Regex? _uriParser;
+    private readonly string[] _templateVariableNames = [];
+
     /// <summary>
-    /// Creates an <see cref="McpServerResource"/> instance for a method, specified via a <see cref="Delegate"/> instance.
+    /// Creates an <see cref="AIFunctionMcpServerResource"/> instance for a method, specified via a <see cref="Delegate"/> instance.
     /// </summary>
     public static new AIFunctionMcpServerResource Create(
         Delegate method,
@@ -43,29 +52,6 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
     }
 
     /// <summary>
-    /// Creates an <see cref="McpServerResource"/> instance for a property, specified via a <see cref="PropertyInfo"/> instance.
-    /// </summary>
-    public static new AIFunctionMcpServerResource Create(
-        PropertyInfo property,
-        object? target,
-        McpServerResourceCreateOptions? options)
-    {
-        Throw.IfNull(property);
-
-        options = DeriveOptions(property, options);
-
-        MethodInfo? getMethod = property.GetGetMethod();
-        if (getMethod is null)
-        {
-            throw new InvalidOperationException($"Property '{property.Name}' does not have a get method.");
-        }
-
-        return Create(
-            AIFunctionFactory.Create(getMethod, target, CreateAIFunctionFactoryOptions(getMethod, options)),
-            options);
-    }
-
-    /// <summary>
     /// Creates an <see cref="McpServerResource"/> instance for a method, specified via a <see cref="MethodInfo"/> instance.
     /// </summary>
     public static new AIFunctionMcpServerResource Create(
@@ -79,29 +65,6 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
 
         return Create(
             AIFunctionFactory.Create(method, targetType, CreateAIFunctionFactoryOptions(method, options)),
-            options);
-    }
-
-    /// <summary>
-    /// Creates an <see cref="McpServerResource"/> instance for a method, specified via a <see cref="PropertyInfo"/> instance.
-    /// </summary>
-    public static new AIFunctionMcpServerResource Create(
-        PropertyInfo property,
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type targetType,
-        McpServerResourceCreateOptions? options)
-    {
-        Throw.IfNull(property);
-
-        options = DeriveOptions(property, options);
-
-        MethodInfo? getMethod = property.GetGetMethod();
-        if (getMethod is null)
-        {
-            throw new InvalidOperationException($"Property '{property.Name}' does not have a get method.");
-        }
-
-        return Create(
-            AIFunctionFactory.Create(getMethod, targetType, CreateAIFunctionFactoryOptions(getMethod, options)),
             options);
     }
 
@@ -155,12 +118,37 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
                     };
                 }
 
+                // These parameters are the ones and only ones to include in the schema. The schema
+                // won't be consumed by anyone other than this instance, which will use it to determine
+                // which properties should show up in the URI template.
+                if (pi.Name is not null && GetConverter(pi.ParameterType) is { } converter)
+                {
+                    return new()
+                    {
+                        ExcludeFromSchema = false,
+                        BindParameter = (pi, args) =>
+                        {
+                            if (args.TryGetValue(pi.Name!, out var value))
+                            {
+                                return
+                                    value is null || pi.ParameterType.IsInstanceOfType(value) ? value :
+                                    value is string stringValue ? converter(stringValue) :
+                                    throw new ArgumentException($"Parameter '{pi.Name}' is of type '{pi.ParameterType}', but value '{value}' is of type '{value.GetType()}'.");
+                            }
+
+                            return
+                                pi.HasDefaultValue ? pi.DefaultValue :
+                                throw new ArgumentException($"Missing a value for the required parameter '{pi.Name}'.");
+                        },
+                    };
+                }
+
                 return default;
 
                 static RequestContext<ReadResourceRequestParams>? GetRequestContext(AIFunctionArguments args)
                 {
-                    if (args.Context?.TryGetValue(typeof(RequestContext<ReadResourceRequestParams>), out var orc) is true &&
-                        orc is RequestContext<ReadResourceRequestParams> requestContext)
+                    if (args.Context?.TryGetValue(typeof(RequestContext<ReadResourceRequestParams>), out var rc) is true &&
+                        rc is RequestContext<ReadResourceRequestParams> requestContext)
                     {
                         return requestContext;
                     }
@@ -170,6 +158,71 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
             },
         };
 
+    private static readonly ConcurrentDictionary<Type, Func<string, object?>> s_convertersCache = [];
+
+    private static Func<string, object?>? GetConverter(Type type)
+    {
+        Type key = type;
+
+        if (s_convertersCache.TryGetValue(key, out var converter))
+        {
+            return converter;
+        }
+
+        if (Nullable.GetUnderlyingType(type) is { } underlyingType)
+        {
+            // We will have already screened out null values by the time the converter is used,
+            // so we can parse just the underlying type.
+            type = underlyingType;
+        }
+
+        if (type == typeof(string) || type == typeof(object)) converter = static s => s;
+        if (type == typeof(bool)) converter = static s => bool.Parse(s);
+        if (type == typeof(char)) converter = static s => char.Parse(s);
+        if (type == typeof(byte)) converter = static s => byte.Parse(s, CultureInfo.InvariantCulture);
+        if (type == typeof(sbyte)) converter = static s => sbyte.Parse(s, CultureInfo.InvariantCulture);
+        if (type == typeof(ushort)) converter = static s => ushort.Parse(s, CultureInfo.InvariantCulture);
+        if (type == typeof(short)) converter = static s => short.Parse(s, CultureInfo.InvariantCulture);
+        if (type == typeof(uint)) converter = static s => uint.Parse(s, CultureInfo.InvariantCulture);
+        if (type == typeof(int)) converter = static s => int.Parse(s, CultureInfo.InvariantCulture);
+        if (type == typeof(ulong)) converter = static s => ulong.Parse(s, CultureInfo.InvariantCulture);
+        if (type == typeof(long)) converter = static s => long.Parse(s, CultureInfo.InvariantCulture);
+        if (type == typeof(float)) converter = static s => float.Parse(s, CultureInfo.InvariantCulture);
+        if (type == typeof(double)) converter = static s => double.Parse(s, CultureInfo.InvariantCulture);
+        if (type == typeof(decimal)) converter = static s => decimal.Parse(s, CultureInfo.InvariantCulture);
+        if (type == typeof(TimeSpan)) converter = static s => TimeSpan.Parse(s, CultureInfo.InvariantCulture);
+        if (type == typeof(DateTime)) converter = static s => DateTime.Parse(s, CultureInfo.InvariantCulture);
+        if (type == typeof(DateTimeOffset)) converter = static s => DateTimeOffset.Parse(s, CultureInfo.InvariantCulture);
+        if (type == typeof(Uri)) converter = static s => new Uri(s, UriKind.RelativeOrAbsolute);
+        if (type == typeof(Guid)) converter = static s => Guid.Parse(s);
+        if (type == typeof(Version)) converter = static s => Version.Parse(s);
+#if NET
+        if (type == typeof(Half)) converter = static s => Half.Parse(s, CultureInfo.InvariantCulture);
+        if (type == typeof(Int128)) converter = static s => Int128.Parse(s, CultureInfo.InvariantCulture);
+        if (type == typeof(UInt128)) converter = static s => UInt128.Parse(s, CultureInfo.InvariantCulture);
+        if (type == typeof(IntPtr)) converter = static s => IntPtr.Parse(s, CultureInfo.InvariantCulture);
+        if (type == typeof(UIntPtr)) converter = static s => UIntPtr.Parse(s, CultureInfo.InvariantCulture);
+        if (type == typeof(DateOnly)) converter = static s => DateOnly.Parse(s, CultureInfo.InvariantCulture);
+        if (type == typeof(TimeOnly)) converter = static s => TimeOnly.Parse(s, CultureInfo.InvariantCulture);
+#endif
+        if (type.IsEnum) converter = s => Enum.Parse(type, s);
+
+        if (type.GetCustomAttribute<TypeConverterAttribute>() is TypeConverterAttribute tca &&
+            Type.GetType(tca.ConverterTypeName, throwOnError: false) is { } converterType &&
+            Activator.CreateInstance(converterType) is TypeConverter typeConverter &&
+            typeConverter.CanConvertFrom(typeof(string)))
+        {
+            converter = s => typeConverter.ConvertFrom(null, CultureInfo.InvariantCulture, s);
+        }
+
+        if (converter is not null)
+        {
+            s_convertersCache.TryAdd(key, converter);
+        }
+
+        return converter;
+    }
+
     /// <summary>Creates an <see cref="McpServerResource"/> that wraps the specified <see cref="AIFunction"/>.</summary>
     public static new AIFunctionMcpServerResource Create(AIFunction function, McpServerResourceCreateOptions? options)
     {
@@ -177,15 +230,15 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
 
         string name = options?.Name ?? function.Name;
 
-        Resource resource = new()
+        ResourceTemplate resource = new()
         {
-            Uri = options?.Uri ?? DeriveUri(name),
+            UriTemplate = options?.UriTemplate ?? DeriveUriTemplate(name, function),
             Name = name,
             Description = options?.Description,
             MimeType = options?.MimeType,
         };
 
-        return new(function, resource);
+        return new AIFunctionMcpServerResource(function, resource);
     }
 
     private static McpServerResourceCreateOptions DeriveOptions(MemberInfo member, McpServerResourceCreateOptions? options)
@@ -194,7 +247,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
 
         if (member.GetCustomAttribute<McpServerResourceAttribute>() is { } resourceAttr)
         {
-            newOptions.Uri ??= resourceAttr.Uri;
+            newOptions.UriTemplate ??= resourceAttr.UriTemplate;
             newOptions.Name ??= resourceAttr.Name;
             newOptions.MimeType ??= resourceAttr.MimeType;
         }
@@ -208,39 +261,105 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
     }
 
     /// <summary>Derives a name to be used as a resource name.</summary>
-    private static string DeriveUri(string name) => $"resource://{Uri.EscapeDataString(name)}";
+    private static string DeriveUriTemplate(string name, AIFunction function)
+    {
+        StringBuilder template = new();
+
+        template.Append("resource://").Append(Uri.EscapeDataString(name));
+
+        if (function.JsonSchema.TryGetProperty("properties", out JsonElement properties))
+        {
+            string separator = "{?";
+            foreach (var prop in properties.EnumerateObject())
+            {
+                template.Append(separator).Append(prop.Name);
+                separator = ",";
+            }
+
+            if (separator == ",")
+            {
+                template.Append('}');
+            }
+        }
+
+        return template.ToString();
+    }
 
     /// <summary>Gets the <see cref="AIFunction"/> wrapped by this resource.</summary>
     internal AIFunction AIFunction { get; }
 
     /// <summary>Initializes a new instance of the <see cref="McpServerResource"/> class.</summary>
-    private AIFunctionMcpServerResource(AIFunction function, Resource resource)
+    private AIFunctionMcpServerResource(AIFunction function, ResourceTemplate resourceTemplate)
     {
         AIFunction = function;
-        ProtocolResource = resource;
+        ProtocolResourceTemplate = resourceTemplate;
+        ProtocolResource = resourceTemplate.AsResource();
+
+        if (ProtocolResource is null)
+        {
+            _uriParser = UriTemplate.CreateParser(resourceTemplate.UriTemplate);
+            _templateVariableNames = _uriParser.GetGroupNames().Where(n => n != "0").ToArray();
+        }
     }
 
     /// <inheritdoc />
     public override string ToString() => AIFunction.ToString();
 
     /// <inheritdoc />
-    public override Resource ProtocolResource { get; }
+    public override ResourceTemplate ProtocolResourceTemplate { get; }
 
     /// <inheritdoc />
-    public override async ValueTask<ReadResourceResult> ReadAsync(
+    public override Resource? ProtocolResource { get; }
+
+    /// <inheritdoc />
+    public override async ValueTask<ReadResourceResult?> ReadAsync(
         RequestContext<ReadResourceRequestParams> request, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(request);
+        Throw.IfNull(request.Params);
+        Throw.IfNull(request.Params.Uri);
+
         cancellationToken.ThrowIfCancellationRequested();
 
+        // Check to see if this URI template matches the request URI. If it doesn't, return null.
+        // For templates, use the Regex to parse. For static resources, we can just compare the URIs.
+        Match? match = null;
+        if (_uriParser is not null)
+        {
+            match = _uriParser.Match(request.Params.Uri);
+            if (!match.Success)
+            {
+                return null;
+            }
+        }
+        else if (request.Params.Uri != ProtocolResource!.Uri)
+        {
+            return null;
+        }
+
+        // Build up the arguments for the AIFunction call, including all of the name/value pairs from the URI.
         AIFunctionArguments arguments = new()
         {
             Services = request.Services,
             Context = new Dictionary<object, object?>() { [typeof(RequestContext<ReadResourceRequestParams>)] = request }
         };
 
+        // For templates, populate the arguments from the URI template.
+        if (match is not null)
+        {
+            foreach (string varName in _templateVariableNames)
+            {
+                if (match.Groups[varName] is { Success: true } value)
+                {
+                    arguments[varName] = Uri.UnescapeDataString(value.Value);
+                }
+            }
+        }
+
+        // Invoke the function.
         object? result = await AIFunction.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false);
 
+        // And process the result.
         return result switch
         {
             ReadResourceResult readResourceResult => readResourceResult,
@@ -252,17 +371,17 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
 
             TextContent tc => new()
             {
-                Contents = [new TextResourceContents() { Uri = ProtocolResource.Uri, MimeType = ProtocolResource.MimeType, Text = tc.Text }],
+                Contents = [new TextResourceContents() { Uri = request.Params!.Uri, MimeType = ProtocolResourceTemplate.MimeType, Text = tc.Text }],
             },
 
             DataContent dc => new()
             {
-                Contents = [new BlobResourceContents() { Uri = ProtocolResource.Uri, MimeType = dc.MediaType, Blob = dc.GetBase64Data() }],
+                Contents = [new BlobResourceContents() { Uri = request.Params!.Uri, MimeType = dc.MediaType, Blob = dc.GetBase64Data() }],
             },
 
             string text => new()
             {
-                Contents = [new TextResourceContents() { Uri = ProtocolResource.Uri, MimeType = ProtocolResource.MimeType, Text = text }],
+                Contents = [new TextResourceContents() { Uri = request.Params!.Uri, MimeType = ProtocolResourceTemplate.MimeType, Text = text }],
             },
 
             IEnumerable<ResourceContents> contents => new()
@@ -277,14 +396,14 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
                     {
                         TextContent tc => new TextResourceContents()
                         {
-                            Uri = ProtocolResource.Uri,
-                            MimeType = ProtocolResource.MimeType,
+                            Uri = request.Params!.Uri,
+                            MimeType = ProtocolResourceTemplate.MimeType,
                             Text = tc.Text
                         },
 
                         DataContent dc => new BlobResourceContents()
                         {
-                            Uri = ProtocolResource.Uri,
+                            Uri = request.Params!.Uri,
                             MimeType = dc.MediaType,
                             Blob = dc.GetBase64Data()
                         },
@@ -295,9 +414,11 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
 
             IEnumerable<string> strings => new()
             {
-                Contents = strings.Select<string, ResourceContents>(text => new TextResourceContents() 
-                { 
-                    Uri = ProtocolResource.Uri, MimeType = ProtocolResource.MimeType, Text = text 
+                Contents = strings.Select<string, ResourceContents>(text => new TextResourceContents()
+                {
+                    Uri = request.Params!.Uri,
+                    MimeType = ProtocolResourceTemplate.MimeType,
+                    Text = text
                 }).ToList(),
             },
 

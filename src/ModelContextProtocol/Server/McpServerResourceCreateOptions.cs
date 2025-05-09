@@ -28,14 +28,14 @@ public sealed class McpServerResourceCreateOptions
     public IServiceProvider? Services { get; set; }
 
     /// <summary>
-    /// Gets or sets the URI of the <see cref="McpServerResource"/>.
+    /// Gets or sets the URI template of the <see cref="McpServerResource"/>.
     /// </summary>
     /// <remarks>
     /// If <see langword="null"/>, but an <see cref="McpServerResourceAttribute"/> is applied to the member,
-    /// the <see cref="McpServerResourceAttribute.Uri"/> from the attribute will be used. If that's not present,
-    /// constructing the resource will fail.
+    /// the <see cref="McpServerResourceAttribute.UriTemplate"/> from the attribute will be used. If that's not present,
+    /// a URI template will be inferred from the member's signature.
     /// </remarks>
-    public string? Uri { get; set; }
+    public string? UriTemplate { get; set; }
 
     /// <summary>
     /// Gets or sets the name to use for the <see cref="McpServerResource"/>.
@@ -67,7 +67,7 @@ public sealed class McpServerResourceCreateOptions
         new McpServerResourceCreateOptions
         {
             Services = Services,
-            Uri = Uri,
+            UriTemplate = UriTemplate,
             Name = Name,
             Description = Description,
             MimeType = MimeType,
