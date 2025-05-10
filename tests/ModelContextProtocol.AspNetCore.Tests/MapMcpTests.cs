@@ -15,6 +15,13 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
 {
     protected abstract bool UseStreamableHttp { get; }
 
+    protected virtual bool Stateless => false;
+
+    protected void ConfigureStateless(HttpServerTransportOptions options)
+    {
+        options.Stateless = Stateless;
+    }
+
     protected async Task<IMcpClient> ConnectAsync(string? path = null)
     {
         path ??= UseStreamableHttp ? "/" : "/sse";
@@ -37,34 +44,11 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
         Assert.StartsWith("You must call WithHttpTransport()", exception.Message);
     }
 
-    [Theory]
-    [InlineData("/mcp")]
-    [InlineData("/mcp/secondary")]
-    public async Task Allows_Customizing_Route(string pattern)
-    {
-        Builder.Services.AddMcpServer().WithHttpTransport();
-        await using var app = Builder.Build();
-
-        app.MapMcp(pattern);
-
-        await app.StartAsync(TestContext.Current.CancellationToken);
-
-        using var response = await HttpClient.GetAsync($"http://localhost{pattern}/sse", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
-        response.EnsureSuccessStatusCode();
-        using var sseStream = await response.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
-        using var sseStreamReader = new StreamReader(sseStream, System.Text.Encoding.UTF8);
-        var eventLine = await sseStreamReader.ReadLineAsync(TestContext.Current.CancellationToken);
-        var dataLine = await sseStreamReader.ReadLineAsync(TestContext.Current.CancellationToken);
-        Assert.NotNull(eventLine);
-        Assert.Equal("event: endpoint", eventLine);
-        Assert.NotNull(dataLine);
-        Assert.Equal($"data: {pattern}/message", dataLine[..dataLine.IndexOf('?')]);
-    }
 
     [Fact]
     public async Task Messages_FromNewUser_AreRejected()
     {
-        Builder.Services.AddMcpServer().WithHttpTransport().WithTools<EchoHttpContextUserTools>();
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<EchoHttpContextUserTools>();
 
         // Add an authentication scheme that will send a 403 Forbidden response.
         Builder.Services.AddAuthentication().AddBearerToken();

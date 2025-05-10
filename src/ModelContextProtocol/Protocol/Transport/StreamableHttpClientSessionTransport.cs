@@ -57,7 +57,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         cancellationToken = sendCts.Token;
 
 #if NET
-        using var content = JsonContent.Create(message, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonRpcMessage>());
+        using var content = JsonContent.Create(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage);
 #else
         using var content = new StringContent(
             JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage),

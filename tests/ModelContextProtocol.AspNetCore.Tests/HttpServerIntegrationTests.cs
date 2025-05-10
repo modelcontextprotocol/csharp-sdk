@@ -206,6 +206,8 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
     [Fact]
     public async Task Sampling_Sse_TestServer()
     {
+        Assert.SkipWhen(GetType() == typeof(StatelessServerIntegrationTests), "Sampling is not supported in stateless mode.");
+
         // arrange
         // Set up the sampling handler
         int samplingHandlerCalls = 0;

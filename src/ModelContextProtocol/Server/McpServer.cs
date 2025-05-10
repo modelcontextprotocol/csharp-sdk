@@ -24,7 +24,8 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
     private readonly bool _servicesScopePerRequest;
     private readonly List<Action> _disposables = [];
 
-    private string _endpointName;
+    private readonly string _serverOnlyEndpointName;
+    private string? _endpointName;
     private int _started;
 
     /// <summary>Holds a boxed <see cref="LoggingLevel"/> value for the server.</summary>
@@ -54,8 +55,12 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         _sessionTransport = transport;
         ServerOptions = options;
         Services = serviceProvider;
-        _endpointName = $"Server ({options.ServerInfo?.Name ?? DefaultImplementation.Name} {options.ServerInfo?.Version ?? DefaultImplementation.Version})";
+        _serverOnlyEndpointName = $"Server ({options.ServerInfo?.Name ?? DefaultImplementation.Name} {options.ServerInfo?.Version ?? DefaultImplementation.Version})";
         _servicesScopePerRequest = options.ScopeRequests;
+
+        ClientCapabilities = options.KnownClientCapabilities;
+        ClientInfo = options.KnownClientInfo;
+        UpdateEndpointNameWithClientInfo();
 
         // Configure all request handlers based on the supplied options.
         ServerCapabilities = new();
@@ -116,7 +121,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
     public IServiceProvider? Services { get; }
 
     /// <inheritdoc />
-    public override string EndpointName => _endpointName;
+    public override string EndpointName => _endpointName ?? _serverOnlyEndpointName;
 
     /// <inheritdoc />
     public LoggingLevel? LoggingLevel => _loggingLevel?.Value;
@@ -163,8 +168,8 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
                 ClientInfo = request?.ClientInfo;
 
                 // Use the ClientInfo to update the session EndpointName for logging.
-                _endpointName = $"{_endpointName}, Client ({ClientInfo?.Name} {ClientInfo?.Version})";
-                GetSessionOrThrow().EndpointName = _endpointName;
+                UpdateEndpointNameWithClientInfo();
+                GetSessionOrThrow().EndpointName = EndpointName;
 
                 return new InitializeResult
                 {
@@ -542,6 +547,16 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             (request, destinationTransport, cancellationToken) =>
                 InvokeHandlerAsync(handler, request, destinationTransport, cancellationToken),
             requestTypeInfo, responseTypeInfo);
+    }
+
+    private void UpdateEndpointNameWithClientInfo()
+    {
+        if (ClientInfo is null)
+        {
+            return;
+        }
+
+        _endpointName = $"{_serverOnlyEndpointName}, Client ({ClientInfo.Name} {ClientInfo.Version})";
     }
 
     /// <summary>Maps a <see cref="LogLevel"/> to a <see cref="LoggingLevel"/>.</summary>

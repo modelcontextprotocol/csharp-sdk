@@ -22,7 +22,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
                 Name = "TestCustomRouteServer",
                 Version = "1.0.0",
             };
-        }).WithHttpTransport();
+        }).WithHttpTransport(ConfigureStateless);
         await using var app = Builder.Build();
 
         app.MapMcp(routePattern);

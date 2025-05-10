@@ -71,7 +71,6 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         Assert.Contains("IdleTimeout", ex.Message);
     }
 
-
     [Fact]
     public async Task NegativeMaxIdleSessionCount_Throws_ArgumentOutOfRangeException()
     {
@@ -358,6 +357,47 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         }
 
         Assert.Equal(11, currentSseItem);
+    }
+
+    [Fact]
+    public async Task AsyncLocalSetInRunSessionHandlerCallback_Flows_ToAllToolCalls()
+    {
+        var asyncLocal = new AsyncLocal<string>();
+        var totalSessionCount = 0;
+
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(options =>
+            {
+                options.RunSessionHandler = async (httpContext, mcpServer, cancellationToken) =>
+                {
+                    asyncLocal.Value = $"RunSessionHandler ({totalSessionCount++})";
+                    await mcpServer.RunAsync(cancellationToken);
+                };
+            });
+
+        Builder.Services.AddSingleton(McpServerTool.Create([McpServerTool(Name = "async-local-session")] () => asyncLocal.Value));
+
+        await StartAsync();
+
+        var firstSessionId = await CallInitializeAndValidateAsync();
+
+        async Task CallAsyncLocalToolAndValidateAsync(int expectedSessionIndex)
+        {
+            var response = await HttpClient.PostAsync("", JsonContent(CallTool("async-local-session")), TestContext.Current.CancellationToken);
+            var rpcResponse = await AssertSingleSseResponseAsync(response);
+            var callToolResponse = AssertType<CallToolResponse>(rpcResponse.Result);
+            var callToolContent = Assert.Single(callToolResponse.Content);
+            Assert.Equal("text", callToolContent.Type);
+            Assert.Equal($"RunSessionHandler ({expectedSessionIndex})", callToolContent.Text);
+        }
+
+        await CallAsyncLocalToolAndValidateAsync(expectedSessionIndex: 0);
+
+        await CallInitializeAndValidateAsync();
+        await CallAsyncLocalToolAndValidateAsync(expectedSessionIndex: 1);
+
+        SetSessionId(firstSessionId);
+        await CallAsyncLocalToolAndValidateAsync(expectedSessionIndex: 0);
     }
 
     [Fact]
