@@ -1,7 +1,6 @@
 ﻿using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Tests.Utils;
-using System.IO.Pipelines;
 using System.Net;
 
 namespace ModelContextProtocol.Tests.Transport;

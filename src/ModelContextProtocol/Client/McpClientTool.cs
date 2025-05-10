@@ -126,7 +126,7 @@ public sealed class McpClientTool : AIFunction
     ///     });
     /// </code>
     /// </example>
-    public Task<CallToolResponse> CallAsync(
+    public ValueTask<CallToolResponse> CallAsync(
         IReadOnlyDictionary<string, object?>? arguments = null,
         IProgress<ProgressNotificationValue>? progress = null,
         JsonSerializerOptions? serializerOptions = null,

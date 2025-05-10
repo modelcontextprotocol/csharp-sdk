@@ -5,6 +5,6 @@ namespace ModelContextProtocol.Server;
 /// </summary>
 public interface IMcpServerPrimitive
 {
-    /// <summary>Gets the name of the primitive.</summary>
-    string Name { get; }
+    /// <summary>Gets the unique identifier of the primitive.</summary>
+    string Id { get; }
 }

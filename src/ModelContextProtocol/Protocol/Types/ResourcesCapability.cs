@@ -87,4 +87,22 @@ public class ResourcesCapability
     /// </remarks>
     [JsonIgnore]
     public Func<RequestContext<UnsubscribeRequestParams>, CancellationToken, ValueTask<EmptyResult>>? UnsubscribeFromResourcesHandler { get; set; }
+
+    /// <summary>
+    /// Gets or sets a collection of resources served by the server.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Resources specified via <see cref="ResourceCollection"/> augment the <see cref="ListResourcesHandler"/>, <see cref="ListResourceTemplatesHandler"/>
+    /// and <see cref="ReadResourceHandler"/> handlers, if provided. Resources with template expressions in their URI templates are considered resource templates
+    /// and are listed via ListResourceTemplate, whereas resources without template parameters are considered static resources and are listed with ListResources.
+    /// </para>
+    /// <para>
+    /// ReadResource requests will first check the <see cref="ResourceCollection"/> for the exact resource being requested. If no match is found, they'll proceed to
+    /// try to match the resource against each resource template in <see cref="ResourceCollection"/>. If no match is still found, the request will fall back to
+    /// any handler registered for <see cref="ReadResourceHandler"/>.
+    /// </para>
+    /// </remarks>
+    [JsonIgnore]
+    public McpServerPrimitiveCollection<McpServerResource>? ResourceCollection { get; set; }
 }
