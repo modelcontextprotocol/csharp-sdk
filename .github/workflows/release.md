@@ -15,8 +15,7 @@ The following process is used when publishing new releases to NuGet.org:
     - Click the 'Target' dropdown button
         - Choose the 'Recent Commits' tab
         - Select the commit to use for the release, ensuring it's one from above where CI is known to be green
-    - Click the 'Previous tag' dropdown button
-        - Choose the previous release to use for generating release notes
+    - The 'Previous tag' dropdown can remain on 'Auto' unless the previous release deviated from this process
     - Click the 'Generate release notes button'
         - This will add release notes into the Release description
         - The generated release notes include what has changed and the list of new contributors
@@ -26,7 +25,7 @@ The following process is used when publishing new releases to NuGet.org:
     - Augment the Release description as desired
         - This content is presented used on GitHub and is not persisted into any artifacts
     - Check the 'Set as a pre-release' button under the release description if appropriate
-    - Click 'Public release'
+    - Click 'Publish release'
 
 3. **Monitor the Release workflow**
     - After publishing the release, a workflow will begin for producing the release's build artifacts and publishing the NuGet package to NuGet.org
