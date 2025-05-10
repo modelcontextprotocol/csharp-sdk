@@ -1,10 +1,10 @@
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
 using System.Collections.Concurrent;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Reflection;
@@ -76,7 +76,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
             Description = options?.Description,
             MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
             SerializerOptions = McpJsonUtilities.DefaultOptions,
-            Services = options?.Services,
+            CreateInstance = AIFunctionMcpServerTool.GetCreateInstanceFunc(),
             ConfigureParameterBinding = pi =>
             {
                 if (pi.ParameterType == typeof(RequestContext<ReadResourceRequestParams>))
@@ -115,6 +115,32 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
 
                             return NullProgress.Instance;
                         },
+                    };
+                }
+
+                if (options?.Services is { } services &&
+                    services.GetService<IServiceProviderIsService>() is { } ispis &&
+                    ispis.IsService(pi.ParameterType))
+                {
+                    return new()
+                    {
+                        ExcludeFromSchema = true,
+                        BindParameter = (pi, args) =>
+                            GetRequestContext(args)?.Services?.GetService(pi.ParameterType) ??
+                            (pi.HasDefaultValue ? null :
+                             throw new ArgumentException("No service of the requested type was found.")),
+                    };
+                }
+
+                if (pi.GetCustomAttribute<FromKeyedServicesAttribute>() is { } keyedAttr)
+                {
+                    return new()
+                    {
+                        ExcludeFromSchema = true,
+                        BindParameter = (pi, args) =>
+                            (GetRequestContext(args)?.Services as IKeyedServiceProvider)?.GetKeyedService(pi.ParameterType, keyedAttr.Key) ??
+                            (pi.HasDefaultValue ? null :
+                             throw new ArgumentException("No service of the requested type was found.")),
                     };
                 }
 

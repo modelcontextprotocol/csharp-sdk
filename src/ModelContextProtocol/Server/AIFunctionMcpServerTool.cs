@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
@@ -60,6 +61,14 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             options);
     }
 
+    // TODO: Fix the need for this suppression.
+    [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2111:ReflectionToDynamicallyAccessedMembers",
+        Justification = "AIFunctionFactory ensures that the Type passed to AIFunctionFactoryOptions.CreateInstance has public constructors preserved")]
+    internal static Func<Type, AIFunctionArguments, object> GetCreateInstanceFunc() =>
+        static ([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] type, args) => args.Services is { } services ?
+            ActivatorUtilities.CreateInstance(services, type) :
+            Activator.CreateInstance(type)!;
+
     private static AIFunctionFactoryOptions CreateAIFunctionFactoryOptions(
         MethodInfo method, McpServerToolCreateOptions? options) =>
         new()
@@ -68,7 +77,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             Description = options?.Description,
             MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
             SerializerOptions = options?.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
-            Services = options?.Services,
+            CreateInstance = GetCreateInstanceFunc(),
             ConfigureParameterBinding = pi =>
             {
                 if (pi.ParameterType == typeof(RequestContext<CallToolRequestParams>))
@@ -107,6 +116,32 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
 
                             return NullProgress.Instance;
                         },
+                    };
+                }
+
+                if (options?.Services is { } services &&
+                    services.GetService<IServiceProviderIsService>() is { } ispis &&
+                    ispis.IsService(pi.ParameterType))
+                {
+                    return new()
+                    {
+                        ExcludeFromSchema = true,
+                        BindParameter = (pi, args) =>
+                            GetRequestContext(args)?.Services?.GetService(pi.ParameterType) ??
+                            (pi.HasDefaultValue ? null :
+                             throw new ArgumentException("No service of the requested type was found.")),
+                    };
+                }
+
+                if (pi.GetCustomAttribute<FromKeyedServicesAttribute>() is { } keyedAttr)
+                {
+                    return new()
+                    {
+                        ExcludeFromSchema = true,
+                        BindParameter = (pi, args) =>
+                            (GetRequestContext(args)?.Services as IKeyedServiceProvider)?.GetKeyedService(pi.ParameterType, keyedAttr.Key) ??
+                            (pi.HasDefaultValue ? null :
+                             throw new ArgumentException("No service of the requested type was found.")),
                     };
                 }
 

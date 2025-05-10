@@ -156,6 +156,10 @@ public partial class McpServerToolTests
     [Fact]
     public async Task SupportsAsyncDisposingInstantiatedAsyncDisposableAndDisposableTargets()
     {
+        ServiceCollection sc = new();
+        sc.AddSingleton<MyService>();
+        IServiceProvider services = sc.BuildServiceProvider();
+
         McpServerToolCreateOptions options = new() { SerializerOptions = JsonContext2.Default.Options };
         McpServerTool tool1 = McpServerTool.Create(
             typeof(AsyncDisposableAndDisposableToolType).GetMethod(nameof(AsyncDisposableAndDisposableToolType.InstanceMethod))!,
@@ -163,7 +167,7 @@ public partial class McpServerToolTests
             options);
 
         var result = await tool1.InvokeAsync(
-            new RequestContext<CallToolRequestParams>(new Mock<IMcpServer>().Object),
+            new RequestContext<CallToolRequestParams>(new Mock<IMcpServer>().Object) { Services = services },
             TestContext.Current.CancellationToken);
         Assert.Equal("""{"asyncDisposals":1,"disposals":0}""", result.Content[0].Text);
     }
@@ -428,6 +432,11 @@ public partial class McpServerToolTests
 
     private class AsyncDisposableAndDisposableToolType : IAsyncDisposable, IDisposable
     {
+        public AsyncDisposableAndDisposableToolType(MyService service)
+        {
+            Assert.NotNull(service);
+        }
+
         [JsonPropertyOrder(0)]
         public int AsyncDisposals { get; private set; }
 
