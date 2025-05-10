@@ -68,8 +68,12 @@ public static partial class McpJsonUtilities
                 {
                     return false;
                 }
-
-                return true; // No need to check other properties
+            }
+            else if (!(property.NameEquals("properties") || 
+                       property.NameEquals("required")))
+            {
+                // Only "type", "properties", and "required" are allowed.
+                return false;
             }
         }
 
