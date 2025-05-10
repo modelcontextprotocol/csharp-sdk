@@ -45,7 +45,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         // We connect with the initialization request with the MCP transport. This means that any errors won't be observed
         // until the first call to SendMessageAsync. Fortunately, that happens internally in McpClientFactory.ConnectAsync
         // so we still throw any connection-related Exceptions from there and never expose a pre-connected client to the user.
-        SetConnected(true);
+        SetConnected();
     }
 
     /// <inheritdoc/>
@@ -139,7 +139,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         }
         finally
         {
-            SetConnected(false);
+            SetDisconnected();
         }
     }
 

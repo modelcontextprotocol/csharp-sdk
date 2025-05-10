@@ -127,8 +127,28 @@ public sealed partial class StdioClientTransport : IClientTransport
 
             process = new() { StartInfo = startInfo };
 
-            // Set up error logging
-            process.ErrorDataReceived += (sender, args) => LogReadStderr(logger, endpointName, args.Data ?? "(no data)");
+            // Set up stderr handling. Log all stderr output, and keep the last
+            // few lines in a rolling log for use in exceptions.
+            const int MaxStderrLength = 10; // keep the last 10 lines of stderr
+            Queue<string> stderrRollingLog = new(MaxStderrLength);
+            process.ErrorDataReceived += (sender, args) =>
+            {
+                string? data = args.Data;
+                if (data is not null)
+                {
+                    lock (stderrRollingLog)
+                    {
+                        if (stderrRollingLog.Count >= MaxStderrLength)
+                        {
+                            stderrRollingLog.Dequeue();
+                        }
+
+                        stderrRollingLog.Enqueue(data);
+                    }
+
+                    LogReadStderr(logger, endpointName, data);
+                }
+            };
 
             // We need both stdin and stdout to use a no-BOM UTF-8 encoding. On .NET Core,
             // we can use ProcessStartInfo.StandardOutputEncoding/StandardInputEncoding, but
@@ -154,14 +174,14 @@ public sealed partial class StdioClientTransport : IClientTransport
             if (!processStarted)
             {
                 LogTransportProcessStartFailed(logger, endpointName);
-                throw new InvalidOperationException("Failed to start MCP server process");
+                throw new IOException("Failed to start MCP server process.");
             }
 
             LogTransportProcessStarted(logger, endpointName, process.Id);
 
             process.BeginErrorReadLine();
 
-            return new StdioClientSessionTransport(_options, process, endpointName, _loggerFactory);
+            return new StdioClientSessionTransport(_options, process, endpointName, stderrRollingLog, _loggerFactory);
         }
         catch (Exception ex)
         {
@@ -176,7 +196,7 @@ public sealed partial class StdioClientTransport : IClientTransport
                 LogTransportShutdownFailed(logger, endpointName, ex2);
             }
 
-            throw new InvalidOperationException("Failed to connect transport", ex);
+            throw new IOException("Failed to connect transport.", ex);
         }
     }
 
@@ -185,20 +205,9 @@ public sealed partial class StdioClientTransport : IClientTransport
     {
         if (process is not null)
         {
-            if (processRunning)
-            {
-                try
-                {
-                    processRunning = !process.HasExited;
-                }
-                catch
-                {
-                    processRunning = false;
-                }
-            }
-
             try
             {
+                processRunning = processRunning && !HasExited(process);
                 if (processRunning)
                 {
                     // Wait for the process to exit.
@@ -211,6 +220,19 @@ public sealed partial class StdioClientTransport : IClientTransport
             {
                 process.Dispose();
             }
+        }
+    }
+
+    /// <summary>Gets whether <paramref name="process"/> has exited.</summary>
+    internal static bool HasExited(Process process)
+    {
+        try
+        {
+            return process.HasExited;
+        }
+        catch
+        {
+            return true;
         }
     }
 
