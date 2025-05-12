@@ -66,7 +66,7 @@ namespace AspNetCoreSseServer.Tools
             }
             catch (Exception ex)
             {
-                return $"Error: {ex.Message}";
+                return $"Error: {ex.ToString()}";
 
             }
            

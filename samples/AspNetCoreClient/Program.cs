@@ -13,7 +13,9 @@ builder.Services.AddControllers();
 
 // THIS IS NEEDED FOR SAMPLING CALLBACKS : START 
 var modelName = builder.Configuration["model-name"];
+ArgumentException.ThrowIfNullOrWhiteSpace(modelName, "model-name not found in configuration");  
 var openAIApiKey = builder.Configuration["open-ai-api-key"]; //PUT IN SECRET FILE OR ENV VARIABLE 
+ArgumentException.ThrowIfNullOrWhiteSpace(openAIApiKey, "open-ai-api-key not found in configuration");
 var client = new OpenAI.OpenAIClient(openAIApiKey);
 var chatClient = client.GetChatClient(modelName);
 // ChatClientProxy just for demo purpouses, to intercept call back  
