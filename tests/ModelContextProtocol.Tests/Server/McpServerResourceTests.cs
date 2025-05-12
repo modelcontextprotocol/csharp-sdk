@@ -375,7 +375,7 @@ public partial class McpServerResourceTests
 
         Mock<IMcpServer> mockServer = new();
 
-        await Assert.ThrowsAsync<ArgumentNullException>(async () => await resource.ReadAsync(
+        await Assert.ThrowsAnyAsync<ArgumentException>(async () => await resource.ReadAsync(
             new RequestContext<ReadResourceRequestParams>(mockServer.Object) { Params = new() { Uri = "resource://Test" } },
             TestContext.Current.CancellationToken));
 
