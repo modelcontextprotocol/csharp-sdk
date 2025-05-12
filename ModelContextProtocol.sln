@@ -12,6 +12,9 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestServerWithHosting", "samples\TestServerWithHosting\TestServerWithHosting.csproj", "{6499876E-2F76-44A8-B6EB-5B889C6E9B7F}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
+	ProjectSection(SolutionItems) = preProject
+		..\mcp-playground\mcp-shared\ResponseToUser.cs = ..\mcp-playground\mcp-shared\ResponseToUser.cs
+	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{2A77AF5C-138A-4EBB-9A13-9205DCD67928}"
 EndProject
@@ -55,6 +58,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModelContextProtocol.AspNetCore", "src\ModelContextProtocol.AspNetCore\ModelContextProtocol.AspNetCore.csproj", "{37B6A5E0-9995-497D-8B43-3BC6870CC716}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModelContextProtocol.AspNetCore.Tests", "tests\ModelContextProtocol.AspNetCore.Tests\ModelContextProtocol.AspNetCore.Tests.csproj", "{85557BA6-3D29-4C95-A646-2A972B1C2F25}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AspNetCoreClient", "samples\AspNetCoreClient\AspNetCoreClient.csproj", "{4C513515-7D79-4DDD-A0B1-CD064835735B}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -110,6 +115,10 @@ Global
 		{85557BA6-3D29-4C95-A646-2A972B1C2F25}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{85557BA6-3D29-4C95-A646-2A972B1C2F25}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{85557BA6-3D29-4C95-A646-2A972B1C2F25}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4C513515-7D79-4DDD-A0B1-CD064835735B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4C513515-7D79-4DDD-A0B1-CD064835735B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4C513515-7D79-4DDD-A0B1-CD064835735B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4C513515-7D79-4DDD-A0B1-CD064835735B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -128,6 +137,7 @@ Global
 		{17B8453F-AB72-99C5-E5EA-D0B065A6AE65} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{37B6A5E0-9995-497D-8B43-3BC6870CC716} = {A2F1F52A-9107-4BF8-8C3F-2F6670E7D0AD}
 		{85557BA6-3D29-4C95-A646-2A972B1C2F25} = {2A77AF5C-138A-4EBB-9A13-9205DCD67928}
+		{4C513515-7D79-4DDD-A0B1-CD064835735B} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {384A3888-751F-4D75-9AE5-587330582D89}

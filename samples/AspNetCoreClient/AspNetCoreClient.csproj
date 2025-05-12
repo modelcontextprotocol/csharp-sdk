@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>52baca43-36fc-46be-bb45-84ae606bffed</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="Templates\systemMessage-weather.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Templates\systemMessage-weather.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+	  <PackageReference Include="OpenAI" VersionOverride="2.2.0-beta.4" />
+	  <PackageReference Include="Microsoft.Extensions.AI.OpenAI" VersionOverride="9.4.3-preview.1.25230.7" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ModelContextProtocol.AspNetCore\ModelContextProtocol.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\src\ModelContextProtocol\ModelContextProtocol.csproj" />
+  </ItemGroup>
+
+</Project>
