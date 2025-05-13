@@ -18,7 +18,7 @@ public partial class McpServerToolTests
         Assert.Throws<ArgumentNullException>("function", () => McpServerTool.Create((AIFunction)null!));
         Assert.Throws<ArgumentNullException>("method", () => McpServerTool.Create((MethodInfo)null!));
         Assert.Throws<ArgumentNullException>("method", () => McpServerTool.Create((MethodInfo)null!, typeof(object)));
-        Assert.Throws<ArgumentNullException>("targetType", () => McpServerTool.Create(typeof(McpServerToolTests).GetMethod(nameof(Create_InvalidArgs_Throws))!, (Type)null!));
+        Assert.Throws<ArgumentNullException>("createTargetFunc", () => McpServerTool.Create(typeof(McpServerToolTests).GetMethod(nameof(Create_InvalidArgs_Throws))!, null!));
         Assert.Throws<ArgumentNullException>("method", () => McpServerTool.Create((Delegate)null!));
 
         Assert.NotNull(McpServerTool.Create(typeof(DisposableToolType).GetMethod(nameof(DisposableToolType.InstanceMethod))!, new DisposableToolType()));
@@ -129,7 +129,7 @@ public partial class McpServerToolTests
         McpServerToolCreateOptions options = new() { SerializerOptions = JsonContext2.Default.Options };
         McpServerTool tool1 = McpServerTool.Create(
             typeof(DisposableToolType).GetMethod(nameof(DisposableToolType.InstanceMethod))!,
-            typeof(DisposableToolType),
+            _ => new DisposableToolType(),
             options);
 
         var result = await tool1.InvokeAsync(
@@ -144,7 +144,7 @@ public partial class McpServerToolTests
         McpServerToolCreateOptions options = new() { SerializerOptions = JsonContext2.Default.Options };
         McpServerTool tool1 = McpServerTool.Create(
             typeof(AsyncDisposableToolType).GetMethod(nameof(AsyncDisposableToolType.InstanceMethod))!,
-            typeof(AsyncDisposableToolType),
+            _ => new AsyncDisposableToolType(),
             options);
 
         var result = await tool1.InvokeAsync(
@@ -163,7 +163,7 @@ public partial class McpServerToolTests
         McpServerToolCreateOptions options = new() { SerializerOptions = JsonContext2.Default.Options };
         McpServerTool tool1 = McpServerTool.Create(
             typeof(AsyncDisposableAndDisposableToolType).GetMethod(nameof(AsyncDisposableAndDisposableToolType.InstanceMethod))!,
-            typeof(AsyncDisposableAndDisposableToolType),
+            static r => ActivatorUtilities.CreateInstance(r.Services!, typeof(AsyncDisposableAndDisposableToolType)),
             options);
 
         var result = await tool1.InvokeAsync(
