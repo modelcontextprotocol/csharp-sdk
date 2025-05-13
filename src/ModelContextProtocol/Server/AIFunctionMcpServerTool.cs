@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
+using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text.Json;
@@ -27,7 +28,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
     }
 
     /// <summary>
-    /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
+    /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="MethodInfo"/> instance.
     /// </summary>
     public static new AIFunctionMcpServerTool Create(
         MethodInfo method,
@@ -44,7 +45,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
     }
 
     /// <summary>
-    /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
+    /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="MethodInfo"/> instance.
     /// </summary>
     public static new AIFunctionMcpServerTool Create(
         MethodInfo method,
@@ -60,6 +61,14 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             options);
     }
 
+    // TODO: Fix the need for this suppression.
+    [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2111:ReflectionToDynamicallyAccessedMembers",
+        Justification = "AIFunctionFactory ensures that the Type passed to AIFunctionFactoryOptions.CreateInstance has public constructors preserved")]
+    internal static Func<Type, AIFunctionArguments, object> GetCreateInstanceFunc() =>
+        static ([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] type, args) => args.Services is { } services ?
+            ActivatorUtilities.CreateInstance(services, type) :
+            Activator.CreateInstance(type)!;
+
     private static AIFunctionFactoryOptions CreateAIFunctionFactoryOptions(
         MethodInfo method, McpServerToolCreateOptions? options) =>
         new()
@@ -68,7 +77,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             Description = options?.Description,
             MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
             SerializerOptions = options?.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
-            Services = options?.Services,
+            CreateInstance = GetCreateInstanceFunc(),
             ConfigureParameterBinding = pi =>
             {
                 if (pi.ParameterType == typeof(RequestContext<CallToolRequestParams>))
@@ -107,6 +116,32 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
 
                             return NullProgress.Instance;
                         },
+                    };
+                }
+
+                if (options?.Services is { } services &&
+                    services.GetService<IServiceProviderIsService>() is { } ispis &&
+                    ispis.IsService(pi.ParameterType))
+                {
+                    return new()
+                    {
+                        ExcludeFromSchema = true,
+                        BindParameter = (pi, args) =>
+                            GetRequestContext(args)?.Services?.GetService(pi.ParameterType) ??
+                            (pi.HasDefaultValue ? null :
+                             throw new ArgumentException("No service of the requested type was found.")),
+                    };
+                }
+
+                if (pi.GetCustomAttribute<FromKeyedServicesAttribute>() is { } keyedAttr)
+                {
+                    return new()
+                    {
+                        ExcludeFromSchema = true,
+                        BindParameter = (pi, args) =>
+                            (GetRequestContext(args)?.Services as IKeyedServiceProvider)?.GetKeyedService(pi.ParameterType, keyedAttr.Key) ??
+                            (pi.HasDefaultValue ? null :
+                             throw new ArgumentException("No service of the requested type was found.")),
                     };
                 }
 
@@ -160,34 +195,39 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
         return new AIFunctionMcpServerTool(function, tool);
     }
 
-    private static McpServerToolCreateOptions? DeriveOptions(MethodInfo method, McpServerToolCreateOptions? options)
+    private static McpServerToolCreateOptions DeriveOptions(MethodInfo method, McpServerToolCreateOptions? options)
     {
         McpServerToolCreateOptions newOptions = options?.Clone() ?? new();
 
-        if (method.GetCustomAttribute<McpServerToolAttribute>() is { } attr)
+        if (method.GetCustomAttribute<McpServerToolAttribute>() is { } toolAttr)
         {
-            newOptions.Name ??= attr.Name;
-            newOptions.Title ??= attr.Title;
+            newOptions.Name ??= toolAttr.Name;
+            newOptions.Title ??= toolAttr.Title;
 
-            if (attr._destructive is bool destructive)
+            if (toolAttr._destructive is bool destructive)
             {
                 newOptions.Destructive ??= destructive;
             }
 
-            if (attr._idempotent is bool idempotent)
+            if (toolAttr._idempotent is bool idempotent)
             {
                 newOptions.Idempotent ??= idempotent;
             }
 
-            if (attr._openWorld is bool openWorld)
+            if (toolAttr._openWorld is bool openWorld)
             {
                 newOptions.OpenWorld ??= openWorld;
             }
 
-            if (attr._readOnly is bool readOnly)
+            if (toolAttr._readOnly is bool readOnly)
             {
                 newOptions.ReadOnly ??= readOnly;
             }
+        }
+
+        if (method.GetCustomAttribute<DescriptionAttribute>() is { } descAttr)
+        {
+            newOptions.Description ??= descAttr.Description;
         }
 
         return newOptions;
@@ -253,7 +293,8 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
         {
             AIContent aiContent => new()
             {
-                Content = [aiContent.ToContent()]
+                Content = [aiContent.ToContent()],
+                IsError = aiContent is ErrorContent
             },
 
             null => new()
@@ -276,10 +317,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
                 Content = [.. texts.Select(x => new Content() { Type = "text", Text = x ?? string.Empty })]
             },
             
-            IEnumerable<AIContent> contentItems => new()
-            {
-                Content = [.. contentItems.Select(static item => item.ToContent())]
-            },
+            IEnumerable<AIContent> contentItems => ConvertAIContentEnumerableToCallToolResponse(contentItems),
             
             IEnumerable<Content> contents => new()
             {
@@ -299,4 +337,27 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
         };
     }
 
+    private static CallToolResponse ConvertAIContentEnumerableToCallToolResponse(IEnumerable<AIContent> contentItems)
+    {
+        List<Content> contentList = [];
+        bool allErrorContent = true;
+        bool hasAny = false;
+
+        foreach (var item in contentItems)
+        {
+            contentList.Add(item.ToContent());
+            hasAny = true;
+
+            if (allErrorContent && item is not ErrorContent)
+            {
+                allErrorContent = false;
+            }
+        }
+
+        return new()
+        {
+            Content = contentList,
+            IsError = allErrorContent && hasAny
+        };
+    }
 }

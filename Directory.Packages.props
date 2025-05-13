@@ -2,7 +2,7 @@
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <System10Version>10.0.0-preview.3.25171.5</System10Version>
-    <MicrosoftExtensionsAIVersion>9.4.3-preview.1.25230.7</MicrosoftExtensionsAIVersion>
+    <MicrosoftExtensionsAIVersion>9.4.4-preview.1.25259.16</MicrosoftExtensionsAIVersion>
   </PropertyGroup>
 
   <!-- Product dependencies netstandard -->
@@ -31,7 +31,7 @@
 
   <!-- Product dependencies shared -->
   <ItemGroup>
-    <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="$(MicrosoftExtensionsAIVersion)" />
+    <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="9.4.4-preview.1.25259.16" />
     <PackageVersion Include="Microsoft.Extensions.AI" Version="$(MicrosoftExtensionsAIVersion)" />
     <PackageVersion Include="System.Net.ServerSentEvents" Version="$(System10Version)" />
   </ItemGroup>

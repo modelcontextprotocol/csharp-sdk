@@ -67,4 +67,27 @@ public record ResourceTemplate
     /// </remarks>
     [JsonPropertyName("annotations")]
     public Annotations? Annotations { get; init; }
+
+    /// <summary>Gets whether <see cref="UriTemplate"/> contains any template expressions.</summary>
+    [JsonIgnore]
+    public bool IsTemplated => UriTemplate.Contains('{');
+
+    /// <summary>Converts the <see cref="ResourceTemplate"/> into a <see cref="Resource"/>.</summary>
+    /// <returns>A <see cref="Resource"/> if <see cref="IsTemplated"/> is <see langword="false"/>; otherwise, <see langword="null"/>.</returns>
+    public Resource? AsResource()
+    {
+        if (IsTemplated)
+        {
+            return null;
+        }
+
+        return new()
+        {
+            Uri = UriTemplate,
+            Name = Name,
+            Description = Description,
+            MimeType = MimeType,
+            Annotations = Annotations,
+        };
+    }
 }

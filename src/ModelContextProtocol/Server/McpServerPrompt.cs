@@ -217,5 +217,5 @@ public abstract class McpServerPrompt : IMcpServerPrimitive
     public override string ToString() => ProtocolPrompt.Name;
 
     /// <inheritdoc />
-    string IMcpServerPrimitive.Name => ProtocolPrompt.Name;
+    string IMcpServerPrimitive.Id => ProtocolPrompt.Name;
 }

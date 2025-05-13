@@ -29,7 +29,7 @@ public static class McpServerExtensions
     /// It allows detailed control over sampling parameters including messages, system prompt, temperature, 
     /// and token limits.
     /// </remarks>
-    public static Task<CreateMessageResult> RequestSamplingAsync(
+    public static ValueTask<CreateMessageResult> RequestSamplingAsync(
         this IMcpServer server, CreateMessageRequestParams request, CancellationToken cancellationToken)
     {
         Throw.IfNull(server);
@@ -197,7 +197,7 @@ public static class McpServerExtensions
     /// navigated and accessed by the server. These resources might include file systems, databases,
     /// or other structured data sources that the client makes available through the protocol.
     /// </remarks>
-    public static Task<ListRootsResult> RequestRootsAsync(
+    public static ValueTask<ListRootsResult> RequestRootsAsync(
         this IMcpServer server, ListRootsRequestParams request, CancellationToken cancellationToken)
     {
         Throw.IfNull(server);
