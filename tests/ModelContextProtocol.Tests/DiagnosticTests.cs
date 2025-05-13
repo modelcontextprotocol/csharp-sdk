@@ -1,5 +1,5 @@
 ﻿using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol.Transport;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using OpenTelemetry.Trace;
 using System.Diagnostics;

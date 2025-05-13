@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 

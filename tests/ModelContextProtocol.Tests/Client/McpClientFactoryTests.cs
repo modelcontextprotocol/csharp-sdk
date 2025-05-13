@@ -1,9 +1,6 @@
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Protocol.Transport;
-using ModelContextProtocol.Protocol.Types;
-using ModelContextProtocol.Utils.Json;
+using ModelContextProtocol.Protocol;
 using Moq;
 using System.IO.Pipelines;
 using System.Text.Json;

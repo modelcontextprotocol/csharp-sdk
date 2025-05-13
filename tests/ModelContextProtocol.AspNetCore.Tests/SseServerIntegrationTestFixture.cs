@@ -1,7 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Tests.Utils;
 using ModelContextProtocol.TestSseServer;
 

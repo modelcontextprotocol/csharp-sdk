@@ -1,9 +1,6 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
-using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Protocol.Types;
-using ModelContextProtocol.Utils;
-using ModelContextProtocol.Utils.Json;
+using ModelContextProtocol.Protocol;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;

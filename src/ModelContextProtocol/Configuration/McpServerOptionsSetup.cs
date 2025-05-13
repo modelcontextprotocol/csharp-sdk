@@ -1,6 +1,6 @@
-using ModelContextProtocol.Server;
 using Microsoft.Extensions.Options;
-using ModelContextProtocol.Utils;
+using ModelContextProtocol;
+using ModelContextProtocol.Server;
 
 namespace Microsoft.Extensions.DependencyInjection;
 

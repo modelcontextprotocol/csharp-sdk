@@ -1,6 +1,5 @@
-using ModelContextProtocol.Protocol.Transport;
-using ModelContextProtocol.Utils;
 using Microsoft.Extensions.Logging;
+using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.Server;
 

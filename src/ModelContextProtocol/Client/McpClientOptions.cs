@@ -1,4 +1,4 @@
-using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.Client;
 

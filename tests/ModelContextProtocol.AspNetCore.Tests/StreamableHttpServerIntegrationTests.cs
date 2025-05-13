@@ -1,4 +1,4 @@
-﻿using ModelContextProtocol.Protocol.Transport;
+﻿using ModelContextProtocol.Client;
 using System.Text;
 
 namespace ModelContextProtocol.AspNetCore.Tests;

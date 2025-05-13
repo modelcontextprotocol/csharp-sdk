@@ -1,13 +1,11 @@
-﻿using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol.Transport;
-using Microsoft.Extensions.AI;
-using OpenAI;
-
-using OpenTelemetry;
-using OpenTelemetry.Trace;
+﻿using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using ModelContextProtocol.Client;
+using OpenAI;
+using OpenTelemetry;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
+using OpenTelemetry.Trace;
 
 using var tracerProvider = Sdk.CreateTracerProviderBuilder()
     .AddHttpClientInstrumentation()

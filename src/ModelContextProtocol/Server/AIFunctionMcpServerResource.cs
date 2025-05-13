@@ -1,8 +1,6 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
-using ModelContextProtocol.Protocol.Types;
-using ModelContextProtocol.Utils;
-using ModelContextProtocol.Utils.Json;
+using ModelContextProtocol.Protocol;
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Globalization;

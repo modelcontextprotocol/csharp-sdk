@@ -1,7 +1,4 @@
-﻿using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
-
-namespace ModelContextProtocol.AspNetCore.Tests;
+﻿namespace ModelContextProtocol.AspNetCore.Tests;
 
 public class MapMcpStatelessTests(ITestOutputHelper outputHelper) : MapMcpStreamableHttpTests(outputHelper)
 {

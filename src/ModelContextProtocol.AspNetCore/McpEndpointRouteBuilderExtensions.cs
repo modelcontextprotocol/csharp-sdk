@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.AspNetCore;
-using ModelContextProtocol.Protocol.Messages;
+using ModelContextProtocol.Protocol;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Microsoft.AspNetCore.Builder;

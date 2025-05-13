@@ -1,5 +1,5 @@
 ﻿using ModelContextProtocol.AspNetCore.Stateless;
-using ModelContextProtocol.Protocol.Transport;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Security.Claims;
 

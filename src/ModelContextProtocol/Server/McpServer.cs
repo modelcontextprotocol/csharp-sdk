@@ -1,11 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Protocol.Transport;
-using ModelContextProtocol.Protocol.Types;
-using ModelContextProtocol.Shared;
-using ModelContextProtocol.Utils;
-using ModelContextProtocol.Utils.Json;
+using ModelContextProtocol.Protocol;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization.Metadata;
 
@@ -558,12 +553,12 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
     internal static LoggingLevel ToLoggingLevel(LogLevel level) =>
         level switch
         {
-            LogLevel.Trace => Protocol.Types.LoggingLevel.Debug,
-            LogLevel.Debug => Protocol.Types.LoggingLevel.Debug,
-            LogLevel.Information => Protocol.Types.LoggingLevel.Info,
-            LogLevel.Warning => Protocol.Types.LoggingLevel.Warning,
-            LogLevel.Error => Protocol.Types.LoggingLevel.Error,
-            LogLevel.Critical => Protocol.Types.LoggingLevel.Critical,
-            _ => Protocol.Types.LoggingLevel.Emergency,
+            LogLevel.Trace => Protocol.LoggingLevel.Debug,
+            LogLevel.Debug => Protocol.LoggingLevel.Debug,
+            LogLevel.Information => Protocol.LoggingLevel.Info,
+            LogLevel.Warning => Protocol.LoggingLevel.Warning,
+            LogLevel.Error => Protocol.LoggingLevel.Error,
+            LogLevel.Critical => Protocol.LoggingLevel.Critical,
+            _ => Protocol.LoggingLevel.Emergency,
         };
 }

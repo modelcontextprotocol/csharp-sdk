@@ -1,8 +1,8 @@
-﻿using System.Diagnostics;
+﻿using ModelContextProtocol.Protocol;
+using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using ModelContextProtocol.Protocol.Messages;
 
 namespace ModelContextProtocol;
 

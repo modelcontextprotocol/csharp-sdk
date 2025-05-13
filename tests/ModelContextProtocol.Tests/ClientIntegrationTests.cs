@@ -1,10 +1,7 @@
 ﻿using Microsoft.Extensions.AI;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Protocol.Transport;
-using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Tests.Utils;
-using ModelContextProtocol.Utils.Json;
 using OpenAI;
 using System.Text.Json;
 using System.Text.Json.Serialization;

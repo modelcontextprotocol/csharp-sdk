@@ -1,9 +1,7 @@
 ﻿using Microsoft.Extensions.AI;
-using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
-using ModelContextProtocol.Utils.Json;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;

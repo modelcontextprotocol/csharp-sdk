@@ -1,6 +1,5 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
-using ModelContextProtocol.Client;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
 

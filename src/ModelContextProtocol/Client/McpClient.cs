@@ -1,9 +1,5 @@
 using Microsoft.Extensions.Logging;
-using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Protocol.Transport;
-using ModelContextProtocol.Protocol.Types;
-using ModelContextProtocol.Shared;
-using ModelContextProtocol.Utils.Json;
+using ModelContextProtocol.Protocol;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Client;

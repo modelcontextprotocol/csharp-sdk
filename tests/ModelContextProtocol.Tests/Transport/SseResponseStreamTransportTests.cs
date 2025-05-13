@@ -1,4 +1,4 @@
-﻿using ModelContextProtocol.Protocol.Transport;
+﻿using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.IO.Pipelines;
 

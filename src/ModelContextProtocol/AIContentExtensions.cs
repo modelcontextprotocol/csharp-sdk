@@ -1,8 +1,8 @@
 using Microsoft.Extensions.AI;
-using ModelContextProtocol.Protocol.Types;
-using ModelContextProtocol.Utils;
-using ModelContextProtocol.Utils.Json;
+using ModelContextProtocol.Protocol;
+#if !NET
 using System.Runtime.InteropServices;
+#endif
 using System.Text.Json;
 
 namespace ModelContextProtocol;

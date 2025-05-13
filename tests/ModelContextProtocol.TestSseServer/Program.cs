@@ -1,7 +1,6 @@
 ﻿using Microsoft.AspNetCore.Connections;
-using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using ModelContextProtocol.Utils.Json;
 using Serilog;
 using System.Diagnostics;
 using System.Text;

@@ -1,11 +1,9 @@
-﻿using ModelContextProtocol.Protocol.Transport;
-using System.Text;
+﻿using ModelContextProtocol.Client;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
 
 public class StatelessServerIntegrationTests(SseServerIntegrationTestFixture fixture, ITestOutputHelper testOutputHelper)
     : StreamableHttpServerIntegrationTests(fixture, testOutputHelper)
-
 {
     protected override SseClientTransportOptions ClientTransportOptions => new()
     {

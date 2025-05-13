@@ -1,5 +1,4 @@
 ﻿using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol.Transport;
 using System.Runtime.InteropServices;
 
 namespace ModelContextProtocol.Tests.Transport;
