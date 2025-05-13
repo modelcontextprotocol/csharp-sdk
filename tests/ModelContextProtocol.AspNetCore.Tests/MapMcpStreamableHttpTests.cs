@@ -6,6 +6,7 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpTests(outputHelper)
 {
     protected override bool UseStreamableHttp => true;
+    protected override bool Stateless => false;
 
     [Theory]
     [InlineData("/a", "/a")]

@@ -31,7 +31,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
             Services = _app.Services,
         });
 
-        _app.MapPost("/mcp", async (JsonRpcMessage message) =>
+        _app.MapPost("/mcp", (JsonRpcMessage message) =>
         {
             if (message is not JsonRpcRequest request)
             {

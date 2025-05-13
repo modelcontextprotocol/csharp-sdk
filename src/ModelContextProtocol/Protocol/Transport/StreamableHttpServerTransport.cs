@@ -38,14 +38,18 @@ public sealed class StreamableHttpServerTransport : ITransport
     private int _getRequestStarted;
 
     /// <summary>
-    /// Gets the capabilities supported by the client if it was received by <see cref="HandlePostRequest(IDuplexPipe, CancellationToken)"/>.
+    /// Configures whether the transport should be in stateless mode that does not require all requests for a given session
+    /// to arrive to the same ASP.NET Core application process. Unsolicited server-to-client messages are not supported in this mode,
+    /// so calling <see cref="HandleGetRequest(Stream, CancellationToken)"/> results in an <see cref="InvalidOperationException"/>.
+    /// Server-to-client requests are also unsupported, because the responses may arrive at another ASP.NET Core application process.
+    /// Client sampling and roots capabilities are also disabled in stateless mode, because the server cannot make requests.
     /// </summary>
-    public ClientCapabilities? ClientCapabilities { get; internal set; }
+    public bool Stateless { get; init; }
 
     /// <summary>
-    /// Gets the version and implementation information of the connected client if it was received by <see cref="HandlePostRequest(IDuplexPipe, CancellationToken)"/>.
+    /// Gets the initialize request if it was received by <see cref="HandlePostRequest(IDuplexPipe, CancellationToken)"/> and <see cref="Stateless"/> is set to <see langword="true"/>.
     /// </summary>
-    public Implementation? ClientInfo { get; internal set; }
+    public InitializeRequestParams? InitializeRequest { get; internal set; }
 
     /// <inheritdoc/>
     public ChannelReader<JsonRpcMessage> MessageReader => _incomingChannel.Reader;
@@ -62,6 +66,11 @@ public sealed class StreamableHttpServerTransport : ITransport
     /// <returns>A task representing the send loop that writes JSON-RPC messages to the SSE response stream.</returns>
     public async Task HandleGetRequest(Stream sseResponseStream, CancellationToken cancellationToken)
     {
+        if (Stateless)
+        {
+            throw new InvalidOperationException("GET requests are not supported in stateless mode.");
+        }
+
         if (Interlocked.Exchange(ref _getRequestStarted, 1) == 1)
         {
             throw new InvalidOperationException("Session resumption is not yet supported. Please start a new session.");
@@ -93,6 +102,11 @@ public sealed class StreamableHttpServerTransport : ITransport
     /// <inheritdoc/>
     public async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
+        if (Stateless)
+        {
+            throw new InvalidOperationException("Unsolicited server to client messages are not supported in stateless mode.");
+        }
+
         await _sseWriter.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
     }
 

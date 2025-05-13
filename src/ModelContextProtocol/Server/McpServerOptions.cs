@@ -76,15 +76,4 @@ public class McpServerOptions
     /// </para>
     /// </remarks>
     public Implementation? KnownClientInfo { get; set; }
-
-    /// <summary>
-    /// Gets or sets preexisting knowledge about the client's capabilities to help support
-    /// stateless Streamable HTTP servers that encode this knowledge in the mcp-session-id header.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// When not specified, this information is sourced from the client's initialize request.
-    /// </para>
-    /// </remarks>
-    public ClientCapabilities? KnownClientCapabilities { get; set; }
 }

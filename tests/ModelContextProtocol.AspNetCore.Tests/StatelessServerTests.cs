@@ -1,30 +1,56 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol.Messages;
+using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Server;
+using System.Diagnostics;
 using System.Net;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
 
+[McpServerToolType]
 public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper), IAsyncDisposable
 {
     private WebApplication? _app;
 
+    private readonly SseClientTransportOptions DefaultTransportOptions = new()
+    {
+        Endpoint = new Uri("http://localhost/"),
+        Name = "In-memory Streamable HTTP Client",
+        UseStreamableHttp = true,
+    };
+
     private async Task StartAsync()
     {
         Builder.Services.AddMcpServer(mcpServerOptions =>
-        {
-            mcpServerOptions.ServerInfo = new Implementation
             {
-                Name = nameof(StreamableHttpServerConformanceTests),
-                Version = "73",
-            };
-        }).WithHttpTransport(httpServerTransportOptions =>
-        {
-            httpServerTransportOptions.Stateless = true;
-        });
+                mcpServerOptions.ServerInfo = new Implementation
+                {
+                    Name = nameof(StreamableHttpServerConformanceTests),
+                    Version = "73",
+                };
+            })
+            .WithHttpTransport(httpServerTransportOptions =>
+            {
+                httpServerTransportOptions.Stateless = true;
+            })
+            .WithTools<StatelessServerTests>();
+
+        Builder.Services.AddScoped<ScopedService>();
 
         _app = Builder.Build();
+
+        _app.Use(next =>
+        {
+            return context =>
+            {
+                context.RequestServices.GetRequiredService<ScopedService>().State = "From request middleware!";
+                return next(context);
+            };
+        });
 
         _app.MapMcp();
 
@@ -33,6 +59,11 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         HttpClient.DefaultRequestHeaders.Accept.Add(new("application/json"));
         HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
     }
+
+    private Task<IMcpClient> ConnectMcpClientAsync(McpClientOptions? clientOptions = null)
+        => McpClientFactory.CreateAsync(
+            new SseClientTransport(DefaultTransportOptions, HttpClient, LoggerFactory),
+            clientOptions, LoggerFactory, TestContext.Current.CancellationToken);
 
     public async ValueTask DisposeAsync()
     {
@@ -65,5 +96,123 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
 
         using var deleteResponse = await HttpClient.DeleteAsync("/", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.MethodNotAllowed, deleteResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task SamplingRequest_Fails_WithInvalidOperationException()
+    {
+        await StartAsync();
+
+        var mcpClientOptions = new McpClientOptions();
+        mcpClientOptions.Capabilities = new();
+        mcpClientOptions.Capabilities.Sampling ??= new();
+        mcpClientOptions.Capabilities.Sampling.SamplingHandler = (_, _, _) =>
+        {
+            throw new UnreachableException();
+        };
+
+        await using var client = await ConnectMcpClientAsync(mcpClientOptions);
+
+        var toolResponse = await client.CallToolAsync("testSamplingErrors", cancellationToken: TestContext.Current.CancellationToken);
+        var toolContent = Assert.Single(toolResponse.Content);
+        Assert.Equal("Server to client requests are not supported in stateless mode.", toolContent.Text);
+    }
+
+    [Fact]
+    public async Task RootsRequest_Fails_WithInvalidOperationException()
+    {
+        await StartAsync();
+
+        var mcpClientOptions = new McpClientOptions();
+        mcpClientOptions.Capabilities = new();
+        mcpClientOptions.Capabilities.Roots ??= new();
+        mcpClientOptions.Capabilities.Roots.RootsHandler = (_, _) =>
+        {
+            throw new UnreachableException();
+        };
+
+        await using var client = await ConnectMcpClientAsync(mcpClientOptions);
+
+        var toolResponse = await client.CallToolAsync("testRootsErrors", cancellationToken: TestContext.Current.CancellationToken);
+        var toolContent = Assert.Single(toolResponse.Content);
+        Assert.Equal("Server to client requests are not supported in stateless mode.", toolContent.Text);
+    }
+
+    [Fact]
+    public async Task UnsolicitedNotification_Fails_WithInvalidOperationException()
+    {
+        InvalidOperationException? unsolicitedNotificationException = null;
+
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(options =>
+            {
+                options.RunSessionHandler = async (context, server, cancellationToken) =>
+                {
+                    unsolicitedNotificationException = await Assert.ThrowsAsync<InvalidOperationException>(
+                        () => server.SendNotificationAsync(NotificationMethods.PromptListChangedNotification, TestContext.Current.CancellationToken));
+
+                    await server.RunAsync(cancellationToken);
+                };
+            });
+
+        await StartAsync();
+
+        await using var client = await ConnectMcpClientAsync();
+
+        Assert.NotNull(unsolicitedNotificationException);
+        Assert.Equal("Unsolicited server to client messages are not supported in stateless mode.", unsolicitedNotificationException.Message);
+    }
+
+    [Fact]
+    public async Task ScopedServices_Resolve_FromRequestScope()
+    {
+        await StartAsync();
+
+        await using var client = await ConnectMcpClientAsync();
+
+        var toolResponse = await client.CallToolAsync("testScope", cancellationToken: TestContext.Current.CancellationToken);
+        var toolContent = Assert.Single(toolResponse.Content);
+        Assert.Equal("From request middleware!", toolContent.Text);
+    }
+
+    [McpServerTool(Name = "testSamplingErrors")]
+    public static async Task<string> TestSamplingErrors(IMcpServer server)
+    {
+        const string expectedSamplingErrorMessage = "Sampling is not supported in stateless mode.";
+
+        // Even when the client has sampling support, it should not be advertised in stateless mode.
+        Assert.Null(server.ClientCapabilities);
+
+        var asSamplingChatClientEx = Assert.Throws<InvalidOperationException>(() => server.AsSamplingChatClient());
+        Assert.Equal(expectedSamplingErrorMessage, asSamplingChatClientEx.Message);
+
+        var requestSamplingEx = await Assert.ThrowsAsync<InvalidOperationException>(() => server.RequestSamplingAsync([]));
+        Assert.Equal(expectedSamplingErrorMessage, requestSamplingEx.Message);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => server.SendRequestAsync(new JsonRpcRequest { Method = RequestMethods.SamplingCreateMessage }));
+        return ex.Message;
+    }
+
+    [McpServerTool(Name = "testRootsErrors")]
+    public static async Task<string> TestRootsErrors(IMcpServer server)
+    {
+        const string expectedRootsErrorMessage = "Roots are not supported in stateless mode.";
+
+        // Even when the client has roots support, it should not be advertised in stateless mode.
+        Assert.Null(server.ClientCapabilities);
+
+        var requestRootsEx = Assert.Throws<InvalidOperationException>(() => server.RequestRootsAsync(new()));
+        Assert.Equal(expectedRootsErrorMessage, requestRootsEx.Message);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => server.SendRequestAsync(new JsonRpcRequest { Method = RequestMethods.RootsList }));
+        return ex.Message;
+    }
+
+    [McpServerTool(Name = "testScope")]
+    public static string? TestScope(ScopedService scopedService) => scopedService.State;
+
+    public class ScopedService
+    {
+        public string? State { get; set; }
     }
 }

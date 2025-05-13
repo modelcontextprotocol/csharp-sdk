@@ -14,8 +14,7 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelInMemoryTest(testOutputHelper)
 {
     protected abstract bool UseStreamableHttp { get; }
-
-    protected virtual bool Stateless => false;
+    protected abstract bool Stateless { get; }
 
     protected void ConfigureStateless(HttpServerTransportOptions options)
     {
@@ -44,6 +43,41 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
         Assert.StartsWith("You must call WithHttpTransport()", exception.Message);
     }
 
+    [Fact]
+    public async Task Can_UseIHttpContextAccessor_InTool()
+    {
+        Assert.SkipWhen(UseStreamableHttp, "IHttpContextAccessor is not currently supported with Streamable HTTP." +
+            "TODO: Support it in stateless mode by manually capturing and flowing execution context.");
+
+        Builder.Services.AddMcpServer().WithHttpTransport().WithTools<EchoHttpContextUserTools>();
+
+        Builder.Services.AddHttpContextAccessor();
+
+        await using var app = Builder.Build();
+
+        app.Use(next =>
+        {
+            return async context =>
+            {
+                context.User = CreateUser("TestUser");
+                await next(context);
+            };
+        });
+
+        app.MapMcp();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        var mcpClient = await ConnectAsync();
+
+        var response = await mcpClient.CallToolAsync(
+            "EchoWithUserName",
+            new Dictionary<string, object?>() { ["message"] = "Hello world!" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var content = Assert.Single(response.Content);
+        Assert.Equal("TestUser: Hello world!", content.Text);
+    }
 
     [Fact]
     public async Task Messages_FromNewUser_AreRejected()

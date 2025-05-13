@@ -42,6 +42,11 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
 
     public async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
+        if (parentTransport.Stateless && message is JsonRpcRequest)
+        {
+            throw new InvalidOperationException("Server to client requests are not supported in stateless mode.");
+        }
+
         await _sseWriter.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
     }
 
@@ -76,11 +81,9 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
             _pendingRequest = request.Id;
 
             // Store client capabilities so they can be serialized by "stateless" callers for use in later requests.
-            if (request.Method == RequestMethods.Initialize)
+            if (parentTransport.Stateless && request.Method == RequestMethods.Initialize)
             {
-                var initializeRequestParams = JsonSerializer.Deserialize(request.Params, McpJsonUtilities.JsonContext.Default.InitializeRequestParams);
-                parentTransport.ClientCapabilities = initializeRequestParams?.Capabilities;
-                parentTransport.ClientInfo = initializeRequestParams?.ClientInfo;
+                parentTransport.InitializeRequest = JsonSerializer.Deserialize(request.Params, McpJsonUtilities.JsonContext.Default.InitializeRequestParams);
             }
         }
 

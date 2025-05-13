@@ -3,6 +3,7 @@ using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils.Json;
 using Serilog;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 
@@ -16,12 +17,11 @@ public class Program
     {
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Verbose() // Capture all log levels
-            .WriteTo.File(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs", "TestServer_.log"),
+            .WriteTo.File(Path.Combine(AppContext.BaseDirectory, "logs", "TestServer_.log"),
                 rollingInterval: RollingInterval.Day,
                 outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
             .CreateLogger();
 
-        var logsPath = Path.Combine(AppContext.BaseDirectory, "testserver.log");
         loggingBuilder.AddSerilog();
     }
 

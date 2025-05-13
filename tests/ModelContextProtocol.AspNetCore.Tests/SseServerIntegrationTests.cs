@@ -11,7 +11,7 @@ public class SseServerIntegrationTests(SseServerIntegrationTestFixture fixture, 
     protected override SseClientTransportOptions ClientTransportOptions => new()
     {
         Endpoint = new Uri("http://localhost/sse"),
-        Name = "TestServer",
+        Name = "In-memory SSE Client",
     };
 
     [Fact]

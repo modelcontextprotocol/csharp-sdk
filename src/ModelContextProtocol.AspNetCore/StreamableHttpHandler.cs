@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
+using ModelContextProtocol.Protocol.Types;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils.Json;
 using System.Collections.Concurrent;
@@ -27,8 +28,6 @@ internal sealed class StreamableHttpHandler(
     ILoggerFactory loggerFactory,
     IServiceProvider applicationServices)
 {
-    private const string StatelessSessionIdPurpose = "Microsoft.AspNetCore.StreamableHttpHandler.StatelessSessionId";
-
     private static readonly JsonTypeInfo<JsonRpcError> s_errorTypeInfo = GetRequiredJsonTypeInfo<JsonRpcError>();
 
     private static readonly MediaTypeHeaderValue s_applicationJsonMediaType = new("application/json");
@@ -38,7 +37,7 @@ internal sealed class StreamableHttpHandler(
 
     public HttpServerTransportOptions HttpServerTransportOptions => httpServerTransportOptions.Value;
 
-    private IDataProtector Protector { get; } = dataProtection.CreateProtector(StatelessSessionIdPurpose);
+    private IDataProtector Protector { get; } = dataProtection.CreateProtector("Microsoft.AspNetCore.StreamableHttpHandler.StatelessSessionId");
 
     public async Task HandlePostRequestAsync(HttpContext context)
     {
@@ -139,7 +138,10 @@ internal sealed class StreamableHttpHandler(
         {
             var sessionJson = Protector.Unprotect(sessionId);
             var statelessSessionId = JsonSerializer.Deserialize(sessionJson, StatelessSessionIdJsonContext.Default.StatelessSessionId);
-            var transport = new StreamableHttpServerTransport();
+            var transport = new StreamableHttpServerTransport
+            {
+                Stateless = true,
+            };
             session = await CreateSessionAsync(context, transport, sessionId, statelessSessionId);
         }
         else if (!Sessions.TryGetValue(sessionId, out session))
@@ -148,7 +150,7 @@ internal sealed class StreamableHttpHandler(
             // One of the few other usages I found was from some Ethereum JSON-RPC documentation and this
             // JSON-RPC library from Microsoft called StreamJsonRpc where it's called JsonRpcErrorCode.NoMarshaledObjectFound
             // https://learn.microsoft.com/dotnet/api/streamjsonrpc.protocol.jsonrpcerrorcode?view=streamjsonrpc-2.9#fields
-            await WriteJsonRpcErrorAsync(context, "Session not found", StatusCodes.Status404NotFound, 32001);
+            await WriteJsonRpcErrorAsync(context, "Session not found", StatusCodes.Status404NotFound, -32001);
             return null;
         }
 
@@ -182,11 +184,12 @@ internal sealed class StreamableHttpHandler(
     private async ValueTask<HttpMcpSession<StreamableHttpServerTransport>> StartNewSessionAsync(HttpContext context)
     {
         string sessionId;
-        var transport = new StreamableHttpServerTransport();
+        StreamableHttpServerTransport transport;
 
         if (!HttpServerTransportOptions.Stateless)
         {
             sessionId = MakeNewSessionId();
+            transport = new();
             context.Response.Headers["mcp-session-id"] = sessionId;
         }
         else
@@ -194,6 +197,10 @@ internal sealed class StreamableHttpHandler(
             // "(uninitialized stateless id)" is not written anywhere. We delay writing the mcp-session-id
             // until after we receive the initialize request with the client info we need to serialize.
             sessionId = "(uninitialized stateless id)";
+            transport = new()
+            {
+                Stateless = true,
+            };
             ScheduleStatelessSessionIdWrite(context, transport);
         }
 
@@ -217,6 +224,7 @@ internal sealed class StreamableHttpHandler(
         string sessionId,
         StatelessSessionId? statelessId = null)
     {
+        var mcpServerServices = applicationServices;
         var mcpServerOptions = mcpServerOptionsSnapshot.Value;
         if (statelessId is not null || HttpServerTransportOptions.ConfigureSessionOptions is not null)
         {
@@ -224,8 +232,10 @@ internal sealed class StreamableHttpHandler(
 
             if (statelessId is not null)
             {
-                mcpServerOptions.KnownClientInfo = statelessId.ClientInfo ?? mcpServerOptions.KnownClientInfo;
-                mcpServerOptions.KnownClientCapabilities = statelessId.Capabilities ?? mcpServerOptions.KnownClientCapabilities;
+                // The session does not outlive the request in stateless mode.
+                mcpServerServices = context.RequestServices;
+                mcpServerOptions.ScopeRequests = false;
+                mcpServerOptions.KnownClientInfo = statelessId.ClientInfo;
             }
 
             if (HttpServerTransportOptions.ConfigureSessionOptions is { } configureSessionOptions)
@@ -234,8 +244,7 @@ internal sealed class StreamableHttpHandler(
             }
         }
 
-        // Use application instead of request services, because the session will likely outlive the first initialization request.
-        var server = McpServerFactory.Create(transport, mcpServerOptions, loggerFactory, applicationServices);
+        var server = McpServerFactory.Create(transport, mcpServerOptions, loggerFactory, mcpServerServices);
         context.Features.Set(server);
 
         var userIdClaim = statelessId?.UserIdClaim ?? GetUserIdClaim(context.User);
@@ -286,8 +295,7 @@ internal sealed class StreamableHttpHandler(
         {
             var statelessId = new StatelessSessionId
             {
-                ClientInfo = transport.ClientInfo,
-                Capabilities = transport.ClientCapabilities,
+                ClientInfo = transport?.InitializeRequest?.ClientInfo,
                 UserIdClaim = GetUserIdClaim(context.User),
             };
 

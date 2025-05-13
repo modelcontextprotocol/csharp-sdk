@@ -14,7 +14,7 @@ public class StreamableHttpServerIntegrationTests(SseServerIntegrationTestFixtur
     protected override SseClientTransportOptions ClientTransportOptions => new()
     {
         Endpoint = new Uri("http://localhost/"),
-        Name = "TestServer",
+        Name = "In-memory Streamable HTTP Client",
         UseStreamableHttp = true,
     };
 

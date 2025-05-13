@@ -10,7 +10,7 @@ public class StatelessServerIntegrationTests(SseServerIntegrationTestFixture fix
     protected override SseClientTransportOptions ClientTransportOptions => new()
     {
         Endpoint = new Uri("http://localhost/stateless"),
-        Name = "TestServer",
+        Name = "In-memory Streamable HTTP Client",
         UseStreamableHttp = true,
     };
 }

@@ -58,7 +58,6 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         _serverOnlyEndpointName = $"Server ({options.ServerInfo?.Name ?? DefaultImplementation.Name} {options.ServerInfo?.Version ?? DefaultImplementation.Version})";
         _servicesScopePerRequest = options.ScopeRequests;
 
-        ClientCapabilities = options.KnownClientCapabilities;
         ClientInfo = options.KnownClientInfo;
         UpdateEndpointNameWithClientInfo();
 
@@ -80,26 +79,29 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         }
 
         // Now that everything has been configured, subscribe to any necessary notifications.
-        if (ServerOptions.Capabilities?.Tools?.ToolCollection is { } tools)
+        if (transport is not StreamableHttpServerTransport streamableHttpTransport || streamableHttpTransport.Stateless is false)
         {
-            EventHandler changed = (sender, e) => _ = this.SendNotificationAsync(NotificationMethods.ToolListChangedNotification);
-            tools.Changed += changed;
-            _disposables.Add(() => tools.Changed -= changed);
-        }
+            if (ServerOptions.Capabilities?.Tools?.ToolCollection is { } tools)
+            {
+                EventHandler changed = (sender, e) => _ = this.SendNotificationAsync(NotificationMethods.ToolListChangedNotification);
+                tools.Changed += changed;
+                _disposables.Add(() => tools.Changed -= changed);
+            }
 
-        if (ServerOptions.Capabilities?.Prompts?.PromptCollection is { } prompts)
-        {
-            EventHandler changed = (sender, e) => _ = this.SendNotificationAsync(NotificationMethods.PromptListChangedNotification);
-            prompts.Changed += changed;
-            _disposables.Add(() => prompts.Changed -= changed);
-        }
+            if (ServerOptions.Capabilities?.Prompts?.PromptCollection is { } prompts)
+            {
+                EventHandler changed = (sender, e) => _ = this.SendNotificationAsync(NotificationMethods.PromptListChangedNotification);
+                prompts.Changed += changed;
+                _disposables.Add(() => prompts.Changed -= changed);
+            }
 
-        var resources = ServerOptions.Capabilities?.Resources?.ResourceCollection;
-        if (resources is not null)
-        {
-            EventHandler changed = (sender, e) => _ = this.SendNotificationAsync(NotificationMethods.PromptListChangedNotification);
-            resources.Changed += changed;
-            _disposables.Add(() => resources.Changed -= changed);
+            var resources = ServerOptions.Capabilities?.Resources?.ResourceCollection;
+            if (resources is not null)
+            {
+                EventHandler changed = (sender, e) => _ = this.SendNotificationAsync(NotificationMethods.PromptListChangedNotification);
+                resources.Changed += changed;
+                _disposables.Add(() => resources.Changed -= changed);
+            }
         }
 
         // And initialize the session.
