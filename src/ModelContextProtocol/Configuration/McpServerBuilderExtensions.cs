@@ -334,16 +334,16 @@ public static partial class McpServerBuilderExtensions
 
     /// <summary>Adds <see cref="McpServerResource"/> instances to the service collection backing <paramref name="builder"/>.</summary>
     /// <param name="builder">The builder instance.</param>
-    /// <param name="resourcetemplates">The <see cref="McpServerResource"/> instances to add to the server.</param>
+    /// <param name="resourceTemplates">The <see cref="McpServerResource"/> instances to add to the server.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentNullException"><paramref name="resourcetemplates"/> is <see langword="null"/>.</exception>
-    public static IMcpServerBuilder WithResources(this IMcpServerBuilder builder, IEnumerable<McpServerResource> resourcetemplates)
+    /// <exception cref="ArgumentNullException"><paramref name="resourceTemplates"/> is <see langword="null"/>.</exception>
+    public static IMcpServerBuilder WithResources(this IMcpServerBuilder builder, IEnumerable<McpServerResource> resourceTemplates)
     {
         Throw.IfNull(builder);
-        Throw.IfNull(resourcetemplates);
+        Throw.IfNull(resourceTemplates);
 
-        foreach (var resourceTemplate in resourcetemplates)
+        foreach (var resourceTemplate in resourceTemplates)
         {
             if (resourceTemplate is not null)
             {
@@ -409,7 +409,7 @@ public static partial class McpServerBuilderExtensions
     /// of the containing class will be constructed for each invocation of the resource.
     /// </para>
     /// <para>
-    /// Resource templates registered through this method can be discovered by clients using the <c>list_resourcetemplates</c> request
+    /// Resource templates registered through this method can be discovered by clients using the <c>list_resourceTemplates</c> request
     /// and invoked using the <c>read_resource</c> request.
     /// </para>
     /// <para>

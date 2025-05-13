@@ -214,9 +214,6 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
     }
 
     /// <inheritdoc />
-    public override string ToString() => AIFunction.ToString();
-
-    /// <inheritdoc />
     public override Prompt ProtocolPrompt { get; }
 
     /// <inheritdoc />

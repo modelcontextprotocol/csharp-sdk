@@ -244,9 +244,6 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
     }
 
     /// <inheritdoc />
-    public override string ToString() => AIFunction.ToString();
-
-    /// <inheritdoc />
     public override Tool ProtocolTool { get; }
 
     /// <inheritdoc />

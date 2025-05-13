@@ -10,10 +10,12 @@ namespace Microsoft.Extensions.DependencyInjection;
 /// <param name="serverHandlers">The server handlers configuration options.</param>
 /// <param name="serverTools">Tools individually registered.</param>
 /// <param name="serverPrompts">Prompts individually registered.</param>
+/// <param name="serverResources">Resources individually registered.</param>
 internal sealed class McpServerOptionsSetup(
     IOptions<McpServerHandlers> serverHandlers,
     IEnumerable<McpServerTool> serverTools,
-    IEnumerable<McpServerPrompt> serverPrompts) : IConfigureOptions<McpServerOptions>
+    IEnumerable<McpServerPrompt> serverPrompts,
+    IEnumerable<McpServerResource> serverResources) : IConfigureOptions<McpServerOptions>
 {
     /// <summary>
     /// Configures the given McpServerOptions instance by setting server information
@@ -56,6 +58,23 @@ internal sealed class McpServerOptionsSetup(
             options.Capabilities ??= new();
             options.Capabilities.Prompts ??= new();
             options.Capabilities.Prompts.PromptCollection = promptCollection;
+        }
+
+        // Collect all of the provided resources into a resources collection. If the options already has
+        // a collection, add to it, otherwise create a new one. We want to maintain the identity
+        // of an existing collection in case someone has provided their own derived type, wants
+        // change notifications, etc.
+        McpServerPrimitiveCollection<McpServerResource> resourceCollection = options.Capabilities?.Resources?.ResourceCollection ?? [];
+        foreach (var resource in serverResources)
+        {
+            resourceCollection.TryAdd(resource);
+        }
+
+        if (!resourceCollection.IsEmpty)
+        {
+            options.Capabilities ??= new();
+            options.Capabilities.Resources ??= new();
+            options.Capabilities.Resources.ResourceCollection = resourceCollection;
         }
 
         // Apply custom server handlers.

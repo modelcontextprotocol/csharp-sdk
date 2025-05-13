@@ -75,26 +75,19 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         }
 
         // Now that everything has been configured, subscribe to any necessary notifications.
-        if (ServerOptions.Capabilities?.Tools?.ToolCollection is { } tools)
-        {
-            EventHandler changed = (sender, e) => _ = this.SendNotificationAsync(NotificationMethods.ToolListChangedNotification);
-            tools.Changed += changed;
-            _disposables.Add(() => tools.Changed -= changed);
-        }
+        Register(ServerOptions.Capabilities?.Tools?.ToolCollection, NotificationMethods.ToolListChangedNotification);
+        Register(ServerOptions.Capabilities?.Prompts?.PromptCollection, NotificationMethods.PromptListChangedNotification);
+        Register(ServerOptions.Capabilities?.Resources?.ResourceCollection, NotificationMethods.ResourceListChangedNotification);
 
-        if (ServerOptions.Capabilities?.Prompts?.PromptCollection is { } prompts)
+        void Register<TPrimitive>(McpServerPrimitiveCollection<TPrimitive>? collection, string notificationMethod)
+            where TPrimitive : IMcpServerPrimitive
         {
-            EventHandler changed = (sender, e) => _ = this.SendNotificationAsync(NotificationMethods.PromptListChangedNotification);
-            prompts.Changed += changed;
-            _disposables.Add(() => prompts.Changed -= changed);
-        }
-
-        var resources = ServerOptions.Capabilities?.Resources?.ResourceCollection;
-        if (resources is not null)
-        {
-            EventHandler changed = (sender, e) => _ = this.SendNotificationAsync(NotificationMethods.PromptListChangedNotification);
-            resources.Changed += changed;
-            _disposables.Add(() => resources.Changed -= changed);
+            if (collection is not null)
+            {
+                EventHandler changed = (sender, e) => _ = this.SendNotificationAsync(notificationMethod);
+                collection.Changed += changed;
+                _disposables.Add(() => collection.Changed -= changed);
+            }
         }
 
         // And initialize the session.
