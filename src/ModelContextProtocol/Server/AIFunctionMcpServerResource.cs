@@ -5,7 +5,6 @@ using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
 using System.Collections.Concurrent;
 using System.ComponentModel;
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Reflection;
 using System.Text;
@@ -56,15 +55,20 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
     /// </summary>
     public static new AIFunctionMcpServerResource Create(
         MethodInfo method,
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type targetType,
+        Func<RequestContext<ReadResourceRequestParams>, object> createTargetFunc,
         McpServerResourceCreateOptions? options)
     {
         Throw.IfNull(method);
+        Throw.IfNull(createTargetFunc);
 
         options = DeriveOptions(method, options);
 
         return Create(
-            AIFunctionFactory.Create(method, targetType, CreateAIFunctionFactoryOptions(method, options)),
+            AIFunctionFactory.Create(method, args =>
+            {
+                var request = (RequestContext<ReadResourceRequestParams>)args.Context![typeof(RequestContext<ReadResourceRequestParams>)]!;
+                return createTargetFunc(request);
+            }, CreateAIFunctionFactoryOptions(method, options)),
             options);
     }
 
@@ -76,7 +80,6 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
             Description = options?.Description,
             MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
             SerializerOptions = McpJsonUtilities.DefaultOptions,
-            CreateInstance = AIFunctionMcpServerTool.GetCreateInstanceFunc(),
             ConfigureParameterBinding = pi =>
             {
                 if (pi.ParameterType == typeof(RequestContext<ReadResourceRequestParams>))

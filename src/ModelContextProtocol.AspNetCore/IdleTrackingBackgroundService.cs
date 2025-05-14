@@ -12,7 +12,7 @@ internal sealed partial class IdleTrackingBackgroundService(
     ILogger<IdleTrackingBackgroundService> logger) : BackgroundService
 {
     // The compiler will complain about the parameter being unused otherwise despite the source generator.
-    private ILogger _logger = logger;
+    private readonly ILogger _logger = logger;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {

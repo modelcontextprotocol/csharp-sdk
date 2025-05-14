@@ -1,5 +1,4 @@
 ﻿using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Utils;
 using ModelContextProtocol.Utils.Json;
 using System.IO.Pipelines;
 using System.Net.ServerSentEvents;
@@ -13,12 +12,11 @@ namespace ModelContextProtocol.Protocol.Transport;
 /// Handles processing the request/response body pairs for the Streamable HTTP transport.
 /// This is typically used via <see cref="JsonRpcMessage.RelatedTransport"/>.
 /// </summary>
-internal sealed class StreamableHttpPostTransport(ChannelWriter<JsonRpcMessage>? incomingChannel, IDuplexPipe httpBodies) : ITransport
+internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport parentTransport, IDuplexPipe httpBodies) : ITransport
 {
     private readonly SseWriter _sseWriter = new();
-    private readonly HashSet<RequestId> _pendingRequests = [];
+    private RequestId _pendingRequest;
 
-    // REVIEW: Should we introduce a send-only interface for RelatedTransport?
     public ChannelReader<JsonRpcMessage> MessageReader => throw new NotSupportedException("JsonRpcMessage.RelatedTransport should only be used for sending messages.");
 
     /// <returns>
@@ -28,15 +26,11 @@ internal sealed class StreamableHttpPostTransport(ChannelWriter<JsonRpcMessage>?
     /// </returns>
     public async ValueTask<bool> RunAsync(CancellationToken cancellationToken)
     {
-        // The incomingChannel is null to handle the potential client GET request to handle unsolicited JsonRpcMessages.
-        if (incomingChannel is not null)
-        {
-            var message = await JsonSerializer.DeserializeAsync(httpBodies.Input.AsStream(),
-                McpJsonUtilities.JsonContext.Default.JsonRpcMessage, cancellationToken).ConfigureAwait(false);
-            await OnMessageReceivedAsync(message, cancellationToken).ConfigureAwait(false);
-        }
+        var message = await JsonSerializer.DeserializeAsync(httpBodies.Input.AsStream(),
+            McpJsonUtilities.JsonContext.Default.JsonRpcMessage, cancellationToken).ConfigureAwait(false);
+        await OnMessageReceivedAsync(message, cancellationToken).ConfigureAwait(false);
 
-        if (_pendingRequests.Count == 0)
+        if (_pendingRequest.Id is null)
         {
             return false;
         }
@@ -48,6 +42,11 @@ internal sealed class StreamableHttpPostTransport(ChannelWriter<JsonRpcMessage>?
 
     public async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
+        if (parentTransport.Stateless && message is JsonRpcRequest)
+        {
+            throw new InvalidOperationException("Server to client requests are not supported in stateless mode.");
+        }
+
         await _sseWriter.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
     }
 
@@ -62,13 +61,10 @@ internal sealed class StreamableHttpPostTransport(ChannelWriter<JsonRpcMessage>?
         {
             yield return message;
 
-            if (message.Data is JsonRpcMessageWithId response)
+            if (message.Data is JsonRpcMessageWithId response && response.Id == _pendingRequest)
             {
-                if (_pendingRequests.Remove(response.Id) && _pendingRequests.Count == 0)
-                {
-                    // Complete the SSE response stream now that all pending requests have been processed.
-                    break;
-                }
+                // Complete the SSE response stream now that all pending requests have been processed.
+                break;
             }
         }
     }
@@ -82,13 +78,17 @@ internal sealed class StreamableHttpPostTransport(ChannelWriter<JsonRpcMessage>?
 
         if (message is JsonRpcRequest request)
         {
-            _pendingRequests.Add(request.Id);
+            _pendingRequest = request.Id;
+
+            // Store client capabilities so they can be serialized by "stateless" callers for use in later requests.
+            if (parentTransport.Stateless && request.Method == RequestMethods.Initialize)
+            {
+                parentTransport.InitializeRequest = JsonSerializer.Deserialize(request.Params, McpJsonUtilities.JsonContext.Default.InitializeRequestParams);
+            }
         }
 
         message.RelatedTransport = this;
 
-        // Really an assertion. This doesn't get called when incomingChannel is null for GET requests.
-        Throw.IfNull(incomingChannel);
-        await incomingChannel.WriteAsync(message, cancellationToken).ConfigureAwait(false);
+        await parentTransport.MessageWriter.WriteAsync(message, cancellationToken).ConfigureAwait(false);
     }
 }

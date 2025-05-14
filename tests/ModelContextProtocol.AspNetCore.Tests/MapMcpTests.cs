@@ -14,6 +14,12 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelInMemoryTest(testOutputHelper)
 {
     protected abstract bool UseStreamableHttp { get; }
+    protected abstract bool Stateless { get; }
+
+    protected void ConfigureStateless(HttpServerTransportOptions options)
+    {
+        options.Stateless = Stateless;
+    }
 
     protected async Task<IMcpClient> ConnectAsync(string? path = null)
     {
@@ -37,34 +43,49 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
         Assert.StartsWith("You must call WithHttpTransport()", exception.Message);
     }
 
-    [Theory]
-    [InlineData("/mcp")]
-    [InlineData("/mcp/secondary")]
-    public async Task Allows_Customizing_Route(string pattern)
+    [Fact]
+    public async Task Can_UseIHttpContextAccessor_InTool()
     {
-        Builder.Services.AddMcpServer().WithHttpTransport();
+        Assert.SkipWhen(UseStreamableHttp && !Stateless,
+            """
+            IHttpContextAccessor is not currently supported with non-stateless Streamable HTTP.
+            TODO: Support it in stateless mode by manually capturing and flowing execution context.
+            """);
+
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<EchoHttpContextUserTools>();
+
+        Builder.Services.AddHttpContextAccessor();
+
         await using var app = Builder.Build();
 
-        app.MapMcp(pattern);
+        app.Use(next =>
+        {
+            return async context =>
+            {
+                context.User = CreateUser("TestUser");
+                await next(context);
+            };
+        });
+
+        app.MapMcp();
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        using var response = await HttpClient.GetAsync($"http://localhost{pattern}/sse", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
-        response.EnsureSuccessStatusCode();
-        using var sseStream = await response.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
-        using var sseStreamReader = new StreamReader(sseStream, System.Text.Encoding.UTF8);
-        var eventLine = await sseStreamReader.ReadLineAsync(TestContext.Current.CancellationToken);
-        var dataLine = await sseStreamReader.ReadLineAsync(TestContext.Current.CancellationToken);
-        Assert.NotNull(eventLine);
-        Assert.Equal("event: endpoint", eventLine);
-        Assert.NotNull(dataLine);
-        Assert.Equal($"data: {pattern}/message", dataLine[..dataLine.IndexOf('?')]);
+        var mcpClient = await ConnectAsync();
+
+        var response = await mcpClient.CallToolAsync(
+            "EchoWithUserName",
+            new Dictionary<string, object?>() { ["message"] = "Hello world!" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var content = Assert.Single(response.Content);
+        Assert.Equal("TestUser: Hello world!", content.Text);
     }
 
     [Fact]
     public async Task Messages_FromNewUser_AreRejected()
     {
-        Builder.Services.AddMcpServer().WithHttpTransport().WithTools<EchoHttpContextUserTools>();
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<EchoHttpContextUserTools>();
 
         // Add an authentication scheme that will send a 403 Forbidden response.
         Builder.Services.AddAuthentication().AddBearerToken();
