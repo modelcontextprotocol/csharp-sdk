@@ -30,6 +30,7 @@ public static class ProtocolTypeTests
     [InlineData("""{"type":"number"}""")]
     [InlineData("""{"type":"array"}""")]
     [InlineData("""{"type":["object"]}""")]
+    [InlineData("""{"type":"object", "title": "MyAwesomeTool", "description": "It's awesome!", "properties": {}, "required" : ["NotAParam"] }""")]
     public static void ToolInputSchema_RejectsInvalidSchemaDocuments(string invalidSchema)
     {
         using var document = JsonDocument.Parse(invalidSchema);
@@ -41,7 +42,7 @@ public static class ProtocolTypeTests
     [Theory]
     [InlineData("""{"type":"object"}""")]
     [InlineData("""{"type":"object", "properties": {}, "required" : [] }""")]
-    [InlineData("""{"type":"object", "title": "MyAwesomeTool", "description": "It's awesome!", "properties": {}, "required" : ["NotAParam"] }""")]
+    [InlineData("""{"type":"object", "properties": {}, "required" : ["NotAParam"] }""")]
     public static void ToolInputSchema_AcceptsValidSchemaDocuments(string validSchema)
     {
         using var document = JsonDocument.Parse(validSchema);
