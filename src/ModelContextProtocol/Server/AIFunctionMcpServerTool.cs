@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text.Json;
+using ModelContextProtocol.Logging;
 
 namespace ModelContextProtocol.Server;
 
@@ -277,6 +278,15 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
+            request.Server.ServerOptions.LogHandler?.Invoke(new()
+            {
+                Exception = e,
+                ServiceProvider = request.Services,
+                Json = JsonSerializer.Serialize(request.Params, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(CallToolRequestParams))),
+                Status = McpStatus.ErrorOccurred,
+                Method = RequestMethods.ToolsCall
+            });
+            
             string errorMessage = e is McpException ?
                 $"An error occurred invoking '{request.Params?.Name}': {e.Message}" :
                 $"An error occurred invoking '{request.Params?.Name}'.";
