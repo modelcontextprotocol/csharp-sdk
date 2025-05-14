@@ -1,0 +1,251 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using ModelContextProtocol.Utils.Json;
+using System.Text.Json;
+
+namespace ModelContextProtocol.Authentication;
+
+/// <summary>
+/// Provides utility methods for handling authentication in MCP clients.
+/// </summary>
+public class AuthorizationHelpers
+{
+    private readonly HttpClient _httpClient;
+    private readonly ILogger _logger;
+    private static readonly Lazy<HttpClient> _defaultHttpClient = new(() => new HttpClient());
+    
+    /// <summary>
+    /// The well-known path prefix for resource metadata.
+    /// </summary>
+    private static readonly string WellKnownPathPrefix = "/.well-known/";
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="AuthorizationHelpers"/> class.
+    /// </summary>
+    /// <param name="httpClient">The HTTP client to use for requests. If null, a default HttpClient will be used.</param>
+    /// <param name="logger">The logger to use. If null, a NullLogger will be used.</param>
+    public AuthorizationHelpers(HttpClient? httpClient = null, ILogger? logger = null)
+    {
+        _httpClient = httpClient ?? _defaultHttpClient.Value;
+        _logger = logger ?? NullLogger.Instance;
+    }
+
+    /// <summary>
+    /// Fetches the protected resource metadata from the provided URL.
+    /// </summary>
+    /// <param name="metadataUrl">The URL to fetch the metadata from.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>The fetched ProtectedResourceMetadata, or null if it couldn't be fetched.</returns>
+    private async Task<ProtectedResourceMetadata?> FetchProtectedResourceMetadataAsync(
+        Uri metadataUrl, 
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, metadataUrl);
+            var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            
+            using var content = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            return await JsonSerializer.DeserializeAsync(content, 
+                McpJsonUtilities.JsonContext.Default.ProtectedResourceMetadata, 
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Failed to fetch protected resource metadata from {metadataUrl}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Verifies that the resource URI in the metadata exactly matches the server URL as required by the RFC.
+    /// </summary>
+    /// <param name="protectedResourceMetadata">The metadata to verify.</param>
+    /// <param name="resourceLocation">The server URL to compare against.</param>
+    /// <returns>True if the resource URI exactly matches the server, otherwise false.</returns>
+    private static bool VerifyResourceMatch(ProtectedResourceMetadata protectedResourceMetadata, Uri resourceLocation)
+    {
+        if (protectedResourceMetadata.Resource == null || resourceLocation == null)
+        {
+            return false;
+        }
+
+        // Per RFC: The resource value must be identical to the URL that the client used
+        // to make the request to the resource server. Compare entire URIs, not just the host.
+        
+        // Normalize the URIs to ensure consistent comparison
+        string normalizedMetadataResource = NormalizeUri(protectedResourceMetadata.Resource);
+        string normalizedResourceLocation = NormalizeUri(resourceLocation);
+        
+        return string.Equals(normalizedMetadataResource, normalizedResourceLocation, StringComparison.OrdinalIgnoreCase);
+    }
+    
+    /// <summary>
+    /// Normalizes a URI for consistent comparison.
+    /// </summary>
+    /// <param name="uri">The URI to normalize.</param>
+    /// <returns>A normalized string representation of the URI.</returns>
+    private static string NormalizeUri(Uri uri)
+    {
+        var builder = new UriBuilder(uri)
+        {
+            Port = -1  // Always remove port
+        };
+        
+        if (builder.Path == "/")
+        {
+            builder.Path = string.Empty;
+        }
+        else if (builder.Path.Length > 1 && builder.Path.EndsWith("/"))
+        {
+            builder.Path = builder.Path.TrimEnd('/');
+        }
+        
+        return builder.Uri.ToString();
+    }
+
+    /// <summary>
+    /// Extracts the base resource URI from a well-known path URL.
+    /// </summary>
+    /// <param name="metadataUri">The metadata URI containing a well-known path.</param>
+    /// <returns>The base URI without the well-known path component.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the URI does not contain a valid well-known path.</exception>
+    private Uri ExtractBaseResourceUri(Uri metadataUri)
+    {
+        // Check for well-known path
+        int wellKnownIndex = metadataUri.AbsolutePath.IndexOf(WellKnownPathPrefix, StringComparison.OrdinalIgnoreCase);
+        
+        // Validate the URL contains a valid well-known path
+        if (wellKnownIndex < 0)
+        {
+            throw new InvalidOperationException(
+                $"Resource metadata URL '{metadataUri}' does not contain a valid well-known path format (/.well-known/)");
+        }
+        
+        // Create URI with just the base part
+        var baseUriBuilder = new UriBuilder(metadataUri)
+        {
+            Path = wellKnownIndex > 0 ? metadataUri.AbsolutePath.Substring(0, wellKnownIndex) : "/",
+            Fragment = string.Empty,
+            Query = string.Empty,
+            Port = -1 // Remove port
+        };
+        
+        // Ensure path ends with a slash
+        if (!baseUriBuilder.Path.EndsWith("/"))
+        {
+            baseUriBuilder.Path += "/";
+        }
+        
+        return baseUriBuilder.Uri;
+    }
+
+    /// <summary>
+    /// Responds to a 401 challenge by parsing the WWW-Authenticate header, fetching the resource metadata,
+    /// verifying the resource match, and returning the metadata if valid.
+    /// </summary>
+    /// <param name="response">The HTTP response containing the WWW-Authenticate header.</param>
+    /// <param name="serverUrl">The server URL to verify against the resource metadata.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>The resource metadata if the resource matches the server, otherwise throws an exception.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the response is not a 401, lacks a WWW-Authenticate header,
+    /// lacks a resource_metadata parameter, the metadata can't be fetched, or the resource URI doesn't match the server URL.</exception>
+    public async Task<ProtectedResourceMetadata> ExtractProtectedResourceMetadata(
+        HttpResponseMessage response,
+        Uri serverUrl,
+        CancellationToken cancellationToken = default)
+    {
+        if (response.StatusCode != System.Net.HttpStatusCode.Unauthorized)
+        {
+            throw new InvalidOperationException($"Expected a 401 Unauthorized response, but received {(int)response.StatusCode} {response.StatusCode}");
+        }
+
+        // Extract the WWW-Authenticate header
+        if (response.Headers.WwwAuthenticate.Count == 0)
+        {
+            throw new InvalidOperationException("The 401 response does not contain a WWW-Authenticate header");
+        }
+
+        // Look for the Bearer authentication scheme with resource_metadata parameter
+        string? resourceMetadataUrl = null;
+        foreach (var header in response.Headers.WwwAuthenticate)
+        {
+            if (string.Equals(header.Scheme, "Bearer", StringComparison.OrdinalIgnoreCase) && 
+                !string.IsNullOrEmpty(header.Parameter))
+            {
+                resourceMetadataUrl = ParseWwwAuthenticateParameters(header.Parameter, "resource_metadata");
+                if (resourceMetadataUrl != null)
+                {
+                    break;
+                }
+            }
+        }
+
+        if (resourceMetadataUrl == null)
+        {
+            throw new InvalidOperationException("The WWW-Authenticate header does not contain a resource_metadata parameter");
+        }
+
+        Uri metadataUri = new(resourceMetadataUrl);
+        
+        var metadata = await FetchProtectedResourceMetadataAsync(metadataUri, cancellationToken).ConfigureAwait(false);
+        if (metadata == null)
+        {
+            throw new InvalidOperationException($"Failed to fetch resource metadata from {resourceMetadataUrl}");
+        }
+        
+        // Extract the base URI from the metadata URL
+        Uri urlToValidate = ExtractBaseResourceUri(metadataUri);
+        _logger.LogDebug($"Validating resource metadata against base URL: {urlToValidate}");
+        
+        if (!VerifyResourceMatch(metadata, urlToValidate))
+        {
+            throw new InvalidOperationException(
+                $"Resource URI in metadata ({metadata.Resource}) does not match the expected URI ({urlToValidate})");
+        }
+
+        return metadata;
+    }
+
+    /// <summary>
+    /// Parses the WWW-Authenticate header parameters to extract a specific parameter.
+    /// </summary>
+    /// <param name="parameters">The parameter string from the WWW-Authenticate header.</param>
+    /// <param name="parameterName">The name of the parameter to extract.</param>
+    /// <returns>The value of the parameter, or null if not found.</returns>
+    private static string? ParseWwwAuthenticateParameters(string parameters, string parameterName)
+    {
+        if (parameters.IndexOf(parameterName, StringComparison.OrdinalIgnoreCase) == -1)
+        {
+            return null;
+        }
+
+        foreach (var part in parameters.Split(','))
+        {
+            string trimmedPart = part.Trim();
+            int equalsIndex = trimmedPart.IndexOf('=');
+            
+            if (equalsIndex <= 0)
+            {
+                continue;
+            }
+            
+            string key = trimmedPart.Substring(0, equalsIndex).Trim();
+            
+            if (string.Equals(key, parameterName, StringComparison.OrdinalIgnoreCase))
+            {
+                string value = trimmedPart.Substring(equalsIndex + 1).Trim();
+                
+                if (value.StartsWith("\"") && value.EndsWith("\""))
+                {
+                    value = value.Substring(1, value.Length - 2);
+                }
+                
+                return value;
+            }
+        }
+        
+        return null;
+    }
+}
