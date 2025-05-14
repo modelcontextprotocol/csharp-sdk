@@ -314,7 +314,7 @@ internal sealed class StreamableHttpHandler(
     // SignalR only checks for ClaimTypes.NameIdentifier in HttpConnectionDispatcher, but AspNetCore.Antiforgery checks that plus the sub and UPN claims.
     // However, we short-circuit unlike antiforgery since we expect to call this to verify MCP messages a lot more frequently than
     // verifying antiforgery tokens from <form> posts.
-    internal static (string Type, string Value, string Issuer)? GetUserIdClaim(ClaimsPrincipal user)
+    internal static StatelessUserId? GetUserIdClaim(ClaimsPrincipal user)
     {
         if (user?.Identity?.IsAuthenticated != true)
         {
@@ -325,7 +325,7 @@ internal sealed class StreamableHttpHandler(
 
         if (claim is { } idClaim)
         {
-            return (idClaim.Type, idClaim.Value, idClaim.Issuer);
+            return new(idClaim.Type, idClaim.Value, idClaim.Issuer);
         }
 
         return null;

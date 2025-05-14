@@ -9,5 +9,5 @@ internal sealed class StatelessSessionId
     public Implementation? ClientInfo { get; init; }
 
     [JsonPropertyName("userIdClaim")]
-    public (string Type, string Value, string Issuer)? UserIdClaim { get; init; }
+    public StatelessUserId? UserIdClaim { get; init; }
 }

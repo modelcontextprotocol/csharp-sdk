@@ -7,7 +7,7 @@ namespace ModelContextProtocol.AspNetCore;
 internal sealed class HttpMcpSession<TTransport>(
     string sessionId,
     TTransport transport,
-    (string Type, string Value, string Issuer)? userIdClaim,
+    StatelessUserId? userId,
     TimeProvider timeProvider) : IAsyncDisposable
     where TTransport : ITransport
 {
@@ -17,7 +17,7 @@ internal sealed class HttpMcpSession<TTransport>(
 
     public string Id { get; } = sessionId;
     public TTransport Transport { get; } = transport;
-    public (string Type, string Value, string Issuer)? UserIdClaim { get; } = userIdClaim;
+    public StatelessUserId? UserIdClaim { get; } = userId;
 
     public CancellationToken SessionClosed => _disposeCts.Token;
 
