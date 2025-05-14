@@ -562,14 +562,13 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             requestTypeInfo, responseTypeInfo);
     }
     
-    private void InvokeLogHandler<TParams>(string method, McpStatus status, TParams? args, Exception? exception = null) =>
+    private void InvokeLogHandler<TParams>(string method, McpStatus status, TParams? args) =>
         ServerOptions.LogHandler?.Invoke(new()
         {
             ServiceProvider = Services,
             Json = JsonSerializer.Serialize(args, McpJsonUtilities.DefaultOptions.GetTypeInfo<TParams?>()),
             Status = status,
-            Method = method,
-            Exception = exception,
+            Method = method
         });
 
     private void UpdateEndpointNameWithClientInfo()
