@@ -581,6 +581,8 @@ public class McpServerTests : LoggedTest
             supportsSampling ? new ClientCapabilities { Sampling = new SamplingCapability() } :
             null;
 
+        public McpServerOptions ServerOptions => new();
+
         public Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken)
         {
             CreateMessageRequestParams? rp = JsonSerializer.Deserialize<CreateMessageRequestParams>(request.Params, McpJsonUtilities.DefaultOptions);
@@ -617,7 +619,6 @@ public class McpServerTests : LoggedTest
         public ValueTask DisposeAsync() => default;
 
         public Implementation? ClientInfo => throw new NotImplementedException();
-        public McpServerOptions ServerOptions => throw new NotImplementedException();
         public IServiceProvider? Services => throw new NotImplementedException();
         public LoggingLevel? LoggingLevel => throw new NotImplementedException();
         public Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default) =>

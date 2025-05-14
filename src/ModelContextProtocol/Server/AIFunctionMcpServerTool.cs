@@ -49,15 +49,20 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
     /// </summary>
     public static new AIFunctionMcpServerTool Create(
         MethodInfo method,
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type targetType,
+        Func<RequestContext<CallToolRequestParams>, object> createTargetFunc,
         McpServerToolCreateOptions? options)
     {
         Throw.IfNull(method);
+        Throw.IfNull(createTargetFunc);
 
         options = DeriveOptions(method, options);
 
         return Create(
-            AIFunctionFactory.Create(method, targetType, CreateAIFunctionFactoryOptions(method, options)),
+            AIFunctionFactory.Create(method, args =>
+            {
+                var request = (RequestContext<CallToolRequestParams>)args.Context![typeof(RequestContext<CallToolRequestParams>)]!;
+                return createTargetFunc(request);
+            }, CreateAIFunctionFactoryOptions(method, options)),
             options);
     }
 
@@ -77,7 +82,6 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             Description = options?.Description,
             MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
             SerializerOptions = options?.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
-            CreateInstance = GetCreateInstanceFunc(),
             ConfigureParameterBinding = pi =>
             {
                 if (pi.ParameterType == typeof(RequestContext<CallToolRequestParams>))

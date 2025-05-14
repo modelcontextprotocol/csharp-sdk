@@ -30,14 +30,10 @@ public static class McpServerExtensions
     /// and token limits.
     /// </remarks>
     public static ValueTask<CreateMessageResult> RequestSamplingAsync(
-        this IMcpServer server, CreateMessageRequestParams request, CancellationToken cancellationToken)
+        this IMcpServer server, CreateMessageRequestParams request, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(server);
-
-        if (server.ClientCapabilities?.Sampling is null)
-        {
-            throw new InvalidOperationException("Client does not support sampling.");
-        }
+        ThrowIfSamplingUnsupported(server);
 
         return server.SendRequestAsync(
             RequestMethods.SamplingCreateMessage,
@@ -163,11 +159,7 @@ public static class McpServerExtensions
     public static IChatClient AsSamplingChatClient(this IMcpServer server)
     {
         Throw.IfNull(server);
-
-        if (server.ClientCapabilities?.Sampling is null)
-        {
-            throw new InvalidOperationException("Client does not support sampling.");
-        }
+        ThrowIfSamplingUnsupported(server);
 
         return new SamplingChatClient(server);
     }
@@ -198,14 +190,10 @@ public static class McpServerExtensions
     /// or other structured data sources that the client makes available through the protocol.
     /// </remarks>
     public static ValueTask<ListRootsResult> RequestRootsAsync(
-        this IMcpServer server, ListRootsRequestParams request, CancellationToken cancellationToken)
+        this IMcpServer server, ListRootsRequestParams request, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(server);
-
-        if (server.ClientCapabilities?.Roots is null)
-        {
-            throw new InvalidOperationException("Client does not support roots.");
-        }
+        ThrowIfRootsUnsupported(server);
 
         return server.SendRequestAsync(
             RequestMethods.RootsList,
@@ -213,6 +201,32 @@ public static class McpServerExtensions
             McpJsonUtilities.JsonContext.Default.ListRootsRequestParams,
             McpJsonUtilities.JsonContext.Default.ListRootsResult,
             cancellationToken: cancellationToken);
+    }
+
+    private static void ThrowIfSamplingUnsupported(IMcpServer server)
+    {
+        if (server.ClientCapabilities?.Sampling is null)
+        {
+            if (server.ServerOptions.KnownClientInfo is not null)
+            {
+                throw new InvalidOperationException("Sampling is not supported in stateless mode.");
+            }
+
+            throw new InvalidOperationException("Client does not support sampling.");
+        }
+    }
+
+    private static void ThrowIfRootsUnsupported(IMcpServer server)
+    {
+        if (server.ClientCapabilities?.Roots is null)
+        {
+            if (server.ServerOptions.KnownClientInfo is not null)
+            {
+                throw new InvalidOperationException("Roots are not supported in stateless mode.");
+            }
+
+            throw new InvalidOperationException("Client does not support roots.");
+        }
     }
 
     /// <summary>Provides an <see cref="IChatClient"/> implementation that's implemented via client sampling.</summary>

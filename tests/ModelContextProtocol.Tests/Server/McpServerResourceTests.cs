@@ -109,8 +109,8 @@ public partial class McpServerResourceTests
     {
         Assert.Throws<ArgumentNullException>("function", () => McpServerResource.Create((AIFunction)null!, new() { UriTemplate = "test://hello" }));
         Assert.Throws<ArgumentNullException>("method", () => McpServerResource.Create((MethodInfo)null!));
-        Assert.Throws<ArgumentNullException>("method", () => McpServerResource.Create((MethodInfo)null!, typeof(object)));
-        Assert.Throws<ArgumentNullException>("targetType", () => McpServerResource.Create(typeof(McpServerResourceTests).GetMethod(nameof(Create_InvalidArgs_Throws))!, (Type)null!));
+        Assert.Throws<ArgumentNullException>("method", () => McpServerResource.Create((MethodInfo)null!, _ => new object()));
+        Assert.Throws<ArgumentNullException>("createTargetFunc", () => McpServerResource.Create(typeof(McpServerResourceTests).GetMethod(nameof(Create_InvalidArgs_Throws))!, null!));
         Assert.Throws<ArgumentNullException>("method", () => McpServerResource.Create((Delegate)null!));
 
         Assert.NotNull(McpServerResource.Create(typeof(DisposableResourceType).GetMethod(nameof(DisposableResourceType.InstanceMethod))!, new DisposableResourceType()));
@@ -415,7 +415,7 @@ public partial class McpServerResourceTests
 
         McpServerResource resource1 = McpServerResource.Create(
             typeof(DisposableResourceType).GetMethod(nameof(DisposableResourceType.InstanceMethod))!,
-            typeof(DisposableResourceType));
+            _ => new DisposableResourceType());
 
         var result = await resource1.ReadAsync(
             new RequestContext<ReadResourceRequestParams>(new Mock<IMcpServer>().Object) { Params = new() { Uri = "test://static/resource/instanceMethod" } },
