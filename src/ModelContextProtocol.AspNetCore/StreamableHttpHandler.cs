@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
+using ModelContextProtocol.AspNetCore.Stateless;
 using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Protocol.Types;
@@ -314,7 +315,7 @@ internal sealed class StreamableHttpHandler(
     // SignalR only checks for ClaimTypes.NameIdentifier in HttpConnectionDispatcher, but AspNetCore.Antiforgery checks that plus the sub and UPN claims.
     // However, we short-circuit unlike antiforgery since we expect to call this to verify MCP messages a lot more frequently than
     // verifying antiforgery tokens from <form> posts.
-    internal static StatelessUserId? GetUserIdClaim(ClaimsPrincipal user)
+    internal static UserIdClaim? GetUserIdClaim(ClaimsPrincipal user)
     {
         if (user?.Identity?.IsAuthenticated != true)
         {

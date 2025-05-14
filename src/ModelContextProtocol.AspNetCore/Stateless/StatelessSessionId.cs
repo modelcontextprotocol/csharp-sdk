@@ -1,7 +1,7 @@
 ﻿using ModelContextProtocol.Protocol.Types;
 using System.Text.Json.Serialization;
 
-namespace ModelContextProtocol.AspNetCore;
+namespace ModelContextProtocol.AspNetCore.Stateless;
 
 internal sealed class StatelessSessionId
 {
@@ -9,5 +9,5 @@ internal sealed class StatelessSessionId
     public Implementation? ClientInfo { get; init; }
 
     [JsonPropertyName("userIdClaim")]
-    public StatelessUserId? UserIdClaim { get; init; }
+    public UserIdClaim? UserIdClaim { get; init; }
 }
