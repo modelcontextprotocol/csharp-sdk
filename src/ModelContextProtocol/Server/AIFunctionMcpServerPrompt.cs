@@ -4,6 +4,7 @@ using ModelContextProtocol.Protocol;
 using System.ComponentModel;
 using System.Reflection;
 using System.Text.Json;
+using ModelContextProtocol.Logging;
 
 namespace ModelContextProtocol.Server;
 
@@ -239,7 +240,24 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
             }
         }
 
-        object? result = await AIFunction.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false);
+        object? result;
+        try
+        {
+            result = await AIFunction.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            request.Server.ServerOptions.LogHandler?.Invoke(new()
+            {
+                Exception = e,
+                ServiceProvider = request.Services,
+                Json = JsonSerializer.Serialize(request.Params, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(GetPromptRequestParams))),
+                Status = McpStatus.ErrorOccurred,
+                Method = RequestMethods.PromptsGet
+            });
+            
+            throw;
+        }
 
         return result switch
         {

@@ -238,9 +238,29 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             var originalListResourceTemplatesHandler = listResourceTemplatesHandler;
             listResourceTemplatesHandler = async (request, cancellationToken) =>
             {
-                ListResourceTemplatesResult result = originalListResourceTemplatesHandler is not null ?
-                    await originalListResourceTemplatesHandler(request, cancellationToken).ConfigureAwait(false) :
-                    new();
+                ListResourceTemplatesResult result;
+                
+                try
+                {
+                    result = originalListResourceTemplatesHandler is not null ?
+                        await originalListResourceTemplatesHandler(request, cancellationToken).ConfigureAwait(false) :
+                        new();
+                }
+                catch (Exception e)
+                {
+                    request.Server.ServerOptions.LogHandler?.Invoke(new()
+                    {
+                        Exception = e,
+                        ServiceProvider = request.Services,
+                        Json = JsonSerializer.Serialize(request.Params,
+                            McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(ListResourceTemplatesRequestParams))),
+                        Status = McpStatus.ErrorOccurred,
+                        Method = RequestMethods.ResourcesTemplatesList
+                    });
+                    
+                    throw;
+                }
+                
 
                 if (request.Params?.Cursor is null)
                 {
