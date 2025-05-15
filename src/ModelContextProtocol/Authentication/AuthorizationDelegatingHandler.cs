@@ -80,7 +80,7 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
                 if (serverSchemes.Count > 0)
                 {
                     throw new IOException(
-                        $"The server does not support any of the provided authentication schemes."
+                        $"The server does not support any of the provided authentication schemes." +
                         $"Server supports: [{string.Join(", ", serverSchemes)}], " +
                         $"Provider supports: [{string.Join(", ", _credentialProvider.SupportedSchemes)}].");
                 }
