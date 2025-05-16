@@ -110,7 +110,7 @@ public static class McpServerExtensions
                                 {
                                     Type = dataContent.HasTopLevelMediaType("image") ? "image" : "audio",
                                     MimeType = dataContent.MediaType,
-                                    Data = dataContent.GetBase64Data(),
+                                    Data = dataContent.Base64Data.ToString(),
                                 },
                             });
                             break;
