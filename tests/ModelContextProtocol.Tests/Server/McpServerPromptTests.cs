@@ -5,6 +5,7 @@ using ModelContextProtocol.Server;
 using Moq;
 using System.ComponentModel;
 using System.Reflection;
+using ModelContextProtocol.Logging;
 
 namespace ModelContextProtocol.Tests.Server;
 
@@ -167,6 +168,29 @@ public class McpServerPromptTests
         Assert.Equal(Role.User, actual.Messages[0].Role);
         Assert.Equal("text", actual.Messages[0].Content.Type);
         Assert.Equal(expected, actual.Messages[0].Content.Text);
+    }
+    
+    [Fact]
+    public async Task CanHandleLogging()
+    {
+        Mock<IMcpServer> mockServer = new();
+        
+        var options = new McpServerOptions()
+        {
+            LogHandler =
+                (context) => Assert.Equal(McpStatus.ErrorOccurred, context.Status)
+        };
+        
+        mockServer.SetupGet(s => s.ServerOptions).Returns(options);
+
+        McpServerPrompt prompt = McpServerPrompt.Create(() =>
+        {
+            throw new InvalidOperationException("Test exception");
+        });
+        
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await prompt.GetAsync(
+            new RequestContext<GetPromptRequestParams>(mockServer.Object),
+            TestContext.Current.CancellationToken));
     }
 
     [Fact]

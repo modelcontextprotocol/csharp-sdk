@@ -6,6 +6,7 @@ using Moq;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using ModelContextProtocol.Logging;
 
 namespace ModelContextProtocol.Tests.Server;
 
@@ -272,6 +273,29 @@ public partial class McpServerToolTests
         Assert.Single(result.Content);
         Assert.Equal("42", result.Content[0].Text);
         Assert.Equal("text", result.Content[0].Type);
+    }
+    
+    [Fact]
+    public async Task CanHandleLogging()
+    {
+        Mock<IMcpServer> mockServer = new();
+        
+        var options = new McpServerOptions()
+        {
+            LogHandler =
+                (context) => Assert.Equal(McpStatus.ErrorOccurred, context.Status)
+        };
+        
+        mockServer.SetupGet(s => s.ServerOptions).Returns(options);
+
+        McpServerTool tool = McpServerTool.Create((IMcpServer server) =>
+        {
+            throw new InvalidOperationException("Test exception");
+        });
+        
+        await tool.InvokeAsync(
+            new RequestContext<CallToolRequestParams>(mockServer.Object),
+            TestContext.Current.CancellationToken);
     }
 
     [Fact]
