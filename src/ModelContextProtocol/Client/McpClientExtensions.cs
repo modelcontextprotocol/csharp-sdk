@@ -976,7 +976,7 @@ public static class McpClientExtensions
                     {
                         Type = dc.HasTopLevelMediaType("image") ? "image" : "audio",
                         MimeType = dc.MediaType,
-                        Data = dc.GetBase64Data(),
+                        Data = dc.Base64Data.ToString(),
                     };
                 }
             }

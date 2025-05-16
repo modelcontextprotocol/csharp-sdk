@@ -41,11 +41,19 @@ public record StdioClientTransportOptions
     /// Gets or sets environment variables to set for the server process.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// This property allows you to specify environment variables that will be set in the server process's
     /// environment. This is useful for passing configuration, authentication information, or runtime flags
     /// to the server without modifying its code.
+    /// </para>
+    /// <para>
+    /// By default, when starting the server process, the server process will inherit the current environment's variables,
+    /// as discovered via <see cref="Environment.GetEnvironmentVariables()"/>. After those variables are found, the entries
+    /// in this <see cref="EnvironmentVariables"/> dictionary are used to augment and overwrite the entries read from the environment.
+    /// That includes removing the variables for any of this collection's entries with a null value.
+    /// </para>
     /// </remarks>
-    public Dictionary<string, string>? EnvironmentVariables { get; set; }
+    public Dictionary<string, string?>? EnvironmentVariables { get; set; }
 
     /// <summary>
     /// Gets or sets the timeout to wait for the server to shut down gracefully.
