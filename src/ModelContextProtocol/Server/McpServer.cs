@@ -2,7 +2,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using ModelContextProtocol.Logging;
 
 namespace ModelContextProtocol.Server;
 
@@ -236,9 +238,29 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             var originalListResourceTemplatesHandler = listResourceTemplatesHandler;
             listResourceTemplatesHandler = async (request, cancellationToken) =>
             {
-                ListResourceTemplatesResult result = originalListResourceTemplatesHandler is not null ?
-                    await originalListResourceTemplatesHandler(request, cancellationToken).ConfigureAwait(false) :
-                    new();
+                ListResourceTemplatesResult result;
+                
+                try
+                {
+                    result = originalListResourceTemplatesHandler is not null ?
+                        await originalListResourceTemplatesHandler(request, cancellationToken).ConfigureAwait(false) :
+                        new();
+                }
+                catch (Exception e)
+                {
+                    request.Server.ServerOptions.LogHandler?.Invoke(new()
+                    {
+                        Exception = e,
+                        ServiceProvider = request.Services,
+                        Json = JsonSerializer.Serialize(request.Params,
+                            McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(ListResourceTemplatesRequestParams))),
+                        Status = McpStatus.ErrorOccurred,
+                        Method = RequestMethods.ResourcesTemplatesList
+                    });
+                    
+                    throw;
+                }
+                
 
                 if (request.Params?.Cursor is null)
                 {
@@ -470,6 +492,8 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
                 // Store the provided level.
                 if (request is not null)
                 {
+                    InvokeLogHandler(RequestMethods.LoggingSetLevel, McpStatus.RequestReceived, request);
+                    
                     if (_loggingLevel is null)
                     {
                         Interlocked.CompareExchange(ref _loggingLevel, new(request.Level), null);
@@ -481,8 +505,11 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
                 // If a handler was provided, now delegate to it.
                 if (setLoggingLevelHandler is not null)
                 {
-                    return InvokeHandlerAsync(setLoggingLevelHandler, request, destinationTransport, cancellationToken);
+                    return InvokeHandlerAsync(RequestMethods.LoggingSetLevel, setLoggingLevelHandler, request,
+                        destinationTransport, cancellationToken);
                 }
+                
+                InvokeLogHandler(RequestMethods.LoggingSetLevel, McpStatus.ResponseSent, EmptyResult.Instance);
 
                 // Otherwise, consider it handled.
                 return new ValueTask<EmptyResult>(EmptyResult.Instance);
@@ -491,15 +518,24 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             McpJsonUtilities.JsonContext.Default.EmptyResult);
     }
 
-    private ValueTask<TResult> InvokeHandlerAsync<TParams, TResult>(
+    private async ValueTask<TResult> InvokeHandlerAsync<TParams, TResult>(
+        string method,
         Func<RequestContext<TParams>, CancellationToken, ValueTask<TResult>> handler,
         TParams? args,
         ITransport? destinationTransport = null,
         CancellationToken cancellationToken = default)
     {
-        return _servicesScopePerRequest ?
-            InvokeScopedAsync(handler, args, cancellationToken) :
-            handler(new(new DestinationBoundMcpServer(this, destinationTransport)) { Params = args }, cancellationToken);
+        if (_servicesScopePerRequest)
+            return await InvokeScopedAsync(handler, args, cancellationToken);
+        
+        InvokeLogHandler(method, McpStatus.RequestReceived, args);
+        
+        var result = await handler(new(new DestinationBoundMcpServer(this, destinationTransport)) { Params = args },
+                cancellationToken);
+
+        InvokeLogHandler(method, McpStatus.ResponseSent, result);
+
+        return result;
 
         async ValueTask<TResult> InvokeScopedAsync(
             Func<RequestContext<TParams>, CancellationToken, ValueTask<TResult>> handler,
@@ -507,15 +543,22 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             CancellationToken cancellationToken)
         {
             var scope = Services?.GetService<IServiceScopeFactory>()?.CreateAsyncScope();
+            
+            InvokeLogHandler(method, McpStatus.RequestReceived, args);
+
             try
             {
-                return await handler(
+                var result = await handler(
                     new RequestContext<TParams>(new DestinationBoundMcpServer(this, destinationTransport))
                     {
                         Services = scope?.ServiceProvider ?? Services,
                         Params = args
                     },
                     cancellationToken).ConfigureAwait(false);
+
+                InvokeLogHandler(method, McpStatus.ResponseSent, result);
+
+                return result;
             }
             finally
             {
@@ -535,9 +578,18 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
     {
         RequestHandlers.Set(method, 
             (request, destinationTransport, cancellationToken) =>
-                InvokeHandlerAsync(handler, request, destinationTransport, cancellationToken),
+                InvokeHandlerAsync(method, handler, request, destinationTransport, cancellationToken),
             requestTypeInfo, responseTypeInfo);
     }
+    
+    private void InvokeLogHandler<TParams>(string method, McpStatus status, TParams? args) =>
+        ServerOptions.LogHandler?.Invoke(new()
+        {
+            ServiceProvider = Services,
+            Json = JsonSerializer.Serialize(args, McpJsonUtilities.DefaultOptions.GetTypeInfo<TParams?>()),
+            Status = status,
+            Method = method
+        });
 
     private void UpdateEndpointNameWithClientInfo()
     {

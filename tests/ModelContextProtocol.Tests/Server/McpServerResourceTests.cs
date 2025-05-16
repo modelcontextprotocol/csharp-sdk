@@ -5,6 +5,7 @@ using ModelContextProtocol.Server;
 using Moq;
 using System.Reflection;
 using System.Text.Json.Serialization;
+using ModelContextProtocol.Logging;
 
 namespace ModelContextProtocol.Tests.Server;
 
@@ -253,6 +254,29 @@ public partial class McpServerResourceTests
             TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.Equal("123", ((TextResourceContents)result.Contents[0]).Text);
+    }
+
+    [Fact]
+    public async Task CanHandleLogging()
+    {
+        const string Name = "Hello";
+        Mock<IMcpServer> server = new();
+
+        server.SetupGet(s => s.ServerOptions).Returns(() => new McpServerOptions
+        {
+            LogHandler = (context) => Assert.Equal(McpStatus.ErrorOccurred, context.Status)
+        });
+        
+        McpServerResource t = McpServerResource.Create(
+            () => { throw new InvalidOperationException("Test exception"); },
+            new() { Name = Name });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await t.ReadAsync(new RequestContext<ReadResourceRequestParams>(server.Object)
+                {
+                    Params = new() { Uri = $"resource://{Name}" }
+                },
+                TestContext.Current.CancellationToken));
     }
 
     [Theory]

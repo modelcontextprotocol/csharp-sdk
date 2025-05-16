@@ -8,6 +8,7 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using ModelContextProtocol.Logging;
 
 namespace ModelContextProtocol.Server;
 
@@ -380,8 +381,26 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
             }
         }
 
-        // Invoke the function.
-        object? result = await AIFunction.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false);
+        object? result;
+        try
+        {
+            // Invoke the function.
+            result = await AIFunction.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            request.Server.ServerOptions.LogHandler?.Invoke(new()
+            {
+                Exception = e,
+                ServiceProvider = request.Services,
+                Json = JsonSerializer.Serialize(request.Params,
+                    AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(ReadResourceRequestParams))),
+                Status = McpStatus.ErrorOccurred,
+                Method = RequestMethods.ResourcesRead
+            });
+
+            throw;
+        }
 
         // And process the result.
         return result switch
