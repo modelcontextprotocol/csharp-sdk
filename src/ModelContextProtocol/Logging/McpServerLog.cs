@@ -1,7 +1,7 @@
 namespace ModelContextProtocol.Logging;
 
 /// <summary>
-/// Delegate that allows receivign log details about request/response calls. 
+/// Delegate that allows receiving log details about request/response calls. 
 /// </summary>
 public delegate void McpLogHandler(McpLogContext context);
 
@@ -11,7 +11,7 @@ public delegate void McpLogHandler(McpLogContext context);
 public sealed class McpLogContext
 {
     /// <summary>
-    /// Gets <see cref="McpStatus"/> information about when this log was emitted.
+    /// Gets <see cref="McpStatus"/> information about when (which moment in the workflow) this log was emitted.
     /// </summary>
     public McpStatus Status { get; init; }
     
