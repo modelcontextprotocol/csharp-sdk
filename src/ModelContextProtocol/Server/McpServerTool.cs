@@ -173,7 +173,7 @@ public abstract class McpServerTool : IMcpServerPrimitive
     /// <exception cref="ArgumentNullException"><paramref name="method"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="method"/> is an instance method but <paramref name="target"/> is <see langword="null"/>.</exception>
     public static McpServerTool Create(
-        MethodInfo method, 
+        MethodInfo method,
         object? target = null,
         McpServerToolCreateOptions? options = null) =>
         AIFunctionMcpServerTool.Create(method, target, options);
@@ -210,6 +210,31 @@ public abstract class McpServerTool : IMcpServerPrimitive
         AIFunction function,
         McpServerToolCreateOptions? options = null) =>
         AIFunctionMcpServerTool.Create(function, options);
+
+    /// <summary>Creates a server tool instance with a custom handler and schema configuration.</summary>
+    /// <param name="handler">The delegate to handle the specified operation.</param>
+    /// <param name="handlerInstance">The instance of the handler, or null if not required.</param>
+    /// <param name="realEndpointMethodInfo">The method information of the real endpoint implementation.</param>
+    /// <param name="realControllerInstance">The instance of the real controller, or null if not required.</param>
+    /// <param name="options">Optional creation configuration for the server tool.</param>
+    /// <returns>A new instance of <see cref="McpServerTool"/> configured with the provided handler and schema.</returns>
+    public static McpServerTool Create(
+        Delegate handler,
+        object? handlerInstance,
+        MethodInfo realEndpointMethodInfo,
+        object? realControllerInstance = null,
+        McpServerToolCreateOptions? options = null)
+    {
+        // 1. Creating the main tool via handler
+        var tool = AIFunctionMcpServerTool.Create(handler.Method, handlerInstance, options);
+
+        // 2. We are creating a temporary tool, just for the sake of generating a schema using a real endpoint
+        var schemaTool = AIFunctionMcpServerTool.Create(realEndpointMethodInfo, realControllerInstance, options);
+
+        // 3. Replacing InputSchema
+        tool.ProtocolTool.InputSchema = schemaTool.ProtocolTool.InputSchema;
+        return tool;
+    }
 
     /// <inheritdoc />
     public override string ToString() => ProtocolTool.Name;
