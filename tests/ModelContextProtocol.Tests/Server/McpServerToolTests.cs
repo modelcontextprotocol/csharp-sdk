@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Moq;
+using System.ComponentModel;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -379,6 +380,23 @@ public partial class McpServerToolTests
             tool.ProtocolTool.InputSchema.GetProperty("properties").EnumerateObject(),
             x => Assert.True(x.Value.TryGetProperty("text", out JsonElement value) && value.ToString() == "1234")
         );
+    }
+
+    [Fact]
+    public void TrimsDescriptionAndTitleKeywordsFromRootSchema()
+    {
+        McpServerTool tool = McpServerTool.Create(Add);
+
+        Assert.Equal("My awesome adding tool", tool.ProtocolTool.Description);
+        Assert.False(tool.ProtocolTool.InputSchema.TryGetProperty("description", out _));
+        Assert.False(tool.ProtocolTool.InputSchema.TryGetProperty("title", out _));
+
+        // Preserves any nested description keywords
+        Assert.Equal("The first argument", tool.ProtocolTool.InputSchema.GetProperty("properties").GetProperty("a").GetProperty("description").GetString());
+        Assert.Equal("The second argument", tool.ProtocolTool.InputSchema.GetProperty("properties").GetProperty("b").GetProperty("description").GetString());
+
+        [Description("My awesome adding tool")]
+        static int Add([Description("The first argument")] int a , [Description("The second argument")] int b) => a + b;
     }
 
     private sealed class MyService;

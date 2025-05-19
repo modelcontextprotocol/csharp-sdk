@@ -2,6 +2,7 @@
 using ModelContextProtocol.Protocol;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 
@@ -74,6 +75,25 @@ public static partial class McpJsonUtilities
 
         return false; // No type keyword found.
     }
+
+    private static readonly string[] s_rootSchemaKeywordsToRemove = ["title", "description"];
+    internal static AIJsonSchemaCreateOptions DefaultSchemaCreateOptions { get; } = new()
+    {
+        TransformOptions = new()
+        {
+            TransformSchemaNode = static (ctx, node) =>
+            {
+                if (ctx.Path is [] && node is JsonObject obj)
+                {
+                    foreach (string keywordToRemove in s_rootSchemaKeywordsToRemove)
+                    {
+                        obj.Remove(keywordToRemove);
+                    }
+                }
+                return node;
+            },
+        }
+    };
 
     // Keep in sync with CreateDefaultOptions above.
     [JsonSourceGenerationOptions(JsonSerializerDefaults.Web,
