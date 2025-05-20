@@ -222,7 +222,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         Assert.Equal("Failed to add header '' with value '' from AdditionalHeaders.", ex.Message);
     }
 
-        [Theory]
+    [Theory]
     [InlineData(false, "message?sessionId=")]                  // relative
     [InlineData(true,  "http://localhost/message?sessionId=")] // absolute
     public async Task InitEvent_ContainsCorrectMessageUrl(bool sendAbsolute, string expectedPrefix)
@@ -236,7 +236,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         await app.StartAsync(TestContext.Current.CancellationToken);
 
         // Act – open raw SSE connection
-        var request  = new HttpRequestMessage(HttpMethod.Get, "http://localhost/sse");
+        var request = new HttpRequestMessage(HttpMethod.Get, "http://localhost/sse");
         var response = await HttpClient.SendAsync(
             request,
             HttpCompletionOption.ResponseHeadersRead,
@@ -248,12 +248,12 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         using var reader = new StreamReader(stream);
 
         string? eventType = null;
-        var     dataBuf   = new StringBuilder();
+        var dataBuf = new StringBuilder();
+        string? line = null;
 
-        while (!reader.EndOfStream)
+        while ((line = await reader.ReadLineAsync(TestContext.Current.CancellationToken)) is not null)
         {
-            var line = await reader.ReadLineAsync(TestContext.Current.CancellationToken) ?? "";
-            if (line.Length == 0)    // blank line → end of one SSE event
+            if (line.Length == 0) // blank line → end of one SSE event
             {
                 if (eventType == "init")
                 {
@@ -261,7 +261,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
                     var url = json.RootElement.GetProperty("endpoint").GetString();
                     Assert.NotNull(url);
                     Assert.StartsWith(expectedPrefix, url!, StringComparison.Ordinal);
-                    return;          // success
+                    return;
                 }
 
                 // reset for next event
@@ -271,9 +271,13 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
             }
 
             if (line.StartsWith("event:"))
+            {
                 eventType = line["event:".Length..].Trim();
+            }
             else if (line.StartsWith("data:"))
+            {
                 dataBuf.Append(line["data:".Length..].Trim());
+            }
         }
 
         throw new InvalidOperationException("Init event not found in SSE stream.");
