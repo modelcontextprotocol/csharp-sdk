@@ -1,147 +1,342 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿﻿using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.WebUtilities;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Protocol.Transport;
+using Microsoft.Extensions.Primitives;
+using Microsoft.Net.Http.Headers;
+using ModelContextProtocol.AspNetCore.Stateless;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using ModelContextProtocol.Utils.Json;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.IO.Pipelines;
+using System.Security.Claims;
 using System.Security.Cryptography;
+using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.AspNetCore;
 
 internal sealed class StreamableHttpHandler(
     IOptions<McpServerOptions> mcpServerOptionsSnapshot,
     IOptionsFactory<McpServerOptions> mcpServerOptionsFactory,
-    IOptions<HttpServerTransportOptions> httpMcpServerOptions,
-    IHostApplicationLifetime hostApplicationLifetime,
-    ILoggerFactory loggerFactory)
+    IOptions<HttpServerTransportOptions> httpServerTransportOptions,
+    IDataProtectionProvider dataProtection,
+    ILoggerFactory loggerFactory,
+    IServiceProvider applicationServices)
 {
+    private static readonly JsonTypeInfo<JsonRpcError> s_errorTypeInfo = GetRequiredJsonTypeInfo<JsonRpcError>();
 
-    private readonly ConcurrentDictionary<string, HttpMcpSession> _sessions = new(StringComparer.Ordinal);
-    private readonly ILogger _logger = loggerFactory.CreateLogger<StreamableHttpHandler>();
+    public ConcurrentDictionary<string, HttpMcpSession<StreamableHttpServerTransport>> Sessions { get; } = new(StringComparer.Ordinal);
 
-    public async Task HandleRequestAsync(HttpContext context)
+    public HttpServerTransportOptions HttpServerTransportOptions => httpServerTransportOptions.Value;
+
+    private IDataProtector Protector { get; } = dataProtection.CreateProtector("Microsoft.AspNetCore.StreamableHttpHandler.StatelessSessionId");
+
+    public async Task HandlePostRequestAsync(HttpContext context)
     {
-        if (context.Request.Method == HttpMethods.Get)
+        // The Streamable HTTP spec mandates the client MUST accept both application/json and text/event-stream.
+        // ASP.NET Core Minimal APIs mostly try to stay out of the business of response content negotiation,
+        // so we have to do this manually. The spec doesn't mandate that servers MUST reject these requests,
+        // but it's probably good to at least start out trying to be strict.
+        var typedHeaders = context.Request.GetTypedHeaders();
+        if (!typedHeaders.Accept.Any(MatchesApplicationJsonMediaType) || !typedHeaders.Accept.Any(MatchesTextEventStreamMediaType))
         {
-            await HandleSseRequestAsync(context);
+            await WriteJsonRpcErrorAsync(context,
+                "Not Acceptable: Client must accept both application/json and text/event-stream",
+                StatusCodes.Status406NotAcceptable);
+            return;
         }
-        else if (context.Request.Method == HttpMethods.Post)
+
+        var session = await GetOrCreateSessionAsync(context);
+        if (session is null)
         {
-            await HandleMessageRequestAsync(context);
-        }
-        else
-        {
-            context.Response.StatusCode = StatusCodes.Status405MethodNotAllowed;
-            await context.Response.WriteAsync("Method Not Allowed");
-        }
-    }
-
-    public async Task HandleSseRequestAsync(HttpContext context)
-    {
-        // If the server is shutting down, we need to cancel all SSE connections immediately without waiting for HostOptions.ShutdownTimeout
-        // which defaults to 30 seconds.
-        using var sseCts = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, hostApplicationLifetime.ApplicationStopping);
-        var cancellationToken = sseCts.Token;
-
-        var response = context.Response;
-        response.Headers.ContentType = "text/event-stream";
-        response.Headers.CacheControl = "no-cache,no-store";
-
-        // Make sure we disable all response buffering for SSE
-        context.Response.Headers.ContentEncoding = "identity";
-        context.Features.GetRequiredFeature<IHttpResponseBodyFeature>().DisableBuffering();
-
-        var sessionId = MakeNewSessionId();
-        await using var transport = new SseResponseStreamTransport(response.Body, $"message?sessionId={sessionId}");
-        var httpMcpSession = new HttpMcpSession(transport, context.User);
-        if (!_sessions.TryAdd(sessionId, httpMcpSession))
-        {
-            Debug.Fail("Unreachable given good entropy!");
-            throw new InvalidOperationException($"Session with ID '{sessionId}' has already been created.");
+            return;
         }
 
         try
         {
-            var mcpServerOptions = mcpServerOptionsSnapshot.Value;
-            if (httpMcpServerOptions.Value.ConfigureSessionOptions is { } configureSessionOptions)
-            {
-                mcpServerOptions = mcpServerOptionsFactory.Create(Options.DefaultName);
-                await configureSessionOptions(context, mcpServerOptions, cancellationToken);
-            }
+            using var _ = session.AcquireReference();
 
-            var transportTask = transport.RunAsync(cancellationToken);
-
-            try
+            InitializeSseResponse(context);
+            var wroteResponse = await session.Transport.HandlePostRequest(new HttpDuplexPipe(context), context.RequestAborted);
+            if (!wroteResponse)
             {
-                await using var mcpServer = McpServerFactory.Create(transport, mcpServerOptions, loggerFactory, context.RequestServices);
-                context.Features.Set(mcpServer);
-
-                var runSessionAsync = httpMcpServerOptions.Value.RunSessionHandler ?? RunSessionAsync;
-                await runSessionAsync(context, mcpServer, cancellationToken);
+                // We wound up writing nothing, so there should be no Content-Type response header.
+                context.Response.Headers.ContentType = (string?)null;
+                context.Response.StatusCode = StatusCodes.Status202Accepted;
             }
-            finally
-            {
-                await transport.DisposeAsync();
-                await transportTask;
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            // RequestAborted always triggers when the client disconnects before a complete response body is written,
-            // but this is how SSE connections are typically closed.
         }
         finally
         {
-            _sessions.TryRemove(sessionId, out _);
+            // Stateless sessions are 1:1 with HTTP requests and are outlived by the MCP session tracked by the mcp-session-id.
+            // Non-stateless sessions are 1:1 with the mcp-session-id and outlive the POST request.
+            // Non-stateless sessions get disposed by a DELETE request or the IdleTrackingBackgroundService.
+            if (HttpServerTransportOptions.Stateless)
+            {
+                await session.DisposeAsync();
+            }
         }
     }
 
-    public async Task HandleMessageRequestAsync(HttpContext context)
+    public async Task HandleGetRequestAsync(HttpContext context)
     {
-        if (!context.Request.Query.TryGetValue("sessionId", out var sessionId))
+        if (!context.Request.GetTypedHeaders().Accept.Any(MatchesTextEventStreamMediaType))
         {
-            await Results.BadRequest("Missing sessionId query parameter.").ExecuteAsync(context);
+            await WriteJsonRpcErrorAsync(context,
+                "Not Acceptable: Client must accept text/event-stream",
+                StatusCodes.Status406NotAcceptable);
             return;
         }
 
-        if (!_sessions.TryGetValue(sessionId.ToString(), out var httpMcpSession))
+        var sessionId = context.Request.Headers["mcp-session-id"].ToString();
+        var session = await GetSessionAsync(context, sessionId);
+        if (session is null)
         {
-            await Results.BadRequest($"Session ID not found.").ExecuteAsync(context);
             return;
         }
 
-        if (!httpMcpSession.HasSameUserId(context.User))
+        if (!session.TryStartGetRequest())
         {
-            await Results.Forbid().ExecuteAsync(context);
+            await WriteJsonRpcErrorAsync(context,
+                "Bad Request: This server does not support multiple GET requests. Start a new session to get a new GET SSE response.",
+                StatusCodes.Status400BadRequest);
             return;
         }
 
-        var message = (IJsonRpcMessage?)await context.Request.ReadFromJsonAsync(McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(IJsonRpcMessage)), context.RequestAborted);
-        if (message is null)
-        {
-            await Results.BadRequest("No message in request body.").ExecuteAsync(context);
-            return;
-        }
+        using var _ = session.AcquireReference();
+        InitializeSseResponse(context);
 
-        await httpMcpSession.Transport.OnMessageReceivedAsync(message, context.RequestAborted);
-        context.Response.StatusCode = StatusCodes.Status202Accepted;
-        await context.Response.WriteAsync("Accepted");
+        // We should flush headers to indicate a 200 success quickly, because the initialization response
+        // will be sent in response to a different POST request. It might be a while before we send a message
+        // over this response body.
+        await context.Response.Body.FlushAsync(context.RequestAborted);
+        await session.Transport.HandleGetRequest(context.Response.Body, context.RequestAborted);
     }
 
-    private static Task RunSessionAsync(HttpContext httpContext, IMcpServer session, CancellationToken requestAborted)
-        => session.RunAsync(requestAborted);
-
-    private static string MakeNewSessionId()
+    public async Task HandleDeleteRequestAsync(HttpContext context)
     {
-        // 128 bits
+        var sessionId = context.Request.Headers["mcp-session-id"].ToString();
+        if (Sessions.TryRemove(sessionId, out var session))
+        {
+            await session.DisposeAsync();
+        }
+    }
+
+    private async ValueTask<HttpMcpSession<StreamableHttpServerTransport>?> GetSessionAsync(HttpContext context, string sessionId)
+    {
+        HttpMcpSession<StreamableHttpServerTransport>? session;
+
+        if (HttpServerTransportOptions.Stateless)
+        {
+            var sessionJson = Protector.Unprotect(sessionId);
+            var statelessSessionId = JsonSerializer.Deserialize(sessionJson, StatelessSessionIdJsonContext.Default.StatelessSessionId);
+            var transport = new StreamableHttpServerTransport
+            {
+                Stateless = true,
+            };
+            session = await CreateSessionAsync(context, transport, sessionId, statelessSessionId);
+        }
+        else if (!Sessions.TryGetValue(sessionId, out session))
+        {
+            // -32001 isn't part of the MCP standard, but this is what the typescript-sdk currently does.
+            // One of the few other usages I found was from some Ethereum JSON-RPC documentation and this
+            // JSON-RPC library from Microsoft called StreamJsonRpc where it's called JsonRpcErrorCode.NoMarshaledObjectFound
+            // https://learn.microsoft.com/dotnet/api/streamjsonrpc.protocol.jsonrpcerrorcode?view=streamjsonrpc-2.9#fields
+            await WriteJsonRpcErrorAsync(context, "Session not found", StatusCodes.Status404NotFound, -32001);
+            return null;
+        }
+
+        if (!session.HasSameUserId(context.User))
+        {
+            await WriteJsonRpcErrorAsync(context,
+                "Forbidden: The currently authenticated user does not match the user who initiated the session.",
+                StatusCodes.Status403Forbidden);
+            return null;
+        }
+
+        context.Response.Headers["mcp-session-id"] = session.Id;
+        context.Features.Set(session.Server);
+        return session;
+    }
+
+    private async ValueTask<HttpMcpSession<StreamableHttpServerTransport>?> GetOrCreateSessionAsync(HttpContext context)
+    {
+        var sessionId = context.Request.Headers["mcp-session-id"].ToString();
+
+        if (string.IsNullOrEmpty(sessionId))
+        {
+            return await StartNewSessionAsync(context);
+        }
+        else
+        {
+            return await GetSessionAsync(context, sessionId);
+        }
+    }
+
+    private async ValueTask<HttpMcpSession<StreamableHttpServerTransport>> StartNewSessionAsync(HttpContext context)
+    {
+        string sessionId;
+        StreamableHttpServerTransport transport;
+
+        if (!HttpServerTransportOptions.Stateless)
+        {
+            sessionId = MakeNewSessionId();
+            transport = new();
+            context.Response.Headers["mcp-session-id"] = sessionId;
+        }
+        else
+        {
+            // "(uninitialized stateless id)" is not written anywhere. We delay writing the mcp-session-id
+            // until after we receive the initialize request with the client info we need to serialize.
+            sessionId = "(uninitialized stateless id)";
+            transport = new()
+            {
+                Stateless = true,
+            };
+            ScheduleStatelessSessionIdWrite(context, transport);
+        }
+
+        var session = await CreateSessionAsync(context, transport, sessionId);
+
+        // The HttpMcpSession is not stored between requests in stateless mode. Instead, the session is recreated from the mcp-session-id.
+        if (!HttpServerTransportOptions.Stateless)
+        {
+            if (!Sessions.TryAdd(sessionId, session))
+            {
+                throw new UnreachableException($"Unreachable given good entropy! Session with ID '{sessionId}' has already been created.");
+            }
+        }
+
+        return session;
+    }
+
+    private async ValueTask<HttpMcpSession<StreamableHttpServerTransport>> CreateSessionAsync(
+        HttpContext context,
+        StreamableHttpServerTransport transport,
+        string sessionId,
+        StatelessSessionId? statelessId = null)
+    {
+        var mcpServerServices = applicationServices;
+        var mcpServerOptions = mcpServerOptionsSnapshot.Value;
+        if (statelessId is not null || HttpServerTransportOptions.ConfigureSessionOptions is not null)
+        {
+            mcpServerOptions = mcpServerOptionsFactory.Create(Options.DefaultName);
+
+            if (statelessId is not null)
+            {
+                // The session does not outlive the request in stateless mode.
+                mcpServerServices = context.RequestServices;
+                mcpServerOptions.ScopeRequests = false;
+                mcpServerOptions.KnownClientInfo = statelessId.ClientInfo;
+            }
+
+            if (HttpServerTransportOptions.ConfigureSessionOptions is { } configureSessionOptions)
+            {
+                await configureSessionOptions(context, mcpServerOptions, context.RequestAborted);
+            }
+        }
+
+        var server = McpServerFactory.Create(transport, mcpServerOptions, loggerFactory, mcpServerServices);
+        context.Features.Set(server);
+
+        var userIdClaim = statelessId?.UserIdClaim ?? GetUserIdClaim(context.User);
+        var session = new HttpMcpSession<StreamableHttpServerTransport>(sessionId, transport, userIdClaim, HttpServerTransportOptions.TimeProvider)
+        {
+            Server = server,
+        };
+
+        var runSessionAsync = HttpServerTransportOptions.RunSessionHandler ?? RunSessionAsync;
+        session.ServerRunTask = runSessionAsync(context, server, session.SessionClosed);
+
+        return session;
+    }
+
+    private static Task WriteJsonRpcErrorAsync(HttpContext context, string errorMessage, int statusCode, int errorCode = -32000)
+    {
+        var jsonRpcError = new JsonRpcError
+        {
+            Error = new()
+            {
+                Code = errorCode,
+                Message = errorMessage,
+            },
+        };
+        return Results.Json(jsonRpcError, s_errorTypeInfo, statusCode: statusCode).ExecuteAsync(context);
+    }
+
+    internal static void InitializeSseResponse(HttpContext context)
+    {
+        context.Response.Headers.ContentType = "text/event-stream";
+        context.Response.Headers.CacheControl = "no-cache,no-store";
+
+        // Make sure we disable all response buffering for SSE.
+        context.Response.Headers.ContentEncoding = "identity";
+        context.Features.GetRequiredFeature<IHttpResponseBodyFeature>().DisableBuffering();
+    }
+
+    internal static string MakeNewSessionId()
+    {
         Span<byte> buffer = stackalloc byte[16];
         RandomNumberGenerator.Fill(buffer);
         return WebEncoders.Base64UrlEncode(buffer);
+    }
+
+    private void ScheduleStatelessSessionIdWrite(HttpContext context, StreamableHttpServerTransport transport)
+    {
+        context.Response.OnStarting(() =>
+        {
+            var statelessId = new StatelessSessionId
+            {
+                ClientInfo = transport?.InitializeRequest?.ClientInfo,
+                UserIdClaim = GetUserIdClaim(context.User),
+            };
+
+            var sessionJson = JsonSerializer.Serialize(statelessId, StatelessSessionIdJsonContext.Default.StatelessSessionId);
+            var sessionId = Protector.Protect(sessionJson);
+
+            context.Response.Headers["mcp-session-id"] = sessionId;
+
+            return Task.CompletedTask;
+        });
+    }
+
+    internal static Task RunSessionAsync(HttpContext httpContext, IMcpServer session, CancellationToken requestAborted)
+        => session.RunAsync(requestAborted);
+
+    // SignalR only checks for ClaimTypes.NameIdentifier in HttpConnectionDispatcher, but AspNetCore.Antiforgery checks that plus the sub and UPN claims.
+    // However, we short-circuit unlike antiforgery since we expect to call this to verify MCP messages a lot more frequently than
+    // verifying antiforgery tokens from <form> posts.
+    internal static UserIdClaim? GetUserIdClaim(ClaimsPrincipal user)
+    {
+        if (user?.Identity?.IsAuthenticated != true)
+        {
+            return null;
+        }
+
+        var claim = user.FindFirst(ClaimTypes.NameIdentifier) ?? user.FindFirst("sub") ?? user.FindFirst(ClaimTypes.Upn);
+
+        if (claim is { } idClaim)
+        {
+            return new(idClaim.Type, idClaim.Value, idClaim.Issuer);
+        }
+
+        return null;
+    }
+
+    private static JsonTypeInfo<T> GetRequiredJsonTypeInfo<T>() => (JsonTypeInfo<T>)McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(T));
+
+    private static bool MatchesApplicationJsonMediaType(MediaTypeHeaderValue acceptHeaderValue)
+        => acceptHeaderValue.MatchesMediaType("application/json");
+
+    private static bool MatchesTextEventStreamMediaType(MediaTypeHeaderValue acceptHeaderValue)
+        => acceptHeaderValue.MatchesMediaType("text/event-stream");
+
+    private sealed class HttpDuplexPipe(HttpContext context) : IDuplexPipe
+    {
+        public PipeReader Input => context.Request.BodyReader;
+        public PipeWriter Output => context.Response.BodyWriter;
     }
 }
