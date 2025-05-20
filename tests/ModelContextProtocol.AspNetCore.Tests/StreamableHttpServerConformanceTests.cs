@@ -105,7 +105,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     [InlineData("text/event-stream")]
     [InlineData("application/json")]
     [InlineData("application/json-text/event-stream")]
-    public async Task PostRequest_IsNotAcceptable_WithSingleAcceptHeader(string singleAcceptValue)
+    public async Task PostRequest_IsNotAcceptable_WithSingleSpecificAcceptHeader(string singleAcceptValue)
     {
         await StartAsync();
 
@@ -114,6 +114,20 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
 
         using var response = await HttpClient.PostAsync("", JsonContent(InitializeRequest), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotAcceptable, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("*/*")]
+    [InlineData("text/event-stream, application/json;q=0.9")]
+    public async Task PostRequest_IsAcceptable_WithWildcardOrAddedQualityInAcceptHeader(string acceptHeaderValue)
+    {
+        await StartAsync();
+
+        HttpClient.DefaultRequestHeaders.Accept.Clear();
+        HttpClient.DefaultRequestHeaders.TryAddWithoutValidation(HeaderNames.Accept, acceptHeaderValue);
+
+        using var response = await HttpClient.PostAsync("", JsonContent(InitializeRequest), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact]
@@ -126,6 +140,22 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
 
         using var response = await HttpClient.GetAsync("", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotAcceptable, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("*/*")]
+    [InlineData("application/json, text/event-stream;q=0.9")]
+    public async Task GetRequest_IsAcceptable_WithWildcardOrAddedQualityInAcceptHeader(string acceptHeaderValue)
+    {
+        await StartAsync();
+
+        HttpClient.DefaultRequestHeaders.Accept.Clear();
+        HttpClient.DefaultRequestHeaders.TryAddWithoutValidation(HeaderNames.Accept, acceptHeaderValue);
+
+        await CallInitializeAndValidateAsync();
+
+        using var response = await HttpClient.GetAsync("", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact]

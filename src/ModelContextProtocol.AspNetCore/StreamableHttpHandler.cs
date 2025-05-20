@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Primitives;
 using Microsoft.Net.Http.Headers;
 using ModelContextProtocol.AspNetCore.Stateless;
 using ModelContextProtocol.Protocol;
@@ -28,9 +29,6 @@ internal sealed class StreamableHttpHandler(
 {
     private static readonly JsonTypeInfo<JsonRpcError> s_errorTypeInfo = GetRequiredJsonTypeInfo<JsonRpcError>();
 
-    private static readonly MediaTypeHeaderValue s_applicationJsonMediaType = new("application/json");
-    private static readonly MediaTypeHeaderValue s_textEventStreamMediaType = new("text/event-stream");
-
     public ConcurrentDictionary<string, HttpMcpSession<StreamableHttpServerTransport>> Sessions { get; } = new(StringComparer.Ordinal);
 
     public HttpServerTransportOptions HttpServerTransportOptions => httpServerTransportOptions.Value;
@@ -43,8 +41,8 @@ internal sealed class StreamableHttpHandler(
         // ASP.NET Core Minimal APIs mostly try to stay out of the business of response content negotiation,
         // so we have to do this manually. The spec doesn't mandate that servers MUST reject these requests,
         // but it's probably good to at least start out trying to be strict.
-        var acceptHeaders = context.Request.GetTypedHeaders().Accept;
-        if (!acceptHeaders.Contains(s_applicationJsonMediaType) || !acceptHeaders.Contains(s_textEventStreamMediaType))
+        var typedHeaders = context.Request.GetTypedHeaders();
+        if (!typedHeaders.Accept.Any(MatchesApplicationJsonMediaType) || !typedHeaders.Accept.Any(MatchesTextEventStreamMediaType))
         {
             await WriteJsonRpcErrorAsync(context,
                 "Not Acceptable: Client must accept both application/json and text/event-stream",
@@ -85,8 +83,7 @@ internal sealed class StreamableHttpHandler(
 
     public async Task HandleGetRequestAsync(HttpContext context)
     {
-        var acceptHeaders = context.Request.GetTypedHeaders().Accept;
-        if (!acceptHeaders.Contains(s_textEventStreamMediaType))
+        if (!context.Request.GetTypedHeaders().Accept.Any(MatchesTextEventStreamMediaType))
         {
             await WriteJsonRpcErrorAsync(context,
                 "Not Acceptable: Client must accept text/event-stream",
@@ -330,6 +327,12 @@ internal sealed class StreamableHttpHandler(
     }
 
     private static JsonTypeInfo<T> GetRequiredJsonTypeInfo<T>() => (JsonTypeInfo<T>)McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(T));
+
+    private static bool MatchesApplicationJsonMediaType(MediaTypeHeaderValue acceptHeaderValue)
+        => acceptHeaderValue.MatchesMediaType("application/json");
+
+    private static bool MatchesTextEventStreamMediaType(MediaTypeHeaderValue acceptHeaderValue)
+        => acceptHeaderValue.MatchesMediaType("text/event-stream");
 
     private sealed class HttpDuplexPipe(HttpContext context) : IDuplexPipe
     {
