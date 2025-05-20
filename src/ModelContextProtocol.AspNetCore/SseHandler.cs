@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -29,9 +30,12 @@ internal sealed class SseHandler(
 
         StreamableHttpHandler.InitializeSseResponse(context);
 
-        var requestPath = (context.Request.PathBase + context.Request.Path).ToString();
-        var endpointPattern = requestPath[..(requestPath.LastIndexOf('/') + 1)];
-        await using var transport = new SseResponseStreamTransport(context.Response.Body, $"{endpointPattern}message?sessionId={sessionId}");
+        var messageUrl = BuildMessageUrl(
+            context,
+            sessionId,
+            httpMcpServerOptions.Value.SendAbsoluteMessageUrl);
+
+        await using var transport = new SseResponseStreamTransport(context.Response.Body, messageUrl);
 
         var userIdClaim = StreamableHttpHandler.GetUserIdClaim(context.User);
         await using var httpMcpSession = new HttpMcpSession<SseResponseStreamTransport>(sessionId, transport, userIdClaim, httpMcpServerOptions.Value.TimeProvider);
@@ -110,4 +114,29 @@ internal sealed class SseHandler(
         context.Response.StatusCode = StatusCodes.Status202Accepted;
         await context.Response.WriteAsync("Accepted");
     }
+
+    private static string BuildMessageUrl(HttpContext context, string sessionId, bool sendAbsolute)
+    {
+        if (sendAbsolute)
+        {
+            return UriHelper.BuildAbsolute(
+                context.Request.Scheme,
+                context.Request.Host,
+                PathString.Empty,
+                "/message",
+                QueryString.Create("sessionId", sessionId));
+        }
+
+        // Path of the current request, e.g.  "/mcp/sse"
+        var requestPath     = (context.Request.PathBase + context.Request.Path).ToString();
+        var endpointPattern = requestPath[..(requestPath.LastIndexOf('/') + 1)]; // "/mcp/"
+
+        if (endpointPattern.Length > 1)
+        {
+            return $"{endpointPattern}message?sessionId={sessionId}";
+        }
+
+        return $"/message?sessionId={sessionId}";
+    }
+
 }

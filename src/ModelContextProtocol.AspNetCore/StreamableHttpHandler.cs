@@ -284,20 +284,7 @@ internal sealed class StreamableHttpHandler(
         RandomNumberGenerator.Fill(buffer);
         return WebEncoders.Base64UrlEncode(buffer);
     }
-
-    private static string BuildMessageUrl(HttpContext context, string sessionId, bool sendFull)
-    {
-        if (!sendFull)
-            return $"message?sessionId={sessionId}";
-
-        return UriHelper.BuildAbsolute(
-            context.Request.Scheme,                 // http / https
-            context.Request.Host,                   // host[:port]
-            PathString.Empty,                       // pathBase
-            "/message",                             // path
-            QueryString.Create("sessionId", sessionId)); // ?sessionId=...
-    }
-
+    
     private void ScheduleStatelessSessionIdWrite(HttpContext context, StreamableHttpServerTransport transport)
     {
         context.Response.OnStarting(() =>
