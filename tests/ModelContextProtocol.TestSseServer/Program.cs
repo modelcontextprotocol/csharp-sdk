@@ -1,8 +1,8 @@
 ﻿using Microsoft.AspNetCore.Connections;
-using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using ModelContextProtocol.Utils.Json;
 using Serilog;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 
@@ -16,12 +16,11 @@ public class Program
     {
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Verbose() // Capture all log levels
-            .WriteTo.File(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs", "TestServer_.log"),
+            .WriteTo.File(Path.Combine(AppContext.BaseDirectory, "logs", "TestServer_.log"),
                 rollingInterval: RollingInterval.Day,
                 outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
             .CreateLogger();
 
-        var logsPath = Path.Combine(AppContext.BaseDirectory, "testserver.log");
         loggingBuilder.AddSerilog();
     }
 
@@ -157,13 +156,13 @@ public class Program
                 {
                     if (request.Params is null)
                     {
-                        throw new McpException("Missing required parameter 'name'");
+                        throw new McpException("Missing required parameter 'name'", McpErrorCode.InvalidParams);
                     }
                     if (request.Params.Name == "echo")
                     {
                         if (request.Params.Arguments is null || !request.Params.Arguments.TryGetValue("message", out var message))
                         {
-                            throw new McpException("Missing required argument 'message'");
+                            throw new McpException("Missing required argument 'message'", McpErrorCode.InvalidParams);
                         }
                         return new CallToolResponse()
                         {
@@ -176,7 +175,7 @@ public class Program
                             !request.Params.Arguments.TryGetValue("prompt", out var prompt) || 
                             !request.Params.Arguments.TryGetValue("maxTokens", out var maxTokens))
                         {
-                            throw new McpException("Missing required arguments 'prompt' and 'maxTokens'");
+                            throw new McpException("Missing required arguments 'prompt' and 'maxTokens'", McpErrorCode.InvalidParams);
                         }
                         var sampleResult = await request.Server.RequestSamplingAsync(CreateRequestSamplingParams(prompt.ToString(), "sampleLLM", Convert.ToInt32(maxTokens.ToString())),
                             cancellationToken);
@@ -188,7 +187,7 @@ public class Program
                     }
                     else
                     {
-                        throw new McpException($"Unknown tool: {request.Params.Name}");
+                        throw new McpException($"Unknown tool: '{request.Params.Name}'", McpErrorCode.InvalidParams);
                     }
                 }
             },
@@ -220,9 +219,9 @@ public class Program
                             var startIndexAsString = Encoding.UTF8.GetString(Convert.FromBase64String(requestParams.Cursor));
                             startIndex = Convert.ToInt32(startIndexAsString);
                         }
-                        catch
+                        catch (Exception e)
                         {
-                            throw new McpException("Invalid cursor");
+                            throw new McpException($"Invalid cursor: '{requestParams.Cursor}'", e, McpErrorCode.InvalidParams);
                         }
                     }
                     
@@ -244,7 +243,7 @@ public class Program
                 {
                     if (request.Params?.Uri is null)
                     {
-                        throw new McpException("Missing required argument 'uri'");
+                        throw new McpException("Missing required argument 'uri'", McpErrorCode.InvalidParams);
                     }
 
                     if (request.Params.Uri.StartsWith("test://dynamic/resource/"))
@@ -252,7 +251,7 @@ public class Program
                         var id = request.Params.Uri.Split('/').LastOrDefault();
                         if (string.IsNullOrEmpty(id))
                         {
-                            throw new McpException("Invalid resource URI");
+                            throw new McpException($"Invalid resource URI: '{request.Params.Uri}'", McpErrorCode.InvalidParams);
                         }
 
                         return new ReadResourceResult()
@@ -269,7 +268,7 @@ public class Program
                     }
 
                     ResourceContents? contents = resourceContents.FirstOrDefault(r => r.Uri == request.Params.Uri) ?? 
-                        throw new McpException("Resource not found");
+                        throw new McpException($"Resource not found: '{request.Params.Uri}'", McpErrorCode.InvalidParams);
                     
                     return new ReadResourceResult()
                     {
@@ -316,7 +315,7 @@ public class Program
                 {
                     if (request.Params is null)
                     {
-                        throw new McpException("Missing required parameter 'name'");
+                        throw new McpException("Missing required parameter 'name'", McpErrorCode.InvalidParams);
                     }
                     List<PromptMessage> messages = new();
                     if (request.Params.Name == "simple_prompt")
@@ -366,7 +365,7 @@ public class Program
                     }
                     else
                     {
-                        throw new McpException($"Unknown prompt: {request.Params.Name}");
+                        throw new McpException($"Unknown prompt: {request.Params.Name}", McpErrorCode.InvalidParams);
                     }
 
                     return new GetPromptResult()
@@ -376,6 +375,26 @@ public class Program
                 }
             },
         };
+    }
+
+    private static void HandleStatelessMcp(IApplicationBuilder app)
+    {
+        var serviceCollection = new ServiceCollection();
+        serviceCollection.AddLogging();
+        serviceCollection.AddSingleton(app.ApplicationServices.GetRequiredService<ILoggerFactory>());
+        serviceCollection.AddSingleton(app.ApplicationServices.GetRequiredService<DiagnosticListener>());
+        serviceCollection.AddRoutingCore();
+
+        serviceCollection.AddMcpServer(ConfigureOptions).WithHttpTransport(options => options.Stateless = true);
+
+        var appBuilder = new ApplicationBuilder(serviceCollection.BuildServiceProvider());
+        appBuilder.UseRouting();
+        appBuilder.UseEndpoints(innerEndpoints =>
+        {
+            innerEndpoints.MapMcp("/stateless");
+        });
+
+        app.Run(appBuilder.Build());
     }
 
     public static async Task MainAsync(string[] args, ILoggerProvider? loggerProvider = null, IConnectionListenerFactory? kestrelTransport = null, CancellationToken cancellationToken = default)
@@ -418,6 +437,9 @@ public class Program
         var app = builder.Build();
         app.UseRouting();
         app.UseEndpoints(_ => { });
+
+        // Handle the /stateless endpoint if no other endpoints have been matched by the call to UseRouting above.
+        HandleStatelessMcp(app);
 
         app.MapMcp();
 

@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
 using System.Net;
@@ -11,13 +10,24 @@ using System.Security.Claims;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
 
-public class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelInMemoryTest(testOutputHelper)
+public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelInMemoryTest(testOutputHelper)
 {
-    private async Task<IMcpClient> ConnectAsync(string? path = null)
+    protected abstract bool UseStreamableHttp { get; }
+    protected abstract bool Stateless { get; }
+
+    protected void ConfigureStateless(HttpServerTransportOptions options)
     {
+        options.Stateless = Stateless;
+    }
+
+    protected async Task<IMcpClient> ConnectAsync(string? path = null)
+    {
+        path ??= UseStreamableHttp ? "/" : "/sse";
+
         var sseClientTransportOptions = new SseClientTransportOptions()
         {
             Endpoint = new Uri($"http://localhost{path}"),
+            UseStreamableHttp = UseStreamableHttp,
         };
         await using var transport = new SseClientTransport(sseClientTransportOptions, HttpClient, LoggerFactory);
         return await McpClientFactory.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
@@ -33,49 +43,15 @@ public class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelInMemoryTe
     }
 
     [Fact]
-    public async Task Allows_Customizing_Route()
+    public async Task Can_UseIHttpContextAccessor_InTool()
     {
-        Builder.Services.AddMcpServer().WithHttpTransport();
-        await using var app = Builder.Build();
+        Assert.SkipWhen(UseStreamableHttp && !Stateless,
+            """
+            IHttpContextAccessor is not currently supported with non-stateless Streamable HTTP.
+            TODO: Support it in stateless mode by manually capturing and flowing execution context.
+            """);
 
-        app.MapMcp("/mcp");
-
-        await app.StartAsync(TestContext.Current.CancellationToken);
-
-        using var response = await HttpClient.GetAsync("http://localhost/mcp/sse", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
-        response.EnsureSuccessStatusCode();
-    }
-
-    [Theory]
-    [InlineData("/a", "/a/sse")]
-    [InlineData("/a", "/a/")]
-    [InlineData("/a/", "/a/sse")]
-    [InlineData("/a/", "/a/")]
-    public async Task CanConnect_WithMcpClient_AfterCustomizingRoute(string routePattern, string requestPath)
-    {
-        Builder.Services.AddMcpServer(options =>
-        {
-            options.ServerInfo = new()
-            {
-                Name = "TestCustomRouteServer",
-                Version = "1.0.0",
-            };
-        }).WithHttpTransport();
-        await using var app = Builder.Build();
-
-        app.MapMcp(routePattern);
-
-        await app.StartAsync(TestContext.Current.CancellationToken);
-
-        var mcpClient = await ConnectAsync(requestPath);
-
-        Assert.Equal("TestCustomRouteServer", mcpClient.ServerInfo.Name);
-    }
-
-    [Fact]
-    public async Task Can_UseHttpContextAccessor_InTool()
-    {
-        Builder.Services.AddMcpServer().WithHttpTransport().WithTools<EchoHttpContextUserTools>();
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<EchoHttpContextUserTools>();
 
         Builder.Services.AddHttpContextAccessor();
 
@@ -105,11 +81,10 @@ public class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelInMemoryTe
         Assert.Equal("TestUser: Hello world!", content.Text);
     }
 
-
     [Fact]
     public async Task Messages_FromNewUser_AreRejected()
     {
-        Builder.Services.AddMcpServer().WithHttpTransport().WithTools<EchoHttpContextUserTools>();
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<EchoHttpContextUserTools>();
 
         // Add an authentication scheme that will send a 403 Forbidden response.
         Builder.Services.AddAuthentication().AddBearerToken();
@@ -135,13 +110,13 @@ public class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelInMemoryTe
         Assert.Equal(HttpStatusCode.Forbidden, httpRequestException.StatusCode);
     }
 
-    private ClaimsPrincipal CreateUser(string name)
+    protected ClaimsPrincipal CreateUser(string name)
         => new ClaimsPrincipal(new ClaimsIdentity(
             [new Claim("name", name), new Claim(ClaimTypes.NameIdentifier, name)],
             "TestAuthType", "name", "role"));
 
     [McpServerToolType]
-    private class EchoHttpContextUserTools(IHttpContextAccessor contextAccessor)
+    protected class EchoHttpContextUserTools(IHttpContextAccessor contextAccessor)
     {
         [McpServerTool, Description("Echoes the input back to the client with their user name.")]
         public string EchoWithUserName(string message)

@@ -1,39 +1,83 @@
-﻿using ModelContextProtocol.Protocol.Transport;
+﻿using ModelContextProtocol.AspNetCore.Stateless;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using System.Security.Claims;
 
 namespace ModelContextProtocol.AspNetCore;
 
-internal class HttpMcpSession
+internal sealed class HttpMcpSession<TTransport>(
+    string sessionId,
+    TTransport transport,
+    UserIdClaim? userId,
+    TimeProvider timeProvider) : IAsyncDisposable
+    where TTransport : ITransport
 {
-    public HttpMcpSession(SseResponseStreamTransport transport, ClaimsPrincipal user)
+    private int _referenceCount;
+    private int _getRequestStarted;
+    private CancellationTokenSource _disposeCts = new();
+
+    public string Id { get; } = sessionId;
+    public TTransport Transport { get; } = transport;
+    public UserIdClaim? UserIdClaim { get; } = userId;
+
+    public CancellationToken SessionClosed => _disposeCts.Token;
+
+    public bool IsActive => !SessionClosed.IsCancellationRequested && _referenceCount > 0;
+    public long LastActivityTicks { get; private set; } = timeProvider.GetTimestamp();
+
+    public IMcpServer? Server { get; set; }
+    public Task? ServerRunTask { get; set; }
+
+    public IDisposable AcquireReference()
     {
-        Transport = transport;
-        UserIdClaim = GetUserIdClaim(user);
+        Interlocked.Increment(ref _referenceCount);
+        return new UnreferenceDisposable(this, timeProvider);
     }
 
-    public SseResponseStreamTransport Transport { get; }
-    public (string Type, string Value, string Issuer)? UserIdClaim { get; }
+    public bool TryStartGetRequest() => Interlocked.Exchange(ref _getRequestStarted, 1) == 0;
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await _disposeCts.CancelAsync();
+
+            if (ServerRunTask is not null)
+            {
+                await ServerRunTask;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            try
+            {
+                if (Server is not null)
+                {
+                    await Server.DisposeAsync();
+                }
+            }
+            finally
+            {
+                await Transport.DisposeAsync();
+                _disposeCts.Dispose();
+            }
+        }
+    }
 
     public bool HasSameUserId(ClaimsPrincipal user)
-        => UserIdClaim == GetUserIdClaim(user);
+        => UserIdClaim == StreamableHttpHandler.GetUserIdClaim(user);
 
-    // SignalR only checks for ClaimTypes.NameIdentifier in HttpConnectionDispatcher, but AspNetCore.Antiforgery checks that plus the sub and UPN claims.
-    // However, we short-circuit unlike antiforgery since we expect to call this to verify MCP messages a lot more frequently than
-    // verifying antiforgery tokens from <form> posts.
-    private static (string Type, string Value, string Issuer)? GetUserIdClaim(ClaimsPrincipal user)
+    private sealed class UnreferenceDisposable(HttpMcpSession<TTransport> session, TimeProvider timeProvider) : IDisposable
     {
-        if (user?.Identity?.IsAuthenticated != true)
+        public void Dispose()
         {
-            return null;
+            if (Interlocked.Decrement(ref session._referenceCount) == 0)
+            {
+                session.LastActivityTicks = timeProvider.GetTimestamp();
+            }
         }
-
-        var claim = user.FindFirst(ClaimTypes.NameIdentifier) ?? user.FindFirst("sub") ?? user.FindFirst(ClaimTypes.Upn);
-
-        if (claim is { } idClaim)
-        {
-            return (idClaim.Type, idClaim.Value, idClaim.Issuer);
-        }
-
-        return null;
     }
 }

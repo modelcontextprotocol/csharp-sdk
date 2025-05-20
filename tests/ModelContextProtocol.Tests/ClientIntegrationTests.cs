@@ -1,10 +1,7 @@
 ﻿using Microsoft.Extensions.AI;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Protocol.Transport;
-using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Tests.Utils;
-using ModelContextProtocol.Utils.Json;
 using OpenAI;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -174,8 +171,8 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
 
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
-        await Assert.ThrowsAsync<McpException>(() =>
-            client.GetPromptAsync("non_existent_prompt", null, cancellationToken: TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<McpException>(async () => 
+            await client.GetPromptAsync("non_existent_prompt", null, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -187,7 +184,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
 
-        IList<ResourceTemplate> allResourceTemplates = await client.ListResourceTemplatesAsync(TestContext.Current.CancellationToken);
+        IList<McpClientResourceTemplate> allResourceTemplates = await client.ListResourceTemplatesAsync(TestContext.Current.CancellationToken);
 
         // The server provides a single test resource template
         Assert.Single(allResourceTemplates);
@@ -202,7 +199,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
 
-        IList<Resource> allResources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
+        IList<McpClientResource> allResources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
 
         // The server provides 100 test resources
         Assert.Equal(100, allResources.Count);

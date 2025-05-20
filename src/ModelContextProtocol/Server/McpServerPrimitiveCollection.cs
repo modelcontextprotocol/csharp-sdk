@@ -1,4 +1,3 @@
-using ModelContextProtocol.Utils;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
@@ -65,7 +64,7 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     {
         if (!TryAdd(primitive))
         {
-            throw new ArgumentException($"A primitive with the same name '{primitive.Name}' already exists in the collection.", nameof(primitive));
+            throw new ArgumentException($"A primitive with the same name '{primitive.Id}' already exists in the collection.", nameof(primitive));
         }
     }
 
@@ -77,7 +76,7 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     {
         Throw.IfNull(primitive);
 
-        bool added = _primitives.TryAdd(primitive.Name, primitive);
+        bool added = _primitives.TryAdd(primitive.Id, primitive);
         if (added)
         {
             RaiseChanged();
@@ -96,7 +95,7 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     {
         Throw.IfNull(primitive);
 
-        bool removed = ((ICollection<KeyValuePair<string, T>>)_primitives).Remove(new(primitive.Name, primitive));
+        bool removed = ((ICollection<KeyValuePair<string, T>>)_primitives).Remove(new(primitive.Id, primitive));
         if (removed)
         {
             RaiseChanged();
@@ -125,7 +124,7 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     public virtual bool Contains(T primitive)
     {
         Throw.IfNull(primitive);
-        return ((ICollection<KeyValuePair<string, T>>)_primitives).Contains(new(primitive.Name, primitive));
+        return ((ICollection<KeyValuePair<string, T>>)_primitives).Contains(new(primitive.Id, primitive));
     }
 
     /// <summary>Gets the names of all of the primitives in the collection.</summary>

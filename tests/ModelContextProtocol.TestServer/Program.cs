@@ -1,7 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
-using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Protocol.Transport;
-using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Serilog;
 using System.Collections.Concurrent;
@@ -166,7 +164,7 @@ internal static class Program
                 {
                     if (request.Params?.Arguments is null || !request.Params.Arguments.TryGetValue("message", out var message))
                     {
-                        throw new McpException("Missing required argument 'message'");
+                        throw new McpException("Missing required argument 'message'", McpErrorCode.InvalidParams);
                     }
                     return new CallToolResponse()
                     {
@@ -179,7 +177,7 @@ internal static class Program
                         !request.Params.Arguments.TryGetValue("prompt", out var prompt) ||
                         !request.Params.Arguments.TryGetValue("maxTokens", out var maxTokens))
                     {
-                        throw new McpException("Missing required arguments 'prompt' and 'maxTokens'");
+                        throw new McpException("Missing required arguments 'prompt' and 'maxTokens'", McpErrorCode.InvalidParams);
                     }
                     var sampleResult = await request.Server.RequestSamplingAsync(CreateRequestSamplingParams(prompt.ToString(), "sampleLLM", Convert.ToInt32(maxTokens.GetRawText())),
                         cancellationToken);
@@ -191,7 +189,7 @@ internal static class Program
                 }
                 else
                 {
-                    throw new McpException($"Unknown tool: {request.Params?.Name}");
+                    throw new McpException($"Unknown tool: {request.Params?.Name}", McpErrorCode.InvalidParams);
                 }
             }
         };
@@ -285,7 +283,7 @@ internal static class Program
                 }
                 else
                 {
-                    throw new McpException($"Unknown prompt: {request.Params?.Name}");
+                    throw new McpException($"Unknown prompt: {request.Params?.Name}", McpErrorCode.InvalidParams);
                 }
 
                 return new GetPromptResult()
@@ -306,7 +304,7 @@ internal static class Program
             {
                 if (request.Params?.Level is null)
                 {
-                    throw new McpException("Missing required argument 'level'");
+                    throw new McpException("Missing required argument 'level'", McpErrorCode.InvalidParams);
                 }
 
                 _minimumLoggingLevel = request.Params.Level;
@@ -388,7 +386,7 @@ internal static class Program
                     }
                     catch (Exception e)
                     {
-                        throw new McpException("Invalid cursor.", e);
+                        throw new McpException($"Invalid cursor: '{request.Params.Cursor}'", e, McpErrorCode.InvalidParams);
                     }
                 }
 
@@ -410,7 +408,7 @@ internal static class Program
             {
                 if (request.Params?.Uri is null)
                 {
-                    throw new McpException("Missing required argument 'uri'");
+                    throw new McpException("Missing required argument 'uri'", McpErrorCode.InvalidParams);
                 }
 
                 if (request.Params.Uri.StartsWith("test://dynamic/resource/"))
@@ -418,7 +416,7 @@ internal static class Program
                     var id = request.Params.Uri.Split('/').LastOrDefault();
                     if (string.IsNullOrEmpty(id))
                     {
-                        throw new McpException("Invalid resource URI");
+                        throw new McpException($"Invalid resource URI: '{request.Params.Uri}'", McpErrorCode.InvalidParams);
                     }
 
                     return new ReadResourceResult()
@@ -435,7 +433,7 @@ internal static class Program
                 }
 
                 ResourceContents contents = resourceContents.FirstOrDefault(r => r.Uri == request.Params.Uri)
-                    ?? throw new McpException("Resource not found");
+                    ?? throw new McpException($"Resource not found: '{request.Params.Uri}'", McpErrorCode.InvalidParams);
 
                 return new ReadResourceResult()
                 {
@@ -447,12 +445,12 @@ internal static class Program
             {
                 if (request?.Params?.Uri is null)
                 {
-                    throw new McpException("Missing required argument 'uri'");
+                    throw new McpException("Missing required argument 'uri'", McpErrorCode.InvalidParams);
                 }
                 if (!request.Params.Uri.StartsWith("test://static/resource/")
                     && !request.Params.Uri.StartsWith("test://dynamic/resource/"))
                 {
-                    throw new McpException("Invalid resource URI");
+                    throw new McpException($"Invalid resource URI: '{request.Params.Uri}'", McpErrorCode.InvalidParams);
                 }
 
                 _subscribedResources.TryAdd(request.Params.Uri, true);
@@ -464,12 +462,12 @@ internal static class Program
             {
                 if (request?.Params?.Uri is null)
                 {
-                    throw new McpException("Missing required argument 'uri'");
+                    throw new McpException("Missing required argument 'uri'", McpErrorCode.InvalidParams);
                 }
                 if (!request.Params.Uri.StartsWith("test://static/resource/")
                     && !request.Params.Uri.StartsWith("test://dynamic/resource/"))
                 {
-                    throw new McpException("Invalid resource URI");
+                    throw new McpException($"Invalid resource URI: '{request.Params.Uri}'", McpErrorCode.InvalidParams);
                 }
 
                 _subscribedResources.TryRemove(request.Params.Uri, out _);
@@ -514,7 +512,7 @@ internal static class Program
                 return new CompleteResult() { Completion = new() { Values = values, HasMore = false, Total = values.Length } };
             }
 
-            throw new McpException($"Unknown reference type: {request.Params?.Ref.Type}");
+            throw new McpException($"Unknown reference type: '{request.Params?.Ref.Type}'", McpErrorCode.InvalidParams);
         };
 
         return new() { CompleteHandler = handler };

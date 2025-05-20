@@ -1,14 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Protocol.Transport;
-using ModelContextProtocol.Protocol.Types;
-using ModelContextProtocol.Shared;
-using ModelContextProtocol.Utils;
-using ModelContextProtocol.Utils.Json;
+using ModelContextProtocol.Protocol;
 using System.Runtime.CompilerServices;
-
-#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
+using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Server;
 
@@ -23,11 +17,10 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
     private readonly ITransport _sessionTransport;
     private readonly bool _servicesScopePerRequest;
+    private readonly List<Action> _disposables = [];
 
-    private readonly EventHandler? _toolsChangedDelegate;
-    private readonly EventHandler? _promptsChangedDelegate;
-
-    private string _endpointName;
+    private readonly string _serverOnlyEndpointName;
+    private string? _endpointName;
     private int _started;
 
     /// <summary>Holds a boxed <see cref="LoggingLevel"/> value for the server.</summary>
@@ -57,17 +50,22 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         _sessionTransport = transport;
         ServerOptions = options;
         Services = serviceProvider;
-        _endpointName = $"Server ({options.ServerInfo?.Name ?? DefaultImplementation.Name} {options.ServerInfo?.Version ?? DefaultImplementation.Version})";
+        _serverOnlyEndpointName = $"Server ({options.ServerInfo?.Name ?? DefaultImplementation.Name} {options.ServerInfo?.Version ?? DefaultImplementation.Version})";
         _servicesScopePerRequest = options.ScopeRequests;
 
+        ClientInfo = options.KnownClientInfo;
+        UpdateEndpointNameWithClientInfo();
+
         // Configure all request handlers based on the supplied options.
-        SetInitializeHandler(options);
-        SetToolsHandler(options);
-        SetPromptsHandler(options);
-        SetResourcesHandler(options);
-        SetSetLoggingLevelHandler(options);
-        SetCompletionHandler(options);
-        SetPingHandler();
+        ServerCapabilities = new();
+        ConfigureInitialize(options);
+        ConfigureTools(options);
+        ConfigurePrompts(options);
+        ConfigureResources(options);
+        ConfigureLogging(options);
+        ConfigureCompletion(options);
+        ConfigureExperimental(options);
+        ConfigurePing();
 
         // Register any notification handlers that were provided.
         if (options.Capabilities?.NotificationHandlers is { } notificationHandlers)
@@ -76,31 +74,29 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         }
 
         // Now that everything has been configured, subscribe to any necessary notifications.
-        if (ServerOptions.Capabilities?.Tools?.ToolCollection is { } tools)
+        if (transport is not StreamableHttpServerTransport streamableHttpTransport || streamableHttpTransport.Stateless is false)
         {
-            _toolsChangedDelegate = delegate
+            Register(ServerOptions.Capabilities?.Tools?.ToolCollection, NotificationMethods.ToolListChangedNotification);
+            Register(ServerOptions.Capabilities?.Prompts?.PromptCollection, NotificationMethods.PromptListChangedNotification);
+            Register(ServerOptions.Capabilities?.Resources?.ResourceCollection, NotificationMethods.ResourceListChangedNotification);
+
+            void Register<TPrimitive>(McpServerPrimitiveCollection<TPrimitive>? collection, string notificationMethod)
+                where TPrimitive : IMcpServerPrimitive
             {
-                _ = SendMessageAsync(new JsonRpcNotification() { Method = NotificationMethods.ToolListChangedNotification });
-            };
-
-            tools.Changed += _toolsChangedDelegate;
-        }
-
-        if (ServerOptions.Capabilities?.Prompts?.PromptCollection is { } prompts)
-        {
-            _promptsChangedDelegate = delegate
-            {
-                _ = SendMessageAsync(new JsonRpcNotification() { Method = NotificationMethods.PromptListChangedNotification });
-            };
-
-            prompts.Changed += _promptsChangedDelegate;
+                if (collection is not null)
+                {
+                    EventHandler changed = (sender, e) => _ = this.SendNotificationAsync(notificationMethod);
+                    collection.Changed += changed;
+                    _disposables.Add(() => collection.Changed -= changed);
+                }
+            }
         }
 
         // And initialize the session.
         InitializeSession(transport);
     }
 
-    public ServerCapabilities? ServerCapabilities { get; set; }
+    public ServerCapabilities ServerCapabilities { get; } = new();
 
     /// <inheritdoc />
     public ClientCapabilities? ClientCapabilities { get; set; }
@@ -115,7 +111,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
     public IServiceProvider? Services { get; }
 
     /// <inheritdoc />
-    public override string EndpointName => _endpointName;
+    public override string EndpointName => _endpointName ?? _serverOnlyEndpointName;
 
     /// <inheritdoc />
     public LoggingLevel? LoggingLevel => _loggingLevel?.Value;
@@ -141,40 +137,29 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
     public override async ValueTask DisposeUnsynchronizedAsync()
     {
-        if (_toolsChangedDelegate is not null &&
-            ServerOptions.Capabilities?.Tools?.ToolCollection is { } tools)
-        {
-            tools.Changed -= _toolsChangedDelegate;
-        }
-
-        if (_promptsChangedDelegate is not null &&
-            ServerOptions.Capabilities?.Prompts?.PromptCollection is { } prompts)
-        {
-            prompts.Changed -= _promptsChangedDelegate;
-        }
-
+        _disposables.ForEach(d => d());
         await base.DisposeUnsynchronizedAsync().ConfigureAwait(false);
     }
 
-    private void SetPingHandler()
+    private void ConfigurePing()
     {
-        RequestHandlers.Set(RequestMethods.Ping,
+        SetHandler(RequestMethods.Ping,
             async (request, _) => new PingResult(),
             McpJsonUtilities.JsonContext.Default.JsonNode,
             McpJsonUtilities.JsonContext.Default.PingResult);
     }
 
-    private void SetInitializeHandler(McpServerOptions options)
+    private void ConfigureInitialize(McpServerOptions options)
     {
         RequestHandlers.Set(RequestMethods.Initialize,
-            async (request, _) =>
+            async (request, _, _) =>
             {
                 ClientCapabilities = request?.Capabilities ?? new();
                 ClientInfo = request?.ClientInfo;
 
                 // Use the ClientInfo to update the session EndpointName for logging.
-                _endpointName = $"{_endpointName}, Client ({ClientInfo?.Name} {ClientInfo?.Version})";
-                GetSessionOrThrow().EndpointName = _endpointName;
+                UpdateEndpointNameWithClientInfo();
+                GetSessionOrThrow().EndpointName = EndpointName;
 
                 return new InitializeResult
                 {
@@ -188,102 +173,175 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             McpJsonUtilities.JsonContext.Default.InitializeResult);
     }
 
-    private void SetCompletionHandler(McpServerOptions options)
+    private void ConfigureCompletion(McpServerOptions options)
     {
         if (options.Capabilities?.Completions is not { } completionsCapability)
         {
             return;
         }
 
-        var completeHandler = completionsCapability.CompleteHandler ??
-            throw new McpException("Completions capability was enabled, but Complete handler was not specified.");
+        ServerCapabilities.Completions = new()
+        {
+            CompleteHandler = completionsCapability.CompleteHandler ?? (static async (_, __) => new CompleteResult())
+        };
 
-        // This capability is not optional, so return an empty result if there is no handler.
-        RequestHandlers.Set(
+        SetHandler(
             RequestMethods.CompletionComplete,
-            (request, cancellationToken) => InvokeHandlerAsync(completeHandler, request, cancellationToken),
+            ServerCapabilities.Completions.CompleteHandler,
             McpJsonUtilities.JsonContext.Default.CompleteRequestParams,
             McpJsonUtilities.JsonContext.Default.CompleteResult);
     }
 
-    private void SetResourcesHandler(McpServerOptions options)
+    private void ConfigureExperimental(McpServerOptions options)
+    {
+        ServerCapabilities.Experimental = options.Capabilities?.Experimental;
+    }
+
+    private void ConfigureResources(McpServerOptions options)
     {
         if (options.Capabilities?.Resources is not { } resourcesCapability)
         {
             return;
         }
 
-        var listResourcesHandler = resourcesCapability.ListResourcesHandler;
-        var listResourceTemplatesHandler = resourcesCapability.ListResourceTemplatesHandler;
+        ServerCapabilities.Resources = new();
 
-        if ((listResourcesHandler is not { } && listResourceTemplatesHandler is not { }) ||
-            resourcesCapability.ReadResourceHandler is not { } readResourceHandler)
+        var listResourcesHandler = resourcesCapability.ListResourcesHandler ?? (static async (_, __) => new ListResourcesResult());
+        var listResourceTemplatesHandler = resourcesCapability.ListResourceTemplatesHandler ?? (static async (_, __) => new ListResourceTemplatesResult());
+        var readResourceHandler = resourcesCapability.ReadResourceHandler ?? (static async (request, _) => throw new McpException($"Unknown resource URI: '{request.Params?.Uri}'", McpErrorCode.InvalidParams));
+        var subscribeHandler = resourcesCapability.SubscribeToResourcesHandler ?? (static async (_, __) => new EmptyResult());
+        var unsubscribeHandler = resourcesCapability.UnsubscribeFromResourcesHandler ?? (static async (_, __) => new EmptyResult());
+        var resources = resourcesCapability.ResourceCollection;
+        var listChanged = resourcesCapability.ListChanged;
+        var subcribe = resourcesCapability.Subscribe;
+
+        // Handle resources provided via DI.
+        if (resources is { IsEmpty: false })
         {
-            throw new McpException("Resources capability was enabled, but ListResources and/or ReadResource handlers were not specified.");
+            var originalListResourcesHandler = listResourcesHandler;
+            listResourcesHandler = async (request, cancellationToken) =>
+            {
+                ListResourcesResult result = originalListResourcesHandler is not null ?
+                    await originalListResourcesHandler(request, cancellationToken).ConfigureAwait(false) :
+                    new();
+
+                if (request.Params?.Cursor is null)
+                {
+                    result.Resources.AddRange(resources.Select(t => t.ProtocolResource).OfType<Resource>());
+                }
+
+                return result;
+            };
+
+            var originalListResourceTemplatesHandler = listResourceTemplatesHandler;
+            listResourceTemplatesHandler = async (request, cancellationToken) =>
+            {
+                ListResourceTemplatesResult result = originalListResourceTemplatesHandler is not null ?
+                    await originalListResourceTemplatesHandler(request, cancellationToken).ConfigureAwait(false) :
+                    new();
+
+                if (request.Params?.Cursor is null)
+                {
+                    result.ResourceTemplates.AddRange(resources.Where(t => t.IsTemplated).Select(t => t.ProtocolResourceTemplate));
+                }
+
+                return result;
+            };
+
+            // Synthesize read resource handler, which covers both resources and resource templates.
+            var originalReadResourceHandler = readResourceHandler;
+            readResourceHandler = async (request, cancellationToken) =>
+            {
+                if (request.Params?.Uri is string uri)
+                {
+                    // First try an O(1) lookup by exact match.
+                    if (resources.TryGetPrimitive(uri, out var resource))
+                    {
+                        if (await resource.ReadAsync(request, cancellationToken).ConfigureAwait(false) is { } result)
+                        {
+                            return result;
+                        }
+                    }
+
+                    // Fall back to an O(N) lookup, trying to match against each URI template.
+                    // The number of templates is controlled by the server developer, and the number is expected to be
+                    // not terribly large. If that changes, this can be tweaked to enable a more efficient lookup.
+                    foreach (var resourceTemplate in resources)
+                    {
+                        if (await resourceTemplate.ReadAsync(request, cancellationToken).ConfigureAwait(false) is { } result)
+                        {
+                            return result;
+                        }
+                    }
+                }
+
+                // Finally fall back to the handler.
+                return await originalReadResourceHandler(request, cancellationToken).ConfigureAwait(false);
+            };
+
+            listChanged = true;
+
+            // TODO: Implement subscribe/unsubscribe logic for resource and resource template collections.
+            // subcribe = true;
         }
 
-        listResourcesHandler ??= static async (_, _) => new ListResourcesResult();
+        ServerCapabilities.Resources.ListResourcesHandler = listResourcesHandler;
+        ServerCapabilities.Resources.ListResourceTemplatesHandler = listResourceTemplatesHandler;
+        ServerCapabilities.Resources.ReadResourceHandler = readResourceHandler;
+        ServerCapabilities.Resources.ResourceCollection = resources;
+        ServerCapabilities.Resources.SubscribeToResourcesHandler = subscribeHandler;
+        ServerCapabilities.Resources.UnsubscribeFromResourcesHandler = unsubscribeHandler;
+        ServerCapabilities.Resources.ListChanged = listChanged;
+        ServerCapabilities.Resources.Subscribe = subcribe;
 
-        RequestHandlers.Set(
+        SetHandler(
             RequestMethods.ResourcesList,
-            (request, cancellationToken) => InvokeHandlerAsync(listResourcesHandler, request, cancellationToken),
+            listResourcesHandler,
             McpJsonUtilities.JsonContext.Default.ListResourcesRequestParams,
             McpJsonUtilities.JsonContext.Default.ListResourcesResult);
 
-        RequestHandlers.Set(
-            RequestMethods.ResourcesRead,
-            (request, cancellationToken) => InvokeHandlerAsync(readResourceHandler, request, cancellationToken),
-            McpJsonUtilities.JsonContext.Default.ReadResourceRequestParams,
-            McpJsonUtilities.JsonContext.Default.ReadResourceResult);
-
-        listResourceTemplatesHandler ??= static async (_, _) => new ListResourceTemplatesResult();
-        RequestHandlers.Set(
+        SetHandler(
             RequestMethods.ResourcesTemplatesList,
-            (request, cancellationToken) => InvokeHandlerAsync(listResourceTemplatesHandler, request, cancellationToken),
+            listResourceTemplatesHandler,
             McpJsonUtilities.JsonContext.Default.ListResourceTemplatesRequestParams,
             McpJsonUtilities.JsonContext.Default.ListResourceTemplatesResult);
 
-        if (resourcesCapability.Subscribe is not true)
-        {
-            return;
-        }
+        SetHandler(
+            RequestMethods.ResourcesRead,
+            readResourceHandler,
+            McpJsonUtilities.JsonContext.Default.ReadResourceRequestParams,
+            McpJsonUtilities.JsonContext.Default.ReadResourceResult);
 
-        var subscribeHandler = resourcesCapability.SubscribeToResourcesHandler;
-        var unsubscribeHandler = resourcesCapability.UnsubscribeFromResourcesHandler;
-        if (subscribeHandler is null || unsubscribeHandler is null)
-        {
-            throw new McpException("Resources capability was enabled with subscribe support, but SubscribeToResources and/or UnsubscribeFromResources handlers were not specified.");
-        }
-
-        RequestHandlers.Set(
+        SetHandler(
             RequestMethods.ResourcesSubscribe,
-            (request, cancellationToken) => InvokeHandlerAsync(subscribeHandler, request, cancellationToken),
+            subscribeHandler,
             McpJsonUtilities.JsonContext.Default.SubscribeRequestParams,
             McpJsonUtilities.JsonContext.Default.EmptyResult);
 
-        RequestHandlers.Set(
+        SetHandler(
             RequestMethods.ResourcesUnsubscribe,
-            (request, cancellationToken) => InvokeHandlerAsync(unsubscribeHandler, request, cancellationToken),
+            unsubscribeHandler,
             McpJsonUtilities.JsonContext.Default.UnsubscribeRequestParams,
             McpJsonUtilities.JsonContext.Default.EmptyResult);
     }
 
-    private void SetPromptsHandler(McpServerOptions options)
+    private void ConfigurePrompts(McpServerOptions options)
     {
-        PromptsCapability? promptsCapability = options.Capabilities?.Prompts;
-        var listPromptsHandler = promptsCapability?.ListPromptsHandler;
-        var getPromptHandler = promptsCapability?.GetPromptHandler;
-        var prompts = promptsCapability?.PromptCollection;
-
-        if (listPromptsHandler is null != getPromptHandler is null)
+        if (options.Capabilities?.Prompts is not { } promptsCapability)
         {
-            throw new McpException("ListPrompts and GetPrompt handlers should be specified together.");
+            return;
         }
 
-        // Handle prompts provided via DI.
+        ServerCapabilities.Prompts = new();
+
+        var listPromptsHandler = promptsCapability.ListPromptsHandler ?? (static async (_, __) => new ListPromptsResult());
+        var getPromptHandler = promptsCapability.GetPromptHandler ?? (static async (request, _) => throw new McpException($"Unknown prompt: '{request.Params?.Name}'", McpErrorCode.InvalidParams));
+        var prompts = promptsCapability.PromptCollection;
+        var listChanged = promptsCapability.ListChanged;
+
+        // Handle tools provided via DI by augmenting the handlers to incorporate them.
         if (prompts is { IsEmpty: false })
         {
-            // Synthesize the handlers, making sure a PromptsCapability is specified.
             var originalListPromptsHandler = listPromptsHandler;
             listPromptsHandler = async (request, cancellationToken) =>
             {
@@ -302,81 +360,53 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             var originalGetPromptHandler = getPromptHandler;
             getPromptHandler = (request, cancellationToken) =>
             {
-                if (request.Params is null ||
-                    !prompts.TryGetPrimitive(request.Params.Name, out var prompt))
+                if (request.Params is not null &&
+                    prompts.TryGetPrimitive(request.Params.Name, out var prompt))
                 {
-                    if (originalGetPromptHandler is not null)
-                    {
-                        return originalGetPromptHandler(request, cancellationToken);
-                    }
-
-                    throw new McpException($"Unknown prompt '{request.Params?.Name}'");
+                    return prompt.GetAsync(request, cancellationToken);
                 }
 
-                return prompt.GetAsync(request, cancellationToken);
+                return originalGetPromptHandler(request, cancellationToken);
             };
 
-            ServerCapabilities = new()
-            {
-                Experimental = options.Capabilities?.Experimental,
-                Logging = options.Capabilities?.Logging,
-                Tools = options.Capabilities?.Tools,
-                Resources = options.Capabilities?.Resources,
-                Prompts = new()
-                {
-                    ListPromptsHandler = listPromptsHandler,
-                    GetPromptHandler = getPromptHandler,
-                    PromptCollection = prompts,
-                    ListChanged = true,
-                }
-            };
-        }
-        else
-        {
-            ServerCapabilities = options.Capabilities;
-
-            if (promptsCapability is null)
-            {
-                // No prompts, and no prompts capability was declared, so nothing to do.
-                return;
-            }
-
-            // Make sure the handlers are provided if the capability is enabled.
-            if (listPromptsHandler is null || getPromptHandler is null)
-            {
-                throw new McpException("ListPrompts and/or GetPrompt handlers were not specified but the Prompts capability was enabled.");
-            }
+            listChanged = true;
         }
 
-        RequestHandlers.Set(
+        ServerCapabilities.Prompts.ListPromptsHandler = listPromptsHandler;
+        ServerCapabilities.Prompts.GetPromptHandler = getPromptHandler;
+        ServerCapabilities.Prompts.PromptCollection = prompts;
+        ServerCapabilities.Prompts.ListChanged = listChanged;
+
+        SetHandler(
             RequestMethods.PromptsList,
-            (request, cancellationToken) => InvokeHandlerAsync(listPromptsHandler, request, cancellationToken),
+            listPromptsHandler,
             McpJsonUtilities.JsonContext.Default.ListPromptsRequestParams,
             McpJsonUtilities.JsonContext.Default.ListPromptsResult);
 
-        RequestHandlers.Set(
+        SetHandler(
             RequestMethods.PromptsGet,
-            (request, cancellationToken) => InvokeHandlerAsync(getPromptHandler, request, cancellationToken),
+            getPromptHandler,
             McpJsonUtilities.JsonContext.Default.GetPromptRequestParams,
             McpJsonUtilities.JsonContext.Default.GetPromptResult);
     }
 
-    private void SetToolsHandler(McpServerOptions options)
+    private void ConfigureTools(McpServerOptions options)
     {
-        ToolsCapability? toolsCapability = options.Capabilities?.Tools;
-        var listToolsHandler = toolsCapability?.ListToolsHandler;
-        var callToolHandler = toolsCapability?.CallToolHandler;
-        var tools = toolsCapability?.ToolCollection;
-
-        if (listToolsHandler is null != callToolHandler is null)
+        if (options.Capabilities?.Tools is not { } toolsCapability)
         {
-            throw new McpException("ListTools and CallTool handlers should be specified together.");
+            return;
         }
 
-        // Handle tools provided via DI.
+        ServerCapabilities.Tools = new();
+
+        var listToolsHandler = toolsCapability.ListToolsHandler ?? (static async (_, __) => new ListToolsResult());
+        var callToolHandler = toolsCapability.CallToolHandler ?? (static async (request, _) => throw new McpException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams));
+        var tools = toolsCapability.ToolCollection;
+        var listChanged = toolsCapability.ListChanged;
+
+        // Handle tools provided via DI by augmenting the handlers to incorporate them.
         if (tools is { IsEmpty: false })
         {
-            // Synthesize the handlers, making sure a ToolsCapability is specified.
             var originalListToolsHandler = listToolsHandler;
             listToolsHandler = async (request, cancellationToken) =>
             {
@@ -395,74 +425,47 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             var originalCallToolHandler = callToolHandler;
             callToolHandler = (request, cancellationToken) =>
             {
-                if (request.Params is null ||
-                    !tools.TryGetPrimitive(request.Params.Name, out var tool))
+                if (request.Params is not null &&
+                    tools.TryGetPrimitive(request.Params.Name, out var tool))
                 {
-                    if (originalCallToolHandler is not null)
-                    {
-                        return originalCallToolHandler(request, cancellationToken);
-                    }
-
-                    throw new McpException($"Unknown tool '{request.Params?.Name}'");
+                    return tool.InvokeAsync(request, cancellationToken);
                 }
 
-                return tool.InvokeAsync(request, cancellationToken);
+                return originalCallToolHandler(request, cancellationToken);
             };
 
-            ServerCapabilities = new()
-            {
-                Experimental = options.Capabilities?.Experimental,
-                Logging = options.Capabilities?.Logging,
-                Prompts = options.Capabilities?.Prompts,
-                Resources = options.Capabilities?.Resources,
-                Tools = new()
-                {
-                    ListToolsHandler = listToolsHandler,
-                    CallToolHandler = callToolHandler,
-                    ToolCollection = tools,
-                    ListChanged = true,
-                }
-            };
-        }
-        else
-        {
-            ServerCapabilities = options.Capabilities;
-
-            if (toolsCapability is null)
-            {
-                // No tools, and no tools capability was declared, so nothing to do.
-                return;
-            }
-
-            // Make sure the handlers are provided if the capability is enabled.
-            if (listToolsHandler is null || callToolHandler is null)
-            {
-                throw new McpException("ListTools and/or CallTool handlers were not specified but the Tools capability was enabled.");
-            }
+            listChanged = true;
         }
 
-        RequestHandlers.Set(
+        ServerCapabilities.Tools.ListToolsHandler = listToolsHandler;
+        ServerCapabilities.Tools.CallToolHandler = callToolHandler;
+        ServerCapabilities.Tools.ToolCollection = tools;
+        ServerCapabilities.Tools.ListChanged = listChanged;
+
+        SetHandler(
             RequestMethods.ToolsList,
-            (request, cancellationToken) => InvokeHandlerAsync(listToolsHandler, request, cancellationToken),
+            listToolsHandler,
             McpJsonUtilities.JsonContext.Default.ListToolsRequestParams,
             McpJsonUtilities.JsonContext.Default.ListToolsResult);
 
-        RequestHandlers.Set(
+        SetHandler(
             RequestMethods.ToolsCall,
-            (request, cancellationToken) => InvokeHandlerAsync(callToolHandler, request, cancellationToken),
+            callToolHandler,
             McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
             McpJsonUtilities.JsonContext.Default.CallToolResponse);
     }
 
-    private void SetSetLoggingLevelHandler(McpServerOptions options)
+    private void ConfigureLogging(McpServerOptions options)
     {
-        // We don't require that the handler be provided, as we always store the provided
-        // log level to the server.
+        // We don't require that the handler be provided, as we always store the provided log level to the server.
         var setLoggingLevelHandler = options.Capabilities?.Logging?.SetLoggingLevelHandler;
+
+        ServerCapabilities.Logging = new();
+        ServerCapabilities.Logging.SetLoggingLevelHandler = setLoggingLevelHandler;
 
         RequestHandlers.Set(
             RequestMethods.LoggingSetLevel,
-            (request, cancellationToken) =>
+            (request, destinationTransport, cancellationToken) =>
             {
                 // Store the provided level.
                 if (request is not null)
@@ -478,7 +481,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
                 // If a handler was provided, now delegate to it.
                 if (setLoggingLevelHandler is not null)
                 {
-                    return InvokeHandlerAsync(setLoggingLevelHandler, request, cancellationToken);
+                    return InvokeHandlerAsync(setLoggingLevelHandler, request, destinationTransport, cancellationToken);
                 }
 
                 // Otherwise, consider it handled.
@@ -491,11 +494,12 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
     private ValueTask<TResult> InvokeHandlerAsync<TParams, TResult>(
         Func<RequestContext<TParams>, CancellationToken, ValueTask<TResult>> handler,
         TParams? args,
-        CancellationToken cancellationToken)
+        ITransport? destinationTransport = null,
+        CancellationToken cancellationToken = default)
     {
         return _servicesScopePerRequest ?
             InvokeScopedAsync(handler, args, cancellationToken) :
-            handler(new(this) { Params = args }, cancellationToken);
+            handler(new(new DestinationBoundMcpServer(this, destinationTransport)) { Params = args }, cancellationToken);
 
         async ValueTask<TResult> InvokeScopedAsync(
             Func<RequestContext<TParams>, CancellationToken, ValueTask<TResult>> handler,
@@ -506,7 +510,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             try
             {
                 return await handler(
-                    new RequestContext<TParams>(this)
+                    new RequestContext<TParams>(new DestinationBoundMcpServer(this, destinationTransport))
                     {
                         Services = scope?.ServiceProvider ?? Services,
                         Params = args
@@ -523,16 +527,38 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         }
     }
 
+    private void SetHandler<TRequest, TResponse>(
+        string method,
+        Func<RequestContext<TRequest>, CancellationToken, ValueTask<TResponse>> handler,
+        JsonTypeInfo<TRequest> requestTypeInfo,
+        JsonTypeInfo<TResponse> responseTypeInfo)
+    {
+        RequestHandlers.Set(method, 
+            (request, destinationTransport, cancellationToken) =>
+                InvokeHandlerAsync(handler, request, destinationTransport, cancellationToken),
+            requestTypeInfo, responseTypeInfo);
+    }
+
+    private void UpdateEndpointNameWithClientInfo()
+    {
+        if (ClientInfo is null)
+        {
+            return;
+        }
+
+        _endpointName = $"{_serverOnlyEndpointName}, Client ({ClientInfo.Name} {ClientInfo.Version})";
+    }
+
     /// <summary>Maps a <see cref="LogLevel"/> to a <see cref="LoggingLevel"/>.</summary>
     internal static LoggingLevel ToLoggingLevel(LogLevel level) =>
         level switch
         {
-            LogLevel.Trace => Protocol.Types.LoggingLevel.Debug,
-            LogLevel.Debug => Protocol.Types.LoggingLevel.Debug,
-            LogLevel.Information => Protocol.Types.LoggingLevel.Info,
-            LogLevel.Warning => Protocol.Types.LoggingLevel.Warning,
-            LogLevel.Error => Protocol.Types.LoggingLevel.Error,
-            LogLevel.Critical => Protocol.Types.LoggingLevel.Critical,
-            _ => Protocol.Types.LoggingLevel.Emergency,
+            LogLevel.Trace => Protocol.LoggingLevel.Debug,
+            LogLevel.Debug => Protocol.LoggingLevel.Debug,
+            LogLevel.Information => Protocol.LoggingLevel.Info,
+            LogLevel.Warning => Protocol.LoggingLevel.Warning,
+            LogLevel.Error => Protocol.LoggingLevel.Error,
+            LogLevel.Critical => Protocol.LoggingLevel.Critical,
+            _ => Protocol.LoggingLevel.Emergency,
         };
 }

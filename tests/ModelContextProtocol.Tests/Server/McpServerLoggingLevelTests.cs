@@ -1,8 +1,9 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
-using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Tests.Server;
+
 public class McpServerLoggingLevelTests
 {
     [Fact]

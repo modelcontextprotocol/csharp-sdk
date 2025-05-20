@@ -1,7 +1,7 @@
 ﻿using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol.Transport;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.IO.Pipelines;
@@ -62,7 +62,7 @@ public abstract class ClientServerTestBase : LoggedTest, IAsyncDisposable
         Dispose();
     }
 
-    protected async Task<IMcpClient> CreateMcpClientForServer(McpClientOptions? options = null)
+    protected async Task<IMcpClient> CreateMcpClientForServer()
     {
         return await McpClientFactory.CreateAsync(
             new StreamClientTransport(

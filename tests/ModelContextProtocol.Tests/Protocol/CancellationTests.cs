@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol.Messages;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Tests;
@@ -42,7 +42,7 @@ public class CancellationTests : ClientServerTestBase
             return default;
         }))
         {
-            await Assert.ThrowsAsync<OperationCanceledException>(() => client.ListToolsAsync(cancellationToken: new CancellationToken(true)));
+            await Assert.ThrowsAsync<OperationCanceledException>(async () => await client.ListToolsAsync(cancellationToken: new CancellationToken(true)));
         }
 
         Assert.False(gotCancellation);

@@ -1,10 +1,8 @@
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Protocol.Transport;
-using ModelContextProtocol.Protocol.Types;
-using ModelContextProtocol.Utils.Json;
+using ModelContextProtocol.Protocol;
 using Moq;
+using System.IO.Pipelines;
 using System.Text.Json;
 using System.Threading.Channels;
 
@@ -27,6 +25,34 @@ public class McpClientFactoryTests
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(client);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Cancellation_ThrowsCancellationException(bool preCanceled)
+    {
+        var cts = new CancellationTokenSource();
+
+        if (preCanceled)
+        {
+            cts.Cancel();
+        }
+
+        Task t = McpClientFactory.CreateAsync(
+            new StreamClientTransport(new Pipe().Writer.AsStream(), new Pipe().Reader.AsStream()),
+            cancellationToken: cts.Token);
+        if (!preCanceled)
+        {
+            Assert.False(t.IsCompleted);
+        }
+
+        if (!preCanceled)
+        {
+            cts.Cancel();
+        }
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => t);
     }
 
     [Theory]
@@ -80,11 +106,11 @@ public class McpClientFactoryTests
 
     private class NopTransport : ITransport, IClientTransport
     {
-        private readonly Channel<IJsonRpcMessage> _channel = Channel.CreateUnbounded<IJsonRpcMessage>();
+        private readonly Channel<JsonRpcMessage> _channel = Channel.CreateUnbounded<JsonRpcMessage>();
 
         public bool IsConnected => true;
 
-        public ChannelReader<IJsonRpcMessage> MessageReader => _channel.Reader;
+        public ChannelReader<JsonRpcMessage> MessageReader => _channel.Reader;
 
         public Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default) => Task.FromResult<ITransport>(this);
 
@@ -92,7 +118,7 @@ public class McpClientFactoryTests
 
         public string Name => "Test Nop Transport";
 
-        public virtual Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
+        public virtual Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
         {
             switch (message)
             {
@@ -122,7 +148,7 @@ public class McpClientFactoryTests
     {
         public const string ExpectedMessage = "Something failed";
 
-        public override Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default)
+        public override Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
         {
             throw new InvalidOperationException(ExpectedMessage);
         }

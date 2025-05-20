@@ -1,8 +1,8 @@
-﻿using System.Diagnostics;
+﻿using ModelContextProtocol.Protocol;
+using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using ModelContextProtocol.Protocol.Messages;
 
 namespace ModelContextProtocol;
 
@@ -38,7 +38,7 @@ internal static class Diagnostics
     };
 #endif
 
-    internal static ActivityContext ExtractActivityContext(this DistributedContextPropagator propagator, IJsonRpcMessage message)
+    internal static ActivityContext ExtractActivityContext(this DistributedContextPropagator propagator, JsonRpcMessage message)
     {
         propagator.ExtractTraceIdAndState(message, ExtractContext, out var traceparent, out var tracestate);
         ActivityContext.TryParse(traceparent, tracestate, true, out var activityContext);
@@ -50,28 +50,25 @@ internal static class Diagnostics
         fieldValues = null;
         fieldValue = null;
 
-        JsonNode? parameters = null;
+        JsonNode? meta = null;
         switch (message)
         {
             case JsonRpcRequest request:
-                parameters = request.Params;
+                meta = request.Params?["_meta"];
                 break;
 
             case JsonRpcNotification notification:
-                parameters = notification.Params;
-                break;
-
-            default:
+                meta = notification.Params?["_meta"];
                 break;
         }
 
-        if (parameters?[fieldName] is JsonValue value && value.GetValueKind() == JsonValueKind.String)
+        if (meta?[fieldName] is JsonValue value && value.GetValueKind() == JsonValueKind.String)
         {
             fieldValue = value.GetValue<string>();
         }
     }
 
-    internal static void InjectActivityContext(this DistributedContextPropagator propagator, Activity? activity, IJsonRpcMessage message)
+    internal static void InjectActivityContext(this DistributedContextPropagator propagator, Activity? activity, JsonRpcMessage message)
     {
         // noop if activity is null
         propagator.Inject(activity, message, InjectContext);
@@ -89,18 +86,21 @@ internal static class Diagnostics
             case JsonRpcNotification notification:
                 parameters = notification.Params;
                 break;
-
-            default:
-                break;
         }
 
-        if (parameters is JsonObject jsonObject && jsonObject[key] == null)
+        // Replace any params._meta with the current value
+        if (parameters is JsonObject jsonObject)
         {
-            jsonObject[key] = value;
+            if (jsonObject["_meta"] is not JsonObject meta)
+            {
+                meta = new JsonObject();
+                jsonObject["_meta"] = meta;
+            }
+            meta[key] = value;
         }
     }
 
-    internal static bool ShouldInstrumentMessage(IJsonRpcMessage message) =>
+    internal static bool ShouldInstrumentMessage(JsonRpcMessage message) =>
         ActivitySource.HasListeners() &&
         message switch
         {

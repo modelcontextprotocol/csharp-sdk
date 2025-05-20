@@ -1,9 +1,5 @@
 using Microsoft.Extensions.Logging;
-using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Protocol.Transport;
-using ModelContextProtocol.Protocol.Types;
-using ModelContextProtocol.Shared;
-using ModelContextProtocol.Utils.Json;
+using ModelContextProtocol.Protocol;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Client;
@@ -59,7 +55,7 @@ internal sealed partial class McpClient : McpEndpoint, IMcpClient
 
                 RequestHandlers.Set(
                     RequestMethods.SamplingCreateMessage,
-                    (request, cancellationToken) => samplingHandler(
+                    (request, _, cancellationToken) => samplingHandler(
                         request,
                         request?.Meta?.ProgressToken is { } token ? new TokenProgress(this, token) : NullProgress.Instance,
                         cancellationToken),
@@ -76,7 +72,7 @@ internal sealed partial class McpClient : McpEndpoint, IMcpClient
 
                 RequestHandlers.Set(
                     RequestMethods.RootsList,
-                    rootsHandler,
+                    (request, _, cancellationToken) => rootsHandler(request, cancellationToken),
                     McpJsonUtilities.JsonContext.Default.ListRootsRequestParams,
                     McpJsonUtilities.JsonContext.Default.ListRootsResult);
             }
@@ -155,10 +151,10 @@ internal sealed partial class McpClient : McpEndpoint, IMcpClient
                     new JsonRpcNotification { Method = NotificationMethods.InitializedNotification },
                     initializationCts.Token).ConfigureAwait(false);
             }
-            catch (OperationCanceledException oce) when (initializationCts.IsCancellationRequested)
+            catch (OperationCanceledException oce) when (initializationCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
             {
                 LogClientInitializationTimeout(EndpointName);
-                throw new McpException("Initialization timed out", oce);
+                throw new TimeoutException("Initialization timed out", oce);
             }
         }
         catch (Exception e)

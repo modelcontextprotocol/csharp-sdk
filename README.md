@@ -50,7 +50,7 @@ foreach (var tool in await client.ListToolsAsync())
 var result = await client.CallToolAsync(
     "echo",
     new Dictionary<string, object?>() { ["message"] = "Hello MCP!" },
-    CancellationToken.None);
+    cancellationToken:CancellationToken.None);
 
 // echo always returns one and only one text content object
 Console.WriteLine(result.Content.First(c => c.Type == "text").Text);
@@ -60,7 +60,7 @@ You can find samples demonstrating how to use ModelContextProtocol with an LLM S
 
 Clients can connect to any MCP server, not just ones created using this library. The protocol is designed to be server-agnostic, so you can use this library to connect to any compliant server.
 
-Tools can be exposed easily as `AIFunction` instances so that they are immediately usable with `IChatClient`s.
+Tools can be easily exposed for immediate use by `IChatClient`s, because `McpClientTool` inherits from `AIFunction`.
 
 ```csharp
 // Get available functions.
@@ -169,7 +169,7 @@ McpServerOptions options = new()
         Tools = new ToolsCapability()
         {
             ListToolsHandler = (request, cancellationToken) =>
-                Task.FromResult(new ListToolsResult()
+                ValueTask.FromResult(new ListToolsResult()
                 {
                     Tools =
                     [
@@ -202,7 +202,7 @@ McpServerOptions options = new()
                         throw new McpException("Missing required argument 'message'");
                     }
 
-                    return Task.FromResult(new CallToolResponse()
+                    return ValueTask.FromResult(new CallToolResponse()
                     {
                         Content = [new Content() { Text = $"Echo: {message}", Type = "text" }]
                     });
@@ -220,7 +220,7 @@ await server.RunAsync();
 
 ## Acknowledgements
 
-The starting point for this library was a project called [mcpdotnet](https://github.com/PederHP/mcpdotnet), initiated by [Peder Holdgaard Pederson](https://github.com/PederHP). We are grateful for the work done by Peder and other contributors to that repository, which created a solid foundation for this library.
+The starting point for this library was a project called [mcpdotnet](https://github.com/PederHP/mcpdotnet), initiated by [Peder Holdgaard Pedersen](https://github.com/PederHP). We are grateful for the work done by Peder and other contributors to that repository, which created a solid foundation for this library.
 
 ## License
 

@@ -1,4 +1,4 @@
-using ModelContextProtocol.Utils;
+using ModelContextProtocol;
 using System.Buffers;
 using System.Runtime.InteropServices;
 

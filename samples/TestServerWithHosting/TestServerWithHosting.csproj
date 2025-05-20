@@ -5,21 +5,16 @@
     <TargetFrameworks>net9.0;net8.0;net472</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <!--
-    Serilog AOT support regressed
-    <PublishAot>true</PublishAot>
-    -->
+    <PublishAot Condition="'$(TargetFramework)' == 'net9.0'">true</PublishAot>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Serilog" />
     <PackageReference Include="Serilog.Extensions.Hosting" />
     <PackageReference Include="Serilog.Sinks.Console" />
     <PackageReference Include="Serilog.Sinks.Debug" />
     <PackageReference Include="Serilog.Sinks.File" />
-    <RuntimeHostConfigurationOption
-      Include="Serilog.IsCompilerGeneratedCodeSupported"
-      Value="false" Trim="true" />
   </ItemGroup>
 
   <ItemGroup>

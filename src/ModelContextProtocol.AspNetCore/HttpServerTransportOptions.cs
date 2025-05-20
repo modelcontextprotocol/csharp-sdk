@@ -23,6 +23,45 @@ public class HttpServerTransportOptions
     public Func<HttpContext, IMcpServer, CancellationToken, Task>? RunSessionHandler { get; set; }
 
     /// <summary>
+    /// Gets or sets whether the server should run in a stateless mode that does not require all requests for a given session
+    /// to arrive to the same ASP.NET Core application process.
+    /// </summary>
+    /// <remarks>
+    /// If <see langword="true"/>, the "/sse" endpoint will be disabled, and client information will be round-tripped as part
+    /// of the "mcp-session-id" header instead of stored in memory. Unsolicited server-to-client messages and all server-to-client
+    /// requests are also unsupported, because any responses may arrive at another ASP.NET Core application process.
+    /// Client sampling and roots capabilities are also disabled in stateless mode, because the server cannot make requests.
+    /// Defaults to <see langword="false"/>.
+    /// </remarks>
+    public bool Stateless { get; set; }
+
+    /// <summary>
+    /// Gets or sets the duration of time the server will wait between any active requests before timing out an MCP session.
+    /// </summary>
+    /// <remarks>
+    /// This is checked in background every 5 seconds. A client trying to resume a session will receive a 404 status code
+    /// and should restart their session. A client can keep their session open by keeping a GET request open.
+    /// Defaults to 2 hours.
+    /// </remarks>
+    public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromHours(2);
+
+    /// <summary>
+    /// Gets or sets maximum number of idle sessions to track in memory. This is used to limit the number of sessions that can be idle at once.
+    /// </summary>
+    /// <remarks>
+    /// Past this limit, the server will log a critical error and terminate the oldest idle sessions even if they have not reached
+    /// their <see cref="IdleTimeout"/> until the idle session count is below this limit. Clients that keep their session open by
+    /// keeping a GET request open will not count towards this limit.
+    /// Defaults to 100,000 sessions.
+    /// </remarks>
+    public int MaxIdleSessionCount { get; set; } = 100_000;
+
+    /// <summary>
+    /// Used for testing the <see cref="IdleTimeout"/>.
+    /// </summary>
+    public TimeProvider TimeProvider { get; set; } = TimeProvider.System;
+
+    /// <summary>
     /// When true, the server includes an absolute URL
     /// (e.g. "https://api.example.com/message?sessionId=…") for the message-posting
     /// endpoint in the initial init SSE event.  

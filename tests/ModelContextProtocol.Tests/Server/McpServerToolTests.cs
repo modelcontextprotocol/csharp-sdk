@@ -1,8 +1,7 @@
 ﻿using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
-using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using ModelContextProtocol.Utils.Json;
 using Moq;
 using System.Reflection;
 using System.Text.Json;
@@ -18,7 +17,7 @@ public partial class McpServerToolTests
         Assert.Throws<ArgumentNullException>("function", () => McpServerTool.Create((AIFunction)null!));
         Assert.Throws<ArgumentNullException>("method", () => McpServerTool.Create((MethodInfo)null!));
         Assert.Throws<ArgumentNullException>("method", () => McpServerTool.Create((MethodInfo)null!, typeof(object)));
-        Assert.Throws<ArgumentNullException>("targetType", () => McpServerTool.Create(typeof(McpServerToolTests).GetMethod(nameof(Create_InvalidArgs_Throws))!, (Type)null!));
+        Assert.Throws<ArgumentNullException>("createTargetFunc", () => McpServerTool.Create(typeof(McpServerToolTests).GetMethod(nameof(Create_InvalidArgs_Throws))!, null!));
         Assert.Throws<ArgumentNullException>("method", () => McpServerTool.Create((Delegate)null!));
 
         Assert.NotNull(McpServerTool.Create(typeof(DisposableToolType).GetMethod(nameof(DisposableToolType.InstanceMethod))!, new DisposableToolType()));
@@ -129,7 +128,7 @@ public partial class McpServerToolTests
         McpServerToolCreateOptions options = new() { SerializerOptions = JsonContext2.Default.Options };
         McpServerTool tool1 = McpServerTool.Create(
             typeof(DisposableToolType).GetMethod(nameof(DisposableToolType.InstanceMethod))!,
-            typeof(DisposableToolType),
+            _ => new DisposableToolType(),
             options);
 
         var result = await tool1.InvokeAsync(
@@ -144,7 +143,7 @@ public partial class McpServerToolTests
         McpServerToolCreateOptions options = new() { SerializerOptions = JsonContext2.Default.Options };
         McpServerTool tool1 = McpServerTool.Create(
             typeof(AsyncDisposableToolType).GetMethod(nameof(AsyncDisposableToolType.InstanceMethod))!,
-            typeof(AsyncDisposableToolType),
+            _ => new AsyncDisposableToolType(),
             options);
 
         var result = await tool1.InvokeAsync(
@@ -156,14 +155,18 @@ public partial class McpServerToolTests
     [Fact]
     public async Task SupportsAsyncDisposingInstantiatedAsyncDisposableAndDisposableTargets()
     {
+        ServiceCollection sc = new();
+        sc.AddSingleton<MyService>();
+        IServiceProvider services = sc.BuildServiceProvider();
+
         McpServerToolCreateOptions options = new() { SerializerOptions = JsonContext2.Default.Options };
         McpServerTool tool1 = McpServerTool.Create(
             typeof(AsyncDisposableAndDisposableToolType).GetMethod(nameof(AsyncDisposableAndDisposableToolType.InstanceMethod))!,
-            typeof(AsyncDisposableAndDisposableToolType),
+            static r => ActivatorUtilities.CreateInstance(r.Services!, typeof(AsyncDisposableAndDisposableToolType)),
             options);
 
         var result = await tool1.InvokeAsync(
-            new RequestContext<CallToolRequestParams>(new Mock<IMcpServer>().Object),
+            new RequestContext<CallToolRequestParams>(new Mock<IMcpServer>().Object) { Services = services },
             TestContext.Current.CancellationToken);
         Assert.Equal("""{"asyncDisposals":1,"disposals":0}""", result.Content[0].Text);
     }
@@ -355,6 +358,29 @@ public partial class McpServerToolTests
         Assert.Equal("image", result.Content[1].Type);
     }
 
+    [Fact]
+    public async Task SupportsSchemaCreateOptions()
+    {
+        AIJsonSchemaCreateOptions schemaCreateOptions = new ()
+        {
+            TransformSchemaNode = (context, node) =>
+            {
+                node["text"] = "1234";
+                return node;
+            },
+        };
+
+        McpServerTool tool = McpServerTool.Create((int num, string str) =>
+        {
+            return "42";
+        }, new() { SchemaCreateOptions = schemaCreateOptions });
+
+        Assert.All(
+            tool.ProtocolTool.InputSchema.GetProperty("properties").EnumerateObject(),
+            x => Assert.True(x.Value.TryGetProperty("text", out JsonElement value) && value.ToString() == "1234")
+        );
+    }
+
     private sealed class MyService;
 
     private class DisposableToolType : IDisposable
@@ -405,6 +431,11 @@ public partial class McpServerToolTests
 
     private class AsyncDisposableAndDisposableToolType : IAsyncDisposable, IDisposable
     {
+        public AsyncDisposableAndDisposableToolType(MyService service)
+        {
+            Assert.NotNull(service);
+        }
+
         [JsonPropertyOrder(0)]
         public int AsyncDisposals { get; private set; }
 

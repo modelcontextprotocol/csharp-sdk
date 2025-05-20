@@ -1,9 +1,7 @@
 ﻿using Microsoft.Extensions.Options;
-using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Protocol.Transport;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
-using ModelContextProtocol.Utils.Json;
 using System.IO.Pipelines;
 using System.Text;
 using System.Text.Json;

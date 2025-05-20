@@ -1,20 +1,19 @@
 ﻿using EverythingServer;
 using EverythingServer.Prompts;
+using EverythingServer.Resources;
 using EverythingServer.Tools;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
-using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using OpenTelemetry;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
-
-#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Logging.AddConsole(consoleLogOptions =>
@@ -38,59 +37,7 @@ builder.Services
     .WithTools<TinyImageTool>()
     .WithPrompts<ComplexPromptType>()
     .WithPrompts<SimplePromptType>()
-    .WithListResourceTemplatesHandler(async (ctx, ct) =>
-    {
-        return new ListResourceTemplatesResult
-        {
-            ResourceTemplates =
-            [
-                new ResourceTemplate { Name = "Static Resource", Description = "A static resource with a numeric ID", UriTemplate = "test://static/resource/{id}" }
-            ]
-        };
-    })
-    .WithReadResourceHandler(async (ctx, ct) =>
-    {
-        var uri = ctx.Params?.Uri;
-
-        if (uri is null || !uri.StartsWith("test://static/resource/"))
-        {
-            throw new NotSupportedException($"Unknown resource: {uri}");
-        }
-
-        int index = int.Parse(uri["test://static/resource/".Length..]) - 1;
-
-        if (index < 0 || index >= ResourceGenerator.Resources.Count)
-        {
-            throw new NotSupportedException($"Unknown resource: {uri}");
-        }
-
-        var resource = ResourceGenerator.Resources[index];
-
-        if (resource.MimeType == "text/plain")
-        {
-            return new ReadResourceResult
-            {
-                Contents = [new TextResourceContents
-                {
-                    Text = resource.Description!,
-                    MimeType = resource.MimeType,
-                    Uri = resource.Uri,
-                }]
-            };
-        }
-        else
-        {
-            return new ReadResourceResult
-            {
-                Contents = [new BlobResourceContents
-                {
-                    Blob = resource.Description!,
-                    MimeType = resource.MimeType,
-                    Uri = resource.Uri,
-                }]
-            };
-        }
-    })
+    .WithResources<SimpleResourceType>()
     .WithSubscribeToResourcesHandler(async (ctx, ct) =>
     {
         var uri = ctx.Params?.Uri;
@@ -176,7 +123,7 @@ builder.Services
     {
         if (ctx.Params?.Level is null)
         {
-            throw new McpException("Missing required argument 'level'");
+            throw new McpException("Missing required argument 'level'", McpErrorCode.InvalidParams);
         }
 
         _minimumLoggingLevel = ctx.Params.Level;

@@ -1,4 +1,4 @@
-﻿using ModelContextProtocol.Protocol.Messages;
+﻿using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol;
 

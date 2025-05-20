@@ -1,7 +1,6 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
-using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Server;
@@ -97,7 +96,7 @@ namespace ModelContextProtocol.Server;
 ///     <description>Converted to a list of <see cref="PromptMessage"/> instances derived from the <see cref="ChatMessage"/> with <see cref="AIContentExtensions.ToPromptMessages"/>.</description>
 ///   </item>
 ///   <item>
-///     <term><see cref="IEnumerable{PromptMessage}"/> of <see cref="PromptMessage"/></term>
+///     <term><see cref="IEnumerable{ChatMessage}"/> of <see cref="ChatMessage"/></term>
 ///     <description>Converted to a list of <see cref="PromptMessage"/> instances derived from all of the <see cref="ChatMessage"/> instances with <see cref="AIContentExtensions.ToPromptMessages"/>.</description>
 ///   </item>
 /// </list>

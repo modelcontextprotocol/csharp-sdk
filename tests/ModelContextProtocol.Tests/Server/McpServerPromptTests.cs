@@ -1,8 +1,9 @@
 ﻿using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
-using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Moq;
+using System.ComponentModel;
 using System.Reflection;
 
 namespace ModelContextProtocol.Tests.Server;
@@ -14,8 +15,8 @@ public class McpServerPromptTests
     {
         Assert.Throws<ArgumentNullException>("function", () => McpServerPrompt.Create((AIFunction)null!));
         Assert.Throws<ArgumentNullException>("method", () => McpServerPrompt.Create((MethodInfo)null!));
-        Assert.Throws<ArgumentNullException>("method", () => McpServerPrompt.Create((MethodInfo)null!, typeof(object)));
-        Assert.Throws<ArgumentNullException>("targetType", () => McpServerPrompt.Create(typeof(McpServerPromptTests).GetMethod(nameof(Create_InvalidArgs_Throws))!, (Type)null!));
+        Assert.Throws<ArgumentNullException>("method", () => McpServerPrompt.Create((MethodInfo)null!, _ => new object()));
+        Assert.Throws<ArgumentNullException>("createTargetFunc", () => McpServerPrompt.Create(typeof(McpServerPromptTests).GetMethod(nameof(Create_InvalidArgs_Throws))!, null!));
         Assert.Throws<ArgumentNullException>("method", () => McpServerPrompt.Create((Delegate)null!));
     }
 
@@ -59,7 +60,7 @@ public class McpServerPromptTests
         Assert.Contains("something", prompt.ProtocolPrompt.Arguments?.Select(a => a.Name) ?? []);
         Assert.DoesNotContain("actualMyService", prompt.ProtocolPrompt.Arguments?.Select(a => a.Name) ?? []);
 
-        await Assert.ThrowsAsync<ArgumentException>(async () => await prompt.GetAsync(
+        await Assert.ThrowsAnyAsync<ArgumentException>(async () => await prompt.GetAsync(
             new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),
             TestContext.Current.CancellationToken));
 
@@ -95,7 +96,7 @@ public class McpServerPromptTests
     {
         McpServerPrompt prompt1 = McpServerPrompt.Create(
             typeof(DisposablePromptType).GetMethod(nameof(DisposablePromptType.InstanceMethod))!,
-            typeof(DisposablePromptType));
+            _ => new DisposablePromptType());
 
         var result = await prompt1.GetAsync(
             new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),
@@ -108,7 +109,7 @@ public class McpServerPromptTests
     {
         McpServerPrompt prompt1 = McpServerPrompt.Create(
             typeof(AsyncDisposablePromptType).GetMethod(nameof(AsyncDisposablePromptType.InstanceMethod))!,
-            typeof(AsyncDisposablePromptType));
+            _ => new AsyncDisposablePromptType());
 
         var result = await prompt1.GetAsync(
             new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),
@@ -121,7 +122,7 @@ public class McpServerPromptTests
     {
         McpServerPrompt prompt1 = McpServerPrompt.Create(
             typeof(AsyncDisposableAndDisposablePromptType).GetMethod(nameof(AsyncDisposableAndDisposablePromptType.InstanceMethod))!,
-            typeof(AsyncDisposableAndDisposablePromptType));
+            _ => new AsyncDisposableAndDisposablePromptType());
 
         var result = await prompt1.GetAsync(
             new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),
@@ -314,6 +315,30 @@ public class McpServerPromptTests
         await Assert.ThrowsAsync<InvalidOperationException>(async () => await prompt.GetAsync(
             new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),
             TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task SupportsSchemaCreateOptions()
+    {
+        AIJsonSchemaCreateOptions schemaCreateOptions = new()
+        {
+            TransformSchemaNode = (context, node) =>
+            {
+                node["description"] = "1234";
+                return node;
+            }
+        };
+
+        McpServerPrompt prompt = McpServerPrompt.Create(([Description("argument1")] int num, [Description("argument2")] string str) =>
+        {
+            return new ChatMessage(ChatRole.User, "Hello");
+        }, new() { SchemaCreateOptions = schemaCreateOptions });
+
+        Assert.NotNull(prompt.ProtocolPrompt.Arguments);
+        Assert.All(
+            prompt.ProtocolPrompt.Arguments,
+            x => Assert.Equal("1234", x.Description)
+        );
     }
 
     private sealed class MyService;

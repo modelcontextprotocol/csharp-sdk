@@ -1,4 +1,4 @@
-using ModelContextProtocol.Utils;
+using ModelContextProtocol;
 
 namespace System.Collections.Generic;
 

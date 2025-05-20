@@ -1,9 +1,7 @@
 ﻿using Microsoft.Extensions.AI;
-using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
-using ModelContextProtocol.Utils.Json;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -94,17 +92,17 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
-    public async Task RequestSamplingAsync_Should_Throw_McpException_If_Client_Does_Not_Support_Sampling()
+    public async Task RequestSamplingAsync_Should_Throw_Exception_If_Client_Does_Not_Support_Sampling()
     {
         // Arrange
         await using var transport = new TestServerTransport();
         await using var server = McpServerFactory.Create(transport, _options, LoggerFactory);
         SetClientCapabilities(server, new ClientCapabilities());
 
-        var action = () => server.RequestSamplingAsync(new CreateMessageRequestParams { Messages = [] }, CancellationToken.None);
+        var action = async () => await server.RequestSamplingAsync(new CreateMessageRequestParams { Messages = [] }, CancellationToken.None);
 
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentException>("server", action);
+        await Assert.ThrowsAsync<InvalidOperationException>(action);
     }
 
     [Fact]
@@ -130,7 +128,7 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
-    public async Task RequestRootsAsync_Should_Throw_McpException_If_Client_Does_Not_Support_Roots()
+    public async Task RequestRootsAsync_Should_Throw_Exception_If_Client_Does_Not_Support_Roots()
     {
         // Arrange
         await using var transport = new TestServerTransport();
@@ -138,7 +136,7 @@ public class McpServerTests : LoggedTest
         SetClientCapabilities(server, new ClientCapabilities());
 
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentException>("server", () => server.RequestRootsAsync(new ListRootsRequestParams(), CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await server.RequestRootsAsync(new ListRootsRequestParams(), CancellationToken.None));
     }
 
     [Fact]
@@ -294,7 +292,7 @@ public class McpServerTests : LoggedTest
     [Fact]
     public async Task Can_Handle_Resources_List_Requests_Throws_Exception_If_No_Handler_Assigned()
     {
-        await Throws_Exception_If_No_Handler_Assigned(new ServerCapabilities { Resources = new() }, RequestMethods.ResourcesList, "ListResources handler not configured");
+        await Succeeds_Even_If_No_Handler_Assigned(new ServerCapabilities { Resources = new() }, RequestMethods.ResourcesList, "ListResources handler not configured");
     }
 
     [Fact]
@@ -331,7 +329,7 @@ public class McpServerTests : LoggedTest
     [Fact]
     public async Task Can_Handle_Resources_Read_Requests_Throws_Exception_If_No_Handler_Assigned()
     {
-        await Throws_Exception_If_No_Handler_Assigned(new ServerCapabilities { Resources = new() }, RequestMethods.ResourcesRead, "ReadResource handler not configured");
+        await Succeeds_Even_If_No_Handler_Assigned(new ServerCapabilities { Resources = new() }, RequestMethods.ResourcesRead, "ReadResource handler not configured");
     }
 
     [Fact]
@@ -366,7 +364,7 @@ public class McpServerTests : LoggedTest
     [Fact]
     public async Task Can_Handle_List_Prompts_Requests_Throws_Exception_If_No_Handler_Assigned()
     {
-        await Throws_Exception_If_No_Handler_Assigned(new ServerCapabilities { Prompts = new() }, RequestMethods.PromptsList, "ListPrompts handler not configured");
+        await Succeeds_Even_If_No_Handler_Assigned(new ServerCapabilities { Prompts = new() }, RequestMethods.PromptsList, "ListPrompts handler not configured");
     }
 
     [Fact]
@@ -394,7 +392,7 @@ public class McpServerTests : LoggedTest
     [Fact]
     public async Task Can_Handle_Get_Prompts_Requests_Throws_Exception_If_No_Handler_Assigned()
     {
-        await Throws_Exception_If_No_Handler_Assigned(new ServerCapabilities { Prompts = new() }, RequestMethods.PromptsGet, "GetPrompt handler not configured");
+        await Succeeds_Even_If_No_Handler_Assigned(new ServerCapabilities { Prompts = new() }, RequestMethods.PromptsGet, "GetPrompt handler not configured");
     }
 
     [Fact]
@@ -429,7 +427,7 @@ public class McpServerTests : LoggedTest
     [Fact]
     public async Task Can_Handle_List_Tools_Requests_Throws_Exception_If_No_Handler_Assigned()
     {
-        await Throws_Exception_If_No_Handler_Assigned(new ServerCapabilities { Tools = new() }, RequestMethods.ToolsList, "ListTools handler not configured");
+        await Succeeds_Even_If_No_Handler_Assigned(new ServerCapabilities { Tools = new() }, RequestMethods.ToolsList, "ListTools handler not configured");
     }
 
     [Fact]
@@ -464,7 +462,7 @@ public class McpServerTests : LoggedTest
     [Fact]
     public async Task Can_Handle_Call_Tool_Requests_Throws_Exception_If_No_Handler_Assigned()
     {
-        await Throws_Exception_If_No_Handler_Assigned(new ServerCapabilities { Tools = new() }, RequestMethods.ToolsCall, "CallTool handler not configured");
+        await Succeeds_Even_If_No_Handler_Assigned(new ServerCapabilities { Tools = new() }, RequestMethods.ToolsCall, "CallTool handler not configured");
     }
 
     private async Task Can_Handle_Requests(ServerCapabilities? serverCapabilities, string method, Action<McpServerOptions>? configureOptions, Action<JsonNode?> assertResult)
@@ -502,12 +500,13 @@ public class McpServerTests : LoggedTest
         await runTask;
     }
 
-    private async Task Throws_Exception_If_No_Handler_Assigned(ServerCapabilities serverCapabilities, string method, string expectedError)
+    private async Task Succeeds_Even_If_No_Handler_Assigned(ServerCapabilities serverCapabilities, string method, string expectedError)
     {
         await using var transport = new TestServerTransport();
         var options = CreateOptions(serverCapabilities);
 
-        Assert.Throws<McpException>(() => McpServerFactory.Create(transport, options, LoggerFactory));
+        var server = McpServerFactory.Create(transport, options, LoggerFactory);
+        await server.DisposeAsync();
     }
 
     [Fact]
@@ -515,7 +514,7 @@ public class McpServerTests : LoggedTest
     {
         await using var server = new TestServerForIChatClient(supportsSampling: false);
 
-        Assert.Throws<ArgumentException>("server", () => server.AsSamplingChatClient());
+        Assert.Throws<InvalidOperationException>(server.AsSamplingChatClient);
     }
 
     [Fact]
@@ -580,6 +579,8 @@ public class McpServerTests : LoggedTest
             supportsSampling ? new ClientCapabilities { Sampling = new SamplingCapability() } :
             null;
 
+        public McpServerOptions ServerOptions => new();
+
         public Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken)
         {
             CreateMessageRequestParams? rp = JsonSerializer.Deserialize<CreateMessageRequestParams>(request.Params, McpJsonUtilities.DefaultOptions);
@@ -616,10 +617,9 @@ public class McpServerTests : LoggedTest
         public ValueTask DisposeAsync() => default;
 
         public Implementation? ClientInfo => throw new NotImplementedException();
-        public McpServerOptions ServerOptions => throw new NotImplementedException();
         public IServiceProvider? Services => throw new NotImplementedException();
         public LoggingLevel? LoggingLevel => throw new NotImplementedException();
-        public Task SendMessageAsync(IJsonRpcMessage message, CancellationToken cancellationToken = default) =>
+        public Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
         public Task RunAsync(CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();

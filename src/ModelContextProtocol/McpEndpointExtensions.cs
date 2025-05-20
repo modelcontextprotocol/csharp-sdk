@@ -1,8 +1,6 @@
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol.Messages;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using ModelContextProtocol.Utils;
-using ModelContextProtocol.Utils.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization.Metadata;
@@ -36,12 +34,12 @@ public static class McpEndpointExtensions
     /// <param name="serializerOptions">The options governing request serialization.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous operation. The task result contains the deserialized result.</returns>
-    public static Task<TResult> SendRequestAsync<TParameters, TResult>(
+    public static ValueTask<TResult> SendRequestAsync<TParameters, TResult>(
         this IMcpEndpoint endpoint,
         string method,
         TParameters parameters,
         JsonSerializerOptions? serializerOptions = null,
-        RequestId? requestId = null,
+        RequestId requestId = default,
         CancellationToken cancellationToken = default)
         where TResult : notnull
     {
@@ -66,13 +64,13 @@ public static class McpEndpointExtensions
     /// <param name="requestId">The request id for the request.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous operation. The task result contains the deserialized result.</returns>
-    internal static async Task<TResult> SendRequestAsync<TParameters, TResult>(
+    internal static async ValueTask<TResult> SendRequestAsync<TParameters, TResult>(
         this IMcpEndpoint endpoint,
         string method,
         TParameters parameters,
         JsonTypeInfo<TParameters> parametersTypeInfo,
         JsonTypeInfo<TResult> resultTypeInfo,
-        RequestId? requestId = null,
+        RequestId requestId = default,
         CancellationToken cancellationToken = default)
         where TResult : notnull
     {
@@ -83,14 +81,10 @@ public static class McpEndpointExtensions
 
         JsonRpcRequest jsonRpcRequest = new()
         {
+            Id = requestId,
             Method = method,
             Params = JsonSerializer.SerializeToNode(parameters, parametersTypeInfo),
         };
-
-        if (requestId is { } id)
-        {
-            jsonRpcRequest.Id = id;
-        }
 
         JsonRpcResponse response = await endpoint.SendRequestAsync(jsonRpcRequest, cancellationToken).ConfigureAwait(false);
         return JsonSerializer.Deserialize(response.Result, resultTypeInfo) ?? throw new JsonException("Unexpected JSON result in response.");

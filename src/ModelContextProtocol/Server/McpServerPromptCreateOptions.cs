@@ -1,4 +1,4 @@
-using ModelContextProtocol.Utils.Json;
+using Microsoft.Extensions.AI;
 using System.ComponentModel;
 using System.Text.Json;
 
@@ -56,6 +56,14 @@ public sealed class McpServerPromptCreateOptions
     public JsonSerializerOptions? SerializerOptions { get; set; }
 
     /// <summary>
+    /// Gets or sets the JSON schema options when creating <see cref="AIFunction"/> from a method.
+    /// </summary>
+    /// <remarks>
+    /// Defaults to <see cref="AIJsonSchemaCreateOptions.Default"/> if left unspecified.
+    /// </remarks>
+    public AIJsonSchemaCreateOptions? SchemaCreateOptions { get; set; }
+
+    /// <summary>
     /// Creates a shallow clone of the current <see cref="McpServerPromptCreateOptions"/> instance.
     /// </summary>
     internal McpServerPromptCreateOptions Clone() =>
@@ -65,5 +73,6 @@ public sealed class McpServerPromptCreateOptions
             Name = Name,
             Description = Description,
             SerializerOptions = SerializerOptions,
+            SchemaCreateOptions = SchemaCreateOptions,
         };
 }

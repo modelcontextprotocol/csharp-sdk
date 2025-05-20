@@ -3,11 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Protocol.Transport;
-using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using ModelContextProtocol.Utils.Json;
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.IO.Pipelines;
@@ -88,7 +85,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                         };
 
                     default:
-                        throw new Exception("Unexpected cursor");
+                        throw new McpException($"Unexpected cursor: '{cursor}'", McpErrorCode.InvalidParams);
                 }
             })
             .WithCallToolHandler(async (request, cancellationToken) =>
@@ -104,7 +101,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                         };
 
                     default:
-                        throw new Exception($"Unknown tool '{request.Params?.Name}'");
+                        throw new McpException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams);
                 }
             })
             .WithTools<EchoTool>(serializerOptions: BuilderToolsJsonContext.Default.Options);
@@ -408,6 +405,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     {
         IMcpServerBuilder builder = new ServiceCollection().AddMcpServer();
 
+        Assert.Throws<ArgumentNullException>("tools", () => builder.WithTools((IEnumerable<McpServerTool>)null!));
         Assert.Throws<ArgumentNullException>("toolTypes", () => builder.WithTools((IEnumerable<Type>)null!));
 
         IMcpServerBuilder nullBuilder = null!;
@@ -421,6 +419,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     {
         IMcpServerBuilder builder = new ServiceCollection().AddMcpServer();
 
+        builder.WithTools(tools: []); // no exception
         builder.WithTools(toolTypes: []); // no exception
         builder.WithTools<object>(); // no exception even though no tools exposed
         builder.WithToolsFromAssembly(typeof(AIFunction).Assembly); // no exception even though no tools exposed
@@ -539,7 +538,8 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         sc.AddMcpServer()
             .WithTools<EchoTool>(serializerOptions: BuilderToolsJsonContext.Default.Options)
             .WithTools<AnotherToolType>(serializerOptions: BuilderToolsJsonContext.Default.Options)
-            .WithTools([typeof(ToolTypeWithNoAttribute)], BuilderToolsJsonContext.Default.Options);
+            .WithTools([typeof(ToolTypeWithNoAttribute)], BuilderToolsJsonContext.Default.Options)
+            .WithTools([McpServerTool.Create(() => "42", new() { Name = "Returns42" })]);
         IServiceProvider services = sc.BuildServiceProvider();
 
         Assert.Contains(services.GetServices<McpServerTool>(), t => t.ProtocolTool.Name == "double_echo");
@@ -547,6 +547,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         Assert.Contains(services.GetServices<McpServerTool>(), t => t.ProtocolTool.Name == "MethodB");
         Assert.Contains(services.GetServices<McpServerTool>(), t => t.ProtocolTool.Name == "MethodC");
         Assert.Contains(services.GetServices<McpServerTool>(), t => t.ProtocolTool.Name == "MethodD");
+        Assert.Contains(services.GetServices<McpServerTool>(), t => t.ProtocolTool.Name == "Returns42");
     }
 
     [Fact]
@@ -592,11 +593,22 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
 
         McpClientTool progressTool = tools.First(t => t.Name == nameof(EchoTool.SendsProgressNotifications));
 
+        TaskCompletionSource tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int remainingNotifications = 10;
+
         ConcurrentQueue<ProgressNotification> notifications = new();
         await using (client.RegisterNotificationHandler(NotificationMethods.ProgressNotification, (notification, cancellationToken) =>
         {
-            ProgressNotification pn = JsonSerializer.Deserialize<ProgressNotification>(notification.Params, McpJsonUtilities.DefaultOptions)!;
-            notifications.Enqueue(pn);
+            if (JsonSerializer.Deserialize<ProgressNotification>(notification.Params, McpJsonUtilities.DefaultOptions) is { } pn &&
+                pn.ProgressToken == new ProgressToken("abc123"))
+            {
+                notifications.Enqueue(pn);
+                if (Interlocked.Decrement(ref remainingNotifications) == 0)
+                {
+                    tcs.SetResult();
+                }
+            }
+
             return default;
         }))
         {
@@ -609,8 +621,8 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                 },
                 cancellationToken: TestContext.Current.CancellationToken);
 
+            await tcs.Task;
             Assert.Contains("done", JsonSerializer.Serialize(result, McpJsonUtilities.DefaultOptions));
-            SpinWait.SpinUntil(() => notifications.Count == 10, TimeSpan.FromSeconds(10));
         }
 
         ProgressNotification[] array = notifications.OrderBy(n => n.Progress.Progress).ToArray();
@@ -649,7 +661,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
             },
             cancellationToken: TestContext.Current.CancellationToken);
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => invokeTask);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await invokeTask);
     }
 
     [McpServerToolType]

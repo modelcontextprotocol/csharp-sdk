@@ -1,11 +1,9 @@
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using ModelContextProtocol.Hosting;
-using ModelContextProtocol.Protocol.Transport;
-using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using ModelContextProtocol.Utils;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text.Json;
@@ -48,7 +46,7 @@ public static partial class McpServerBuilderExtensions
             {
                 builder.Services.AddSingleton((Func<IServiceProvider, McpServerTool>)(toolMethod.IsStatic ?
                     services => McpServerTool.Create(toolMethod, options: new() { Services = services, SerializerOptions = serializerOptions }) :
-                    services => McpServerTool.Create(toolMethod, typeof(TToolType), new() { Services = services, SerializerOptions = serializerOptions })));
+                    services => McpServerTool.Create(toolMethod, static r => CreateTarget(r.Services, typeof(TToolType)), new() { Services = services, SerializerOptions = serializerOptions })));
             }
         }
 
@@ -57,7 +55,29 @@ public static partial class McpServerBuilderExtensions
 
     /// <summary>Adds <see cref="McpServerTool"/> instances to the service collection backing <paramref name="builder"/>.</summary>
     /// <param name="builder">The builder instance.</param>
-    /// <param name="toolTypes">Types with marked methods to add as tools to the server.</param>
+    /// <param name="tools">The <see cref="McpServerTool"/> instances to add to the server.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="tools"/> is <see langword="null"/>.</exception>
+    public static IMcpServerBuilder WithTools(this IMcpServerBuilder builder, IEnumerable<McpServerTool> tools)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(tools);
+
+        foreach (var tool in tools)
+        {
+            if (tool is not null)
+            {
+                builder.Services.AddSingleton(tool);
+            }
+        }
+
+        return builder;
+    }
+
+    /// <summary>Adds <see cref="McpServerTool"/> instances to the service collection backing <paramref name="builder"/>.</summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="toolTypes">Types with <see cref="McpServerToolAttribute"/>-attributed methods to add as tools to the server.</param>
     /// <param name="serializerOptions">The serializer options governing tool parameter marshalling.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
@@ -83,7 +103,7 @@ public static partial class McpServerBuilderExtensions
                     {
                         builder.Services.AddSingleton((Func<IServiceProvider, McpServerTool>)(toolMethod.IsStatic ?
                             services => McpServerTool.Create(toolMethod, options: new() { Services = services , SerializerOptions = serializerOptions }) :
-                            services => McpServerTool.Create(toolMethod, toolType, new() { Services = services , SerializerOptions = serializerOptions })));
+                            services => McpServerTool.Create(toolMethod, r => CreateTarget(r.Services, toolType), new() { Services = services , SerializerOptions = serializerOptions })));
                     }
                 }
             }
@@ -166,7 +186,29 @@ public static partial class McpServerBuilderExtensions
             {
                 builder.Services.AddSingleton((Func<IServiceProvider, McpServerPrompt>)(promptMethod.IsStatic ?
                     services => McpServerPrompt.Create(promptMethod, options: new() { Services = services, SerializerOptions = serializerOptions }) :
-                    services => McpServerPrompt.Create(promptMethod, typeof(TPromptType), new() { Services = services, SerializerOptions = serializerOptions })));
+                    services => McpServerPrompt.Create(promptMethod, static r => CreateTarget(r.Services, typeof(TPromptType)), new() { Services = services, SerializerOptions = serializerOptions })));
+            }
+        }
+
+        return builder;
+    }
+
+    /// <summary>Adds <see cref="McpServerPrompt"/> instances to the service collection backing <paramref name="builder"/>.</summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="prompts">The <see cref="McpServerPrompt"/> instances to add to the server.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="prompts"/> is <see langword="null"/>.</exception>
+    public static IMcpServerBuilder WithPrompts(this IMcpServerBuilder builder, IEnumerable<McpServerPrompt> prompts)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(prompts);
+
+        foreach (var prompt in prompts)
+        {
+            if (prompt is not null)
+            {
+                builder.Services.AddSingleton(prompt);
             }
         }
 
@@ -201,7 +243,7 @@ public static partial class McpServerBuilderExtensions
                     {
                         builder.Services.AddSingleton((Func<IServiceProvider, McpServerPrompt>)(promptMethod.IsStatic ?
                             services => McpServerPrompt.Create(promptMethod, options: new() { Services = services, SerializerOptions = serializerOptions }) :
-                            services => McpServerPrompt.Create(promptMethod, promptType, new() { Services = services, SerializerOptions = serializerOptions })));
+                            services => McpServerPrompt.Create(promptMethod, r => CreateTarget(r.Services, promptType), new() { Services = services, SerializerOptions = serializerOptions })));
                     }
                 }
             }
@@ -250,6 +292,140 @@ public static partial class McpServerBuilderExtensions
             where t.GetCustomAttribute<McpServerPromptTypeAttribute>() is not null
             select t,
             serializerOptions);
+    }
+    #endregion
+
+    #region WithResources
+    private const string WithResourcesRequiresUnreferencedCodeMessage =
+        $"The non-generic {nameof(WithResources)} and {nameof(WithResourcesFromAssembly)} methods require dynamic lookup of member metadata" +
+        $"and may not work in Native AOT. Use the generic {nameof(WithResources)} method instead.";
+
+    /// <summary>Adds <see cref="McpServerResource"/> instances to the service collection backing <paramref name="builder"/>.</summary>
+    /// <typeparam name="TResourceType">The resource type.</typeparam>
+    /// <param name="builder">The builder instance.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// This method discovers all instance and static methods (public and non-public) on the specified <typeparamref name="TResourceType"/>
+    /// type, where the members are attributed as <see cref="McpServerResourceAttribute"/>, and adds an <see cref="McpServerResource"/>
+    /// instance for each. For instance members, an instance will be constructed for each invocation of the resource.
+    /// </remarks>
+    public static IMcpServerBuilder WithResources<[DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods |
+        DynamicallyAccessedMemberTypes.PublicConstructors)] TResourceType>(
+        this IMcpServerBuilder builder)
+    {
+        Throw.IfNull(builder);
+
+        foreach (var resourceTemplateMethod in typeof(TResourceType).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
+        {
+            if (resourceTemplateMethod.GetCustomAttribute<McpServerResourceAttribute>() is not null)
+            {
+                builder.Services.AddSingleton((Func<IServiceProvider, McpServerResource>)(resourceTemplateMethod.IsStatic ?
+                    services => McpServerResource.Create(resourceTemplateMethod, options: new() { Services = services }) :
+                    services => McpServerResource.Create(resourceTemplateMethod, static r => CreateTarget(r.Services, typeof(TResourceType)), new() { Services = services })));
+            }
+        }
+
+        return builder;
+    }
+
+    /// <summary>Adds <see cref="McpServerResource"/> instances to the service collection backing <paramref name="builder"/>.</summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="resourceTemplates">The <see cref="McpServerResource"/> instances to add to the server.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="resourceTemplates"/> is <see langword="null"/>.</exception>
+    public static IMcpServerBuilder WithResources(this IMcpServerBuilder builder, IEnumerable<McpServerResource> resourceTemplates)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(resourceTemplates);
+
+        foreach (var resourceTemplate in resourceTemplates)
+        {
+            if (resourceTemplate is not null)
+            {
+                builder.Services.AddSingleton(resourceTemplate);
+            }
+        }
+
+        return builder;
+    }
+
+    /// <summary>Adds <see cref="McpServerResource"/> instances to the service collection backing <paramref name="builder"/>.</summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="resourceTemplateTypes">Types with marked methods to add as resources to the server.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="resourceTemplateTypes"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// This method discovers all instance and static methods (public and non-public) on the specified <paramref name="resourceTemplateTypes"/>
+    /// types, where the methods are attributed as <see cref="McpServerResourceAttribute"/>, and adds an <see cref="McpServerResource"/>
+    /// instance for each. For instance methods, an instance will be constructed for each invocation of the resource.
+    /// </remarks>
+    [RequiresUnreferencedCode(WithResourcesRequiresUnreferencedCodeMessage)]
+    public static IMcpServerBuilder WithResources(this IMcpServerBuilder builder, IEnumerable<Type> resourceTemplateTypes)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(resourceTemplateTypes);
+
+        foreach (var resourceTemplateType in resourceTemplateTypes)
+        {
+            if (resourceTemplateType is not null)
+            {
+                foreach (var resourceTemplateMethod in resourceTemplateType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
+                {
+                    if (resourceTemplateMethod.GetCustomAttribute<McpServerResourceAttribute>() is not null)
+                    {
+                        builder.Services.AddSingleton((Func<IServiceProvider, McpServerResource>)(resourceTemplateMethod.IsStatic ?
+                            services => McpServerResource.Create(resourceTemplateMethod, options: new() { Services = services }) :
+                            services => McpServerResource.Create(resourceTemplateMethod, r => CreateTarget(r.Services, resourceTemplateType), new() { Services = services })));
+                    }
+                }
+            }
+        }
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds types marked with the <see cref="McpServerResourceTypeAttribute"/> attribute from the given assembly as resources to the server.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="resourceAssembly">The assembly to load the types from. If <see langword="null"/>, the calling assembly will be used.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This method scans the specified assembly (or the calling assembly if none is provided) for classes
+    /// marked with the <see cref="McpServerResourceTypeAttribute"/>. It then discovers all members within those
+    /// classes that are marked with the <see cref="McpServerResourceAttribute"/> and registers them as <see cref="McpServerResource"/>s 
+    /// in the <paramref name="builder"/>'s <see cref="IServiceCollection"/>.
+    /// </para>
+    /// <para>
+    /// The method automatically handles both static and instance members. For instance members, a new instance
+    /// of the containing class will be constructed for each invocation of the resource.
+    /// </para>
+    /// <para>
+    /// Resource templates registered through this method can be discovered by clients using the <c>list_resourceTemplates</c> request
+    /// and invoked using the <c>read_resource</c> request.
+    /// </para>
+    /// <para>
+    /// Note that this method performs reflection at runtime and may not work in Native AOT scenarios. For
+    /// Native AOT compatibility, consider using the generic <see cref="WithResources{TResourceType}"/> method instead.
+    /// </para>
+    /// </remarks>
+    [RequiresUnreferencedCode(WithResourcesRequiresUnreferencedCodeMessage)]
+    public static IMcpServerBuilder WithResourcesFromAssembly(this IMcpServerBuilder builder, Assembly? resourceAssembly = null)
+    {
+        Throw.IfNull(builder);
+
+        resourceAssembly ??= Assembly.GetCallingAssembly();
+
+        return builder.WithResources(
+            from t in resourceAssembly.GetTypes()
+            where t.GetCustomAttribute<McpServerResourceTypeAttribute>() is not null
+            select t);
     }
     #endregion
 
@@ -596,5 +772,14 @@ public static partial class McpServerBuilderExtensions
             return McpServerFactory.Create(serverTransport, options.Value, loggerFactory, services);
         });
     }
+    #endregion
+
+    #region Helpers
+    /// <summary>Creates an instance of the target object.</summary>
+    private static object CreateTarget(
+        IServiceProvider? services,
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type type) =>
+        services is not null ? ActivatorUtilities.CreateInstance(services, type) :
+        Activator.CreateInstance(type)!;
     #endregion
 }
