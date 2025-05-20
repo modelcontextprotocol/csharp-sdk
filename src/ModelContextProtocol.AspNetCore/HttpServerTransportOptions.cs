@@ -21,4 +21,12 @@ public class HttpServerTransportOptions
     /// This is useful for running logic before a sessions starts and after it completes.
     /// </summary>
     public Func<HttpContext, IMcpServer, CancellationToken, Task>? RunSessionHandler { get; set; }
+
+    /// <summary>
+    /// When true, the server includes an absolute URL
+    /// (e.g. "https://api.example.com/message?sessionId=…") for the message-posting
+    /// endpoint in the initial init SSE event.  
+    /// When false (default), a relative URL ("message?sessionId=…") is sent.
+    /// </summary>
+    public bool SendAbsoluteMessageUrl { get; set; } = false;
 }

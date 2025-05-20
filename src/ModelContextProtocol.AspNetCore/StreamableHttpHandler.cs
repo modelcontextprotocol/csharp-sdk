@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Hosting;
@@ -58,7 +59,8 @@ internal sealed class StreamableHttpHandler(
         context.Features.GetRequiredFeature<IHttpResponseBodyFeature>().DisableBuffering();
 
         var sessionId = MakeNewSessionId();
-        await using var transport = new SseResponseStreamTransport(response.Body, $"message?sessionId={sessionId}");
+        await using var transport = new SseResponseStreamTransport(response.Body, BuildMessageUrl(context, sessionId, httpMcpServerOptions.Value.SendAbsoluteMessageUrl));
+
         var httpMcpSession = new HttpMcpSession(transport, context.User);
         if (!_sessions.TryAdd(sessionId, httpMcpSession))
         {
@@ -143,5 +145,18 @@ internal sealed class StreamableHttpHandler(
         Span<byte> buffer = stackalloc byte[16];
         RandomNumberGenerator.Fill(buffer);
         return WebEncoders.Base64UrlEncode(buffer);
+    }
+
+    private static string BuildMessageUrl(HttpContext context, string sessionId, bool sendFull)
+    {
+        if (!sendFull)
+            return $"message?sessionId={sessionId}";
+
+        return UriHelper.BuildAbsolute(
+            context.Request.Scheme,                 // http / https
+            context.Request.Host,                   // host[:port]
+            PathString.Empty,                       // pathBase
+            "/message",                             // path
+            QueryString.Create("sessionId", sessionId)); // ?sessionId=...
     }
 }

@@ -10,6 +10,8 @@ using ModelContextProtocol.Protocol.Messages;
 using ModelContextProtocol.Protocol.Transport;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Utils.Json;
+using System.Text;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using TestServerWithHosting.Tools;
 
@@ -220,6 +222,63 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => ConnectMcpClient(transportOptions: sseOptions));
         Assert.Equal("Failed to add header '' with value '' from AdditionalHeaders.", ex.Message);
+    }
+
+        [Theory]
+    [InlineData(false, "message?sessionId=")]                  // relative
+    [InlineData(true,  "http://localhost/message?sessionId=")] // absolute
+    public async Task InitEvent_ContainsCorrectMessageUrl(bool sendAbsolute, string expectedPrefix)
+    {
+        // Arrange – spin up the in-memory server with desired option
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(o => o.SendAbsoluteMessageUrl = sendAbsolute);
+
+        await using var app = Builder.Build();
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        // Act – open raw SSE connection
+        var request  = new HttpRequestMessage(HttpMethod.Get, "http://localhost/sse");
+        var response = await HttpClient.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            TestContext.Current.CancellationToken);
+
+        response.EnsureSuccessStatusCode();
+
+        await using var stream = await response.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
+        using var reader = new StreamReader(stream);
+
+        string? eventType = null;
+        var     dataBuf   = new StringBuilder();
+
+        while (!reader.EndOfStream)
+        {
+            var line = await reader.ReadLineAsync(TestContext.Current.CancellationToken) ?? "";
+            if (line.Length == 0)    // blank line → end of one SSE event
+            {
+                if (eventType == "init")
+                {
+                    var json = JsonDocument.Parse(dataBuf.ToString());
+                    var url = json.RootElement.GetProperty("endpoint").GetString();
+                    Assert.NotNull(url);
+                    Assert.StartsWith(expectedPrefix, url!, StringComparison.Ordinal);
+                    return;          // success
+                }
+
+                // reset for next event
+                eventType = null;
+                dataBuf.Clear();
+                continue;
+            }
+
+            if (line.StartsWith("event:"))
+                eventType = line["event:".Length..].Trim();
+            else if (line.StartsWith("data:"))
+                dataBuf.Append(line["data:".Length..].Trim());
+        }
+
+        throw new InvalidOperationException("Init event not found in SSE stream.");
     }
 
     private static void MapAbsoluteEndpointUriMcp(IEndpointRouteBuilder endpoints)
