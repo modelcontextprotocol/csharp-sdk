@@ -40,6 +40,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
 
         // Send a test message through POST endpoint
         await mcpClient.SendNotificationAsync("test/message", new Envelope { Message = "Hello, SSE!" }, serializerOptions: JsonContext.Default.Options, cancellationToken: TestContext.Current.CancellationToken);
+
         Assert.True(true);
     }
 
