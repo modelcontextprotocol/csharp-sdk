@@ -92,26 +92,25 @@ internal sealed partial class SseClientSessionTransport : TransportBase
         StreamableHttpClientSessionTransport.CopyAdditionalHeaders(httpRequestMessage.Headers, _options.AdditionalHeaders);
         var response = await _httpClient.SendAsync(httpRequestMessage, cancellationToken).ConfigureAwait(false);
 
-        response.EnsureSuccessStatusCode();
-
-        var responseContent = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-
-        if (string.IsNullOrEmpty(responseContent) || responseContent.Equals("accepted", StringComparison.OrdinalIgnoreCase))
-        {
-            LogAcceptedPost(Name, messageId);
-        }
-        else
+        if (!response.IsSuccessStatusCode)
         {
             if (_logger.IsEnabled(LogLevel.Trace))
             {
-                LogRejectedPostSensitive(Name, messageId, responseContent);
+                LogRejectedPostSensitive(Name, messageId, await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
             }
             else
             {
                 LogRejectedPost(Name, messageId);
             }
 
-            throw new InvalidOperationException("Failed to send message");
+            response.EnsureSuccessStatusCode();
+        }
+
+        if (response.Content.Headers.ContentType?.MediaType is "application/json")
+        {
+            // Certain MCP servers implementing SSE may return the response in the current POST request instead of the SSE stream.
+            // Even though this is not officially part of the SSE protocol, we handle it here.
+            await ProcessInboundMessage(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -179,7 +178,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
                         break;
 
                     case "message":
-                        await ProcessSseMessage(sseEvent.Data, cancellationToken).ConfigureAwait(false);
+                        await ProcessInboundMessage(sseEvent.Data, cancellationToken).ConfigureAwait(false);
                         break;
                 }
             }
@@ -205,7 +204,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
         }
     }
 
-    private async Task ProcessSseMessage(string data, CancellationToken cancellationToken)
+    private async Task ProcessInboundMessage(string data, CancellationToken cancellationToken)
     {
         if (!IsConnected)
         {
