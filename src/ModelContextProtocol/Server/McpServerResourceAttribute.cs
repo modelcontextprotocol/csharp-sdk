@@ -10,7 +10,7 @@ namespace ModelContextProtocol.Server;
 /// <remarks>
 /// <para>
 /// This attribute is applied to methods or properties that should be exposed as resources in the Model Context Protocol. When a class 
-/// containing methods marked with this attribute is registered with <see cref="McpServerBuilderExtensions"/>,
+/// containing methods marked with this attribute is registered with McpServerBuilderExtensions,
 /// these methods or properties become available as resources that can be called by MCP clients.
 /// </para>
 /// <para>

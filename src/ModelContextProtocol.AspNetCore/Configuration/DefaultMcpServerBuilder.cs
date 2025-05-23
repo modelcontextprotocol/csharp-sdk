@@ -1,5 +1,3 @@
-using ModelContextProtocol;
-
 namespace Microsoft.Extensions.DependencyInjection;
 
 /// <summary>
@@ -21,7 +19,7 @@ internal sealed class DefaultMcpServerBuilder : IMcpServerBuilder
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="services"/> is null.</exception>
     public DefaultMcpServerBuilder(IServiceCollection services)
     {
-        Throw.IfNull(services);
+        ArgumentNullException.ThrowIfNull(services);
 
         Services = services;
     }

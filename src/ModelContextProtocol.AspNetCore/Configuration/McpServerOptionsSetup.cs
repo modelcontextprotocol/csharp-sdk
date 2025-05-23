@@ -1,8 +1,7 @@
 using Microsoft.Extensions.Options;
-using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
-namespace Microsoft.Extensions.DependencyInjection;
+namespace ModelContextProtocol.AspNetCore.Configuration;
 
 /// <summary>
 /// Configures the McpServerOptions using addition services from DI.
@@ -24,7 +23,7 @@ internal sealed class McpServerOptionsSetup(
     /// <param name="options">The options instance to be configured.</param>
     public void Configure(McpServerOptions options)
     {
-        Throw.IfNull(options);
+        ArgumentNullException.ThrowIfNull(options);
 
         // Collect all of the provided tools into a tools collection. If the options already has
         // a collection, add to it, otherwise create a new one. We want to maintain the identity

@@ -1,7 +1,8 @@
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using ModelContextProtocol;
+using ModelContextProtocol.AspNetCore;
+using ModelContextProtocol.AspNetCore.Configuration;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Diagnostics.CodeAnalysis;
@@ -38,7 +39,7 @@ public static partial class McpServerBuilderExtensions
         this IMcpServerBuilder builder,
         JsonSerializerOptions? serializerOptions = null)
     {
-        Throw.IfNull(builder);
+        ArgumentNullException.ThrowIfNull(builder);
 
         foreach (var toolMethod in typeof(TToolType).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
         {
@@ -61,8 +62,8 @@ public static partial class McpServerBuilderExtensions
     /// <exception cref="ArgumentNullException"><paramref name="tools"/> is <see langword="null"/>.</exception>
     public static IMcpServerBuilder WithTools(this IMcpServerBuilder builder, IEnumerable<McpServerTool> tools)
     {
-        Throw.IfNull(builder);
-        Throw.IfNull(tools);
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(tools);
 
         foreach (var tool in tools)
         {
@@ -90,8 +91,8 @@ public static partial class McpServerBuilderExtensions
     [RequiresUnreferencedCode(WithToolsRequiresUnreferencedCodeMessage)]
     public static IMcpServerBuilder WithTools(this IMcpServerBuilder builder, IEnumerable<Type> toolTypes, JsonSerializerOptions? serializerOptions = null)
     {
-        Throw.IfNull(builder);
-        Throw.IfNull(toolTypes);
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(toolTypes);
 
         foreach (var toolType in toolTypes)
         {
@@ -143,7 +144,7 @@ public static partial class McpServerBuilderExtensions
     [RequiresUnreferencedCode(WithToolsRequiresUnreferencedCodeMessage)]
     public static IMcpServerBuilder WithToolsFromAssembly(this IMcpServerBuilder builder, Assembly? toolAssembly = null, JsonSerializerOptions? serializerOptions = null)
     {
-        Throw.IfNull(builder);
+        ArgumentNullException.ThrowIfNull(builder);
 
         toolAssembly ??= Assembly.GetCallingAssembly();
 
@@ -178,7 +179,7 @@ public static partial class McpServerBuilderExtensions
         this IMcpServerBuilder builder,
         JsonSerializerOptions? serializerOptions = null)
     {
-        Throw.IfNull(builder);
+        ArgumentNullException.ThrowIfNull(builder);
 
         foreach (var promptMethod in typeof(TPromptType).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
         {
@@ -201,8 +202,8 @@ public static partial class McpServerBuilderExtensions
     /// <exception cref="ArgumentNullException"><paramref name="prompts"/> is <see langword="null"/>.</exception>
     public static IMcpServerBuilder WithPrompts(this IMcpServerBuilder builder, IEnumerable<McpServerPrompt> prompts)
     {
-        Throw.IfNull(builder);
-        Throw.IfNull(prompts);
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(prompts);
 
         foreach (var prompt in prompts)
         {
@@ -230,8 +231,8 @@ public static partial class McpServerBuilderExtensions
     [RequiresUnreferencedCode(WithPromptsRequiresUnreferencedCodeMessage)]
     public static IMcpServerBuilder WithPrompts(this IMcpServerBuilder builder, IEnumerable<Type> promptTypes, JsonSerializerOptions? serializerOptions = null)
     {
-        Throw.IfNull(builder);
-        Throw.IfNull(promptTypes);
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(promptTypes);
 
         foreach (var promptType in promptTypes)
         {
@@ -283,7 +284,7 @@ public static partial class McpServerBuilderExtensions
     [RequiresUnreferencedCode(WithPromptsRequiresUnreferencedCodeMessage)]
     public static IMcpServerBuilder WithPromptsFromAssembly(this IMcpServerBuilder builder, Assembly? promptAssembly = null, JsonSerializerOptions? serializerOptions = null)
     {
-        Throw.IfNull(builder);
+        ArgumentNullException.ThrowIfNull(builder);
 
         promptAssembly ??= Assembly.GetCallingAssembly();
 
@@ -315,7 +316,7 @@ public static partial class McpServerBuilderExtensions
         DynamicallyAccessedMemberTypes.PublicConstructors)] TResourceType>(
         this IMcpServerBuilder builder)
     {
-        Throw.IfNull(builder);
+        ArgumentNullException.ThrowIfNull(builder);
 
         foreach (var resourceTemplateMethod in typeof(TResourceType).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
         {
@@ -338,8 +339,8 @@ public static partial class McpServerBuilderExtensions
     /// <exception cref="ArgumentNullException"><paramref name="resourceTemplates"/> is <see langword="null"/>.</exception>
     public static IMcpServerBuilder WithResources(this IMcpServerBuilder builder, IEnumerable<McpServerResource> resourceTemplates)
     {
-        Throw.IfNull(builder);
-        Throw.IfNull(resourceTemplates);
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(resourceTemplates);
 
         foreach (var resourceTemplate in resourceTemplates)
         {
@@ -366,8 +367,8 @@ public static partial class McpServerBuilderExtensions
     [RequiresUnreferencedCode(WithResourcesRequiresUnreferencedCodeMessage)]
     public static IMcpServerBuilder WithResources(this IMcpServerBuilder builder, IEnumerable<Type> resourceTemplateTypes)
     {
-        Throw.IfNull(builder);
-        Throw.IfNull(resourceTemplateTypes);
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(resourceTemplateTypes);
 
         foreach (var resourceTemplateType in resourceTemplateTypes)
         {
@@ -418,7 +419,7 @@ public static partial class McpServerBuilderExtensions
     [RequiresUnreferencedCode(WithResourcesRequiresUnreferencedCodeMessage)]
     public static IMcpServerBuilder WithResourcesFromAssembly(this IMcpServerBuilder builder, Assembly? resourceAssembly = null)
     {
-        Throw.IfNull(builder);
+        ArgumentNullException.ThrowIfNull(builder);
 
         resourceAssembly ??= Assembly.GetCallingAssembly();
 
@@ -453,7 +454,7 @@ public static partial class McpServerBuilderExtensions
     /// </remarks>
     public static IMcpServerBuilder WithListResourceTemplatesHandler(this IMcpServerBuilder builder, Func<RequestContext<ListResourceTemplatesRequestParams>, CancellationToken, ValueTask<ListResourceTemplatesResult>> handler)
     {
-        Throw.IfNull(builder);
+        ArgumentNullException.ThrowIfNull(builder);
 
         builder.Services.Configure<McpServerHandlers>(s => s.ListResourceTemplatesHandler = handler);
         return builder;
@@ -486,7 +487,7 @@ public static partial class McpServerBuilderExtensions
     /// </remarks>
     public static IMcpServerBuilder WithListToolsHandler(this IMcpServerBuilder builder, Func<RequestContext<ListToolsRequestParams>, CancellationToken, ValueTask<ListToolsResult>> handler)
     {
-        Throw.IfNull(builder);
+        ArgumentNullException.ThrowIfNull(builder);
 
         builder.Services.Configure<McpServerHandlers>(s => s.ListToolsHandler = handler);
         return builder;
@@ -506,7 +507,7 @@ public static partial class McpServerBuilderExtensions
     /// </remarks>
     public static IMcpServerBuilder WithCallToolHandler(this IMcpServerBuilder builder, Func<RequestContext<CallToolRequestParams>, CancellationToken, ValueTask<CallToolResponse>> handler)
     {
-        Throw.IfNull(builder);
+        ArgumentNullException.ThrowIfNull(builder);
 
         builder.Services.Configure<McpServerHandlers>(s => s.CallToolHandler = handler);
         return builder;
@@ -539,7 +540,7 @@ public static partial class McpServerBuilderExtensions
     /// </remarks>
     public static IMcpServerBuilder WithListPromptsHandler(this IMcpServerBuilder builder, Func<RequestContext<ListPromptsRequestParams>, CancellationToken, ValueTask<ListPromptsResult>> handler)
     {
-        Throw.IfNull(builder);
+        ArgumentNullException.ThrowIfNull(builder);
 
         builder.Services.Configure<McpServerHandlers>(s => s.ListPromptsHandler = handler);
         return builder;
@@ -554,7 +555,7 @@ public static partial class McpServerBuilderExtensions
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     public static IMcpServerBuilder WithGetPromptHandler(this IMcpServerBuilder builder, Func<RequestContext<GetPromptRequestParams>, CancellationToken, ValueTask<GetPromptResult>> handler)
     {
-        Throw.IfNull(builder);
+        ArgumentNullException.ThrowIfNull(builder);
 
         builder.Services.Configure<McpServerHandlers>(s => s.GetPromptHandler = handler);
         return builder;
@@ -575,7 +576,7 @@ public static partial class McpServerBuilderExtensions
     /// </remarks>
     public static IMcpServerBuilder WithListResourcesHandler(this IMcpServerBuilder builder, Func<RequestContext<ListResourcesRequestParams>, CancellationToken, ValueTask<ListResourcesResult>> handler)
     {
-        Throw.IfNull(builder);
+        ArgumentNullException.ThrowIfNull(builder);
 
         builder.Services.Configure<McpServerHandlers>(s => s.ListResourcesHandler = handler);
         return builder;
@@ -594,7 +595,7 @@ public static partial class McpServerBuilderExtensions
     /// </remarks>
     public static IMcpServerBuilder WithReadResourceHandler(this IMcpServerBuilder builder, Func<RequestContext<ReadResourceRequestParams>, CancellationToken, ValueTask<ReadResourceResult>> handler)
     {
-        Throw.IfNull(builder);
+        ArgumentNullException.ThrowIfNull(builder);
 
         builder.Services.Configure<McpServerHandlers>(s => s.ReadResourceHandler = handler);
         return builder;
@@ -613,7 +614,7 @@ public static partial class McpServerBuilderExtensions
     /// </remarks>
     public static IMcpServerBuilder WithCompleteHandler(this IMcpServerBuilder builder, Func<RequestContext<CompleteRequestParams>, CancellationToken, ValueTask<CompleteResult>> handler)
     {
-        Throw.IfNull(builder);
+        ArgumentNullException.ThrowIfNull(builder);
 
         builder.Services.Configure<McpServerHandlers>(s => s.CompleteHandler = handler);
         return builder;
@@ -643,7 +644,7 @@ public static partial class McpServerBuilderExtensions
     /// </remarks>
     public static IMcpServerBuilder WithSubscribeToResourcesHandler(this IMcpServerBuilder builder, Func<RequestContext<SubscribeRequestParams>, CancellationToken, ValueTask<EmptyResult>> handler)
     {
-        Throw.IfNull(builder);
+        ArgumentNullException.ThrowIfNull(builder);
 
         builder.Services.Configure<McpServerHandlers>(s => s.SubscribeToResourcesHandler = handler);
         return builder;
@@ -673,7 +674,7 @@ public static partial class McpServerBuilderExtensions
     /// </remarks>
     public static IMcpServerBuilder WithUnsubscribeFromResourcesHandler(this IMcpServerBuilder builder, Func<RequestContext<UnsubscribeRequestParams>, CancellationToken, ValueTask<EmptyResult>> handler)
     {
-        Throw.IfNull(builder);
+        ArgumentNullException.ThrowIfNull(builder);
 
         builder.Services.Configure<McpServerHandlers>(s => s.UnsubscribeFromResourcesHandler = handler);
         return builder;
@@ -700,7 +701,7 @@ public static partial class McpServerBuilderExtensions
     /// </remarks>
     public static IMcpServerBuilder WithSetLoggingLevelHandler(this IMcpServerBuilder builder, Func<RequestContext<SetLevelRequestParams>, CancellationToken, ValueTask<EmptyResult>> handler)
     {
-        Throw.IfNull(builder);
+        ArgumentNullException.ThrowIfNull(builder);
 
         builder.Services.Configure<McpServerHandlers>(s => s.SetLoggingLevelHandler = handler);
         return builder;
@@ -728,10 +729,15 @@ public static partial class McpServerBuilderExtensions
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     public static IMcpServerBuilder WithStdioServerTransport(this IMcpServerBuilder builder)
     {
-        Throw.IfNull(builder);
+        ArgumentNullException.ThrowIfNull(builder);
 
         AddSingleSessionServerDependencies(builder.Services);
-        builder.Services.AddSingleton<ITransport, StdioServerTransport>();
+        builder.Services.AddSingleton<ITransport>(sp =>
+        {
+            var serverOptions = sp.GetRequiredService<IOptions<McpServerOptions>>();
+            var loggerFactory = sp.GetService<ILoggerFactory>();
+            return new StdioServerTransport(serverOptions.Value, loggerFactory);
+        });
 
         return builder;
     }
@@ -751,12 +757,39 @@ public static partial class McpServerBuilderExtensions
         Stream inputStream,
         Stream outputStream)
     {
-        Throw.IfNull(builder);
-        Throw.IfNull(inputStream);
-        Throw.IfNull(outputStream);
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(inputStream);
+        ArgumentNullException.ThrowIfNull(outputStream);
 
         AddSingleSessionServerDependencies(builder.Services);
         builder.Services.AddSingleton<ITransport>(new StreamServerTransport(inputStream, outputStream));
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds the services necessary for <see cref="M:McpEndpointRouteBuilderExtensions.MapMcp"/>
+    /// to handle MCP requests and sessions using the MCP Streamable HTTP transport. For more information on configuring the underlying HTTP server
+    /// to control things like port binding custom TLS certificates, see the <see href="https://learn.microsoft.com/aspnet/core/fundamentals/minimal-apis">Minimal APIs quick reference</see>.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="configureOptions">Configures options for the Streamable HTTP transport. This allows configuring per-session
+    /// <see cref="McpServerOptions"/> and running logic before and after a session.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    public static IMcpServerBuilder WithHttpTransport(this IMcpServerBuilder builder, Action<HttpServerTransportOptions>? configureOptions = null)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.Services.TryAddSingleton<StreamableHttpHandler>();
+        builder.Services.TryAddSingleton<SseHandler>();
+        builder.Services.AddHostedService<IdleTrackingBackgroundService>();
+        builder.Services.AddDataProtection();
+
+        if (configureOptions is not null)
+        {
+            builder.Services.Configure(configureOptions);
+        }
 
         return builder;
     }
