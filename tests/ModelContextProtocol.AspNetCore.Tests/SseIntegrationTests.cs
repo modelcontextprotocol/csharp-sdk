@@ -8,7 +8,6 @@ using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 using TestServerWithHosting.Tools;
 
