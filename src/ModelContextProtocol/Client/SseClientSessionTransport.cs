@@ -92,26 +92,18 @@ internal sealed partial class SseClientSessionTransport : TransportBase
         StreamableHttpClientSessionTransport.CopyAdditionalHeaders(httpRequestMessage.Headers, _options.AdditionalHeaders);
         var response = await _httpClient.SendAsync(httpRequestMessage, cancellationToken).ConfigureAwait(false);
 
-        response.EnsureSuccessStatusCode();
-
-        var responseContent = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-
-        if (string.IsNullOrEmpty(responseContent) || responseContent.Equals("accepted", StringComparison.OrdinalIgnoreCase))
-        {
-            LogAcceptedPost(Name, messageId);
-        }
-        else
+        if (!response.IsSuccessStatusCode)
         {
             if (_logger.IsEnabled(LogLevel.Trace))
             {
-                LogRejectedPostSensitive(Name, messageId, responseContent);
+                LogRejectedPostSensitive(Name, messageId, await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
             }
             else
             {
                 LogRejectedPost(Name, messageId);
             }
 
-            throw new InvalidOperationException("Failed to send message");
+            response.EnsureSuccessStatusCode();
         }
     }
 
