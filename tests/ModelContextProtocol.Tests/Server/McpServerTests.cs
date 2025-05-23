@@ -5,6 +5,7 @@ using ModelContextProtocol.Tests.Utils;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using ModelContextProtocol.Logging;
 
 namespace ModelContextProtocol.Tests.Server;
 
@@ -168,6 +169,24 @@ public class McpServerTests : LoggedTest
             serverCapabilities: null,
             method: RequestMethods.Ping,
             configureOptions: null,
+            assertResult: response =>
+            {
+                JsonObject jObj = Assert.IsType<JsonObject>(response);
+                Assert.Empty(jObj);
+            });
+    }
+    
+    [Fact]
+    public async Task Can_Handle_Logging()
+    {
+        await Can_Handle_Requests(
+            serverCapabilities: null,
+            method: RequestMethods.Ping,
+            configureOptions: options =>
+            {
+                options.LogHandler = (context) =>
+                    Assert.True(context.Status is McpStatus.RequestReceived or McpStatus.ResponseSent);
+            },
             assertResult: response =>
             {
                 JsonObject jObj = Assert.IsType<JsonObject>(response);

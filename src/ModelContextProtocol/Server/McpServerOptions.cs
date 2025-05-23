@@ -1,3 +1,4 @@
+using ModelContextProtocol.Logging;
 using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.Server;
@@ -76,4 +77,9 @@ public class McpServerOptions
     /// </para>
     /// </remarks>
     public Implementation? KnownClientInfo { get; set; }
+    
+    /// <summary>
+    /// Gets or sets a log handler that gets notified when log messages are emitted at the request/response flow. 
+    /// </summary>
+    public McpLogHandler? LogHandler { get; set; }
 }
