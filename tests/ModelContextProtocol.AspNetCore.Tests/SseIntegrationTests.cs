@@ -60,31 +60,19 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
     }
 
     [Fact]
-    public async Task ConnectAndReceiveMessage_ServerReturningResponseInPostRequest_WithFullEndpointEventUri()
+    public async Task ConnectAndReceiveMessage_ServerReturningJsonInPostRequest()
     {
         await using var app = Builder.Build();
-        MapSseEndpointRespondingInPostRequest(app,
-            request => new JsonRpcResponse
-            {
-                Id = request.Id,
-                Result = JsonSerializer.SerializeToNode(
-                    new InitializeResult
-                    {
-                        Capabilities = new(),
-                        ServerInfo = new() { Name = "TestServer", Version = "1.0" },
-                        ProtocolVersion = "2024-11-05"
-                    }, McpJsonUtilities.DefaultOptions),
-            });
+        MapAbsoluteEndpointUriMcp(app, respondInJson: true);
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
         await using var mcpClient = await ConnectMcpClientAsync();
 
         // Send a test message through POST endpoint
-        JsonRpcRequest request = new() { Method = "TestMethod", Id = new(42), Params = null };
-        JsonRpcResponse response = await mcpClient.SendRequestAsync(request, cancellationToken: TestContext.Current.CancellationToken);
+        await mcpClient.SendNotificationAsync("test/message", new Envelope { Message = "Hello, SSE!" }, serializerOptions: JsonContext.Default.Options, cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(request.Id, response.Id);
+        Assert.True(true);
     }
 
     [Fact]
@@ -249,7 +237,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         Assert.Equal("Failed to add header '' with value '' from AdditionalHeaders.", ex.Message);
     }
 
-    private static void MapAbsoluteEndpointUriMcp(IEndpointRouteBuilder endpoints)
+    private static void MapAbsoluteEndpointUriMcp(IEndpointRouteBuilder endpoints, bool respondInJson = false)
     {
         var loggerFactory = endpoints.ServiceProvider.GetRequiredService<ILoggerFactory>();
         var optionsSnapshot = endpoints.ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>();
@@ -296,7 +284,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
                 await Results.BadRequest("Session not started.").ExecuteAsync(context);
                 return;
             }
-            var message = (JsonRpcMessage?)await context.Request.ReadFromJsonAsync(McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)), context.RequestAborted);
+            var message = await context.Request.ReadFromJsonAsync<JsonRpcMessage>(McpJsonUtilities.DefaultOptions, context.RequestAborted);
             if (message is null)
             {
                 await Results.BadRequest("No message in request body.").ExecuteAsync(context);
@@ -305,68 +293,15 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
 
             await session.OnMessageReceivedAsync(message, context.RequestAborted);
             context.Response.StatusCode = StatusCodes.Status202Accepted;
-            await context.Response.WriteAsync("Accepted");
-        });
-    }
 
-    private static void MapSseEndpointRespondingInPostRequest(IEndpointRouteBuilder endpoints, Func<JsonRpcRequest, JsonRpcResponse> requestHandler)
-    {
-        var loggerFactory = endpoints.ServiceProvider.GetRequiredService<ILoggerFactory>();
-        var optionsSnapshot = endpoints.ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>();
-
-        var routeGroup = endpoints.MapGroup("");
-        SseResponseStreamTransport? session = null;
-
-        routeGroup.MapGet("/sse", async context =>
-        {
-            var response = context.Response;
-            var requestAborted = context.RequestAborted;
-
-            response.Headers.ContentType = "text/event-stream";
-
-            await using var transport = new SseResponseStreamTransport(response.Body, "http://localhost/message");
-            session = transport;
-
-            try
+            if (respondInJson)
             {
-                var transportTask = transport.RunAsync(cancellationToken: requestAborted);
-                await using var server = McpServerFactory.Create(transport, optionsSnapshot.Value, loggerFactory, endpoints.ServiceProvider);
-
-                try
-                {
-                    await server.RunAsync(requestAborted);
-                }
-                finally
-                {
-                    await transport.DisposeAsync();
-                    await transportTask;
-                }
+                await context.Response.WriteAsJsonAsync(message, McpJsonUtilities.DefaultOptions, cancellationToken: context.RequestAborted);
             }
-            catch (OperationCanceledException) when (requestAborted.IsCancellationRequested)
+            else
             {
-                // RequestAborted always triggers when the client disconnects before a complete response body is written,
-                // but this is how SSE connections are typically closed.
+                await context.Response.WriteAsync("Accepted");
             }
-        });
-
-        routeGroup.MapPost("/message", async context =>
-        {
-            if (session is null)
-            {
-                await Results.BadRequest("Session not started.").ExecuteAsync(context);
-                return;
-            }
-            var message = (JsonRpcRequest?)await context.Request.ReadFromJsonAsync(McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcRequest)), context.RequestAborted);
-            if (message is null)
-            {
-                await Results.BadRequest("No message in request body.").ExecuteAsync(context);
-                return;
-            }
-
-            var response = requestHandler(message);
-
-            context.Response.StatusCode = StatusCodes.Status202Accepted;
-            await context.Response.WriteAsJsonAsync(response, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcResponse)), cancellationToken: context.RequestAborted);
         });
     }
 

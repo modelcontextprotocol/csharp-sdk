@@ -105,13 +105,6 @@ internal sealed partial class SseClientSessionTransport : TransportBase
 
             response.EnsureSuccessStatusCode();
         }
-
-        if (response.Content.Headers.ContentType?.MediaType is "application/json")
-        {
-            // Certain MCP servers implementing SSE may return the response in the current POST request instead of the SSE stream.
-            // Even though this is not officially part of the SSE protocol, we handle it here.
-            await ProcessInboundMessage(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
-        }
     }
 
     private async Task CloseAsync()
@@ -178,7 +171,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
                         break;
 
                     case "message":
-                        await ProcessInboundMessage(sseEvent.Data, cancellationToken).ConfigureAwait(false);
+                        await ProcessSseMessage(sseEvent.Data, cancellationToken).ConfigureAwait(false);
                         break;
                 }
             }
@@ -204,7 +197,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
         }
     }
 
-    private async Task ProcessInboundMessage(string data, CancellationToken cancellationToken)
+    private async Task ProcessSseMessage(string data, CancellationToken cancellationToken)
     {
         if (!IsConnected)
         {
