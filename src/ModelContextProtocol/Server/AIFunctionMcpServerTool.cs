@@ -247,7 +247,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     {
         AIFunction = function;
         ProtocolTool = tool;
-        _logger = serviceProvider?.GetService<ILoggerFactory>()?.CreateLogger<AIFunctionMcpServerTool>() ?? (ILogger)NullLogger.Instance;
+        _logger = serviceProvider?.GetService<ILoggerFactory>()?.CreateLogger<McpServerTool>() ?? (ILogger)NullLogger.Instance;
     }
 
     /// <inheritdoc />
