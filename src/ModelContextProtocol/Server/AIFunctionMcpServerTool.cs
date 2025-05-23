@@ -19,11 +19,11 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
     /// </summary>
     public static new AIFunctionMcpServerTool Create(
-    Delegate method,
-    McpServerToolCreateOptions? options)
+        Delegate method,
+        McpServerToolCreateOptions? options)
     {
         Throw.IfNull(method);
-
+        
         options = DeriveOptions(method.Method, options);
 
         return Create(method.Method, method.Target, options);
@@ -33,26 +33,26 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="MethodInfo"/> instance.
     /// </summary>
     public static new AIFunctionMcpServerTool Create(
-    MethodInfo method,
-    object? target,
-    McpServerToolCreateOptions? options)
+        MethodInfo method,
+        object? target,
+        McpServerToolCreateOptions? options)
     {
         Throw.IfNull(method);
 
         options = DeriveOptions(method, options);
 
         return Create(
-        AIFunctionFactory.Create(method, target, CreateAIFunctionFactoryOptions(method, options)),
-        options);
+            AIFunctionFactory.Create(method, target, CreateAIFunctionFactoryOptions(method, options)),
+            options);
     }
 
     /// <summary>
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="MethodInfo"/> instance.
     /// </summary>
     public static new AIFunctionMcpServerTool Create(
-    MethodInfo method,
-    Func<RequestContext<CallToolRequestParams>, object> createTargetFunc,
-    McpServerToolCreateOptions? options)
+        MethodInfo method,
+        Func<RequestContext<CallToolRequestParams>, object> createTargetFunc,
+        McpServerToolCreateOptions? options)
     {
         Throw.IfNull(method);
         Throw.IfNull(createTargetFunc);
@@ -60,112 +60,112 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         options = DeriveOptions(method, options);
 
         return Create(
-        AIFunctionFactory.Create(method, args =>
-        {
-            var request = (RequestContext<CallToolRequestParams>)args.Context![typeof(RequestContext<CallToolRequestParams>)]!;
-            return createTargetFunc(request);
-        }, CreateAIFunctionFactoryOptions(method, options)),
-        options);
+            AIFunctionFactory.Create(method, args =>
+            {
+                var request = (RequestContext<CallToolRequestParams>)args.Context![typeof(RequestContext<CallToolRequestParams>)]!;
+                return createTargetFunc(request);
+            }, CreateAIFunctionFactoryOptions(method, options)),
+            options);
     }
 
     // TODO: Fix the need for this suppression.
     [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2111:ReflectionToDynamicallyAccessedMembers",
-    Justification = "AIFunctionFactory ensures that the Type passed to AIFunctionFactoryOptions.CreateInstance has public constructors preserved")]
+        Justification = "AIFunctionFactory ensures that the Type passed to AIFunctionFactoryOptions.CreateInstance has public constructors preserved")]
     internal static Func<Type, AIFunctionArguments, object> GetCreateInstanceFunc() =>
-    static ([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] type, args) => args.Services is { } services ?
-    ActivatorUtilities.CreateInstance(services, type) :
-    Activator.CreateInstance(type)!;
+        static ([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] type, args) => args.Services is { } services ?
+            ActivatorUtilities.CreateInstance(services, type) :
+            Activator.CreateInstance(type)!;
 
     private static AIFunctionFactoryOptions CreateAIFunctionFactoryOptions(
-    MethodInfo method, McpServerToolCreateOptions? options) =>
-    new()
-    {
-        Name = options?.Name ?? method.GetCustomAttribute<McpServerToolAttribute>()?.Name,
-        Description = options?.Description,
-        MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
-        SerializerOptions = options?.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
-        ConfigureParameterBinding = pi =>
-    {
-        if (pi.ParameterType == typeof(RequestContext<CallToolRequestParams>))
+        MethodInfo method, McpServerToolCreateOptions? options) =>
+        new()
         {
-            return new()
+            Name = options?.Name ?? method.GetCustomAttribute<McpServerToolAttribute>()?.Name,
+            Description = options?.Description,
+            MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
+            SerializerOptions = options?.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
+            ConfigureParameterBinding = pi =>
             {
-                ExcludeFromSchema = true,
-                BindParameter = (pi, args) => GetRequestContext(args),
-            };
-        }
-
-        if (pi.ParameterType == typeof(IMcpServer))
-        {
-            return new()
-            {
-                ExcludeFromSchema = true,
-                BindParameter = (pi, args) => GetRequestContext(args)?.Server,
-            };
-        }
-
-        if (pi.ParameterType == typeof(IProgress<ProgressNotificationValue>))
-        {
-            // Bind IProgress<ProgressNotificationValue> to the progress token in the request,
-            // if there is one. If we can't get one, return a nop progress.
-            return new()
-            {
-                ExcludeFromSchema = true,
-                BindParameter = (pi, args) =>
-            {
-                var requestContent = GetRequestContext(args);
-                if (requestContent?.Server is { } server &&
-            requestContent?.Params?.Meta?.ProgressToken is { } progressToken)
+                if (pi.ParameterType == typeof(RequestContext<CallToolRequestParams>))
                 {
-                    return new TokenProgress(server, progressToken);
+                    return new()
+                    {
+                        ExcludeFromSchema = true,
+                        BindParameter = (pi, args) => GetRequestContext(args),
+                    };
                 }
 
-                return NullProgress.Instance;
+                if (pi.ParameterType == typeof(IMcpServer))
+                {
+                    return new()
+                    {
+                        ExcludeFromSchema = true,
+                        BindParameter = (pi, args) => GetRequestContext(args)?.Server,
+                    };
+                }
+
+                if (pi.ParameterType == typeof(IProgress<ProgressNotificationValue>))
+                {
+                    // Bind IProgress<ProgressNotificationValue> to the progress token in the request,
+                    // if there is one. If we can't get one, return a nop progress.
+                    return new()
+                    {
+                        ExcludeFromSchema = true,
+                        BindParameter = (pi, args) =>
+                        {
+                            var requestContent = GetRequestContext(args);
+                            if (requestContent?.Server is { } server &&
+                                requestContent?.Params?.Meta?.ProgressToken is { } progressToken)
+                            {
+                                return new TokenProgress(server, progressToken);
+                            }
+
+                            return NullProgress.Instance;
+                        },
+                    };
+                }
+
+                if (options?.Services is { } services &&
+                    services.GetService<IServiceProviderIsService>() is { } ispis &&
+                    ispis.IsService(pi.ParameterType))
+                {
+                    return new()
+                    {
+                        ExcludeFromSchema = true,
+                        BindParameter = (pi, args) =>
+                            GetRequestContext(args)?.Services?.GetService(pi.ParameterType) ??
+                            (pi.HasDefaultValue ? null :
+                             throw new ArgumentException("No service of the requested type was found.")),
+                    };
+                }
+
+                if (pi.GetCustomAttribute<FromKeyedServicesAttribute>() is { } keyedAttr)
+                {
+                    return new()
+                    {
+                        ExcludeFromSchema = true,
+                        BindParameter = (pi, args) =>
+                            (GetRequestContext(args)?.Services as IKeyedServiceProvider)?.GetKeyedService(pi.ParameterType, keyedAttr.Key) ??
+                            (pi.HasDefaultValue ? null :
+                             throw new ArgumentException("No service of the requested type was found.")),
+                    };
+                }
+
+                return default;
+
+                static RequestContext<CallToolRequestParams>? GetRequestContext(AIFunctionArguments args)
+                {
+                    if (args.Context?.TryGetValue(typeof(RequestContext<CallToolRequestParams>), out var orc) is true &&
+                        orc is RequestContext<CallToolRequestParams> requestContext)
+                    {
+                        return requestContext;
+                    }
+
+                    return null;
+                }
             },
-            };
-        }
-
-        if (options?.Services is { } services &&
-    services.GetService<IServiceProviderIsService>() is { } ispis &&
-    ispis.IsService(pi.ParameterType))
-        {
-            return new()
-            {
-                ExcludeFromSchema = true,
-                BindParameter = (pi, args) =>
-            GetRequestContext(args)?.Services?.GetService(pi.ParameterType) ??
-            (pi.HasDefaultValue ? null :
-            throw new ArgumentException("No service of the requested type was found.")),
-            };
-        }
-
-        if (pi.GetCustomAttribute<FromKeyedServicesAttribute>() is { } keyedAttr)
-        {
-            return new()
-            {
-                ExcludeFromSchema = true,
-                BindParameter = (pi, args) =>
-            (GetRequestContext(args)?.Services as IKeyedServiceProvider)?.GetKeyedService(pi.ParameterType, keyedAttr.Key) ??
-            (pi.HasDefaultValue ? null :
-            throw new ArgumentException("No service of the requested type was found.")),
-            };
-        }
-
-        return default;
-
-        static RequestContext<CallToolRequestParams>? GetRequestContext(AIFunctionArguments args)
-        {
-            if (args.Context?.TryGetValue(typeof(RequestContext<CallToolRequestParams>), out var orc) is true &&
-        orc is RequestContext<CallToolRequestParams> requestContext)
-            {
-                return requestContext;
-            }
-
-            return null;
-        }
-    },
-        JsonSchemaCreateOptions = options?.SchemaCreateOptions,
-    };
+            JsonSchemaCreateOptions = options?.SchemaCreateOptions,
+        };
 
     /// <summary>Creates an <see cref="McpServerTool"/> that wraps the specified <see cref="AIFunction"/>.</summary>
     public static new AIFunctionMcpServerTool Create(AIFunction function, McpServerToolCreateOptions? options)
@@ -176,16 +176,16 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         {
             Name = options?.Name ?? function.Name,
             Description = options?.Description ?? function.Description,
-            InputSchema = function.JsonSchema,
+            InputSchema = function.JsonSchema,     
         };
 
         if (options is not null)
         {
             if (options.Title is not null ||
-            options.Idempotent is not null ||
-            options.Destructive is not null ||
-            options.OpenWorld is not null ||
-            options.ReadOnly is not null)
+                options.Idempotent is not null ||
+                options.Destructive is not null ||
+                options.OpenWorld is not null ||
+                options.ReadOnly is not null)
             {
                 tool.Annotations = new()
                 {
@@ -255,7 +255,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
     /// <inheritdoc />
     public override async ValueTask<CallToolResponse> InvokeAsync(
-    RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default)
+        RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
@@ -285,8 +285,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             ToolCallError(request.Params?.Name ?? string.Empty, e);
 
             string errorMessage = e is McpException ?
-            $"An error occurred invoking '{request.Params?.Name}': {e.Message}" :
-            $"An error occurred invoking '{request.Params?.Name}'.";
+                $"An error occurred invoking '{request.Params?.Name}': {e.Message}" :
+                $"An error occurred invoking '{request.Params?.Name}'.";
 
             return new()
             {
@@ -307,38 +307,38 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             {
                 Content = []
             },
-
+            
             string text => new()
             {
                 Content = [new() { Text = text, Type = "text" }]
             },
-
+            
             Content content => new()
             {
                 Content = [content]
             },
-
+            
             IEnumerable<string> texts => new()
             {
                 Content = [.. texts.Select(x => new Content() { Type = "text", Text = x ?? string.Empty })]
             },
-
+            
             IEnumerable<AIContent> contentItems => ConvertAIContentEnumerableToCallToolResponse(contentItems),
-
+            
             IEnumerable<Content> contents => new()
             {
                 Content = [.. contents]
             },
-
+            
             CallToolResponse callToolResponse => callToolResponse,
 
             _ => new()
             {
                 Content = [new()
-{
-Text = JsonSerializer.Serialize(result, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))),
-Type = "text"
-}]
+                {
+                    Text = JsonSerializer.Serialize(result, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))),
+                    Type = "text"
+                }]
             },
         };
     }
