@@ -1,5 +1,7 @@
 ﻿using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
@@ -11,6 +13,8 @@ namespace ModelContextProtocol.Server;
 /// <summary>Provides an <see cref="McpServerTool"/> that's implemented via an <see cref="AIFunction"/>.</summary>
 internal sealed class AIFunctionMcpServerTool : McpServerTool
 {
+    private readonly ILogger _logger;
+
     /// <summary>
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
     /// </summary>
@@ -19,7 +23,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
         McpServerToolCreateOptions? options)
     {
         Throw.IfNull(method);
-        
+
         options = DeriveOptions(method.Method, options);
 
         return Create(method.Method, method.Target, options);
@@ -172,7 +176,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
         {
             Name = options?.Name ?? function.Name,
             Description = options?.Description ?? function.Description,
-            InputSchema = function.JsonSchema,     
+            InputSchema = function.JsonSchema,
         };
 
         if (options is not null)
@@ -194,7 +198,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             }
         }
 
-        return new AIFunctionMcpServerTool(function, tool);
+        return new AIFunctionMcpServerTool(function, tool, options?.Services);
     }
 
     private static McpServerToolCreateOptions DeriveOptions(MethodInfo method, McpServerToolCreateOptions? options)
@@ -239,10 +243,11 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
     internal AIFunction AIFunction { get; }
 
     /// <summary>Initializes a new instance of the <see cref="McpServerTool"/> class.</summary>
-    private AIFunctionMcpServerTool(AIFunction function, Tool tool)
+    private AIFunctionMcpServerTool(AIFunction function, Tool tool, IServiceProvider? serviceProvider)
     {
         AIFunction = function;
         ProtocolTool = tool;
+        _logger = serviceProvider?.GetService<ILoggerFactory>()?.CreateLogger<AIFunctionMcpServerTool>() ?? (ILogger)NullLogger.Instance;
     }
 
     /// <inheritdoc />
@@ -277,6 +282,9 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
+            _logger.LogError(e, "Error invoking AIFunction tool '{ToolName}' with arguments '{Args}'.",
+                request.Params?.Name, string.Join(",", request.Params?.Arguments?.Keys ?? Array.Empty<string>()));
+
             string errorMessage = e is McpException ?
                 $"An error occurred invoking '{request.Params?.Name}': {e.Message}" :
                 $"An error occurred invoking '{request.Params?.Name}'.";
@@ -300,29 +308,29 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             {
                 Content = []
             },
-            
+
             string text => new()
             {
                 Content = [new() { Text = text, Type = "text" }]
             },
-            
+
             Content content => new()
             {
                 Content = [content]
             },
-            
+
             IEnumerable<string> texts => new()
             {
                 Content = [.. texts.Select(x => new Content() { Type = "text", Text = x ?? string.Empty })]
             },
-            
+
             IEnumerable<AIContent> contentItems => ConvertAIContentEnumerableToCallToolResponse(contentItems),
-            
+
             IEnumerable<Content> contents => new()
             {
                 Content = [.. contents]
             },
-            
+
             CallToolResponse callToolResponse => callToolResponse,
 
             _ => new()
