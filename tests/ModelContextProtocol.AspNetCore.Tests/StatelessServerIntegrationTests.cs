@@ -9,6 +9,6 @@ public class StatelessServerIntegrationTests(SseServerIntegrationTestFixture fix
     {
         Endpoint = new Uri("http://localhost/stateless"),
         Name = "In-memory Streamable HTTP Client",
-        UseStreamableHttp = true,
+        TransportMode = HttpTransportMode.StreamableHttp,
     };
 }
