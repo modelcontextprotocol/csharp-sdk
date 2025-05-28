@@ -36,7 +36,7 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
     /// <param name="httpClient">The HTTP client instance used for requests.</param>
     /// <param name="loggerFactory">Logger factory for creating loggers used for diagnostic output during transport operations.</param>
     /// <param name="ownsHttpClient">
-    /// <see langword="true"/> to dispose of <paramref name="httpClient"/> when the transport is disposed; 
+    /// <see langword="true"/> to dispose of <paramref name="httpClient"/> when the transport is disposed;
     /// <see langword="false"/> if the caller is retaining ownership of the <paramref name="httpClient"/>'s lifetime.
     /// </param>
     public SseClientTransport(SseClientTransportOptions transportOptions, HttpClient httpClient, ILoggerFactory? loggerFactory = null, bool ownsHttpClient = false)

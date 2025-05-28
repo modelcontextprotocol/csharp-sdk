@@ -120,7 +120,7 @@ public abstract partial class TransportBase : ITransport
 
                 case StateConnected:
                     return;
-                
+
                 case StateDisconnected:
                     throw new IOException("Transport is already disconnected and can't be reconnected.");
 

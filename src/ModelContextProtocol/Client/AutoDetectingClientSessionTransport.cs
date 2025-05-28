@@ -65,24 +65,25 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
         {
             LogAttemptingStreamableHttp(_name);
             using var response = await streamableHttpTransport.SendHttpRequestAsync(message, cancellationToken).ConfigureAwait(false);
-            
-            // If the status code is not success, fall back to SSE
-            if (!response.IsSuccessStatusCode)
+
+            if (response.IsSuccessStatusCode)
             {
+                LogUsingStreamableHttp(_name);
+                ActiveTransport = streamableHttpTransport;
+            }
+            else
+            {
+                // If the status code is not success, fall back to SSE
                 LogStreamableHttpFailed(_name, response.StatusCode);
-                
+
                 await streamableHttpTransport.DisposeAsync().ConfigureAwait(false);
                 await InitializeSseTransportAsync(message, cancellationToken).ConfigureAwait(false);
-                return;
             }
-            
-            LogUsingStreamableHttp(_name);
-            ActiveTransport = streamableHttpTransport;
         }
         catch
         {
             // If nothing threw inside the try block, we've either set streamableHttpTransport as the
-            // ActiveTransport, or else we will have disposed it in the !IsSuccessStatusCode if statement.
+            // ActiveTransport, or else we will have disposed it in the !IsSuccessStatusCode else block.
             await streamableHttpTransport.DisposeAsync().ConfigureAwait(false);
             throw;
         }
@@ -97,7 +98,7 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
             LogAttemptingSSE(_name);
             await sseTransport.ConnectAsync(cancellationToken).ConfigureAwait(false);
             await sseTransport.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
-            
+
             LogUsingSSE(_name);
             ActiveTransport = sseTransport;
         }
@@ -124,7 +125,7 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
             _messageChannel.Writer.TryComplete();
         }
     }
-    
+
     [LoggerMessage(Level = LogLevel.Debug, Message = "{EndpointName} attempting to connect using Streamable HTTP transport.")]
     private partial void LogAttemptingStreamableHttp(string endpointName);
 
@@ -133,10 +134,10 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} using Streamable HTTP transport.")]
     private partial void LogUsingStreamableHttp(string endpointName);
-    
+
     [LoggerMessage(Level = LogLevel.Debug, Message = "{EndpointName} attempting to connect using SSE transport.")]
     private partial void LogAttemptingSSE(string endpointName);
-    
+
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} using SSE transport.")]
     private partial void LogUsingSSE(string endpointName);
 }

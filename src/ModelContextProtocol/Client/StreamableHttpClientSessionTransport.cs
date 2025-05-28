@@ -86,7 +86,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         };
 
         CopyAdditionalHeaders(httpRequestMessage.Headers, _options.AdditionalHeaders, _mcpSessionId);
-        
+
         var response = await _httpClient.SendAsync(httpRequestMessage, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
 
         // We'll let the caller decide whether to throw or fall back given an unsuccessful response.
