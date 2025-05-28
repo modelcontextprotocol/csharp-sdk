@@ -37,7 +37,6 @@ public record SseClientTransportOptions
     /// <para>
     /// When set to <see cref="HttpTransportMode.AutoDetect"/> (the default), the client will first attempt to use
     /// Streamable HTTP transport and automatically fall back to SSE transport if the server doesn't support it.
-    /// This provides the best compatibility and matches the behavior of VS Code.
     /// </para>
     /// <para>
     /// <see href="https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http">Streamable HTTP transport specification</see>.
