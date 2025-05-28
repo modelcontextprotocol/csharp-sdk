@@ -66,7 +66,7 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
             case HttpTransportMode.Sse:
                 return await ConnectSseTransportAsync(cancellationToken).ConfigureAwait(false);
             default:
-                throw new ArgumentException($"Unsupported transport mode: {_options.TransportMode}", nameof(_options.TransportMode));
+                throw new InvalidOperationException($"Unsupported transport mode: {_options.TransportMode}");
         }
     }
 

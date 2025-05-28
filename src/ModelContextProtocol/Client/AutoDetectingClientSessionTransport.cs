@@ -79,12 +79,12 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
             LogUsingStreamableHttp(_name);
             ActiveTransport = streamableHttpTransport;
         }
-        finally
+        catch
         {
-            if (ActiveTransport is null)
-            {
-                await streamableHttpTransport.DisposeAsync().ConfigureAwait(false);
-            }
+            // If nothing threw inside the try block, we've either set streamableHttpTransport as the
+            // ActiveTransport, or else we will have disposed it in the !IsSuccessStatusCode if statement.
+            await streamableHttpTransport.DisposeAsync().ConfigureAwait(false);
+            throw;
         }
     }
 
