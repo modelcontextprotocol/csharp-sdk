@@ -240,7 +240,6 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         }
     }
 
-
     internal static void CopyAdditionalHeaders(HttpRequestHeaders headers, Dictionary<string, string>? additionalHeaders, string? sessionId = null)
     {
         if (sessionId is not null)
