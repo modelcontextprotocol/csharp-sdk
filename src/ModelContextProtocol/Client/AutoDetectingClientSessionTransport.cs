@@ -76,8 +76,6 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
                 return;
             }
             
-            await streamableHttpTransport.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
-            
             LogUsingStreamableHttp(_name);
             ActiveTransport = streamableHttpTransport;
         }
