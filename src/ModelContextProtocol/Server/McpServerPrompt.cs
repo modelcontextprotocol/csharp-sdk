@@ -21,8 +21,7 @@ namespace ModelContextProtocol.Server;
 /// <para>
 /// Most commonly, <see cref="McpServerPrompt"/> instances are created using the static <see cref="M:McpServerPrompt.Create"/> methods.
 /// These methods enable creating an <see cref="McpServerPrompt"/> for a method, specified via a <see cref="Delegate"/> or 
-/// <see cref="MethodInfo"/>, and are what are used implicitly by <see cref="McpServerBuilderExtensions.WithPromptsFromAssembly"/> and
-/// <see cref="M:McpServerBuilderExtensions.WithPrompts"/>. The <see cref="M:McpServerPrompt.Create"/> methods
+/// <see cref="MethodInfo"/>, and are what are used implicitly by WithPromptsFromAssembly and WithPrompts. The <see cref="M:McpServerPrompt.Create"/> methods
 /// create <see cref="McpServerPrompt"/> instances capable of working with a large variety of .NET method signatures, automatically handling
 /// how parameters are marshaled into the method from the JSON received from the MCP client, and how the return value is marshaled back
 /// into the <see cref="GetPromptResult"/> that's then serialized and sent back to the client.

@@ -21,8 +21,7 @@ namespace ModelContextProtocol.Server;
 /// <para>
 /// Most commonly, <see cref="McpServerTool"/> instances are created using the static <see cref="M:McpServerTool.Create"/> methods.
 /// These methods enable creating an <see cref="McpServerTool"/> for a method, specified via a <see cref="Delegate"/> or 
-/// <see cref="MethodInfo"/>, and are what are used implicitly by <see cref="McpServerBuilderExtensions.WithToolsFromAssembly"/> and
-/// <see cref="M:McpServerBuilderExtensions.WithTools"/>. The <see cref="M:McpServerTool.Create"/> methods
+/// <see cref="MethodInfo"/>, and are what are used implicitly by WithToolsFromAssembly and WithTools. The <see cref="M:McpServerTool.Create"/> methods
 /// create <see cref="McpServerTool"/> instances capable of working with a large variety of .NET method signatures, automatically handling
 /// how parameters are marshaled into the method from the JSON received from the MCP client, and how the return value is marshaled back
 /// into the <see cref="CallToolResponse"/> that's then serialized and sent back to the client.

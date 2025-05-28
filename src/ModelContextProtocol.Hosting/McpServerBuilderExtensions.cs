@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol;
+using ModelContextProtocol.Hosting;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Diagnostics.CodeAnalysis;
@@ -124,7 +125,7 @@ public static partial class McpServerBuilderExtensions
     /// <para>
     /// This method scans the specified assembly (or the calling assembly if none is provided) for classes
     /// marked with the <see cref="McpServerToolTypeAttribute"/>. It then discovers all methods within those
-    /// classes that are marked with the <see cref="McpServerToolAttribute"/> and registers them as <see cref="McpServerTool"/>s 
+    /// classes that are marked with the <see cref="McpServerToolAttribute"/> and registers them as <see cref="McpServerTool"/>s
     /// in the <paramref name="builder"/>'s <see cref="IServiceCollection"/>.
     /// </para>
     /// <para>
@@ -264,7 +265,7 @@ public static partial class McpServerBuilderExtensions
     /// <para>
     /// This method scans the specified assembly (or the calling assembly if none is provided) for classes
     /// marked with the <see cref="McpServerPromptTypeAttribute"/>. It then discovers all methods within those
-    /// classes that are marked with the <see cref="McpServerPromptAttribute"/> and registers them as <see cref="McpServerPrompt"/>s 
+    /// classes that are marked with the <see cref="McpServerPromptAttribute"/> and registers them as <see cref="McpServerPrompt"/>s
     /// in the <paramref name="builder"/>'s <see cref="IServiceCollection"/>.
     /// </para>
     /// <para>
@@ -399,7 +400,7 @@ public static partial class McpServerBuilderExtensions
     /// <para>
     /// This method scans the specified assembly (or the calling assembly if none is provided) for classes
     /// marked with the <see cref="McpServerResourceTypeAttribute"/>. It then discovers all members within those
-    /// classes that are marked with the <see cref="McpServerResourceAttribute"/> and registers them as <see cref="McpServerResource"/>s 
+    /// classes that are marked with the <see cref="McpServerResourceAttribute"/> and registers them as <see cref="McpServerResource"/>s
     /// in the <paramref name="builder"/>'s <see cref="IServiceCollection"/>.
     /// </para>
     /// <para>
@@ -480,7 +481,7 @@ public static partial class McpServerBuilderExtensions
     /// </para>
     /// <para>
     /// This method is typically paired with <see cref="WithCallToolHandler"/> to provide a complete tools implementation,
-    /// where <see cref="WithListToolsHandler"/> advertises available tools and <see cref="WithCallToolHandler"/> 
+    /// where <see cref="WithListToolsHandler"/> advertises available tools and <see cref="WithCallToolHandler"/>
     /// executes them when invoked by clients.
     /// </para>
     /// </remarks>
@@ -533,7 +534,7 @@ public static partial class McpServerBuilderExtensions
     /// </para>
     /// <para>
     /// This method is typically paired with <see cref="WithGetPromptHandler"/> to provide a complete prompts implementation,
-    /// where <see cref="WithListPromptsHandler"/> advertises available prompts and <see cref="WithGetPromptHandler"/> 
+    /// where <see cref="WithListPromptsHandler"/> advertises available prompts and <see cref="WithGetPromptHandler"/>
     /// produces them when invoked by clients.
     /// </para>
     /// </remarks>
@@ -608,7 +609,7 @@ public static partial class McpServerBuilderExtensions
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     /// <remarks>
-    /// The completion handler is invoked when clients request suggestions for argument values. 
+    /// The completion handler is invoked when clients request suggestions for argument values.
     /// This enables auto-complete functionality for both prompt arguments and resource references.
     /// </remarks>
     public static IMcpServerBuilder WithCompleteHandler(this IMcpServerBuilder builder, Func<RequestContext<CompleteRequestParams>, CancellationToken, ValueTask<CompleteResult>> handler)
@@ -731,7 +732,12 @@ public static partial class McpServerBuilderExtensions
         Throw.IfNull(builder);
 
         AddSingleSessionServerDependencies(builder.Services);
-        builder.Services.AddSingleton<ITransport, StdioServerTransport>();
+        builder.Services.AddSingleton<ITransport>(sp =>
+        {
+            var serverOptions = sp.GetRequiredService<IOptions<McpServerOptions>>();
+            var loggerFactory = sp.GetService<ILoggerFactory>();
+            return new StdioServerTransport(serverOptions.Value, loggerFactory);
+        });
 
         return builder;
     }

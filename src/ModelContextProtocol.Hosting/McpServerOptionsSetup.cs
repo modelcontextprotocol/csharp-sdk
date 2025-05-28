@@ -1,8 +1,7 @@
 using Microsoft.Extensions.Options;
-using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
-namespace Microsoft.Extensions.DependencyInjection;
+namespace ModelContextProtocol.Hosting;
 
 /// <summary>
 /// Configures the McpServerOptions using addition services from DI.
