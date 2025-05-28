@@ -7,7 +7,7 @@ namespace ModelContextProtocol.Tests.Transport;
 public class SseClientTransportAutoDetectTests(ITestOutputHelper testOutputHelper) : LoggedTest(testOutputHelper)
 {
     [Fact]
-    public async Task AutoDetect_Should_Use_StreamableHttp_When_Server_Supports_It()
+    public async Task AutoDetectMode_UsesStreamableHttp_WhenServerSupportsIt()
     {
         var options = new SseClientTransportOptions
         {
@@ -48,7 +48,7 @@ public class SseClientTransportAutoDetectTests(ITestOutputHelper testOutputHelpe
     }
 
     [Fact] 
-    public async Task AutoDetect_Should_Fallback_To_Sse_When_StreamableHttp_Fails()
+    public async Task AutoDetectMode_FallsBackToSse_WhenStreamableHttpFails()
     {
         var options = new SseClientTransportOptions
         {

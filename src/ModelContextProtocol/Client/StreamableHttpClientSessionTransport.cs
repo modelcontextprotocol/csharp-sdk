@@ -222,11 +222,24 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         }
         catch (JsonException ex)
         {
-            LogTransportMessageParseFailed(Name, ex);
+            LogJsonException(ex, data);
         }
 
         return null;
     }
+
+    private void LogJsonException(JsonException ex, string data)
+    {
+        if (_logger.IsEnabled(LogLevel.Trace))
+        {
+            LogTransportMessageParseFailedSensitive(Name, data, ex);
+        }
+        else
+        {
+            LogTransportMessageParseFailed(Name, ex);
+        }
+    }
+
 
     internal static void CopyAdditionalHeaders(HttpRequestHeaders headers, Dictionary<string, string>? additionalHeaders, string? sessionId = null)
     {

@@ -37,7 +37,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
     }
 
     [Fact]
-    public async Task StreamableHttp_Mode_Should_Work_With_Root_Endpoint()
+    public async Task StreamableHttpMode_Works_WithRootEndpoint()
     {
         Builder.Services.AddMcpServer(options =>
         {
@@ -63,7 +63,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
     }
 
     [Fact]
-    public async Task AutoDetect_Mode_Should_Work_With_Root_Endpoint()
+    public async Task AutoDetectMode_Works_WithRootEndpoint()
     {
         Builder.Services.AddMcpServer(options =>
         {
@@ -89,7 +89,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
     }
 
     [Fact]
-    public async Task AutoDetect_Mode_Should_Work_With_Sse_Endpoint()
+    public async Task AutoDetectMode_Works_WithSseEndpoint()
     {
         Assert.SkipWhen(Stateless, "SSE endpoint is disabled in stateless mode.");
 
@@ -117,7 +117,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
     }
 
     [Fact]
-    public async Task Sse_Mode_Should_Work_With_Sse_Endpoint()
+    public async Task SseMode_Works_WithSseEndpoint()
     {
         Assert.SkipWhen(Stateless, "SSE endpoint is disabled in stateless mode.");
 
