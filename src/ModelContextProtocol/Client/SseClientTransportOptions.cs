@@ -39,6 +39,10 @@ public record SseClientTransportOptions
     /// Streamable HTTP transport and automatically fall back to SSE transport if the server doesn't support it.
     /// This provides the best compatibility and matches the behavior of VS Code.
     /// </para>
+    /// <para>
+    /// <see href="https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http">Streamable HTTP transport specification</see>.
+    /// <see href="https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse">HTTP with SSE transport specification</see>.
+    /// </para>
     /// </remarks>
     public HttpTransportMode TransportMode { get; init; } = HttpTransportMode.AutoDetect;
 
