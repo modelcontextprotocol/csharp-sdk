@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Hosting;
+using ModelContextProtocol.Server;
 
-namespace ModelContextProtocol.Server;
+namespace ModelContextProtocol;
 
 /// <summary>
 /// Hosted service for a single-session (e.g. stdio) MCP server.

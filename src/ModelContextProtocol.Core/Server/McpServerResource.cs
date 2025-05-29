@@ -18,7 +18,7 @@ namespace ModelContextProtocol.Server;
 /// <para>
 /// Most commonly, <see cref="McpServerResource"/> instances are created using the static <see cref="M:McpServerResource.Create"/> methods.
 /// These methods enable creating an <see cref="McpServerResource"/> for a method, specified via a <see cref="Delegate"/> or 
-/// <see cref="MethodInfo"/>, and are what are used implicitly by <see cref="McpServerBuilderExtensions.WithResourcesFromAssembly"/> and
+/// <see cref="MethodInfo"/>, and are what are used implicitly by WithResourcesFromAssembly and
 /// <see cref="M:McpServerBuilderExtensions.WithResources"/>. The <see cref="M:McpServerResource.Create"/> methods
 /// create <see cref="McpServerResource"/> instances capable of working with a large variety of .NET method signatures, automatically handling
 /// how parameters are marshaled into the method from the URI received from the MCP client, and how the return value is marshaled back

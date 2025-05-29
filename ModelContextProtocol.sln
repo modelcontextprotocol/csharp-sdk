@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.13.35507.96
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModelContextProtocol", "src\ModelContextProtocol\ModelContextProtocol.csproj", "{12260CD2-AFFC-4B2E-8898-F442CAA1FA0F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModelContextProtocol.Core", "src\ModelContextProtocol.Core\ModelContextProtocol.Core.csproj", "{12260CD2-AFFC-4B2E-8898-F442CAA1FA0F}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModelContextProtocol.Tests", "tests\ModelContextProtocol.Tests\ModelContextProtocol.Tests.csproj", "{FF41F619-833D-4FA2-8C53-04D0A1D5AA61}"
 EndProject
@@ -53,6 +53,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EverythingServer", "samples\EverythingServer\EverythingServer.csproj", "{17B8453F-AB72-99C5-E5EA-D0B065A6AE65}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModelContextProtocol.AspNetCore", "src\ModelContextProtocol.AspNetCore\ModelContextProtocol.AspNetCore.csproj", "{37B6A5E0-9995-497D-8B43-3BC6870CC716}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModelContextProtocol", "src\ModelContextProtocol\ModelContextProtocol.csproj", "{3F5C7E8A-F123-4D2B-8B9A-1E2F3D4C5B6A}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModelContextProtocol.AspNetCore.Tests", "tests\ModelContextProtocol.AspNetCore.Tests\ModelContextProtocol.AspNetCore.Tests.csproj", "{85557BA6-3D29-4C95-A646-2A972B1C2F25}"
 EndProject
@@ -106,6 +108,10 @@ Global
 		{37B6A5E0-9995-497D-8B43-3BC6870CC716}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{37B6A5E0-9995-497D-8B43-3BC6870CC716}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{37B6A5E0-9995-497D-8B43-3BC6870CC716}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3F5C7E8A-F123-4D2B-8B9A-1E2F3D4C5B6A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3F5C7E8A-F123-4D2B-8B9A-1E2F3D4C5B6A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3F5C7E8A-F123-4D2B-8B9A-1E2F3D4C5B6A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3F5C7E8A-F123-4D2B-8B9A-1E2F3D4C5B6A}.Release|Any CPU.Build.0 = Release|Any CPU
 		{85557BA6-3D29-4C95-A646-2A972B1C2F25}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{85557BA6-3D29-4C95-A646-2A972B1C2F25}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{85557BA6-3D29-4C95-A646-2A972B1C2F25}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -127,6 +133,7 @@ Global
 		{0D1552DC-E6ED-4AAC-5562-12F8352F46AA} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{17B8453F-AB72-99C5-E5EA-D0B065A6AE65} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{37B6A5E0-9995-497D-8B43-3BC6870CC716} = {A2F1F52A-9107-4BF8-8C3F-2F6670E7D0AD}
+		{3F5C7E8A-F123-4D2B-8B9A-1E2F3D4C5B6A} = {A2F1F52A-9107-4BF8-8C3F-2F6670E7D0AD}
 		{85557BA6-3D29-4C95-A646-2A972B1C2F25} = {2A77AF5C-138A-4EBB-9A13-9205DCD67928}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution

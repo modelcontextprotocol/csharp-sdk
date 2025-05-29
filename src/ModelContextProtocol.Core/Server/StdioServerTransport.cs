@@ -1,5 +1,4 @@
 ﻿using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.Server;
@@ -9,17 +8,6 @@ namespace ModelContextProtocol.Server;
 /// </summary>
 public sealed class StdioServerTransport : StreamServerTransport
 {
-    /// <summary>
-    /// Initializes a new instance of the <see cref="StdioServerTransport"/> class.
-    /// </summary>
-    /// <param name="serverOptions">The server options.</param>
-    /// <param name="loggerFactory">Optional logger factory used for logging employed by the transport.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="serverOptions"/> is <see langword="null"/>.</exception>
-    public StdioServerTransport(IOptions<McpServerOptions> serverOptions, ILoggerFactory? loggerFactory = null)
-        : this(serverOptions?.Value!, loggerFactory: loggerFactory)
-    {
-    }
-
     /// <summary>
     /// Initializes a new instance of the <see cref="StdioServerTransport"/> class.
     /// </summary>

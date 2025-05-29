@@ -13,7 +13,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\..\src\ModelContextProtocol\ModelContextProtocol.csproj" />
+        <ProjectReference Include="..\..\src\ModelContextProtocol.Core\ModelContextProtocol.Core.csproj" />
     </ItemGroup>
 
     <ItemGroup>
