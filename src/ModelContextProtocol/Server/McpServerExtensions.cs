@@ -258,7 +258,7 @@ public static class McpServerExtensions
         {
             if (server.ServerOptions.KnownClientInfo is not null)
             {
-                throw new InvalidOperationException("Elicititation requests are not supported in stateless mode.");
+                throw new InvalidOperationException("Elicitation is not supported in stateless mode.");
             }
 
             throw new InvalidOperationException("Client does not support elicitation requests.");
