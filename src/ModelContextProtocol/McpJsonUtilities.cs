@@ -78,7 +78,11 @@ public static partial class McpJsonUtilities
     // Keep in sync with CreateDefaultOptions above.
     [JsonSourceGenerationOptions(JsonSerializerDefaults.Web,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        NumberHandling = JsonNumberHandling.AllowReadingFromString)]
+        NumberHandling = JsonNumberHandling.AllowReadingFromString
+#if NET9_0_OR_GREATER
+        ,UseStringEnumConverter = true
+#endif
+    )]
     
     // JSON-RPC
     [JsonSerializable(typeof(JsonRpcMessage))]
