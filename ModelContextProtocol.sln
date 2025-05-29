@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.13.35507.96
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModelContextProtocol", "src\ModelContextProtocol\ModelContextProtocol.csproj", "{12260CD2-AFFC-4B2E-8898-F442CAA1FA0F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModelContextProtocol.Core", "src\ModelContextProtocol.Core\ModelContextProtocol.Core.csproj", "{12260CD2-AFFC-4B2E-8898-F442CAA1FA0F}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModelContextProtocol.Tests", "tests\ModelContextProtocol.Tests\ModelContextProtocol.Tests.csproj", "{FF41F619-833D-4FA2-8C53-04D0A1D5AA61}"
 EndProject
@@ -54,7 +54,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EverythingServer", "samples
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModelContextProtocol.AspNetCore", "src\ModelContextProtocol.AspNetCore\ModelContextProtocol.AspNetCore.csproj", "{37B6A5E0-9995-497D-8B43-3BC6870CC716}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModelContextProtocol.Hosting", "src\ModelContextProtocol.Hosting\ModelContextProtocol.Hosting.csproj", "{3F5C7E8A-F123-4D2B-8B9A-1E2F3D4C5B6A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModelContextProtocol", "src\ModelContextProtocol\ModelContextProtocol.csproj", "{3F5C7E8A-F123-4D2B-8B9A-1E2F3D4C5B6A}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModelContextProtocol.AspNetCore.Tests", "tests\ModelContextProtocol.AspNetCore.Tests\ModelContextProtocol.AspNetCore.Tests.csproj", "{85557BA6-3D29-4C95-A646-2A972B1C2F25}"
 EndProject

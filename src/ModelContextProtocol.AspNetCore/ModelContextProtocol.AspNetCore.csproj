@@ -21,7 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\ModelContextProtocol.Hosting\ModelContextProtocol.Hosting.csproj" />
+    <ProjectReference Include="..\ModelContextProtocol\ModelContextProtocol.csproj" />
   </ItemGroup>
 
 </Project>

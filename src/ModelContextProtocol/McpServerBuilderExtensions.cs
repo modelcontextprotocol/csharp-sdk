@@ -2,7 +2,6 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol;
-using ModelContextProtocol.Hosting;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Diagnostics.CodeAnalysis;

@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Server;
 
-namespace ModelContextProtocol.Hosting;
+namespace ModelContextProtocol;
 
 /// <summary>
 /// Configures the McpServerOptions using addition services from DI.
