@@ -46,7 +46,7 @@ builder.Services
         {
             subscriptions.Add(uri);
 
-            await ctx.Server.RequestSamplingAsync([
+            await ctx.Server.SampleAsync([
                 new ChatMessage(ChatRole.System, "You are a helpful test server"),
                 new ChatMessage(ChatRole.User, $"Resource {uri}, context: A new subscription was started"),
             ],

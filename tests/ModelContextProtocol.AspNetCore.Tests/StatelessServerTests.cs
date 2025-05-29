@@ -184,7 +184,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         var asSamplingChatClientEx = Assert.Throws<InvalidOperationException>(() => server.AsSamplingChatClient());
         Assert.Equal(expectedSamplingErrorMessage, asSamplingChatClientEx.Message);
 
-        var requestSamplingEx = await Assert.ThrowsAsync<InvalidOperationException>(() => server.RequestSamplingAsync([]));
+        var requestSamplingEx = await Assert.ThrowsAsync<InvalidOperationException>(() => server.SampleAsync([]));
         Assert.Equal(expectedSamplingErrorMessage, requestSamplingEx.Message);
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => server.SendRequestAsync(new JsonRpcRequest { Method = RequestMethods.SamplingCreateMessage }));

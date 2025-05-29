@@ -96,6 +96,8 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(CompleteResult))]
     [JsonSerializable(typeof(CreateMessageRequestParams))]
     [JsonSerializable(typeof(CreateMessageResult))]
+    [JsonSerializable(typeof(ElicitRequestParams))]
+    [JsonSerializable(typeof(ElicitResult))]
     [JsonSerializable(typeof(EmptyResult))]
     [JsonSerializable(typeof(GetPromptRequestParams))]
     [JsonSerializable(typeof(GetPromptResult))]

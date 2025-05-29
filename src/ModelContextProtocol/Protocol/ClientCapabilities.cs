@@ -58,6 +58,13 @@ public class ClientCapabilities
     [JsonPropertyName("sampling")]
     public SamplingCapability? Sampling { get; set; }
 
+    /// <summary>
+    /// Gets or sets the client's elicitation capability, which indicates whether the client 
+    /// supports elicitation of additional information from the user on behalf of the server.
+    /// </summary>
+    [JsonPropertyName("elicitation")]
+    public ElicitationCapability? Elicitation { get; set; }
+
     /// <summary>Gets or sets notification handlers to register with the client.</summary>
     /// <remarks>
     /// <para>

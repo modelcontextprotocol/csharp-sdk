@@ -76,6 +76,20 @@ internal sealed partial class McpClient : McpEndpoint, IMcpClient
                     McpJsonUtilities.JsonContext.Default.ListRootsRequestParams,
                     McpJsonUtilities.JsonContext.Default.ListRootsResult);
             }
+
+            if (capabilities.Elicitation is { } elicitationCapability)
+            {
+                if (elicitationCapability.ElicitationHandler is not { } elicitationHandler)
+                {
+                    throw new InvalidOperationException("Elicitation capability was set but it did not provide a handler.");
+                }
+
+                RequestHandlers.Set(
+                    RequestMethods.ElicitationCreate,
+                    (request, _, cancellationToken) => elicitationHandler(request, cancellationToken),
+                    McpJsonUtilities.JsonContext.Default.ElicitRequestParams,
+                    McpJsonUtilities.JsonContext.Default.ElicitResult);
+            }
         }
     }
 
