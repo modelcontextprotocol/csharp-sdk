@@ -107,6 +107,7 @@ internal static class ProcessHelper
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
+            CreateNoWindow = true,
         };
 
         stdout = null;
