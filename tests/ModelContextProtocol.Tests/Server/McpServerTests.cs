@@ -616,6 +616,7 @@ public class McpServerTests : LoggedTest
 
         public ValueTask DisposeAsync() => default;
 
+        public ITransport Transport => throw new NotImplementedException();
         public Implementation? ClientInfo => throw new NotImplementedException();
         public IServiceProvider? Services => throw new NotImplementedException();
         public LoggingLevel? LoggingLevel => throw new NotImplementedException();
