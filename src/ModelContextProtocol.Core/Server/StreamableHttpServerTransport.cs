@@ -46,14 +46,17 @@ public sealed class StreamableHttpServerTransport : ITransport
     public bool Stateless { get; init; }
 
     /// <summary>
-    /// Gets the initialize request if it was received by <see cref="HandlePostRequest(IDuplexPipe, CancellationToken)"/> and <see cref="Stateless"/> is set to <see langword="true"/>.
+    /// Gets or sets a callback to be invoked before handling the initialize request.
     /// </summary>
-    public InitializeRequestParams? InitializeRequest { get; internal set; }
+    public Action<InitializeRequestParams>? OnInitRequestReceived { get; set; }
 
     /// <inheritdoc/>
     public ChannelReader<JsonRpcMessage> MessageReader => _incomingChannel.Reader;
 
     internal ChannelWriter<JsonRpcMessage> MessageWriter => _incomingChannel.Writer;
+
+    /// <inheritdoc/>
+    public string? SessionId { get; set; }
 
     /// <summary>
     /// Handles an optional SSE GET request a client using the Streamable HTTP transport might make by

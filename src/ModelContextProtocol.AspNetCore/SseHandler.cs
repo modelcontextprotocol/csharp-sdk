@@ -31,7 +31,7 @@ internal sealed class SseHandler(
 
         var requestPath = (context.Request.PathBase + context.Request.Path).ToString();
         var endpointPattern = requestPath[..(requestPath.LastIndexOf('/') + 1)];
-        await using var transport = new SseResponseStreamTransport(context.Response.Body, $"{endpointPattern}message?sessionId={sessionId}");
+        await using var transport = new SseResponseStreamTransport(context.Response.Body, $"{endpointPattern}message?sessionId={sessionId}", sessionId);
 
         var userIdClaim = StreamableHttpHandler.GetUserIdClaim(context.User);
         await using var httpMcpSession = new HttpMcpSession<SseResponseStreamTransport>(sessionId, transport, userIdClaim, httpMcpServerOptions.Value.TimeProvider);
