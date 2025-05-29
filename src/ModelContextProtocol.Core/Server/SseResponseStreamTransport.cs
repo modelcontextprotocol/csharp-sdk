@@ -23,7 +23,8 @@ namespace ModelContextProtocol.Server;
 /// These messages should be passed to <see cref="OnMessageReceivedAsync(JsonRpcMessage, CancellationToken)"/>.
 /// Defaults to "/message".
 /// </param>
-public sealed class SseResponseStreamTransport(Stream sseResponseStream, string? messageEndpoint = "/message") : ITransport
+/// <param name="sessionId">The identifier corresponding to the current MCP session.</param>
+public sealed class SseResponseStreamTransport(Stream sseResponseStream, string? messageEndpoint = "/message", string? sessionId = null) : ITransport
 {
     private readonly SseWriter _sseWriter = new(messageEndpoint);
     private readonly Channel<JsonRpcMessage> _incomingChannel = Channel.CreateBounded<JsonRpcMessage>(new BoundedChannelOptions(1)
@@ -48,6 +49,9 @@ public sealed class SseResponseStreamTransport(Stream sseResponseStream, string?
 
     /// <inheritdoc/>
     public ChannelReader<JsonRpcMessage> MessageReader => _incomingChannel.Reader;
+
+    /// <inheritdoc/>
+    public string? SessionId { get; } = sessionId;
 
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
