@@ -1,8 +1,12 @@
 <Solution>
   <Folder Name="/.github/" />
   <Folder Name="/.github/workflows/">
-    <File Path=".github/workflows/ci.yml" />
-    <File Path=".github/workflows/code-coverage.yml" />
+    <File Path=".github/workflows/ci-build-test.yml" />
+    <File Path=".github/workflows/ci-code-coverage.yml" />
+    <File Path=".github/workflows/docs.yml" />
+    <File Path=".github/workflows/markdown-link-check.yml" />
+    <File Path=".github/workflows/release.md" />
+    <File Path=".github/workflows/release.yml" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/AspNetCoreSseServer/AspNetCoreSseServer.csproj" />
