@@ -3,7 +3,7 @@ namespace ModelContextProtocol.Client;
 /// <summary>
 /// Provides options for configuring <see cref="StdioClientTransport"/> instances.
 /// </summary>
-public record StdioClientTransportOptions
+public class StdioClientTransportOptions
 {
     /// <summary>
     /// Gets or sets the command to execute to start the server process.

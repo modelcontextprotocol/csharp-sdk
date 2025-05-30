@@ -9,7 +9,7 @@ namespace ModelContextProtocol.Protocol;
 /// Resource templates provide metadata about resources available on the server,
 /// including how to construct URIs for those resources.
 /// </remarks>
-public record ResourceTemplate
+public class ResourceTemplate
 {
     /// <summary>
     /// Gets or sets the URI template (according to RFC 6570) that can be used to construct resource URIs.

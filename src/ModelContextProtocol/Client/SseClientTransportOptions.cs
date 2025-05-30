@@ -3,7 +3,7 @@ namespace ModelContextProtocol.Client;
 /// <summary>
 /// Provides options for configuring <see cref="SseClientTransport"/> instances.
 /// </summary>
-public record SseClientTransportOptions
+public class SseClientTransportOptions
 {
     /// <summary>
     /// Gets or sets the base address of the server for SSE connections.
