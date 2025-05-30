@@ -85,7 +85,7 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
             if (parentTransport.OnInitRequestReceived is { } onInitRequest && request.Method == RequestMethods.Initialize)
             {
                 var initializeRequest = JsonSerializer.Deserialize(request.Params, McpJsonUtilities.JsonContext.Default.InitializeRequestParams);
-                onInitRequest(initializeRequest!);
+                await onInitRequest(initializeRequest).ConfigureAwait(false);
             }
         }
 

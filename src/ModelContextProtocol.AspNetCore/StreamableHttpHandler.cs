@@ -293,13 +293,14 @@ internal sealed class StreamableHttpHandler(
         {
             var statelessId = new StatelessSessionId
             {
-                ClientInfo = initRequestParams.ClientInfo,
+                ClientInfo = initRequestParams?.ClientInfo,
                 UserIdClaim = GetUserIdClaim(context.User),
             };
 
             var sessionJson = JsonSerializer.Serialize(statelessId, StatelessSessionIdJsonContext.Default.StatelessSessionId);
             transport.SessionId = Protector.Protect(sessionJson);
             context.Response.Headers["mcp-session-id"] = transport.SessionId;
+            return ValueTask.CompletedTask;
         };
     }
 
