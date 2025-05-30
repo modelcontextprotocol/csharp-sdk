@@ -17,6 +17,7 @@ public class SseClientTransportTests : LoggedTest
             Endpoint = new Uri("http://localhost:8080"),
             ConnectionTimeout = TimeSpan.FromSeconds(2),
             Name = "Test Server",
+            TransportMode = HttpTransportMode.Sse,
             AdditionalHeaders = new Dictionary<string, string>
             {
                 ["test"] = "header"

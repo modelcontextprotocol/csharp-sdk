@@ -56,7 +56,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
 
     [Fact]
     public async Task ListTools_Sse_TestServer()
-    {        
+    {
         // arrange
 
         // act

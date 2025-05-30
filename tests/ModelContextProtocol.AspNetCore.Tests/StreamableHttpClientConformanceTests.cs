@@ -98,7 +98,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
         await using var transport = new SseClientTransport(new()
         {
             Endpoint = new("http://localhost/mcp"),
-            UseStreamableHttp = true,
+            TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
         await using var client = await McpClientFactory.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
@@ -118,7 +118,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
         await using var transport = new SseClientTransport(new()
         {
             Endpoint = new("http://localhost/mcp"),
-            UseStreamableHttp = true,
+            TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
         await using var client = await McpClientFactory.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);

@@ -20,13 +20,13 @@ public static class McpServerExtensions
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
     /// <returns>A task containing the sampling result from the client.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="server"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException">The client does not support sampling.</exception>
+    /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
     /// <remarks>
     /// This method requires the client to support sampling capabilities.
     /// It allows detailed control over sampling parameters including messages, system prompt, temperature, 
     /// and token limits.
     /// </remarks>
-    public static ValueTask<CreateMessageResult> RequestSamplingAsync(
+    public static ValueTask<CreateMessageResult> SampleAsync(
         this IMcpServer server, CreateMessageRequestParams request, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(server);
@@ -50,12 +50,12 @@ public static class McpServerExtensions
     /// <returns>A task containing the chat response from the model.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="server"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="messages"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException">The client does not support sampling.</exception>
+    /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
     /// <remarks>
     /// This method converts the provided chat messages into a format suitable for the sampling API,
     /// handling different content types such as text, images, and audio.
     /// </remarks>
-    public static async Task<ChatResponse> RequestSamplingAsync(
+    public static async Task<ChatResponse> SampleAsync(
         this IMcpServer server,
         IEnumerable<ChatMessage> messages, ChatOptions? options = default, CancellationToken cancellationToken = default)
     {
@@ -125,7 +125,7 @@ public static class McpServerExtensions
             modelPreferences = new() { Hints = [new() { Name = modelId }] };
         }
 
-        var result = await server.RequestSamplingAsync(new()
+        var result = await server.SampleAsync(new()
             {
                 Messages = samplingMessages,
                 MaxTokens = options?.MaxOutputTokens,
@@ -152,7 +152,7 @@ public static class McpServerExtensions
     /// <param name="server">The server to be wrapped as an <see cref="IChatClient"/>.</param>
     /// <returns>The <see cref="IChatClient"/> that can be used to issue sampling requests to the client.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="server"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException">The client does not support sampling.</exception>
+    /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
     public static IChatClient AsSamplingChatClient(this IMcpServer server)
     {
         Throw.IfNull(server);
@@ -179,7 +179,7 @@ public static class McpServerExtensions
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
     /// <returns>A task containing the list of roots exposed by the client.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="server"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException">The client does not support roots.</exception>
+    /// <exception cref="InvalidOperationException">The client does not support roots.</exception>
     /// <remarks>
     /// This method requires the client to support the roots capability.
     /// Root resources allow clients to expose a hierarchical structure of resources that can be
@@ -197,6 +197,32 @@ public static class McpServerExtensions
             request,
             McpJsonUtilities.JsonContext.Default.ListRootsRequestParams,
             McpJsonUtilities.JsonContext.Default.ListRootsResult,
+            cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// Requests additional information from the user via the client, allowing the server to elicit structured data.
+    /// </summary>
+    /// <param name="server">The server initiating the request.</param>
+    /// <param name="request">The parameters for the elicitation request.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
+    /// <returns>A task containing the elicitation result.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="server"/> is <see langword="null"/>.</exception>
+    /// <exception cref="InvalidOperationException">The client does not support elicitation.</exception>
+    /// <remarks>
+    /// This method requires the client to support the elicitation capability.
+    /// </remarks>
+    public static ValueTask<ElicitResult> ElicitAsync(
+        this IMcpServer server, ElicitRequestParams request, CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(server);
+        ThrowIfElicitationUnsupported(server);
+
+        return server.SendRequestAsync(
+            RequestMethods.ElicitationCreate,
+            request,
+            McpJsonUtilities.JsonContext.Default.ElicitRequestParams,
+            McpJsonUtilities.JsonContext.Default.ElicitResult,
             cancellationToken: cancellationToken);
     }
 
@@ -226,12 +252,25 @@ public static class McpServerExtensions
         }
     }
 
+    private static void ThrowIfElicitationUnsupported(IMcpServer server)
+    {
+        if (server.ClientCapabilities?.Elicitation is null)
+        {
+            if (server.ServerOptions.KnownClientInfo is not null)
+            {
+                throw new InvalidOperationException("Elicitation is not supported in stateless mode.");
+            }
+
+            throw new InvalidOperationException("Client does not support elicitation requests.");
+        }
+    }
+
     /// <summary>Provides an <see cref="IChatClient"/> implementation that's implemented via client sampling.</summary>
     private sealed class SamplingChatClient(IMcpServer server) : IChatClient
     {
         /// <inheritdoc/>
         public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
-            server.RequestSamplingAsync(messages, options, cancellationToken);
+            server.SampleAsync(messages, options, cancellationToken);
 
         /// <inheritdoc/>
         async IAsyncEnumerable<ChatResponseUpdate> IChatClient.GetStreamingResponseAsync(

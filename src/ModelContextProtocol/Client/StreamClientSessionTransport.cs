@@ -17,7 +17,7 @@ internal class StreamClientSessionTransport : TransportBase
     /// Initializes a new instance of the <see cref="StreamClientSessionTransport"/> class.
     /// </summary>
     /// <param name="serverInput">
-    /// The text writer connected to the server's input stream. 
+    /// The text writer connected to the server's input stream.
     /// Messages written to this writer will be sent to the server.
     /// </param>
     /// <param name="serverOutput">
@@ -41,17 +41,17 @@ internal class StreamClientSessionTransport : TransportBase
         _serverOutput = serverOutput;
         _serverInput = serverInput;
 
+        SetConnected();
+
         // Start reading messages in the background. We use the rarer pattern of new Task + Start
         // in order to ensure that the body of the task will always see _readTask initialized.
         // It is then able to reliably null it out on completion.
         var readTask = new Task<Task>(
-            thisRef => ((StreamClientSessionTransport)thisRef!).ReadMessagesAsync(_shutdownCts.Token), 
+            thisRef => ((StreamClientSessionTransport)thisRef!).ReadMessagesAsync(_shutdownCts.Token),
             this,
             TaskCreationOptions.DenyChildAttach);
         _readTask = readTask.Unwrap();
         readTask.Start();
-
-        SetConnected();
     }
 
     /// <inheritdoc/>
@@ -80,7 +80,7 @@ internal class StreamClientSessionTransport : TransportBase
     }
 
     /// <inheritdoc/>
-    public override ValueTask DisposeAsync() => 
+    public override ValueTask DisposeAsync() =>
         CleanupAsync(cancellationToken: CancellationToken.None);
 
     private async Task ReadMessagesAsync(CancellationToken cancellationToken)

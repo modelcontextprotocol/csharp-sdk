@@ -4,11 +4,11 @@ using ModelContextProtocol.Protocol;
 namespace ModelContextProtocol.Client;
 
 /// <summary>
-/// Provides an <see cref="IClientTransport"/> over HTTP using the Server-Sent Events (SSE) protocol.
+/// Provides an <see cref="IClientTransport"/> over HTTP using the Server-Sent Events (SSE) or Streamable HTTP protocol.
 /// </summary>
 /// <remarks>
-/// This transport connects to an MCP server over HTTP using SSE,
-/// allowing for real-time server-to-client communication with a standard HTTP request.
+/// This transport connects to an MCP server over HTTP using SSE or Streamable HTTP,
+/// allowing for real-time server-to-client communication with a standard HTTP requests.
 /// Unlike the <see cref="StdioClientTransport"/>, this transport connects to an existing server
 /// rather than launching a new process.
 /// </remarks>
@@ -36,7 +36,7 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
     /// <param name="httpClient">The HTTP client instance used for requests.</param>
     /// <param name="loggerFactory">Logger factory for creating loggers used for diagnostic output during transport operations.</param>
     /// <param name="ownsHttpClient">
-    /// <see langword="true"/> to dispose of <paramref name="httpClient"/> when the transport is disposed; 
+    /// <see langword="true"/> to dispose of <paramref name="httpClient"/> when the transport is disposed;
     /// <see langword="false"/> if the caller is retaining ownership of the <paramref name="httpClient"/>'s lifetime.
     /// </param>
     public SseClientTransport(SseClientTransportOptions transportOptions, HttpClient httpClient, ILoggerFactory? loggerFactory = null, bool ownsHttpClient = false)
@@ -57,12 +57,22 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
     /// <inheritdoc />
     public async Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default)
     {
-        if (_options.UseStreamableHttp)
+        switch (_options.TransportMode)
         {
-            return new StreamableHttpClientSessionTransport(_options, _httpClient, _loggerFactory, Name);
+            case HttpTransportMode.AutoDetect:
+                return new AutoDetectingClientSessionTransport(_options, _httpClient, _loggerFactory, Name);
+            case HttpTransportMode.StreamableHttp:
+                return new StreamableHttpClientSessionTransport(Name, _options, _httpClient, messageChannel: null, _loggerFactory);
+            case HttpTransportMode.Sse:
+                return await ConnectSseTransportAsync(cancellationToken).ConfigureAwait(false);
+            default:
+                throw new InvalidOperationException($"Unsupported transport mode: {_options.TransportMode}");
         }
+    }
 
-        var sessionTransport = new SseClientSessionTransport(_options, _httpClient, _loggerFactory, Name);
+    private async Task<ITransport> ConnectSseTransportAsync(CancellationToken cancellationToken)
+    {
+        var sessionTransport = new SseClientSessionTransport(Name, _options, _httpClient, messageChannel: null, _loggerFactory);
 
         try
         {

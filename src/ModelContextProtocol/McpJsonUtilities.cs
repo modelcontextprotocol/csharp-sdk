@@ -21,7 +21,7 @@ public static partial class McpJsonUtilities
     /// <para>
     /// It additionally turns on the following settings:
     /// <list type="number">
-    /// <item>Enables string-based enum serialization as implemented by <see cref="JsonStringEnumConverter"/>.</item>
+    /// <item>Enables <see cref="JsonSerializerDefaults.Web"/> defaults.</item>
     /// <item>Enables <see cref="JsonIgnoreCondition.WhenWritingNull"/> as the default ignore condition for properties.</item>
     /// <item>Enables <see cref="JsonNumberHandling.AllowReadingFromString"/> as the default number handling for number types.</item>
     /// </list>
@@ -96,6 +96,8 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(CompleteResult))]
     [JsonSerializable(typeof(CreateMessageRequestParams))]
     [JsonSerializable(typeof(CreateMessageResult))]
+    [JsonSerializable(typeof(ElicitRequestParams))]
+    [JsonSerializable(typeof(ElicitResult))]
     [JsonSerializable(typeof(EmptyResult))]
     [JsonSerializable(typeof(GetPromptRequestParams))]
     [JsonSerializable(typeof(GetPromptResult))]
