@@ -1,4 +1,3 @@
-using AspNetCoreSseServer.Tools;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
