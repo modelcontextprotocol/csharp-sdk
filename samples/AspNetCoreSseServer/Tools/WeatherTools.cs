@@ -53,26 +53,3 @@ public sealed class WeatherTools
         }
     }
 }
-
-
-
-
-public record PlaceInformation
-{
-    public int place_id { get; init; }
-    public string licence { get; init; } = "";
-    public string osm_type { get; init; } = "";
-    public int osm_id { get; init; }
-    public string lat { get; init; } = "";
-    public string lon { get; init; } = "";
-
-    public string type { get; init; } = "";
-    public int place_rank { get; init; }
-    public double importance { get; init; }
-    public string addresstype { get; init; } = "";
-    public string name { get; init; } = "";
-    public string display_name { get; init; } = "";
-    public List<string> boundingbox { get; init; } = new List<string>();
-}
-
-
