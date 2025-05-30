@@ -48,7 +48,7 @@ public sealed class StreamableHttpServerTransport : ITransport
     /// <summary>
     /// Gets or sets a callback to be invoked before handling the initialize request.
     /// </summary>
-    public Action<InitializeRequestParams>? OnInitRequestReceived { get; set; }
+    public Func<InitializeRequestParams?, ValueTask>? OnInitRequestReceived { get; set; }
 
     /// <inheritdoc/>
     public ChannelReader<JsonRpcMessage> MessageReader => _incomingChannel.Reader;
