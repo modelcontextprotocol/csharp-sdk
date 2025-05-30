@@ -4,7 +4,7 @@ using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Tests;
 
-public static partial class McpJsonUtilitiesTests
+public static class McpJsonUtilitiesTests
 {
     [Fact]
     public static void DefaultOptions_IsSingleton()
