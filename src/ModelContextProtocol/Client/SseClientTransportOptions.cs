@@ -11,7 +11,7 @@ public class SseClientTransportOptions
     public required Uri Endpoint
     {
         get;
-        init
+        set
         {
             if (value is null)
             {
