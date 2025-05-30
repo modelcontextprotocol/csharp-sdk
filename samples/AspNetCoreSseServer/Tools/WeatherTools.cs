@@ -30,7 +30,7 @@ public sealed class WeatherTools
             var ret = await client.SendAsync(request);
             if (!ret.IsSuccessStatusCode)
             {
-                return $"error getting coordinates from location StatusCode: {ret.StatusCode} message: {await ret.Content.ReadAsStringAsync()}";
+                return $"there was an error getting coordinates from location StatusCode: {ret.StatusCode} message: {await ret.Content.ReadAsStringAsync()}";
             }
             var response = ret.Content.ReadAsStreamAsync();
             var locationInfo = JsonNode.Parse(await response) as JsonArray ?? new JsonArray();
