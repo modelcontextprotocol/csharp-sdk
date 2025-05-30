@@ -299,14 +299,8 @@ internal sealed class StreamableHttpHandler(
 
             var sessionJson = JsonSerializer.Serialize(statelessId, StatelessSessionIdJsonContext.Default.StatelessSessionId);
             transport.SessionId = Protector.Protect(sessionJson);
-        };
-
-        context.Response.OnStarting(() =>
-        {
-            Debug.Assert(transport.SessionId is not null);
             context.Response.Headers["mcp-session-id"] = transport.SessionId;
-            return Task.CompletedTask;
-        });
+        };
     }
 
     internal static Task RunSessionAsync(HttpContext httpContext, IMcpServer session, CancellationToken requestAborted)
