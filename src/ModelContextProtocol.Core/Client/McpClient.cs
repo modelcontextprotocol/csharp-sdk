@@ -99,8 +99,7 @@ internal sealed partial class McpClient : McpEndpoint, IMcpClient
     {
         get
         {
-            Debug.Assert(_sessionTransport is not null, "Must have already initialized a session when invoking this property.");
-            return _sessionTransport!;
+            return _sessionTransport ??  throw new InvalidOperationException("Must have already initialized a session when invoking this property.");
         }
     }
 
