@@ -3,6 +3,9 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using ModelContextProtocol.Client;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.Intrinsics.X86;
+using System.Text;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -11,15 +14,22 @@ builder.Configuration
     .AddUserSecrets<Program>();
 
 var (command, arguments) = GetCommandAndArguments(args);
-
-var clientTransport = new StdioClientTransport(new()
+IClientTransport? clientTransport = null;
+if (command == "http")
 {
-    Name = "Demo Server",
-    Command = command,
-    Arguments = arguments,
-});
-
-await using var mcpClient = await McpClientFactory.CreateAsync(clientTransport);
+    // make sure AspNetCoreSseServer is running
+    clientTransport = new SseClientTransport(new SseClientTransportOptions { Endpoint = new Uri("https://localhost:7133"), UseStreamableHttp = true });
+}
+else
+{
+    clientTransport = new StdioClientTransport(new()
+    {
+        Name = "Demo Server",
+        Command = command,
+        Arguments = arguments,
+    });
+}
+await using var mcpClient = await McpClientFactory.CreateAsync(clientTransport!);
 
 var tools = await mcpClient.ListToolsAsync();
 foreach (var tool in tools)
@@ -43,7 +53,7 @@ var options = new ChatOptions
 Console.ForegroundColor = ConsoleColor.Green;
 Console.WriteLine("MCP Client Started!");
 Console.ResetColor();
-
+var messages = new List<ChatMessage>();
 PromptForInput();
 while(Console.ReadLine() is string query && !"exit".Equals(query, StringComparison.OrdinalIgnoreCase))
 {
@@ -52,14 +62,18 @@ while(Console.ReadLine() is string query && !"exit".Equals(query, StringComparis
         PromptForInput();
         continue;
     }
-
-    await foreach (var message in anthropicClient.GetStreamingResponseAsync(query, options))
+    messages.Add(new ChatMessage(ChatRole.User, query));
+    var sb = new StringBuilder();
+    await foreach (var message in anthropicClient.GetStreamingResponseAsync(messages, options))
     {
         Console.Write(message);
+        sb.AppendLine(message.ToString());
     }
+    messages.Add(new ChatMessage(ChatRole.Assistant, sb.ToString()));
     Console.WriteLine();
 
     PromptForInput();
+    
 }
 
 static void PromptForInput()
@@ -89,6 +103,8 @@ static (string command, string[] arguments) GetCommandAndArguments(string[] args
         [var script] when script.EndsWith(".py") => ("python", args),
         [var script] when script.EndsWith(".js") => ("node", args),
         [var script] when Directory.Exists(script) || (File.Exists(script) && script.EndsWith(".csproj")) => ("dotnet", ["run", "--project", script, "--no-build"]),
+        [var script] when script.Equals("http", StringComparison.OrdinalIgnoreCase) => ("http", args),
         _ => ("dotnet", ["run", "--project", "../../../../QuickstartWeatherServer", "--no-build"])
     };
 }
+

@@ -1,3 +1,4 @@
+using AspNetCoreSseServer.Tools;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
@@ -7,7 +8,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddMcpServer()
     .WithHttpTransport()
     .WithTools<EchoTool>()
-    .WithTools<SampleLlmTool>();
+    .WithTools<SampleLlmTool>()
+    .WithTools<WeatherTools>();
 
 builder.Services.AddOpenTelemetry()
     .WithTracing(b => b.AddSource("*")
@@ -18,7 +20,7 @@ builder.Services.AddOpenTelemetry()
         .AddHttpClientInstrumentation())
     .WithLogging()
     .UseOtlpExporter();
-
+builder.Services.AddHttpClient();
 var app = builder.Build();
 
 app.MapMcp();
