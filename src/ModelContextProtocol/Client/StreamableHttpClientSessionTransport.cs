@@ -4,6 +4,8 @@ using System.Net.Http.Headers;
 using System.Net.ServerSentEvents;
 using System.Text.Json;
 using ModelContextProtocol.Protocol;
+using System.Threading.Channels;
+
 #if NET
 using System.Net.Http.Json;
 #else
@@ -28,8 +30,13 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
     private string? _mcpSessionId;
     private Task? _getReceiveTask;
 
-    public StreamableHttpClientSessionTransport(SseClientTransportOptions transportOptions, HttpClient httpClient, ILoggerFactory? loggerFactory, string endpointName)
-        : base(endpointName, loggerFactory)
+    public StreamableHttpClientSessionTransport(
+        string endpointName,
+        SseClientTransportOptions transportOptions,
+        HttpClient httpClient,
+        Channel<JsonRpcMessage>? messageChannel,
+        ILoggerFactory? loggerFactory)
+        : base(endpointName, messageChannel, loggerFactory)
     {
         Throw.IfNull(transportOptions);
         Throw.IfNull(httpClient);
@@ -46,9 +53,15 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
     }
 
     /// <inheritdoc/>
-    public override async Task SendMessageAsync(
-        JsonRpcMessage message,
-        CancellationToken cancellationToken = default)
+    public override async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
+    {
+        // Immediately dispose the response. SendHttpRequestAsync only returns the response so the auto transport can look at it.
+        using var response = await SendHttpRequestAsync(message, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+    }
+
+    // This is used by the auto transport so it can fall back and try SSE given a non-200 response without catching an exception.
+    internal async Task<HttpResponseMessage> SendHttpRequestAsync(JsonRpcMessage message, CancellationToken cancellationToken)
     {
         using var sendCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _connectionCts.Token);
         cancellationToken = sendCts.Token;
@@ -73,9 +86,14 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         };
 
         CopyAdditionalHeaders(httpRequestMessage.Headers, _options.AdditionalHeaders, _mcpSessionId);
-        using var response = await _httpClient.SendAsync(httpRequestMessage, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
 
-        response.EnsureSuccessStatusCode();
+        var response = await _httpClient.SendAsync(httpRequestMessage, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+
+        // We'll let the caller decide whether to throw or fall back given an unsuccessful response.
+        if (!response.IsSuccessStatusCode)
+        {
+            return response;
+        }
 
         var rpcRequest = message as JsonRpcRequest;
         JsonRpcMessage? rpcResponseCandidate = null;
@@ -93,7 +111,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
         if (rpcRequest is null)
         {
-            return;
+            return response;
         }
 
         if (rpcResponseCandidate is not JsonRpcMessageWithId messageWithId || messageWithId.Id != rpcRequest.Id)
@@ -111,6 +129,8 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
             _getReceiveTask = ReceiveUnsolicitedMessagesAsync();
         }
+
+        return response;
     }
 
     public override async ValueTask DisposeAsync()
@@ -136,7 +156,12 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         }
         finally
         {
-            SetDisconnected();
+            // If we're auto-detecting the transport and failed to connect, leave the message Channel open for the SSE transport.
+            // This class isn't directly exposed to public callers, so we don't have to worry about changing the _state in this case.
+            if (_options.TransportMode is not HttpTransportMode.AutoDetect || _getReceiveTask is not null)
+            {
+                SetDisconnected();
+            }
         }
     }
 

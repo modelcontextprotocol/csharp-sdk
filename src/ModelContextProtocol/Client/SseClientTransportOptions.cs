@@ -31,11 +31,19 @@ public record SseClientTransportOptions
     }
 
     /// <summary>
-    /// Gets or sets a value indicating whether to use "Streamable HTTP" for the transport rather than "HTTP with SSE". Defaults to false.
+    /// Gets or sets the transport mode to use for the connection. Defaults to <see cref="HttpTransportMode.AutoDetect"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When set to <see cref="HttpTransportMode.AutoDetect"/> (the default), the client will first attempt to use
+    /// Streamable HTTP transport and automatically fall back to SSE transport if the server doesn't support it.
+    /// </para>
+    /// <para>
     /// <see href="https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http">Streamable HTTP transport specification</see>.
     /// <see href="https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse">HTTP with SSE transport specification</see>.
-    /// </summary>
-    public bool UseStreamableHttp { get; init; }
+    /// </para>
+    /// </remarks>
+    public HttpTransportMode TransportMode { get; init; } = HttpTransportMode.AutoDetect;
 
     /// <summary>
     /// Gets a transport identifier used for logging purposes.

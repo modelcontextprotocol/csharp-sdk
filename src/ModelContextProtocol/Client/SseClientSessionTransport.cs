@@ -6,6 +6,7 @@ using System.Net.Http.Headers;
 using System.Net.ServerSentEvents;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 
 namespace ModelContextProtocol.Client;
 
@@ -24,15 +25,16 @@ internal sealed partial class SseClientSessionTransport : TransportBase
     private readonly TaskCompletionSource<bool> _connectionEstablished;
 
     /// <summary>
-    /// SSE transport for client endpoints. Unlike stdio it does not launch a process, but connects to an existing server.
+    /// SSE transport for a single session. Unlike stdio it does not launch a process, but connects to an existing server.
     /// The HTTP server can be local or remote, and must support the SSE protocol.
     /// </summary>
-    /// <param name="transportOptions">Configuration options for the transport.</param>
-    /// <param name="httpClient">The HTTP client instance used for requests.</param>
-    /// <param name="loggerFactory">Logger factory for creating loggers.</param>
-    /// <param name="endpointName">The endpoint name used for logging purposes.</param>
-    public SseClientSessionTransport(SseClientTransportOptions transportOptions, HttpClient httpClient, ILoggerFactory? loggerFactory, string endpointName)
-        : base(endpointName, loggerFactory)
+    public SseClientSessionTransport(
+        string endpointName,
+        SseClientTransportOptions transportOptions,
+        HttpClient httpClient,
+        Channel<JsonRpcMessage>? messageChannel,
+        ILoggerFactory? loggerFactory)
+        : base(endpointName, messageChannel, loggerFactory)
     {
         Throw.IfNull(transportOptions);
         Throw.IfNull(httpClient);

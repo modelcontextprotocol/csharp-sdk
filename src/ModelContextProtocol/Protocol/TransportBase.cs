@@ -36,12 +36,20 @@ public abstract partial class TransportBase : ITransport
     /// Initializes a new instance of the <see cref="TransportBase"/> class.
     /// </summary>
     protected TransportBase(string name, ILoggerFactory? loggerFactory)
+        : this(name, null, loggerFactory)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="TransportBase"/> class with a specified channel to back <see cref="MessageReader"/>.
+    /// </summary>
+    internal TransportBase(string name, Channel<JsonRpcMessage>? messageChannel, ILoggerFactory? loggerFactory)
     {
         Name = name;
         _logger = loggerFactory?.CreateLogger(GetType()) ?? NullLogger.Instance;
 
-        // Unbounded channel to prevent blocking on writes
-        _messageChannel = Channel.CreateUnbounded<JsonRpcMessage>(new UnboundedChannelOptions
+        // Unbounded channel to prevent blocking on writes. Ensure AutoDetectingClientSessionTransport matches this.
+        _messageChannel = messageChannel ?? Channel.CreateUnbounded<JsonRpcMessage>(new UnboundedChannelOptions
         {
             SingleReader = true,
             SingleWriter = false,
@@ -112,7 +120,7 @@ public abstract partial class TransportBase : ITransport
 
                 case StateConnected:
                     return;
-                
+
                 case StateDisconnected:
                     throw new IOException("Transport is already disconnected and can't be reconnected.");
 
