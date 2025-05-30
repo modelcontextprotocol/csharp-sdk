@@ -39,8 +39,12 @@ public static partial class McpJsonUtilities
         // Copy the configuration from the source generated context.
         JsonSerializerOptions options = new(JsonContext.Default.Options);
 
-        // Chain with all supported types from MEAI
+        // Chain with all supported types and converters from MEAI
         options.TypeInfoResolverChain.Add(AIJsonUtilities.DefaultOptions.TypeInfoResolver!);
+        foreach (JsonConverter converter in AIJsonUtilities.DefaultOptions.Converters)
+        {
+            options.Converters.Add(converter);
+        }
 
         options.MakeReadOnly();
         return options;
