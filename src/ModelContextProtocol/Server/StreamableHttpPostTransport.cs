@@ -60,7 +60,7 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
         {
             yield return message;
 
-            if (message.Data is JsonRpcMessageWithId response && response.Id == _pendingRequest)
+            if (message.Data is JsonRpcResponse or JsonRpcError && ((JsonRpcMessageWithId)message.Data).Id == _pendingRequest)
             {
                 // Complete the SSE response stream now that all pending requests have been processed.
                 break;
