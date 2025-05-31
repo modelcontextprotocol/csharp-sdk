@@ -6,6 +6,7 @@ namespace ModelContextProtocol.Server;
 internal sealed class DestinationBoundMcpServer(McpServer server, ITransport? transport) : IMcpServer
 {
     public string EndpointName => server.EndpointName;
+    public ITransport Transport => transport ?? server.Transport;
     public ClientCapabilities? ClientCapabilities => server.ClientCapabilities;
     public Implementation? ClientInfo => server.ClientInfo;
     public McpServerOptions ServerOptions => server.ServerOptions;
