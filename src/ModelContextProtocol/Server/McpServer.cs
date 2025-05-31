@@ -161,9 +161,20 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
                 UpdateEndpointNameWithClientInfo();
                 GetSessionOrThrow().EndpointName = EndpointName;
 
+                // Negotiate a protocol version. If the server options provide one, use that.
+                // Otherwise, try to use whatever the client requested as long as it's supported.
+                // If it's not supported, fall back to the latest supported version.
+                string? protocolVersion = options.ProtocolVersion;
+                if (protocolVersion is null)
+                {
+                    protocolVersion = request?.ProtocolVersion is string clientProtocolVersion && McpSession.SupportedProtocolVersions.Contains(clientProtocolVersion) ?
+                        clientProtocolVersion :
+                        McpSession.LatestProtocolVersion;
+                }
+
                 return new InitializeResult
                 {
-                    ProtocolVersion = options.ProtocolVersion,
+                    ProtocolVersion = protocolVersion,
                     Instructions = options.ServerInstructions,
                     ServerInfo = options.ServerInfo ?? DefaultImplementation,
                     Capabilities = ServerCapabilities ?? new(),

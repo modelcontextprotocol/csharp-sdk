@@ -46,7 +46,6 @@ internal static class Program
                 Logging = ConfigureLogging(),
                 Completions = ConfigureCompletions(),
             },
-            ProtocolVersion = "2024-11-05",
             ServerInstructions = "This is a test server with only stub functionality",
         };
 

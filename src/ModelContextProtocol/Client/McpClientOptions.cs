@@ -34,11 +34,18 @@ public class McpClientOptions
     /// Gets or sets the protocol version to request from the server, using a date-based versioning scheme.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The protocol version is a key part of the initialization handshake. The client and server must 
-    /// agree on a compatible protocol version to communicate successfully. If the server doesn't support
-    /// the requested version, it will respond with a version mismatch error.
+    /// agree on a compatible protocol version to communicate successfully.
+    /// </para>
+    /// <para>
+    /// If non-<see langword="null"/>, this version will be sent to the server, and the handshake
+    /// will fail if the version in the server's response does not match this version.
+    /// If <see langword="null"/>, the client will request the latest version supported by the server
+    /// but will allow any supported version that the server advertizes in its response.
+    /// </para>
     /// </remarks>
-    public string ProtocolVersion { get; set; } = "2024-11-05";
+    public string? ProtocolVersion { get; set; }
 
     /// <summary>
     /// Gets or sets a timeout for the client-server initialization handshake sequence.

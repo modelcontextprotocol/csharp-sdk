@@ -129,11 +129,12 @@ internal sealed partial class McpClient : McpEndpoint, IMcpClient
             try
             {
                 // Send initialize request
+                string requestProtocol = _options.ProtocolVersion ?? McpSession.LatestProtocolVersion;
                 var initializeResponse = await this.SendRequestAsync(
                     RequestMethods.Initialize,
                     new InitializeRequestParams
                     {
-                        ProtocolVersion = _options.ProtocolVersion,
+                        ProtocolVersion = requestProtocol,
                         Capabilities = _options.Capabilities ?? new ClientCapabilities(),
                         ClientInfo = _options.ClientInfo ?? DefaultImplementation,
                     },
@@ -154,10 +155,13 @@ internal sealed partial class McpClient : McpEndpoint, IMcpClient
                 _serverInstructions = initializeResponse.Instructions;
 
                 // Validate protocol version
-                if (initializeResponse.ProtocolVersion != _options.ProtocolVersion)
+                bool isResponseProtocolValid =
+                    _options.ProtocolVersion is { } optionsProtocol ? optionsProtocol == initializeResponse.ProtocolVersion :
+                    McpSession.SupportedProtocolVersions.Contains(initializeResponse.ProtocolVersion);
+                if (!isResponseProtocolValid)
                 {
-                    LogServerProtocolVersionMismatch(EndpointName, _options.ProtocolVersion, initializeResponse.ProtocolVersion);
-                    throw new McpException($"Server protocol version mismatch. Expected {_options.ProtocolVersion}, got {initializeResponse.ProtocolVersion}");
+                    LogServerProtocolVersionMismatch(EndpointName, requestProtocol, initializeResponse.ProtocolVersion);
+                    throw new McpException($"Server protocol version mismatch. Expected {requestProtocol}, got {initializeResponse.ProtocolVersion}");
                 }
 
                 // Send initialized notification

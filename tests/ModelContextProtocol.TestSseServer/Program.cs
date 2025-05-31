@@ -34,7 +34,6 @@ public class Program
             Resources = new(),
             Prompts = new(),
         };
-        options.ProtocolVersion = "2024-11-05";
         options.ServerInstructions = "This is a test server with only stub functionality";
 
         Console.WriteLine("Registering handlers.");
