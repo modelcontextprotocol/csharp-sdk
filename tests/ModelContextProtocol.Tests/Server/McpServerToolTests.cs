@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.AI;
+﻿using Json.Schema;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
@@ -7,7 +8,10 @@ using ModelContextProtocol.Tests.Utils;
 using Moq;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
+using Xunit.Sdk;
 
 namespace ModelContextProtocol.Tests.Server;
 
@@ -422,6 +426,94 @@ public partial class McpServerToolTests
         Assert.Equal(exceptionMessage, errorLog.Exception.Message);
     }
 
+    [Theory]
+    [MemberData(nameof(StructuredOutput_ReturnsExpectedSchema_Inputs))]
+    public async Task StructuredOutput_Enabled_ReturnsExpectedSchema<T>(T value)
+    {
+        JsonSerializerOptions options = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
+        McpServerTool tool = McpServerTool.Create(() => value, new() { Name = "tool", UseStructuredContent = true, SerializerOptions = options });
+        var mockServer = new Mock<IMcpServer>();
+        var request = new RequestContext<CallToolRequestParams>(mockServer.Object)
+        {
+            Params = new CallToolRequestParams { Name = "tool" },
+        };
+
+        var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(tool.ProtocolTool.OutputSchema);
+        Assert.Equal("object", tool.ProtocolTool.OutputSchema.Value.GetProperty("type").GetString());
+        Assert.NotNull(result.StructuredContent);
+        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema.Value, result.StructuredContent);
+    }
+
+    [Fact]
+    public async Task StructuredOutput_Enabled_VoidReturningTools_ReturnsExpectedSchema()
+    {
+        McpServerTool tool = McpServerTool.Create(() => { });
+        var mockServer = new Mock<IMcpServer>();
+        var request = new RequestContext<CallToolRequestParams>(mockServer.Object)
+        {
+            Params = new CallToolRequestParams { Name = "tool" },
+        };
+
+        var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Null(tool.ProtocolTool.OutputSchema);
+        Assert.Null(result.StructuredContent);
+
+        tool = McpServerTool.Create(() => Task.CompletedTask);
+        request = new RequestContext<CallToolRequestParams>(mockServer.Object)
+        {
+            Params = new CallToolRequestParams { Name = "tool" },
+        };
+
+        result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Null(tool.ProtocolTool.OutputSchema);
+        Assert.Null(result.StructuredContent);
+
+        tool = McpServerTool.Create(() => ValueTask.CompletedTask);
+        request = new RequestContext<CallToolRequestParams>(mockServer.Object)
+        {
+            Params = new CallToolRequestParams { Name = "tool" },
+        };
+
+        result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Null(tool.ProtocolTool.OutputSchema);
+        Assert.Null(result.StructuredContent);
+    }
+
+    [Theory]
+    [MemberData(nameof(StructuredOutput_ReturnsExpectedSchema_Inputs))]
+    public async Task StructuredOutput_Disabled_ReturnsExpectedSchema<T>(T value)
+    {
+        JsonSerializerOptions options = new() { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
+        McpServerTool tool = McpServerTool.Create(() => value, new() { UseStructuredContent = false, SerializerOptions = options });
+        var mockServer = new Mock<IMcpServer>();
+        var request = new RequestContext<CallToolRequestParams>(mockServer.Object)
+        {
+            Params = new CallToolRequestParams { Name = "tool" },
+        };
+
+        var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.Null(tool.ProtocolTool.OutputSchema);
+        Assert.Null(result.StructuredContent);
+    }
+
+    public static IEnumerable<object[]> StructuredOutput_ReturnsExpectedSchema_Inputs()
+    {
+        yield return new object[] { "string" };
+        yield return new object[] { 42 };
+        yield return new object[] { 3.14 };
+        yield return new object[] { true };
+        yield return new object[] { new object() };
+        yield return new object[] { new List<string> { "item1", "item2" } };
+        yield return new object[] { new Dictionary<string, int> { ["key1"] = 1, ["key2"] = 2 } };
+        yield return new object[] { new Person("John", 27) }; 
+    }
+
     private sealed class MyService;
 
     private class DisposableToolType : IDisposable
@@ -510,9 +602,35 @@ public partial class McpServerToolTests
         }
     }
 
+    private static void AssertMatchesJsonSchema(JsonElement schemaDoc, JsonNode? value)
+    {
+        JsonSchema schema = JsonSerializer.Deserialize(schemaDoc, JsonContext2.Default.JsonSchema)!;
+        EvaluationOptions options = new() { OutputFormat = OutputFormat.List };
+        EvaluationResults results = schema.Evaluate(value, options);
+        if (!results.IsValid)
+        {
+            IEnumerable<string> errors = results.Details
+                .Where(d => d.HasErrors)
+                .SelectMany(d => d.Errors!.Select(error => $"Path:${d.InstanceLocation} {error.Key}:{error.Value}"));
+
+            throw new XunitException($"""
+                Instance JSON document does not match the specified schema.
+                Schema:
+                {JsonSerializer.Serialize(schema)}
+                Instance:
+                {value?.ToJsonString() ?? "null"}
+                Errors:
+                {string.Join(Environment.NewLine, errors)}
+                """);
+        }
+    }
+
+    record Person(string Name, int Age);
+
     [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
     [JsonSerializable(typeof(DisposableToolType))]
     [JsonSerializable(typeof(AsyncDisposableToolType))]
     [JsonSerializable(typeof(AsyncDisposableAndDisposableToolType))]
+    [JsonSerializable(typeof(JsonSchema))]
     partial class JsonContext2 : JsonSerializerContext;
 }
