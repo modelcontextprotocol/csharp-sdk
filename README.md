@@ -169,7 +169,7 @@ McpServerOptions options = new()
         Tools = new ToolsCapability()
         {
             ListToolsHandler = (request, cancellationToken) =>
-                Task.FromResult(new ListToolsResult()
+                ValueTask.FromResult(new ListToolsResult()
                 {
                     Tools =
                     [
@@ -202,7 +202,7 @@ McpServerOptions options = new()
                         throw new McpException("Missing required argument 'message'");
                     }
 
-                    return Task.FromResult(new CallToolResponse()
+                    return ValueTask.FromResult(new CallToolResponse()
                     {
                         Content = [new Content() { Text = $"Echo: {message}", Type = "text" }]
                     });

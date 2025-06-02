@@ -1,7 +1,4 @@
-﻿using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Protocol.Transport;
-using ModelContextProtocol.Protocol.Types;
-using ModelContextProtocol.Utils.Json;
+﻿using ModelContextProtocol.Protocol;
 using System.Text.Json;
 using System.Threading.Channels;
 
@@ -42,9 +39,11 @@ public class TestServerTransport : ITransport
         if (message is JsonRpcRequest request)
         {
             if (request.Method == RequestMethods.RootsList)
-                await ListRoots(request, cancellationToken);
+                await ListRootsAsync(request, cancellationToken);
             else if (request.Method == RequestMethods.SamplingCreateMessage)
-                await Sampling(request, cancellationToken);
+                await SamplingAsync(request, cancellationToken);
+            else if (request.Method == RequestMethods.ElicitationCreate)
+                await ElicitAsync(request, cancellationToken);
             else
                 await WriteMessageAsync(request, cancellationToken);
         }
@@ -56,7 +55,7 @@ public class TestServerTransport : ITransport
         OnMessageSent?.Invoke(message);
     }
 
-    private async Task ListRoots(JsonRpcRequest request, CancellationToken cancellationToken)
+    private async Task ListRootsAsync(JsonRpcRequest request, CancellationToken cancellationToken)
     {
         await WriteMessageAsync(new JsonRpcResponse
         {
@@ -68,12 +67,21 @@ public class TestServerTransport : ITransport
         }, cancellationToken);
     }
 
-    private async Task Sampling(JsonRpcRequest request, CancellationToken cancellationToken)
+    private async Task SamplingAsync(JsonRpcRequest request, CancellationToken cancellationToken)
     {
         await WriteMessageAsync(new JsonRpcResponse
         {
             Id = request.Id,
             Result = JsonSerializer.SerializeToNode(new CreateMessageResult { Content = new(), Model = "model", Role = Role.User }, McpJsonUtilities.DefaultOptions),
+        }, cancellationToken);
+    }
+
+    private async Task ElicitAsync(JsonRpcRequest request, CancellationToken cancellationToken)
+    {
+        await WriteMessageAsync(new JsonRpcResponse
+        {
+            Id = request.Id,
+            Result = JsonSerializer.SerializeToNode(new ElicitResult { Action = "decline" }, McpJsonUtilities.DefaultOptions),
         }, cancellationToken);
     }
 

@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
-using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Moq;
 using System.ComponentModel;
@@ -15,8 +15,8 @@ public class McpServerPromptTests
     {
         Assert.Throws<ArgumentNullException>("function", () => McpServerPrompt.Create((AIFunction)null!));
         Assert.Throws<ArgumentNullException>("method", () => McpServerPrompt.Create((MethodInfo)null!));
-        Assert.Throws<ArgumentNullException>("method", () => McpServerPrompt.Create((MethodInfo)null!, typeof(object)));
-        Assert.Throws<ArgumentNullException>("targetType", () => McpServerPrompt.Create(typeof(McpServerPromptTests).GetMethod(nameof(Create_InvalidArgs_Throws))!, (Type)null!));
+        Assert.Throws<ArgumentNullException>("method", () => McpServerPrompt.Create((MethodInfo)null!, _ => new object()));
+        Assert.Throws<ArgumentNullException>("createTargetFunc", () => McpServerPrompt.Create(typeof(McpServerPromptTests).GetMethod(nameof(Create_InvalidArgs_Throws))!, null!));
         Assert.Throws<ArgumentNullException>("method", () => McpServerPrompt.Create((Delegate)null!));
     }
 
@@ -96,7 +96,7 @@ public class McpServerPromptTests
     {
         McpServerPrompt prompt1 = McpServerPrompt.Create(
             typeof(DisposablePromptType).GetMethod(nameof(DisposablePromptType.InstanceMethod))!,
-            typeof(DisposablePromptType));
+            _ => new DisposablePromptType());
 
         var result = await prompt1.GetAsync(
             new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),
@@ -109,7 +109,7 @@ public class McpServerPromptTests
     {
         McpServerPrompt prompt1 = McpServerPrompt.Create(
             typeof(AsyncDisposablePromptType).GetMethod(nameof(AsyncDisposablePromptType.InstanceMethod))!,
-            typeof(AsyncDisposablePromptType));
+            _ => new AsyncDisposablePromptType());
 
         var result = await prompt1.GetAsync(
             new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),
@@ -122,7 +122,7 @@ public class McpServerPromptTests
     {
         McpServerPrompt prompt1 = McpServerPrompt.Create(
             typeof(AsyncDisposableAndDisposablePromptType).GetMethod(nameof(AsyncDisposableAndDisposablePromptType.InstanceMethod))!,
-            typeof(AsyncDisposableAndDisposablePromptType));
+            _ => new AsyncDisposableAndDisposablePromptType());
 
         var result = await prompt1.GetAsync(
             new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),

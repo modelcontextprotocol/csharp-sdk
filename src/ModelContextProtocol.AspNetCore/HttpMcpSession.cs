@@ -1,10 +1,15 @@
-﻿using ModelContextProtocol.Protocol.Transport;
+﻿using ModelContextProtocol.AspNetCore.Stateless;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Security.Claims;
 
 namespace ModelContextProtocol.AspNetCore;
 
-internal sealed class HttpMcpSession<TTransport>(string sessionId, TTransport transport, ClaimsPrincipal user, TimeProvider timeProvider) : IAsyncDisposable
+internal sealed class HttpMcpSession<TTransport>(
+    string sessionId,
+    TTransport transport,
+    UserIdClaim? userId,
+    TimeProvider timeProvider) : IAsyncDisposable
     where TTransport : ITransport
 {
     private int _referenceCount;
@@ -13,7 +18,7 @@ internal sealed class HttpMcpSession<TTransport>(string sessionId, TTransport tr
 
     public string Id { get; } = sessionId;
     public TTransport Transport { get; } = transport;
-    public (string Type, string Value, string Issuer)? UserIdClaim { get; } = GetUserIdClaim(user);
+    public UserIdClaim? UserIdClaim { get; } = userId;
 
     public CancellationToken SessionClosed => _disposeCts.Token;
 
@@ -63,27 +68,7 @@ internal sealed class HttpMcpSession<TTransport>(string sessionId, TTransport tr
     }
 
     public bool HasSameUserId(ClaimsPrincipal user)
-        => UserIdClaim == GetUserIdClaim(user);
-
-    // SignalR only checks for ClaimTypes.NameIdentifier in HttpConnectionDispatcher, but AspNetCore.Antiforgery checks that plus the sub and UPN claims.
-    // However, we short-circuit unlike antiforgery since we expect to call this to verify MCP messages a lot more frequently than
-    // verifying antiforgery tokens from <form> posts.
-    private static (string Type, string Value, string Issuer)? GetUserIdClaim(ClaimsPrincipal user)
-    {
-        if (user?.Identity?.IsAuthenticated != true)
-        {
-            return null;
-        }
-
-        var claim = user.FindFirst(ClaimTypes.NameIdentifier) ?? user.FindFirst("sub") ?? user.FindFirst(ClaimTypes.Upn);
-
-        if (claim is { } idClaim)
-        {
-            return (idClaim.Type, idClaim.Value, idClaim.Issuer);
-        }
-
-        return null;
-    }
+        => UserIdClaim == StreamableHttpHandler.GetUserIdClaim(user);
 
     private sealed class UnreferenceDisposable(HttpMcpSession<TTransport> session, TimeProvider timeProvider) : IDisposable
     {

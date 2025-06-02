@@ -1,8 +1,9 @@
 ﻿using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
-using ModelContextProtocol.Protocol.Types;
+using Microsoft.Extensions.Logging;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using ModelContextProtocol.Utils.Json;
+using ModelContextProtocol.Tests.Utils;
 using Moq;
 using System.Reflection;
 using System.Text.Json;
@@ -18,7 +19,7 @@ public partial class McpServerToolTests
         Assert.Throws<ArgumentNullException>("function", () => McpServerTool.Create((AIFunction)null!));
         Assert.Throws<ArgumentNullException>("method", () => McpServerTool.Create((MethodInfo)null!));
         Assert.Throws<ArgumentNullException>("method", () => McpServerTool.Create((MethodInfo)null!, typeof(object)));
-        Assert.Throws<ArgumentNullException>("targetType", () => McpServerTool.Create(typeof(McpServerToolTests).GetMethod(nameof(Create_InvalidArgs_Throws))!, (Type)null!));
+        Assert.Throws<ArgumentNullException>("createTargetFunc", () => McpServerTool.Create(typeof(McpServerToolTests).GetMethod(nameof(Create_InvalidArgs_Throws))!, null!));
         Assert.Throws<ArgumentNullException>("method", () => McpServerTool.Create((Delegate)null!));
 
         Assert.NotNull(McpServerTool.Create(typeof(DisposableToolType).GetMethod(nameof(DisposableToolType.InstanceMethod))!, new DisposableToolType()));
@@ -129,7 +130,7 @@ public partial class McpServerToolTests
         McpServerToolCreateOptions options = new() { SerializerOptions = JsonContext2.Default.Options };
         McpServerTool tool1 = McpServerTool.Create(
             typeof(DisposableToolType).GetMethod(nameof(DisposableToolType.InstanceMethod))!,
-            typeof(DisposableToolType),
+            _ => new DisposableToolType(),
             options);
 
         var result = await tool1.InvokeAsync(
@@ -144,7 +145,7 @@ public partial class McpServerToolTests
         McpServerToolCreateOptions options = new() { SerializerOptions = JsonContext2.Default.Options };
         McpServerTool tool1 = McpServerTool.Create(
             typeof(AsyncDisposableToolType).GetMethod(nameof(AsyncDisposableToolType.InstanceMethod))!,
-            typeof(AsyncDisposableToolType),
+            _ => new AsyncDisposableToolType(),
             options);
 
         var result = await tool1.InvokeAsync(
@@ -163,7 +164,7 @@ public partial class McpServerToolTests
         McpServerToolCreateOptions options = new() { SerializerOptions = JsonContext2.Default.Options };
         McpServerTool tool1 = McpServerTool.Create(
             typeof(AsyncDisposableAndDisposableToolType).GetMethod(nameof(AsyncDisposableAndDisposableToolType.InstanceMethod))!,
-            typeof(AsyncDisposableAndDisposableToolType),
+            static r => ActivatorUtilities.CreateInstance(r.Services!, typeof(AsyncDisposableAndDisposableToolType)),
             options);
 
         var result = await tool1.InvokeAsync(
@@ -380,6 +381,45 @@ public partial class McpServerToolTests
             tool.ProtocolTool.InputSchema.GetProperty("properties").EnumerateObject(),
             x => Assert.True(x.Value.TryGetProperty("text", out JsonElement value) && value.ToString() == "1234")
         );
+    }
+
+    [Fact]
+    public async Task ToolCallError_LogsErrorMessage()
+    {
+        // Arrange
+        var mockLoggerProvider = new MockLoggerProvider();
+        var loggerFactory = new LoggerFactory(new[] { mockLoggerProvider });
+        var services = new ServiceCollection();
+        services.AddSingleton<ILoggerFactory>(loggerFactory);
+        var serviceProvider = services.BuildServiceProvider();
+
+        var toolName = "tool-that-throws";
+        var exceptionMessage = "Test exception message";
+
+        McpServerTool tool = McpServerTool.Create(() =>
+        {
+            throw new InvalidOperationException(exceptionMessage);
+        }, new() { Name = toolName, Services = serviceProvider });
+
+        var mockServer = new Mock<IMcpServer>();
+        var request = new RequestContext<CallToolRequestParams>(mockServer.Object)
+        {
+            Params = new CallToolRequestParams() { Name = toolName },
+            Services = serviceProvider
+        };
+
+        // Act
+        var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.True(result.IsError);
+        Assert.Single(result.Content);
+        Assert.Equal($"An error occurred invoking '{toolName}'.", result.Content[0].Text);
+
+        var errorLog = Assert.Single(mockLoggerProvider.LogMessages, m => m.LogLevel == LogLevel.Error);
+        Assert.Equal($"\"{toolName}\" threw an unhandled exception.", errorLog.Message);
+        Assert.IsType<InvalidOperationException>(errorLog.Exception);
+        Assert.Equal(exceptionMessage, errorLog.Exception.Message);
     }
 
     private sealed class MyService;

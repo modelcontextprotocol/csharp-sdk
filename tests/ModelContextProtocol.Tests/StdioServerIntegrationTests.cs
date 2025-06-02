@@ -1,5 +1,6 @@
 ﻿using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol.Transport;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.Diagnostics;
 using System.Runtime.InteropServices;

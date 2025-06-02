@@ -2,10 +2,8 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Protocol.Transport;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using ModelContextProtocol.Utils.Json;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 
@@ -34,7 +32,10 @@ internal sealed class SseHandler(
         var requestPath = (context.Request.PathBase + context.Request.Path).ToString();
         var endpointPattern = requestPath[..(requestPath.LastIndexOf('/') + 1)];
         await using var transport = new SseResponseStreamTransport(context.Response.Body, $"{endpointPattern}message?sessionId={sessionId}");
-        await using var httpMcpSession = new HttpMcpSession<SseResponseStreamTransport>(sessionId, transport, context.User, httpMcpServerOptions.Value.TimeProvider);
+
+        var userIdClaim = StreamableHttpHandler.GetUserIdClaim(context.User);
+        await using var httpMcpSession = new HttpMcpSession<SseResponseStreamTransport>(sessionId, transport, userIdClaim, httpMcpServerOptions.Value.TimeProvider);
+
         if (!_sessions.TryAdd(sessionId, httpMcpSession))
         {
             throw new UnreachableException($"Unreachable given good entropy! Session with ID '{sessionId}' has already been created.");

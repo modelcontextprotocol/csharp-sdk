@@ -4,11 +4,8 @@ using Microsoft.AspNetCore.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Protocol.Transport;
-using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using ModelContextProtocol.Utils.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 
@@ -31,7 +28,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
             Services = _app.Services,
         });
 
-        _app.MapPost("/mcp", async (JsonRpcMessage message) =>
+        _app.MapPost("/mcp", (JsonRpcMessage message) =>
         {
             if (message is not JsonRpcRequest request)
             {
@@ -101,7 +98,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
         await using var transport = new SseClientTransport(new()
         {
             Endpoint = new("http://localhost/mcp"),
-            UseStreamableHttp = true,
+            TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
         await using var client = await McpClientFactory.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
@@ -121,7 +118,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
         await using var transport = new SseClientTransport(new()
         {
             Endpoint = new("http://localhost/mcp"),
-            UseStreamableHttp = true,
+            TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
         await using var client = await McpClientFactory.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);

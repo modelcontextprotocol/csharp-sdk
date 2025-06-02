@@ -1,4 +1,4 @@
-﻿using ModelContextProtocol.Protocol.Transport;
+﻿using ModelContextProtocol.Client;
 using System.Text;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
@@ -14,8 +14,8 @@ public class StreamableHttpServerIntegrationTests(SseServerIntegrationTestFixtur
     protected override SseClientTransportOptions ClientTransportOptions => new()
     {
         Endpoint = new Uri("http://localhost/"),
-        Name = "TestServer",
-        UseStreamableHttp = true,
+        Name = "In-memory Streamable HTTP Client",
+        TransportMode = HttpTransportMode.StreamableHttp,
     };
 
     [Fact]

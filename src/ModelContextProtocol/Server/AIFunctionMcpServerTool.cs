@@ -1,8 +1,8 @@
 ﻿using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
-using ModelContextProtocol.Protocol.Types;
-using ModelContextProtocol.Utils;
-using ModelContextProtocol.Utils.Json;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using ModelContextProtocol.Protocol;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
@@ -11,8 +11,10 @@ using System.Text.Json;
 namespace ModelContextProtocol.Server;
 
 /// <summary>Provides an <see cref="McpServerTool"/> that's implemented via an <see cref="AIFunction"/>.</summary>
-internal sealed class AIFunctionMcpServerTool : McpServerTool
+internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 {
+    private readonly ILogger _logger;
+
     /// <summary>
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
     /// </summary>
@@ -49,15 +51,20 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
     /// </summary>
     public static new AIFunctionMcpServerTool Create(
         MethodInfo method,
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type targetType,
+        Func<RequestContext<CallToolRequestParams>, object> createTargetFunc,
         McpServerToolCreateOptions? options)
     {
         Throw.IfNull(method);
+        Throw.IfNull(createTargetFunc);
 
         options = DeriveOptions(method, options);
 
         return Create(
-            AIFunctionFactory.Create(method, targetType, CreateAIFunctionFactoryOptions(method, options)),
+            AIFunctionFactory.Create(method, args =>
+            {
+                var request = (RequestContext<CallToolRequestParams>)args.Context![typeof(RequestContext<CallToolRequestParams>)]!;
+                return createTargetFunc(request);
+            }, CreateAIFunctionFactoryOptions(method, options)),
             options);
     }
 
@@ -77,7 +84,6 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             Description = options?.Description,
             MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
             SerializerOptions = options?.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
-            CreateInstance = GetCreateInstanceFunc(),
             ConfigureParameterBinding = pi =>
             {
                 if (pi.ParameterType == typeof(RequestContext<CallToolRequestParams>))
@@ -192,7 +198,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             }
         }
 
-        return new AIFunctionMcpServerTool(function, tool);
+        return new AIFunctionMcpServerTool(function, tool, options?.Services);
     }
 
     private static McpServerToolCreateOptions DeriveOptions(MethodInfo method, McpServerToolCreateOptions? options)
@@ -237,14 +243,12 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
     internal AIFunction AIFunction { get; }
 
     /// <summary>Initializes a new instance of the <see cref="McpServerTool"/> class.</summary>
-    private AIFunctionMcpServerTool(AIFunction function, Tool tool)
+    private AIFunctionMcpServerTool(AIFunction function, Tool tool, IServiceProvider? serviceProvider)
     {
         AIFunction = function;
         ProtocolTool = tool;
+        _logger = serviceProvider?.GetService<ILoggerFactory>()?.CreateLogger<McpServerTool>() ?? (ILogger)NullLogger.Instance;
     }
-
-    /// <inheritdoc />
-    public override string ToString() => AIFunction.ToString();
 
     /// <inheritdoc />
     public override Tool ProtocolTool { get; }
@@ -278,6 +282,8 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
+            ToolCallError(request.Params?.Name ?? string.Empty, e);
+
             string errorMessage = e is McpException ?
                 $"An error occurred invoking '{request.Params?.Name}': {e.Message}" :
                 $"An error occurred invoking '{request.Params?.Name}'.";
@@ -360,4 +366,7 @@ internal sealed class AIFunctionMcpServerTool : McpServerTool
             IsError = allErrorContent && hasAny
         };
     }
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "\"{ToolName}\" threw an unhandled exception.")]
+    private partial void ToolCallError(string toolName, Exception exception);
 }

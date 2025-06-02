@@ -1,5 +1,4 @@
-﻿using ModelContextProtocol.Utils;
-#if NET
+﻿#if NET
 using System.Buffers;
 #endif
 using System.Diagnostics;

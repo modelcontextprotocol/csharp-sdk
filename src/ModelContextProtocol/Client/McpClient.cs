@@ -1,9 +1,5 @@
 using Microsoft.Extensions.Logging;
-using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Protocol.Transport;
-using ModelContextProtocol.Protocol.Types;
-using ModelContextProtocol.Shared;
-using ModelContextProtocol.Utils.Json;
+using ModelContextProtocol.Protocol;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Client;
@@ -79,6 +75,20 @@ internal sealed partial class McpClient : McpEndpoint, IMcpClient
                     (request, _, cancellationToken) => rootsHandler(request, cancellationToken),
                     McpJsonUtilities.JsonContext.Default.ListRootsRequestParams,
                     McpJsonUtilities.JsonContext.Default.ListRootsResult);
+            }
+
+            if (capabilities.Elicitation is { } elicitationCapability)
+            {
+                if (elicitationCapability.ElicitationHandler is not { } elicitationHandler)
+                {
+                    throw new InvalidOperationException("Elicitation capability was set but it did not provide a handler.");
+                }
+
+                RequestHandlers.Set(
+                    RequestMethods.ElicitationCreate,
+                    (request, _, cancellationToken) => elicitationHandler(request, cancellationToken),
+                    McpJsonUtilities.JsonContext.Default.ElicitRequestParams,
+                    McpJsonUtilities.JsonContext.Default.ElicitResult);
             }
         }
     }

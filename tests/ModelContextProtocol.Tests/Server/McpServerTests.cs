@@ -1,9 +1,7 @@
 ﻿using Microsoft.Extensions.AI;
-using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
-using ModelContextProtocol.Utils.Json;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -94,21 +92,21 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
-    public async Task RequestSamplingAsync_Should_Throw_Exception_If_Client_Does_Not_Support_Sampling()
+    public async Task SampleAsync_Should_Throw_Exception_If_Client_Does_Not_Support_Sampling()
     {
         // Arrange
         await using var transport = new TestServerTransport();
         await using var server = McpServerFactory.Create(transport, _options, LoggerFactory);
         SetClientCapabilities(server, new ClientCapabilities());
 
-        var action = async () => await server.RequestSamplingAsync(new CreateMessageRequestParams { Messages = [] }, CancellationToken.None);
+        var action = async () => await server.SampleAsync(new CreateMessageRequestParams { Messages = [] }, CancellationToken.None);
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(action);
     }
 
     [Fact]
-    public async Task RequestSamplingAsync_Should_SendRequest()
+    public async Task SampleAsync_Should_SendRequest()
     {
         // Arrange
         await using var transport = new TestServerTransport();
@@ -118,7 +116,7 @@ public class McpServerTests : LoggedTest
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
 
         // Act
-        var result = await server.RequestSamplingAsync(new CreateMessageRequestParams { Messages = [] }, CancellationToken.None);
+        var result = await server.SampleAsync(new CreateMessageRequestParams { Messages = [] }, CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.NotEmpty(transport.SentMessages);
@@ -158,6 +156,40 @@ public class McpServerTests : LoggedTest
         Assert.NotEmpty(transport.SentMessages);
         Assert.IsType<JsonRpcRequest>(transport.SentMessages[0]);
         Assert.Equal(RequestMethods.RootsList, ((JsonRpcRequest)transport.SentMessages[0]).Method);
+
+        await transport.DisposeAsync();
+        await runTask;
+    }
+
+    [Fact]
+    public async Task ElicitAsync_Should_Throw_Exception_If_Client_Does_Not_Support_Elicitation()
+    {
+        // Arrange
+        await using var transport = new TestServerTransport();
+        await using var server = McpServerFactory.Create(transport, _options, LoggerFactory);
+        SetClientCapabilities(server, new ClientCapabilities());
+
+        // Act & Assert
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await server.ElicitAsync(new ElicitRequestParams(), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ElicitAsync_Should_SendRequest()
+    {
+        // Arrange
+        await using var transport = new TestServerTransport();
+        await using var server = McpServerFactory.Create(transport, _options, LoggerFactory);
+        SetClientCapabilities(server, new ClientCapabilities { Elicitation = new ElicitationCapability() });
+        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        var result = await server.ElicitAsync(new ElicitRequestParams(), CancellationToken.None);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.NotEmpty(transport.SentMessages);
+        Assert.IsType<JsonRpcRequest>(transport.SentMessages[0]);
+        Assert.Equal(RequestMethods.ElicitationCreate, ((JsonRpcRequest)transport.SentMessages[0]).Method);
 
         await transport.DisposeAsync();
         await runTask;
@@ -581,6 +613,8 @@ public class McpServerTests : LoggedTest
             supportsSampling ? new ClientCapabilities { Sampling = new SamplingCapability() } :
             null;
 
+        public McpServerOptions ServerOptions => new();
+
         public Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken)
         {
             CreateMessageRequestParams? rp = JsonSerializer.Deserialize<CreateMessageRequestParams>(request.Params, McpJsonUtilities.DefaultOptions);
@@ -617,7 +651,6 @@ public class McpServerTests : LoggedTest
         public ValueTask DisposeAsync() => default;
 
         public Implementation? ClientInfo => throw new NotImplementedException();
-        public McpServerOptions ServerOptions => throw new NotImplementedException();
         public IServiceProvider? Services => throw new NotImplementedException();
         public LoggingLevel? LoggingLevel => throw new NotImplementedException();
         public Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default) =>

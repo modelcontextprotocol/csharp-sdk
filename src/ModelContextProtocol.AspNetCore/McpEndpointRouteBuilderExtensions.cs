@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.AspNetCore;
-using ModelContextProtocol.Protocol.Messages;
+using ModelContextProtocol.Protocol;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Microsoft.AspNetCore.Builder;
@@ -35,20 +35,27 @@ public static class McpEndpointRouteBuilderExtensions
             .WithMetadata(new AcceptsMetadata(["application/json"]))
             .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["text/event-stream"]))
             .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status202Accepted));
-        streamableHttpGroup.MapGet("", streamableHttpHandler.HandleGetRequestAsync)
-            .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["text/event-stream"]));
-        streamableHttpGroup.MapDelete("", streamableHttpHandler.HandleDeleteRequestAsync);
 
-        // Map legacy HTTP with SSE endpoints.
-        var sseHandler = endpoints.ServiceProvider.GetRequiredService<SseHandler>();
-        var sseGroup = mcpGroup.MapGroup("")
-            .WithDisplayName(b => $"MCP HTTP with SSE | {b.DisplayName}");
+        if (!streamableHttpHandler.HttpServerTransportOptions.Stateless)
+        {
+            // The GET and DELETE endpoints are not mapped in Stateless mode since there's no way to send unsolicited messages
+            // for the GET to handle, and there is no server-side state for the DELETE to clean up.
+            streamableHttpGroup.MapGet("", streamableHttpHandler.HandleGetRequestAsync)
+                .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["text/event-stream"]));
+            streamableHttpGroup.MapDelete("", streamableHttpHandler.HandleDeleteRequestAsync);
 
-        sseGroup.MapGet("/sse", sseHandler.HandleSseRequestAsync)
-            .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["text/event-stream"]));
-        sseGroup.MapPost("/message", sseHandler.HandleMessageRequestAsync)
-            .WithMetadata(new AcceptsMetadata(["application/json"]))
-            .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status202Accepted));
+            // Map legacy HTTP with SSE endpoints only if not in Stateless mode, because we cannot guarantee the /message requests
+            // will be handled by the same process as the /sse request.
+            var sseHandler = endpoints.ServiceProvider.GetRequiredService<SseHandler>();
+            var sseGroup = mcpGroup.MapGroup("")
+                .WithDisplayName(b => $"MCP HTTP with SSE | {b.DisplayName}");
+
+            sseGroup.MapGet("/sse", sseHandler.HandleSseRequestAsync)
+                .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["text/event-stream"]));
+            sseGroup.MapPost("/message", sseHandler.HandleMessageRequestAsync)
+                .WithMetadata(new AcceptsMetadata(["application/json"]))
+                .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status202Accepted));
+        }
 
         return mcpGroup;
     }

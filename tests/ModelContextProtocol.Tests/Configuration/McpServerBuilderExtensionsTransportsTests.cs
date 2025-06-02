@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using ModelContextProtocol.Protocol.Transport;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using Moq;
 using System.IO.Pipelines;
 

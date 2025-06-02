@@ -1,8 +1,8 @@
 using Microsoft.Extensions.AI;
-using ModelContextProtocol.Protocol.Types;
-using ModelContextProtocol.Utils;
-using ModelContextProtocol.Utils.Json;
+using ModelContextProtocol.Protocol;
+#if !NET
 using System.Runtime.InteropServices;
+#endif
 using System.Text.Json;
 
 namespace ModelContextProtocol;
@@ -178,18 +178,6 @@ public static class AIContentExtensions
         return [.. contents.Select(ToAIContent)];
     }
 
-    /// <summary>Extracts the data from a <see cref="DataContent"/> as a Base64 string.</summary>
-    internal static string GetBase64Data(this DataContent dataContent)
-    {
-#if NET
-        return Convert.ToBase64String(dataContent.Data.Span);
-#else
-        return MemoryMarshal.TryGetArray(dataContent.Data, out ArraySegment<byte> segment) ?
-            Convert.ToBase64String(segment.Array!, segment.Offset, segment.Count) :
-            Convert.ToBase64String(dataContent.Data.ToArray());
-#endif
-    }
-
     internal static Content ToContent(this AIContent content) =>
         content switch
         {
@@ -201,7 +189,7 @@ public static class AIContentExtensions
 
             DataContent dataContent => new()
             {
-                Data = dataContent.GetBase64Data(),
+                Data = dataContent.Base64Data.ToString(),
                 MimeType = dataContent.MediaType,
                 Type =
                     dataContent.HasTopLevelMediaType("image") ? "image" :

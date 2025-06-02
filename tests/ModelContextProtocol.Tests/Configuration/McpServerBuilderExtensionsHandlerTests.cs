@@ -1,7 +1,7 @@
-using ModelContextProtocol.Protocol.Types;
-using ModelContextProtocol.Server;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using Moq;
 
 namespace ModelContextProtocol.Tests.Configuration;

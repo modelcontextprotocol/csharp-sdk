@@ -1,7 +1,7 @@
-using TestServerWithHosting.Tools;
+using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
-using OpenTelemetry;
+using TestServerWithHosting.Tools;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddMcpServer()

@@ -4,11 +4,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using Microsoft.Net.Http.Headers;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
-using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
-using ModelContextProtocol.Utils.Json;
 using System.Net;
 using System.Net.ServerSentEvents;
 using System.Text;
@@ -71,7 +69,6 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         Assert.Contains("IdleTimeout", ex.Message);
     }
 
-
     [Fact]
     public async Task NegativeMaxIdleSessionCount_Throws_ArgumentOutOfRangeException()
     {
@@ -108,7 +105,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     [InlineData("text/event-stream")]
     [InlineData("application/json")]
     [InlineData("application/json-text/event-stream")]
-    public async Task PostRequest_IsNotAcceptable_WithSingleAcceptHeader(string singleAcceptValue)
+    public async Task PostRequest_IsNotAcceptable_WithSingleSpecificAcceptHeader(string singleAcceptValue)
     {
         await StartAsync();
 
@@ -117,6 +114,20 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
 
         using var response = await HttpClient.PostAsync("", JsonContent(InitializeRequest), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotAcceptable, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("*/*")]
+    [InlineData("text/event-stream, application/json;q=0.9")]
+    public async Task PostRequest_IsAcceptable_WithWildcardOrAddedQualityInAcceptHeader(string acceptHeaderValue)
+    {
+        await StartAsync();
+
+        HttpClient.DefaultRequestHeaders.Accept.Clear();
+        HttpClient.DefaultRequestHeaders.TryAddWithoutValidation(HeaderNames.Accept, acceptHeaderValue);
+
+        using var response = await HttpClient.PostAsync("", JsonContent(InitializeRequest), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact]
@@ -129,6 +140,22 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
 
         using var response = await HttpClient.GetAsync("", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotAcceptable, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("*/*")]
+    [InlineData("application/json, text/event-stream;q=0.9")]
+    public async Task GetRequest_IsAcceptable_WithWildcardOrAddedQualityInAcceptHeader(string acceptHeaderValue)
+    {
+        await StartAsync();
+
+        HttpClient.DefaultRequestHeaders.Accept.Clear();
+        HttpClient.DefaultRequestHeaders.TryAddWithoutValidation(HeaderNames.Accept, acceptHeaderValue);
+
+        await CallInitializeAndValidateAsync();
+
+        using var response = await HttpClient.GetAsync("", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact]
@@ -358,6 +385,47 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         }
 
         Assert.Equal(11, currentSseItem);
+    }
+
+    [Fact]
+    public async Task AsyncLocalSetInRunSessionHandlerCallback_Flows_ToAllToolCalls()
+    {
+        var asyncLocal = new AsyncLocal<string>();
+        var totalSessionCount = 0;
+
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(options =>
+            {
+                options.RunSessionHandler = async (httpContext, mcpServer, cancellationToken) =>
+                {
+                    asyncLocal.Value = $"RunSessionHandler ({totalSessionCount++})";
+                    await mcpServer.RunAsync(cancellationToken);
+                };
+            });
+
+        Builder.Services.AddSingleton(McpServerTool.Create([McpServerTool(Name = "async-local-session")] () => asyncLocal.Value));
+
+        await StartAsync();
+
+        var firstSessionId = await CallInitializeAndValidateAsync();
+
+        async Task CallAsyncLocalToolAndValidateAsync(int expectedSessionIndex)
+        {
+            var response = await HttpClient.PostAsync("", JsonContent(CallTool("async-local-session")), TestContext.Current.CancellationToken);
+            var rpcResponse = await AssertSingleSseResponseAsync(response);
+            var callToolResponse = AssertType<CallToolResponse>(rpcResponse.Result);
+            var callToolContent = Assert.Single(callToolResponse.Content);
+            Assert.Equal("text", callToolContent.Type);
+            Assert.Equal($"RunSessionHandler ({expectedSessionIndex})", callToolContent.Text);
+        }
+
+        await CallAsyncLocalToolAndValidateAsync(expectedSessionIndex: 0);
+
+        await CallInitializeAndValidateAsync();
+        await CallAsyncLocalToolAndValidateAsync(expectedSessionIndex: 1);
+
+        SetSessionId(firstSessionId);
+        await CallAsyncLocalToolAndValidateAsync(expectedSessionIndex: 0);
     }
 
     [Fact]

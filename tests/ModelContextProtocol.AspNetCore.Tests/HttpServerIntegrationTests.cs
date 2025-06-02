@@ -1,6 +1,5 @@
 ﻿using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol.Transport;
-using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Tests.Utils;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
@@ -57,7 +56,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
 
     [Fact]
     public async Task ListTools_Sse_TestServer()
-    {        
+    {
         // arrange
 
         // act
@@ -206,6 +205,8 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
     [Fact]
     public async Task Sampling_Sse_TestServer()
     {
+        Assert.SkipWhen(GetType() == typeof(StatelessServerIntegrationTests), "Sampling is not supported in stateless mode.");
+
         // arrange
         // Set up the sampling handler
         int samplingHandlerCalls = 0;

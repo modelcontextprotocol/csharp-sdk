@@ -1,8 +1,6 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
-using ModelContextProtocol.Protocol.Messages;
-using ModelContextProtocol.Protocol.Types;
-using System.Diagnostics.CodeAnalysis;
+using ModelContextProtocol.Protocol;
 using System.Reflection;
 
 namespace ModelContextProtocol.Server;
@@ -205,21 +203,19 @@ public abstract class McpServerResource : IMcpServerPrimitive
     /// instantiate each time the method is invoked.
     /// </summary>
     /// <param name="method">The instance method to be represented via the created <see cref="AIFunction"/>.</param>
-    /// <param name="targetType">
-    /// The <see cref="Type"/> to construct an instance of on which to invoke <paramref name="method"/> when
-    /// the resulting <see cref="AIFunction"/> is invoked. If services are provided,
-    /// ActivatorUtilities.CreateInstance will be used to construct the instance using those services; otherwise,
-    /// <see cref="Activator.CreateInstance(Type)"/> is used, utilizing the type's public parameterless constructor.
-    /// If an instance can't be constructed, an exception is thrown during the function's invocation.
+    /// <param name="createTargetFunc">
+    /// Callback used on each function invocation to create an instance of the type on which the instance method <paramref name="method"/>
+    /// will be invoked. If the returned instance is <see cref="IAsyncDisposable"/> or <see cref="IDisposable"/>, it will
+    /// be disposed of after method completes its invocation.
     /// </param>
     /// <param name="options">Optional options used in the creation of the <see cref="McpServerResource"/> to control its behavior.</param>
     /// <returns>The created <see cref="AIFunction"/> for invoking <paramref name="method"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="method"/> is <see langword="null"/>.</exception>
     public static McpServerResource Create(
         MethodInfo method,
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type targetType,
+        Func<RequestContext<ReadResourceRequestParams>, object> createTargetFunc,
         McpServerResourceCreateOptions? options = null) =>
-        AIFunctionMcpServerResource.Create(method, targetType, options);
+        AIFunctionMcpServerResource.Create(method, createTargetFunc, options);
 
     /// <summary>Creates an <see cref="McpServerResource"/> that wraps the specified <see cref="AIFunction"/>.</summary>
     /// <param name="function">The function to wrap.</param>

@@ -1,11 +1,8 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
-using ModelContextProtocol.Protocol.Types;
-using ModelContextProtocol.Utils;
-using ModelContextProtocol.Utils.Json;
+using ModelContextProtocol.Protocol;
 using System.Collections.Concurrent;
 using System.ComponentModel;
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Reflection;
 using System.Text;
@@ -56,15 +53,20 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
     /// </summary>
     public static new AIFunctionMcpServerResource Create(
         MethodInfo method,
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type targetType,
+        Func<RequestContext<ReadResourceRequestParams>, object> createTargetFunc,
         McpServerResourceCreateOptions? options)
     {
         Throw.IfNull(method);
+        Throw.IfNull(createTargetFunc);
 
         options = DeriveOptions(method, options);
 
         return Create(
-            AIFunctionFactory.Create(method, targetType, CreateAIFunctionFactoryOptions(method, options)),
+            AIFunctionFactory.Create(method, args =>
+            {
+                var request = (RequestContext<ReadResourceRequestParams>)args.Context![typeof(RequestContext<ReadResourceRequestParams>)]!;
+                return createTargetFunc(request);
+            }, CreateAIFunctionFactoryOptions(method, options)),
             options);
     }
 
@@ -76,7 +78,6 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
             Description = options?.Description,
             MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
             SerializerOptions = McpJsonUtilities.DefaultOptions,
-            CreateInstance = AIFunctionMcpServerTool.GetCreateInstanceFunc(),
             ConfigureParameterBinding = pi =>
             {
                 if (pi.ParameterType == typeof(RequestContext<ReadResourceRequestParams>))
@@ -329,9 +330,6 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
     }
 
     /// <inheritdoc />
-    public override string ToString() => AIFunction.ToString();
-
-    /// <inheritdoc />
     public override ResourceTemplate ProtocolResourceTemplate { get; }
 
     /// <inheritdoc />
@@ -402,7 +400,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
 
             DataContent dc => new()
             {
-                Contents = [new BlobResourceContents() { Uri = request.Params!.Uri, MimeType = dc.MediaType, Blob = dc.GetBase64Data() }],
+                Contents = [new BlobResourceContents() { Uri = request.Params!.Uri, MimeType = dc.MediaType, Blob = dc.Base64Data.ToString() }],
             },
 
             string text => new()
@@ -431,7 +429,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
                         {
                             Uri = request.Params!.Uri,
                             MimeType = dc.MediaType,
-                            Blob = dc.GetBase64Data()
+                            Blob = dc.Base64Data.ToString()
                         },
 
                         _ => throw new InvalidOperationException($"Unsupported AIContent type '{ac.GetType()}' returned from resource function."),
