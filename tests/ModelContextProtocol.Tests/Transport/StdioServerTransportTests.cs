@@ -39,7 +39,6 @@ public class StdioServerTransportTests : LoggedTest
     {
         Assert.Throws<ArgumentNullException>("serverName", () => new StdioServerTransport((string)null!));
 
-        Assert.Throws<ArgumentNullException>("serverOptions", () => new StdioServerTransport((IOptions<McpServerOptions>)null!));
         Assert.Throws<ArgumentNullException>("serverOptions", () => new StdioServerTransport((McpServerOptions)null!));
     }
 
