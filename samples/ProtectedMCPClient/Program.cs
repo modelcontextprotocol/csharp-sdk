@@ -1,7 +1,4 @@
-using Microsoft.Extensions.DependencyInjection;
-using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol.Transport;
 
 namespace ProtectedMCPClient;
 

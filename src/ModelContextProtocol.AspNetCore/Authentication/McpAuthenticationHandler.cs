@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Authentication;
-using ModelContextProtocol.Utils.Json;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 

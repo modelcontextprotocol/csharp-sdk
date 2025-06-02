@@ -1,4 +1,3 @@
-using ModelContextProtocol.Utils;
 using System.Net.Http.Headers;
 
 namespace ModelContextProtocol.Authentication;
@@ -89,25 +88,40 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
                 bestSchemeMatch = _credentialProvider.SupportedSchemes.FirstOrDefault();
             }
         }
-
         // If we have a scheme to try, use it
         if (bestSchemeMatch != null)
         {
-            // Try to handle the 401 response with the selected scheme
-            var (handled, recommendedScheme) = await _credentialProvider.HandleUnauthorizedResponseAsync(
-                response,
-                bestSchemeMatch,
-                cancellationToken).ConfigureAwait(false);
-
-            if (!handled)
+            try
             {
+                // Try to handle the 401 response with the selected scheme
+                var (handled, recommendedScheme) = await _credentialProvider.HandleUnauthorizedResponseAsync(
+                    response,
+                    bestSchemeMatch,
+                    cancellationToken).ConfigureAwait(false);
+
+                if (!handled)
+                {
+                    throw new McpException(
+                        $"Failed to handle unauthorized response with scheme '{bestSchemeMatch}'. " +
+                        "The authentication provider was unable to process the authentication challenge.");
+                }
+
+                _currentScheme = recommendedScheme ?? bestSchemeMatch;
+            }
+            catch (McpException)
+            {
+                // Re-throw McpExceptions as-is to preserve the original error information
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // Wrap other exceptions with additional context while preserving the original exception
                 throw new McpException(
                     $"Failed to handle unauthorized response with scheme '{bestSchemeMatch}'. " +
-                    "The authentication provider was unable to process the authentication challenge.");
+                    "The authentication provider encountered an error while processing the authentication challenge.",
+                    ex);
             }
-            
-            _currentScheme = recommendedScheme ?? bestSchemeMatch;
-            
+
             var retryRequest = new HttpRequestMessage(originalRequest.Method, originalRequest.RequestUri)
             {
                 Version = originalRequest.Version,
@@ -116,7 +130,7 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
 #endif
                 Content = originalRequest.Content
             };
-            
+
             // Copy headers except Authorization which we'll set separately
             foreach (var header in originalRequest.Headers)
             {
@@ -139,7 +153,7 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
 
             // Add the new authorization header
             await AddAuthorizationHeaderAsync(retryRequest, _currentScheme, cancellationToken).ConfigureAwait(false);
-            
+
             // Send the retry request
             return await base.SendAsync(retryRequest, cancellationToken).ConfigureAwait(false);
         }

@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using ModelContextProtocol.Utils.Json;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Authentication;
