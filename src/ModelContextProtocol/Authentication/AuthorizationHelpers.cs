@@ -149,7 +149,7 @@ public class AuthorizationHelpers
     /// <returns>The resource metadata if the resource matches the server, otherwise throws an exception.</returns>
     /// <exception cref="InvalidOperationException">Thrown when the response is not a 401, lacks a WWW-Authenticate header,
     /// lacks a resource_metadata parameter, the metadata can't be fetched, or the resource URI doesn't match the server URL.</exception>
-    public async Task<ProtectedResourceMetadata> ExtractProtectedResourceMetadata(
+    internal async Task<ProtectedResourceMetadata> ExtractProtectedResourceMetadata(
         HttpResponseMessage response,
         Uri serverUrl,
         CancellationToken cancellationToken = default)
@@ -169,7 +169,7 @@ public class AuthorizationHelpers
         string? resourceMetadataUrl = null;
         foreach (var header in response.Headers.WwwAuthenticate)
         {
-            if (string.Equals(header.Scheme, "Bearer", StringComparison.OrdinalIgnoreCase) && 
+            if (string.Equals(header.Scheme, "Bearer", StringComparison.OrdinalIgnoreCase) &&
                 !string.IsNullOrEmpty(header.Parameter))
             {
                 resourceMetadataUrl = ParseWwwAuthenticateParameters(header.Parameter, "resource_metadata");
@@ -186,17 +186,17 @@ public class AuthorizationHelpers
         }
 
         Uri metadataUri = new(resourceMetadataUrl);
-        
+
         var metadata = await FetchProtectedResourceMetadataAsync(metadataUri, cancellationToken).ConfigureAwait(false);
         if (metadata == null)
         {
             throw new InvalidOperationException($"Failed to fetch resource metadata from {resourceMetadataUrl}");
         }
-        
+
         // Extract the base URI from the metadata URL
         Uri urlToValidate = ExtractBaseResourceUri(metadataUri);
         _logger.LogDebug($"Validating resource metadata against base URL: {urlToValidate}");
-        
+
         if (!VerifyResourceMatch(metadata, urlToValidate))
         {
             throw new InvalidOperationException(
@@ -245,5 +245,33 @@ public class AuthorizationHelpers
         }
         
         return null;
+    }    /// <summary>
+    /// Handles a 401 Unauthorized response and returns all available authorization servers.
+    /// This is the primary method for OAuth discovery - use this when you want full control 
+    /// over authorization server selection.
+    /// </summary>
+    /// <param name="response">The 401 HTTP response.</param>
+    /// <param name="serverUrl">The server URL that returned the 401.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>A list of available authorization server URIs.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when response is null.</exception>    
+    public async Task<IReadOnlyList<Uri>> GetAvailableAuthorizationServersAsync(
+        HttpResponseMessage response,
+        Uri serverUrl,
+        CancellationToken cancellationToken = default)
+    {
+        if (response == null) throw new ArgumentNullException(nameof(response));
+        
+        try
+        {
+            // Extract resource metadata behind the scenes
+            var metadata = await ExtractProtectedResourceMetadata(response, serverUrl, cancellationToken);
+            return metadata.AuthorizationServers ?? new List<Uri>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get available authorization servers");
+            return new List<Uri>();
+        }
     }
 }

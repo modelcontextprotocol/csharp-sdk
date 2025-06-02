@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace ModelContextProtocol.Types.Authentication;
+namespace ModelContextProtocol.Authentication;
 
 /// <summary>
 /// Represents the metadata about an OAuth authorization server.

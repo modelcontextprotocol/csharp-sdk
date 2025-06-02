@@ -1,26 +1,24 @@
-using ModelContextProtocol.Authentication;
-using ModelContextProtocol.Types.Authentication;
-using ProtectedMCPClient.Types;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Web;
 
-namespace ProtectedMCPClient;
+namespace ModelContextProtocol.Authentication;
 
 /// <summary>
-/// A simple implementation of an OAuth authorization provider for MCP. This does not do any token
-/// caching or any advanced token protection - it acquires a token and server metadata and holds it
-/// in memory as-is. This is NOT PRODUCTION READY and MUST NOT BE USED IN PRODUCTION.
+/// A generic implementation of an OAuth authorization provider for MCP. This does not do any advanced token
+/// protection or caching - it acquires a token and server metadata and holds it in memory. 
+/// This is suitable for demonstration and development purposes.
 /// </summary>
-public class BasicOAuthProvider : IMcpCredentialProvider
+public class GenericOAuthProvider : IMcpCredentialProvider
 {
     /// <summary>
     /// The Bearer authentication scheme.
     /// </summary>
     private const string BearerScheme = "Bearer";
-
     private readonly Uri _serverUrl;
     private readonly Uri _redirectUri;
     private readonly List<string> _scopes;
@@ -28,6 +26,7 @@ public class BasicOAuthProvider : IMcpCredentialProvider
     private readonly string _clientSecret;
     private readonly HttpClient _httpClient;
     private readonly AuthorizationHelpers _authorizationHelpers;
+    private readonly ILogger _logger;
     
     // Lazy-initialized shared HttpClient for when no client is provided
     private static readonly Lazy<HttpClient> _defaultHttpClient = new(() => new HttpClient());
@@ -35,10 +34,8 @@ public class BasicOAuthProvider : IMcpCredentialProvider
     private static readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
     
     private TokenContainer? _token;
-    private AuthorizationServerMetadata? _authServerMetadata;
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="BasicOAuthProvider"/> class.
+    private AuthorizationServerMetadata? _authServerMetadata;    /// <summary>
+    /// Initializes a new instance of the <see cref="GenericOAuthProvider"/> class.
     /// </summary>
     /// <param name="serverUrl">The MCP server URL.</param>
     /// <param name="httpClient">The HTTP client to use for OAuth requests. If null, a default HttpClient will be used.</param>
@@ -47,18 +44,22 @@ public class BasicOAuthProvider : IMcpCredentialProvider
     /// <param name="clientSecret">OAuth client secret.</param>
     /// <param name="redirectUri">OAuth redirect URI.</param>
     /// <param name="scopes">OAuth scopes.</param>
-    public BasicOAuthProvider(
+    /// <param name="logger">The logger instance. If null, a NullLogger will be used.</param>
+    public GenericOAuthProvider(
         Uri serverUrl,
-        HttpClient? httpClient,
-        AuthorizationHelpers? authorizationHelpers,
+        HttpClient? httpClient = null,
+        AuthorizationHelpers? authorizationHelpers = null,
         string clientId = "demo-client",
         string clientSecret = "",
         Uri? redirectUri = null,
-        IEnumerable<string>? scopes = null)
+        IEnumerable<string>? scopes = null,
+        ILogger<GenericOAuthProvider>? logger = null)
     {
-        _serverUrl = serverUrl ?? throw new ArgumentNullException(nameof(serverUrl));
+        if (serverUrl == null) throw new ArgumentNullException(nameof(serverUrl));
+          _serverUrl = serverUrl;
         _httpClient = httpClient ?? _defaultHttpClient.Value;
         _authorizationHelpers = authorizationHelpers ?? new AuthorizationHelpers(_httpClient);
+        _logger = (ILogger?)logger ?? NullLogger.Instance;
         
         _redirectUri = redirectUri ?? new Uri("http://localhost:8080/callback");
         _scopes = scopes?.ToList() ?? [];
@@ -79,9 +80,8 @@ public class BasicOAuthProvider : IMcpCredentialProvider
         }
 
         return GetBearerTokenAsync(cancellationToken);
-    }
+    }    /// <inheritdoc />
 
-    /// <inheritdoc />
     public async Task<McpUnauthorizedResponseResult> HandleUnauthorizedResponseAsync(
         HttpResponseMessage response, 
         string scheme,
@@ -91,19 +91,22 @@ public class BasicOAuthProvider : IMcpCredentialProvider
         if (scheme != BearerScheme)
         {
             return new McpUnauthorizedResponseResult(false, null);
-        }
-
-        try
+        }        
+          try
         {
-            // Get the metadata from the challenge using the instance-based AuthorizationHelpers
-            var resourceMetadata = await _authorizationHelpers.ExtractProtectedResourceMetadata(
-                response, _serverUrl, cancellationToken);
+            // Get available authorization servers from the 401 response
+            var availableAuthorizationServers = await _authorizationHelpers.GetAvailableAuthorizationServersAsync(
+                response, 
+                _serverUrl,
+                cancellationToken);
             
-            if (resourceMetadata?.AuthorizationServers?.Count > 0)
+            // Select the first available authorization server (or implement your own selection logic)
+            var selectedAuthServer = availableAuthorizationServers.FirstOrDefault();
+            
+            if (selectedAuthServer != null)
             {
                 // Get auth server metadata
-                var authServerMetadata = await GetAuthServerMetadataAsync(
-                    resourceMetadata.AuthorizationServers[0], cancellationToken);
+                var authServerMetadata = await GetAuthServerMetadataAsync(selectedAuthServer, cancellationToken);
                 
                 if (authServerMetadata != null)
                 {
@@ -120,11 +123,10 @@ public class BasicOAuthProvider : IMcpCredentialProvider
                 }
             }
             
-            return new McpUnauthorizedResponseResult(false, null);
-        }
+            return new McpUnauthorizedResponseResult(false, null);        }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error handling auth challenge: {ex.Message}");
+            _logger.LogError(ex, "Error handling auth challenge");
             return new McpUnauthorizedResponseResult(false, null);
         }
     }
@@ -165,8 +167,7 @@ public class BasicOAuthProvider : IMcpCredentialProvider
                 if (response.IsSuccessStatusCode)
                 {
                     var json = await response.Content.ReadAsStringAsync(cancellationToken);
-                    var metadata = JsonSerializer.Deserialize<AuthorizationServerMetadata>(
-                        json, _jsonOptions);
+                    var metadata = JsonSerializer.Deserialize<AuthorizationServerMetadata>(json, McpJsonUtilities.JsonContext.Default.AuthorizationServerMetadata);
                     
                     if (metadata != null)
                     {
@@ -177,11 +178,10 @@ public class BasicOAuthProvider : IMcpCredentialProvider
                         
                         return metadata;
                     }
-                }
-            }
+                }            }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error fetching auth server metadata from {path}: {ex.Message}");
+                _logger.LogError(ex, "Error fetching auth server metadata from {Path}", path);
             }
         }
         
@@ -196,7 +196,7 @@ public class BasicOAuthProvider : IMcpCredentialProvider
             ["refresh_token"] = refreshToken,
             ["client_id"] = _clientId
         });
-        
+
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.TokenEndpoint)
@@ -214,8 +214,7 @@ public class BasicOAuthProvider : IMcpCredentialProvider
             if (response.IsSuccessStatusCode)
             {
                 var json = await response.Content.ReadAsStringAsync(cancellationToken);
-                var tokenResponse = JsonSerializer.Deserialize<TokenContainer>(
-                    json, _jsonOptions);
+                var tokenResponse = JsonSerializer.Deserialize<TokenContainer>(json, McpJsonUtilities.JsonContext.Default.TokenContainer);
                 
                 if (tokenResponse != null)
                 {
@@ -227,17 +226,14 @@ public class BasicOAuthProvider : IMcpCredentialProvider
                     
                     return tokenResponse;
                 }
-            }
-        }
+            }        }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error refreshing token: {ex.Message}");
+            _logger.LogError(ex, "Error refreshing token");
         }
         
         return null;
-    }
-
-    private async Task<TokenContainer?> InitiateAuthorizationCodeFlowAsync(
+    }    private async Task<TokenContainer?> InitiateAuthorizationCodeFlowAsync(
         AuthorizationServerMetadata authServerMetadata, 
         CancellationToken cancellationToken)
     {
@@ -245,11 +241,11 @@ public class BasicOAuthProvider : IMcpCredentialProvider
         var codeChallenge = GenerateCodeChallenge(codeVerifier);
         
         var authUrl = BuildAuthorizationUrl(authServerMetadata, codeChallenge);
+          var authCode = await GetAuthorizationCodeAsync(authUrl, cancellationToken);
+        if (string.IsNullOrEmpty(authCode)) 
+            return null;
         
-        var authCode = await GetAuthorizationCodeAsync(authUrl, cancellationToken);
-        if (string.IsNullOrEmpty(authCode)) return null;
-        
-        return await ExchangeCodeForTokenAsync(authServerMetadata, authCode, codeVerifier, cancellationToken);
+        return await ExchangeCodeForTokenAsync(authServerMetadata, authCode!, codeVerifier, cancellationToken);
     }
     
     private Uri BuildAuthorizationUrl(AuthorizationServerMetadata authServerMetadata, string codeChallenge)
@@ -271,9 +267,11 @@ public class BasicOAuthProvider : IMcpCredentialProvider
         {
             queryParams["scope"] = string.Join(" ", _scopes);
         }
-        
-        var uriBuilder = new UriBuilder(authServerMetadata.AuthorizationEndpoint);
-        uriBuilder.Query = queryParams.ToString();
+
+        var uriBuilder = new UriBuilder(authServerMetadata.AuthorizationEndpoint)
+        {
+            Query = queryParams.ToString()
+        };
         return uriBuilder.Uri;
     }
     
@@ -292,8 +290,7 @@ public class BasicOAuthProvider : IMcpCredentialProvider
             OpenBrowser(authorizationUrl);
             
             var context = await listener.GetContextAsync();
-            
-            var query = HttpUtility.ParseQueryString(context.Request.Url?.Query ?? string.Empty);
+              var query = HttpUtility.ParseQueryString(context.Request.Url?.Query ?? string.Empty);
             var code = query["code"];
             var error = query["error"];
             
@@ -303,18 +300,22 @@ public class BasicOAuthProvider : IMcpCredentialProvider
             context.Response.ContentType = "text/html";
             context.Response.OutputStream.Write(buffer, 0, buffer.Length);
             context.Response.Close();
-            
-            if (!string.IsNullOrEmpty(error))
+              if (!string.IsNullOrEmpty(error))
             {
-                Console.WriteLine($"Auth error: {error}");
+                _logger.LogError("Auth error: {Error}", error);
                 return null;
             }
             
-            return code;
-        }
+            if (string.IsNullOrEmpty(code))
+            {
+                _logger.LogError("No authorization code received");
+                return null;
+            }
+            
+            return code;        }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error getting auth code: {ex.Message}");
+            _logger.LogError(ex, "Error getting auth code");
             return null;
         }
         finally
@@ -322,7 +323,7 @@ public class BasicOAuthProvider : IMcpCredentialProvider
             if (listener.IsListening) listener.Stop();
         }
     }
-    
+
     private async Task<TokenContainer?> ExchangeCodeForTokenAsync(
         AuthorizationServerMetadata authServerMetadata,
         string authorizationCode,
@@ -355,25 +356,22 @@ public class BasicOAuthProvider : IMcpCredentialProvider
             if (response.IsSuccessStatusCode)
             {
                 var json = await response.Content.ReadAsStringAsync(cancellationToken);
-                var tokenResponse = JsonSerializer.Deserialize<TokenContainer>(
-                    json, _jsonOptions);
+                var tokenResponse = JsonSerializer.Deserialize<TokenContainer>(json, McpJsonUtilities.JsonContext.Default.TokenContainer);
                 
                 if (tokenResponse != null)
                 {
                     tokenResponse.ObtainedAt = DateTimeOffset.UtcNow;
                     return tokenResponse;
-                }
-            }
+                }            }
             else
             {
-                Console.WriteLine($"Token exchange failed: {response.StatusCode}");
+                _logger.LogError("Token exchange failed: {StatusCode}", response.StatusCode);
                 var error = await response.Content.ReadAsStringAsync(cancellationToken);
-                Console.WriteLine($"Error: {error}");
-            }
-        }
+                _logger.LogError("Error: {Error}", error);
+            }        }
         catch (Exception ex)
         {
-            Console.WriteLine($"Exception during token exchange: {ex.Message}");
+            _logger.LogError(ex, "Exception during token exchange");
         }
         
         return null;
@@ -388,12 +386,11 @@ public class BasicOAuthProvider : IMcpCredentialProvider
                 FileName = url.ToString(),
                 UseShellExecute = true
             };
-            System.Diagnostics.Process.Start(psi);
-        }
+            System.Diagnostics.Process.Start(psi);        }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error opening browser: {ex.Message}");
-            Console.WriteLine($"Please manually navigate to: {url}");
+            _logger.LogError(ex, "Error opening browser");
+            _logger.LogInformation("Please manually navigate to: {Url}", url);
         }
     }
     

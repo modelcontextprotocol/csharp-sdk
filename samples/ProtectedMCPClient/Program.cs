@@ -1,3 +1,4 @@
+using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
 
 namespace ProtectedMCPClient;
@@ -22,7 +23,7 @@ class Program
         
         // Create the token provider with our custom HttpClient, 
         // letting the AuthorizationHelpers be created automatically
-        var tokenProvider = new BasicOAuthProvider(
+        var tokenProvider = new GenericOAuthProvider(
             new Uri(serverUrl),
             httpClient,
             null, // AuthorizationHelpers will be created automatically
@@ -47,6 +48,7 @@ class Program
                 transportOptions,
                 tokenProvider
             );
+            
             var client = await McpClientFactory.CreateAsync(transport);
 
             var tools = await client.ListToolsAsync();

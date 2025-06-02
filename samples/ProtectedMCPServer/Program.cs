@@ -64,7 +64,7 @@ builder.Services.AddAuthentication(options =>
             Resource = new Uri("http://localhost"),
             BearerMethodsSupported = { "header" },
             ResourceDocumentation = new Uri("https://docs.example.com/api/weather"),
-            AuthorizationServers = { new Uri($"{instance}{tenantId}/oauth2/v2.0") }
+            AuthorizationServers = { new Uri($"{instance}{tenantId}/v2.0") }
         };
 
         metadata.ScopesSupported.AddRange([
