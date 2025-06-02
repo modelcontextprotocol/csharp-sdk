@@ -38,11 +38,10 @@ public class AuthorizationHelpers
     /// <returns>The fetched ProtectedResourceMetadata, or null if it couldn't be fetched.</returns>
     private async Task<ProtectedResourceMetadata?> FetchProtectedResourceMetadataAsync(
         Uri metadataUrl, 
-        CancellationToken cancellationToken = default)
-    {
+        CancellationToken cancellationToken = default)    {
         try
         {
-            var request = new HttpRequestMessage(HttpMethod.Get, metadataUrl);
+            using var request = new HttpRequestMessage(HttpMethod.Get, metadataUrl);
             var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
             
