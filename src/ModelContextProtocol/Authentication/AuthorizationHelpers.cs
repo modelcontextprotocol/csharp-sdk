@@ -17,7 +17,7 @@ public class AuthorizationHelpers
     /// <summary>
     /// The well-known path prefix for resource metadata.
     /// </summary>
-    private static readonly string WellKnownPathPrefix = "/.well-known/";
+    private const string WellKnownPathPrefix = "/.well-known/";
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AuthorizationHelpers"/> class.
