@@ -1,7 +1,7 @@
 namespace ModelContextProtocol;
 
 /// <summary>Provides a progress value that can be sent using <see cref="IProgress{ProgressNotificationValue}"/>.</summary>
-public record struct ProgressNotificationValue
+public class ProgressNotificationValue
 {
     /// <summary>
     /// Gets or sets the progress thus far.

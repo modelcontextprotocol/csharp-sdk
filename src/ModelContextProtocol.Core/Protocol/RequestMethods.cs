@@ -94,6 +94,15 @@ public static class RequestMethods
     public const string SamplingCreateMessage = "sampling/createMessage";
 
     /// <summary>
+    /// The name of the request method sent from the client to the server to elicit additional information from the user via the client.
+    /// </summary>
+    /// <remarks>
+    /// This request is used when the server needs more information from the client to proceed with a task or interaction.
+    /// Servers can request structured data from users, with optional JSON schemas to validate responses.
+    /// </remarks>
+    public const string ElicitationCreate = "elicitation/create";
+
+    /// <summary>
     /// The name of the request method sent from the client to the server when it first connects, asking it initialize.
     /// </summary>
     /// <remarks>

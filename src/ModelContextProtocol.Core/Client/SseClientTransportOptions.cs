@@ -3,7 +3,7 @@ namespace ModelContextProtocol.Client;
 /// <summary>
 /// Provides options for configuring <see cref="SseClientTransport"/> instances.
 /// </summary>
-public record SseClientTransportOptions
+public class SseClientTransportOptions
 {
     /// <summary>
     /// Gets or sets the base address of the server for SSE connections.
@@ -11,7 +11,7 @@ public record SseClientTransportOptions
     public required Uri Endpoint
     {
         get;
-        init
+        set
         {
             if (value is null)
             {
@@ -43,12 +43,12 @@ public record SseClientTransportOptions
     /// <see href="https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse">HTTP with SSE transport specification</see>.
     /// </para>
     /// </remarks>
-    public HttpTransportMode TransportMode { get; init; } = HttpTransportMode.AutoDetect;
+    public HttpTransportMode TransportMode { get; set; } = HttpTransportMode.AutoDetect;
 
     /// <summary>
     /// Gets a transport identifier used for logging purposes.
     /// </summary>
-    public string? Name { get; init; }
+    public string? Name { get; set; }
 
     /// <summary>
     /// Gets or sets a timeout used to establish the initial connection to the SSE server. Defaults to 30 seconds.
@@ -61,7 +61,7 @@ public record SseClientTransportOptions
     /// </list>
     /// If the timeout expires before the connection is established, a <see cref="TimeoutException"/> will be thrown.
     /// </remarks>
-    public TimeSpan ConnectionTimeout { get; init; } = TimeSpan.FromSeconds(30);
+    public TimeSpan ConnectionTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// Gets custom HTTP headers to include in requests to the SSE server.
@@ -69,5 +69,5 @@ public record SseClientTransportOptions
     /// <remarks>
     /// Use this property to specify custom HTTP headers that should be sent with each request to the server.
     /// </remarks>
-    public Dictionary<string, string>? AdditionalHeaders { get; init; }
+    public Dictionary<string, string>? AdditionalHeaders { get; set; }
 }

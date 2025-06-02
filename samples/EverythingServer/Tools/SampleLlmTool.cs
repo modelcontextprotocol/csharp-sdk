@@ -15,7 +15,7 @@ public class SampleLlmTool
         CancellationToken cancellationToken)
     {
         var samplingParams = CreateRequestSamplingParams(prompt ?? string.Empty, "sampleLLM", maxTokens);
-        var sampleResult = await server.RequestSamplingAsync(samplingParams, cancellationToken);
+        var sampleResult = await server.SampleAsync(samplingParams, cancellationToken);
 
         return $"LLM sampling result: {sampleResult.Content.Text}";
     }

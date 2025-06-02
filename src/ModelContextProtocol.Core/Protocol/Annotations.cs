@@ -9,7 +9,7 @@ namespace ModelContextProtocol.Protocol;
 /// Annotations enable filtering and prioritization of content for different audiences.
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
-public record Annotations
+public class Annotations
 {
     /// <summary>
     /// Gets or sets the intended audience for this content as an array of <see cref="Role"/> values.
