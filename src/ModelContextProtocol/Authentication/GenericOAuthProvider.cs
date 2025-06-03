@@ -24,17 +24,18 @@ public class GenericOAuthProvider : IMcpCredentialProvider
     private readonly List<string> _scopes;
     private readonly string _clientId;
     private readonly string _clientSecret;
-    private readonly HttpClient _httpClient;
-    private readonly AuthorizationHelpers _authorizationHelpers;
+    private readonly HttpClient _httpClient;    private readonly AuthorizationHelpers _authorizationHelpers;
     private readonly ILogger _logger;
+    private readonly Func<IReadOnlyList<Uri>, Uri?> _authServerSelector;
     
     // Lazy-initialized shared HttpClient for when no client is provided
     private static readonly Lazy<HttpClient> _defaultHttpClient = new(() => new HttpClient());
 
     private static readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
-    
     private TokenContainer? _token;
-    private AuthorizationServerMetadata? _authServerMetadata;    /// <summary>
+    private AuthorizationServerMetadata? _authServerMetadata;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="GenericOAuthProvider"/> class.
     /// </summary>
     /// <param name="serverUrl">The MCP server URL.</param>
@@ -53,18 +54,56 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         string clientSecret = "",
         Uri? redirectUri = null,
         IEnumerable<string>? scopes = null,
-        ILogger<GenericOAuthProvider>? logger = null)
+        ILogger<GenericOAuthProvider>? logger = null)        : this(serverUrl, httpClient, authorizationHelpers, clientId, clientSecret, redirectUri, scopes, logger, null)
+    {
+    }    /// <summary>
+    /// Initializes a new instance of the <see cref="GenericOAuthProvider"/> class with explicit authorization server selection.
+    /// </summary>
+    /// <param name="serverUrl">The MCP server URL.</param>
+    /// <param name="httpClient">The HTTP client to use for OAuth requests. If null, a default HttpClient will be used.</param>
+    /// <param name="authorizationHelpers">The authorization helpers.</param>
+    /// <param name="clientId">OAuth client ID.</param>
+    /// <param name="clientSecret">OAuth client secret.</param>
+    /// <param name="redirectUri">OAuth redirect URI.</param>
+    /// <param name="scopes">OAuth scopes.</param>
+    /// <param name="logger">The logger instance. If null, a NullLogger will be used.</param>
+    /// <param name="authServerSelector">Function to select which authorization server to use from available servers. If null, uses default selection strategy.</param>
+    /// <exception cref="ArgumentNullException">Thrown when serverUrl is null.</exception>
+    public GenericOAuthProvider(
+        Uri serverUrl,
+        HttpClient? httpClient,
+        AuthorizationHelpers? authorizationHelpers,
+        string clientId,
+        string clientSecret,
+        Uri? redirectUri,
+        IEnumerable<string>? scopes,
+        ILogger<GenericOAuthProvider>? logger,
+        Func<IReadOnlyList<Uri>, Uri?>? authServerSelector)
     {
         if (serverUrl == null) throw new ArgumentNullException(nameof(serverUrl));
-          _serverUrl = serverUrl;
+        
+        _serverUrl = serverUrl;
         _httpClient = httpClient ?? _defaultHttpClient.Value;
         _authorizationHelpers = authorizationHelpers ?? new AuthorizationHelpers(_httpClient);
         _logger = (ILogger?)logger ?? NullLogger.Instance;
         
         _redirectUri = redirectUri ?? new Uri("http://localhost:8080/callback");
         _scopes = scopes?.ToList() ?? [];
-        _clientId = clientId;
-        _clientSecret = clientSecret;
+        _clientId = clientId ?? "demo-client";
+        _clientSecret = clientSecret ?? "";
+        
+        // Set up authorization server selection strategy
+        _authServerSelector = authServerSelector ?? DefaultAuthServerSelector;
+    }
+
+    /// <summary>
+    /// Default authorization server selection strategy that selects the first available server.
+    /// </summary>
+    /// <param name="availableServers">List of available authorization servers.</param>
+    /// <returns>The selected authorization server, or null if none are available.</returns>
+    private static Uri? DefaultAuthServerSelector(IReadOnlyList<Uri> availableServers)
+    {
+        return availableServers.FirstOrDefault();
     }
 
     /// <inheritdoc />
@@ -81,7 +120,6 @@ public class GenericOAuthProvider : IMcpCredentialProvider
 
         return GetBearerTokenAsync(cancellationToken);
     }    /// <inheritdoc />
-
     public async Task<McpUnauthorizedResponseResult> HandleUnauthorizedResponseAsync(
         HttpResponseMessage response, 
         string scheme,
@@ -92,43 +130,98 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         {
             return new McpUnauthorizedResponseResult(false, null);
         }        
-          try
+        try
         {
-            // Get available authorization servers from the 401 response
-            var availableAuthorizationServers = await _authorizationHelpers.GetAvailableAuthorizationServersAsync(
-                response, 
-                _serverUrl,
-                cancellationToken);
-            
-            // Select the first available authorization server (or implement your own selection logic)
-            var selectedAuthServer = availableAuthorizationServers.FirstOrDefault();
-            
-            if (selectedAuthServer != null)
-            {
-                // Get auth server metadata
-                var authServerMetadata = await GetAuthServerMetadataAsync(selectedAuthServer, cancellationToken);
-                
-                if (authServerMetadata != null)
-                {
-                    // Store auth server metadata for future refresh operations
-                    _authServerMetadata = authServerMetadata;
-                    
-                    // Do the OAuth flow
-                    var token = await InitiateAuthorizationCodeFlowAsync(authServerMetadata, cancellationToken);
-                    if (token != null)
-                    {
-                        _token = token;
-                        return new McpUnauthorizedResponseResult(true, BearerScheme);
-                    }
-                }
-            }
-            
-            return new McpUnauthorizedResponseResult(false, null);        }
+            return await PerformOAuthAuthorizationAsync(response, cancellationToken);
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error handling auth challenge");
+            _logger.LogError(ex, "Error handling OAuth authorization");
             return new McpUnauthorizedResponseResult(false, null);
         }
+    }
+
+    /// <summary>
+    /// Performs OAuth authorization by selecting an appropriate authorization server and completing the OAuth flow.
+    /// </summary>
+    /// <param name="response">The 401 Unauthorized response containing authentication challenge.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Result indicating whether authorization was successful.</returns>
+    private async Task<McpUnauthorizedResponseResult> PerformOAuthAuthorizationAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        // Get available authorization servers from the 401 response
+        var availableAuthorizationServers = await _authorizationHelpers.GetAvailableAuthorizationServersAsync(
+            response, 
+            _serverUrl,
+            cancellationToken);
+        
+        if (!availableAuthorizationServers.Any())
+        {
+            _logger.LogWarning("No authorization servers found in authentication challenge");
+            return new McpUnauthorizedResponseResult(false, null);
+        }
+
+        // Select authorization server using configured strategy
+        var selectedAuthServer = SelectAuthorizationServer(availableAuthorizationServers);
+        
+        if (selectedAuthServer == null)
+        {
+            _logger.LogWarning("Authorization server selection returned null. Available servers: {Servers}", 
+                string.Join(", ", availableAuthorizationServers));
+            return new McpUnauthorizedResponseResult(false, null);
+        }
+
+        _logger.LogInformation("Selected authorization server: {Server} from {Count} available servers", 
+            selectedAuthServer, availableAuthorizationServers.Count);
+
+        // Get auth server metadata
+        var authServerMetadata = await GetAuthServerMetadataAsync(selectedAuthServer, cancellationToken);
+        
+        if (authServerMetadata == null)
+        {
+            _logger.LogError("Failed to retrieve metadata for authorization server: {Server}", selectedAuthServer);
+            return new McpUnauthorizedResponseResult(false, null);
+        }
+
+        // Store auth server metadata for future refresh operations
+        _authServerMetadata = authServerMetadata;
+        
+        // Perform the OAuth flow
+        var token = await InitiateAuthorizationCodeFlowAsync(authServerMetadata, cancellationToken);
+        if (token != null)
+        {
+            _token = token;
+            _logger.LogInformation("OAuth authorization completed successfully");
+            return new McpUnauthorizedResponseResult(true, BearerScheme);
+        }
+
+        _logger.LogError("OAuth authorization flow failed");
+        return new McpUnauthorizedResponseResult(false, null);
+    }    /// <summary>
+    /// Selects an authorization server from the available options using the configured selection strategy.
+    /// </summary>
+    /// <param name="availableServers">List of available authorization servers.</param>
+    /// <returns>Selected authorization server URI, or null if selection failed.</returns>
+    private Uri? SelectAuthorizationServer(IReadOnlyList<Uri> availableServers)
+    {
+        if (!availableServers.Any())
+        {
+            return null;
+        }
+
+        // Use the configured selection function
+        var selected = _authServerSelector(availableServers);
+        
+        if (selected != null && !availableServers.Contains(selected))
+        {
+            _logger.LogWarning("Authorization server selector returned a server not in the available list: {Selected}. " +
+                             "Available servers: {Available}", selected, string.Join(", ", availableServers));
+            return null;
+        }
+
+        return selected;
     }
 
     private async Task<string?> GetBearerTokenAsync(CancellationToken cancellationToken = default)
@@ -178,7 +271,8 @@ public class GenericOAuthProvider : IMcpCredentialProvider
                         
                         return metadata;
                     }
-                }            }
+                }
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error fetching auth server metadata from {Path}", path);
@@ -226,14 +320,17 @@ public class GenericOAuthProvider : IMcpCredentialProvider
                     
                     return tokenResponse;
                 }
-            }        }
+            }
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error refreshing token");
         }
         
         return null;
-    }    private async Task<TokenContainer?> InitiateAuthorizationCodeFlowAsync(
+    }
+
+    private async Task<TokenContainer?> InitiateAuthorizationCodeFlowAsync(
         AuthorizationServerMetadata authServerMetadata, 
         CancellationToken cancellationToken)
     {
@@ -241,7 +338,7 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         var codeChallenge = GenerateCodeChallenge(codeVerifier);
         
         var authUrl = BuildAuthorizationUrl(authServerMetadata, codeChallenge);
-          var authCode = await GetAuthorizationCodeAsync(authUrl, cancellationToken);
+        var authCode = await GetAuthorizationCodeAsync(authUrl, cancellationToken);
         if (string.IsNullOrEmpty(authCode)) 
             return null;
         
@@ -290,7 +387,7 @@ public class GenericOAuthProvider : IMcpCredentialProvider
             OpenBrowser(authorizationUrl);
             
             var context = await listener.GetContextAsync();
-              var query = HttpUtility.ParseQueryString(context.Request.Url?.Query ?? string.Empty);
+            var query = HttpUtility.ParseQueryString(context.Request.Url?.Query ?? string.Empty);
             var code = query["code"];
             var error = query["error"];
             
@@ -300,7 +397,8 @@ public class GenericOAuthProvider : IMcpCredentialProvider
             context.Response.ContentType = "text/html";
             context.Response.OutputStream.Write(buffer, 0, buffer.Length);
             context.Response.Close();
-              if (!string.IsNullOrEmpty(error))
+            
+            if (!string.IsNullOrEmpty(error))
             {
                 _logger.LogError("Auth error: {Error}", error);
                 return null;
@@ -312,7 +410,8 @@ public class GenericOAuthProvider : IMcpCredentialProvider
                 return null;
             }
             
-            return code;        }
+            return code;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting auth code");
@@ -362,13 +461,15 @@ public class GenericOAuthProvider : IMcpCredentialProvider
                 {
                     tokenResponse.ObtainedAt = DateTimeOffset.UtcNow;
                     return tokenResponse;
-                }            }
+                }
+            }
             else
             {
                 _logger.LogError("Token exchange failed: {StatusCode}", response.StatusCode);
                 var error = await response.Content.ReadAsStringAsync(cancellationToken);
                 _logger.LogError("Error: {Error}", error);
-            }        }
+            }
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Exception during token exchange");
@@ -386,7 +487,8 @@ public class GenericOAuthProvider : IMcpCredentialProvider
                 FileName = url.ToString(),
                 UseShellExecute = true
             };
-            System.Diagnostics.Process.Start(psi);        }
+            System.Diagnostics.Process.Start(psi);
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error opening browser");
