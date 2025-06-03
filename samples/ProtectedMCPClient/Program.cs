@@ -1,5 +1,10 @@
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
+using System;
+using System.Diagnostics;
+using System.Net;
+using System.Text;
+using System.Web;
 
 namespace ProtectedMCPClient;
 
@@ -18,18 +23,19 @@ class Program
             PooledConnectionLifetime = TimeSpan.FromMinutes(2),
             PooledConnectionIdleTimeout = TimeSpan.FromMinutes(1)
         };
-        
+
         var httpClient = new HttpClient(sharedHandler);
-        
-        // Create the token provider with our custom HttpClient, 
-        // letting the AuthorizationHelpers be created automatically
+        // Create the token provider with our custom HttpClient and authorization URL handler
         var tokenProvider = new GenericOAuthProvider(
             new Uri(serverUrl),
             httpClient,
             null, // AuthorizationHelpers will be created automatically
             clientId: "6ad97b5f-7a7b-413f-8603-7a3517d4adb8",
+            clientSecret: "", // No secret needed for this client
             redirectUri: new Uri("http://localhost:1179/callback"),
-            scopes: ["api://167b4284-3f92-4436-92ed-38b38f83ae08/weather.read"]
+            scopes: ["api://167b4284-3f92-4436-92ed-38b38f83ae08/weather.read"],
+            logger: null,
+            authorizationUrlHandler: HandleAuthorizationUrlAsync
         );
 
         Console.WriteLine();
@@ -48,7 +54,7 @@ class Program
                 transportOptions,
                 tokenProvider
             );
-            
+
             var client = await McpClientFactory.CreateAsync(transport);
 
             var tools = await client.ListToolsAsync();
@@ -82,12 +88,96 @@ class Program
                 Console.WriteLine($"Inner error: {ex.InnerException.Message}");
             }
 
-            #if DEBUG
+#if DEBUG
             Console.WriteLine($"Stack trace: {ex.StackTrace}");
-            #endif
+#endif
         }
-
         Console.WriteLine("Press any key to exit...");
         Console.ReadKey();
+    }
+
+    /// <summary>
+    /// Handles the OAuth authorization URL by starting a local HTTP server and opening a browser.
+    /// This implementation demonstrates how SDK consumers can provide their own authorization flow.
+    /// </summary>
+    /// <param name="authorizationUrl">The authorization URL to open in the browser.</param>
+    /// <param name="redirectUri">The redirect URI where the authorization code will be sent.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The authorization code extracted from the callback, or null if the operation failed.</returns>    
+    private static async Task<string?> HandleAuthorizationUrlAsync(Uri authorizationUrl, Uri redirectUri, CancellationToken cancellationToken)
+    {
+        Console.WriteLine("Starting OAuth authorization flow...");
+        Console.WriteLine($"Opening browser to: {authorizationUrl}");
+
+        var listenerPrefix = redirectUri.GetLeftPart(UriPartial.Authority);
+        if (!listenerPrefix.EndsWith("/")) listenerPrefix += "/";
+
+        using var listener = new HttpListener();
+        listener.Prefixes.Add(listenerPrefix);
+
+        try
+        {
+            listener.Start();
+            Console.WriteLine($"Listening for OAuth callback on: {listenerPrefix}");
+
+            OpenBrowser(authorizationUrl);
+
+            var context = await listener.GetContextAsync();
+            var query = HttpUtility.ParseQueryString(context.Request.Url?.Query ?? string.Empty);
+            var code = query["code"];
+            var error = query["error"];
+
+            string responseHtml = "<html><body><h1>Authentication complete</h1><p>You can close this window now.</p></body></html>";
+            byte[] buffer = Encoding.UTF8.GetBytes(responseHtml);
+            context.Response.ContentLength64 = buffer.Length;
+            context.Response.ContentType = "text/html";
+            context.Response.OutputStream.Write(buffer, 0, buffer.Length);
+            context.Response.Close();
+
+            if (!string.IsNullOrEmpty(error))
+            {
+                Console.WriteLine($"Auth error: {error}");
+                return null;
+            }
+
+            if (string.IsNullOrEmpty(code))
+            {
+                Console.WriteLine("No authorization code received");
+                return null;
+            }
+
+            Console.WriteLine("Authorization code received successfully.");
+            return code;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error getting auth code: {ex.Message}");
+            return null;
+        }
+        finally
+        {
+            if (listener.IsListening) listener.Stop();
+        }
+    }
+
+    /// <summary>
+    /// Opens the specified URL in the default browser.
+    /// </summary>
+    /// <param name="url">The URL to open.</param>
+    private static void OpenBrowser(Uri url)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = url.ToString(),
+                UseShellExecute = true
+            };
+            Process.Start(psi);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error opening browser. {ex.Message}");
+        }
     }
 }

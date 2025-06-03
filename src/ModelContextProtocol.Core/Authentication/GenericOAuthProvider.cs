@@ -9,6 +9,32 @@ using System.Web;
 namespace ModelContextProtocol.Authentication;
 
 /// <summary>
+/// Represents a method that handles the OAuth authorization URL and returns the authorization code.
+/// </summary>
+/// <param name="authorizationUrl">The authorization URL that the user needs to visit.</param>
+/// <param name="redirectUri">The redirect URI where the authorization code will be sent.</param>
+/// <param name="cancellationToken">The cancellation token.</param>
+/// <returns>A task that represents the asynchronous operation. The task result contains the authorization code if successful, or null if the operation failed or was cancelled.</returns>
+/// <remarks>
+/// <para>
+/// This delegate provides SDK consumers with full control over how the OAuth authorization flow is handled.
+/// Implementers can choose to:
+/// </para>
+/// <list type="bullet">
+/// <item><description>Start a local HTTP server and open a browser (default behavior)</description></item>
+/// <item><description>Display the authorization URL to the user for manual handling</description></item>
+/// <item><description>Integrate with a custom UI or authentication flow</description></item>
+/// <item><description>Use a different redirect mechanism altogether</description></item>
+/// </list>
+/// <para>
+/// The implementation should handle user interaction to visit the authorization URL and extract
+/// the authorization code from the callback. The authorization code is typically provided as
+/// a query parameter in the redirect URI callback.
+/// </para>
+/// </remarks>
+public delegate Task<string?> AuthorizationUrlHandler(Uri authorizationUrl, Uri redirectUri, CancellationToken cancellationToken);
+
+/// <summary>
 /// A generic implementation of an OAuth authorization provider for MCP. This does not do any advanced token
 /// protection or caching - it acquires a token and server metadata and holds it in memory. 
 /// This is suitable for demonstration and development purposes.
@@ -27,15 +53,14 @@ public class GenericOAuthProvider : IMcpCredentialProvider
     private readonly HttpClient _httpClient;    private readonly AuthorizationHelpers _authorizationHelpers;
     private readonly ILogger _logger;
     private readonly Func<IReadOnlyList<Uri>, Uri?> _authServerSelector;
+    private readonly AuthorizationUrlHandler _authorizationUrlHandler;
     
     // Lazy-initialized shared HttpClient for when no client is provided
     private static readonly Lazy<HttpClient> _defaultHttpClient = new(() => new HttpClient());
 
     private static readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
     private TokenContainer? _token;
-    private AuthorizationServerMetadata? _authServerMetadata;
-
-    /// <summary>
+    private AuthorizationServerMetadata? _authServerMetadata;    /// <summary>
     /// Initializes a new instance of the <see cref="GenericOAuthProvider"/> class.
     /// </summary>
     /// <param name="serverUrl">The MCP server URL.</param>
@@ -54,7 +79,34 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         string clientSecret = "",
         Uri? redirectUri = null,
         IEnumerable<string>? scopes = null,
-        ILogger<GenericOAuthProvider>? logger = null)        : this(serverUrl, httpClient, authorizationHelpers, clientId, clientSecret, redirectUri, scopes, logger, null)
+        ILogger<GenericOAuthProvider>? logger = null)
+        : this(serverUrl, httpClient, authorizationHelpers, clientId, clientSecret, redirectUri, scopes, logger, null, null)
+    {
+    }   
+    
+    /// <summary>
+    /// Initializes a new instance of the <see cref="GenericOAuthProvider"/> class with a custom authorization URL handler.
+    /// </summary>
+    /// <param name="serverUrl">The MCP server URL.</param>
+    /// <param name="httpClient">The HTTP client to use for OAuth requests. If null, a default HttpClient will be used.</param>
+    /// <param name="authorizationHelpers">The authorization helpers.</param>
+    /// <param name="clientId">OAuth client ID.</param>
+    /// <param name="clientSecret">OAuth client secret.</param>
+    /// <param name="redirectUri">OAuth redirect URI.</param>
+    /// <param name="scopes">OAuth scopes.</param>
+    /// <param name="logger">The logger instance. If null, a NullLogger will be used.</param>
+    /// <param name="authorizationUrlHandler">Custom handler for processing the OAuth authorization URL. If null, uses the default HTTP listener approach.</param>
+    public GenericOAuthProvider(
+        Uri serverUrl,
+        HttpClient? httpClient,
+        AuthorizationHelpers? authorizationHelpers,
+        string clientId,
+        string clientSecret,
+        Uri? redirectUri,
+        IEnumerable<string>? scopes,
+        ILogger<GenericOAuthProvider>? logger,
+        AuthorizationUrlHandler? authorizationUrlHandler)
+        : this(serverUrl, httpClient, authorizationHelpers, clientId, clientSecret, redirectUri, scopes, logger, null, authorizationUrlHandler)
     {
     }    /// <summary>
     /// Initializes a new instance of the <see cref="GenericOAuthProvider"/> class with explicit authorization server selection.
@@ -68,6 +120,7 @@ public class GenericOAuthProvider : IMcpCredentialProvider
     /// <param name="scopes">OAuth scopes.</param>
     /// <param name="logger">The logger instance. If null, a NullLogger will be used.</param>
     /// <param name="authServerSelector">Function to select which authorization server to use from available servers. If null, uses default selection strategy.</param>
+    /// <param name="authorizationUrlHandler">Custom handler for processing the OAuth authorization URL. If null, uses the default HTTP listener approach.</param>
     /// <exception cref="ArgumentNullException">Thrown when serverUrl is null.</exception>
     public GenericOAuthProvider(
         Uri serverUrl,
@@ -78,7 +131,8 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         Uri? redirectUri,
         IEnumerable<string>? scopes,
         ILogger<GenericOAuthProvider>? logger,
-        Func<IReadOnlyList<Uri>, Uri?>? authServerSelector)
+        Func<IReadOnlyList<Uri>, Uri?>? authServerSelector,
+        AuthorizationUrlHandler? authorizationUrlHandler)
     {
         if (serverUrl == null) throw new ArgumentNullException(nameof(serverUrl));
         
@@ -94,16 +148,34 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         
         // Set up authorization server selection strategy
         _authServerSelector = authServerSelector ?? DefaultAuthServerSelector;
-    }
-
-    /// <summary>
+        
+        // Set up authorization URL handler (use default if not provided)
+        _authorizationUrlHandler = authorizationUrlHandler ?? DefaultAuthorizationUrlHandler;
+    }    /// <summary>
     /// Default authorization server selection strategy that selects the first available server.
     /// </summary>
     /// <param name="availableServers">List of available authorization servers.</param>
-    /// <returns>The selected authorization server, or null if none are available.</returns>
+        /// <returns>The selected authorization server, or null if none are available.</returns>
     private static Uri? DefaultAuthServerSelector(IReadOnlyList<Uri> availableServers)
     {
         return availableServers.FirstOrDefault();
+    }
+    
+    /// <summary>
+    /// Default authorization URL handler that displays the URL to the user for manual input.
+    /// </summary>
+    /// <param name="authorizationUrl">The authorization URL to handle.</param>
+    /// <param name="redirectUri">The redirect URI where the authorization code will be sent.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The authorization code entered by the user, or null if none was provided.</returns>
+    private Task<string?> DefaultAuthorizationUrlHandler(Uri authorizationUrl, Uri redirectUri, CancellationToken cancellationToken)
+    {
+        Console.WriteLine($"Please open the following URL in your browser to authorize the application:");
+        Console.WriteLine($"{authorizationUrl}");
+        Console.WriteLine();
+        Console.Write("Enter the authorization code from the redirect URL: ");
+        var authorizationCode = Console.ReadLine();
+        return Task.FromResult<string?>(authorizationCode);
     }
 
     /// <inheritdoc />
@@ -371,56 +443,9 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         };
         return uriBuilder.Uri;
     }
-    
-    private async Task<string?> GetAuthorizationCodeAsync(Uri authorizationUrl, CancellationToken cancellationToken)
+      private async Task<string?> GetAuthorizationCodeAsync(Uri authorizationUrl, CancellationToken cancellationToken)
     {
-        var listenerPrefix = _redirectUri.GetLeftPart(UriPartial.Authority);
-        if (!listenerPrefix.EndsWith("/")) listenerPrefix += "/";
-        
-        using var listener = new System.Net.HttpListener();
-        listener.Prefixes.Add(listenerPrefix);
-        
-        try
-        {
-            listener.Start();
-            
-            OpenBrowser(authorizationUrl);
-            
-            var context = await listener.GetContextAsync();
-            var query = HttpUtility.ParseQueryString(context.Request.Url?.Query ?? string.Empty);
-            var code = query["code"];
-            var error = query["error"];
-            
-            string responseHtml = "<html><body><h1>Authentication complete</h1><p>You can close this window now.</p></body></html>";
-            byte[] buffer = Encoding.UTF8.GetBytes(responseHtml);
-            context.Response.ContentLength64 = buffer.Length;
-            context.Response.ContentType = "text/html";
-            context.Response.OutputStream.Write(buffer, 0, buffer.Length);
-            context.Response.Close();
-            
-            if (!string.IsNullOrEmpty(error))
-            {
-                _logger.LogError("Auth error: {Error}", error);
-                return null;
-            }
-            
-            if (string.IsNullOrEmpty(code))
-            {
-                _logger.LogError("No authorization code received");
-                return null;
-            }
-            
-            return code;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting auth code");
-            return null;
-        }
-        finally
-        {
-            if (listener.IsListening) listener.Stop();
-        }
+        return await _authorizationUrlHandler(authorizationUrl, _redirectUri, cancellationToken);
     }
 
     private async Task<TokenContainer?> ExchangeCodeForTokenAsync(
