@@ -1,6 +1,5 @@
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
-using System;
 using System.Diagnostics;
 using System.Net;
 using System.Text;
