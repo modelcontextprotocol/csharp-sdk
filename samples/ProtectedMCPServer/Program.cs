@@ -61,7 +61,7 @@ builder.Services.AddAuthentication(options =>
     {
         var metadata = new ProtectedResourceMetadata
         {
-            Resource = new Uri("http://localhost"),
+            Resource = new Uri("http://localhost:7071/sse"),
             BearerMethodsSupported = { "header" },
             ResourceDocumentation = new Uri("https://docs.example.com/api/weather"),
             AuthorizationServers = { new Uri($"{instance}{tenantId}/v2.0") }
