@@ -32,7 +32,7 @@ public class CallToolResponse
     /// Gets or sets an optional JSON object representing the structured result of the tool call.
     /// </summary>
     [JsonPropertyName("structuredContent")]
-    public JsonObject? StructuredContent { get; set; }
+    public JsonNode? StructuredContent { get; set; }
 
     /// <summary>
     /// Gets or sets an indication of whether the tool call was unsuccessful.

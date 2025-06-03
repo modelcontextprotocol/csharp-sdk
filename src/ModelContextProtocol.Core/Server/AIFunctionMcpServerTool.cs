@@ -299,7 +299,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             };
         }
 
-        JsonObject? structuredContent = CreateStructuredResponse(result);
+        JsonNode? structuredContent = CreateStructuredResponse(result);
         return result switch
         {
             AIContent aiContent => new()
@@ -357,8 +357,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
     private static JsonElement? CreateOutputSchema(AIFunction function, McpServerToolCreateOptions? toolCreateOptions, out bool structuredOutputRequiresWrapping)
     {
-        // TODO replace with https://github.com/dotnet/extensions/pull/6447 once merged.
-
         structuredOutputRequiresWrapping = false;
 
         if (toolCreateOptions?.UseStructuredContent is not true)
@@ -366,25 +364,10 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return null;
         }
 
-        if (function.UnderlyingMethod?.ReturnType is not Type returnType)
+        if (function.GetReturnSchema(toolCreateOptions?.SchemaCreateOptions) is not JsonElement outputSchema)
         {
             return null;
         }
-
-        if (returnType == typeof(void) || returnType == typeof(Task) || returnType == typeof(ValueTask))
-        {
-            // Do not report an output schema for void or Task methods.
-            return null;
-        }
-
-        if (returnType.IsGenericType && returnType.GetGenericTypeDefinition() is Type genericTypeDef &&
-            (genericTypeDef == typeof(Task<>) || genericTypeDef == typeof(ValueTask<>)))
-        {
-            // Extract the real type from Task<T> or ValueTask<T> if applicable.
-            returnType = returnType.GetGenericArguments()[0];
-        }
-
-        JsonElement outputSchema = AIJsonUtilities.CreateJsonSchema(returnType, serializerOptions: function.JsonSerializerOptions, inferenceOptions: toolCreateOptions?.SchemaCreateOptions);
 
         if (outputSchema.ValueKind is not JsonValueKind.Object ||
             !outputSchema.TryGetProperty("type", out JsonElement typeProperty) ||
@@ -423,10 +406,11 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         return outputSchema;
     }
 
-    private JsonObject? CreateStructuredResponse(object? aiFunctionResult)
+    private JsonNode? CreateStructuredResponse(object? aiFunctionResult)
     {
         if (ProtocolTool.OutputSchema is null)
         {
+            // Only provide structured responses if the tool has an output schema defined.
             return null;
         }
 
@@ -445,15 +429,10 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             };
         }
 
-        if (nodeResult is JsonObject jsonObject)
-        {
-            return jsonObject;
-        }
-
-        throw new InvalidOperationException("The result of the AIFunction does not match its declared output schema.");
+        return nodeResult;
     }
 
-    private static CallToolResponse ConvertAIContentEnumerableToCallToolResponse(IEnumerable<AIContent> contentItems, JsonObject? structuredContent)
+    private static CallToolResponse ConvertAIContentEnumerableToCallToolResponse(IEnumerable<AIContent> contentItems, JsonNode? structuredContent)
     {
         List<Content> contentList = [];
         bool allErrorContent = true;
