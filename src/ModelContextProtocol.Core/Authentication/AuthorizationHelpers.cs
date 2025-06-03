@@ -8,15 +8,9 @@ namespace ModelContextProtocol.Authentication;
 /// Provides utility methods for handling authentication in MCP clients.
 /// </summary>
 public class AuthorizationHelpers
-{
-    private readonly HttpClient _httpClient;
+{    private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
     private static readonly Lazy<HttpClient> _defaultHttpClient = new(() => new HttpClient());
-    
-    /// <summary>
-    /// The well-known path prefix for resource metadata.
-    /// </summary>
-    private const string WellKnownPathPrefix = "/.well-known/";
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AuthorizationHelpers"/> class.
@@ -57,11 +51,12 @@ public class AuthorizationHelpers
     }
 
     /// <summary>
-    /// Verifies that the resource URI in the metadata exactly matches the server URL as required by the RFC.
+    /// Verifies that the resource URI in the metadata exactly matches the original request URL as required by the RFC.
+    /// Per RFC: The resource value must be identical to the URL that the client used to make the request to the resource server.
     /// </summary>
     /// <param name="protectedResourceMetadata">The metadata to verify.</param>
-    /// <param name="resourceLocation">The server URL to compare against.</param>
-    /// <returns>True if the resource URI exactly matches the server, otherwise false.</returns>
+    /// <param name="resourceLocation">The original URL the client used to make the request to the resource server.</param>
+    /// <returns>True if the resource URI exactly matches the original request URL, otherwise false.</returns>
     private static bool VerifyResourceMatch(ProtectedResourceMetadata protectedResourceMetadata, Uri resourceLocation)
     {
         if (protectedResourceMetadata.Resource == null || resourceLocation == null)
@@ -71,11 +66,11 @@ public class AuthorizationHelpers
 
         // Per RFC: The resource value must be identical to the URL that the client used
         // to make the request to the resource server. Compare entire URIs, not just the host.
-        
+
         // Normalize the URIs to ensure consistent comparison
         string normalizedMetadataResource = NormalizeUri(protectedResourceMetadata.Resource);
         string normalizedResourceLocation = NormalizeUri(resourceLocation);
-        
+
         return string.Equals(normalizedMetadataResource, normalizedResourceLocation, StringComparison.OrdinalIgnoreCase);
     }
     
@@ -100,44 +95,7 @@ public class AuthorizationHelpers
             builder.Path = builder.Path.TrimEnd('/');
         }
         
-        return builder.Uri.ToString();
-    }
-
-    /// <summary>
-    /// Extracts the base resource URI from a well-known path URL.
-    /// </summary>
-    /// <param name="metadataUri">The metadata URI containing a well-known path.</param>
-    /// <returns>The base URI without the well-known path component.</returns>
-    /// <exception cref="InvalidOperationException">Thrown when the URI does not contain a valid well-known path.</exception>
-    private Uri ExtractBaseResourceUri(Uri metadataUri)
-    {
-        // Check for well-known path
-        int wellKnownIndex = metadataUri.AbsolutePath.IndexOf(WellKnownPathPrefix, StringComparison.OrdinalIgnoreCase);
-        
-        // Validate the URL contains a valid well-known path
-        if (wellKnownIndex < 0)
-        {
-            throw new InvalidOperationException(
-                $"Resource metadata URL '{metadataUri}' does not contain a valid well-known path format (/.well-known/)");
-        }
-        
-        // Create URI with just the base part
-        var baseUriBuilder = new UriBuilder(metadataUri)
-        {
-            Path = wellKnownIndex > 0 ? metadataUri.AbsolutePath.Substring(0, wellKnownIndex) : "/",
-            Fragment = string.Empty,
-            Query = string.Empty,
-            Port = -1 // Remove port
-        };
-        
-        // Ensure path ends with a slash
-        if (!baseUriBuilder.Path.EndsWith("/"))
-        {
-            baseUriBuilder.Path += "/";
-        }
-        
-        return baseUriBuilder.Uri;
-    }
+        return builder.Uri.ToString();    }
 
     /// <summary>
     /// Responds to a 401 challenge by parsing the WWW-Authenticate header, fetching the resource metadata,
@@ -185,22 +143,20 @@ public class AuthorizationHelpers
             throw new InvalidOperationException("The WWW-Authenticate header does not contain a resource_metadata parameter");
         }
 
-        Uri metadataUri = new(resourceMetadataUrl);
-
-        var metadata = await FetchProtectedResourceMetadataAsync(metadataUri, cancellationToken).ConfigureAwait(false);
+        Uri metadataUri = new(resourceMetadataUrl);        var metadata = await FetchProtectedResourceMetadataAsync(metadataUri, cancellationToken).ConfigureAwait(false);
         if (metadata == null)
         {
             throw new InvalidOperationException($"Failed to fetch resource metadata from {resourceMetadataUrl}");
         }
 
-        // Extract the base URI from the metadata URL
-        Uri urlToValidate = ExtractBaseResourceUri(metadataUri);
-        _logger.LogDebug($"Validating resource metadata against base URL: {urlToValidate}");
+        // Per RFC: The resource value must be identical to the URL that the client used
+        // to make the request to the resource server
+        _logger.LogDebug($"Validating resource metadata against original server URL: {serverUrl}");
 
-        if (!VerifyResourceMatch(metadata, urlToValidate))
+        if (!VerifyResourceMatch(metadata, serverUrl))
         {
             throw new InvalidOperationException(
-                $"Resource URI in metadata ({metadata.Resource}) does not match the expected URI ({urlToValidate})");
+                $"Resource URI in metadata ({metadata.Resource}) does not match the expected URI ({serverUrl})");
         }
 
         return metadata;
@@ -245,7 +201,9 @@ public class AuthorizationHelpers
         }
         
         return null;
-    }    /// <summary>
+    }
+
+    /// <summary>
     /// Handles a 401 Unauthorized response and returns all available authorization servers.
     /// This is the primary method for OAuth discovery - use this when you want full control 
     /// over authorization server selection.
@@ -261,7 +219,7 @@ public class AuthorizationHelpers
         CancellationToken cancellationToken = default)
     {
         if (response == null) throw new ArgumentNullException(nameof(response));
-        
+
         try
         {
             // Extract resource metadata behind the scenes
