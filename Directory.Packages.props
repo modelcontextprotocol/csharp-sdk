@@ -43,10 +43,10 @@
   </ItemGroup>
 
   <ItemGroup>
-  
+
     <!-- Build Infra & Packaging -->
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
-  
+
     <!-- Testing dependencies -->
     <PackageVersion Include="Anthropic.SDK" Version="5.4.1" />
     <PackageVersion Include="coverlet.collector" Version="6.0.4">
