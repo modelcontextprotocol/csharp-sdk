@@ -190,7 +190,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
             m.Message.Contains("request '2' for method 'tools/call'"));
 
         Assert.Single(mockLoggerProvider.LogMessages, m =>
-            m.Category == "ModelContextProtocol.Client.McpServer" &&
+            m.Category == "ModelContextProtocol.Server.McpServer" &&
             m.Message.Contains("request '2' for method 'sampling/createMessage'"));
     }
 
