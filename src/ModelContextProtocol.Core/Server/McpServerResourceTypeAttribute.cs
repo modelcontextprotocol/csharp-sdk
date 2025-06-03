@@ -9,9 +9,9 @@ namespace ModelContextProtocol.Server;
 /// <para>
 /// This attribute is used to mark a class containing members that should be automatically
 /// discovered and registered as <see cref="McpServerResource"/>s. When combined with discovery methods like
-/// <see cref="McpServerBuilderExtensions.WithResourcesFromAssembly"/>, it enables automatic registration 
-/// of resources without explicitly listing each resource class. The attribute is not necessary when a reference
-/// to the type is provided directly to a method like <see cref="McpServerBuilderExtensions.WithResources{T}"/>.
+/// WithResourcesFromAssembly, it enables automatic registration  of resources without explicitly listing each
+/// resource class. The attribute is not necessary when a reference to the type is provided directly to a method
+/// like McpServerBuilderExtensions.WithResources.
 /// </para>
 /// <para>
 /// Within a class marked with this attribute, individual members that should be exposed as

@@ -85,17 +85,13 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
     /// <inheritdoc />
     public async Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default)
     {
-        switch (_options.TransportMode)
+        return _options.TransportMode switch
         {
-            case HttpTransportMode.AutoDetect:
-                return new AutoDetectingClientSessionTransport(_options, _httpClient, _loggerFactory, Name);
-            case HttpTransportMode.StreamableHttp:
-                return new StreamableHttpClientSessionTransport(Name, _options, _httpClient, messageChannel: null, _loggerFactory);
-            case HttpTransportMode.Sse:
-                return await ConnectSseTransportAsync(cancellationToken).ConfigureAwait(false);
-            default:
-                throw new InvalidOperationException($"Unsupported transport mode: {_options.TransportMode}");
-        }
+            HttpTransportMode.AutoDetect => new AutoDetectingClientSessionTransport(_options, _httpClient, _loggerFactory, Name),
+            HttpTransportMode.StreamableHttp => new StreamableHttpClientSessionTransport(Name, _options, _httpClient, messageChannel: null, _loggerFactory),
+            HttpTransportMode.Sse => await ConnectSseTransportAsync(cancellationToken).ConfigureAwait(false),
+            _ => throw new InvalidOperationException($"Unsupported transport mode: {_options.TransportMode}"),
+        };
     }
 
     private async Task<ITransport> ConnectSseTransportAsync(CancellationToken cancellationToken)
