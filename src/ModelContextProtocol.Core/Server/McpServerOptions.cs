@@ -32,8 +32,11 @@ public class McpServerOptions
     /// <remarks>
     /// The protocol version defines which features and message formats this server supports.
     /// This uses a date-based versioning scheme in the format "YYYY-MM-DD".
+    /// If <see langword="null"/>, the server will advertize to the client the version requested
+    /// by the client if that version is known to be supported, and otherwise will advertize the latest
+    /// version supported by the server.
     /// </remarks>
-    public string ProtocolVersion { get; set; } = "2024-11-05";
+    public string? ProtocolVersion { get; set; }
 
     /// <summary>
     /// Gets or sets a timeout used for the client-server initialization handshake sequence.
