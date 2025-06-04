@@ -70,7 +70,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         
         if (resourceMetadataUri.IsAbsoluteUri)
         {
-            return resourceMetadataUri.ToString();
+            return currentPath;
         }
         
         // For relative URIs, combine with the base URL
