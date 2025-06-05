@@ -30,5 +30,11 @@ public class CompleteRequestParams : RequestParams
     /// and the current partial input.
     /// </summary>
     [JsonPropertyName("argument")]
-    public required Argument Argument { get; init; }    
+    public required Argument Argument { get; init; }
+
+    /// <summary>
+    /// Gets or sets additional, optional context for completions.
+    /// </summary>
+    [JsonPropertyName("context")]
+    public CompleteContext? Context { get; init; }
 }
