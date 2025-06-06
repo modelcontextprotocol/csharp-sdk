@@ -60,7 +60,9 @@ public class GenericOAuthProvider : IMcpCredentialProvider
 
     private static readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
     private TokenContainer? _token;
-    private AuthorizationServerMetadata? _authServerMetadata;    /// <summary>
+    private AuthorizationServerMetadata? _authServerMetadata;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="GenericOAuthProvider"/> class.
     /// </summary>
     /// <param name="serverUrl">The MCP server URL.</param>
