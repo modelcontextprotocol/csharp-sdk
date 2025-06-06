@@ -118,6 +118,7 @@ internal sealed partial class McpClient : McpEndpoint, IMcpClient
             // Connect transport
             _sessionTransport = await _clientTransport.ConnectAsync(cancellationToken).ConfigureAwait(false);
             InitializeSession(_sessionTransport);
+
             // We don't want the ConnectAsync token to cancel the session after we've successfully connected.
             // The base class handles cleaning up the session in DisposeAsync without our help.
             StartSession(_sessionTransport, fullSessionCancellationToken: CancellationToken.None);
@@ -163,6 +164,8 @@ internal sealed partial class McpClient : McpEndpoint, IMcpClient
                     LogServerProtocolVersionMismatch(EndpointName, requestProtocol, initializeResponse.ProtocolVersion);
                     throw new McpException($"Server protocol version mismatch. Expected {requestProtocol}, got {initializeResponse.ProtocolVersion}");
                 }
+
+                _sessionTransport.ProtocolVersion = initializeResponse.ProtocolVersion;
 
                 // Send initialized notification
                 await SendMessageAsync(

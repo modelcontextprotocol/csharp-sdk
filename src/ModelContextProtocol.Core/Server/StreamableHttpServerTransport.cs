@@ -35,6 +35,9 @@ public sealed class StreamableHttpServerTransport : ITransport
     private readonly CancellationTokenSource _disposeCts = new();
 
     private int _getRequestStarted;
+    
+    /// <inheritdoc />
+    public string? ProtocolVersion { get; set; }
 
     /// <summary>
     /// Configures whether the transport should be in stateless mode that does not require all requests for a given session

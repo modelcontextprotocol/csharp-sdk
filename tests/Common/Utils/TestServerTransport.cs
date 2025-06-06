@@ -10,6 +10,8 @@ public class TestServerTransport : ITransport
 
     public bool IsConnected { get; set; }
 
+    public string? ProtocolVersion { get; set; }
+
     public ChannelReader<JsonRpcMessage> MessageReader => _messageChannel;
 
     public List<JsonRpcMessage> SentMessages { get; } = [];

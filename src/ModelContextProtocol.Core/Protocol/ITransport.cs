@@ -60,4 +60,12 @@ public interface ITransport : IAsyncDisposable
     /// </para>
     /// </remarks>
     Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default);
+
+    /// <summary>Gets or sets the protocol version that's in use.</summary>
+    /// <remarks>
+    /// Setting the protocol version does not change the protocol version actively employed by the transport.
+    /// It provides that information to the transport for situations where the transport needs to be able to
+    /// propagate the version information, for example as part of HTTP headers or for logging and diagnostic purposes.
+    /// </remarks>
+    string? ProtocolVersion { get; set; }
 }

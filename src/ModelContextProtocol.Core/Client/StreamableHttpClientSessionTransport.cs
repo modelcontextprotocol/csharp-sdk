@@ -85,7 +85,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
             },
         };
 
-        CopyAdditionalHeaders(httpRequestMessage.Headers, _options.AdditionalHeaders, _mcpSessionId);
+        CopyAdditionalHeaders(httpRequestMessage.Headers, _options.AdditionalHeaders, _mcpSessionId, ProtocolVersion);
 
         var response = await _httpClient.SendAsync(httpRequestMessage, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
 
@@ -170,7 +170,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         // Send a GET request to handle any unsolicited messages not sent over a POST response.
         using var request = new HttpRequestMessage(HttpMethod.Get, _options.Endpoint);
         request.Headers.Accept.Add(s_textEventStreamMediaType);
-        CopyAdditionalHeaders(request.Headers, _options.AdditionalHeaders, _mcpSessionId);
+        CopyAdditionalHeaders(request.Headers, _options.AdditionalHeaders, _mcpSessionId, ProtocolVersion);
 
         using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, _connectionCts.Token).ConfigureAwait(false);
 
@@ -245,23 +245,30 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         }
     }
 
-    internal static void CopyAdditionalHeaders(HttpRequestHeaders headers, Dictionary<string, string>? additionalHeaders, string? sessionId = null)
+    internal static void CopyAdditionalHeaders(
+        HttpRequestHeaders headers, 
+        Dictionary<string, string>? additionalHeaders, 
+        string? sessionId = null,
+        string? protocolVersion = null)
     {
         if (sessionId is not null)
         {
             headers.Add("mcp-session-id", sessionId);
         }
 
-        if (additionalHeaders is null)
+        if (protocolVersion is not null)
         {
-            return;
+            headers.Add("MCP-Protocol-Version", protocolVersion);
         }
 
-        foreach (var header in additionalHeaders)
+        if (additionalHeaders is not null)
         {
-            if (!headers.TryAddWithoutValidation(header.Key, header.Value))
+            foreach (var header in additionalHeaders)
             {
-                throw new InvalidOperationException($"Failed to add header '{header.Key}' with value '{header.Value}' from {nameof(SseClientTransportOptions.AdditionalHeaders)}.");
+                if (!headers.TryAddWithoutValidation(header.Key, header.Value))
+                {
+                    throw new InvalidOperationException($"Failed to add header '{header.Key}' with value '{header.Value}' from {nameof(SseClientTransportOptions.AdditionalHeaders)}.");
+                }
             }
         }
     }

@@ -28,13 +28,15 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
             Services = _app.Services,
         });
 
-        _app.MapPost("/mcp", (JsonRpcMessage message) =>
+        _app.MapPost("/mcp", (HttpContext context, JsonRpcMessage message) =>
         {
             if (message is not JsonRpcRequest request)
             {
                 // Ignore all non-request notifications.
                 return Results.Accepted();
             }
+
+            const string ExpectedProtocolVersion = "2024-11-05";
 
             if (request.Method == "initialize")
             {
@@ -43,7 +45,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
                     Id = request.Id,
                     Result = JsonSerializer.SerializeToNode(new InitializeResult
                     {
-                        ProtocolVersion = "2024-11-05",
+                        ProtocolVersion = ExpectedProtocolVersion,
                         Capabilities = new()
                         {
                             Tools = new(),
@@ -55,6 +57,15 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
                         },
                     }, McpJsonUtilities.DefaultOptions)
                 });
+            }
+
+            if (!context.Request.Headers.TryGetValue("MCP-Protocol-Version", out var actualVersion))
+            {
+                throw new Exception("Request headers did not contain MCP-Protocol-Version.");
+            }
+            else if (ExpectedProtocolVersion != actualVersion)
+            {
+                throw new Exception($"Unexpected protocol version: {actualVersion}");
             }
 
             if (request.Method == "tools/list")

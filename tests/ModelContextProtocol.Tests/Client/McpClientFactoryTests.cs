@@ -110,6 +110,8 @@ public class McpClientFactoryTests
 
         public bool IsConnected => true;
 
+        public string? ProtocolVersion { get; set; }
+
         public ChannelReader<JsonRpcMessage> MessageReader => _channel.Reader;
 
         public Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default) => Task.FromResult<ITransport>(this);

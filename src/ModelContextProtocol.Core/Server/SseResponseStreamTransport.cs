@@ -34,6 +34,9 @@ public sealed class SseResponseStreamTransport(Stream sseResponseStream, string?
 
     private bool _isConnected;
 
+    /// <inheritdoc />
+    public string? ProtocolVersion { get; set; }
+
     /// <summary>
     /// Starts the transport and writes the JSON-RPC messages sent via <see cref="SendMessageAsync"/>
     /// to the SSE response stream until cancellation is requested or the transport is disposed.

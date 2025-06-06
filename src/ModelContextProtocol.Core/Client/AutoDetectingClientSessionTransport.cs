@@ -18,6 +18,7 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
     private readonly ILogger _logger;
     private readonly string _name;
     private readonly Channel<JsonRpcMessage> _messageChannel;
+    private string? _protocolVersion;
 
     public AutoDetectingClientSessionTransport(SseClientTransportOptions transportOptions, HttpClient httpClient, ILoggerFactory? loggerFactory, string endpointName)
     {
@@ -42,6 +43,20 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
     /// Returns the active transport (either StreamableHttp or SSE)
     /// </summary>
     internal ITransport? ActiveTransport { get; private set; }
+
+    /// <inheritdoc />
+    public string? ProtocolVersion
+    {
+        get => ActiveTransport?.ProtocolVersion ?? _protocolVersion;
+        set
+        {
+            _protocolVersion = value;
+            if (ActiveTransport is { } transport)
+            {
+                transport.ProtocolVersion = value;
+            }
+        }
+    }
 
     public ChannelReader<JsonRpcMessage> MessageReader => _messageChannel.Reader;
 
@@ -70,6 +85,10 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
             {
                 LogUsingStreamableHttp(_name);
                 ActiveTransport = streamableHttpTransport;
+                if (_protocolVersion is { } protocolVersion)
+                {
+                    ActiveTransport.ProtocolVersion = protocolVersion;
+                }
             }
             else
             {

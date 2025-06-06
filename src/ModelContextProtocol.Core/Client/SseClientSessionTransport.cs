@@ -91,7 +91,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
         {
             Content = content,
         };
-        StreamableHttpClientSessionTransport.CopyAdditionalHeaders(httpRequestMessage.Headers, _options.AdditionalHeaders);
+        StreamableHttpClientSessionTransport.CopyAdditionalHeaders(httpRequestMessage.Headers, _options.AdditionalHeaders, protocolVersion: ProtocolVersion);
         var response = await _httpClient.SendAsync(httpRequestMessage, cancellationToken).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
@@ -152,7 +152,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, _sseEndpoint);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
-            StreamableHttpClientSessionTransport.CopyAdditionalHeaders(request.Headers, _options.AdditionalHeaders);
+            StreamableHttpClientSessionTransport.CopyAdditionalHeaders(request.Headers, _options.AdditionalHeaders, protocolVersion: ProtocolVersion);
 
             using var response = await _httpClient.SendAsync(
                 request,

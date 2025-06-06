@@ -18,6 +18,9 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
 
     public ChannelReader<JsonRpcMessage> MessageReader => throw new NotSupportedException("JsonRpcMessage.RelatedTransport should only be used for sending messages.");
 
+    /// <inheritdoc />
+    public string? ProtocolVersion { get; set; }
+
     /// <returns>
     /// True, if data was written to the respond body.
     /// False, if nothing was written because the request body did not contain any <see cref="JsonRpcRequest"/> messages to respond to.
