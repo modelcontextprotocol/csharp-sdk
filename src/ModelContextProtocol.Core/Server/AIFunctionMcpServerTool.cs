@@ -232,6 +232,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             {
                 newOptions.ReadOnly ??= readOnly;
             }
+
+            newOptions.UseStructuredContent = toolAttr.UseStructuredContent;
         }
 
         if (method.GetCustomAttribute<DescriptionAttribute>() is { } descAttr)
