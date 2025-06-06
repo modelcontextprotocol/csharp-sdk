@@ -109,6 +109,7 @@ public class McpClientFactoryTests
         private readonly Channel<JsonRpcMessage> _channel = Channel.CreateUnbounded<JsonRpcMessage>();
 
         public bool IsConnected => true;
+        public string? SessionId => null;
 
         public ChannelReader<JsonRpcMessage> MessageReader => _channel.Reader;
 

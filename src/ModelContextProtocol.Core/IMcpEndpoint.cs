@@ -29,6 +29,11 @@ namespace ModelContextProtocol;
 public interface IMcpEndpoint : IAsyncDisposable
 {
     /// <summary>
+    /// Gets the underlying transport driving the current MCP endpoint.
+    /// </summary>
+    ITransport Transport { get; }
+
+    /// <summary>
     /// Sends a JSON-RPC request to the connected endpoint and waits for a response.
     /// </summary>
     /// <param name="request">The JSON-RPC request to send.</param>
