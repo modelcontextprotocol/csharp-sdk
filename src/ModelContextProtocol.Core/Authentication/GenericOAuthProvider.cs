@@ -50,7 +50,8 @@ public class GenericOAuthProvider : IMcpCredentialProvider
     private readonly List<string> _scopes;
     private readonly string _clientId;
     private readonly string _clientSecret;
-    private readonly HttpClient _httpClient;    private readonly AuthorizationHelpers _authorizationHelpers;
+    private readonly HttpClient _httpClient;
+    private readonly AuthorizationHelpers _authorizationHelpers;
     private readonly ILogger _logger;
     private readonly Func<IReadOnlyList<Uri>, Uri?> _authServerSelector;
     private readonly AuthorizationUrlHandler _authorizationUrlHandler;
