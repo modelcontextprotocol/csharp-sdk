@@ -39,21 +39,9 @@ public static class McpAuthenticationExtensions
         string displayName,
         Action<McpAuthenticationOptions>? configureOptions = null)
     {
-        if (configureOptions != null)
-        {
-            if (authenticationScheme == McpAuthenticationDefaults.AuthenticationScheme)
-            {
-                builder.Services.Configure(configureOptions);
-            }
-            else
-            {
-                builder.Services.Configure(authenticationScheme, configureOptions);
-            }
-        }
-
         return builder.AddScheme<McpAuthenticationOptions, McpAuthenticationHandler>(
             authenticationScheme,
             displayName,
-            options => { }); // No-op to avoid overriding
+            configureOptions); // No-op to avoid overriding
     }
 }

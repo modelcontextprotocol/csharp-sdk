@@ -28,6 +28,16 @@ internal sealed partial class McpSession : IDisposable
     private static readonly Histogram<double> s_serverOperationDuration = Diagnostics.CreateDurationHistogram(
         "mcp.server.operation.duration", "Measures the duration of inbound message processing.", longBuckets: false);
 
+    /// <summary>The latest version of the protocol supported by this implementation.</summary>
+    internal const string LatestProtocolVersion = "2025-03-26";
+
+    /// <summary>All protocol versions supported by this implementation.</summary>
+    internal static readonly string[] SupportedProtocolVersions =
+    [
+        "2024-11-05",
+        LatestProtocolVersion,
+    ];
+
     private readonly bool _isServer;
     private readonly string _transportKind;
     private readonly ITransport _transport;

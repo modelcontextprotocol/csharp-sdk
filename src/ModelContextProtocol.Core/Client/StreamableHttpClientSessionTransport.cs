@@ -97,17 +97,17 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         }
 
         var rpcRequest = message as JsonRpcRequest;
-        JsonRpcMessage? rpcResponseCandidate = null;
+        JsonRpcMessageWithId? rpcResponseOrError = null;
 
         if (response.Content.Headers.ContentType?.MediaType == "application/json")
         {
             var responseContent = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            rpcResponseCandidate = await ProcessMessageAsync(responseContent, cancellationToken).ConfigureAwait(false);
+            rpcResponseOrError = await ProcessMessageAsync(responseContent, rpcRequest, cancellationToken).ConfigureAwait(false);
         }
         else if (response.Content.Headers.ContentType?.MediaType == "text/event-stream")
         {
             using var responseBodyStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            rpcResponseCandidate = await ProcessSseResponseAsync(responseBodyStream, rpcRequest, cancellationToken).ConfigureAwait(false);
+            rpcResponseOrError = await ProcessSseResponseAsync(responseBodyStream, rpcRequest, cancellationToken).ConfigureAwait(false);
         }
 
         if (rpcRequest is null)
@@ -115,12 +115,12 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
             return response;
         }
 
-        if (rpcResponseCandidate is not JsonRpcMessageWithId messageWithId || messageWithId.Id != rpcRequest.Id)
+        if (rpcResponseOrError is null)
         {
             throw new McpException($"Streamable HTTP POST response completed without a reply to request with ID: {rpcRequest.Id}");
         }
 
-        if (rpcRequest.Method == RequestMethods.Initialize && rpcResponseCandidate is JsonRpcResponse)
+        if (rpcRequest.Method == RequestMethods.Initialize && rpcResponseOrError is JsonRpcResponse)
         {
             // We've successfully initialized! Copy session-id and start GET request if any.
             if (response.Headers.TryGetValues("mcp-session-id", out var sessionIdValues))
@@ -199,20 +199,20 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
                 continue;
             }
 
-            var message = await ProcessMessageAsync(sseEvent.Data, cancellationToken).ConfigureAwait(false);
+            var rpcResponseOrError = await ProcessMessageAsync(sseEvent.Data, relatedRpcRequest, cancellationToken).ConfigureAwait(false);
 
-            // The server SHOULD end the response here anyway, but we won't leave it to chance. This transport makes
+            // The server SHOULD end the HTTP response body here anyway, but we won't leave it to chance. This transport makes
             // a GET request for any notifications that might need to be sent after the completion of each POST.
-            if (message is JsonRpcMessageWithId messageWithId && relatedRpcRequest?.Id == messageWithId.Id)
+            if (rpcResponseOrError is not null)
             {
-                return messageWithId;
+                return rpcResponseOrError;
             }
         }
 
         return null;
     }
 
-    private async Task<JsonRpcMessage?> ProcessMessageAsync(string data, CancellationToken cancellationToken)
+    private async Task<JsonRpcMessageWithId?> ProcessMessageAsync(string data, JsonRpcRequest? relatedRpcRequest, CancellationToken cancellationToken)
     {
         try
         {
@@ -224,7 +224,12 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
             }
 
             await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
-            return message;
+            if (message is JsonRpcResponse or JsonRpcError &&
+                message is JsonRpcMessageWithId rpcResponseOrError &&
+                rpcResponseOrError.Id == relatedRpcRequest?.Id)
+            {
+                return rpcResponseOrError;
+            }
         }
         catch (JsonException ex)
         {

@@ -18,7 +18,7 @@ public class KestrelInMemoryTest : LoggedTest
         Builder = WebApplication.CreateSlimBuilder();
         Builder.Services.RemoveAll<IConnectionListenerFactory>();
         Builder.Services.AddSingleton<IConnectionListenerFactory>(_inMemoryTransport);
-        Builder.Services.AddSingleton(LoggerProvider);
+        Builder.Services.AddSingleton(XunitLoggerProvider);
 
         HttpClient = new HttpClient(new SocketsHttpHandler()
         {

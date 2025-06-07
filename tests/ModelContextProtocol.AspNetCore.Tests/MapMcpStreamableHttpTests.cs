@@ -31,7 +31,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        var mcpClient = await ConnectAsync(requestPath);
+        await using var mcpClient = await ConnectAsync(requestPath);
 
         Assert.Equal("TestCustomRouteServer", mcpClient.ServerInfo.Name);
     }
@@ -135,7 +135,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using var mcpClient = await ConnectAsync(options: new()
+        await using var mcpClient = await ConnectAsync(transportOptions: new()
         {
             Endpoint = new Uri("http://localhost/sse"),
             TransportMode = HttpTransportMode.Sse

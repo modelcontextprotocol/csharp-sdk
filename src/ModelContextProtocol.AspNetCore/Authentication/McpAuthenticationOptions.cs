@@ -87,41 +87,6 @@ public class McpAuthenticationOptions : AuthenticationSchemeOptions
         set => _resourceMetadataProvider = value;
     }    
     
-    /// <summary>
-    /// Sets a static resource metadata instance that will be returned for all requests.
-    /// </summary>
-    /// <param name="metadata">The static resource metadata to use.</param>
-    /// <returns>The current options instance for method chaining.</returns>
-    /// <remarks>
-    /// This is a convenience method equivalent to setting the <see cref="ResourceMetadata"/> property.
-    /// </remarks>
-    /// <exception cref="ArgumentNullException">Thrown when metadata is null.</exception>
-    /// <exception cref="ArgumentException">Thrown when the Resource property of the metadata is null.</exception>
-    public McpAuthenticationOptions UseStaticResourceMetadata(ProtectedResourceMetadata metadata)
-    {
-        ArgumentNullException.ThrowIfNull(metadata);
-        if (metadata.Resource == null)
-        {
-            throw new ArgumentException("The Resource property of the metadata cannot be null. A valid resource URI is required.", nameof(metadata));
-        }
-        
-        ResourceMetadata = metadata;
-        return this;
-    }
-
-    /// <summary>
-    /// Sets a delegate to dynamically provide resource metadata for each request.
-    /// </summary>
-    /// <param name="provider">A delegate that returns resource metadata for a given HTTP context.</param>
-    /// <returns>The current options instance for method chaining.</returns>
-    /// <remarks>
-    /// This is a convenience method equivalent to setting the <see cref="ProtectedResourceMetadataProvider"/> property.
-    /// </remarks>
-    public McpAuthenticationOptions UseDynamicResourceMetadata(Func<HttpContext, ProtectedResourceMetadata> provider)
-    {
-        ProtectedResourceMetadataProvider = provider ?? throw new ArgumentNullException(nameof(provider));
-        return this;
-    }    
     
     /// <summary>
     /// Gets the resource metadata for the current request.

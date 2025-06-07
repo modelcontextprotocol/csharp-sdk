@@ -102,11 +102,3 @@ await server.RunAsync(stdioTransport, CancellationToken.None);
 ```
 
 For more advanced scenarios with dependency injection, hosting, and automatic tool discovery, see the `ModelContextProtocol` package.
-
-## Acknowledgements
-
-The MCP C# SDK builds upon the excellent work from the [mcpdotnet](https://github.com/ReallyLiri/mcpdotnet) project by [Liri](https://github.com/ReallyLiri). We extend our gratitude for providing a foundational implementation that inspired this SDK.
-
-## License
-
-This project is licensed under the MIT License. See the [LICENSE](../../LICENSE) file for details.
