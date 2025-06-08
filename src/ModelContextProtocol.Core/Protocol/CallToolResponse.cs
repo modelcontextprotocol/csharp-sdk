@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -26,6 +27,12 @@ public class CallToolResponse
     /// </summary>
     [JsonPropertyName("content")]
     public List<Content> Content { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets an optional JSON object representing the structured result of the tool call.
+    /// </summary>
+    [JsonPropertyName("structuredContent")]
+    public JsonNode? StructuredContent { get; set; }
 
     /// <summary>
     /// Gets or sets an indication of whether the tool call was unsuccessful.

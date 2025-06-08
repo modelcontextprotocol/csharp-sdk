@@ -240,4 +240,13 @@ public sealed class McpServerToolAttribute : Attribute
         get => _readOnly ?? ReadOnlyDefault; 
         set => _readOnly = value; 
     }
+
+    /// <summary>
+    /// Gets or sets whether the tool should report an output schema for structured content.
+    /// </summary>
+    /// <remarks>
+    /// When enabled, the tool will attempt to populate the <see cref="Tool.OutputSchema"/>
+    /// and provide structured content in the <see cref="CallToolResponse.StructuredContent"/> property.
+    /// </remarks>
+    public bool UseStructuredContent { get; set; }
 }

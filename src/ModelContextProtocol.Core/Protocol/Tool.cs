@@ -8,8 +8,6 @@ namespace ModelContextProtocol.Protocol;
 /// </summary>
 public class Tool
 {
-    private JsonElement _inputSchema = McpJsonUtilities.DefaultMcpToolSchema;
-
     /// <summary>
     /// Gets or sets the name of the tool.
     /// </summary>
@@ -53,15 +51,44 @@ public class Tool
     [JsonPropertyName("inputSchema")]
     public JsonElement InputSchema  
     { 
-        get => _inputSchema; 
+        get => field; 
         set
         {
             if (!McpJsonUtilities.IsValidMcpToolSchema(value))
             {
-                throw new ArgumentException("The specified document is not a valid MCP tool JSON schema.", nameof(InputSchema));
+                throw new ArgumentException("The specified document is not a valid MCP tool input JSON schema.", nameof(InputSchema));
             }
 
-            _inputSchema = value;
+            field = value;
+        }
+
+    } = McpJsonUtilities.DefaultMcpToolSchema;
+
+    /// <summary>
+    /// Gets or sets a JSON Schema object defining the expected structured outputs for the tool.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The schema must be a valid JSON Schema object with the "type" property set to "object".
+    /// This is enforced by validation in the setter which will throw an <see cref="ArgumentException"/>
+    /// if an invalid schema is provided.
+    /// </para>
+    /// <para>
+    /// The schema should describe the shape of the data as returned in <see cref="CallToolResponse.StructuredContent"/>.
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("outputSchema")]
+    public JsonElement? OutputSchema
+    {
+        get => field;
+        set
+        {
+            if (value is not null && !McpJsonUtilities.IsValidMcpToolSchema(value.Value))
+            {
+                throw new ArgumentException("The specified document is not a valid MCP tool output JSON schema.", nameof(OutputSchema));
+            }
+
+            field = value;
         }
     }
 

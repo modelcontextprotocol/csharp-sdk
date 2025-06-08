@@ -1,4 +1,5 @@
 using Microsoft.Extensions.AI;
+using ModelContextProtocol.Protocol;
 using System.ComponentModel;
 using System.Text.Json;
 
@@ -24,7 +25,7 @@ public sealed class McpServerToolCreateOptions
     /// Gets or sets optional services used in the construction of the <see cref="McpServerTool"/>.
     /// </summary>
     /// <remarks>
-    /// These services will be used to determine which parameters should be satisifed from dependency injection. As such,
+    /// These services will be used to determine which parameters should be satisfied from dependency injection. As such,
     /// what services are satisfied via this provider should match what's satisfied via the provider passed in at invocation time.
     /// </remarks>
     public IServiceProvider? Services { get; set; }
@@ -125,6 +126,15 @@ public sealed class McpServerToolCreateOptions
     public bool? ReadOnly { get; set; }
 
     /// <summary>
+    /// Gets or sets whether the tool should report an output schema for structured content.
+    /// </summary>
+    /// <remarks>
+    /// When enabled, the tool will attempt to populate the <see cref="Tool.OutputSchema"/>
+    /// and provide structured content in the <see cref="CallToolResponse.StructuredContent"/> property.
+    /// </remarks>
+    public bool UseStructuredContent { get; set; }
+
+    /// <summary>
     /// Gets or sets the JSON serializer options to use when marshalling data to/from JSON.
     /// </summary>
     /// <remarks>
@@ -154,6 +164,7 @@ public sealed class McpServerToolCreateOptions
             Idempotent = Idempotent,
             OpenWorld = OpenWorld,
             ReadOnly = ReadOnly,
+            UseStructuredContent = UseStructuredContent,
             SerializerOptions = SerializerOptions,
             SchemaCreateOptions = SchemaCreateOptions,
         };

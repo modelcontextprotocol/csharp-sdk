@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.AI;
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -74,6 +75,30 @@ public static partial class McpJsonUtilities
         }
 
         return false; // No type keyword found.
+    }
+
+    internal static JsonElement? GetReturnSchema(this AIFunction function, AIJsonSchemaCreateOptions? schemaCreateOptions)
+    {
+        // TODO replace with https://github.com/dotnet/extensions/pull/6447 once merged.
+        if (function.UnderlyingMethod?.ReturnType is not Type returnType)
+        {
+            return null;
+        }
+
+        if (returnType == typeof(void) || returnType == typeof(Task) || returnType == typeof(ValueTask))
+        {
+            // Do not report an output schema for void or Task methods.
+            return null;
+        }
+
+        if (returnType.IsGenericType && returnType.GetGenericTypeDefinition() is Type genericTypeDef &&
+            (genericTypeDef == typeof(Task<>) || genericTypeDef == typeof(ValueTask<>)))
+        {
+            // Extract the real type from Task<T> or ValueTask<T> if applicable.
+            returnType = returnType.GetGenericArguments()[0];
+        }
+
+        return AIJsonUtilities.CreateJsonSchema(returnType, serializerOptions: function.JsonSerializerOptions, inferenceOptions: schemaCreateOptions);
     }
 
     // Keep in sync with CreateDefaultOptions above.

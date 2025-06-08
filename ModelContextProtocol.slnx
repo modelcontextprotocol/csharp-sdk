@@ -26,7 +26,6 @@
     <File Path="logo.png" />
     <File Path="nuget.config" />
     <File Path="README.MD" />
-    <File Path="version.json" />
   </Folder>
   <Folder Name="/src/">
     <File Path="src/Directory.Build.props" />
