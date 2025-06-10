@@ -141,6 +141,16 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
             try
             {
+                // Send DELETE request to terminate the session only send if we have a session ID per MCP spec
+                if (!string.IsNullOrEmpty(_mcpSessionId))
+                {
+                    using var deleteRequest = new HttpRequestMessage(HttpMethod.Delete, _options.Endpoint);
+                    CopyAdditionalHeaders(deleteRequest.Headers, _options.AdditionalHeaders, _mcpSessionId);
+
+                    // Do not validate we get a successful status code, because server support for the DELETE request is optional
+                    using var deleteResponse = await _httpClient.SendAsync(deleteRequest, CancellationToken.None).ConfigureAwait(false);
+                }
+
                 if (_getReceiveTask != null)
                 {
                     await _getReceiveTask.ConfigureAwait(false);
