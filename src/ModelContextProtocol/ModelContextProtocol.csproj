@@ -7,7 +7,6 @@
     <PackageId>ModelContextProtocol</PackageId>
     <Description>.NET SDK for the Model Context Protocol (MCP) with hosting and dependency injection extensions.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <LangVersion>preview</LangVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' != 'netstandard2.0'">

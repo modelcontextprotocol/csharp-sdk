@@ -200,7 +200,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
             "TestAuthType", "name", "role"));
 
     [McpServerToolType]
-    private class EchoHttpContextUserTools(IHttpContextAccessor contextAccessor)
+    protected class EchoHttpContextUserTools(IHttpContextAccessor contextAccessor)
     {
         [McpServerTool, Description("Echoes the input back to the client with their user name.")]
         public string EchoWithUserName(string message)
