@@ -144,11 +144,8 @@ public class AuthorizationHelpers
         }
 
         Uri metadataUri = new(resourceMetadataUrl);        
-        var metadata = await FetchProtectedResourceMetadataAsync(metadataUri, cancellationToken).ConfigureAwait(false);
-        if (metadata == null)
-        {
-            throw new InvalidOperationException($"Failed to fetch resource metadata from {resourceMetadataUrl}");
-        }
+        var metadata = await FetchProtectedResourceMetadataAsync(metadataUri, cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException($"Failed to fetch resource metadata from {resourceMetadataUrl}");
 
         // Per RFC: The resource value must be identical to the URL that the client used
         // to make the request to the resource server

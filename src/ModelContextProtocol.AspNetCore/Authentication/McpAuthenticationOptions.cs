@@ -83,8 +83,7 @@ public class McpAuthenticationOptions : AuthenticationSchemeOptions
     {
         get => _resourceMetadataProvider;
         set => _resourceMetadataProvider = value;
-    }    
-    
+    }
     
     /// <summary>
     /// Gets the resource metadata for the current request.
