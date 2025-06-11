@@ -13,13 +13,11 @@ public class McpAuthenticationOptions : AuthenticationSchemeOptions
    
     private Func<HttpContext, ProtectedResourceMetadata>? _resourceMetadataProvider;
 
-    private ProtectedResourceMetadata? _resourceMetadata;    /// <summary>
+    private ProtectedResourceMetadata? _resourceMetadata;    
+    
+    /// <summary>
     /// Initializes a new instance of the <see cref="McpAuthenticationOptions"/> class.
     /// </summary>
-    /// <remarks>
-    /// After creating an instance, you must set the ResourceMetadata property or use the 
-    /// UseStaticResourceMetadata method to provide a valid resource URI before using this options instance.
-    /// </remarks>
     public McpAuthenticationOptions()
     {
         base.ForwardAuthenticate = "Bearer";
@@ -58,7 +56,7 @@ public class McpAuthenticationOptions : AuthenticationSchemeOptions
     public ProtectedResourceMetadata ResourceMetadata
     {
         get => _resourceMetadata ?? throw new InvalidOperationException(
-            "ResourceMetadata has not been configured. Use ResourceMetadata property setter or UseStaticResourceMetadata method to provide a valid resource URI.");
+            "ResourceMetadata has not been configured.");
         set
         {
             ArgumentNullException.ThrowIfNull(value);
