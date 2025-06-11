@@ -15,7 +15,6 @@ namespace ModelContextProtocol.AspNetCore.Authentication;
 public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationOptions>, IAuthenticationRequestHandler
 {
     private readonly IOptionsMonitor<McpAuthenticationOptions> _optionsMonitor;
-    private string _resourceMetadataPath;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="McpAuthenticationHandler"/> class.
@@ -27,16 +26,6 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         : base(options, logger, encoder)
     {
         _optionsMonitor = options;
-
-        // Note: this.Options is not fully available here.
-        // _resourceMetadataPath will be correctly updated by GetAbsoluteResourceMetadataUri
-        // or can be fetched from this.Options directly in HandleRequestAsync if needed.
-        // For initial setup, if ResourceMetadataUri can be different per scheme,
-        // this might need to be deferred or handled carefully.
-        // However, GetAbsoluteResourceMetadataUri which is called by HandleChallengeAsync
-        // will use this.Options and update _resourceMetadataPath.
-        // And HandleResourceMetadataRequestAsync will also use this.Options.
-        _resourceMetadataPath = options.CurrentValue.ResourceMetadataUri?.ToString() ?? string.Empty;
     }
 
     /// <inheritdoc />
@@ -76,12 +65,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         var options = this.Options;
         var resourceMetadataUri = options.ResourceMetadataUri;
         
-        // If the options have changed, update the cached path
         string currentPath = resourceMetadataUri?.ToString() ?? string.Empty;
-        if (_resourceMetadataPath != currentPath && resourceMetadataUri != null)
-        {
-            _resourceMetadataPath = resourceMetadataUri.IsAbsoluteUri ? currentPath : resourceMetadataUri.OriginalString;
-        }
         
         if (resourceMetadataUri != null && resourceMetadataUri.IsAbsoluteUri)
         {
