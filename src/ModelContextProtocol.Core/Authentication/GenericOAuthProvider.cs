@@ -111,7 +111,9 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         AuthorizationUrlHandler? authorizationUrlHandler)
         : this(serverUrl, httpClient, authorizationHelpers, clientId, clientSecret, redirectUri, scopes, logger, null, authorizationUrlHandler)
     {
-    }    /// <summary>
+    }    
+    
+    /// <summary>
     /// Initializes a new instance of the <see cref="GenericOAuthProvider"/> class with explicit authorization server selection.
     /// </summary>
     /// <param name="serverUrl">The MCP server URL.</param>
@@ -154,11 +156,13 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         
         // Set up authorization URL handler (use default if not provided)
         _authorizationUrlHandler = authorizationUrlHandler ?? DefaultAuthorizationUrlHandler;
-    }    /// <summary>
+    }    
+    
+    /// <summary>
     /// Default authorization server selection strategy that selects the first available server.
     /// </summary>
     /// <param name="availableServers">List of available authorization servers.</param>
-        /// <returns>The selected authorization server, or null if none are available.</returns>
+    /// <returns>The selected authorization server, or null if none are available.</returns>
     private static Uri? DefaultAuthServerSelector(IReadOnlyList<Uri> availableServers)
     {
         return availableServers.FirstOrDefault();
@@ -194,7 +198,9 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         }
 
         return GetBearerTokenAsync(cancellationToken);
-    }    /// <inheritdoc />
+    }    
+    
+    /// <inheritdoc />
     public async Task<McpUnauthorizedResponseResult> HandleUnauthorizedResponseAsync(
         HttpResponseMessage response, 
         string scheme,
@@ -274,7 +280,9 @@ public class GenericOAuthProvider : IMcpCredentialProvider
 
         _logger.LogError("OAuth authorization flow failed");
         return new McpUnauthorizedResponseResult(false, null);
-    }    /// <summary>
+    }    
+    
+    /// <summary>
     /// Selects an authorization server from the available options using the configured selection strategy.
     /// </summary>
     /// <param name="availableServers">List of available authorization servers.</param>
@@ -446,7 +454,7 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         };
         return uriBuilder.Uri;
     }
-      private async Task<string?> GetAuthorizationCodeAsync(Uri authorizationUrl, CancellationToken cancellationToken)
+    private async Task<string?> GetAuthorizationCodeAsync(Uri authorizationUrl, CancellationToken cancellationToken)
     {
         return await _authorizationUrlHandler(authorizationUrl, _redirectUri, cancellationToken);
     }
@@ -504,24 +512,6 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         }
         
         return null;
-    }
-    
-    private void OpenBrowser(Uri url)
-    {
-        try
-        {
-            var psi = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = url.ToString(),
-                UseShellExecute = true
-            };
-            System.Diagnostics.Process.Start(psi);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error opening browser");
-            _logger.LogInformation("Please manually navigate to: {Url}", url);
-        }
     }
     
     private string GenerateCodeVerifier()
