@@ -67,20 +67,20 @@ public class GenericOAuthProvider : IMcpCredentialProvider
     /// Initializes a new instance of the <see cref="GenericOAuthProvider"/> class.
     /// </summary>
     /// <param name="serverUrl">The MCP server URL.</param>
-    /// <param name="httpClient">The HTTP client to use for OAuth requests. If null, a default HttpClient will be used.</param>
-    /// <param name="authorizationHelpers">The authorization helpers.</param>
     /// <param name="clientId">OAuth client ID.</param>
     /// <param name="clientSecret">OAuth client secret.</param>
     /// <param name="redirectUri">OAuth redirect URI.</param>
+    /// <param name="httpClient">The HTTP client to use for OAuth requests. If null, a default HttpClient will be used.</param>
+    /// <param name="authorizationHelpers">The authorization helpers.</param>
     /// <param name="scopes">OAuth scopes.</param>
     /// <param name="logger">The logger instance. If null, a NullLogger will be used.</param>
     public GenericOAuthProvider(
         Uri serverUrl,
+        string clientId,
+        string clientSecret,
+        Uri redirectUri,
         HttpClient? httpClient = null,
         AuthorizationHelpers? authorizationHelpers = null,
-        string clientId = "demo-client",
-        string clientSecret = "",
-        Uri? redirectUri = null,
         IEnumerable<string>? scopes = null,
         ILogger<GenericOAuthProvider>? logger = null)
         : this(serverUrl, httpClient, authorizationHelpers, clientId, clientSecret, redirectUri, scopes, logger, null, null)
@@ -105,7 +105,7 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         AuthorizationHelpers? authorizationHelpers,
         string clientId,
         string clientSecret,
-        Uri? redirectUri,
+        Uri redirectUri,
         IEnumerable<string>? scopes,
         ILogger<GenericOAuthProvider>? logger,
         AuthorizationUrlHandler? authorizationUrlHandler)
@@ -133,7 +133,7 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         AuthorizationHelpers? authorizationHelpers,
         string clientId,
         string clientSecret,
-        Uri? redirectUri,
+        Uri redirectUri,
         IEnumerable<string>? scopes,
         ILogger<GenericOAuthProvider>? logger,
         Func<IReadOnlyList<Uri>, Uri?>? authServerSelector,
@@ -146,10 +146,10 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         _authorizationHelpers = authorizationHelpers ?? new AuthorizationHelpers(_httpClient);
         _logger = (ILogger?)logger ?? NullLogger.Instance;
         
-        _redirectUri = redirectUri ?? new Uri("http://localhost:8080/callback");
+        _redirectUri = redirectUri;
         _scopes = scopes?.ToList() ?? [];
-        _clientId = clientId ?? "demo-client";
-        _clientSecret = clientSecret ?? "";
+        _clientId = clientId;
+        _clientSecret = clientSecret;
         
         // Set up authorization server selection strategy
         _authServerSelector = authServerSelector ?? DefaultAuthServerSelector;
