@@ -334,8 +334,8 @@ public class GenericOAuthProvider : IMcpCredentialProvider
                 var response = await _httpClient.GetAsync(new Uri(baseUrl + path), cancellationToken);
                 if (response.IsSuccessStatusCode)
                 {
-                    var json = await response.Content.ReadAsStringAsync(cancellationToken);
-                    var metadata = JsonSerializer.Deserialize<AuthorizationServerMetadata>(json, McpJsonUtilities.JsonContext.Default.AuthorizationServerMetadata);
+                    using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+                    var metadata = await JsonSerializer.DeserializeAsync<AuthorizationServerMetadata>(stream, McpJsonUtilities.JsonContext.Default.AuthorizationServerMetadata, cancellationToken);
                     
                     if (metadata != null)
                     {
@@ -382,8 +382,8 @@ public class GenericOAuthProvider : IMcpCredentialProvider
             var response = await _httpClient.SendAsync(request, cancellationToken);
             if (response.IsSuccessStatusCode)
             {
-                var json = await response.Content.ReadAsStringAsync(cancellationToken);
-                var tokenResponse = JsonSerializer.Deserialize<TokenContainer>(json, McpJsonUtilities.JsonContext.Default.TokenContainer);
+                using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+                var tokenResponse = await JsonSerializer.DeserializeAsync<TokenContainer>(stream, McpJsonUtilities.JsonContext.Default.TokenContainer, cancellationToken);
                 
                 if (tokenResponse != null)
                 {
@@ -482,8 +482,8 @@ public class GenericOAuthProvider : IMcpCredentialProvider
             var response = await _httpClient.SendAsync(request, cancellationToken);
             if (response.IsSuccessStatusCode)
             {
-                var json = await response.Content.ReadAsStringAsync(cancellationToken);
-                var tokenResponse = JsonSerializer.Deserialize<TokenContainer>(json, McpJsonUtilities.JsonContext.Default.TokenContainer);
+                using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+                var tokenResponse = await JsonSerializer.DeserializeAsync<TokenContainer>(stream, McpJsonUtilities.JsonContext.Default.TokenContainer, cancellationToken);
                 
                 if (tokenResponse != null)
                 {
