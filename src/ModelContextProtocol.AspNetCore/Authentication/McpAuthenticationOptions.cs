@@ -101,6 +101,6 @@ public class McpAuthenticationOptions : AuthenticationSchemeOptions
         return provider != null
             ? provider(context)
             : _resourceMetadata ?? throw new InvalidOperationException(
-                "ResourceMetadata has not been configured. Use ResourceMetadata property setter or UseStaticResourceMetadata method to provide a valid resource URI.");
+                "ResourceMetadata has not been configured.");
     }
 }

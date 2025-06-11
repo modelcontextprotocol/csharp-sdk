@@ -27,7 +27,16 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         : base(options, logger, encoder)
     {
         _optionsMonitor = options;
-        _resourceMetadataPath = options.CurrentValue.ResourceMetadataUri.ToString();
+
+        // Note: this.Options is not fully available here.
+        // _resourceMetadataPath will be correctly updated by GetAbsoluteResourceMetadataUri
+        // or can be fetched from this.Options directly in HandleRequestAsync if needed.
+        // For initial setup, if ResourceMetadataUri can be different per scheme,
+        // this might need to be deferred or handled carefully.
+        // However, GetAbsoluteResourceMetadataUri which is called by HandleChallengeAsync
+        // will use this.Options and update _resourceMetadataPath.
+        // And HandleResourceMetadataRequestAsync will also use this.Options.
+        _resourceMetadataPath = options.CurrentValue.ResourceMetadataUri?.ToString() ?? string.Empty;
     }
 
     /// <inheritdoc />
@@ -36,13 +45,19 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         // Check if the request is for the resource metadata endpoint
         string requestPath = Request.Path.Value ?? string.Empty;
         
+        string expectedMetadataPath = this.Options.ResourceMetadataUri?.ToString() ?? string.Empty;
+        if (this.Options.ResourceMetadataUri != null && !this.Options.ResourceMetadataUri.IsAbsoluteUri)
+        {
+            // For relative URIs, it's just the path component.
+            expectedMetadataPath = this.Options.ResourceMetadataUri.OriginalString;
+        }
+
         // If the path doesn't match, let the request continue through the pipeline
-        if (!string.Equals(requestPath, _resourceMetadataPath, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(requestPath, expectedMetadataPath, StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
 
-        // Use the request's cancellation token if available
         var cancellationToken = Request.HttpContext.RequestAborted;
         await HandleResourceMetadataRequestAsync(cancellationToken);
         return true;
@@ -58,27 +73,28 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
     /// </summary>
     private string GetAbsoluteResourceMetadataUri()
     {
-        var options = _optionsMonitor.CurrentValue;
+        var options = this.Options;
         var resourceMetadataUri = options.ResourceMetadataUri;
         
         // If the options have changed, update the cached path
-        string currentPath = resourceMetadataUri.ToString();
-        if (_resourceMetadataPath != currentPath)
+        string currentPath = resourceMetadataUri?.ToString() ?? string.Empty;
+        if (_resourceMetadataPath != currentPath && resourceMetadataUri != null)
         {
-            _resourceMetadataPath = currentPath;
+            _resourceMetadataPath = resourceMetadataUri.IsAbsoluteUri ? currentPath : resourceMetadataUri.OriginalString;
         }
         
-        if (resourceMetadataUri.IsAbsoluteUri)
+        if (resourceMetadataUri != null && resourceMetadataUri.IsAbsoluteUri)
         {
             return currentPath;
         }
         
         // For relative URIs, combine with the base URL
         string baseUrl = GetBaseUrl();
-        
-        if (!Uri.TryCreate(baseUrl + _resourceMetadataPath, UriKind.Absolute, out var absoluteUri))
+        string relativePath = resourceMetadataUri?.OriginalString.TrimStart('/') ?? string.Empty;
+
+        if (!Uri.TryCreate($"{baseUrl.TrimEnd('/')}/{relativePath}", UriKind.Absolute, out var absoluteUri))
         {
-            throw new InvalidOperationException("Could not create absolute URI for resource metadata.");
+            throw new InvalidOperationException($"Could not create absolute URI for resource metadata. Base URL: {baseUrl}, Relative Path: {relativePath}");
         }
         
         return absoluteUri.ToString();
@@ -90,8 +106,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     private Task HandleResourceMetadataRequestAsync(CancellationToken cancellationToken = default)
     {
-        // Get resource metadata from options, using the dynamic provider if available
-        var options = _optionsMonitor.CurrentValue;
+        var options = this.Options;
         var resourceMetadata = options.GetResourceMetadata(Request.HttpContext);
         
         // Create a copy to avoid modifying the original
@@ -136,7 +151,6 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         // Get the absolute URI for the resource metadata
         string rawPrmDocumentUri = GetAbsoluteResourceMetadataUri();
 
-        // Initialize properties if null
         properties ??= new AuthenticationProperties();
         
         // Store the resource_metadata in properties in case other handlers need it
