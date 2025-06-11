@@ -143,7 +143,8 @@ public class AuthorizationHelpers
             throw new InvalidOperationException("The WWW-Authenticate header does not contain a resource_metadata parameter");
         }
 
-        Uri metadataUri = new(resourceMetadataUrl);        var metadata = await FetchProtectedResourceMetadataAsync(metadataUri, cancellationToken).ConfigureAwait(false);
+        Uri metadataUri = new(resourceMetadataUrl);        
+        var metadata = await FetchProtectedResourceMetadataAsync(metadataUri, cancellationToken).ConfigureAwait(false);
         if (metadata == null)
         {
             throw new InvalidOperationException($"Failed to fetch resource metadata from {resourceMetadataUrl}");
