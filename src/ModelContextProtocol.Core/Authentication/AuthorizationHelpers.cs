@@ -223,14 +223,13 @@ public class AuthorizationHelpers
 
         try
         {
-            // Extract resource metadata behind the scenes
             var metadata = await ExtractProtectedResourceMetadata(response, serverUrl, cancellationToken);
-            return metadata.AuthorizationServers ?? new List<Uri>();
+            return metadata.AuthorizationServers ?? [];
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get available authorization servers");
-            return new List<Uri>();
+            return [];
         }
     }
 }
