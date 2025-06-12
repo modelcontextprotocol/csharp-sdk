@@ -44,7 +44,7 @@ public class McpClientExtensionsTests : ClientServerTestBase
                 new SamplingMessage
                 {
                     Role = Role.User,
-                    Content = new Content { Type = "text", Text = "Hello" }
+                    Content = new TextContentBlock { Text = "Hello" }
                 }
             ],
             Temperature = temperature,
@@ -80,7 +80,7 @@ public class McpClientExtensionsTests : ClientServerTestBase
 
         // Assert
         Assert.NotNull(result);
-        Assert.Equal("Hello, World!", result.Content.Text);
+        Assert.Equal("Hello, World!", (result.Content as TextContentBlock)?.Text);
         Assert.Equal("test-model", result.Model);
         Assert.Equal(Role.Assistant, result.Role);
         Assert.Equal("endTurn", result.StopReason);
@@ -98,9 +98,8 @@ public class McpClientExtensionsTests : ClientServerTestBase
                 new SamplingMessage
                 {
                     Role = Role.User,
-                    Content = new Content
+                    Content = new ImageContentBlock
                     {
-                        Type = "image",
                         MimeType = "image/png",
                         Data = Convert.ToBase64String(new byte[] { 1, 2, 3 })
                     }
@@ -135,7 +134,7 @@ public class McpClientExtensionsTests : ClientServerTestBase
 
         // Assert
         Assert.NotNull(result);
-        Assert.Equal(expectedData, result.Content.Data);
+        Assert.Equal(expectedData, (result.Content as ImageContentBlock)?.Data);
         Assert.Equal("test-model", result.Model);
         Assert.Equal(Role.Assistant, result.Role);
         Assert.Equal("endTurn", result.StopReason);
@@ -162,11 +161,7 @@ public class McpClientExtensionsTests : ClientServerTestBase
                 new SamplingMessage
                 {
                     Role = Role.User,
-                    Content = new Content
-                    {
-                        Type = "resource",
-                        Resource = resource
-                    },
+                    Content = new EmbeddedResourceBlock { Resource = resource },
                 }
             ],
             MaxTokens = 100
@@ -284,7 +279,7 @@ public class McpClientExtensionsTests : ClientServerTestBase
         JsonSerializerOptions emptyOptions = new() { TypeInfoResolver = JsonTypeInfoResolver.Combine() };
         await using IMcpClient client = await CreateMcpClientForServer();
 
-        await Assert.ThrowsAsync<NotSupportedException>(async () => await client.SendRequestAsync<CallToolRequestParams, CallToolResponse>("Method4", new() { Name = "tool" }, emptyOptions, cancellationToken: TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<NotSupportedException>(async () => await client.SendRequestAsync<CallToolRequestParams, CallToolResult>("Method4", new() { Name = "tool" }, emptyOptions, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]

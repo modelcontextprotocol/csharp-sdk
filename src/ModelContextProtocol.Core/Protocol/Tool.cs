@@ -74,7 +74,7 @@ public class Tool
     /// if an invalid schema is provided.
     /// </para>
     /// <para>
-    /// The schema should describe the shape of the data as returned in <see cref="CallToolResponse.StructuredContent"/>.
+    /// The schema should describe the shape of the data as returned in <see cref="CallToolResult.StructuredContent"/>.
     /// </para>
     /// </remarks>
     [JsonPropertyName("outputSchema")]

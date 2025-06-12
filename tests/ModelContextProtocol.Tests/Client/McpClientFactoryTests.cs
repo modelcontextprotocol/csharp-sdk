@@ -70,7 +70,7 @@ public class McpClientFactoryTests
                     SamplingHandler = async (c, p, t) =>
                         new CreateMessageResult 
                         { 
-                            Content = new Content { Text = "result" }, 
+                            Content = new TextContentBlock { Text = "result" }, 
                             Model = "test-model", 
                             Role = Role.User, 
                             StopReason = "endTurn" 

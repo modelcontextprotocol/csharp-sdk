@@ -71,7 +71,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
                 case "FinalCustomPrompt":
                     return new GetPromptResult()
                     {
-                        Messages = [new() { Role = Role.User, Content = new() { Text = $"hello from {request.Params.Name}", Type = "text" } }],
+                        Messages = [new() { Role = Role.User, Content = new TextContentBlock() { Text = $"hello from {request.Params.Name}" } }],
                     };
 
                 default:
@@ -276,7 +276,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
             new PromptMessage
             {
                 Role = Role.User,
-                Content = new() { Text = "hello", Type = "text" },
+                Content = new TextContentBlock() { Text = "hello" },
             };
     }
 

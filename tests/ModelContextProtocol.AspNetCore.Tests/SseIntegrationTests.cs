@@ -159,7 +159,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
                 ["message"] = "from client!"
             },
             cancellationToken: TestContext.Current.CancellationToken);
-        var textContent = Assert.Single(echoResponse.Content, c => c.Type == "text");
+        var textContent = Assert.Single(echoResponse.Content.OfType<TextContentBlock>());
 
         Assert.Equal("hello from client!", textContent.Text);
     }

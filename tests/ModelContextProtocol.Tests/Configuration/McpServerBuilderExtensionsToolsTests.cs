@@ -95,9 +95,9 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                     case "FirstCustomTool":
                     case "SecondCustomTool":
                     case "FinalCustomTool":
-                        return new CallToolResponse()
+                        return new CallToolResult()
                         {
-                            Content = [new Content() { Text = $"{request.Params.Name}Result", Type = "text" }],
+                            Content = [new TextContentBlock() { Text = $"{request.Params.Name}Result" }],
                         };
 
                     default:
@@ -239,8 +239,9 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         Assert.NotNull(result.Content);
         Assert.NotEmpty(result.Content);
 
-        Assert.Equal("hello Peter", result.Content[0].Text);
-        Assert.Equal("text", result.Content[0].Type);
+        var tc = Assert.IsType<TextContentBlock>(result.Content[0]);
+        Assert.Equal("hello Peter", tc.Text);
+        Assert.Equal("text", tc.Type);
     }
 
     [Fact]
@@ -255,8 +256,8 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
 
         Assert.NotNull(result.Content);
         Assert.NotEmpty(result.Content);
-        Assert.Equal("hello Peter", result.Content[0].Text);
-        Assert.Equal("hello2 Peter", result.Content[1].Text);
+        Assert.Equal("hello Peter", (result.Content[0] as TextContentBlock)?.Text);
+        Assert.Equal("hello2 Peter", (result.Content[1] as TextContentBlock)?.Text);
 
         result = await client.CallToolAsync(
             "SecondCustomTool",
@@ -264,7 +265,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         Assert.NotNull(result);
         Assert.NotNull(result.Content);
         Assert.NotEmpty(result.Content);
-        Assert.Equal("SecondCustomToolResult", result.Content[0].Text);
+        Assert.Equal("SecondCustomToolResult", (result.Content[0] as TextContentBlock)?.Text);
     }
 
     [Fact]
@@ -294,8 +295,8 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         Assert.NotNull(result.Content);
         Assert.NotEmpty(result.Content);
 
-        Assert.Equal("""{"SomeProp":false}""", Regex.Replace(result.Content[0].Text ?? string.Empty, "\\s+", ""));
-        Assert.Equal("text", result.Content[0].Type);
+        Assert.Equal("""{"SomeProp":false}""", Regex.Replace((result.Content[0] as TextContentBlock)?.Text ?? string.Empty, "\\s+", ""));
+        Assert.Equal("text", (result.Content[0] as TextContentBlock)?.Type);
     }
 
     [Fact]
@@ -310,8 +311,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         Assert.NotNull(result.Content);
         Assert.NotEmpty(result.Content);
 
-        Assert.Equal("5", result.Content[0].Text);
-        Assert.Equal("text", result.Content[0].Type);
+        Assert.Equal("5", (result.Content[0] as TextContentBlock)?.Text);
     }
 
     [Fact]
@@ -328,8 +328,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         Assert.NotNull(result.Content);
         Assert.NotEmpty(result.Content);
 
-        Assert.Equal("Peter", result.Content[0].Text);
-        Assert.Equal("text", result.Content[0].Type);
+        Assert.Equal("Peter", (result.Content[0] as TextContentBlock)?.Text);
     }
 
     [Fact]
@@ -348,7 +347,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
             Assert.NotNull(result.Content);
             Assert.NotEmpty(result.Content);
 
-            parts[i] = result.Content[0].Text?.Split(':') ?? [];
+            parts[i] = (result.Content[0] as TextContentBlock)?.Text?.Split(':') ?? [];
             Assert.Equal(2, parts[i].Length);
         }
 
@@ -373,7 +372,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         Assert.True(result.IsError);
         Assert.NotNull(result.Content);
         Assert.NotEmpty(result.Content);
-        Assert.Contains("An error occurred", result.Content[0].Text);
+        Assert.Contains("An error occurred", (result.Content[0] as TextContentBlock)?.Text);
     }
 
     [Fact]
@@ -612,7 +611,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
             return default;
         }))
         {
-            var result = await client.SendRequestAsync<CallToolRequestParams, CallToolResponse>(
+            var result = await client.SendRequestAsync<CallToolRequestParams, CallToolResult>(
                 RequestMethods.ToolsCall,
                 new CallToolRequestParams
                 {
@@ -647,7 +646,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         McpClientTool cancelableTool = tools.First(t => t.Name == nameof(EchoTool.InfiniteCancelableOperation));
 
         var requestId = new RequestId(Guid.NewGuid().ToString());
-        var invokeTask = client.SendRequestAsync<CallToolRequestParams, CallToolResponse>(
+        var invokeTask = client.SendRequestAsync<CallToolRequestParams, CallToolResult>(
             RequestMethods.ToolsCall,
             new CallToolRequestParams { Name = cancelableTool.ProtocolTool.Name },
             requestId: requestId,

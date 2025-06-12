@@ -22,7 +22,7 @@ public class McpServerHandlerTests
         Assert.Null(handlers.UnsubscribeFromResourcesHandler);
 
         handlers.ListToolsHandler = async (p, c) => new ListToolsResult();
-        handlers.CallToolHandler = async (p, c) => new CallToolResponse();
+        handlers.CallToolHandler = async (p, c) => new CallToolResult();
         handlers.ListPromptsHandler = async (p, c) => new ListPromptsResult();
         handlers.GetPromptHandler = async (p, c) => new GetPromptResult();
         handlers.ListResourceTemplatesHandler = async (p, c) => new ListResourceTemplatesResult();

@@ -26,4 +26,14 @@ public class Annotations
     /// </remarks>
     [JsonPropertyName("priority")]
     public float? Priority { get; init; }
+
+    /// <summary>
+    /// Gets or sets the moment the resource was last modified, as an ISO 8601 formatted string.
+    /// </summary>
+    /// <remarks>
+    /// Should be an ISO 8601 formatted string (e.g., \"2025-01-12T15:00:58Z\").
+    /// Examples: last activity timestamp in an open file, timestamp when the resource was attached, etc.
+    /// </remarks>
+    [JsonPropertyName("lastModified")]
+    public string? LastModified { get; set; }
 }

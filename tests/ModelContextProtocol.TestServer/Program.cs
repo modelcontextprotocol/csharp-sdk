@@ -175,16 +175,16 @@ internal static class Program
                     {
                         throw new McpException("Missing required argument 'message'", McpErrorCode.InvalidParams);
                     }
-                    return new CallToolResponse()
+                    return new CallToolResult()
                     {
-                        Content = [new Content() { Text = "Echo: " + message.ToString(), Type = "text" }]
+                        Content = [new TextContentBlock() { Text = $"Echo: {message}" }]
                     };
                 }
                 else if (request.Params?.Name == "echoSessionId")
                 {
-                    return new CallToolResponse()
+                    return new CallToolResult()
                     {
-                        Content = [new Content() { Text = request.Server.SessionId, Type = "text" }]
+                        Content = [new TextContentBlock() { Text = request.Server.SessionId ?? string.Empty }]
                     };
                 }
                 else if (request.Params?.Name == "sampleLLM")
@@ -198,9 +198,9 @@ internal static class Program
                     var sampleResult = await request.Server.SampleAsync(CreateRequestSamplingParams(prompt.ToString(), "sampleLLM", Convert.ToInt32(maxTokens.GetRawText())),
                         cancellationToken);
 
-                    return new CallToolResponse()
+                    return new CallToolResult()
                     {
-                        Content = [new Content() { Text = $"LLM sampling result: {sampleResult.Content.Text}", Type = "text" }]
+                        Content = [new TextContentBlock() { Text = $"LLM sampling result: {(sampleResult.Content as TextContentBlock)?.Text}" }]
                     };
                 }
                 else
@@ -257,11 +257,7 @@ internal static class Program
                     messages.Add(new PromptMessage()
                     {
                         Role = Role.User,
-                        Content = new Content()
-                        {
-                            Type = "text",
-                            Text = "This is a simple prompt without arguments."
-                        }
+                        Content = new TextContentBlock() { Text = "This is a simple prompt without arguments." },
                     });
                 }
                 else if (request.Params?.Name == "complex_prompt")
@@ -271,27 +267,18 @@ internal static class Program
                     messages.Add(new PromptMessage()
                     {
                         Role = Role.User,
-                        Content = new Content()
-                        {
-                            Type = "text",
-                            Text = $"This is a complex prompt with arguments: temperature={temperature}, style={style}"
-                        }
+                        Content = new TextContentBlock() { Text = $"This is a complex prompt with arguments: temperature={temperature}, style={style}" },
                     });
                     messages.Add(new PromptMessage()
                     {
                         Role = Role.Assistant,
-                        Content = new Content()
-                        {
-                            Type = "text",
-                            Text = "I understand. You've provided a complex prompt with temperature and style arguments. How would you like me to proceed?"
-                        }
+                        Content = new TextContentBlock() { Text = "I understand. You've provided a complex prompt with temperature and style arguments. How would you like me to proceed?" },
                     });
                     messages.Add(new PromptMessage()
                     {
                         Role = Role.User,
-                        Content = new Content()
+                        Content = new ImageContentBlock()
                         {
-                            Type = "image",
                             Data = MCP_TINY_IMAGE,
                             MimeType = "image/png"
                         }
@@ -541,11 +528,7 @@ internal static class Program
             Messages = [new SamplingMessage()
                 {
                     Role = Role.User,
-                    Content = new Content()
-                    {
-                        Type = "text",
-                        Text = $"Resource {uri} context: {context}"
-                    }
+                    Content = new TextContentBlock() { Text = $"Resource {uri} context: {context}" },
                 }],
             SystemPrompt = "You are a helpful test server.",
             MaxTokens = maxTokens,

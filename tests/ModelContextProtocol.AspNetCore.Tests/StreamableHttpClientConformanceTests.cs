@@ -77,9 +77,9 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
                 return Results.Json(new JsonRpcResponse
                 {
                     Id = request.Id,
-                    Result = JsonSerializer.SerializeToNode(new CallToolResponse()
+                    Result = JsonSerializer.SerializeToNode(new CallToolResult()
                     {
-                        Content = [new() { Text = parameters.Arguments["message"].ToString() }],
+                        Content = [new TextContentBlock() { Text = parameters.Arguments["message"].ToString() }],
                     }, McpJsonUtilities.DefaultOptions),
                 });
             }
@@ -141,8 +141,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
         var response = await echoTool.CallAsync(new Dictionary<string, object?>() { ["message"] = "Hello world!" }, cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(response);
         var content = Assert.Single(response.Content);
-        Assert.Equal("text", content.Type);
-        Assert.Equal("Hello world!", content.Text);
+        Assert.Equal("Hello world!", Assert.IsType<TextContentBlock>(content).Text);
     }
 
     public async ValueTask DisposeAsync()

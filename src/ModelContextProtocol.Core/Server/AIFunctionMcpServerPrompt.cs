@@ -248,7 +248,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
             string text => new()
             {
                 Description = ProtocolPrompt.Description,
-                Messages = [new() { Role = Role.User, Content = new() { Text = text, Type = "text" } }],
+                Messages = [new() { Role = Role.User, Content = new TextContentBlock() { Text = text } }],
             },
 
             PromptMessage promptMessage => new()

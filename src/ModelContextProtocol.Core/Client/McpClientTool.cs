@@ -84,8 +84,8 @@ public sealed class McpClientTool : AIFunction
     protected async override ValueTask<object?> InvokeCoreAsync(
         AIFunctionArguments arguments, CancellationToken cancellationToken)
     {
-        CallToolResponse result = await CallAsync(arguments, _progress, JsonSerializerOptions, cancellationToken).ConfigureAwait(false);
-        return JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.CallToolResponse);
+        CallToolResult result = await CallAsync(arguments, _progress, JsonSerializerOptions, cancellationToken).ConfigureAwait(false);
+        return JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.CallToolResult);
     }
 
     /// <summary>
@@ -104,14 +104,14 @@ public sealed class McpClientTool : AIFunction
     /// </param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>
-    /// A task containing the <see cref="CallToolResponse"/> from the tool execution. The response includes
+    /// A task containing the <see cref="CallToolResult"/> from the tool execution. The response includes
     /// the tool's output content, which may be structured data, text, or an error message.
     /// </returns>
     /// <remarks>
     /// The base <see cref="AIFunction.InvokeAsync"/> method is overridden to invoke this <see cref="CallAsync"/> method.
-    /// The only difference in behavior is <see cref="AIFunction.InvokeAsync"/> will serialize the resulting <see cref="CallToolResponse"/>"/>
-    /// such that the <see cref="object"/> returned is a <see cref="JsonElement"/> containing the serialized <see cref="CallToolResponse"/>.
-    /// This <see cref="CallToolResponse"/> method is intended to be called directly by user code, whereas the base <see cref="AIFunction.InvokeAsync"/>
+    /// The only difference in behavior is <see cref="AIFunction.InvokeAsync"/> will serialize the resulting <see cref="CallToolResult"/>"/>
+    /// such that the <see cref="object"/> returned is a <see cref="JsonElement"/> containing the serialized <see cref="CallToolResult"/>.
+    /// This <see cref="CallToolResult"/> method is intended to be called directly by user code, whereas the base <see cref="AIFunction.InvokeAsync"/>
     /// is intended to be used polymorphically via the base class, typically as part of an <see cref="IChatClient"/> operation.
     /// </remarks>
     /// <exception cref="McpException">The server could not find the requested tool, or the server encountered an error while processing the request.</exception>
@@ -124,7 +124,7 @@ public sealed class McpClientTool : AIFunction
     ///     });
     /// </code>
     /// </example>
-    public ValueTask<CallToolResponse> CallAsync(
+    public ValueTask<CallToolResult> CallAsync(
         IReadOnlyDictionary<string, object?>? arguments = null,
         IProgress<ProgressNotificationValue>? progress = null,
         JsonSerializerOptions? serializerOptions = null,
@@ -156,7 +156,7 @@ public sealed class McpClientTool : AIFunction
     /// </para>
     /// </remarks>
     public McpClientTool WithName(string name) =>
-        new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, name, _description, _progress);
+        new(_client, ProtocolTool, JsonSerializerOptions, name, _description, _progress);
 
     /// <summary>
     /// Creates a new instance of the tool but modified to return the specified description from its <see cref="Description"/> property.
@@ -180,7 +180,7 @@ public sealed class McpClientTool : AIFunction
     /// </remarks>
     /// <returns>A new instance of <see cref="McpClientTool"/> with the provided description.</returns>
     public McpClientTool WithDescription(string description) =>
-        new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, _name, description, _progress);
+        new(_client, ProtocolTool, JsonSerializerOptions, _name, description, _progress);
 
     /// <summary>
     /// Creates a new instance of the tool but modified to report progress via the specified <see cref="IProgress{T}"/>.

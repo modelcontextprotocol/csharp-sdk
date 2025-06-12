@@ -34,8 +34,14 @@ public class ElicitResult
     /// Gets or sets the submitted form data.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// This is typically omitted if the action is "cancel" or "decline".
+    /// </para>
+    /// <para>
+    /// Values in the dictionary should be of types <see cref="JsonValueKind.String"/>, <see cref="JsonValueKind.Number"/>,
+    /// <see cref="JsonValueKind.True"/>, or <see cref="JsonValueKind.False"/>.
+    /// </para>
     /// </remarks>
     [JsonPropertyName("content")]
-    public JsonElement? Content { get; set; }
+    public IDictionary<string, JsonElement>? Content { get; set; }
 }
