@@ -36,6 +36,7 @@ public static partial class McpJsonUtilities
     /// </summary>
     /// <returns>The configured options.</returns>
     [UnconditionalSuppressMessage("ReflectionAnalysis", "IL3050:RequiresDynamicCode", Justification = "Converter is guarded by IsReflectionEnabledByDefault check.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2026:Members annotated with 'RequiresUnreferencedCodeAttribute' require dynamic access", Justification = "Converter is guarded by IsReflectionEnabledByDefault check.")]
     private static JsonSerializerOptions CreateDefaultOptions()
     {
         // Copy the configuration from the source generated context.
@@ -47,7 +48,7 @@ public static partial class McpJsonUtilities
         // Add a converter for user-defined enums, if reflection is enabled by default.
         if (JsonSerializer.IsReflectionEnabledByDefault)
         {
-            options.Converters.Add(new UserDefinedJsonStringEnumConverter());
+            options.Converters.Add(new CustomizableJsonStringEnumConverter());
         }
 
         options.MakeReadOnly();
@@ -106,18 +107,6 @@ public static partial class McpJsonUtilities
         }
 
         return AIJsonUtilities.CreateJsonSchema(returnType, serializerOptions: function.JsonSerializerOptions, inferenceOptions: schemaCreateOptions);
-    }
-
-
-    // Defines a JsonStringEnumConverter that only applies to enums outside of the current assembly.
-    // This is to ensure that we're not overriding the CustomizableJsonStringEnumConverter that our
-    // built-in enums are relying on.
-    [RequiresDynamicCode("Depends on JsonStringEnumConverter which requires dynamic code.")]
-    private sealed class UserDefinedJsonStringEnumConverter : JsonConverterFactory
-    {
-        private readonly JsonStringEnumConverter _converter = new();
-        public override bool CanConvert(Type typeToConvert) => _converter.CanConvert(typeToConvert) && typeToConvert.Assembly != Assembly.GetExecutingAssembly();
-        public override JsonConverter? CreateConverter(Type typeToConvert, JsonSerializerOptions options) => _converter.CreateConverter(typeToConvert, options);
     }
 
     // Keep in sync with CreateDefaultOptions above.
