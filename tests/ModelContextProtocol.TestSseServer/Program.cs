@@ -182,7 +182,7 @@ public class Program
                     {
                         return new CallToolResponse()
                         {
-                            Content = [new Content() { Text = request.Server.Transport.SessionId, Type = "text" }]
+                            Content = [new Content() { Text = request.Server.SessionId, Type = "text" }]
                         };
                     }
                     else if (request.Params.Name == "sampleLLM")

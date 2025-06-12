@@ -28,10 +28,13 @@ namespace ModelContextProtocol;
 /// </remarks>
 public interface IMcpEndpoint : IAsyncDisposable
 {
-    /// <summary>
-    /// Gets the underlying transport driving the current MCP endpoint.
-    /// </summary>
-    ITransport Transport { get; }
+    /// <summary>Gets an identifier associated with the current MCP session.</summary>
+    /// <remarks>
+    /// Typically populated in transports supporting multiple sessions such as Streamable HTTP or SSE.
+    /// Can return <see langword="null"/> if the session hasn't initialized or if the transport doesn't
+    /// support multiple sessions (as is the case with STDIO).
+    /// </remarks>
+    string? SessionId { get; }
 
     /// <summary>
     /// Sends a JSON-RPC request to the connected endpoint and waits for a response.

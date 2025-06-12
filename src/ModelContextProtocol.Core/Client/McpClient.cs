@@ -95,11 +95,16 @@ internal sealed partial class McpClient : McpEndpoint, IMcpClient
     }
 
     /// <inheritdoc/>
-    public ITransport Transport
+    public string? SessionId
     {
         get
         {
-            return _sessionTransport ??  throw new InvalidOperationException("Must have already initialized a session when invoking this property.");
+            if (_sessionTransport is null)
+            {
+                throw new InvalidOperationException("Must have already initialized a session when invoking this property.");
+            }
+
+            return _sessionTransport.SessionId;
         }
     }
 
