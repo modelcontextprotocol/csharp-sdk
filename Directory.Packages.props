@@ -50,7 +50,7 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageVersion>
     <PackageVersion Include="GitHubActionsTestLogger" Version="2.4.1" />
-    <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="9.5.0-preview.1.25265.7" />
+    <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="9.6.0-preview.1.25310.2" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="$(System9Version)" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="$(System9Version)" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="$(System9Version)" />
