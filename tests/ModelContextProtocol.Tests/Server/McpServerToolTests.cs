@@ -190,7 +190,7 @@ public partial class McpServerToolTests
                 new DataContent("data:image/png;base64,1234"),
                 new DataContent("data:audio/wav;base64,1234")
             };
-        });
+        }, new() { SerializerOptions = JsonContext2.Default.Options });
 
         var result = await tool.InvokeAsync(
             new RequestContext<CallToolRequestParams>(mockServer.Object),
@@ -288,7 +288,7 @@ public partial class McpServerToolTests
         {
             Assert.Same(mockServer.Object, server);
             return new List<string>() { "42", "43" };
-        });
+        }, new() { SerializerOptions = JsonContext2.Default.Options });
         var result = await tool.InvokeAsync(
             new RequestContext<CallToolRequestParams>(mockServer.Object),
             TestContext.Current.CancellationToken);
@@ -632,5 +632,7 @@ public partial class McpServerToolTests
     [JsonSerializable(typeof(AsyncDisposableToolType))]
     [JsonSerializable(typeof(AsyncDisposableAndDisposableToolType))]
     [JsonSerializable(typeof(JsonSchema))]
+    [JsonSerializable(typeof(List<AIContent>))]
+    [JsonSerializable(typeof(List<string>))]
     partial class JsonContext2 : JsonSerializerContext;
 }

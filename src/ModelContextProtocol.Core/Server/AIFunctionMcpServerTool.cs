@@ -86,6 +86,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             Description = options?.Description,
             MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
             SerializerOptions = options?.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
+            JsonSchemaCreateOptions = options?.SchemaCreateOptions,
             ConfigureParameterBinding = pi =>
             {
                 if (pi.ParameterType == typeof(RequestContext<CallToolRequestParams>))
@@ -166,7 +167,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                     return null;
                 }
             },
-            JsonSchemaCreateOptions = options?.SchemaCreateOptions,
         };
 
     /// <summary>Creates an <see cref="McpServerTool"/> that wraps the specified <see cref="AIFunction"/>.</summary>
@@ -366,7 +366,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return null;
         }
 
-        if (function.GetReturnSchema(toolCreateOptions?.SchemaCreateOptions) is not JsonElement outputSchema)
+        if (function.ReturnJsonSchema is not JsonElement outputSchema)
         {
             return null;
         }
