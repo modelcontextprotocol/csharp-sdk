@@ -28,6 +28,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
     private readonly ILogger _logger;
 
     private Task? _getReceiveTask;
+    private int _disposed;
 
     public StreamableHttpClientSessionTransport(
         string endpointName,
@@ -134,6 +135,11 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
     public override async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) == 1)
+        {
+            return;
+        }
+
         try
         {
             await _connectionCts.CancelAsync().ConfigureAwait(false);

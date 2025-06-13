@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.Client;
@@ -49,6 +50,33 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
         _loggerFactory = loggerFactory;
         _ownsHttpClient = ownsHttpClient;
         Name = transportOptions.Name ?? transportOptions.Endpoint.ToString();
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SseClientTransport"/> class with authentication support.
+    /// </summary>
+    /// <param name="transportOptions">Configuration options for the transport.</param>
+    /// <param name="credentialProvider">The authorization provider to use for authentication.</param>
+    /// <param name="loggerFactory">Logger factory for creating loggers used for diagnostic output during transport operations.</param>
+    /// <param name="baseMessageHandler">Optional. The base message handler to use under the authorization handler. 
+    /// If null, a new <see cref="HttpClientHandler"/> will be used. This allows for custom HTTP client pipelines (e.g., from HttpClientFactory) 
+    /// to be used in conjunction with the token-based authentication provided by <paramref name="credentialProvider"/>.</param>
+    public SseClientTransport(SseClientTransportOptions transportOptions, IMcpCredentialProvider credentialProvider, ILoggerFactory? loggerFactory = null, HttpMessageHandler? baseMessageHandler = null)
+    {
+        Throw.IfNull(transportOptions);
+        Throw.IfNull(credentialProvider);
+
+        _options = transportOptions;
+        _loggerFactory = loggerFactory;
+        Name = transportOptions.Name ?? transportOptions.Endpoint.ToString();
+
+        var authHandler = new AuthorizationDelegatingHandler(credentialProvider)
+        {
+            InnerHandler = baseMessageHandler ?? new HttpClientHandler()
+        };
+        
+        _httpClient = new HttpClient(authHandler);
+        _ownsHttpClient = true;
     }
 
     /// <inheritdoc />
