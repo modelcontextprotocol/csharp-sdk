@@ -54,6 +54,8 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         Assert.NotNull(client.ServerInfo);
         if (clientId != "everything")   // Note: Comment the below assertion back when the everything server is updated to provide instructions
             Assert.NotNull(client.ServerInstructions);
+
+        Assert.Null(client.SessionId);
     }
 
     [Theory]
@@ -92,6 +94,22 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         Assert.False(result.IsError);
         var textContent = Assert.Single(result.Content, c => c.Type == "text");
         Assert.Equal("Echo: Hello MCP!", textContent.Text);
+    }
+
+    [Fact]
+    public async Task CallTool_Stdio_EchoSessionId_ReturnsNull()
+    {
+        // arrange
+
+        // act
+        await using var client = await _fixture.CreateClientAsync("test_server");
+        var result = await client.CallToolAsync("echoSessionId", cancellationToken: TestContext.Current.CancellationToken);
+
+        // assert
+        Assert.NotNull(result);
+        Assert.False(result.IsError);
+        var textContent = Assert.Single(result.Content, c => c.Type == "text");
+        Assert.Null(textContent.Text);
     }
 
     [Theory]

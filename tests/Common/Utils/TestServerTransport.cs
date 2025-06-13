@@ -16,6 +16,8 @@ public class TestServerTransport : ITransport
 
     public Action<JsonRpcMessage>? OnMessageSent { get; set; }
 
+    public string? SessionId => null;
+
     public TestServerTransport()
     {
         _messageChannel = Channel.CreateUnbounded<JsonRpcMessage>(new UnboundedChannelOptions

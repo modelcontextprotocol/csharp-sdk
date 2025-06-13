@@ -96,6 +96,10 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         InitializeSession(transport);
     }
 
+    /// <inheritdoc/>
+    public string? SessionId => _sessionTransport.SessionId;
+
+    /// <inheritdoc/>
     public ServerCapabilities ServerCapabilities { get; } = new();
 
     /// <inheritdoc />

@@ -59,6 +59,9 @@ public abstract partial class TransportBase : ITransport
     /// <summary>Gets the logger used by this transport.</summary>
     private protected ILogger Logger => _logger;
 
+    /// <inheritdoc/>
+    public virtual string? SessionId { get; protected set; }
+
     /// <summary>
     /// Gets the name that identifies this transport endpoint in logs.
     /// </summary>
