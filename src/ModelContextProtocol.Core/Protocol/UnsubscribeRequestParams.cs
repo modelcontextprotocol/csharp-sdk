@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -23,5 +24,6 @@ public class UnsubscribeRequestParams : RequestParams
     /// The URI of the resource to unsubscribe from. The URI can use any protocol; it is up to the server how to interpret it.
     /// </summary>
     [JsonPropertyName("uri")]
+    [StringSyntax(StringSyntaxAttribute.Uri)]
     public string? Uri { get; init; }
 }

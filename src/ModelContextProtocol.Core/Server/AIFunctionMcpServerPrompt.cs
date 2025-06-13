@@ -180,6 +180,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
         Prompt prompt = new()
         {
             Name = options?.Name ?? function.Name,
+            Title = options?.Title,
             Description = options?.Description ?? function.Description,
             Arguments = args,
         };
@@ -194,6 +195,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
         if (method.GetCustomAttribute<McpServerPromptAttribute>() is { } promptAttr)
         {
             newOptions.Name ??= promptAttr.Name;
+            newOptions.Title ??= promptAttr.Title;
         }
 
         if (method.GetCustomAttribute<DescriptionAttribute>() is { } descAttr)

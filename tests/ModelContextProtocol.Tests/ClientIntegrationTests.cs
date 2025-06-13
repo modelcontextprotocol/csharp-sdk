@@ -332,11 +332,8 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
 
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
-        var result = await client.CompleteAsync(new Reference
-        {
-            Type = "ref/resource",
-            Uri = "test://static/resource/1"
-        },
+        var result = await client.CompleteAsync(
+            new ResourceTemplateReference { Uri = "test://static/resource/1" },
             "argument_name", "1",
             TestContext.Current.CancellationToken
         );
@@ -354,11 +351,8 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
 
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
-        var result = await client.CompleteAsync(new Reference
-        {
-            Type = "ref/prompt",
-            Name = "irrelevant"
-        },
+        var result = await client.CompleteAsync(
+            new PromptReference { Name = "irrelevant" },
             argumentName: "style", argumentValue: "fo",
             TestContext.Current.CancellationToken
         );

@@ -68,6 +68,9 @@ public sealed class McpClientTool : AIFunction
     /// <inheritdoc/>
     public override string Name => _name;
 
+    /// <summary>Gets the tool's title.</summary>
+    public string? Title => ProtocolTool.Title ?? ProtocolTool.Annotations?.Title;
+
     /// <inheritdoc/>
     public override string Description => _description;
 

@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -29,5 +30,6 @@ public class SubscribeRequestParams : RequestParams
     /// The URI can use any protocol; it is up to the server how to interpret it.
     /// </remarks>
     [JsonPropertyName("uri")]
+    [StringSyntax(StringSyntaxAttribute.Uri)]
     public string? Uri { get; init; }
 }

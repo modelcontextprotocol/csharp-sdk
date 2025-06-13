@@ -49,6 +49,11 @@ public sealed class McpServerResourceCreateOptions
     public string? Name { get; set; }
 
     /// <summary>
+    /// Gets or sets the title to use for the <see cref="McpServerPrompt"/>.
+    /// </summary>
+    public string? Title { get; set; }
+
+    /// <summary>
     /// Gets or set the description to use for the <see cref="McpServerResource"/>.
     /// </summary>
     /// <remarks>
@@ -87,6 +92,7 @@ public sealed class McpServerResourceCreateOptions
             Services = Services,
             UriTemplate = UriTemplate,
             Name = Name,
+            Title = Title,
             Description = Description,
             MimeType = MimeType,
             SerializerOptions = SerializerOptions,

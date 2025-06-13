@@ -639,11 +639,6 @@ public static class McpClientExtensions
         Throw.IfNull(reference);
         Throw.IfNullOrWhiteSpace(argumentName);
 
-        if (!reference.Validate(out string? validationMessage))
-        {
-            throw new ArgumentException($"Invalid reference: {validationMessage}", nameof(reference));
-        }
-
         return client.SendRequestAsync(
             RequestMethods.CompletionComplete,
             new()

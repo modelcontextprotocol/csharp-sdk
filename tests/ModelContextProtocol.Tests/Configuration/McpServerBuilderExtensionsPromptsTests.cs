@@ -163,6 +163,20 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
     }
 
     [Fact]
+    public async Task TitleAttributeProperty_PropagatedToTitle()
+    {
+        await using IMcpClient client = await CreateMcpClientForServer();
+
+        var prompts = await client.ListPromptsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(prompts);
+        Assert.NotEmpty(prompts);
+
+        McpClientPrompt prompt = prompts.First(t => t.Name == nameof(SimplePrompts.ReturnsString));
+
+        Assert.Equal("This is a title", prompt.Title);
+    }
+
+    [Fact]
     public async Task Throws_When_Prompt_Fails()
     {
         await using IMcpClient client = await CreateMcpClientForServer();
@@ -263,7 +277,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
         public static ChatMessage[] ThrowsException([Description("The first parameter")] string message) =>
             throw new FormatException("uh oh");
 
-        [McpServerPrompt, Description("Returns chat messages")]
+        [McpServerPrompt(Title = "This is a title"), Description("Returns chat messages")]
         public string ReturnsString([Description("The first parameter")] string message) =>
             $"The prompt is: {message}. The id is {id}.";
     }

@@ -1,5 +1,4 @@
-﻿using Microsoft.Extensions.Options;
-using ModelContextProtocol.Protocol;
+﻿using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.IO.Pipelines;

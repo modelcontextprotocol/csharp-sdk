@@ -9,19 +9,21 @@ namespace ModelContextProtocol.Protocol;
 /// Resource templates provide metadata about resources available on the server,
 /// including how to construct URIs for those resources.
 /// </remarks>
-public class ResourceTemplate
+public class ResourceTemplate : IBaseMetadata
 {
+    /// <inheritdoc />
+    [JsonPropertyName("name")]
+    public required string Name { get; set; }
+
+    /// <inheritdoc />
+    [JsonPropertyName("title")]
+    public string? Title { get; set; }
+
     /// <summary>
     /// Gets or sets the URI template (according to RFC 6570) that can be used to construct resource URIs.
     /// </summary>
     [JsonPropertyName("uriTemplate")]
     public required string UriTemplate { get; init; }
-
-    /// <summary>
-    /// Gets or sets a human-readable name for this resource template.
-    /// </summary>
-    [JsonPropertyName("name")]
-    public required string Name { get; init; }
 
     /// <summary>
     /// Gets or sets a description of what this resource template represents.
@@ -85,6 +87,7 @@ public class ResourceTemplate
         {
             Uri = UriTemplate,
             Name = Name,
+            Title = Title,
             Description = Description,
             MimeType = MimeType,
             Annotations = Annotations,

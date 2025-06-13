@@ -559,6 +559,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         var annotations = tool.ProtocolTool.Annotations;
         Assert.NotNull(annotations);
         Assert.Equal("Return An Integer", annotations.Title);
+        Assert.Equal("Return An Integer", tool.ProtocolTool.Title);
         Assert.False(annotations.DestructiveHint);
         Assert.True(annotations.IdempotentHint);
         Assert.False(annotations.OpenWorldHint);
@@ -579,6 +580,22 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         Assert.False(annotations.IdempotentHint);
         Assert.Null(annotations.OpenWorldHint);
         Assert.Null(annotations.ReadOnlyHint);
+    }
+
+    [Fact]
+    public async Task TitleAttributeProperty_PropagatedToTitle()
+    {
+        await using IMcpClient client = await CreateMcpClientForServer();
+
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(tools);
+        Assert.NotEmpty(tools);
+
+        McpClientTool tool = tools.First(t => t.Name == nameof(EchoTool.EchoComplex));
+
+        Assert.Equal("This is a title", tool.Title);
+        Assert.Equal("This is a title", tool.ProtocolTool.Title);
+        Assert.Equal("This is a title", tool.ProtocolTool.Annotations?.Title);
     }
 
     [Fact]
@@ -722,7 +739,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
             return cancellationToken.GetHashCode();
         }
 
-        [McpServerTool]
+        [McpServerTool(Title = "This is a title")]
         public static string EchoComplex(ComplexObject complex)
         {
             return complex.Name!;

@@ -86,9 +86,9 @@ builder.Services
         var @ref = @params.Ref;
         var argument = @params.Argument;
 
-        if (@ref.Type == "ref/resource")
+        if (@ref is ResourceTemplateReference rtr)
         {
-            var resourceId = @ref.Uri?.Split("/").Last();
+            var resourceId = rtr.Uri?.Split("/").Last();
 
             if (resourceId is null)
             {
@@ -103,7 +103,7 @@ builder.Services
             };
         }
 
-        if (@ref.Type == "ref/prompt")
+        if (@ref is PromptReference pr)
         {
             if (!exampleCompletions.TryGetValue(argument.Name, out IEnumerable<string>? value))
             {

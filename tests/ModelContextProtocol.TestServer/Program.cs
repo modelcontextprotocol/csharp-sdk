@@ -493,29 +493,29 @@ internal static class Program
 
         Func<RequestContext<CompleteRequestParams>, CancellationToken, ValueTask<CompleteResult>> handler = async (request, cancellationToken) =>
         {
-            if (request.Params?.Ref?.Type == "ref/resource")
+            string[]? values;
+            switch (request.Params?.Ref)
             {
-                var resourceId = request.Params?.Ref?.Uri?.Split('/').LastOrDefault();
-                if (string.IsNullOrEmpty(resourceId))
-                    return new CompleteResult() { Completion = new() { Values = [] } };
+                case ResourceTemplateReference rtr:
+                    var resourceId = rtr.Uri?.Split('/').LastOrDefault();
+                    if (string.IsNullOrEmpty(resourceId))
+                        return new CompleteResult() { Completion = new() { Values = [] } };
 
-                // Filter resource IDs that start with the input value
-                var values = sampleResourceIds.Where(id => id.StartsWith(request.Params!.Argument.Value)).ToArray();
-                return new CompleteResult() { Completion = new() { Values = values, HasMore = false, Total = values.Length } };
+                    // Filter resource IDs that start with the input value
+                    values = sampleResourceIds.Where(id => id.StartsWith(request.Params!.Argument.Value)).ToArray();
+                    return new CompleteResult() { Completion = new() { Values = values, HasMore = false, Total = values.Length } };
 
+                case PromptReference pr:
+                    // Handle completion for prompt arguments
+                    if (!exampleCompletions.TryGetValue(request.Params.Argument.Name, out var completions))
+                        return new CompleteResult() { Completion = new() { Values = [] } };
+
+                    values = completions.Where(value => value.StartsWith(request.Params.Argument.Value)).ToArray();
+                    return new CompleteResult() { Completion = new() { Values = values, HasMore = false, Total = values.Length } };
+
+                default:
+                    throw new McpException($"Unknown reference type: '{request.Params?.Ref.Type}'", McpErrorCode.InvalidParams);
             }
-
-            if (request.Params?.Ref?.Type == "ref/prompt")
-            {
-                // Handle completion for prompt arguments
-                if (!exampleCompletions.TryGetValue(request.Params.Argument.Name, out var completions))
-                    return new CompleteResult() { Completion = new() { Values = [] } };
-
-                var values = completions.Where(value => value.StartsWith(request.Params.Argument.Value)).ToArray();
-                return new CompleteResult() { Completion = new() { Values = values, HasMore = false, Total = values.Length } };
-            }
-
-            throw new McpException($"Unknown reference type: '{request.Params?.Ref.Type}'", McpErrorCode.InvalidParams);
         };
 
         return new() { CompleteHandler = handler };

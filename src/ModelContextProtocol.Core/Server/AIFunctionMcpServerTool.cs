@@ -190,13 +190,15 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 options.OpenWorld is not null ||
                 options.ReadOnly is not null)
             {
+                tool.Title = options.Title;
+
                 tool.Annotations = new()
                 {
-                    Title = options?.Title,
-                    IdempotentHint = options?.Idempotent,
-                    DestructiveHint = options?.Destructive,
-                    OpenWorldHint = options?.OpenWorld,
-                    ReadOnlyHint = options?.ReadOnly,
+                    Title = options.Title,
+                    IdempotentHint = options.Idempotent,
+                    DestructiveHint = options.Destructive,
+                    OpenWorldHint = options.OpenWorld,
+                    ReadOnlyHint = options.ReadOnly,
                 };
             }
         }

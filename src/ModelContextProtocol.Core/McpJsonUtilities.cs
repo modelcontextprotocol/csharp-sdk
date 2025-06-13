@@ -1,8 +1,6 @@
 ﻿using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
 using System.Diagnostics.CodeAnalysis;
-using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;

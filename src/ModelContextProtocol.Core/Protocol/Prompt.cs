@@ -8,8 +8,16 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
-public class Prompt
+public class Prompt : IBaseMetadata
 {
+    /// <inheritdoc />
+    [JsonPropertyName("name")]
+    public required string Name { get; set; }
+
+    /// <inheritdoc />
+    [JsonPropertyName("title")]
+    public string? Title { get; set; }
+
     /// <summary>
     /// Gets or sets a list of arguments that this prompt accepts for templating and customization.
     /// </summary>
@@ -41,10 +49,4 @@ public class Prompt
     /// </remarks>
     [JsonPropertyName("description")]
     public string? Description { get; set; }
-
-    /// <summary>
-    /// Gets or sets the name of the prompt.
-    /// </summary>
-    [JsonPropertyName("name")]
-    public string Name { get; set; } = string.Empty;
 }

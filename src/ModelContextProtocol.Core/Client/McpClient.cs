@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
-using System.Diagnostics;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Client;

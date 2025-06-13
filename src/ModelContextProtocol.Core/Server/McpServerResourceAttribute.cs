@@ -130,6 +130,9 @@ public sealed class McpServerResourceAttribute : Attribute
     /// <remarks>If <see langword="null"/>, the method name will be used.</remarks>
     public string? Name { get; set; }
 
+    /// <summary>Gets or sets the title of the resource.</summary>
+    public string? Title { get; set; }
+
     /// <summary>Gets or sets the MIME (media) type of the resource.</summary>
     public string? MimeType { get; set; }
 }

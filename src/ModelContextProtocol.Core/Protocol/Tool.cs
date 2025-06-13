@@ -6,13 +6,15 @@ namespace ModelContextProtocol.Protocol;
 /// <summary>
 /// Represents a tool that the server is capable of calling.
 /// </summary>
-public class Tool
+public class Tool : IBaseMetadata
 {
-    /// <summary>
-    /// Gets or sets the name of the tool.
-    /// </summary>
+    /// <inheritdoc />
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
+
+    /// <inheritdoc />
+    [JsonPropertyName("title")]
+    public string? Title { get; set; }
 
     /// <summary>
     /// Gets or sets a human-readable description of the tool.

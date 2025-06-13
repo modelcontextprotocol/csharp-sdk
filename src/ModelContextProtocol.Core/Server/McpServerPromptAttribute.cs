@@ -117,4 +117,7 @@ public sealed class McpServerPromptAttribute : Attribute
     /// <summary>Gets the name of the prompt.</summary>
     /// <remarks>If <see langword="null"/>, the method name will be used.</remarks>
     public string? Name { get; set; }
+
+    /// <summary>Gets or sets the title of the prompt.</summary>
+    public string? Title { get; set; }
 }

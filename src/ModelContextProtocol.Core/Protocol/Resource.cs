@@ -8,7 +8,7 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
-public class Resource
+public class Resource : IBaseMetadata
 {
     /// <summary>
     /// Gets or sets the URI of this resource.
@@ -16,11 +16,13 @@ public class Resource
     [JsonPropertyName("uri")]
     public required string Uri { get; init; }
 
-    /// <summary>
-    /// Gets or sets a human-readable name for this resource.
-    /// </summary>
+    /// <inheritdoc />
     [JsonPropertyName("name")]
-    public required string Name { get; init; }
+    public required string Name { get; set; }
+
+    /// <inheritdoc />
+    [JsonPropertyName("title")]
+    public string? Title { get; set; }
 
     /// <summary>
     /// Gets or sets a description of what this resource represents.
