@@ -148,6 +148,7 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(SubscribeRequestParams))]
     [JsonSerializable(typeof(UnsubscribeRequestParams))]
     [JsonSerializable(typeof(IReadOnlyDictionary<string, object>))]
+    [JsonSerializable(typeof(PromptMessage[]))]
 
     // Primitive types for use in consuming AIFunctions
     [JsonSerializable(typeof(string))]

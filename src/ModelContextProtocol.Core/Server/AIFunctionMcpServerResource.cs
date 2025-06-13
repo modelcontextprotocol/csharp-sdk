@@ -77,7 +77,8 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
             Name = options?.Name ?? method.GetCustomAttribute<McpServerResourceAttribute>()?.Name,
             Description = options?.Description,
             MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
-            SerializerOptions = McpJsonUtilities.DefaultOptions,
+            SerializerOptions = options?.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
+            JsonSchemaCreateOptions = options?.SchemaCreateOptions,
             ConfigureParameterBinding = pi =>
             {
                 if (pi.ParameterType == typeof(RequestContext<ReadResourceRequestParams>))

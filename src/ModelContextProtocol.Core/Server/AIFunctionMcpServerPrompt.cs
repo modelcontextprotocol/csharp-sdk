@@ -71,6 +71,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
             Description = options?.Description,
             MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
             SerializerOptions = options?.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
+            JsonSchemaCreateOptions = options?.SchemaCreateOptions,
             ConfigureParameterBinding = pi =>
             {
                 if (pi.ParameterType == typeof(RequestContext<GetPromptRequestParams>))
@@ -151,7 +152,6 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
                     return null;
                 }
             },
-            JsonSchemaCreateOptions = options?.SchemaCreateOptions,
         };
 
     /// <summary>Creates an <see cref="McpServerPrompt"/> that wraps the specified <see cref="AIFunction"/>.</summary>

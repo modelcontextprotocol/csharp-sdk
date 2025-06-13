@@ -5,6 +5,8 @@ using ModelContextProtocol.Server;
 using Moq;
 using System.ComponentModel;
 using System.Reflection;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Tests.Server;
 
@@ -324,6 +326,11 @@ public class McpServerPromptTests
         {
             TransformSchemaNode = (context, node) =>
             {
+                if (node.GetValueKind() is not JsonValueKind.Object)
+                {
+                    node = new JsonObject();
+                }
+
                 node["description"] = "1234";
                 return node;
             }

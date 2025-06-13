@@ -1,4 +1,6 @@
+using Microsoft.Extensions.AI;
 using System.ComponentModel;
+using System.Text.Json;
 
 namespace ModelContextProtocol.Server;
 
@@ -61,6 +63,22 @@ public sealed class McpServerResourceCreateOptions
     public string? MimeType { get; set; }
 
     /// <summary>
+    /// Gets or sets the JSON serializer options to use when marshalling data to/from JSON.
+    /// </summary>
+    /// <remarks>
+    /// Defaults to <see cref="McpJsonUtilities.DefaultOptions"/> if left unspecified.
+    /// </remarks>
+    public JsonSerializerOptions? SerializerOptions { get; set; }
+
+    /// <summary>
+    /// Gets or sets the JSON schema options when creating <see cref="AIFunction"/> from a method.
+    /// </summary>
+    /// <remarks>
+    /// Defaults to <see cref="AIJsonSchemaCreateOptions.Default"/> if left unspecified.
+    /// </remarks>
+    public AIJsonSchemaCreateOptions? SchemaCreateOptions { get; set; }
+
+    /// <summary>
     /// Creates a shallow clone of the current <see cref="McpServerResourceCreateOptions"/> instance.
     /// </summary>
     internal McpServerResourceCreateOptions Clone() =>
@@ -71,5 +89,7 @@ public sealed class McpServerResourceCreateOptions
             Name = Name,
             Description = Description,
             MimeType = MimeType,
+            SerializerOptions = SerializerOptions,
+            SchemaCreateOptions = SchemaCreateOptions,
         };
 }

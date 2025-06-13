@@ -451,7 +451,7 @@ public partial class McpServerResourceTests
         {
             Assert.Same(mockServer.Object, server);
             return new TextResourceContents() { Text = "hello" };
-        }, new() { Name = "Test" });
+        }, new() { Name = "Test", SerializerOptions = JsonContext6.Default.Options });
         var result = await resource.ReadAsync(
             new RequestContext<ReadResourceRequestParams>(mockServer.Object) { Params = new() { Uri = "resource://Test" } },
             TestContext.Current.CancellationToken);
@@ -507,7 +507,7 @@ public partial class McpServerResourceTests
         {
             Assert.Same(mockServer.Object, server);
             return new List<string>() { "42", "43" };
-        }, new() { Name = "Test" });
+        }, new() { Name = "Test", SerializerOptions = JsonContext6.Default.Options });
         var result = await resource.ReadAsync(
             new RequestContext<ReadResourceRequestParams>(mockServer.Object) { Params = new() { Uri = "resource://Test" } },
             TestContext.Current.CancellationToken);
@@ -547,7 +547,7 @@ public partial class McpServerResourceTests
                 new TextContent("hello!"),
                 new DataContent(new byte[] { 4, 5, 6 }, "application/json"),
             };
-        }, new() { Name = "Test" });
+        }, new() { Name = "Test", SerializerOptions = JsonContext6.Default.Options });
         var result = await resource.ReadAsync(
             new RequestContext<ReadResourceRequestParams>(mockServer.Object) { Params = new() { Uri = "resource://Test" } },
             TestContext.Current.CancellationToken);
@@ -575,5 +575,8 @@ public partial class McpServerResourceTests
 
     [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
     [JsonSerializable(typeof(DisposableResourceType))]
+    [JsonSerializable(typeof(List<AIContent>))]
+    [JsonSerializable(typeof(List<string>))]
+    [JsonSerializable(typeof(TextResourceContents))]
     partial class JsonContext6 : JsonSerializerContext;
 }
