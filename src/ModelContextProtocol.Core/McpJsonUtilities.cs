@@ -3,6 +3,7 @@ using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
@@ -35,13 +36,21 @@ public static partial class McpJsonUtilities
     /// Creates default options to use for MCP-related serialization.
     /// </summary>
     /// <returns>The configured options.</returns>
+    [UnconditionalSuppressMessage("ReflectionAnalysis", "IL3050:RequiresDynamicCode", Justification = "Converter is guarded by IsReflectionEnabledByDefault check.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2026:Members annotated with 'RequiresUnreferencedCodeAttribute' require dynamic access", Justification = "Converter is guarded by IsReflectionEnabledByDefault check.")]
     private static JsonSerializerOptions CreateDefaultOptions()
     {
         // Copy the configuration from the source generated context.
         JsonSerializerOptions options = new(JsonContext.Default.Options);
 
-        // Chain with all supported types from MEAI
+        // Chain with all supported types from MEAI.
         options.TypeInfoResolverChain.Add(AIJsonUtilities.DefaultOptions.TypeInfoResolver!);
+
+        // Add a converter for user-defined enums, if reflection is enabled by default.
+        if (JsonSerializer.IsReflectionEnabledByDefault)
+        {
+            options.Converters.Add(new CustomizableJsonStringEnumConverter());
+        }
 
         options.MakeReadOnly();
         return options;

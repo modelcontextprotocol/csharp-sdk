@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
+using System.Diagnostics;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Client;
@@ -90,6 +91,20 @@ internal sealed partial class McpClient : McpEndpoint, IMcpClient
                     McpJsonUtilities.JsonContext.Default.ElicitRequestParams,
                     McpJsonUtilities.JsonContext.Default.ElicitResult);
             }
+        }
+    }
+
+    /// <inheritdoc/>
+    public string? SessionId
+    {
+        get
+        {
+            if (_sessionTransport is null)
+            {
+                throw new InvalidOperationException("Must have already initialized a session when invoking this property.");
+            }
+
+            return _sessionTransport.SessionId;
         }
     }
 

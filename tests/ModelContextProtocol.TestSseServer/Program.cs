@@ -129,6 +129,16 @@ public class Program
                             },
                             new Tool()
                             {
+                                Name = "echoSessionId",
+                                Description = "Echoes the session id back to the client.",
+                                InputSchema = JsonSerializer.Deserialize<JsonElement>("""
+                                    {
+                                        "type": "object"
+                                    }
+                                    """, McpJsonUtilities.DefaultOptions),
+                            },
+                            new Tool()
+                            {
                                 Name = "sampleLLM",
                                 Description = "Samples from an LLM using MCP's sampling feature.",
                                 InputSchema = JsonSerializer.Deserialize<JsonElement>("""
@@ -166,6 +176,13 @@ public class Program
                         return new CallToolResponse()
                         {
                             Content = [new Content() { Text = "Echo: " + message.ToString(), Type = "text" }]
+                        };
+                    }
+                    else if (request.Params.Name == "echoSessionId")
+                    {
+                        return new CallToolResponse()
+                        {
+                            Content = [new Content() { Text = request.Server.SessionId, Type = "text" }]
                         };
                     }
                     else if (request.Params.Name == "sampleLLM")

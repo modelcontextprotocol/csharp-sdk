@@ -52,6 +52,15 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         // Assert
         Assert.NotNull(client.ServerCapabilities);
         Assert.NotNull(client.ServerInfo);
+
+        if (ClientTransportOptions.Endpoint.AbsolutePath.EndsWith("/sse"))
+        {
+            Assert.Null(client.SessionId);
+        }
+        else
+        {
+            Assert.NotNull(client.SessionId);
+        }
     }
 
     [Fact]
@@ -88,6 +97,35 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         Assert.False(result.IsError);
         var textContent = Assert.Single(result.Content, c => c.Type == "text");
         Assert.Equal("Echo: Hello MCP!", textContent.Text);
+    }
+
+    [Fact]
+    public async Task CallTool_EchoSessionId_ReturnsTheSameSessionId()
+    {
+        // arrange
+
+        // act
+        await using var client = await GetClientAsync();
+        var result1 = await client.CallToolAsync("echoSessionId", cancellationToken: TestContext.Current.CancellationToken);
+        var result2 = await client.CallToolAsync("echoSessionId", cancellationToken: TestContext.Current.CancellationToken);
+        var result3 = await client.CallToolAsync("echoSessionId", cancellationToken: TestContext.Current.CancellationToken);
+
+        // assert
+        Assert.NotNull(result1);
+        Assert.NotNull(result2);
+        Assert.NotNull(result3);
+
+        Assert.False(result1.IsError);
+        Assert.False(result2.IsError);
+        Assert.False(result3.IsError);
+        
+        var textContent1 = Assert.Single(result1.Content);
+        var textContent2 = Assert.Single(result2.Content);
+        var textContent3 = Assert.Single(result3.Content);
+
+        Assert.NotNull(textContent1.Text);
+        Assert.Equal(textContent1.Text, textContent2.Text);
+        Assert.Equal(textContent1.Text, textContent3.Text);
     }
 
     [Fact]
