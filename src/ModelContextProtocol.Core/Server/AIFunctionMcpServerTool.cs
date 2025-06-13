@@ -366,7 +366,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return null;
         }
 
-        if (function.GetReturnSchema(toolCreateOptions?.SchemaCreateOptions) is not JsonElement outputSchema)
+        if (function.ReturnJsonSchema is not JsonElement outputSchema)
         {
             return null;
         }
