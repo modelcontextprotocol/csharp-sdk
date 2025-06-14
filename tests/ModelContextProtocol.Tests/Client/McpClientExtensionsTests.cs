@@ -49,10 +49,6 @@ public class McpClientExtensionsTests : ClientServerTestBase
             ],
             Temperature = temperature,
             MaxTokens = maxTokens,
-            Meta = new RequestParamsMetadata
-            {
-                ProgressToken = new ProgressToken(),
-            }
         };
 
         var cancellationToken = CancellationToken.None;

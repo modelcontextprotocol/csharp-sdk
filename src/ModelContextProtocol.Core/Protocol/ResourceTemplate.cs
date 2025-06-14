@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -70,6 +71,15 @@ public class ResourceTemplate : IBaseMetadata
     [JsonPropertyName("annotations")]
     public Annotations? Annotations { get; init; }
 
+    /// <summary>
+    /// Gets or sets metadata reserved by MCP for protocol-level metadata.
+    /// </summary>
+    /// <remarks>
+    /// Implementations must not make assumptions about its contents.
+    /// </remarks>
+    [JsonPropertyName("_meta")]
+    public JsonObject? Meta { get; init; }
+
     /// <summary>Gets whether <see cref="UriTemplate"/> contains any template expressions.</summary>
     [JsonIgnore]
     public bool IsTemplated => UriTemplate.Contains('{');
@@ -91,6 +101,7 @@ public class ResourceTemplate : IBaseMetadata
             Description = Description,
             MimeType = MimeType,
             Annotations = Annotations,
+            Meta = Meta,
         };
     }
 }

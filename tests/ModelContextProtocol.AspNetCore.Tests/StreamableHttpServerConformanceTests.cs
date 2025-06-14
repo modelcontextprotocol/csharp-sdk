@@ -371,7 +371,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
             if (currentSseItem <= 10)
             {
                 var notification = JsonSerializer.Deserialize(sseEvent, GetJsonTypeInfo<JsonRpcNotification>());
-                var progressNotification = AssertType<ProgressNotification>(notification?.Params);
+                var progressNotification = AssertType<ProgressNotificationParams>(notification?.Params);
                 Assert.Equal($"Progress {currentSseItem - 1}", progressNotification.Progress.Message);
             }
             else

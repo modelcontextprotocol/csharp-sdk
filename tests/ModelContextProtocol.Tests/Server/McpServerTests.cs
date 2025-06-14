@@ -685,7 +685,7 @@ public class McpServerTests : LoggedTest
         await transport.SendMessageAsync(new JsonRpcNotification
         {
             Method = NotificationMethods.ProgressNotification,
-            Params = JsonSerializer.SerializeToNode(new ProgressNotification
+            Params = JsonSerializer.SerializeToNode(new ProgressNotificationParams
             {
                 ProgressToken = new("abc"),
                 Progress = new()
@@ -698,7 +698,7 @@ public class McpServerTests : LoggedTest
         }, TestContext.Current.CancellationToken);
 
         var notification = await notificationReceived.Task;
-        var progress = JsonSerializer.Deserialize<ProgressNotification>(notification.Params, McpJsonUtilities.DefaultOptions);
+        var progress = JsonSerializer.Deserialize<ProgressNotificationParams>(notification.Params, McpJsonUtilities.DefaultOptions);
         Assert.NotNull(progress);
         Assert.Equal("abc", progress.ProgressToken.ToString());
         Assert.Equal(50, progress.Progress.Progress);

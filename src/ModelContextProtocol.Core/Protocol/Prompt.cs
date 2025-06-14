@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -19,6 +20,22 @@ public class Prompt : IBaseMetadata
     public string? Title { get; set; }
 
     /// <summary>
+    /// Gets or sets an optional description of what this prompt provides.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This description helps developers understand the purpose and use cases for the prompt.
+    /// It should explain what the prompt is designed to accomplish and any important context.
+    /// </para>
+    /// <para>
+    /// The description is typically used in documentation, UI displays, and for providing context
+    /// to client applications that may need to choose between multiple available prompts.
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+
+    /// <summary>
     /// Gets or sets a list of arguments that this prompt accepts for templating and customization.
     /// </summary>
     /// <remarks>
@@ -35,18 +52,11 @@ public class Prompt : IBaseMetadata
     public List<PromptArgument>? Arguments { get; set; }
 
     /// <summary>
-    /// Gets or sets an optional description of what this prompt provides.
+    /// Gets or sets metadata reserved by MCP for protocol-level metadata.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// This description helps developers understand the purpose and use cases for the prompt.
-    /// It should explain what the prompt is designed to accomplish and any important context.
-    /// </para>
-    /// <para>
-    /// The description is typically used in documentation, UI displays, and for providing context
-    /// to client applications that may need to choose between multiple available prompts.
-    /// </para>
+    /// Implementations must not make assumptions about its contents.
     /// </remarks>
-    [JsonPropertyName("description")]
-    public string? Description { get; set; }
+    [JsonPropertyName("_meta")]
+    public JsonObject? Meta { get; set; }
 }

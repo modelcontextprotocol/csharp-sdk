@@ -8,7 +8,7 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">See the schema for details</see>
 /// </remarks>
-public class PaginatedRequestParams : RequestParams
+public abstract class PaginatedRequestParams : RequestParams
 {
     /// <summary>
     /// Gets or sets an opaque token representing the current pagination position.

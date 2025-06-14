@@ -612,10 +612,10 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         TaskCompletionSource tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int remainingNotifications = 10;
 
-        ConcurrentQueue<ProgressNotification> notifications = new();
+        ConcurrentQueue<ProgressNotificationParams> notifications = new();
         await using (client.RegisterNotificationHandler(NotificationMethods.ProgressNotification, (notification, cancellationToken) =>
         {
-            if (JsonSerializer.Deserialize<ProgressNotification>(notification.Params, McpJsonUtilities.DefaultOptions) is { } pn &&
+            if (JsonSerializer.Deserialize<ProgressNotificationParams>(notification.Params, McpJsonUtilities.DefaultOptions) is { } pn &&
                 pn.ProgressToken == new ProgressToken("abc123"))
             {
                 notifications.Enqueue(pn);
@@ -633,7 +633,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                 new CallToolRequestParams
                 {
                     Name = progressTool.ProtocolTool.Name,
-                    Meta = new() { ProgressToken = new("abc123") },
+                    ProgressToken = new("abc123"),
                 },
                 cancellationToken: TestContext.Current.CancellationToken);
 
@@ -641,7 +641,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
             Assert.Contains("done", JsonSerializer.Serialize(result, McpJsonUtilities.DefaultOptions));
         }
 
-        ProgressNotification[] array = notifications.OrderBy(n => n.Progress.Progress).ToArray();
+        ProgressNotificationParams[] array = notifications.OrderBy(n => n.Progress.Progress).ToArray();
         Assert.Equal(10, array.Length);
         for (int i = 0; i < array.Length; i++)
         {
@@ -671,7 +671,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
 
         await client.SendNotificationAsync(
             NotificationMethods.CancelledNotification,
-            parameters: new CancelledNotification()
+            parameters: new CancelledNotificationParams()
             {
                 RequestId = requestId,
             },

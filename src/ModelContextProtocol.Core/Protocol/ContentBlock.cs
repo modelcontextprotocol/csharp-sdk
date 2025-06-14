@@ -1,6 +1,8 @@
+using Microsoft.Extensions.AI;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -78,6 +80,7 @@ public abstract class ContentBlock
             long? size = null;
             ResourceContents? resource = null;
             Annotations? annotations = null;
+            JsonObject? meta = null;
 
             while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
             {
@@ -128,6 +131,10 @@ public abstract class ContentBlock
                         annotations = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.Annotations);
                         break;
 
+                    case "_meta":
+                        meta = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.JsonObject);
+                        break;
+
                     default:
                         break;
                 }
@@ -140,6 +147,7 @@ public abstract class ContentBlock
                     {
                         Text = text ?? throw new JsonException("Text contents must be provided for 'text' type."),
                         Annotations = annotations,
+                        Meta = meta,
                     };
 
                 case "image":
@@ -148,6 +156,7 @@ public abstract class ContentBlock
                         Data = data ?? throw new JsonException("Image data must be provided for 'image' type."),
                         MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'image' type."),
                         Annotations = annotations,
+                        Meta = meta,
                     };
 
                 case "audio":
@@ -156,13 +165,15 @@ public abstract class ContentBlock
                         Data = data ?? throw new JsonException("Audio data must be provided for 'audio' type."),
                         MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'audio' type."),
                         Annotations = annotations,
+                        Meta = meta,
                     };
 
                 case "resource":
                     return new EmbeddedResourceBlock()
                     {
                         Resource = resource ?? throw new JsonException("Resource contents must be provided for 'resource' type."),
-                        Annotations = annotations
+                        Annotations = annotations,
+                        Meta = meta,
                     };
 
                 case "resource_link":
@@ -198,21 +209,41 @@ public abstract class ContentBlock
             {
                 case TextContentBlock textContent:
                     writer.WriteString("text", textContent.Text);
+                    if (textContent.Meta is not null)
+                    {
+                        writer.WritePropertyName("_meta");
+                        JsonSerializer.Serialize(writer, textContent.Meta, McpJsonUtilities.JsonContext.Default.JsonObject);
+                    }
                     break;
 
                 case ImageContentBlock imageContent:
                     writer.WriteString("data", imageContent.Data);
                     writer.WriteString("mimeType", imageContent.MimeType);
+                    if (imageContent.Meta is not null)
+                    {
+                        writer.WritePropertyName("_meta");
+                        JsonSerializer.Serialize(writer, imageContent.Meta, McpJsonUtilities.JsonContext.Default.JsonObject);
+                    }
                     break;
 
                 case AudioContentBlock audioContent:
                     writer.WriteString("data", audioContent.Data);
                     writer.WriteString("mimeType", audioContent.MimeType);
+                    if (audioContent.Meta is not null)
+                    {
+                        writer.WritePropertyName("_meta");
+                        JsonSerializer.Serialize(writer, audioContent.Meta, McpJsonUtilities.JsonContext.Default.JsonObject);
+                    }
                     break;
 
                 case EmbeddedResourceBlock embeddedResource:
                     writer.WritePropertyName("resource");
                     JsonSerializer.Serialize(writer, embeddedResource.Resource, McpJsonUtilities.JsonContext.Default.ResourceContents);
+                    if (embeddedResource.Meta is not null)
+                    {
+                        writer.WritePropertyName("_meta");
+                        JsonSerializer.Serialize(writer, embeddedResource.Meta, McpJsonUtilities.JsonContext.Default.JsonObject);
+                    }
                     break;
 
                 case ResourceLinkBlock resourceLink:
@@ -255,6 +286,15 @@ public sealed class TextContentBlock : ContentBlock
     /// </summary>
     [JsonPropertyName("text")]
     public required string Text { get; set; }
+
+    /// <summary>
+    /// Gets or sets metadata reserved by MCP for protocol-level metadata.
+    /// </summary>
+    /// <remarks>
+    /// Implementations must not make assumptions about its contents.
+    /// </remarks>
+    [JsonPropertyName("_meta")]
+    public JsonObject? Meta { get; set; }
 }
 
 /// <summary>Represents an image provided to or from an LLM.</summary>
@@ -279,6 +319,15 @@ public sealed class ImageContentBlock : ContentBlock
     /// </remarks>
     [JsonPropertyName("mimeType")]
     public required string MimeType { get; set; }
+
+    /// <summary>
+    /// Gets or sets metadata reserved by MCP for protocol-level metadata.
+    /// </summary>
+    /// <remarks>
+    /// Implementations must not make assumptions about its contents.
+    /// </remarks>
+    [JsonPropertyName("_meta")]
+    public JsonObject? Meta { get; set; }
 }
 
 /// <summary>Represents audio provided to or from an LLM.</summary>
@@ -303,6 +352,15 @@ public sealed class AudioContentBlock : ContentBlock
     /// </remarks>
     [JsonPropertyName("mimeType")]
     public required string MimeType { get; set; }
+
+    /// <summary>
+    /// Gets or sets metadata reserved by MCP for protocol-level metadata.
+    /// </summary>
+    /// <remarks>
+    /// Implementations must not make assumptions about its contents.
+    /// </remarks>
+    [JsonPropertyName("_meta")]
+    public JsonObject? Meta { get; set; }
 }
 
 /// <summary>Represents the contents of a resource, embedded into a prompt or tool call result.</summary>
@@ -326,6 +384,15 @@ public sealed class EmbeddedResourceBlock : ContentBlock
     /// </remarks>
     [JsonPropertyName("resource")]
     public required ResourceContents Resource { get; set; }
+
+    /// <summary>
+    /// Gets or sets metadata reserved by MCP for protocol-level metadata.
+    /// </summary>
+    /// <remarks>
+    /// Implementations must not make assumptions about its contents.
+    /// </remarks>
+    [JsonPropertyName("_meta")]
+    public JsonObject? Meta { get; set; }
 }
 
 /// <summary>Represents a resource that the server is capable of reading, included in a prompt or tool call result.</summary>

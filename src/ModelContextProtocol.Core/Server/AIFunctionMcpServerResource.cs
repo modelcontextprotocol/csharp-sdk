@@ -110,7 +110,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
                         {
                             var requestContent = GetRequestContext(args);
                             if (requestContent?.Server is { } server &&
-                                requestContent?.Params?.Meta?.ProgressToken is { } progressToken)
+                                requestContent?.Params?.ProgressToken is { } progressToken)
                             {
                                 return new TokenProgress(server, progressToken);
                             }

@@ -8,7 +8,7 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
-public class CreateMessageResult
+public class CreateMessageResult : Result
 {
     /// <summary>
     /// Gets or sets the content of the message.

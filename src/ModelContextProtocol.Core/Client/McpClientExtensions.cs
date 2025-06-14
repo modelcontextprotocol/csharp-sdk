@@ -866,7 +866,7 @@ public static class McpClientExtensions
             await using var _ = client.RegisterNotificationHandler(NotificationMethods.ProgressNotification,
                 (notification, cancellationToken) =>
                 {
-                    if (JsonSerializer.Deserialize(notification.Params, McpJsonUtilities.JsonContext.Default.ProgressNotification) is { } pn &&
+                    if (JsonSerializer.Deserialize(notification.Params, McpJsonUtilities.JsonContext.Default.ProgressNotificationParams) is { } pn &&
                         pn.ProgressToken == progressToken)
                     {
                         progress.Report(pn.Progress);
@@ -881,7 +881,7 @@ public static class McpClientExtensions
                 {
                     Name = toolName,
                     Arguments = ToArgumentsDictionary(arguments, serializerOptions),
-                    Meta = new() { ProgressToken = progressToken },
+                    ProgressToken = progressToken,
                 },
                 McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
                 McpJsonUtilities.JsonContext.Default.CallToolResult,
@@ -991,7 +991,7 @@ public static class McpClientExtensions
             Throw.IfNull(requestParams);
 
             var (messages, options) = requestParams.ToChatClientArguments();
-            var progressToken = requestParams.Meta?.ProgressToken;
+            var progressToken = requestParams.ProgressToken;
 
             List<ChatResponseUpdate> updates = [];
             await foreach (var update in chatClient.GetStreamingResponseAsync(messages, options, cancellationToken).ConfigureAwait(false))

@@ -20,7 +20,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
-public class CallToolResult
+public class CallToolResult : Result
 {
     /// <summary>
     /// Gets or sets the response content from the tool call.
