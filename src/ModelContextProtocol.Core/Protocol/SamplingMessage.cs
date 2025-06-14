@@ -29,7 +29,7 @@ public class SamplingMessage
     /// Gets or sets the content of the message.
     /// </summary>
     [JsonPropertyName("content")]
-    public required Content Content { get; init; }
+    public required ContentBlock Content { get; init; }
 
     /// <summary>
     /// Gets or sets the role of the message sender, indicating whether it's from a "user" or an "assistant".

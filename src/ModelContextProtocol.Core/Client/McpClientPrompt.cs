@@ -44,6 +44,9 @@ public sealed class McpClientPrompt
     /// <summary>Gets the name of the prompt.</summary>
     public string Name => ProtocolPrompt.Name;
 
+    /// <summary>Gets the title of the prompt.</summary>
+    public string? Title => ProtocolPrompt.Title;
+
     /// <summary>Gets a description of the prompt.</summary>
     public string? Description => ProtocolPrompt.Description;
 

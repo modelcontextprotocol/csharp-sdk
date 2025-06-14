@@ -34,7 +34,7 @@ public class McpServerBuilderExtensionsHandlerTests
     [Fact]
     public void WithCallToolHandler_Sets_Handler()
     {
-        Func<RequestContext<CallToolRequestParams>, CancellationToken, ValueTask<CallToolResponse>> handler = async (context, token) => new CallToolResponse();
+        Func<RequestContext<CallToolRequestParams>, CancellationToken, ValueTask<CallToolResult>> handler = async (context, token) => new CallToolResult();
 
         _builder.Object.WithCallToolHandler(handler);
 

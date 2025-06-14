@@ -29,11 +29,13 @@ public static class AIContentExtensions
     {
         Throw.IfNull(promptMessage);
 
+        AIContent? content = ToAIContent(promptMessage.Content);
+
         return new()
         {
             RawRepresentation = promptMessage,
             Role = promptMessage.Role == Role.User ? ChatRole.User : ChatRole.Assistant,
-            Contents = [ToAIContent(promptMessage.Content)]
+            Contents = content is not null ? [content] : [],
         };
     }
 
@@ -81,32 +83,32 @@ public static class AIContentExtensions
         return messages;
     }
 
-    /// <summary>Creates a new <see cref="AIContent"/> from the content of a <see cref="Content"/>.</summary>
-    /// <param name="content">The <see cref="Content"/> to convert.</param>
-    /// <returns>The created <see cref="AIContent"/>.</returns>
+    /// <summary>Creates a new <see cref="AIContent"/> from the content of a <see cref="ContentBlock"/>.</summary>
+    /// <param name="content">The <see cref="ContentBlock"/> to convert.</param>
+    /// <returns>
+    /// The created <see cref="AIContent"/>. If the content can't be converted (such as when it's a resource link), <see langword="null"/> is returned.
+    /// </returns>
     /// <remarks>
     /// This method converts Model Context Protocol content types to the equivalent Microsoft.Extensions.AI 
     /// content types, enabling seamless integration between the protocol and AI client libraries.
     /// </remarks>
-    public static AIContent ToAIContent(this Content content)
+    public static AIContent? ToAIContent(this ContentBlock content)
     {
         Throw.IfNull(content);
 
-        AIContent ac;
-        if (content is { Type: "image" or "audio", MimeType: not null, Data: not null })
+        AIContent? ac = content switch
         {
-            ac = new DataContent(Convert.FromBase64String(content.Data), content.MimeType);
-        }
-        else if (content is { Type: "resource" } && content.Resource is { } resourceContents)
-        {
-            ac = resourceContents.ToAIContent();
-        }
-        else
-        {
-            ac = new TextContent(content.Text);
-        }
+            TextContentBlock textContent => new TextContent(textContent.Text),
+            ImageContentBlock imageContent => new DataContent(Convert.FromBase64String(imageContent.Data), imageContent.MimeType),
+            AudioContentBlock audioContent => new DataContent(Convert.FromBase64String(audioContent.Data), audioContent.MimeType),
+            EmbeddedResourceBlock resourceContent => resourceContent.Resource.ToAIContent(),
+            _ => null,
+        };
 
-        ac.RawRepresentation = content;
+        if (ac is not null)
+        {
+            ac.RawRepresentation = content;
+        }
 
         return ac;
     }
@@ -135,8 +137,8 @@ public static class AIContentExtensions
         return ac;
     }
 
-    /// <summary>Creates a list of <see cref="AIContent"/> from a sequence of <see cref="Content"/>.</summary>
-    /// <param name="contents">The <see cref="Content"/> instances to convert.</param>
+    /// <summary>Creates a list of <see cref="AIContent"/> from a sequence of <see cref="ContentBlock"/>.</summary>
+    /// <param name="contents">The <see cref="ContentBlock"/> instances to convert.</param>
     /// <returns>The created <see cref="AIContent"/> instances.</returns>
     /// <remarks>
     /// <para>
@@ -145,15 +147,15 @@ public static class AIContentExtensions
     /// when processing the contents of a message or response.
     /// </para>
     /// <para>
-    /// Each <see cref="Content"/> object is converted using <see cref="ToAIContent(Content)"/>,
+    /// Each <see cref="ContentBlock"/> object is converted using <see cref="ToAIContent(ContentBlock)"/>,
     /// preserving the type-specific conversion logic for text, images, audio, and resources.
     /// </para>
     /// </remarks>
-    public static IList<AIContent> ToAIContents(this IEnumerable<Content> contents)
+    public static IList<AIContent> ToAIContents(this IEnumerable<ContentBlock> contents)
     {
         Throw.IfNull(contents);
 
-        return [.. contents.Select(ToAIContent)];
+        return [.. contents.Select(ToAIContent).OfType<AIContent>()];
     }
 
     /// <summary>Creates a list of <see cref="AIContent"/> from a sequence of <see cref="ResourceContents"/>.</summary>
@@ -167,7 +169,7 @@ public static class AIContentExtensions
     /// </para>
     /// <para>
     /// Each <see cref="ResourceContents"/> object is converted using <see cref="ToAIContent(ResourceContents)"/>,
-    /// preserving the type-specific conversion logic: text resources become <see cref="TextContent"/> objects and
+    /// preserving the type-specific conversion logic: text resources become <see cref="TextContentBlock"/> objects and
     /// binary resources become <see cref="DataContent"/> objects.
     /// </para>
     /// </remarks>
@@ -178,29 +180,38 @@ public static class AIContentExtensions
         return [.. contents.Select(ToAIContent)];
     }
 
-    internal static Content ToContent(this AIContent content) =>
+    internal static ContentBlock ToContent(this AIContent content) =>
         content switch
         {
-            TextContent textContent => new()
+            TextContent textContent => new TextContentBlock()
             {
                 Text = textContent.Text,
-                Type = "text",
             },
 
-            DataContent dataContent => new()
+            DataContent dataContent when dataContent.HasTopLevelMediaType("image") => new ImageContentBlock()
             {
                 Data = dataContent.Base64Data.ToString(),
                 MimeType = dataContent.MediaType,
-                Type =
-                    dataContent.HasTopLevelMediaType("image") ? "image" :
-                    dataContent.HasTopLevelMediaType("audio") ? "audio" :
-                    "resource",
             },
-            
-            _ => new()
+
+            DataContent dataContent when dataContent.HasTopLevelMediaType("audio") => new AudioContentBlock()
+            {
+                Data = dataContent.Base64Data.ToString(),
+                MimeType = dataContent.MediaType,
+            },
+
+            DataContent dataContent => new EmbeddedResourceBlock()
+            {
+                Resource = new BlobResourceContents()
+                {
+                    Blob = dataContent.Base64Data.ToString(),
+                    MimeType = dataContent.MediaType,
+                }
+            },
+
+            _ => new TextContentBlock()
             {
                 Text = JsonSerializer.Serialize(content, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(object))),
-                Type = "text",
             }
         };
 }

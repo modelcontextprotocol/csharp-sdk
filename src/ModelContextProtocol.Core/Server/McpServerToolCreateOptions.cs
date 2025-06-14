@@ -130,7 +130,7 @@ public sealed class McpServerToolCreateOptions
     /// </summary>
     /// <remarks>
     /// When enabled, the tool will attempt to populate the <see cref="Tool.OutputSchema"/>
-    /// and provide structured content in the <see cref="CallToolResponse.StructuredContent"/> property.
+    /// and provide structured content in the <see cref="CallToolResult.StructuredContent"/> property.
     /// </remarks>
     public bool UseStructuredContent { get; set; }
 

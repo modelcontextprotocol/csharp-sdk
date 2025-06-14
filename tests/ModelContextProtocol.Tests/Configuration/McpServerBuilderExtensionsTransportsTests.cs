@@ -2,7 +2,6 @@
 using Microsoft.Extensions.Hosting;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using Moq;
 using System.IO.Pipelines;
 
 namespace ModelContextProtocol.Tests.Configuration;

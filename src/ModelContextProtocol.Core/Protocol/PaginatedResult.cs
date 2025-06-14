@@ -15,7 +15,7 @@ namespace ModelContextProtocol.Protocol;
 /// set of results.
 /// </para>
 /// </remarks>
-public class PaginatedResult
+public abstract class PaginatedResult : Result
 {
     /// <summary>
     /// Gets or sets an opaque token representing the pagination position after the last returned result.

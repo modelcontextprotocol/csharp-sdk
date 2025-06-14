@@ -110,7 +110,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
                         {
                             var requestContent = GetRequestContext(args);
                             if (requestContent?.Server is { } server &&
-                                requestContent?.Params?.Meta?.ProgressToken is { } progressToken)
+                                requestContent?.Params?.ProgressToken is { } progressToken)
                             {
                                 return new TokenProgress(server, progressToken);
                             }
@@ -262,6 +262,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
         {
             UriTemplate = options?.UriTemplate ?? DeriveUriTemplate(name, function),
             Name = name,
+            Title = options?.Title,
             Description = options?.Description,
             MimeType = options?.MimeType,
         };
@@ -277,6 +278,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
         {
             newOptions.UriTemplate ??= resourceAttr.UriTemplate;
             newOptions.Name ??= resourceAttr.Name;
+            newOptions.Title ??= resourceAttr.Title;
             newOptions.MimeType ??= resourceAttr.MimeType;
         }
 

@@ -13,7 +13,7 @@ internal static class Diagnostics
     internal static Meter Meter { get; } = new("Experimental.ModelContextProtocol");
 
     internal static Histogram<double> CreateDurationHistogram(string name, string description, bool longBuckets) =>
-        Diagnostics.Meter.CreateHistogram<double>(name, "s", description
+        Meter.CreateHistogram<double>(name, "s", description
 #if NET9_0_OR_GREATER
         , advice: longBuckets ? LongSecondsBucketBoundaries : ShortSecondsBucketBoundaries
 #endif

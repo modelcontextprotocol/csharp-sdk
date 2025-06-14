@@ -83,11 +83,7 @@ public class DockerEverythingServerTests(ITestOutputHelper testOutputHelper) : L
                         {
                             Model = "test-model",
                             Role = Role.Assistant,
-                            Content = new Content
-                            {
-                                Type = "text",
-                                Text = "Test response"
-                            }
+                            Content = new TextContentBlock { Text = "Test response" },
                         };
                     },
                 },
@@ -109,7 +105,7 @@ public class DockerEverythingServerTests(ITestOutputHelper testOutputHelper) : L
 
         // assert
         Assert.NotNull(result);
-        var textContent = Assert.Single(result.Content);
+        var textContent = Assert.Single(result.Content.OfType<TextContentBlock>());
         Assert.Equal("text", textContent.Type);
         Assert.False(string.IsNullOrEmpty(textContent.Text));
     }

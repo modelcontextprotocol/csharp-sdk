@@ -39,6 +39,11 @@ public sealed class McpServerPromptCreateOptions
     public string? Name { get; set; }
 
     /// <summary>
+    /// Gets or sets the title to use for the <see cref="McpServerPrompt"/>.
+    /// </summary>
+    public string? Title { get; set; }
+
+    /// <summary>
     /// Gets or set the description to use for the <see cref="McpServerPrompt"/>.
     /// </summary>
     /// <remarks>
@@ -71,6 +76,7 @@ public sealed class McpServerPromptCreateOptions
         {
             Services = Services,
             Name = Name,
+            Title = Title,
             Description = Description,
             SerializerOptions = SerializerOptions,
             SchemaCreateOptions = SchemaCreateOptions,

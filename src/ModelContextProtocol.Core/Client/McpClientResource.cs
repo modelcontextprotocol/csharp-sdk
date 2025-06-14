@@ -42,6 +42,9 @@ public sealed class McpClientResource
     /// <summary>Gets the name of the resource.</summary>
     public string Name => ProtocolResource.Name;
 
+    /// <summary>Gets the title of the resource.</summary>
+    public string? Title => ProtocolResource.Title;
+
     /// <summary>Gets a description of the resource.</summary>
     public string? Description => ProtocolResource.Description;
 

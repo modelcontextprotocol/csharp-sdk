@@ -504,7 +504,7 @@ public static partial class McpServerBuilderExtensions
     /// This method is typically paired with <see cref="WithListToolsHandler"/> to provide a complete tools implementation,
     /// where <see cref="WithListToolsHandler"/> advertises available tools and this handler executes them.
     /// </remarks>
-    public static IMcpServerBuilder WithCallToolHandler(this IMcpServerBuilder builder, Func<RequestContext<CallToolRequestParams>, CancellationToken, ValueTask<CallToolResponse>> handler)
+    public static IMcpServerBuilder WithCallToolHandler(this IMcpServerBuilder builder, Func<RequestContext<CallToolRequestParams>, CancellationToken, ValueTask<CallToolResult>> handler)
     {
         Throw.IfNull(builder);
 

@@ -32,6 +32,6 @@ public class Root
     /// <remarks>
     /// This is reserved by the protocol for future use.
     /// </remarks>
-    [JsonPropertyName("meta")]
+    [JsonPropertyName("_meta")]
     public JsonElement? Meta { get; init; }
 }

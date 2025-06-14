@@ -467,7 +467,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             RequestMethods.ToolsCall,
             callToolHandler,
             McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
-            McpJsonUtilities.JsonContext.Default.CallToolResponse);
+            McpJsonUtilities.JsonContext.Default.CallToolResult);
     }
 
     private void ConfigureLogging(McpServerOptions options)

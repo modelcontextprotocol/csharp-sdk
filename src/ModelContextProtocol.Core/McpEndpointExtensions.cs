@@ -201,12 +201,12 @@ public static class McpEndpointExtensions
 
         return endpoint.SendNotificationAsync(
             NotificationMethods.ProgressNotification,
-            new ProgressNotification
+            new ProgressNotificationParams
             {
                 ProgressToken = progressToken,
                 Progress = progress,
             },
-            McpJsonUtilities.JsonContext.Default.ProgressNotification,
+            McpJsonUtilities.JsonContext.Default.ProgressNotificationParams,
             cancellationToken);
     }
 }

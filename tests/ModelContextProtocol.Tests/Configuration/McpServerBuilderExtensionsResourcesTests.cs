@@ -197,6 +197,24 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     }
 
     [Fact]
+    public async Task TitleAttributeProperty_PropagatedToTitle()
+    {
+        await using IMcpClient client = await CreateMcpClientForServer();
+
+        var resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(resources);
+        Assert.NotEmpty(resources);
+        McpClientResource resource = resources.First(t => t.Name == nameof(SimpleResources.SomeNeatDirectResource));
+        Assert.Equal("This is a title", resource.Title);
+
+        var resourceTemplates = await client.ListResourceTemplatesAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(resourceTemplates);
+        Assert.NotEmpty(resourceTemplates);
+        McpClientResourceTemplate resourceTemplate = resourceTemplates.First(t => t.Name == nameof(SimpleResources.SomeNeatTemplatedResource));
+        Assert.Equal("This is another title", resourceTemplate.Title);
+    }
+
+    [Fact]
     public async Task Throws_When_Resource_Fails()
     {
         await using IMcpClient client = await CreateMcpClientForServer();
@@ -273,10 +291,10 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     [McpServerResourceType]
     public sealed class SimpleResources
     {
-        [McpServerResource, Description("Some neat direct resource")]
+        [McpServerResource(Title = "This is a title"), Description("Some neat direct resource")]
         public static string SomeNeatDirectResource() => "This is a neat resource";
 
-        [McpServerResource, Description("Some neat resource with parameters")]
+        [McpServerResource(Title = "This is another title"), Description("Some neat resource with parameters")]
         public static string SomeNeatTemplatedResource(string name) => $"This is a neat resource with parameters: {name}";
 
         [McpServerResource]

@@ -41,7 +41,7 @@ public class McpServerPromptTests
         Assert.NotNull(result);
         Assert.NotNull(result.Messages);
         Assert.Single(result.Messages);
-        Assert.Equal("Hello", result.Messages[0].Content.Text);
+        Assert.Equal("Hello", Assert.IsType<TextContentBlock>(result.Messages[0].Content).Text);
     }
 
     [Fact]
@@ -56,7 +56,7 @@ public class McpServerPromptTests
         McpServerPrompt prompt = McpServerPrompt.Create((MyService actualMyService, int? something = null) =>
         {
             Assert.Same(expectedMyService, actualMyService);
-            return new PromptMessage() { Role = Role.Assistant, Content = new() { Text = "Hello", Type = "text" } };
+            return new PromptMessage() { Role = Role.Assistant, Content = new TextContentBlock() { Text = "Hello" } };
         }, new() { Services = services });
 
         Assert.Contains("something", prompt.ProtocolPrompt.Arguments?.Select(a => a.Name) ?? []);
@@ -69,7 +69,7 @@ public class McpServerPromptTests
         var result = await prompt.GetAsync(
             new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object) { Services = services },
             TestContext.Current.CancellationToken);
-        Assert.Equal("Hello", result.Messages[0].Content.Text);
+        Assert.Equal("Hello", Assert.IsType<TextContentBlock>(result.Messages[0].Content).Text);
     }
 
     [Fact]
@@ -84,13 +84,13 @@ public class McpServerPromptTests
         McpServerPrompt prompt = McpServerPrompt.Create((MyService? actualMyService = null) =>
         {
             Assert.Null(actualMyService);
-            return new PromptMessage() { Role = Role.Assistant, Content = new() { Text = "Hello", Type = "text" } };
+            return new PromptMessage() { Role = Role.Assistant, Content = new TextContentBlock() { Text = "Hello" } };
         }, new() { Services = services });
 
         var result = await prompt.GetAsync(
             new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),
             TestContext.Current.CancellationToken);
-        Assert.Equal("Hello", result.Messages[0].Content.Text);
+        Assert.Equal("Hello", Assert.IsType<TextContentBlock>(result.Messages[0].Content).Text);
     }
 
     [Fact]
@@ -103,7 +103,7 @@ public class McpServerPromptTests
         var result = await prompt1.GetAsync(
             new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),
             TestContext.Current.CancellationToken);
-        Assert.Equal("disposals:1", result.Messages[0].Content.Text);
+        Assert.Equal("disposals:1", Assert.IsType<TextContentBlock>(result.Messages[0].Content).Text);
     }
 
     [Fact]
@@ -116,7 +116,7 @@ public class McpServerPromptTests
         var result = await prompt1.GetAsync(
             new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),
             TestContext.Current.CancellationToken);
-        Assert.Equal("asyncDisposals:1", result.Messages[0].Content.Text);
+        Assert.Equal("asyncDisposals:1", Assert.IsType<TextContentBlock>(result.Messages[0].Content).Text);
     }
 
     [Fact]
@@ -129,7 +129,7 @@ public class McpServerPromptTests
         var result = await prompt1.GetAsync(
             new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),
             TestContext.Current.CancellationToken);
-        Assert.Equal("disposals:0, asyncDisposals:1", result.Messages[0].Content.Text);
+        Assert.Equal("disposals:0, asyncDisposals:1", Assert.IsType<TextContentBlock>(result.Messages[0].Content).Text);
     }
 
     [Fact]
@@ -168,7 +168,7 @@ public class McpServerPromptTests
         Assert.Single(actual.Messages);
         Assert.Equal(Role.User, actual.Messages[0].Role);
         Assert.Equal("text", actual.Messages[0].Content.Type);
-        Assert.Equal(expected, actual.Messages[0].Content.Text);
+        Assert.Equal(expected, Assert.IsType<TextContentBlock>(actual.Messages[0].Content).Text);
     }
 
     [Fact]
@@ -177,7 +177,7 @@ public class McpServerPromptTests
         PromptMessage expected = new()
         {
             Role = Role.User,
-            Content = new() { Text = "hello", Type = "text" }
+            Content = new TextContentBlock() { Text = "hello" }
         };
 
         McpServerPrompt prompt = McpServerPrompt.Create(() =>
@@ -202,12 +202,12 @@ public class McpServerPromptTests
             new()
             {
                 Role = Role.User,
-                Content = new() { Text = "hello", Type = "text" }
+                Content = new TextContentBlock() { Text = "hello" }
             },
             new()
             {
                 Role = Role.Assistant,
-                Content = new() { Text = "hello again", Type = "text" }
+                Content = new TextContentBlock() { Text = "hello again" }
             }
         ];
 
@@ -224,11 +224,9 @@ public class McpServerPromptTests
         Assert.NotNull(actual.Messages);
         Assert.Equal(2, actual.Messages.Count);
         Assert.Equal(Role.User, actual.Messages[0].Role);
-        Assert.Equal("text", actual.Messages[0].Content.Type);
-        Assert.Equal("hello", actual.Messages[0].Content.Text);
+        Assert.Equal("hello", Assert.IsType<TextContentBlock>(actual.Messages[0].Content).Text);
         Assert.Equal(Role.Assistant, actual.Messages[1].Role);
-        Assert.Equal("text", actual.Messages[1].Content.Type);
-        Assert.Equal("hello again", actual.Messages[1].Content.Text);
+        Assert.Equal("hello again", Assert.IsType<TextContentBlock>(actual.Messages[1].Content).Text);
     }
 
     [Fact]
@@ -237,7 +235,7 @@ public class McpServerPromptTests
         PromptMessage expected = new()
         {
             Role = Role.User,
-            Content = new() { Text = "hello", Type = "text" }
+            Content = new TextContentBlock() { Text = "hello" }
         };
 
         McpServerPrompt prompt = McpServerPrompt.Create(() =>
@@ -253,8 +251,7 @@ public class McpServerPromptTests
         Assert.NotNull(actual.Messages);
         Assert.Single(actual.Messages);
         Assert.Equal(Role.User, actual.Messages[0].Role);
-        Assert.Equal("text", actual.Messages[0].Content.Type);
-        Assert.Equal("hello", actual.Messages[0].Content.Text);
+        Assert.Equal("hello", Assert.IsType<TextContentBlock>(actual.Messages[0].Content).Text);
     }
 
     [Fact]
@@ -264,12 +261,12 @@ public class McpServerPromptTests
             new()
             {
                 Role = Role.User,
-                Content = new() { Text = "hello", Type = "text" }
+                Content = new TextContentBlock() { Text = "hello" }
             },
             new()
             {
                 Role = Role.Assistant,
-                Content = new() { Text = "hello again", Type = "text" }
+                Content = new TextContentBlock() { Text = "hello again" }
             }
         ];
 
@@ -286,11 +283,9 @@ public class McpServerPromptTests
         Assert.NotNull(actual.Messages);
         Assert.Equal(2, actual.Messages.Count);
         Assert.Equal(Role.User, actual.Messages[0].Role);
-        Assert.Equal("text", actual.Messages[0].Content.Type);
-        Assert.Equal("hello", actual.Messages[0].Content.Text);
+        Assert.Equal("hello", Assert.IsType<TextContentBlock>(actual.Messages[0].Content).Text);
         Assert.Equal(Role.Assistant, actual.Messages[1].Role);
-        Assert.Equal("text", actual.Messages[1].Content.Type);
-        Assert.Equal("hello again", actual.Messages[1].Content.Text);
+        Assert.Equal("hello again", Assert.IsType<TextContentBlock>(actual.Messages[1].Content).Text);
     }
 
     [Fact]

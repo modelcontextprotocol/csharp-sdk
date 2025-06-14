@@ -34,10 +34,10 @@ public class PromptMessage
     /// <remarks>
     /// The <see cref="Content"/> object contains all the message payload, whether it's simple text,
     /// base64-encoded binary data (for images/audio), or a reference to an embedded resource.
-    /// The <see cref="Content.Type"/> property indicates the specific content type.
+    /// The <see cref="ContentBlock.Type"/> property indicates the specific content type.
     /// </remarks>
     [JsonPropertyName("content")]
-    public Content Content { get; set; } = new();
+    public ContentBlock Content { get; set; } = new TextContentBlock() { Text = "" };
 
     /// <summary>
     /// Gets or sets the role of the message sender, specifying whether it's from a "user" or an "assistant".

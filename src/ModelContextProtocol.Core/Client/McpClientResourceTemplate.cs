@@ -42,6 +42,9 @@ public sealed class McpClientResourceTemplate
     /// <summary>Gets the name of the resource template.</summary>
     public string Name => ProtocolResourceTemplate.Name;
 
+    /// <summary>Gets the title of the resource template.</summary>
+    public string? Title => ProtocolResourceTemplate.Title;
+
     /// <summary>Gets a description of the resource template.</summary>
     public string? Description => ProtocolResourceTemplate.Description;
 

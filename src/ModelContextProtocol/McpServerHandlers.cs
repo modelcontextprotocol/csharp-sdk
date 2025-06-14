@@ -49,7 +49,7 @@ public sealed class McpServerHandlers
     /// This handler is invoked when a client makes a call to a tool that isn't found in the <see cref="McpServerTool"/> collection.
     /// The handler should implement logic to execute the requested tool and return appropriate results.
     /// </remarks>
-    public Func<RequestContext<CallToolRequestParams>, CancellationToken, ValueTask<CallToolResponse>>? CallToolHandler { get; set; }
+    public Func<RequestContext<CallToolRequestParams>, CancellationToken, ValueTask<CallToolResult>>? CallToolHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.PromptsList"/> requests.

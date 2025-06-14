@@ -1,8 +1,6 @@
 ﻿using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
 using System.Diagnostics.CodeAnalysis;
-using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
@@ -98,10 +96,20 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(JsonRpcResponse))]
     [JsonSerializable(typeof(JsonRpcError))]
 
+    // MCP Notification Params
+    [JsonSerializable(typeof(CancelledNotificationParams))]
+    [JsonSerializable(typeof(InitializedNotificationParams))]
+    [JsonSerializable(typeof(LoggingMessageNotificationParams))]
+    [JsonSerializable(typeof(ProgressNotificationParams))]
+    [JsonSerializable(typeof(PromptListChangedNotificationParams))]
+    [JsonSerializable(typeof(ResourceListChangedNotificationParams))]
+    [JsonSerializable(typeof(ResourceUpdatedNotificationParams))]
+    [JsonSerializable(typeof(RootsListChangedNotificationParams))]
+    [JsonSerializable(typeof(ToolListChangedNotificationParams))]
+
     // MCP Request Params / Results
     [JsonSerializable(typeof(CallToolRequestParams))]
-    [JsonSerializable(typeof(CallToolResponse))]
-    [JsonSerializable(typeof(CancelledNotification))]
+    [JsonSerializable(typeof(CallToolResult))]
     [JsonSerializable(typeof(CompleteRequestParams))]
     [JsonSerializable(typeof(CompleteResult))]
     [JsonSerializable(typeof(CreateMessageRequestParams))]
@@ -123,16 +131,16 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(ListRootsResult))]
     [JsonSerializable(typeof(ListToolsRequestParams))]
     [JsonSerializable(typeof(ListToolsResult))]
-    [JsonSerializable(typeof(LoggingMessageNotificationParams))]
     [JsonSerializable(typeof(PingResult))]
-    [JsonSerializable(typeof(ProgressNotification))]
     [JsonSerializable(typeof(ReadResourceRequestParams))]
     [JsonSerializable(typeof(ReadResourceResult))]
-    [JsonSerializable(typeof(ResourceUpdatedNotificationParams))]
     [JsonSerializable(typeof(SetLevelRequestParams))]
     [JsonSerializable(typeof(SubscribeRequestParams))]
     [JsonSerializable(typeof(UnsubscribeRequestParams))]
+
+    // Other MCP Types
     [JsonSerializable(typeof(IReadOnlyDictionary<string, object>))]
+    [JsonSerializable(typeof(ProgressToken))]
     [JsonSerializable(typeof(PromptMessage[]))]
 
     // Primitive types for use in consuming AIFunctions
