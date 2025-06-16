@@ -177,14 +177,14 @@ internal static class Program
                     }
                     return new CallToolResult()
                     {
-                        Content = [new TextContentBlock() { Text = $"Echo: {message}" }]
+                        Content = [new TextContentBlock { Text = $"Echo: {message}" }]
                     };
                 }
                 else if (request.Params?.Name == "echoSessionId")
                 {
                     return new CallToolResult()
                     {
-                        Content = [new TextContentBlock() { Text = request.Server.SessionId ?? string.Empty }]
+                        Content = [new TextContentBlock { Text = request.Server.SessionId ?? string.Empty }]
                     };
                 }
                 else if (request.Params?.Name == "sampleLLM")
@@ -200,7 +200,7 @@ internal static class Program
 
                     return new CallToolResult()
                     {
-                        Content = [new TextContentBlock() { Text = $"LLM sampling result: {(sampleResult.Content as TextContentBlock)?.Text}" }]
+                        Content = [new TextContentBlock { Text = $"LLM sampling result: {(sampleResult.Content as TextContentBlock)?.Text}" }]
                     };
                 }
                 else
@@ -257,7 +257,7 @@ internal static class Program
                     messages.Add(new PromptMessage()
                     {
                         Role = Role.User,
-                        Content = new TextContentBlock() { Text = "This is a simple prompt without arguments." },
+                        Content = new TextContentBlock { Text = "This is a simple prompt without arguments." },
                     });
                 }
                 else if (request.Params?.Name == "complex_prompt")
@@ -267,12 +267,12 @@ internal static class Program
                     messages.Add(new PromptMessage()
                     {
                         Role = Role.User,
-                        Content = new TextContentBlock() { Text = $"This is a complex prompt with arguments: temperature={temperature}, style={style}" },
+                        Content = new TextContentBlock { Text = $"This is a complex prompt with arguments: temperature={temperature}, style={style}" },
                     });
                     messages.Add(new PromptMessage()
                     {
                         Role = Role.Assistant,
-                        Content = new TextContentBlock() { Text = "I understand. You've provided a complex prompt with temperature and style arguments. How would you like me to proceed?" },
+                        Content = new TextContentBlock { Text = "I understand. You've provided a complex prompt with temperature and style arguments. How would you like me to proceed?" },
                     });
                     messages.Add(new PromptMessage()
                     {
@@ -499,19 +499,19 @@ internal static class Program
                 case ResourceTemplateReference rtr:
                     var resourceId = rtr.Uri?.Split('/').LastOrDefault();
                     if (string.IsNullOrEmpty(resourceId))
-                        return new CompleteResult() { Completion = new() { Values = [] } };
+                        return new CompleteResult { Completion = new() { Values = [] } };
 
                     // Filter resource IDs that start with the input value
                     values = sampleResourceIds.Where(id => id.StartsWith(request.Params!.Argument.Value)).ToArray();
-                    return new CompleteResult() { Completion = new() { Values = values, HasMore = false, Total = values.Length } };
+                    return new CompleteResult { Completion = new() { Values = values, HasMore = false, Total = values.Length } };
 
                 case PromptReference pr:
                     // Handle completion for prompt arguments
                     if (!exampleCompletions.TryGetValue(request.Params.Argument.Name, out var completions))
-                        return new CompleteResult() { Completion = new() { Values = [] } };
+                        return new CompleteResult { Completion = new() { Values = [] } };
 
                     values = completions.Where(value => value.StartsWith(request.Params.Argument.Value)).ToArray();
-                    return new CompleteResult() { Completion = new() { Values = values, HasMore = false, Total = values.Length } };
+                    return new CompleteResult { Completion = new() { Values = values, HasMore = false, Total = values.Length } };
 
                 default:
                     throw new McpException($"Unknown reference type: '{request.Params?.Ref.Type}'", McpErrorCode.InvalidParams);
@@ -528,7 +528,7 @@ internal static class Program
             Messages = [new SamplingMessage()
                 {
                     Role = Role.User,
-                    Content = new TextContentBlock() { Text = $"Resource {uri} context: {context}" },
+                    Content = new TextContentBlock { Text = $"Resource {uri} context: {context}" },
                 }],
             SystemPrompt = "You are a helpful test server.",
             MaxTokens = maxTokens,

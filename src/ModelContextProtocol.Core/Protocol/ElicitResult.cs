@@ -6,7 +6,7 @@ namespace ModelContextProtocol.Protocol;
 /// <summary>
 /// Represents the client's response to an elicitation request.
 /// </summary>
-public class ElicitResult : Result
+public sealed class ElicitResult : Result
 {
     /// <summary>
     /// Gets or sets the user action in response to the elicitation.

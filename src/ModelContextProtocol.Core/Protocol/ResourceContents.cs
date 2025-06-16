@@ -29,6 +29,7 @@ namespace ModelContextProtocol.Protocol;
 [JsonConverter(typeof(Converter))]
 public abstract class ResourceContents
 {
+    /// <summary>Prevent external derivations.</summary>
     private protected ResourceContents()
     {
     }

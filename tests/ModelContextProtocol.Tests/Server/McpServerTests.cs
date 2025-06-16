@@ -635,7 +635,7 @@ public class McpServerTests : LoggedTest
 
             CreateMessageResult result = new()
             {
-                Content = new TextContentBlock() { Text = "The Eiffel Tower." },
+                Content = new TextContentBlock { Text = "The Eiffel Tower." },
                 Model = "amazingmodel",
                 Role = Role.Assistant,
                 StopReason = "endTurn",

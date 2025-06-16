@@ -199,7 +199,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         {
             Endpoint = new Uri("http://localhost/sse"),
             Name = "In-memory SSE Client",
-            AdditionalHeaders = new()
+            AdditionalHeaders = new Dictionary<string, string>
             {
                 ["Authorize"] = "Bearer testToken"
             },
@@ -226,7 +226,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         {
             Endpoint = new Uri("http://localhost/sse"),
             Name = "In-memory SSE Client",
-            AdditionalHeaders = new()
+            AdditionalHeaders = new Dictionary<string, string>()
             {
                 [""] = ""
             },

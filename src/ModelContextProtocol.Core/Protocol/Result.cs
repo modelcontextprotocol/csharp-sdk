@@ -8,6 +8,11 @@ namespace ModelContextProtocol.Protocol;
 /// </summary>
 public abstract class Result
 {
+    /// <summary>Prevent external derivations.</summary>
+    private protected Result()
+    {
+    }
+
     /// <summary>
     /// Gets or sets metadata reserved by MCP for protocol-level metadata.
     /// </summary>

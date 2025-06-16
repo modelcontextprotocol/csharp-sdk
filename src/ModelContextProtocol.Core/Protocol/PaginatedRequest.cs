@@ -10,6 +10,11 @@ namespace ModelContextProtocol.Protocol;
 /// </remarks>
 public abstract class PaginatedRequestParams : RequestParams
 {
+    /// <summary>Prevent external derivations.</summary>
+    private protected PaginatedRequestParams()
+    {
+    }
+
     /// <summary>
     /// Gets or sets an opaque token representing the current pagination position.
     /// </summary>

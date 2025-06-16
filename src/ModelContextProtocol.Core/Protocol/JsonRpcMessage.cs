@@ -15,6 +15,11 @@ namespace ModelContextProtocol.Protocol;
 [JsonConverter(typeof(Converter))]
 public abstract class JsonRpcMessage
 {
+    /// <summary>Prevent external derivations.</summary>
+    private protected JsonRpcMessage()
+    {
+    }
+
     /// <summary>
     /// Gets the JSON-RPC protocol version used.
     /// </summary>

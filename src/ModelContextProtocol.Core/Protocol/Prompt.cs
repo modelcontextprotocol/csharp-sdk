@@ -9,7 +9,7 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
-public class Prompt : IBaseMetadata
+public sealed class Prompt : IBaseMetadata
 {
     /// <inheritdoc />
     [JsonPropertyName("name")]
@@ -49,7 +49,7 @@ public class Prompt : IBaseMetadata
     /// </para>
     /// </remarks>
     [JsonPropertyName("arguments")]
-    public List<PromptArgument>? Arguments { get; set; }
+    public IList<PromptArgument>? Arguments { get; set; }
 
     /// <summary>
     /// Gets or sets metadata reserved by MCP for protocol-level metadata.

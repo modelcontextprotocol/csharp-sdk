@@ -10,7 +10,7 @@ namespace ModelContextProtocol.Protocol;
 /// They are not guaranteed to provide a faithful description of tool behavior (including descriptive properties like `title`).
 /// Clients should never make tool use decisions based on <see cref="ToolAnnotations"/> received from untrusted servers.
 /// </remarks>
-public class ToolAnnotations
+public sealed class ToolAnnotations
 {
     /// <summary>
     /// Gets or sets a human-readable title for the tool that can be displayed to users.

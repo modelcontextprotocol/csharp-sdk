@@ -56,7 +56,7 @@ public class McpServerPromptTests
         McpServerPrompt prompt = McpServerPrompt.Create((MyService actualMyService, int? something = null) =>
         {
             Assert.Same(expectedMyService, actualMyService);
-            return new PromptMessage() { Role = Role.Assistant, Content = new TextContentBlock() { Text = "Hello" } };
+            return new PromptMessage { Role = Role.Assistant, Content = new TextContentBlock { Text = "Hello" } };
         }, new() { Services = services });
 
         Assert.Contains("something", prompt.ProtocolPrompt.Arguments?.Select(a => a.Name) ?? []);
@@ -84,7 +84,7 @@ public class McpServerPromptTests
         McpServerPrompt prompt = McpServerPrompt.Create((MyService? actualMyService = null) =>
         {
             Assert.Null(actualMyService);
-            return new PromptMessage() { Role = Role.Assistant, Content = new TextContentBlock() { Text = "Hello" } };
+            return new PromptMessage { Role = Role.Assistant, Content = new TextContentBlock { Text = "Hello" } };
         }, new() { Services = services });
 
         var result = await prompt.GetAsync(
@@ -177,7 +177,7 @@ public class McpServerPromptTests
         PromptMessage expected = new()
         {
             Role = Role.User,
-            Content = new TextContentBlock() { Text = "hello" }
+            Content = new TextContentBlock { Text = "hello" }
         };
 
         McpServerPrompt prompt = McpServerPrompt.Create(() =>
@@ -198,16 +198,17 @@ public class McpServerPromptTests
     [Fact]
     public async Task CanReturnPromptMessages()
     {
-        PromptMessage[] expected = [
+        IList<PromptMessage> expected = 
+        [
             new()
             {
                 Role = Role.User,
-                Content = new TextContentBlock() { Text = "hello" }
+                Content = new TextContentBlock { Text = "hello" }
             },
             new()
             {
                 Role = Role.Assistant,
-                Content = new TextContentBlock() { Text = "hello again" }
+                Content = new TextContentBlock { Text = "hello again" }
             }
         ];
 
@@ -235,7 +236,7 @@ public class McpServerPromptTests
         PromptMessage expected = new()
         {
             Role = Role.User,
-            Content = new TextContentBlock() { Text = "hello" }
+            Content = new TextContentBlock { Text = "hello" }
         };
 
         McpServerPrompt prompt = McpServerPrompt.Create(() =>
@@ -261,12 +262,12 @@ public class McpServerPromptTests
             new()
             {
                 Role = Role.User,
-                Content = new TextContentBlock() { Text = "hello" }
+                Content = new TextContentBlock { Text = "hello" }
             },
             new()
             {
                 Role = Role.Assistant,
-                Content = new TextContentBlock() { Text = "hello again" }
+                Content = new TextContentBlock { Text = "hello again" }
             }
         ];
 
@@ -347,8 +348,9 @@ public class McpServerPromptTests
 
     private class DisposablePromptType : IDisposable
     {
+        private readonly ChatMessage _message = new(ChatRole.User, "");
+
         public int Disposals { get; private set; }
-        private ChatMessage _message = new ChatMessage(ChatRole.User, "");
 
         public void Dispose()
         {
@@ -370,7 +372,7 @@ public class McpServerPromptTests
     private class AsyncDisposablePromptType : IAsyncDisposable
     {
         public int AsyncDisposals { get; private set; }
-        private ChatMessage _message = new ChatMessage(ChatRole.User, "");
+        private ChatMessage _message = new(ChatRole.User, "");
 
         public ValueTask DisposeAsync()
         {
@@ -392,9 +394,10 @@ public class McpServerPromptTests
 
     private class AsyncDisposableAndDisposablePromptType : IAsyncDisposable, IDisposable
     {
+        private readonly ChatMessage _message = new(ChatRole.User, "");
+
         public int Disposals { get; private set; }
         public int AsyncDisposals { get; private set; }
-        private ChatMessage _message = new ChatMessage(ChatRole.User, "");
 
         public void Dispose()
         {

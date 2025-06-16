@@ -79,7 +79,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
                     Id = request.Id,
                     Result = JsonSerializer.SerializeToNode(new CallToolResult()
                     {
-                        Content = [new TextContentBlock() { Text = parameters.Arguments["message"].ToString() }],
+                        Content = [new TextContentBlock { Text = parameters.Arguments["message"].ToString() }],
                     }, McpJsonUtilities.DefaultOptions),
                 });
             }

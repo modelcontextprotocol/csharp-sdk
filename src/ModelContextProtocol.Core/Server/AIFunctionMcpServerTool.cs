@@ -299,7 +299,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return new()
             {
                 IsError = true,
-                Content = [new TextContentBlock() { Text = errorMessage }],
+                Content = [new TextContentBlock { Text = errorMessage }],
             };
         }
 
@@ -321,7 +321,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             
             string text => new()
             {
-                Content = [new TextContentBlock() { Text = text }],
+                Content = [new TextContentBlock { Text = text }],
                 StructuredContent = structuredContent,
             },
             
@@ -333,7 +333,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             
             IEnumerable<string> texts => new()
             {
-                Content = [.. texts.Select(x => new TextContentBlock() { Text = x ?? string.Empty })],
+                Content = [.. texts.Select(x => new TextContentBlock { Text = x ?? string.Empty })],
                 StructuredContent = structuredContent,
             },
             
@@ -349,7 +349,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
             _ => new()
             {
-                Content = [new TextContentBlock() { Text = JsonSerializer.Serialize(result, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))) }],
+                Content = [new TextContentBlock { Text = JsonSerializer.Serialize(result, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))) }],
                 StructuredContent = structuredContent,
             },
         };

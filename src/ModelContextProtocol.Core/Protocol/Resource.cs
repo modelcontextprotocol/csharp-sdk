@@ -9,7 +9,7 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
-public class Resource : IBaseMetadata
+public sealed class Resource : IBaseMetadata
 {
     /// <inheritdoc />
     [JsonPropertyName("name")]

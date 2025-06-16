@@ -7,4 +7,4 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
-public class InitializedNotificationParams : NotificationParams;
+public sealed class InitializedNotificationParams : NotificationParams;

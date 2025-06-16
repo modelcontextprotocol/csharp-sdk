@@ -7,7 +7,7 @@ namespace ModelContextProtocol.Protocol;
 /// Represents the tools capability configuration.
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </summary>
-public class ToolsCapability
+public sealed class ToolsCapability
 {
     /// <summary>
     /// Gets or sets whether this server supports notifications for changes to the tool list.

@@ -21,7 +21,7 @@ namespace ModelContextProtocol.Protocol;
 /// The server may refuse or limit subscriptions based on its capabilities or resource constraints.
 /// </para>
 /// </remarks>
-public class SubscribeRequestParams : RequestParams
+public sealed class SubscribeRequestParams : RequestParams
 {
     /// <summary>
     /// Gets or sets the URI of the resource to subscribe to.

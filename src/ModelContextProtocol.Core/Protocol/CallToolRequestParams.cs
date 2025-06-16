@@ -10,7 +10,7 @@ namespace ModelContextProtocol.Protocol;
 /// The server will respond with a <see cref="CallToolResult"/> containing the result of the tool invocation.
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
-public class CallToolRequestParams : RequestParams
+public sealed class CallToolRequestParams : RequestParams
 {
     /// <summary>Gets or sets the name of the tool to invoke.</summary>
     [JsonPropertyName("name")]

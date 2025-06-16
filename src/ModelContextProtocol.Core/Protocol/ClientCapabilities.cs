@@ -15,7 +15,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
-public class ClientCapabilities
+public sealed class ClientCapabilities
 {
     /// <summary>
     /// Gets or sets experimental, non-standard capabilities that the client supports.
@@ -33,7 +33,7 @@ public class ClientCapabilities
     /// </para>
     /// </remarks>
     [JsonPropertyName("experimental")]
-    public Dictionary<string, object>? Experimental { get; set; }
+    public IDictionary<string, object>? Experimental { get; set; }
 
     /// <summary>
     /// Gets or sets the client's roots capability, which are entry points for resource navigation.

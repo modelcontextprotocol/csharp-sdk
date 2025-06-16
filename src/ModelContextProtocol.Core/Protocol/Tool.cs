@@ -7,7 +7,7 @@ namespace ModelContextProtocol.Protocol;
 /// <summary>
 /// Represents a tool that the server is capable of calling.
 /// </summary>
-public class Tool : IBaseMetadata
+public sealed class Tool : IBaseMetadata
 {
     /// <inheritdoc />
     [JsonPropertyName("name")]

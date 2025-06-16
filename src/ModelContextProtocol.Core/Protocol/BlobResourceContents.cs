@@ -20,7 +20,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for more details.
 /// </para>
 /// </remarks>
-public class BlobResourceContents : ResourceContents
+public sealed class BlobResourceContents : ResourceContents
 {
     /// <summary>
     /// Gets or sets the base64-encoded string representing the binary data of the item.

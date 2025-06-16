@@ -12,7 +12,7 @@ namespace ModelContextProtocol.Protocol;
 /// Roots provide a hierarchical structure for organizing and accessing resources within the protocol.
 /// Each root has a URI that uniquely identifies it and optional metadata like a human-readable name.
 /// </remarks>
-public class Root
+public sealed class Root
 {
     /// <summary>
     /// Gets or sets the URI of the root.

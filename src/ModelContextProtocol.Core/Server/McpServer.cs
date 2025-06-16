@@ -242,7 +242,13 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
                 if (request.Params?.Cursor is null)
                 {
-                    result.Resources.AddRange(resources.Select(t => t.ProtocolResource).OfType<Resource>());
+                    foreach (var r in resources)
+                    {
+                        if (r.ProtocolResource is { } resource)
+                        {
+                            result.Resources.Add(resource);
+                        }
+                    }
                 }
 
                 return result;
@@ -257,7 +263,13 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
                 if (request.Params?.Cursor is null)
                 {
-                    result.ResourceTemplates.AddRange(resources.Where(t => t.IsTemplated).Select(t => t.ProtocolResourceTemplate));
+                    foreach (var rt in resources)
+                    {
+                        if (rt.IsTemplated)
+                        {
+                            result.ResourceTemplates.Add(rt.ProtocolResourceTemplate);
+                        }
+                    }
                 }
 
                 return result;
@@ -366,7 +378,10 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
                 if (request.Params?.Cursor is null)
                 {
-                    result.Prompts.AddRange(prompts.Select(t => t.ProtocolPrompt));
+                    foreach (var p in prompts)
+                    {
+                        result.Prompts.Add(p.ProtocolPrompt);
+                    }
                 }
 
                 return result;
@@ -431,7 +446,10 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
                 if (request.Params?.Cursor is null)
                 {
-                    result.Tools.AddRange(tools.Select(t => t.ProtocolTool));
+                    foreach (var t in tools)
+                    {
+                        result.Tools.Add(t.ProtocolTool);
+                    }
                 }
 
                 return result;

@@ -26,7 +26,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
-public class PromptMessage
+public sealed class PromptMessage
 {
     /// <summary>
     /// Gets or sets the content of the message, which can be text, image, audio, or an embedded resource.
@@ -37,7 +37,7 @@ public class PromptMessage
     /// The <see cref="ContentBlock.Type"/> property indicates the specific content type.
     /// </remarks>
     [JsonPropertyName("content")]
-    public ContentBlock Content { get; set; } = new TextContentBlock() { Text = "" };
+    public ContentBlock Content { get; set; } = new TextContentBlock { Text = "" };
 
     /// <summary>
     /// Gets or sets the role of the message sender, specifying whether it's from a "user" or an "assistant".

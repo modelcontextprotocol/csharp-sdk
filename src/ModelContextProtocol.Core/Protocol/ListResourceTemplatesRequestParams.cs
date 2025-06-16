@@ -8,4 +8,4 @@ namespace ModelContextProtocol.Protocol;
 /// The server responds with a <see cref="ListResourceTemplatesResult"/> containing the available resource templates.
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
-public class ListResourceTemplatesRequestParams : PaginatedRequestParams;
+public sealed class ListResourceTemplatesRequestParams : PaginatedRequestParams;

@@ -3,7 +3,7 @@ namespace ModelContextProtocol.Client;
 /// <summary>
 /// Provides options for configuring <see cref="SseClientTransport"/> instances.
 /// </summary>
-public class SseClientTransportOptions
+public sealed class SseClientTransportOptions
 {
     /// <summary>
     /// Gets or sets the base address of the server for SSE connections.
@@ -69,5 +69,5 @@ public class SseClientTransportOptions
     /// <remarks>
     /// Use this property to specify custom HTTP headers that should be sent with each request to the server.
     /// </remarks>
-    public Dictionary<string, string>? AdditionalHeaders { get; set; }
+    public IDictionary<string, string>? AdditionalHeaders { get; set; }
 }

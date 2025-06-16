@@ -9,7 +9,7 @@ namespace ModelContextProtocol.Protocol;
 /// This class is used when requesting completion suggestions for a particular field or parameter.
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
-public class Argument
+public sealed class Argument
 {
     /// <summary>
     /// Gets or sets the name of the argument being completed.

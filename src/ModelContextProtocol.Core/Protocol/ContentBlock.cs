@@ -24,7 +24,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for more details.
 /// </para>
 /// </remarks>
-[JsonConverter(typeof(Converter))]
+[JsonConverter(typeof(Converter))] // TODO: This converter exists due to the lack of downlevel support for AllowOutOfOrderMetadataProperties.
 public abstract class ContentBlock
 {
     /// <summary>Prevent external derivations.</summary>
@@ -140,56 +140,50 @@ public abstract class ContentBlock
                 }
             }
 
-            switch (type)
+            return type switch
             {
-                case "text":
-                    return new TextContentBlock()
-                    {
-                        Text = text ?? throw new JsonException("Text contents must be provided for 'text' type."),
-                        Annotations = annotations,
-                        Meta = meta,
-                    };
+                "text" => new TextContentBlock
+                {
+                    Text = text ?? throw new JsonException("Text contents must be provided for 'text' type."),
+                    Annotations = annotations,
+                    Meta = meta,
+                },
 
-                case "image":
-                    return new ImageContentBlock()
-                    {
-                        Data = data ?? throw new JsonException("Image data must be provided for 'image' type."),
-                        MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'image' type."),
-                        Annotations = annotations,
-                        Meta = meta,
-                    };
+                "image" => new ImageContentBlock()
+                {
+                    Data = data ?? throw new JsonException("Image data must be provided for 'image' type."),
+                    MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'image' type."),
+                    Annotations = annotations,
+                    Meta = meta,
+                },
 
-                case "audio":
-                    return new AudioContentBlock()
-                    {
-                        Data = data ?? throw new JsonException("Audio data must be provided for 'audio' type."),
-                        MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'audio' type."),
-                        Annotations = annotations,
-                        Meta = meta,
-                    };
+                "audio" => new AudioContentBlock()
+                {
+                    Data = data ?? throw new JsonException("Audio data must be provided for 'audio' type."),
+                    MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'audio' type."),
+                    Annotations = annotations,
+                    Meta = meta,
+                },
 
-                case "resource":
-                    return new EmbeddedResourceBlock()
-                    {
-                        Resource = resource ?? throw new JsonException("Resource contents must be provided for 'resource' type."),
-                        Annotations = annotations,
-                        Meta = meta,
-                    };
+                "resource" => new EmbeddedResourceBlock()
+                {
+                    Resource = resource ?? throw new JsonException("Resource contents must be provided for 'resource' type."),
+                    Annotations = annotations,
+                    Meta = meta,
+                },
 
-                case "resource_link":
-                    return new ResourceLinkBlock()
-                    {
-                        Uri = uri ?? throw new JsonException("URI must be provided for 'resource_link' type."),
-                        Name = name ?? throw new JsonException("Name must be provided for 'resource_link' type."),
-                        Description = description,
-                        MimeType = mimeType,
-                        Size = size,
-                        Annotations = annotations,
-                    };
+                "resource_link" => new ResourceLinkBlock()
+                {
+                    Uri = uri ?? throw new JsonException("URI must be provided for 'resource_link' type."),
+                    Name = name ?? throw new JsonException("Name must be provided for 'resource_link' type."),
+                    Description = description,
+                    MimeType = mimeType,
+                    Size = size,
+                    Annotations = annotations,
+                },
 
-                default:
-                    throw new JsonException($"Unknown content type: '{type}'");
-            }
+                _ => throw new JsonException($"Unknown content type: '{type}'"),
+            };
         }
 
         /// <inheritdoc/>

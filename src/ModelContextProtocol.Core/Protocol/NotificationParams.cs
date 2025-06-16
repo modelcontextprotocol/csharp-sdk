@@ -8,6 +8,11 @@ namespace ModelContextProtocol.Protocol;
 /// </summary>
 public abstract class NotificationParams
 {
+    /// <summary>Prevent external derivations.</summary>
+    private protected NotificationParams()
+    {
+    }
+
     /// <summary>
     /// Gets or sets metadata reserved by MCP for protocol-level metadata.
     /// </summary>

@@ -17,7 +17,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
-public class CompleteRequestParams : RequestParams
+public sealed class CompleteRequestParams : RequestParams
 {
     /// <summary>
     /// Gets or sets the reference's information.

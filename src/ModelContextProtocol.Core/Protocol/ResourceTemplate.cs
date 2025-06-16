@@ -10,7 +10,7 @@ namespace ModelContextProtocol.Protocol;
 /// Resource templates provide metadata about resources available on the server,
 /// including how to construct URIs for those resources.
 /// </remarks>
-public class ResourceTemplate : IBaseMetadata
+public sealed class ResourceTemplate : IBaseMetadata
 {
     /// <inheritdoc />
     [JsonPropertyName("name")]

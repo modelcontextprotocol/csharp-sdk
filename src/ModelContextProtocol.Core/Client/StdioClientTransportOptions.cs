@@ -3,7 +3,7 @@ namespace ModelContextProtocol.Client;
 /// <summary>
 /// Provides options for configuring <see cref="StdioClientTransport"/> instances.
 /// </summary>
-public class StdioClientTransportOptions
+public sealed class StdioClientTransportOptions
 {
     /// <summary>
     /// Gets or sets the command to execute to start the server process.
@@ -53,7 +53,7 @@ public class StdioClientTransportOptions
     /// That includes removing the variables for any of this collection's entries with a null value.
     /// </para>
     /// </remarks>
-    public Dictionary<string, string?>? EnvironmentVariables { get; set; }
+    public IDictionary<string, string?>? EnvironmentVariables { get; set; }
 
     /// <summary>
     /// Gets or sets the timeout to wait for the server to shut down gracefully.

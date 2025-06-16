@@ -8,4 +8,4 @@ namespace ModelContextProtocol.Protocol;
 /// The server responds with a <see cref="ListToolsResult"/> containing the available tools.
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
-public class ListToolsRequestParams : PaginatedRequestParams;
+public sealed class ListToolsRequestParams : PaginatedRequestParams;

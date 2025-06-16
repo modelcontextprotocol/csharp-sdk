@@ -27,7 +27,7 @@ public class SampleLlmTool
             Messages = [new SamplingMessage()
                 {
                     Role = Role.User,
-                    Content = new TextContentBlock() { Text = $"Resource {uri} context: {context}" },
+                    Content = new TextContentBlock { Text = $"Resource {uri} context: {context}" },
                 }],
             SystemPrompt = "You are a helpful test server.",
             MaxTokens = maxTokens,

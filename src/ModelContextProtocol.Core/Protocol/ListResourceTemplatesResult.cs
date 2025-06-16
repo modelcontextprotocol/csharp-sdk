@@ -20,7 +20,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
-public class ListResourceTemplatesResult : PaginatedResult
+public sealed class ListResourceTemplatesResult : PaginatedResult
 {
     /// <summary>
     /// Gets or sets a list of resource templates that the server offers.
@@ -31,5 +31,5 @@ public class ListResourceTemplatesResult : PaginatedResult
     /// including URI templates, names, descriptions, and MIME types.
     /// </remarks>
     [JsonPropertyName("resourceTemplates")]
-    public List<ResourceTemplate> ResourceTemplates { get; set; } = [];
+    public IList<ResourceTemplate> ResourceTemplates { get; set; } = [];
 }

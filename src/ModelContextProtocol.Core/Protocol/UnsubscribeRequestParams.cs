@@ -18,7 +18,7 @@ namespace ModelContextProtocol.Protocol;
 /// for the same resource without causing errors, even if there is no active subscription.
 /// </para>
 /// </remarks>
-public class UnsubscribeRequestParams : RequestParams
+public sealed class UnsubscribeRequestParams : RequestParams
 {
     /// <summary>
     /// The URI of the resource to unsubscribe from. The URI can use any protocol; it is up to the server how to interpret it.

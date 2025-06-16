@@ -46,7 +46,7 @@ public class Program
                 Messages = [new SamplingMessage()
                 {
                     Role = Role.User,
-                    Content = new TextContentBlock() { Text = $"Resource {uri} context: {context}" },
+                    Content = new TextContentBlock { Text = $"Resource {uri} context: {context}" },
                 }],
                 SystemPrompt = "You are a helpful test server.",
                 MaxTokens = maxTokens,
@@ -171,14 +171,14 @@ public class Program
                         }
                         return new CallToolResult()
                         {
-                            Content = [new TextContentBlock() { Text = $"Echo: {message}" }]
+                            Content = [new TextContentBlock { Text = $"Echo: {message}" }]
                         };
                     }
                     else if (request.Params.Name == "echoSessionId")
                     {
                         return new CallToolResult()
                         {
-                            Content = [new TextContentBlock() { Text = request.Server.SessionId ?? string.Empty }]
+                            Content = [new TextContentBlock { Text = request.Server.SessionId ?? string.Empty }]
                         };
                     }
                     else if (request.Params.Name == "sampleLLM")
@@ -194,7 +194,7 @@ public class Program
 
                         return new CallToolResult()
                         {
-                            Content = [new TextContentBlock() { Text = $"LLM sampling result: {(sampleResult.Content as TextContentBlock)?.Text}" }]
+                            Content = [new TextContentBlock { Text = $"LLM sampling result: {(sampleResult.Content as TextContentBlock)?.Text}" }]
                         };
                     }
                     else
@@ -304,8 +304,8 @@ public class Program
                             {
                                 Name = "complex_prompt",
                                 Description = "A prompt with arguments",
-                                Arguments = new()
-                                {
+                                Arguments =
+                                [
                                     new PromptArgument()
                                     {
                                         Name = "temperature",
@@ -318,7 +318,7 @@ public class Program
                                         Description = "Output style",
                                         Required = false
                                     }
-                                }
+                                ],
                             }
                         ]
                     };
@@ -335,7 +335,7 @@ public class Program
                         messages.Add(new PromptMessage()
                         {
                             Role = Role.User,
-                            Content = new TextContentBlock() { Text = "This is a simple prompt without arguments." },
+                            Content = new TextContentBlock { Text = "This is a simple prompt without arguments." },
                         });
                     }
                     else if (request.Params.Name == "complex_prompt")
@@ -345,12 +345,12 @@ public class Program
                         messages.Add(new PromptMessage()
                         {
                             Role = Role.User,
-                            Content = new TextContentBlock() { Text = $"This is a complex prompt with arguments: temperature={temperature}, style={style}" },
+                            Content = new TextContentBlock { Text = $"This is a complex prompt with arguments: temperature={temperature}, style={style}" },
                         });
                         messages.Add(new PromptMessage()
                         {
                             Role = Role.Assistant,
-                            Content = new TextContentBlock() { Text = "I understand. You've provided a complex prompt with temperature and style arguments. How would you like me to proceed?" },
+                            Content = new TextContentBlock { Text = "I understand. You've provided a complex prompt with temperature and style arguments. How would you like me to proceed?" },
                         });
                         messages.Add(new PromptMessage()
                         {

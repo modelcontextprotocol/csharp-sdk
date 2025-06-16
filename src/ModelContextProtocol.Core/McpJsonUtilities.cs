@@ -138,10 +138,21 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(SubscribeRequestParams))]
     [JsonSerializable(typeof(UnsubscribeRequestParams))]
 
+    // MCP Content
+    [JsonSerializable(typeof(ContentBlock))]
+    [JsonSerializable(typeof(TextContentBlock))]
+    [JsonSerializable(typeof(ImageContentBlock))]
+    [JsonSerializable(typeof(AudioContentBlock))]
+    [JsonSerializable(typeof(EmbeddedResourceBlock))]
+    [JsonSerializable(typeof(ResourceLinkBlock))]
+    [JsonSerializable(typeof(PromptReference))]
+    [JsonSerializable(typeof(ResourceTemplateReference))]
+    [JsonSerializable(typeof(BlobResourceContents))]
+    [JsonSerializable(typeof(TextResourceContents))]
+
     // Other MCP Types
     [JsonSerializable(typeof(IReadOnlyDictionary<string, object>))]
     [JsonSerializable(typeof(ProgressToken))]
-    [JsonSerializable(typeof(PromptMessage[]))]
 
     // Primitive types for use in consuming AIFunctions
     [JsonSerializable(typeof(string))]

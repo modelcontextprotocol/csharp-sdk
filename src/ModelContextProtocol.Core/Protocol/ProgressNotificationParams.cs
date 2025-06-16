@@ -13,7 +13,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for more details.
 /// </remarks>
 [JsonConverter(typeof(Converter))]
-public class ProgressNotificationParams : NotificationParams
+public sealed class ProgressNotificationParams : NotificationParams
 {
     /// <summary>
     /// Gets or sets the progress token which was given in the initial request, used to associate this notification with 

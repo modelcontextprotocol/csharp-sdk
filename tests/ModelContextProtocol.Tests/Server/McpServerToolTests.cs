@@ -185,7 +185,7 @@ public partial class McpServerToolTests
         McpServerTool tool = McpServerTool.Create((IMcpServer server) =>
         {
             Assert.Same(mockServer.Object, server);
-            return new List<AIContent>() {
+            return new List<AIContent> {
                 new TextContent("text"),
                 new DataContent("data:image/png;base64,1234"),
                 new DataContent("data:audio/wav;base64,1234")
@@ -291,7 +291,7 @@ public partial class McpServerToolTests
         McpServerTool tool = McpServerTool.Create((IMcpServer server) =>
         {
             Assert.Same(mockServer.Object, server);
-            return new List<string>() { "42", "43" };
+            return new List<string> { "42", "43" };
         }, new() { SerializerOptions = JsonContext2.Default.Options });
         var result = await tool.InvokeAsync(
             new RequestContext<CallToolRequestParams>(mockServer.Object),
@@ -325,7 +325,11 @@ public partial class McpServerToolTests
         McpServerTool tool = McpServerTool.Create((IMcpServer server) =>
         {
             Assert.Same(mockServer.Object, server);
-            return new List<ContentBlock>() { new TextContentBlock() { Text = "42" }, new ImageContentBlock() { Data = "1234", MimeType = "image/png" } };
+            return (IList<ContentBlock>)
+            [
+                new TextContentBlock { Text = "42" }, 
+                new ImageContentBlock { Data = "1234", MimeType = "image/png" } 
+            ];
         });
         var result = await tool.InvokeAsync(
             new RequestContext<CallToolRequestParams>(mockServer.Object),
@@ -341,7 +345,7 @@ public partial class McpServerToolTests
     {
         CallToolResult response = new()
         {
-            Content = new List<ContentBlock>() { new TextContentBlock { Text = "text" }, new ImageContentBlock { Data = "1234", MimeType = "image/png" } }
+            Content = new List<ContentBlock> { new TextContentBlock { Text = "text" }, new ImageContentBlock { Data = "1234", MimeType = "image/png" } }
         };
 
         Mock<IMcpServer> mockServer = new();
@@ -405,7 +409,7 @@ public partial class McpServerToolTests
         var mockServer = new Mock<IMcpServer>();
         var request = new RequestContext<CallToolRequestParams>(mockServer.Object)
         {
-            Params = new CallToolRequestParams() { Name = toolName },
+            Params = new CallToolRequestParams { Name = toolName },
             Services = serviceProvider
         };
 
@@ -505,7 +509,7 @@ public partial class McpServerToolTests
         yield return new object[] { 42 };
         yield return new object[] { 3.14 };
         yield return new object[] { true };
-        yield return new object[] { new object() };
+        yield return new object[] { new() };
         yield return new object[] { new List<string> { "item1", "item2" } };
         yield return new object[] { new Dictionary<string, int> { ["key1"] = 1, ["key2"] = 2 } };
         yield return new object[] { new Person("John", 27) }; 

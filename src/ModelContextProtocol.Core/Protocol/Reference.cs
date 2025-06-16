@@ -22,7 +22,10 @@ namespace ModelContextProtocol.Protocol;
 [JsonConverter(typeof(Converter))]
 public abstract class Reference
 {
-    private protected Reference() { }
+    /// <summary>Prevent external derivations.</summary>
+    private protected Reference() 
+    {
+    }
 
     /// <summary>
     /// Gets or sets the type of content.
@@ -87,6 +90,8 @@ public abstract class Reference
                 }
             }
 
+            // TODO: This converter exists due to the lack of downlevel support for AllowOutOfOrderMetadataProperties.
+
             switch (type)
             {
                 case "ref/prompt":
@@ -95,7 +100,7 @@ public abstract class Reference
                         throw new JsonException("Prompt references must have a 'name' property.");
                     }
 
-                    return new PromptReference() { Name = name, Title = title };
+                    return new PromptReference { Name = name, Title = title };
 
                 case "ref/resource":
                     if (uri is null)
@@ -103,7 +108,7 @@ public abstract class Reference
                         throw new JsonException("Resource references must have a 'uri' property.");
                     }
 
-                    return new ResourceTemplateReference() { Uri = uri };
+                    return new ResourceTemplateReference { Uri = uri };
 
                 default:
                     throw new JsonException($"Unknown content type: '{type}'");

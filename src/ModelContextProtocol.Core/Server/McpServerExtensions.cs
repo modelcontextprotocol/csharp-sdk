@@ -94,7 +94,7 @@ public static class McpServerExtensions
                             samplingMessages.Add(new()
                             {
                                 Role = role,
-                                Content = new TextContentBlock() { Text = textContent.Text },
+                                Content = new TextContentBlock { Text = textContent.Text },
                             });
                             break;
 

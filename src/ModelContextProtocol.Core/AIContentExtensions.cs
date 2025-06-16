@@ -183,7 +183,7 @@ public static class AIContentExtensions
     internal static ContentBlock ToContent(this AIContent content) =>
         content switch
         {
-            TextContent textContent => new TextContentBlock()
+            TextContent textContent => new TextContentBlock
             {
                 Text = textContent.Text,
             },
@@ -209,7 +209,7 @@ public static class AIContentExtensions
                 }
             },
 
-            _ => new TextContentBlock()
+            _ => new TextContentBlock
             {
                 Text = JsonSerializer.Serialize(content, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(object))),
             }

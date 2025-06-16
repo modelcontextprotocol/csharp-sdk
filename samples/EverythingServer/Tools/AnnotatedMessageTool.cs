@@ -19,17 +19,17 @@ public class AnnotatedMessageTool
     {
         List<ContentBlock> contents = messageType switch
         {
-            MessageType.Error => [new TextContentBlock()
+            MessageType.Error => [new TextContentBlock
             {
                 Text = "Error: Operation failed",
                 Annotations = new() { Audience = [Role.User, Role.Assistant], Priority = 1.0f }
             }],
-            MessageType.Success => [new TextContentBlock()
+            MessageType.Success => [new TextContentBlock
             {
                 Text = "Operation completed successfully",
                 Annotations = new() { Audience = [Role.User], Priority = 0.7f }
             }],
-            MessageType.Debug => [new TextContentBlock()
+            MessageType.Debug => [new TextContentBlock
             {
                 Text = "Debug: Cache hit ratio 0.95, latency 150ms",
                 Annotations = new() { Audience = [Role.Assistant], Priority = 0.3f }

@@ -101,7 +101,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
                 case "test://ResourceTemplate2":
                     return new ReadResourceResult()
                     {
-                        Contents = [new TextResourceContents() { Text = request.Params?.Uri ?? "(null)" }]
+                        Contents = [new TextResourceContents { Text = request.Params?.Uri ?? "(null)" }]
                     };
             }
 

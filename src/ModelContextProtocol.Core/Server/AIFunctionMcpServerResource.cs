@@ -398,17 +398,17 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
 
             TextContent tc => new()
             {
-                Contents = [new TextResourceContents() { Uri = request.Params!.Uri, MimeType = ProtocolResourceTemplate.MimeType, Text = tc.Text }],
+                Contents = [new TextResourceContents { Uri = request.Params!.Uri, MimeType = ProtocolResourceTemplate.MimeType, Text = tc.Text }],
             },
 
             DataContent dc => new()
             {
-                Contents = [new BlobResourceContents() { Uri = request.Params!.Uri, MimeType = dc.MediaType, Blob = dc.Base64Data.ToString() }],
+                Contents = [new BlobResourceContents { Uri = request.Params!.Uri, MimeType = dc.MediaType, Blob = dc.Base64Data.ToString() }],
             },
 
             string text => new()
             {
-                Contents = [new TextResourceContents() { Uri = request.Params!.Uri, MimeType = ProtocolResourceTemplate.MimeType, Text = text }],
+                Contents = [new TextResourceContents { Uri = request.Params!.Uri, MimeType = ProtocolResourceTemplate.MimeType, Text = text }],
             },
 
             IEnumerable<ResourceContents> contents => new()

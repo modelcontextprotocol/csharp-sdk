@@ -97,7 +97,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                     case "FinalCustomTool":
                         return new CallToolResult()
                         {
-                            Content = [new TextContentBlock() { Text = $"{request.Params.Name}Result" }],
+                            Content = [new TextContentBlock { Text = $"{request.Params.Name}Result" }],
                         };
 
                     default:
