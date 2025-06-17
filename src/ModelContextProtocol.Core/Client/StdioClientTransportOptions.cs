@@ -69,4 +69,9 @@ public sealed class StdioClientTransportOptions
     /// </para>
     /// </remarks>
     public TimeSpan ShutdownTimeout { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// Gets or sets a callback that is invoked for each line of stderr received from the server process.
+    /// </summary>
+    public Action<string>? StandardErrorLines { get; set; }
 }

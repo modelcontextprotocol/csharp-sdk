@@ -18,4 +18,21 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         IOException e = await Assert.ThrowsAsync<IOException>(() => McpClientFactory.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
         Assert.Contains(id, e.ToString());
     }
+
+    [Fact]
+    public async Task CreateAsync_ValidProcessInvalidServer_StdErrCallbackInvoked()
+    {
+        string id = Guid.NewGuid().ToString("N");
+
+        int count = 0;
+        Action<string> stdErrCallback = line => Interlocked.Increment(ref count);
+
+        StdioClientTransport transport = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
+            new(new() { Command = "cmd", Arguments = ["/C", $"echo \"{id}\" >&2"], StandardErrorLines = stdErrCallback }, LoggerFactory) :
+            new(new() { Command = "ls", Arguments = [id], StandardErrorLines = stdErrCallback }, LoggerFactory);
+
+        await Assert.ThrowsAsync<IOException>(() => McpClientFactory.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.InRange(count, 1, int.MaxValue);
+    }
 }
