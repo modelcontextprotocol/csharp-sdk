@@ -10,7 +10,7 @@ namespace ModelContextProtocol.Protocol;
 /// The server will respond with a <see cref="GetPromptResult"/> containing the resulting prompt.
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
-public class GetPromptRequestParams : RequestParams
+public sealed class GetPromptRequestParams : RequestParams
 {
     /// <summary>
     /// Gets or sets the name of the prompt.

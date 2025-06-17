@@ -71,6 +71,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
             Description = options?.Description,
             MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
             SerializerOptions = options?.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
+            JsonSchemaCreateOptions = options?.SchemaCreateOptions,
             ConfigureParameterBinding = pi =>
             {
                 if (pi.ParameterType == typeof(RequestContext<GetPromptRequestParams>))
@@ -102,7 +103,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
                         {
                             var requestContent = GetRequestContext(args);
                             if (requestContent?.Server is { } server &&
-                                requestContent?.Params?.Meta?.ProgressToken is { } progressToken)
+                                requestContent?.Params?.ProgressToken is { } progressToken)
                             {
                                 return new TokenProgress(server, progressToken);
                             }
@@ -151,7 +152,6 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
                     return null;
                 }
             },
-            JsonSchemaCreateOptions = options?.SchemaCreateOptions,
         };
 
     /// <summary>Creates an <see cref="McpServerPrompt"/> that wraps the specified <see cref="AIFunction"/>.</summary>
@@ -180,6 +180,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
         Prompt prompt = new()
         {
             Name = options?.Name ?? function.Name,
+            Title = options?.Title,
             Description = options?.Description ?? function.Description,
             Arguments = args,
         };
@@ -194,6 +195,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
         if (method.GetCustomAttribute<McpServerPromptAttribute>() is { } promptAttr)
         {
             newOptions.Name ??= promptAttr.Name;
+            newOptions.Title ??= promptAttr.Title;
         }
 
         if (method.GetCustomAttribute<DescriptionAttribute>() is { } descAttr)
@@ -248,7 +250,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
             string text => new()
             {
                 Description = ProtocolPrompt.Description,
-                Messages = [new() { Role = Role.User, Content = new() { Text = text, Type = "text" } }],
+                Messages = [new() { Role = Role.User, Content = new TextContentBlock { Text = text } }],
             },
 
             PromptMessage promptMessage => new()

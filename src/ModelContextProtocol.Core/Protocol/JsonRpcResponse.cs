@@ -16,7 +16,7 @@ namespace ModelContextProtocol.Protocol;
 /// This class represents a successful response with a result. For error responses, see <see cref="JsonRpcError"/>.
 /// </para>
 /// </remarks>
-public class JsonRpcResponse : JsonRpcMessageWithId
+public sealed class JsonRpcResponse : JsonRpcMessageWithId
 {
     /// <summary>
     /// Gets the result of the method invocation.

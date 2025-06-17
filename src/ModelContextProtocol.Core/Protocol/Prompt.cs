@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -8,23 +9,15 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
-public class Prompt
+public sealed class Prompt : IBaseMetadata
 {
-    /// <summary>
-    /// Gets or sets a list of arguments that this prompt accepts for templating and customization.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// This list defines the arguments that can be provided when requesting the prompt.
-    /// Each argument specifies metadata like name, description, and whether it's required.
-    /// </para>
-    /// <para>
-    /// When a client makes a <see cref="RequestMethods.PromptsGet"/> request, it can provide values for these arguments
-    /// which will be substituted into the prompt template or otherwise used to render the prompt.
-    /// </para>
-    /// </remarks>
-    [JsonPropertyName("arguments")]
-    public List<PromptArgument>? Arguments { get; set; }
+    /// <inheritdoc />
+    [JsonPropertyName("name")]
+    public required string Name { get; set; }
+
+    /// <inheritdoc />
+    [JsonPropertyName("title")]
+    public string? Title { get; set; }
 
     /// <summary>
     /// Gets or sets an optional description of what this prompt provides.
@@ -43,8 +36,27 @@ public class Prompt
     public string? Description { get; set; }
 
     /// <summary>
-    /// Gets or sets the name of the prompt.
+    /// Gets or sets a list of arguments that this prompt accepts for templating and customization.
     /// </summary>
-    [JsonPropertyName("name")]
-    public string Name { get; set; } = string.Empty;
+    /// <remarks>
+    /// <para>
+    /// This list defines the arguments that can be provided when requesting the prompt.
+    /// Each argument specifies metadata like name, description, and whether it's required.
+    /// </para>
+    /// <para>
+    /// When a client makes a <see cref="RequestMethods.PromptsGet"/> request, it can provide values for these arguments
+    /// which will be substituted into the prompt template or otherwise used to render the prompt.
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("arguments")]
+    public IList<PromptArgument>? Arguments { get; set; }
+
+    /// <summary>
+    /// Gets or sets metadata reserved by MCP for protocol-level metadata.
+    /// </summary>
+    /// <remarks>
+    /// Implementations must not make assumptions about its contents.
+    /// </remarks>
+    [JsonPropertyName("_meta")]
+    public JsonObject? Meta { get; set; }
 }

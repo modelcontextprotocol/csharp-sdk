@@ -16,7 +16,7 @@ namespace ModelContextProtocol.Protocol;
 /// using an AI model. The client must set a <see cref="SamplingHandler"/> to process these requests.
 /// </para>
 /// </remarks>
-public class SamplingCapability
+public sealed class SamplingCapability
 {
     // Currently empty in the spec, but may be extended in the future
 

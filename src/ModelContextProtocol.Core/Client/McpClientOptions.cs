@@ -9,7 +9,7 @@ namespace ModelContextProtocol.Client;
 /// These options are typically passed to <see cref="McpClientFactory.CreateAsync"/> when creating a client.
 /// They define client capabilities, protocol version, and other client-specific settings.
 /// </remarks>
-public class McpClientOptions
+public sealed class McpClientOptions
 {
     /// <summary>
     /// Gets or sets information about this client implementation, including its name and version.

@@ -14,7 +14,7 @@ namespace ModelContextProtocol.Protocol;
 /// during interactions. The client must set a <see cref="ElicitationHandler"/> to process these requests.
 /// </para>
 /// </remarks>
-public class ElicitationCapability
+public sealed class ElicitationCapability
 {
     // Currently empty in the spec, but may be extended in the future.
 

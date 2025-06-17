@@ -14,4 +14,4 @@ namespace ModelContextProtocol.Protocol;
 /// is still responsive.
 /// </para>
 /// </remarks>
-public class PingResult;
+public sealed class PingResult : Result;

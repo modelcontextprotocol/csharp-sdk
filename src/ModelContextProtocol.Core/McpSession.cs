@@ -273,7 +273,7 @@ internal sealed partial class McpSession : IDisposable
         {
             try
             {
-                if (GetCancelledNotificationParams(notification.Params) is CancelledNotification cn &&
+                if (GetCancelledNotificationParams(notification.Params) is CancelledNotificationParams cn &&
                     _handlingRequests.TryGetValue(cn.RequestId, out var cts))
                 {
                     await cts.CancelAsync().ConfigureAwait(false);
@@ -337,7 +337,7 @@ internal sealed partial class McpSession : IDisposable
             _ = state.Item1.SendMessageAsync(new JsonRpcNotification
             {
                 Method = NotificationMethods.CancelledNotification,
-                Params = JsonSerializer.SerializeToNode(new CancelledNotification { RequestId = state.Item2.Id }, McpJsonUtilities.JsonContext.Default.CancelledNotification),
+                Params = JsonSerializer.SerializeToNode(new CancelledNotificationParams { RequestId = state.Item2.Id }, McpJsonUtilities.JsonContext.Default.CancelledNotificationParams),
                 RelatedTransport = state.Item2.RelatedTransport,
             });
         }, Tuple.Create(this, request));
@@ -495,7 +495,7 @@ internal sealed partial class McpSession : IDisposable
             // server won't be sending a response, or per the specification, the response should be ignored. There are inherent
             // race conditions here, so it's possible and allowed for the operation to complete before we get to this point.
             if (message is JsonRpcNotification { Method: NotificationMethods.CancelledNotification } notification &&
-                GetCancelledNotificationParams(notification.Params) is CancelledNotification cn &&
+                GetCancelledNotificationParams(notification.Params) is CancelledNotificationParams cn &&
                 _pendingRequests.TryRemove(cn.RequestId, out var tcs))
             {
                 tcs.TrySetCanceled(default);
@@ -518,11 +518,11 @@ internal sealed partial class McpSession : IDisposable
     private Task SendToRelatedTransportAsync(JsonRpcMessage message, CancellationToken cancellationToken)
         => (message.RelatedTransport ?? _transport).SendMessageAsync(message, cancellationToken);
 
-    private static CancelledNotification? GetCancelledNotificationParams(JsonNode? notificationParams)
+    private static CancelledNotificationParams? GetCancelledNotificationParams(JsonNode? notificationParams)
     {
         try
         {
-            return JsonSerializer.Deserialize(notificationParams, McpJsonUtilities.JsonContext.Default.CancelledNotification);
+            return JsonSerializer.Deserialize(notificationParams, McpJsonUtilities.JsonContext.Default.CancelledNotificationParams);
         }
         catch
         {

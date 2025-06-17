@@ -15,13 +15,15 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
-public class PromptArgument
+public sealed class PromptArgument : IBaseMetadata
 {
-    /// <summary>
-    /// Gets or sets the name of the argument used for referencing in prompt templates.
-    /// </summary>
+    /// <inheritdoc />
     [JsonPropertyName("name")]
-    public string Name { get; set; } = string.Empty;
+    public required string Name { get; set; }
+
+    /// <inheritdoc />
+    [JsonPropertyName("title")]
+    public string? Title { get; set; }
 
     /// <summary>
     /// Gets or sets a human-readable description of the argument's purpose and expected values.

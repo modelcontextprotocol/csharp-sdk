@@ -45,6 +45,8 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
 
     public ChannelReader<JsonRpcMessage> MessageReader => _messageChannel.Reader;
 
+    string? ITransport.SessionId => ActiveTransport?.SessionId;
+
     /// <inheritdoc/>
     public Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {

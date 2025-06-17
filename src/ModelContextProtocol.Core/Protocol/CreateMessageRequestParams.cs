@@ -10,7 +10,7 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
-public class CreateMessageRequestParams : RequestParams
+public sealed class CreateMessageRequestParams : RequestParams
 {
     /// <summary>
     /// Gets or sets an indication as to which server contexts should be included in the prompt.

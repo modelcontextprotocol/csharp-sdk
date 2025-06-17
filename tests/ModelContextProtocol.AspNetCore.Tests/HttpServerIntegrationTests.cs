@@ -52,6 +52,15 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         // Assert
         Assert.NotNull(client.ServerCapabilities);
         Assert.NotNull(client.ServerInfo);
+
+        if (ClientTransportOptions.Endpoint.AbsolutePath.EndsWith("/sse"))
+        {
+            Assert.Null(client.SessionId);
+        }
+        else
+        {
+            Assert.NotNull(client.SessionId);
+        }
     }
 
     [Fact]
@@ -86,8 +95,37 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         // assert
         Assert.NotNull(result);
         Assert.False(result.IsError);
-        var textContent = Assert.Single(result.Content, c => c.Type == "text");
+        var textContent = Assert.Single(result.Content.OfType<TextContentBlock>());
         Assert.Equal("Echo: Hello MCP!", textContent.Text);
+    }
+
+    [Fact]
+    public async Task CallTool_EchoSessionId_ReturnsTheSameSessionId()
+    {
+        // arrange
+
+        // act
+        await using var client = await GetClientAsync();
+        var result1 = await client.CallToolAsync("echoSessionId", cancellationToken: TestContext.Current.CancellationToken);
+        var result2 = await client.CallToolAsync("echoSessionId", cancellationToken: TestContext.Current.CancellationToken);
+        var result3 = await client.CallToolAsync("echoSessionId", cancellationToken: TestContext.Current.CancellationToken);
+
+        // assert
+        Assert.NotNull(result1);
+        Assert.NotNull(result2);
+        Assert.NotNull(result3);
+
+        Assert.False(result1.IsError);
+        Assert.False(result2.IsError);
+        Assert.False(result3.IsError);
+        
+        var textContent1 = Assert.Single(result1.Content.OfType<TextContentBlock>());
+        var textContent2 = Assert.Single(result2.Content.OfType<TextContentBlock>());
+        var textContent3 = Assert.Single(result3.Content.OfType<TextContentBlock>());
+
+        Assert.NotNull(textContent1.Text);
+        Assert.Equal(textContent1.Text, textContent2.Text);
+        Assert.Equal(textContent1.Text, textContent3.Text);
     }
 
     [Fact]
@@ -221,11 +259,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
             {
                 Model = "test-model",
                 Role = Role.Assistant,
-                Content = new Content
-                {
-                    Type = "text",
-                    Text = "Test response"
-                }
+                Content = new TextContentBlock { Text = "Test response" },
             };
         };
         await using var client = await GetClientAsync(options);
@@ -241,8 +275,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
 
         // assert
         Assert.NotNull(result);
-        var textContent = Assert.Single(result.Content);
-        Assert.Equal("text", textContent.Type);
+        var textContent = Assert.Single(result.Content.OfType<TextContentBlock>());
         Assert.False(string.IsNullOrEmpty(textContent.Text));
     }
 
@@ -266,7 +299,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
 
             Assert.NotNull(result);
             Assert.False(result.IsError);
-            var textContent = Assert.Single(result.Content, c => c.Type == "text");
+            var textContent = Assert.Single(result.Content.OfType<TextContentBlock>());
             Assert.Equal($"Echo: Hello MCP! {i}", textContent.Text);
         }
     }

@@ -1,5 +1,7 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using System.ComponentModel;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -11,7 +13,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for more details.
 /// </remarks>
 [JsonConverter(typeof(Converter))]
-public class ProgressNotification
+public sealed class ProgressNotificationParams : NotificationParams
 {
     /// <summary>
     /// Gets or sets the progress token which was given in the initial request, used to associate this notification with 
@@ -38,19 +40,20 @@ public class ProgressNotification
     public required ProgressNotificationValue Progress { get; init; }
 
     /// <summary>
-    /// Provides a <see cref="JsonConverter"/> for <see cref="ProgressNotification"/>.
+    /// Provides a <see cref="JsonConverter"/> for <see cref="ProgressNotificationParams"/>.
     /// </summary>
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public sealed class Converter : JsonConverter<ProgressNotification>
+    public sealed class Converter : JsonConverter<ProgressNotificationParams>
     {
         /// <inheritdoc />
-        public override ProgressNotification? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override ProgressNotificationParams? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             ProgressToken? progressToken = null;
             float? progress = null;
             float? total = null;
             string? message = null;
-            
+            JsonObject? meta = null;
+
             while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
             {
                 if (reader.TokenType == JsonTokenType.PropertyName)
@@ -74,6 +77,10 @@ public class ProgressNotification
                         case "message":
                             message = reader.GetString();
                             break;
+
+                        case "_meta":
+                            meta = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.JsonObject);
+                            break;
                     }
                 }
             }
@@ -88,20 +95,21 @@ public class ProgressNotification
                 throw new JsonException("Missing required property 'progressToken'.");
             }
 
-            return new ProgressNotification
+            return new ProgressNotificationParams
             {
                 ProgressToken = progressToken.GetValueOrDefault(),
                 Progress = new ProgressNotificationValue()
                 {
                     Progress = progress.GetValueOrDefault(),
                     Total = total,
-                    Message = message
-                }
+                    Message = message,
+                },
+                Meta = meta,
             };
         }
 
         /// <inheritdoc />
-        public override void Write(Utf8JsonWriter writer, ProgressNotification value, JsonSerializerOptions options)
+        public override void Write(Utf8JsonWriter writer, ProgressNotificationParams value, JsonSerializerOptions options)
         {
             writer.WriteStartObject();
 
@@ -118,6 +126,12 @@ public class ProgressNotification
             if (value.Progress.Message is { } message)
             {
                 writer.WriteString("message", message);
+            }
+
+            if (value.Meta is { } meta)
+            {
+                writer.WritePropertyName("_meta");
+                JsonSerializer.Serialize(writer, meta, McpJsonUtilities.JsonContext.Default.JsonObject);
             }
 
             writer.WriteEndObject();

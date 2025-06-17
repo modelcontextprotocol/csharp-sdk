@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -8,19 +9,21 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
-public class Resource
+public sealed class Resource : IBaseMetadata
 {
+    /// <inheritdoc />
+    [JsonPropertyName("name")]
+    public required string Name { get; set; }
+
+    /// <inheritdoc />
+    [JsonPropertyName("title")]
+    public string? Title { get; set; }
+
     /// <summary>
     /// Gets or sets the URI of this resource.
     /// </summary>
     [JsonPropertyName("uri")]
     public required string Uri { get; init; }
-
-    /// <summary>
-    /// Gets or sets a human-readable name for this resource.
-    /// </summary>
-    [JsonPropertyName("name")]
-    public required string Name { get; init; }
 
     /// <summary>
     /// Gets or sets a description of what this resource represents.
@@ -58,6 +61,16 @@ public class Resource
     public string? MimeType { get; init; }
 
     /// <summary>
+    /// Gets or sets optional annotations for the resource.
+    /// </summary>
+    /// <remarks>
+    /// These annotations can be used to specify the intended audience (<see cref="Role.User"/>, <see cref="Role.Assistant"/>, or both)
+    /// and the priority level of the resource. Clients can use this information to filter or prioritize resources for different roles.
+    /// </remarks>
+    [JsonPropertyName("annotations")]
+    public Annotations? Annotations { get; init; }
+
+    /// <summary>
     /// Gets or sets the size of the raw resource content (before base64 encoding), in bytes, if known.
     /// </summary>
     /// <remarks>
@@ -67,12 +80,11 @@ public class Resource
     public long? Size { get; init; }
 
     /// <summary>
-    /// Gets or sets optional annotations for the resource.
+    /// Gets or sets metadata reserved by MCP for protocol-level metadata.
     /// </summary>
     /// <remarks>
-    /// These annotations can be used to specify the intended audience (<see cref="Role.User"/>, <see cref="Role.Assistant"/>, or both)
-    /// and the priority level of the resource. Clients can use this information to filter or prioritize resources for different roles.
+    /// Implementations must not make assumptions about its contents.
     /// </remarks>
-    [JsonPropertyName("annotations")]
-    public Annotations? Annotations { get; init; }
+    [JsonPropertyName("_meta")]
+    public JsonObject? Meta { get; init; }
 }

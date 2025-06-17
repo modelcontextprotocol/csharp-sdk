@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -17,11 +18,12 @@ namespace ModelContextProtocol.Protocol;
 /// for the same resource without causing errors, even if there is no active subscription.
 /// </para>
 /// </remarks>
-public class UnsubscribeRequestParams : RequestParams
+public sealed class UnsubscribeRequestParams : RequestParams
 {
     /// <summary>
     /// The URI of the resource to unsubscribe from. The URI can use any protocol; it is up to the server how to interpret it.
     /// </summary>
     [JsonPropertyName("uri")]
+    [StringSyntax(StringSyntaxAttribute.Uri)]
     public string? Uri { get; init; }
 }

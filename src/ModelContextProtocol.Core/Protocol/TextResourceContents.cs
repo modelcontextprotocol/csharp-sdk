@@ -19,7 +19,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for more details.
 /// </para>
 /// </remarks>
-public class TextResourceContents : ResourceContents
+public sealed class TextResourceContents : ResourceContents
 {
     /// <summary>
     /// Gets or sets the text of the item.

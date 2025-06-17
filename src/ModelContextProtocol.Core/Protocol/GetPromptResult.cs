@@ -15,7 +15,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
-public class GetPromptResult
+public sealed class GetPromptResult : Result
 {
     /// <summary>
     /// Gets or sets an optional description for the prompt.
@@ -38,5 +38,5 @@ public class GetPromptResult
     /// Gets or sets the prompt that the server offers.
     /// </summary>
     [JsonPropertyName("messages")]
-    public List<PromptMessage> Messages { get; set; } = [];
+    public IList<PromptMessage> Messages { get; set; } = [];
 }

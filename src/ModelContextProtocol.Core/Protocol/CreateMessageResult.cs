@@ -8,13 +8,13 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
-public class CreateMessageResult
+public sealed class CreateMessageResult : Result
 {
     /// <summary>
     /// Gets or sets the content of the message.
     /// </summary>
     [JsonPropertyName("content")]
-    public required Content Content { get; init; }
+    public required ContentBlock Content { get; init; }
 
     /// <summary>
     /// Gets or sets the name of the model that generated the message.

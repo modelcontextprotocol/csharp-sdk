@@ -22,7 +22,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
-public class ModelPreferences
+public sealed class ModelPreferences
 {
     /// <summary>
     /// Gets or sets how much to prioritize cost when selecting a model.

@@ -7,7 +7,7 @@ namespace ModelContextProtocol.Protocol;
 /// Represents the tools capability configuration.
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </summary>
-public class ToolsCapability
+public sealed class ToolsCapability
 {
     /// <summary>
     /// Gets or sets whether this server supports notifications for changes to the tool list.
@@ -42,10 +42,10 @@ public class ToolsCapability
     /// This handler is invoked when a client makes a call to a tool that isn't found in the <see cref="ToolCollection"/>.
     /// The handler should implement logic to execute the requested tool and return appropriate results. 
     /// It receives a <see cref="RequestContext{CallToolRequestParams}"/> containing information about the tool 
-    /// being called and its arguments, and should return a <see cref="CallToolResponse"/> with the execution results.
+    /// being called and its arguments, and should return a <see cref="CallToolResult"/> with the execution results.
     /// </remarks>
     [JsonIgnore]
-    public Func<RequestContext<CallToolRequestParams>, CancellationToken, ValueTask<CallToolResponse>>? CallToolHandler { get; set; }
+    public Func<RequestContext<CallToolRequestParams>, CancellationToken, ValueTask<CallToolResult>>? CallToolHandler { get; set; }
 
     /// <summary>
     /// Gets or sets a collection of tools served by the server.

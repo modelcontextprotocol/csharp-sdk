@@ -6,7 +6,7 @@ namespace ModelContextProtocol.Protocol;
 /// <summary>
 /// Represents a message issued from the server to elicit additional information from the user via the client.
 /// </summary>
-public class ElicitRequestParams
+public sealed class ElicitRequestParams
 {
     /// <summary>
     /// Gets or sets the message to present to the user.
@@ -65,6 +65,7 @@ public class ElicitRequestParams
     [JsonDerivedType(typeof(StringSchema))]
     public abstract class PrimitiveSchemaDefinition
     {
+        /// <summary>Prevent external derivations.</summary>
         protected private PrimitiveSchemaDefinition()
         {
         }

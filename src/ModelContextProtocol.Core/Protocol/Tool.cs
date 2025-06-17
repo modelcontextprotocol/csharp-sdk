@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -6,13 +7,15 @@ namespace ModelContextProtocol.Protocol;
 /// <summary>
 /// Represents a tool that the server is capable of calling.
 /// </summary>
-public class Tool
+public sealed class Tool : IBaseMetadata
 {
-    /// <summary>
-    /// Gets or sets the name of the tool.
-    /// </summary>
+    /// <inheritdoc />
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
+
+    /// <inheritdoc />
+    [JsonPropertyName("title")]
+    public string? Title { get; set; }
 
     /// <summary>
     /// Gets or sets a human-readable description of the tool.
@@ -74,7 +77,7 @@ public class Tool
     /// if an invalid schema is provided.
     /// </para>
     /// <para>
-    /// The schema should describe the shape of the data as returned in <see cref="CallToolResponse.StructuredContent"/>.
+    /// The schema should describe the shape of the data as returned in <see cref="CallToolResult.StructuredContent"/>.
     /// </para>
     /// </remarks>
     [JsonPropertyName("outputSchema")]
@@ -102,4 +105,13 @@ public class Tool
     /// </remarks>
     [JsonPropertyName("annotations")]
     public ToolAnnotations? Annotations { get; set; }
+
+    /// <summary>
+    /// Gets or sets metadata reserved by MCP for protocol-level metadata.
+    /// </summary>
+    /// <remarks>
+    /// Implementations must not make assumptions about its contents.
+    /// </remarks>
+    [JsonPropertyName("_meta")]
+    public JsonObject? Meta { get; set; }
 }

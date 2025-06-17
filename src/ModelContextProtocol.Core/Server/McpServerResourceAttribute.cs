@@ -23,7 +23,7 @@ namespace ModelContextProtocol.Server;
 ///   <item>
 ///     <description>
 ///       <see cref="CancellationToken"/> parameters are automatically bound to a <see cref="CancellationToken"/> provided by the
-///       <see cref="IMcpServer"/> and that respects any <see cref="CancelledNotification"/>s sent by the client for this operation's
+///       <see cref="IMcpServer"/> and that respects any <see cref="CancelledNotificationParams"/>s sent by the client for this operation's
 ///       <see cref="RequestId"/>.
 ///     </description>
 ///   </item>
@@ -78,7 +78,7 @@ namespace ModelContextProtocol.Server;
 ///     <description>Wrapped in a list containing the single <see cref="ResourceContents"/>.</description>
 ///   </item>
 ///   <item>
-///     <term><see cref="TextContent"/></term>
+///     <term><see cref="TextContentBlock"/></term>
 ///     <description>Converted to a list containing a single <see cref="TextResourceContents"/>.</description>
 ///   </item>
 ///   <item>
@@ -95,7 +95,7 @@ namespace ModelContextProtocol.Server;
 ///   </item>
 ///   <item>
 ///     <term><see cref="IEnumerable{AIContent}"/> of <see cref="AIContent"/></term>
-///     <description>Converted to a list containing a <see cref="TextResourceContents"/> for each <see cref="TextContent"/> and a <see cref="BlobResourceContents"/> for each <see cref="DataContent"/>.</description>
+///     <description>Converted to a list containing a <see cref="TextResourceContents"/> for each <see cref="TextContentBlock"/> and a <see cref="BlobResourceContents"/> for each <see cref="DataContent"/>.</description>
 ///   </item>
 ///   <item>
 ///     <term><see cref="IEnumerable{String}"/> of <see cref="string"/></term>
@@ -129,6 +129,9 @@ public sealed class McpServerResourceAttribute : Attribute
     /// <summary>Gets or sets the name of the resource.</summary>
     /// <remarks>If <see langword="null"/>, the method name will be used.</remarks>
     public string? Name { get; set; }
+
+    /// <summary>Gets or sets the title of the resource.</summary>
+    public string? Title { get; set; }
 
     /// <summary>Gets or sets the MIME (media) type of the resource.</summary>
     public string? MimeType { get; set; }

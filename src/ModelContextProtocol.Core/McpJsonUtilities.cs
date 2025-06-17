@@ -1,6 +1,5 @@
 ﻿using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -34,13 +33,21 @@ public static partial class McpJsonUtilities
     /// Creates default options to use for MCP-related serialization.
     /// </summary>
     /// <returns>The configured options.</returns>
+    [UnconditionalSuppressMessage("ReflectionAnalysis", "IL3050:RequiresDynamicCode", Justification = "Converter is guarded by IsReflectionEnabledByDefault check.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2026:Members annotated with 'RequiresUnreferencedCodeAttribute' require dynamic access", Justification = "Converter is guarded by IsReflectionEnabledByDefault check.")]
     private static JsonSerializerOptions CreateDefaultOptions()
     {
         // Copy the configuration from the source generated context.
         JsonSerializerOptions options = new(JsonContext.Default.Options);
 
-        // Chain with all supported types from MEAI
+        // Chain with all supported types from MEAI.
         options.TypeInfoResolverChain.Add(AIJsonUtilities.DefaultOptions.TypeInfoResolver!);
+
+        // Add a converter for user-defined enums, if reflection is enabled by default.
+        if (JsonSerializer.IsReflectionEnabledByDefault)
+        {
+            options.Converters.Add(new CustomizableJsonStringEnumConverter());
+        }
 
         options.MakeReadOnly();
         return options;
@@ -76,30 +83,6 @@ public static partial class McpJsonUtilities
         return false; // No type keyword found.
     }
 
-    internal static JsonElement? GetReturnSchema(this AIFunction function, AIJsonSchemaCreateOptions? schemaCreateOptions)
-    {
-        // TODO replace with https://github.com/dotnet/extensions/pull/6447 once merged.
-        if (function.UnderlyingMethod?.ReturnType is not Type returnType)
-        {
-            return null;
-        }
-
-        if (returnType == typeof(void) || returnType == typeof(Task) || returnType == typeof(ValueTask))
-        {
-            // Do not report an output schema for void or Task methods.
-            return null;
-        }
-
-        if (returnType.IsGenericType && returnType.GetGenericTypeDefinition() is Type genericTypeDef &&
-            (genericTypeDef == typeof(Task<>) || genericTypeDef == typeof(ValueTask<>)))
-        {
-            // Extract the real type from Task<T> or ValueTask<T> if applicable.
-            returnType = returnType.GetGenericArguments()[0];
-        }
-
-        return AIJsonUtilities.CreateJsonSchema(returnType, serializerOptions: function.JsonSerializerOptions, inferenceOptions: schemaCreateOptions);
-    }
-
     // Keep in sync with CreateDefaultOptions above.
     [JsonSourceGenerationOptions(JsonSerializerDefaults.Web,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -113,10 +96,20 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(JsonRpcResponse))]
     [JsonSerializable(typeof(JsonRpcError))]
 
+    // MCP Notification Params
+    [JsonSerializable(typeof(CancelledNotificationParams))]
+    [JsonSerializable(typeof(InitializedNotificationParams))]
+    [JsonSerializable(typeof(LoggingMessageNotificationParams))]
+    [JsonSerializable(typeof(ProgressNotificationParams))]
+    [JsonSerializable(typeof(PromptListChangedNotificationParams))]
+    [JsonSerializable(typeof(ResourceListChangedNotificationParams))]
+    [JsonSerializable(typeof(ResourceUpdatedNotificationParams))]
+    [JsonSerializable(typeof(RootsListChangedNotificationParams))]
+    [JsonSerializable(typeof(ToolListChangedNotificationParams))]
+
     // MCP Request Params / Results
     [JsonSerializable(typeof(CallToolRequestParams))]
-    [JsonSerializable(typeof(CallToolResponse))]
-    [JsonSerializable(typeof(CancelledNotification))]
+    [JsonSerializable(typeof(CallToolResult))]
     [JsonSerializable(typeof(CompleteRequestParams))]
     [JsonSerializable(typeof(CompleteResult))]
     [JsonSerializable(typeof(CreateMessageRequestParams))]
@@ -138,16 +131,28 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(ListRootsResult))]
     [JsonSerializable(typeof(ListToolsRequestParams))]
     [JsonSerializable(typeof(ListToolsResult))]
-    [JsonSerializable(typeof(LoggingMessageNotificationParams))]
     [JsonSerializable(typeof(PingResult))]
-    [JsonSerializable(typeof(ProgressNotification))]
     [JsonSerializable(typeof(ReadResourceRequestParams))]
     [JsonSerializable(typeof(ReadResourceResult))]
-    [JsonSerializable(typeof(ResourceUpdatedNotificationParams))]
     [JsonSerializable(typeof(SetLevelRequestParams))]
     [JsonSerializable(typeof(SubscribeRequestParams))]
     [JsonSerializable(typeof(UnsubscribeRequestParams))]
+
+    // MCP Content
+    [JsonSerializable(typeof(ContentBlock))]
+    [JsonSerializable(typeof(TextContentBlock))]
+    [JsonSerializable(typeof(ImageContentBlock))]
+    [JsonSerializable(typeof(AudioContentBlock))]
+    [JsonSerializable(typeof(EmbeddedResourceBlock))]
+    [JsonSerializable(typeof(ResourceLinkBlock))]
+    [JsonSerializable(typeof(PromptReference))]
+    [JsonSerializable(typeof(ResourceTemplateReference))]
+    [JsonSerializable(typeof(BlobResourceContents))]
+    [JsonSerializable(typeof(TextResourceContents))]
+
+    // Other MCP Types
     [JsonSerializable(typeof(IReadOnlyDictionary<string, object>))]
+    [JsonSerializable(typeof(ProgressToken))]
 
     // Primitive types for use in consuming AIFunctions
     [JsonSerializable(typeof(string))]

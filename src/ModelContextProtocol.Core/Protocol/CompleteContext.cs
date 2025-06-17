@@ -9,7 +9,7 @@ namespace ModelContextProtocol.Protocol;
 /// This context provides information that helps the server generate more relevant 
 /// completion suggestions, such as previously resolved variables in a template.
 /// </remarks>
-public class CompleteContext
+public sealed class CompleteContext
 {
     /// <summary>
     /// Gets or sets previously-resolved variables in a URI template or prompt.
