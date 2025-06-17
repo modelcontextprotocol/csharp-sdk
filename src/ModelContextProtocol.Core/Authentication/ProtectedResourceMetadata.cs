@@ -4,20 +4,10 @@ namespace ModelContextProtocol.Authentication;
 
 /// <summary>
 /// Represents the resource metadata for OAuth authorization as defined in RFC 9396.
-/// Defined by <see href="https://datatracker.ietf.org/doc/rfc9728/">RFC 9728</see>. 
+/// Defined by <see href="https://datatracker.ietf.org/doc/rfc9728/">RFC 9728</see>.
 /// </summary>
 public class ProtectedResourceMetadata
 {
-    /// <summary>
-    /// Initializes a new instance of the <see cref="ProtectedResourceMetadata"/> class.
-    /// </summary>
-    public ProtectedResourceMetadata()
-    {
-        AuthorizationServers = [];
-        BearerMethodsSupported = [];
-        ScopesSupported = [];
-    }
-
     /// <summary>
     /// The resource URI.
     /// </summary>
@@ -26,7 +16,7 @@ public class ProtectedResourceMetadata
     /// </remarks>
     [JsonPropertyName("resource")]
     public required Uri Resource { get; init; }
-    
+
     /// <summary>
     /// The list of authorization server URIs.
     /// </summary>
@@ -35,8 +25,8 @@ public class ProtectedResourceMetadata
     /// for authorization servers that can be used with this protected resource.
     /// </remarks>
     [JsonPropertyName("authorization_servers")]
-    public List<Uri> AuthorizationServers { get; set; }
-    
+    public List<Uri> AuthorizationServers { get; set; } = [];
+
     /// <summary>
     /// The supported bearer token methods.
     /// </summary>
@@ -45,8 +35,8 @@ public class ProtectedResourceMetadata
     /// to the protected resource. Defined values are ["header", "body", "query"].
     /// </remarks>
     [JsonPropertyName("bearer_methods_supported")]
-    public List<string> BearerMethodsSupported { get; set; }
-    
+    public List<string> BearerMethodsSupported { get; set; } = [];
+
     /// <summary>
     /// The supported scopes.
     /// </summary>
@@ -55,8 +45,8 @@ public class ProtectedResourceMetadata
     /// requests to request access to this protected resource.
     /// </remarks>
     [JsonPropertyName("scopes_supported")]
-    public List<string> ScopesSupported { get; set; }
-    
+    public List<string> ScopesSupported { get; set; } = [];
+
     /// <summary>
     /// URL of the protected resource's JSON Web Key (JWK) Set document.
     /// </summary>

@@ -58,8 +58,8 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
     /// <param name="transportOptions">Configuration options for the transport.</param>
     /// <param name="credentialProvider">The authorization provider to use for authentication.</param>
     /// <param name="loggerFactory">Logger factory for creating loggers used for diagnostic output during transport operations.</param>
-    /// <param name="baseMessageHandler">Optional. The base message handler to use under the authorization handler. 
-    /// If null, a new <see cref="HttpClientHandler"/> will be used. This allows for custom HTTP client pipelines (e.g., from HttpClientFactory) 
+    /// <param name="baseMessageHandler">Optional. The base message handler to use under the authorization handler.
+    /// If null, a new <see cref="HttpClientHandler"/> will be used. This allows for custom HTTP client pipelines (e.g., from HttpClientFactory)
     /// to be used in conjunction with the token-based authentication provided by <paramref name="credentialProvider"/>.</param>
     public SseClientTransport(SseClientTransportOptions transportOptions, IMcpCredentialProvider credentialProvider, ILoggerFactory? loggerFactory = null, HttpMessageHandler? baseMessageHandler = null)
     {
@@ -74,7 +74,7 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
         {
             InnerHandler = baseMessageHandler ?? new HttpClientHandler()
         };
-        
+
         _httpClient = new HttpClient(authHandler);
         _ownsHttpClient = true;
     }

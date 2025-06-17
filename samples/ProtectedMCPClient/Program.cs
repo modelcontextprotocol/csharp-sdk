@@ -29,7 +29,7 @@ var tokenProvider = new GenericOAuthProvider(
     clientId: clientId,
     clientSecret: "", // No secret needed for this client
     redirectUri: new Uri("http://localhost:1179/callback"),
-    scopes: [$"api://{clientId}/weather.read"],
+    scopes: null, // Scopes listed in scopes_supported will be requested automatically
     logger: null,
     authorizationUrlHandler: HandleAuthorizationUrlAsync
 );

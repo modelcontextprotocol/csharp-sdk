@@ -232,10 +232,8 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         CancellationToken cancellationToken)
     {
         // Get available authorization servers from the 401 response
-        var availableAuthorizationServers = await _authorizationHelpers.GetAvailableAuthorizationServersAsync(
-            response,
-            _serverUrl,
-            cancellationToken);
+        var protectedResourceMetadata = await _authorizationHelpers.ExtractProtectedResourceMetadata(response, _serverUrl, cancellationToken);
+        var availableAuthorizationServers = protectedResourceMetadata.AuthorizationServers ?? [];
 
         if (!availableAuthorizationServers.Any())
         {
@@ -269,7 +267,7 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         _authServerMetadata = authServerMetadata;
 
         // Perform the OAuth flow
-        var token = await InitiateAuthorizationCodeFlowAsync(authServerMetadata, cancellationToken);
+        var token = await InitiateAuthorizationCodeFlowAsync(protectedResourceMetadata, authServerMetadata, cancellationToken);
         if (token != null)
         {
             _token = token;
@@ -342,7 +340,7 @@ public class GenericOAuthProvider : IMcpCredentialProvider
                 if (response.IsSuccessStatusCode)
                 {
                     using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-                    var metadata = await JsonSerializer.DeserializeAsync<AuthorizationServerMetadata>(stream, McpJsonUtilities.JsonContext.Default.AuthorizationServerMetadata, cancellationToken);
+                    var metadata = await JsonSerializer.DeserializeAsync(stream, McpJsonUtilities.JsonContext.Default.AuthorizationServerMetadata, cancellationToken);
 
                     if (metadata != null)
                     {
@@ -413,13 +411,14 @@ public class GenericOAuthProvider : IMcpCredentialProvider
     }
 
     private async Task<TokenContainer?> InitiateAuthorizationCodeFlowAsync(
+        ProtectedResourceMetadata protectedResourceMetadata,
         AuthorizationServerMetadata authServerMetadata,
         CancellationToken cancellationToken)
     {
         var codeVerifier = GenerateCodeVerifier();
         var codeChallenge = GenerateCodeChallenge(codeVerifier);
 
-        var authUrl = BuildAuthorizationUrl(authServerMetadata, codeChallenge);
+        var authUrl = BuildAuthorizationUrl(protectedResourceMetadata, authServerMetadata, codeChallenge);
         var authCode = await GetAuthorizationCodeAsync(authUrl, cancellationToken);
         if (string.IsNullOrEmpty(authCode))
             return null;
@@ -427,7 +426,10 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         return await ExchangeCodeForTokenAsync(authServerMetadata, authCode!, codeVerifier, cancellationToken);
     }
 
-    private Uri BuildAuthorizationUrl(AuthorizationServerMetadata authServerMetadata, string codeChallenge)
+    private Uri BuildAuthorizationUrl(
+        ProtectedResourceMetadata protectedResourceMetadata,
+        AuthorizationServerMetadata authServerMetadata,
+        string codeChallenge)
     {
         if (authServerMetadata.AuthorizationEndpoint.Scheme != Uri.UriSchemeHttp &&
             authServerMetadata.AuthorizationEndpoint.Scheme != Uri.UriSchemeHttps)
@@ -442,9 +444,10 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         queryParams["code_challenge"] = codeChallenge;
         queryParams["code_challenge_method"] = "S256";
 
-        if (_scopes.Any())
+        var scopesSupported = protectedResourceMetadata.ScopesSupported ?? [];
+        if (_scopes.Count > 0 || scopesSupported.Count > 0)
         {
-            queryParams["scope"] = string.Join(" ", _scopes);
+            queryParams["scope"] = string.Join(" ", [.._scopes, ..scopesSupported]);
         }
 
         var uriBuilder = new UriBuilder(authServerMetadata.AuthorizationEndpoint)

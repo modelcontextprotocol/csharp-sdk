@@ -203,33 +203,4 @@ public class AuthorizationHelpers
 
         return null;
     }
-
-    /// <summary>
-    /// Handles a 401 Unauthorized response and returns all available authorization servers.
-    /// This is the primary method for OAuth discovery - use this when you want full control
-    /// over authorization server selection.
-    /// </summary>
-    /// <param name="response">The 401 HTTP response.</param>
-    /// <param name="serverUrl">The server URL that returned the 401.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>A list of available authorization server URIs.</returns>
-    /// <exception cref="ArgumentNullException">Thrown when response is null.</exception>
-    public async Task<IReadOnlyList<Uri>> GetAvailableAuthorizationServersAsync(
-        HttpResponseMessage response,
-        Uri serverUrl,
-        CancellationToken cancellationToken = default)
-    {
-        if (response == null) throw new ArgumentNullException(nameof(response));
-
-        try
-        {
-            var metadata = await ExtractProtectedResourceMetadata(response, serverUrl, cancellationToken);
-            return metadata.AuthorizationServers ?? [];
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to get available authorization servers");
-            return [];
-        }
-    }
 }
