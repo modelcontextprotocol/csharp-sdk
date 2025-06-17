@@ -456,6 +456,7 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         };
         return uriBuilder.Uri;
     }
+
     private async Task<string?> GetAuthorizationCodeAsync(Uri authorizationUrl, CancellationToken cancellationToken)
     {
         return await _authorizationUrlHandler(authorizationUrl, _redirectUri, cancellationToken);

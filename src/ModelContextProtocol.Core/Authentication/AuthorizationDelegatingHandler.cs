@@ -20,7 +20,7 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
         Throw.IfNull(credentialProvider);
 
         _credentialProvider = credentialProvider;
-        
+
         // Select first supported scheme as the default
         _currentScheme = _credentialProvider.SupportedSchemes.FirstOrDefault() ??
             throw new ArgumentException("Authorization provider must support at least one authentication scheme.", nameof(credentialProvider));
@@ -50,8 +50,8 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
     /// Handles a 401 Unauthorized response by attempting to authenticate and retry the request.
     /// </summary>
     private async Task<HttpResponseMessage> HandleUnauthorizedResponseAsync(
-        HttpRequestMessage originalRequest, 
-        HttpResponseMessage response, 
+        HttpRequestMessage originalRequest,
+        HttpResponseMessage response,
         CancellationToken cancellationToken)
     {
         // Gather the schemes the server wants us to use from WWW-Authenticate headers
@@ -62,8 +62,8 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
 
         // First try to find a direct match with the current scheme if it's still valid
         string schemeUsed = originalRequest.Headers.Authorization?.Scheme ?? _currentScheme ?? string.Empty;
-        if (!string.IsNullOrEmpty(schemeUsed) && 
-            serverSchemes.Contains(schemeUsed) && 
+        if (!string.IsNullOrEmpty(schemeUsed) &&
+            serverSchemes.Contains(schemeUsed) &&
             _credentialProvider.SupportedSchemes.Contains(schemeUsed))
         {
             bestSchemeMatch = schemeUsed;
@@ -157,7 +157,7 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
             // Send the retry request
             return await base.SendAsync(retryRequest, cancellationToken).ConfigureAwait(false);
         }
-        
+
         return response; // Return the original response if we couldn't handle it
     }
 
@@ -167,7 +167,7 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
     private static HashSet<string> ExtractServerSupportedSchemes(HttpResponseMessage response)
     {
         var serverSchemes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        
+
         if (response.Headers.Contains("WWW-Authenticate"))
         {
             foreach (var authHeader in response.Headers.GetValues("WWW-Authenticate"))
@@ -178,7 +178,7 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
                 serverSchemes.Add(scheme);
             }
         }
-        
+
         return serverSchemes;
     }
 
