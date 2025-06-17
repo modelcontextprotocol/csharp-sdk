@@ -42,7 +42,7 @@ public interface IMcpCredentialProvider
     /// and the authentication scheme that should be used for the next attempt, if any.
     /// </returns>
     Task<McpUnauthorizedResponseResult> HandleUnauthorizedResponseAsync(
-        HttpResponseMessage response, 
+        HttpResponseMessage response,
         string scheme,
         CancellationToken cancellationToken = default);
 }

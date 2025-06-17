@@ -9,7 +9,8 @@ using System.Security.Claims;
 var builder = WebApplication.CreateBuilder(args);
 
 var serverUrl = "http://localhost:7071/";
-var tenantId = "a2213e1c-e51e-4304-9a0d-effe57f31655";
+var tenantId = builder.Configuration["TenantId"];
+var clientId = builder.Configuration["ClientId"];
 var instance = "https://login.microsoftonline.com/";
 
 builder.Services.AddAuthentication(options =>
@@ -26,7 +27,7 @@ builder.Services.AddAuthentication(options =>
         ValidateAudience = true,
         ValidateLifetime = true,
         ValidateIssuerSigningKey = true,
-        ValidAudience = "167b4284-3f92-4436-92ed-38b38f83ae08",
+        ValidAudience = clientId,
         ValidIssuer = $"{instance}{tenantId}/v2.0",
         NameClaimType = "name",
         RoleClaimType = "roles"
@@ -57,7 +58,7 @@ builder.Services.AddAuthentication(options =>
 })
 .AddMcp(options =>
 {
-    options.ProtectedResourceMetadataProvider = context => 
+    options.ProtectedResourceMetadataProvider = context =>
     {
         var metadata = new ProtectedResourceMetadata
         {
@@ -68,9 +69,9 @@ builder.Services.AddAuthentication(options =>
         };
 
         metadata.ScopesSupported.AddRange([
-            "api://167b4284-3f92-4436-92ed-38b38f83ae08/weather.read" 
+            $"api://{clientId}/weather.read"
         ]);
-        
+
         return metadata;
     };
 });
@@ -79,8 +80,8 @@ builder.Services.AddAuthorization();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddMcpServer()
-.WithTools<WeatherTools>()
-.WithHttpTransport();
+    .WithTools<WeatherTools>()
+    .WithHttpTransport();
 
 // Configure HttpClientFactory for weather.gov API
 builder.Services.AddHttpClient("WeatherApi", client =>

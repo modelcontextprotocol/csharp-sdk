@@ -33,7 +33,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
     {
         // Check if the request is for the resource metadata endpoint
         string requestPath = Request.Path.Value ?? string.Empty;
-        
+
         string expectedMetadataPath = this.Options.ResourceMetadataUri?.ToString() ?? string.Empty;
         if (this.Options.ResourceMetadataUri != null && !this.Options.ResourceMetadataUri.IsAbsoluteUri)
         {
@@ -64,14 +64,14 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
     {
         var options = this.Options;
         var resourceMetadataUri = options.ResourceMetadataUri;
-        
+
         string currentPath = resourceMetadataUri?.ToString() ?? string.Empty;
-        
+
         if (resourceMetadataUri != null && resourceMetadataUri.IsAbsoluteUri)
         {
             return currentPath;
         }
-        
+
         // For relative URIs, combine with the base URL
         string baseUrl = GetBaseUrl();
         string relativePath = resourceMetadataUri?.OriginalString.TrimStart('/') ?? string.Empty;
@@ -80,7 +80,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         {
             throw new InvalidOperationException($"Could not create absolute URI for resource metadata. Base URL: {baseUrl}, Relative Path: {relativePath}");
         }
-        
+
         return absoluteUri.ToString();
     }
 
@@ -92,7 +92,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
     {
         var options = this.Options;
         var resourceMetadata = options.GetResourceMetadata(Request.HttpContext);
-        
+
         // Create a copy to avoid modifying the original
         var metadata = new ProtectedResourceMetadata
         {
@@ -102,14 +102,14 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
             ScopesSupported = [.. resourceMetadata.ScopesSupported],
             ResourceDocumentation = resourceMetadata.ResourceDocumentation
         };
-        
+
         Response.StatusCode = StatusCodes.Status200OK;
         Response.ContentType = "application/json";
-        
+
         var json = JsonSerializer.Serialize(
-            metadata, 
+            metadata,
             McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(ProtectedResourceMetadata)));
-        
+
         return Response.WriteAsync(json, cancellationToken);
     }
 
@@ -117,7 +117,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         // If ForwardAuthenticate is set, forward the authentication to the specified scheme
-        if (!string.IsNullOrEmpty(Options.ForwardAuthenticate) && 
+        if (!string.IsNullOrEmpty(Options.ForwardAuthenticate) &&
             Options.ForwardAuthenticate != Scheme.Name)
         {
             // Simply forward the authentication request to the specified scheme and return its result
@@ -136,14 +136,14 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         string rawPrmDocumentUri = GetAbsoluteResourceMetadataUri();
 
         properties ??= new AuthenticationProperties();
-        
+
         // Store the resource_metadata in properties in case other handlers need it
         properties.Items["resource_metadata"] = rawPrmDocumentUri;
-        
+
         // Add the WWW-Authenticate header with Bearer scheme and resource metadata
         string headerValue = $"Bearer realm=\"{Scheme.Name}\", resource_metadata=\"{rawPrmDocumentUri}\"";
         Response.Headers.Append("WWW-Authenticate", headerValue);
-        
+
         return base.HandleChallengeAsync(properties);
     }
 }

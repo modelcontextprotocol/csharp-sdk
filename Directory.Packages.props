@@ -27,7 +27,7 @@
 
   <!-- Product dependencies .NET 9 -->
   <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
-    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.4" />
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="$(System9Version)" />
     <PackageVersion Include="Microsoft.IdentityModel.Tokens" Version="8.9.0" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="$(System9Version)" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="$(System9Version)" />

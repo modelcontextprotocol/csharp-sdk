@@ -36,7 +36,7 @@ public delegate Task<string?> AuthorizationUrlHandler(Uri authorizationUrl, Uri 
 
 /// <summary>
 /// A generic implementation of an OAuth authorization provider for MCP. This does not do any advanced token
-/// protection or caching - it acquires a token and server metadata and holds it in memory. 
+/// protection or caching - it acquires a token and server metadata and holds it in memory.
 /// This is suitable for demonstration and development purposes.
 /// </summary>
 public class GenericOAuthProvider : IMcpCredentialProvider
@@ -55,11 +55,10 @@ public class GenericOAuthProvider : IMcpCredentialProvider
     private readonly ILogger _logger;
     private readonly Func<IReadOnlyList<Uri>, Uri?> _authServerSelector;
     private readonly AuthorizationUrlHandler _authorizationUrlHandler;
-    
+
     // Lazy-initialized shared HttpClient for when no client is provided
     private static readonly Lazy<HttpClient> _defaultHttpClient = new(() => new HttpClient());
 
-    private static readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
     private TokenContainer? _token;
     private AuthorizationServerMetadata? _authServerMetadata;
 
@@ -85,8 +84,8 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         ILogger<GenericOAuthProvider>? logger = null)
         : this(serverUrl, httpClient, authorizationHelpers, clientId, clientSecret, redirectUri, scopes, logger, null, null)
     {
-    }   
-    
+    }
+
     /// <summary>
     /// Initializes a new instance of the <see cref="GenericOAuthProvider"/> class with a custom authorization URL handler.
     /// </summary>
@@ -111,8 +110,8 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         AuthorizationUrlHandler? authorizationUrlHandler)
         : this(serverUrl, httpClient, authorizationHelpers, clientId, clientSecret, redirectUri, scopes, logger, null, authorizationUrlHandler)
     {
-    }    
-    
+    }
+
     /// <summary>
     /// Initializes a new instance of the <see cref="GenericOAuthProvider"/> class with explicit authorization server selection.
     /// </summary>
@@ -140,24 +139,24 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         AuthorizationUrlHandler? authorizationUrlHandler)
     {
         if (serverUrl == null) throw new ArgumentNullException(nameof(serverUrl));
-        
+
         _serverUrl = serverUrl;
         _httpClient = httpClient ?? _defaultHttpClient.Value;
         _authorizationHelpers = authorizationHelpers ?? new AuthorizationHelpers(_httpClient);
         _logger = (ILogger?)logger ?? NullLogger.Instance;
-        
+
         _redirectUri = redirectUri;
         _scopes = scopes?.ToList() ?? [];
         _clientId = clientId;
         _clientSecret = clientSecret;
-        
+
         // Set up authorization server selection strategy
         _authServerSelector = authServerSelector ?? DefaultAuthServerSelector;
-        
+
         // Set up authorization URL handler (use default if not provided)
         _authorizationUrlHandler = authorizationUrlHandler ?? DefaultAuthorizationUrlHandler;
-    }    
-    
+    }
+
     /// <summary>
     /// Default authorization server selection strategy that selects the first available server.
     /// </summary>
@@ -167,7 +166,7 @@ public class GenericOAuthProvider : IMcpCredentialProvider
     {
         return availableServers.FirstOrDefault();
     }
-    
+
     /// <summary>
     /// Default authorization URL handler that displays the URL to the user for manual input.
     /// </summary>
@@ -198,11 +197,11 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         }
 
         return GetBearerTokenAsync(cancellationToken);
-    }    
-    
+    }
+
     /// <inheritdoc />
     public async Task<McpUnauthorizedResponseResult> HandleUnauthorizedResponseAsync(
-        HttpResponseMessage response, 
+        HttpResponseMessage response,
         string scheme,
         CancellationToken cancellationToken = default)
     {
@@ -210,7 +209,7 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         if (scheme != BearerScheme)
         {
             return new McpUnauthorizedResponseResult(false, null);
-        }        
+        }
         try
         {
             return await PerformOAuthAuthorizationAsync(response, cancellationToken);
@@ -234,10 +233,10 @@ public class GenericOAuthProvider : IMcpCredentialProvider
     {
         // Get available authorization servers from the 401 response
         var availableAuthorizationServers = await _authorizationHelpers.GetAvailableAuthorizationServersAsync(
-            response, 
+            response,
             _serverUrl,
             cancellationToken);
-        
+
         if (!availableAuthorizationServers.Any())
         {
             _logger.LogWarning("No authorization servers found in authentication challenge");
@@ -246,20 +245,20 @@ public class GenericOAuthProvider : IMcpCredentialProvider
 
         // Select authorization server using configured strategy
         var selectedAuthServer = SelectAuthorizationServer(availableAuthorizationServers);
-        
+
         if (selectedAuthServer == null)
         {
-            _logger.LogWarning("Authorization server selection returned null. Available servers: {Servers}", 
+            _logger.LogWarning("Authorization server selection returned null. Available servers: {Servers}",
                 string.Join(", ", availableAuthorizationServers));
             return new McpUnauthorizedResponseResult(false, null);
         }
 
-        _logger.LogInformation("Selected authorization server: {Server} from {Count} available servers", 
+        _logger.LogInformation("Selected authorization server: {Server} from {Count} available servers",
             selectedAuthServer, availableAuthorizationServers.Count);
 
         // Get auth server metadata
         var authServerMetadata = await GetAuthServerMetadataAsync(selectedAuthServer, cancellationToken);
-        
+
         if (authServerMetadata == null)
         {
             _logger.LogError("Failed to retrieve metadata for authorization server: {Server}", selectedAuthServer);
@@ -268,7 +267,7 @@ public class GenericOAuthProvider : IMcpCredentialProvider
 
         // Store auth server metadata for future refresh operations
         _authServerMetadata = authServerMetadata;
-        
+
         // Perform the OAuth flow
         var token = await InitiateAuthorizationCodeFlowAsync(authServerMetadata, cancellationToken);
         if (token != null)
@@ -280,8 +279,8 @@ public class GenericOAuthProvider : IMcpCredentialProvider
 
         _logger.LogError("OAuth authorization flow failed");
         return new McpUnauthorizedResponseResult(false, null);
-    }    
-    
+    }
+
     /// <summary>
     /// Selects an authorization server from the available options using the configured selection strategy.
     /// </summary>
@@ -296,7 +295,7 @@ public class GenericOAuthProvider : IMcpCredentialProvider
 
         // Use the configured selection function
         var selected = _authServerSelector(availableServers);
-        
+
         if (selected != null && !availableServers.Contains(selected))
         {
             _logger.LogWarning("Authorization server selector returned a server not in the available list: {Selected}. " +
@@ -314,7 +313,7 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         {
             return _token.AccessToken;
         }
-        
+
         // Try to refresh the token if we have a refresh token
         if (_token?.RefreshToken != null && _authServerMetadata != null)
         {
@@ -325,16 +324,16 @@ public class GenericOAuthProvider : IMcpCredentialProvider
                 return _token.AccessToken;
             }
         }
-        
+
         // No valid token - auth handler will trigger the 401 flow
         return null;
     }
-    
+
     private async Task<AuthorizationServerMetadata?> GetAuthServerMetadataAsync(Uri authServerUri, CancellationToken cancellationToken)
     {
         var baseUrl = authServerUri.ToString();
         if (!baseUrl.EndsWith("/")) baseUrl += "/";
-        
+
         foreach (var path in new[] { ".well-known/openid-configuration", ".well-known/oauth-authorization-server" })
         {
             try
@@ -344,14 +343,14 @@ public class GenericOAuthProvider : IMcpCredentialProvider
                 {
                     using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
                     var metadata = await JsonSerializer.DeserializeAsync<AuthorizationServerMetadata>(stream, McpJsonUtilities.JsonContext.Default.AuthorizationServerMetadata, cancellationToken);
-                    
+
                     if (metadata != null)
                     {
                         metadata.ResponseTypesSupported ??= ["code"];
                         metadata.GrantTypesSupported ??= ["authorization_code", "refresh_token"];
                         metadata.TokenEndpointAuthMethodsSupported ??= ["client_secret_basic"];
                         metadata.CodeChallengeMethodsSupported ??= ["S256"];
-                        
+
                         return metadata;
                     }
                 }
@@ -361,7 +360,7 @@ public class GenericOAuthProvider : IMcpCredentialProvider
                 _logger.LogError(ex, "Error fetching auth server metadata from {Path}", path);
             }
         }
-        
+
         return null;
     }
 
@@ -386,13 +385,13 @@ public class GenericOAuthProvider : IMcpCredentialProvider
                 var authValue = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_clientId}:{_clientSecret}"));
                 request.Headers.Authorization = new AuthenticationHeaderValue("Basic", authValue);
             }
-            
+
             var response = await _httpClient.SendAsync(request, cancellationToken);
             if (response.IsSuccessStatusCode)
             {
                 using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
                 var tokenResponse = await JsonSerializer.DeserializeAsync<TokenContainer>(stream, McpJsonUtilities.JsonContext.Default.TokenContainer, cancellationToken);
-                
+
                 if (tokenResponse != null)
                 {
                     tokenResponse.ObtainedAt = DateTimeOffset.UtcNow;
@@ -400,7 +399,7 @@ public class GenericOAuthProvider : IMcpCredentialProvider
                     {
                         tokenResponse.RefreshToken = refreshToken;
                     }
-                    
+
                     return tokenResponse;
                 }
             }
@@ -409,25 +408,25 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         {
             _logger.LogError(ex, "Error refreshing token");
         }
-        
+
         return null;
     }
 
     private async Task<TokenContainer?> InitiateAuthorizationCodeFlowAsync(
-        AuthorizationServerMetadata authServerMetadata, 
+        AuthorizationServerMetadata authServerMetadata,
         CancellationToken cancellationToken)
     {
         var codeVerifier = GenerateCodeVerifier();
         var codeChallenge = GenerateCodeChallenge(codeVerifier);
-        
+
         var authUrl = BuildAuthorizationUrl(authServerMetadata, codeChallenge);
         var authCode = await GetAuthorizationCodeAsync(authUrl, cancellationToken);
-        if (string.IsNullOrEmpty(authCode)) 
+        if (string.IsNullOrEmpty(authCode))
             return null;
-        
+
         return await ExchangeCodeForTokenAsync(authServerMetadata, authCode!, codeVerifier, cancellationToken);
     }
-    
+
     private Uri BuildAuthorizationUrl(AuthorizationServerMetadata authServerMetadata, string codeChallenge)
     {
         if (authServerMetadata.AuthorizationEndpoint.Scheme != Uri.UriSchemeHttp &&
@@ -442,7 +441,7 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         queryParams["response_type"] = "code";
         queryParams["code_challenge"] = codeChallenge;
         queryParams["code_challenge_method"] = "S256";
-        
+
         if (_scopes.Any())
         {
             queryParams["scope"] = string.Join(" ", _scopes);
@@ -473,26 +472,26 @@ public class GenericOAuthProvider : IMcpCredentialProvider
             ["client_id"] = _clientId,
             ["code_verifier"] = codeVerifier
         });
-        
+
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.TokenEndpoint)
             {
                 Content = requestContent
             };
-            
+
             if (!string.IsNullOrEmpty(_clientSecret))
             {
                 var authValue = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_clientId}:{_clientSecret}"));
                 request.Headers.Authorization = new AuthenticationHeaderValue("Basic", authValue);
             }
-            
+
             var response = await _httpClient.SendAsync(request, cancellationToken);
             if (response.IsSuccessStatusCode)
             {
                 using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
                 var tokenResponse = await JsonSerializer.DeserializeAsync<TokenContainer>(stream, McpJsonUtilities.JsonContext.Default.TokenContainer, cancellationToken);
-                
+
                 if (tokenResponse != null)
                 {
                     tokenResponse.ObtainedAt = DateTimeOffset.UtcNow;
@@ -510,10 +509,10 @@ public class GenericOAuthProvider : IMcpCredentialProvider
         {
             _logger.LogError(ex, "Exception during token exchange");
         }
-        
+
         return null;
     }
-    
+
     private string GenerateCodeVerifier()
     {
         var bytes = new byte[32];
@@ -524,7 +523,7 @@ public class GenericOAuthProvider : IMcpCredentialProvider
             .Replace('+', '-')
             .Replace('/', '_');
     }
-    
+
     private string GenerateCodeChallenge(string codeVerifier)
     {
         using var sha256 = SHA256.Create();

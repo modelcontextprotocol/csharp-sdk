@@ -9,18 +9,19 @@ namespace ModelContextProtocol.AspNetCore.Authentication;
 /// </summary>
 public class McpAuthenticationOptions : AuthenticationSchemeOptions
 {
-    private static readonly Uri DefaultResourceMetadataUri = new("/.well-known/oauth-protected-resource", UriKind.Relative);   
-   
+    private static readonly Uri DefaultResourceMetadataUri = new("/.well-known/oauth-protected-resource", UriKind.Relative);
+
     private Func<HttpContext, ProtectedResourceMetadata>? _resourceMetadataProvider;
 
-    private ProtectedResourceMetadata? _resourceMetadata;    
-    
+    private ProtectedResourceMetadata? _resourceMetadata;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="McpAuthenticationOptions"/> class.
     /// </summary>
     public McpAuthenticationOptions()
     {
-        base.ForwardAuthenticate = "Bearer";
+        // "Bearer" is JwtBearerDefaults.AuthenticationScheme, but we don't have a reference to the JwtBearer package here.
+        ForwardAuthenticate = "Bearer";
         ResourceMetadataUri = DefaultResourceMetadataUri;
         Events = new McpAuthenticationEvents();
     }
@@ -40,15 +41,15 @@ public class McpAuthenticationOptions : AuthenticationSchemeOptions
     /// <remarks>
     /// This URI will be included in the WWW-Authenticate header when a 401 response is returned.
     /// </remarks>
-    public Uri ResourceMetadataUri { get; set; }    
-    
+    public Uri ResourceMetadataUri { get; set; }
+
     /// <summary>
     /// Gets or sets the static protected resource metadata.
     /// </summary>
     /// <remarks>
     /// This contains the OAuth metadata for the protected resource, including authorization servers,
     /// supported scopes, and other information needed for clients to authenticate.
-    /// Setting this property will automatically update the <see cref="ProtectedResourceMetadataProvider"/> 
+    /// Setting this property will automatically update the <see cref="ProtectedResourceMetadataProvider"/>
     /// to return this static instance.
     /// </remarks>
     /// <exception cref="ArgumentNullException">Thrown when trying to set a null value.</exception>
@@ -64,13 +65,13 @@ public class McpAuthenticationOptions : AuthenticationSchemeOptions
             {
                 throw new ArgumentException("The Resource property of the metadata cannot be null. A valid resource URI is required.", nameof(value));
             }
-            
+
             _resourceMetadata = value;
             // When static metadata is set, update the provider to use it
             _resourceMetadataProvider = _ => _resourceMetadata;
         }
-    }    
-    
+    }
+
     /// <summary>
     /// Gets or sets a delegate that dynamically provides resource metadata based on the HTTP context.
     /// </summary>
@@ -84,7 +85,7 @@ public class McpAuthenticationOptions : AuthenticationSchemeOptions
         get => _resourceMetadataProvider;
         set => _resourceMetadataProvider = value;
     }
-    
+
     /// <summary>
     /// Gets the resource metadata for the current request.
     /// </summary>
@@ -94,7 +95,7 @@ public class McpAuthenticationOptions : AuthenticationSchemeOptions
     internal ProtectedResourceMetadata GetResourceMetadata(HttpContext context)
     {
         var provider = _resourceMetadataProvider;
-        
+
         return provider != null
             ? provider(context)
             : _resourceMetadata ?? throw new InvalidOperationException(

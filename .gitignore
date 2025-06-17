@@ -81,6 +81,3 @@ docs/api
 # Rider
 .idea/
 .idea_modules/
-
-# Misc project metadata
-.specs/

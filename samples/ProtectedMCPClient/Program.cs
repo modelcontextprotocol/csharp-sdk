@@ -1,5 +1,6 @@
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 using System.Diagnostics;
 using System.Net;
 using System.Text;
@@ -15,6 +16,7 @@ class Program
         Console.WriteLine();
 
         var serverUrl = "http://localhost:7071/sse";
+        var clientId = Environment.GetEnvironmentVariable("CLIENT_ID") ?? throw new Exception("The CLIENT_ID environment variable is not set.");
 
         // We can customize a shared HttpClient with a custom handler if desired
         var sharedHandler = new SocketsHttpHandler
@@ -29,10 +31,10 @@ class Program
             new Uri(serverUrl),
             httpClient,
             null, // AuthorizationHelpers will be created automatically
-            clientId: "6ad97b5f-7a7b-413f-8603-7a3517d4adb8",
+            clientId: clientId,
             clientSecret: "", // No secret needed for this client
             redirectUri: new Uri("http://localhost:1179/callback"),
-            scopes: ["api://167b4284-3f92-4436-92ed-38b38f83ae08/weather.read"],
+            scopes: [$"api://{clientId}/weather.read"],
             logger: null,
             authorizationUrlHandler: HandleAuthorizationUrlAsync
         );
@@ -75,7 +77,7 @@ class Program
                     new Dictionary<string, object?> { { "state", "WA" } }
                 );
 
-                Console.WriteLine("Result: " + result.Content[0].Text);
+                Console.WriteLine("Result: " + ((TextContentBlock)result.Content[0]).Text);
                 Console.WriteLine();
             }
         }
@@ -102,7 +104,7 @@ class Program
     /// <param name="authorizationUrl">The authorization URL to open in the browser.</param>
     /// <param name="redirectUri">The redirect URI where the authorization code will be sent.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The authorization code extracted from the callback, or null if the operation failed.</returns>    
+    /// <returns>The authorization code extracted from the callback, or null if the operation failed.</returns>
     private static async Task<string?> HandleAuthorizationUrlAsync(Uri authorizationUrl, Uri redirectUri, CancellationToken cancellationToken)
     {
         Console.WriteLine("Starting OAuth authorization flow...");

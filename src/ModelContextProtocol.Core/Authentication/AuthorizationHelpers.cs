@@ -8,7 +8,8 @@ namespace ModelContextProtocol.Authentication;
 /// Provides utility methods for handling authentication in MCP clients.
 /// </summary>
 public class AuthorizationHelpers
-{    private readonly HttpClient _httpClient;
+{
+    private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
     private static readonly Lazy<HttpClient> _defaultHttpClient = new(() => new HttpClient());
 
@@ -30,17 +31,18 @@ public class AuthorizationHelpers
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>The fetched ProtectedResourceMetadata, or null if it couldn't be fetched.</returns>
     private async Task<ProtectedResourceMetadata?> FetchProtectedResourceMetadataAsync(
-        Uri metadataUrl, 
-        CancellationToken cancellationToken = default)    {
+        Uri metadataUrl,
+        CancellationToken cancellationToken = default)
+    {
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, metadataUrl);
             var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
-            
+
             using var content = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            return await JsonSerializer.DeserializeAsync(content, 
-                McpJsonUtilities.JsonContext.Default.ProtectedResourceMetadata, 
+            return await JsonSerializer.DeserializeAsync(content,
+                McpJsonUtilities.JsonContext.Default.ProtectedResourceMetadata,
                 cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -73,7 +75,7 @@ public class AuthorizationHelpers
 
         return string.Equals(normalizedMetadataResource, normalizedResourceLocation, StringComparison.OrdinalIgnoreCase);
     }
-    
+
     /// <summary>
     /// Normalizes a URI for consistent comparison.
     /// </summary>
@@ -85,7 +87,7 @@ public class AuthorizationHelpers
         {
             Port = -1  // Always remove port
         };
-        
+
         if (builder.Path == "/")
         {
             builder.Path = string.Empty;
@@ -94,8 +96,9 @@ public class AuthorizationHelpers
         {
             builder.Path = builder.Path.TrimEnd('/');
         }
-        
-        return builder.Uri.ToString();    }
+
+        return builder.Uri.ToString();
+    }
 
     /// <summary>
     /// Responds to a 401 challenge by parsing the WWW-Authenticate header, fetching the resource metadata,
@@ -143,7 +146,7 @@ public class AuthorizationHelpers
             throw new InvalidOperationException("The WWW-Authenticate header does not contain a resource_metadata parameter");
         }
 
-        Uri metadataUri = new(resourceMetadataUrl);        
+        Uri metadataUri = new(resourceMetadataUrl);
         var metadata = await FetchProtectedResourceMetadataAsync(metadataUri, cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException($"Failed to fetch resource metadata from {resourceMetadataUrl}");
 
@@ -177,40 +180,40 @@ public class AuthorizationHelpers
         {
             string trimmedPart = part.Trim();
             int equalsIndex = trimmedPart.IndexOf('=');
-            
+
             if (equalsIndex <= 0)
             {
                 continue;
             }
-            
+
             string key = trimmedPart.Substring(0, equalsIndex).Trim();
-            
+
             if (string.Equals(key, parameterName, StringComparison.OrdinalIgnoreCase))
             {
                 string value = trimmedPart.Substring(equalsIndex + 1).Trim();
-                
+
                 if (value.StartsWith("\"") && value.EndsWith("\""))
                 {
                     value = value.Substring(1, value.Length - 2);
                 }
-                
+
                 return value;
             }
         }
-        
+
         return null;
     }
 
     /// <summary>
     /// Handles a 401 Unauthorized response and returns all available authorization servers.
-    /// This is the primary method for OAuth discovery - use this when you want full control 
+    /// This is the primary method for OAuth discovery - use this when you want full control
     /// over authorization server selection.
     /// </summary>
     /// <param name="response">The 401 HTTP response.</param>
     /// <param name="serverUrl">The server URL that returned the 401.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A list of available authorization server URIs.</returns>
-    /// <exception cref="ArgumentNullException">Thrown when response is null.</exception>    
+    /// <exception cref="ArgumentNullException">Thrown when response is null.</exception>
     public async Task<IReadOnlyList<Uri>> GetAvailableAuthorizationServersAsync(
         HttpResponseMessage response,
         Uri serverUrl,
