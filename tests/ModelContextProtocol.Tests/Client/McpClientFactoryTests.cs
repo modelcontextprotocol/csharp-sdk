@@ -70,7 +70,7 @@ public class McpClientFactoryTests
                     SamplingHandler = async (c, p, t) =>
                         new CreateMessageResult 
                         { 
-                            Content = new Content { Text = "result" }, 
+                            Content = new TextContentBlock { Text = "result" }, 
                             Model = "test-model", 
                             Role = Role.User, 
                             StopReason = "endTurn" 
@@ -109,6 +109,7 @@ public class McpClientFactoryTests
         private readonly Channel<JsonRpcMessage> _channel = Channel.CreateUnbounded<JsonRpcMessage>();
 
         public bool IsConnected => true;
+        public string? SessionId => null;
 
         public ChannelReader<JsonRpcMessage> MessageReader => _channel.Reader;
 

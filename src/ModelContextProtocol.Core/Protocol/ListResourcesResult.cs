@@ -18,11 +18,11 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
-public class ListResourcesResult : PaginatedResult
+public sealed class ListResourcesResult : PaginatedResult
 {
     /// <summary>
     /// A list of resources that the server offers.
     /// </summary>
     [JsonPropertyName("resources")]
-    public List<Resource> Resources { get; set; } = [];
+    public IList<Resource> Resources { get; set; } = [];
 }

@@ -7,6 +7,7 @@ using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Server;
 
@@ -14,6 +15,7 @@ namespace ModelContextProtocol.Server;
 internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 {
     private readonly ILogger _logger;
+    private readonly bool _structuredOutputRequiresWrapping;
 
     /// <summary>
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
@@ -84,6 +86,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             Description = options?.Description,
             MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
             SerializerOptions = options?.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
+            JsonSchemaCreateOptions = options?.SchemaCreateOptions,
             ConfigureParameterBinding = pi =>
             {
                 if (pi.ParameterType == typeof(RequestContext<CallToolRequestParams>))
@@ -115,7 +118,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                         {
                             var requestContent = GetRequestContext(args);
                             if (requestContent?.Server is { } server &&
-                                requestContent?.Params?.Meta?.ProgressToken is { } progressToken)
+                                requestContent?.Params?.ProgressToken is { } progressToken)
                             {
                                 return new TokenProgress(server, progressToken);
                             }
@@ -164,7 +167,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                     return null;
                 }
             },
-            JsonSchemaCreateOptions = options?.SchemaCreateOptions,
         };
 
     /// <summary>Creates an <see cref="McpServerTool"/> that wraps the specified <see cref="AIFunction"/>.</summary>
@@ -176,7 +178,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         {
             Name = options?.Name ?? function.Name,
             Description = options?.Description ?? function.Description,
-            InputSchema = function.JsonSchema,     
+            InputSchema = function.JsonSchema,
+            OutputSchema = CreateOutputSchema(function, options, out bool structuredOutputRequiresWrapping),
         };
 
         if (options is not null)
@@ -187,18 +190,20 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 options.OpenWorld is not null ||
                 options.ReadOnly is not null)
             {
+                tool.Title = options.Title;
+
                 tool.Annotations = new()
                 {
-                    Title = options?.Title,
-                    IdempotentHint = options?.Idempotent,
-                    DestructiveHint = options?.Destructive,
-                    OpenWorldHint = options?.OpenWorld,
-                    ReadOnlyHint = options?.ReadOnly,
+                    Title = options.Title,
+                    IdempotentHint = options.Idempotent,
+                    DestructiveHint = options.Destructive,
+                    OpenWorldHint = options.OpenWorld,
+                    ReadOnlyHint = options.ReadOnly,
                 };
             }
         }
 
-        return new AIFunctionMcpServerTool(function, tool, options?.Services);
+        return new AIFunctionMcpServerTool(function, tool, options?.Services, structuredOutputRequiresWrapping);
     }
 
     private static McpServerToolCreateOptions DeriveOptions(MethodInfo method, McpServerToolCreateOptions? options)
@@ -229,6 +234,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             {
                 newOptions.ReadOnly ??= readOnly;
             }
+
+            newOptions.UseStructuredContent = toolAttr.UseStructuredContent;
         }
 
         if (method.GetCustomAttribute<DescriptionAttribute>() is { } descAttr)
@@ -243,18 +250,19 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     internal AIFunction AIFunction { get; }
 
     /// <summary>Initializes a new instance of the <see cref="McpServerTool"/> class.</summary>
-    private AIFunctionMcpServerTool(AIFunction function, Tool tool, IServiceProvider? serviceProvider)
+    private AIFunctionMcpServerTool(AIFunction function, Tool tool, IServiceProvider? serviceProvider, bool structuredOutputRequiresWrapping)
     {
         AIFunction = function;
         ProtocolTool = tool;
         _logger = serviceProvider?.GetService<ILoggerFactory>()?.CreateLogger<McpServerTool>() ?? (ILogger)NullLogger.Instance;
+        _structuredOutputRequiresWrapping = structuredOutputRequiresWrapping;
     }
 
     /// <inheritdoc />
     public override Tool ProtocolTool { get; }
 
     /// <inheritdoc />
-    public override async ValueTask<CallToolResponse> InvokeAsync(
+    public override async ValueTask<CallToolResult> InvokeAsync(
         RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(request);
@@ -291,61 +299,142 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return new()
             {
                 IsError = true,
-                Content = [new() { Text = errorMessage, Type = "text" }],
+                Content = [new TextContentBlock { Text = errorMessage }],
             };
         }
 
+        JsonNode? structuredContent = CreateStructuredResponse(result);
         return result switch
         {
             AIContent aiContent => new()
             {
                 Content = [aiContent.ToContent()],
+                StructuredContent = structuredContent,
                 IsError = aiContent is ErrorContent
             },
 
             null => new()
             {
-                Content = []
+                Content = [],
+                StructuredContent = structuredContent,
             },
             
             string text => new()
             {
-                Content = [new() { Text = text, Type = "text" }]
+                Content = [new TextContentBlock { Text = text }],
+                StructuredContent = structuredContent,
             },
             
-            Content content => new()
+            ContentBlock content => new()
             {
-                Content = [content]
+                Content = [content],
+                StructuredContent = structuredContent,
             },
             
             IEnumerable<string> texts => new()
             {
-                Content = [.. texts.Select(x => new Content() { Type = "text", Text = x ?? string.Empty })]
+                Content = [.. texts.Select(x => new TextContentBlock { Text = x ?? string.Empty })],
+                StructuredContent = structuredContent,
             },
             
-            IEnumerable<AIContent> contentItems => ConvertAIContentEnumerableToCallToolResponse(contentItems),
+            IEnumerable<AIContent> contentItems => ConvertAIContentEnumerableToCallToolResult(contentItems, structuredContent),
             
-            IEnumerable<Content> contents => new()
+            IEnumerable<ContentBlock> contents => new()
             {
-                Content = [.. contents]
+                Content = [.. contents],
+                StructuredContent = structuredContent,
             },
             
-            CallToolResponse callToolResponse => callToolResponse,
+            CallToolResult callToolResponse => callToolResponse,
 
             _ => new()
             {
-                Content = [new()
-                {
-                    Text = JsonSerializer.Serialize(result, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))),
-                    Type = "text"
-                }]
+                Content = [new TextContentBlock { Text = JsonSerializer.Serialize(result, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))) }],
+                StructuredContent = structuredContent,
             },
         };
     }
 
-    private static CallToolResponse ConvertAIContentEnumerableToCallToolResponse(IEnumerable<AIContent> contentItems)
+    private static JsonElement? CreateOutputSchema(AIFunction function, McpServerToolCreateOptions? toolCreateOptions, out bool structuredOutputRequiresWrapping)
     {
-        List<Content> contentList = [];
+        structuredOutputRequiresWrapping = false;
+
+        if (toolCreateOptions?.UseStructuredContent is not true)
+        {
+            return null;
+        }
+
+        if (function.ReturnJsonSchema is not JsonElement outputSchema)
+        {
+            return null;
+        }
+
+        if (outputSchema.ValueKind is not JsonValueKind.Object ||
+            !outputSchema.TryGetProperty("type", out JsonElement typeProperty) ||
+            typeProperty.ValueKind is not JsonValueKind.String ||
+            typeProperty.GetString() is not "object")
+        {
+            // If the output schema is not an object, need to modify to be a valid MCP output schema.
+            JsonNode? schemaNode = JsonSerializer.SerializeToNode(outputSchema, McpJsonUtilities.JsonContext.Default.JsonElement);
+
+            if (schemaNode is JsonObject objSchema &&
+                objSchema.TryGetPropertyValue("type", out JsonNode? typeNode) &&
+                typeNode is JsonArray { Count: 2 } typeArray && typeArray.Any(type => (string?)type is "object") && typeArray.Any(type => (string?)type is "null"))
+            {
+                // For schemas that are of type ["object", "null"], replace with just "object" to be conformant.
+                objSchema["type"] = "object";
+            }
+            else
+            {
+                // For anything else, wrap the schema in an envelope with a "result" property.
+                schemaNode = new JsonObject
+                {
+                    ["type"] = "object",
+                    ["properties"] = new JsonObject
+                    {
+                        ["result"] = schemaNode
+                    },
+                    ["required"] = new JsonArray { (JsonNode)"result" }
+                };
+
+                structuredOutputRequiresWrapping = true;
+            }
+
+            outputSchema = JsonSerializer.Deserialize(schemaNode, McpJsonUtilities.JsonContext.Default.JsonElement);
+        }
+
+        return outputSchema;
+    }
+
+    private JsonNode? CreateStructuredResponse(object? aiFunctionResult)
+    {
+        if (ProtocolTool.OutputSchema is null)
+        {
+            // Only provide structured responses if the tool has an output schema defined.
+            return null;
+        }
+
+        JsonNode? nodeResult = aiFunctionResult switch
+        {
+            JsonNode node => node,
+            JsonElement jsonElement => JsonSerializer.SerializeToNode(jsonElement, McpJsonUtilities.JsonContext.Default.JsonElement),
+            _ => JsonSerializer.SerializeToNode(aiFunctionResult, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))),
+        };
+
+        if (_structuredOutputRequiresWrapping)
+        {
+            return new JsonObject
+            {
+                ["result"] = nodeResult
+            };
+        }
+
+        return nodeResult;
+    }
+
+    private static CallToolResult ConvertAIContentEnumerableToCallToolResult(IEnumerable<AIContent> contentItems, JsonNode? structuredContent)
+    {
+        List<ContentBlock> contentList = [];
         bool allErrorContent = true;
         bool hasAny = false;
 
@@ -363,6 +452,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         return new()
         {
             Content = contentList,
+            StructuredContent = structuredContent,
             IsError = allErrorContent && hasAny
         };
     }

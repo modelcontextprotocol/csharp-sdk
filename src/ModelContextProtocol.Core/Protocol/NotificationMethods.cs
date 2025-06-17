@@ -62,7 +62,7 @@ public static class NotificationMethods
     /// method to get the updated list of roots from the client.
     /// </para>
     /// </remarks>
-    public const string RootsUpdatedNotification = "notifications/roots/list_changed";
+    public const string RootsListChangedNotification = "notifications/roots/list_changed";
 
     /// <summary>
     /// The name of the notification sent by the server when a log message is generated.

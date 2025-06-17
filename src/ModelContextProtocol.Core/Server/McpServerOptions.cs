@@ -5,7 +5,7 @@ namespace ModelContextProtocol.Server;
 /// <summary>
 /// Provides configuration options for the MCP server.
 /// </summary>
-public class McpServerOptions
+public sealed class McpServerOptions
 {
     /// <summary>
     /// Gets or sets information about this server implementation, including its name and version.

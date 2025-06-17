@@ -27,7 +27,6 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
     private readonly CancellationTokenSource _connectionCts;
     private readonly ILogger _logger;
 
-    private string? _mcpSessionId;
     private string? _negotiatedProtocolVersion;
     private Task? _getReceiveTask;
 
@@ -86,7 +85,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
             },
         };
 
-        CopyAdditionalHeaders(httpRequestMessage.Headers, _options.AdditionalHeaders, _mcpSessionId, _negotiatedProtocolVersion);
+        CopyAdditionalHeaders(httpRequestMessage.Headers, _options.AdditionalHeaders, SessionId, _negotiatedProtocolVersion);
 
         var response = await _httpClient.SendAsync(httpRequestMessage, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
 
@@ -125,7 +124,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
             // We've successfully initialized! Copy session-id and protocol version, then start GET request if any.
             if (response.Headers.TryGetValues("mcp-session-id", out var sessionIdValues))
             {
-                _mcpSessionId = sessionIdValues.FirstOrDefault();
+                SessionId = sessionIdValues.FirstOrDefault();
             }
 
             var initializeResult = JsonSerializer.Deserialize(initResponse.Result, McpJsonUtilities.JsonContext.Default.InitializeResult);
@@ -174,7 +173,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         // Send a GET request to handle any unsolicited messages not sent over a POST response.
         using var request = new HttpRequestMessage(HttpMethod.Get, _options.Endpoint);
         request.Headers.Accept.Add(s_textEventStreamMediaType);
-        CopyAdditionalHeaders(request.Headers, _options.AdditionalHeaders, _mcpSessionId, _negotiatedProtocolVersion);
+        CopyAdditionalHeaders(request.Headers, _options.AdditionalHeaders, SessionId, _negotiatedProtocolVersion);
 
         using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, _connectionCts.Token).ConfigureAwait(false);
 
@@ -251,7 +250,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
     internal static void CopyAdditionalHeaders(
         HttpRequestHeaders headers,
-        Dictionary<string, string>? additionalHeaders,
+        IDictionary<string, string>? additionalHeaders,
         string? sessionId = null,
         string? protocolVersion = null)
     {

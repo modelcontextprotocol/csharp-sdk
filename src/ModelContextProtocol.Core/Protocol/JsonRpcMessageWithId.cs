@@ -14,6 +14,11 @@ namespace ModelContextProtocol.Protocol;
 /// </remarks>
 public abstract class JsonRpcMessageWithId : JsonRpcMessage
 {
+    /// <summary>Prevent external derivations.</summary>
+    private protected JsonRpcMessageWithId()
+    {
+    }
+
     /// <summary>
     /// Gets the message identifier.
     /// </summary>

@@ -9,7 +9,7 @@ namespace ModelContextProtocol.Protocol;
 /// This class contains properties that are used by the Model Context Protocol
 /// for features like progress tracking and other protocol-specific capabilities.
 /// </remarks>
-public class RequestParamsMetadata
+public sealed class RequestParamsMetadata
 {
     /// <summary>
     /// Gets or sets an opaque token that will be attached to any subsequent progress notifications.

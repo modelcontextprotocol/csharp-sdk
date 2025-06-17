@@ -5,8 +5,8 @@ using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 #if !NET9_0_OR_GREATER
 using System.Reflection;
-using System.Text.Json;
 #endif
+using System.Text.Json;
 using System.Text.Json.Serialization;
 #if !NET9_0_OR_GREATER
 using ModelContextProtocol;
@@ -65,6 +65,31 @@ namespace ModelContextProtocol
                     name;
         }
 #endif
+    }
+
+    /// <summary>
+    /// A JSON converter for enums that allows customizing the serialized string value of enum members
+    /// using the <see cref="JsonStringEnumMemberNameAttribute"/>.
+    /// </summary>
+    /// <remarks>
+    /// This is a temporary workaround for lack of System.Text.Json's JsonStringEnumConverter&lt;T&gt;
+    /// 9.x support for custom enum member naming. It will be replaced by the built-in functionality
+    /// once .NET 9 is fully adopted.
+    /// </remarks>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    [RequiresUnreferencedCode("Requires unreferenced code to instantiate the generic enum converter.")]
+    [RequiresDynamicCode("Requires dynamic code to instantiate the generic enum converter.")]
+    public sealed class CustomizableJsonStringEnumConverter : JsonConverterFactory
+    {
+        /// <inheritdoc/>
+        public override bool CanConvert(Type typeToConvert) => typeToConvert.IsEnum;
+        /// <inheritdoc/>
+        public override JsonConverter? CreateConverter(Type typeToConvert, JsonSerializerOptions options)
+        {
+            Type converterType = typeof(CustomizableJsonStringEnumConverter<>).MakeGenericType(typeToConvert)!;
+            var factory = (JsonConverterFactory)Activator.CreateInstance(converterType)!;
+            return factory.CreateConverter(typeToConvert, options);
+        }
     }
 }
 

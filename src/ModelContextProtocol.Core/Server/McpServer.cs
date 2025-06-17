@@ -96,6 +96,10 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         InitializeSession(transport);
     }
 
+    /// <inheritdoc/>
+    public string? SessionId => _sessionTransport.SessionId;
+
+    /// <inheritdoc/>
     public ServerCapabilities ServerCapabilities { get; } = new();
 
     /// <inheritdoc />
@@ -238,7 +242,13 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
                 if (request.Params?.Cursor is null)
                 {
-                    result.Resources.AddRange(resources.Select(t => t.ProtocolResource).OfType<Resource>());
+                    foreach (var r in resources)
+                    {
+                        if (r.ProtocolResource is { } resource)
+                        {
+                            result.Resources.Add(resource);
+                        }
+                    }
                 }
 
                 return result;
@@ -253,7 +263,13 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
                 if (request.Params?.Cursor is null)
                 {
-                    result.ResourceTemplates.AddRange(resources.Where(t => t.IsTemplated).Select(t => t.ProtocolResourceTemplate));
+                    foreach (var rt in resources)
+                    {
+                        if (rt.IsTemplated)
+                        {
+                            result.ResourceTemplates.Add(rt.ProtocolResourceTemplate);
+                        }
+                    }
                 }
 
                 return result;
@@ -362,7 +378,10 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
                 if (request.Params?.Cursor is null)
                 {
-                    result.Prompts.AddRange(prompts.Select(t => t.ProtocolPrompt));
+                    foreach (var p in prompts)
+                    {
+                        result.Prompts.Add(p.ProtocolPrompt);
+                    }
                 }
 
                 return result;
@@ -427,7 +446,10 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
                 if (request.Params?.Cursor is null)
                 {
-                    result.Tools.AddRange(tools.Select(t => t.ProtocolTool));
+                    foreach (var t in tools)
+                    {
+                        result.Tools.Add(t.ProtocolTool);
+                    }
                 }
 
                 return result;
@@ -463,7 +485,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             RequestMethods.ToolsCall,
             callToolHandler,
             McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
-            McpJsonUtilities.JsonContext.Default.CallToolResponse);
+            McpJsonUtilities.JsonContext.Default.CallToolResult);
     }
 
     private void ConfigureLogging(McpServerOptions options)

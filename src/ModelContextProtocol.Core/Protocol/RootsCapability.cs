@@ -19,7 +19,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
-public class RootsCapability
+public sealed class RootsCapability
 {
     /// <summary>
     /// Gets or sets whether the client supports notifications for changes to the roots list.

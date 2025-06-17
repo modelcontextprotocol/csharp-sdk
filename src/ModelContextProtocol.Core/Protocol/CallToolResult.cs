@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -19,13 +20,19 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
-public class CallToolResponse
+public sealed class CallToolResult : Result
 {
     /// <summary>
     /// Gets or sets the response content from the tool call.
     /// </summary>
     [JsonPropertyName("content")]
-    public List<Content> Content { get; set; } = [];
+    public IList<ContentBlock> Content { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets an optional JSON object representing the structured result of the tool call.
+    /// </summary>
+    [JsonPropertyName("structuredContent")]
+    public JsonNode? StructuredContent { get; set; }
 
     /// <summary>
     /// Gets or sets an indication of whether the tool call was unsuccessful.

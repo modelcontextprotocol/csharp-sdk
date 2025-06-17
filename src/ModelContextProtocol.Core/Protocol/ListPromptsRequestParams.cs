@@ -8,4 +8,4 @@ namespace ModelContextProtocol.Protocol;
 /// The server responds with a <see cref="ListPromptsResult"/> containing the available prompts.
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
-public class ListPromptsRequestParams : PaginatedRequestParams;
+public sealed class ListPromptsRequestParams : PaginatedRequestParams;

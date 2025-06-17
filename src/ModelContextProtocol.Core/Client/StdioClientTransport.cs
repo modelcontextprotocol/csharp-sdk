@@ -146,6 +146,8 @@ public sealed partial class StdioClientTransport : IClientTransport
                         stderrRollingLog.Enqueue(data);
                     }
 
+                    _options.StandardErrorLines?.Invoke(data);
+
                     LogReadStderr(logger, endpointName, data);
                 }
             };

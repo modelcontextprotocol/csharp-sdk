@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Microsoft.Extensions.Primitives;
 using Microsoft.Net.Http.Headers;
 using ModelContextProtocol.AspNetCore.Stateless;
 using ModelContextProtocol.Protocol;
@@ -136,6 +135,7 @@ internal sealed class StreamableHttpHandler(
             var transport = new StreamableHttpServerTransport
             {
                 Stateless = true,
+                SessionId = sessionId,
             };
             session = await CreateSessionAsync(context, transport, sessionId, statelessSessionId);
         }
@@ -184,7 +184,10 @@ internal sealed class StreamableHttpHandler(
         if (!HttpServerTransportOptions.Stateless)
         {
             sessionId = MakeNewSessionId();
-            transport = new();
+            transport = new()
+            {
+                SessionId = sessionId,
+            };
             context.Response.Headers["mcp-session-id"] = sessionId;
         }
         else
@@ -286,21 +289,19 @@ internal sealed class StreamableHttpHandler(
 
     private void ScheduleStatelessSessionIdWrite(HttpContext context, StreamableHttpServerTransport transport)
     {
-        context.Response.OnStarting(() =>
+        transport.OnInitRequestReceived = initRequestParams =>
         {
             var statelessId = new StatelessSessionId
             {
-                ClientInfo = transport?.InitializeRequest?.ClientInfo,
+                ClientInfo = initRequestParams?.ClientInfo,
                 UserIdClaim = GetUserIdClaim(context.User),
             };
 
             var sessionJson = JsonSerializer.Serialize(statelessId, StatelessSessionIdJsonContext.Default.StatelessSessionId);
-            var sessionId = Protector.Protect(sessionJson);
-
-            context.Response.Headers["mcp-session-id"] = sessionId;
-
-            return Task.CompletedTask;
-        });
+            transport.SessionId = Protector.Protect(sessionJson);
+            context.Response.Headers["mcp-session-id"] = transport.SessionId;
+            return ValueTask.CompletedTask;
+        };
     }
 
     internal static Task RunSessionAsync(HttpContext httpContext, IMcpServer session, CancellationToken requestAborted)

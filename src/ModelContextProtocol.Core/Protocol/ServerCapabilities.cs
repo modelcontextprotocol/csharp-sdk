@@ -14,7 +14,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
-public class ServerCapabilities
+public sealed class ServerCapabilities
 {
     /// <summary>
     /// Gets or sets experimental, non-standard capabilities that the server supports.
@@ -32,7 +32,7 @@ public class ServerCapabilities
     /// </para>
     /// </remarks>
     [JsonPropertyName("experimental")]
-    public Dictionary<string, object>? Experimental { get; set; }
+    public IDictionary<string, object>? Experimental { get; set; }
 
     /// <summary>
     /// Gets or sets a server's logging capability, supporting sending log messages to the client.

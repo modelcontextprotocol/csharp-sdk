@@ -17,7 +17,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
-public class CompleteRequestParams : RequestParams
+public sealed class CompleteRequestParams : RequestParams
 {
     /// <summary>
     /// Gets or sets the reference's information.
@@ -30,5 +30,11 @@ public class CompleteRequestParams : RequestParams
     /// and the current partial input.
     /// </summary>
     [JsonPropertyName("argument")]
-    public required Argument Argument { get; init; }    
+    public required Argument Argument { get; init; }
+
+    /// <summary>
+    /// Gets or sets additional, optional context for completions.
+    /// </summary>
+    [JsonPropertyName("context")]
+    public CompleteContext? Context { get; init; }
 }

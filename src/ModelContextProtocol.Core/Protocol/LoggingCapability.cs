@@ -10,7 +10,7 @@ namespace ModelContextProtocol.Protocol;
 /// This capability allows clients to set the logging level and receive log messages from the server.
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
-public class LoggingCapability
+public sealed class LoggingCapability
 {
     // Currently empty in the spec, but may be extended in the future
 

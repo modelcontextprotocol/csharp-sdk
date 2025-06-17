@@ -11,7 +11,7 @@ namespace ModelContextProtocol.Protocol;
 /// They are useful for one-way communication, such as log notifications and progress updates.
 /// Unlike requests, notifications do not include an ID field, since there will be no response to match with it.
 /// </remarks>
-public class JsonRpcNotification : JsonRpcMessage
+public sealed class JsonRpcNotification : JsonRpcMessage
 {
     /// <summary>
     /// Gets or sets the name of the notification method.

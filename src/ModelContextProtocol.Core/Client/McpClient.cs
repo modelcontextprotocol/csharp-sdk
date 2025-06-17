@@ -57,7 +57,7 @@ internal sealed partial class McpClient : McpEndpoint, IMcpClient
                     RequestMethods.SamplingCreateMessage,
                     (request, _, cancellationToken) => samplingHandler(
                         request,
-                        request?.Meta?.ProgressToken is { } token ? new TokenProgress(this, token) : NullProgress.Instance,
+                        request?.ProgressToken is { } token ? new TokenProgress(this, token) : NullProgress.Instance,
                         cancellationToken),
                     McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams,
                     McpJsonUtilities.JsonContext.Default.CreateMessageResult);
@@ -90,6 +90,20 @@ internal sealed partial class McpClient : McpEndpoint, IMcpClient
                     McpJsonUtilities.JsonContext.Default.ElicitRequestParams,
                     McpJsonUtilities.JsonContext.Default.ElicitResult);
             }
+        }
+    }
+
+    /// <inheritdoc/>
+    public string? SessionId
+    {
+        get
+        {
+            if (_sessionTransport is null)
+            {
+                throw new InvalidOperationException("Must have already initialized a session when invoking this property.");
+            }
+
+            return _sessionTransport.SessionId;
         }
     }
 
@@ -165,9 +179,12 @@ internal sealed partial class McpClient : McpEndpoint, IMcpClient
                 }
 
                 // Send initialized notification
-                await SendMessageAsync(
-                    new JsonRpcNotification { Method = NotificationMethods.InitializedNotification },
-                    initializationCts.Token).ConfigureAwait(false);
+                await this.SendNotificationAsync(
+                    NotificationMethods.InitializedNotification,
+                    new InitializedNotificationParams(),
+                    McpJsonUtilities.JsonContext.Default.InitializedNotificationParams,
+                    cancellationToken: initializationCts.Token).ConfigureAwait(false);
+
             }
             catch (OperationCanceledException oce) when (initializationCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
             {

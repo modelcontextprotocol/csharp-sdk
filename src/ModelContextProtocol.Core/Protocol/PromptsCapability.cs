@@ -16,7 +16,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
-public class PromptsCapability
+public sealed class PromptsCapability
 {
     /// <summary>
     /// Gets or sets whether this server supports notifications for changes to the prompt list.

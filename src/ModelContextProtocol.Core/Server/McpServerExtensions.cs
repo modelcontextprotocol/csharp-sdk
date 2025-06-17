@@ -94,11 +94,7 @@ public static class McpServerExtensions
                             samplingMessages.Add(new()
                             {
                                 Role = role,
-                                Content = new()
-                                {
-                                    Type = "text",
-                                    Text = textContent.Text,
-                                },
+                                Content = new TextContentBlock { Text = textContent.Text },
                             });
                             break;
 
@@ -106,12 +102,17 @@ public static class McpServerExtensions
                             samplingMessages.Add(new()
                             {
                                 Role = role,
-                                Content = new()
-                                {
-                                    Type = dataContent.HasTopLevelMediaType("image") ? "image" : "audio",
-                                    MimeType = dataContent.MediaType,
-                                    Data = dataContent.Base64Data.ToString(),
-                                },
+                                Content = dataContent.HasTopLevelMediaType("image") ?
+                                    new ImageContentBlock()
+                                    {
+                                        MimeType = dataContent.MediaType,
+                                        Data = dataContent.Base64Data.ToString(),
+                                    } :
+                                    new AudioContentBlock()
+                                    {
+                                        MimeType = dataContent.MediaType,
+                                        Data = dataContent.Base64Data.ToString(),
+                                    },
                             });
                             break;
                     }
@@ -135,7 +136,9 @@ public static class McpServerExtensions
                 ModelPreferences = modelPreferences,
             }, cancellationToken).ConfigureAwait(false);
 
-        return new(new ChatMessage(result.Role is Role.User ? ChatRole.User : ChatRole.Assistant, [result.Content.ToAIContent()]))
+        AIContent? responseContent = result.Content.ToAIContent();
+
+        return new(new ChatMessage(result.Role is Role.User ? ChatRole.User : ChatRole.Assistant, responseContent is not null ? [responseContent] : []))
         {
             ModelId = result.Model,
             FinishReason = result.StopReason switch

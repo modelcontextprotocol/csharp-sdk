@@ -6,7 +6,7 @@ namespace ModelContextProtocol.Protocol;
 /// Represents an empty result object for operations that need to indicate successful completion 
 /// but don't need to return any specific data.
 /// </summary>
-public class EmptyResult
+public sealed class EmptyResult : Result
 {
     [JsonIgnore]
     internal static EmptyResult Instance { get; } = new();

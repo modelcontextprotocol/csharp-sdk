@@ -14,7 +14,7 @@ namespace ModelContextProtocol.Protocol;
 /// and return either a <see cref="JsonRpcResponse"/> with the result, or a <see cref="JsonRpcError"/>
 /// if the method execution fails.
 /// </remarks>
-public class JsonRpcRequest : JsonRpcMessageWithId
+public sealed class JsonRpcRequest : JsonRpcMessageWithId
 {
     /// <summary>
     /// Name of the method to invoke.

@@ -18,6 +18,8 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
 
     public ChannelReader<JsonRpcMessage> MessageReader => throw new NotSupportedException("JsonRpcMessage.RelatedTransport should only be used for sending messages.");
 
+    string? ITransport.SessionId => parentTransport.SessionId;
+
     /// <returns>
     /// True, if data was written to the respond body.
     /// False, if nothing was written because the request body did not contain any <see cref="JsonRpcRequest"/> messages to respond to.
@@ -79,10 +81,11 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
         {
             _pendingRequest = request.Id;
 
-            // Store client capabilities so they can be serialized by "stateless" callers for use in later requests.
-            if (parentTransport.Stateless && request.Method == RequestMethods.Initialize)
+            // Invoke the initialize request callback if applicable.
+            if (parentTransport.OnInitRequestReceived is { } onInitRequest && request.Method == RequestMethods.Initialize)
             {
-                parentTransport.InitializeRequest = JsonSerializer.Deserialize(request.Params, McpJsonUtilities.JsonContext.Default.InitializeRequestParams);
+                var initializeRequest = JsonSerializer.Deserialize(request.Params, McpJsonUtilities.JsonContext.Default.InitializeRequestParams);
+                await onInitRequest(initializeRequest).ConfigureAwait(false);
             }
         }
 
