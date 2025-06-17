@@ -8,7 +8,7 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
-public class Completion
+public sealed class Completion
 {
     /// <summary>
     /// Gets or sets an array of completion values (auto-suggestions) for the requested input.
@@ -19,7 +19,7 @@ public class Completion
     /// Per the specification, this should not exceed 100 items.
     /// </remarks>
     [JsonPropertyName("values")]
-    public string[] Values { get; set; } = [];
+    public IList<string> Values { get; set; } = [];
 
     /// <summary>
     /// Gets or sets the total number of completion options available.

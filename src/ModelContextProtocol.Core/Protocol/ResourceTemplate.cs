@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -9,19 +10,21 @@ namespace ModelContextProtocol.Protocol;
 /// Resource templates provide metadata about resources available on the server,
 /// including how to construct URIs for those resources.
 /// </remarks>
-public class ResourceTemplate
+public sealed class ResourceTemplate : IBaseMetadata
 {
+    /// <inheritdoc />
+    [JsonPropertyName("name")]
+    public required string Name { get; set; }
+
+    /// <inheritdoc />
+    [JsonPropertyName("title")]
+    public string? Title { get; set; }
+
     /// <summary>
     /// Gets or sets the URI template (according to RFC 6570) that can be used to construct resource URIs.
     /// </summary>
     [JsonPropertyName("uriTemplate")]
     public required string UriTemplate { get; init; }
-
-    /// <summary>
-    /// Gets or sets a human-readable name for this resource template.
-    /// </summary>
-    [JsonPropertyName("name")]
-    public required string Name { get; init; }
 
     /// <summary>
     /// Gets or sets a description of what this resource template represents.
@@ -68,6 +71,15 @@ public class ResourceTemplate
     [JsonPropertyName("annotations")]
     public Annotations? Annotations { get; init; }
 
+    /// <summary>
+    /// Gets or sets metadata reserved by MCP for protocol-level metadata.
+    /// </summary>
+    /// <remarks>
+    /// Implementations must not make assumptions about its contents.
+    /// </remarks>
+    [JsonPropertyName("_meta")]
+    public JsonObject? Meta { get; init; }
+
     /// <summary>Gets whether <see cref="UriTemplate"/> contains any template expressions.</summary>
     [JsonIgnore]
     public bool IsTemplated => UriTemplate.Contains('{');
@@ -85,9 +97,11 @@ public class ResourceTemplate
         {
             Uri = UriTemplate,
             Name = Name,
+            Title = Title,
             Description = Description,
             MimeType = MimeType,
             Annotations = Annotations,
+            Meta = Meta,
         };
     }
 }

@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -28,6 +29,7 @@ namespace ModelContextProtocol.Protocol;
 [JsonConverter(typeof(Converter))]
 public abstract class ResourceContents
 {
+    /// <summary>Prevent external derivations.</summary>
     private protected ResourceContents()
     {
     }
@@ -43,6 +45,15 @@ public abstract class ResourceContents
     /// </summary>
     [JsonPropertyName("mimeType")]
     public string? MimeType { get; set; }
+
+    /// <summary>
+    /// Gets or sets metadata reserved by MCP for protocol-level metadata.
+    /// </summary>
+    /// <remarks>
+    /// Implementations must not make assumptions about its contents.
+    /// </remarks>
+    [JsonPropertyName("_meta")]
+    public JsonObject? Meta { get; set; }
 
     /// <summary>
     /// Provides a <see cref="JsonConverter"/> for <see cref="ResourceContents"/>.
@@ -67,6 +78,7 @@ public abstract class ResourceContents
             string? mimeType = null;
             string? blob = null;
             string? text = null;
+            JsonObject? meta = null;
 
             while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
             {
@@ -97,6 +109,10 @@ public abstract class ResourceContents
                         text = reader.GetString();
                         break;
 
+                    case "_meta":
+                        meta = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.JsonObject);
+                        break;
+
                     default:
                         break;
                 }
@@ -108,7 +124,8 @@ public abstract class ResourceContents
                 {
                     Uri = uri ?? string.Empty,
                     MimeType = mimeType,
-                    Blob = blob
+                    Blob = blob,
+                    Meta = meta,
                 };
             }
 
@@ -118,7 +135,8 @@ public abstract class ResourceContents
                 {
                     Uri = uri ?? string.Empty,
                     MimeType = mimeType,
-                    Text = text
+                    Text = text,
+                    Meta = meta,
                 };
             }
 
@@ -146,6 +164,12 @@ public abstract class ResourceContents
             else if (value is TextResourceContents textResource)
             {
                 writer.WriteString("text", textResource.Text);
+            }
+
+            if (value.Meta is not null)
+            {
+                writer.WritePropertyName("_meta");
+                JsonSerializer.Serialize(writer, value.Meta, McpJsonUtilities.JsonContext.Default.JsonObject);
             }
 
             writer.WriteEndObject();

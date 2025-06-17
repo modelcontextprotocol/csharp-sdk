@@ -116,7 +116,7 @@ public class SseClientTransportTests : LoggedTest
         };
 
         await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
-        await session.SendMessageAsync(new JsonRpcRequest() { Method = RequestMethods.Initialize, Id = new RequestId(44) }, CancellationToken.None);
+        await session.SendMessageAsync(new JsonRpcRequest { Method = RequestMethods.Initialize, Id = new RequestId(44) }, CancellationToken.None);
         Assert.True(true);
     }
 

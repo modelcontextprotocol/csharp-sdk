@@ -24,7 +24,7 @@ namespace ModelContextProtocol.Server;
 /// <see cref="MethodInfo"/>, and are what are used implicitly by WithToolsFromAssembly and WithTools. The <see cref="M:McpServerTool.Create"/> methods
 /// create <see cref="McpServerTool"/> instances capable of working with a large variety of .NET method signatures, automatically handling
 /// how parameters are marshaled into the method from the JSON received from the MCP client, and how the return value is marshaled back
-/// into the <see cref="CallToolResponse"/> that's then serialized and sent back to the client.
+/// into the <see cref="CallToolResult"/> that's then serialized and sent back to the client.
 /// </para>
 /// <para>
 /// By default, parameters are sourced from the <see cref="CallToolRequestParams.Arguments"/> dictionary, which is a collection
@@ -35,7 +35,7 @@ namespace ModelContextProtocol.Server;
 ///   <item>
 ///     <description>
 ///       <see cref="CancellationToken"/> parameters are automatically bound to a <see cref="CancellationToken"/> provided by the
-///       <see cref="IMcpServer"/> and that respects any <see cref="CancelledNotification"/>s sent by the client for this operation's
+///       <see cref="IMcpServer"/> and that respects any <see cref="CancelledNotificationParams"/>s sent by the client for this operation's
 ///       <see cref="RequestId"/>. The parameter is not included in the generated JSON schema.
 ///     </description>
 ///   </item>
@@ -90,44 +90,44 @@ namespace ModelContextProtocol.Server;
 /// to provide data to the method.
 /// </para>
 /// <para>
-/// Return values from a method are used to create the <see cref="CallToolResponse"/> that is sent back to the client:
+/// Return values from a method are used to create the <see cref="CallToolResult"/> that is sent back to the client:
 /// </para>
 /// <list type="table">
 ///   <item>
 ///     <term><see langword="null"/></term>
-///     <description>Returns an empty <see cref="CallToolResponse.Content"/> list.</description>
+///     <description>Returns an empty <see cref="CallToolResult.Content"/> list.</description>
 ///   </item>
 ///   <item>
 ///     <term><see cref="AIContent"/></term>
-///     <description>Converted to a single <see cref="Content"/> object using <see cref="AIContentExtensions.ToContent(AIContent)"/>.</description>
+///     <description>Converted to a single <see cref="ContentBlock"/> object using <see cref="AIContentExtensions.ToContent(AIContent)"/>.</description>
 ///   </item>
 ///   <item>
 ///     <term><see cref="string"/></term>
-///     <description>Converted to a single <see cref="Content"/> object with <see cref="Content.Text"/> set to the string value and <see cref="Content.Type"/> set to "text".</description>
+///     <description>Converted to a single <see cref="TextContentBlock"/> object with its text set to the string value.</description>
 ///   </item>
 ///   <item>
-///     <term><see cref="Content"/></term>
-///     <description>Returned as a single-item <see cref="Content"/> list.</description>
+///     <term><see cref="ContentBlock"/></term>
+///     <description>Returned as a single-item <see cref="ContentBlock"/> list.</description>
 ///   </item>
 ///   <item>
 ///     <term><see cref="IEnumerable{String}"/> of <see cref="string"/></term>
-///     <description>Each <see cref="string"/> is converted to a <see cref="Content"/> object with <see cref="Content.Text"/> set to the string value and <see cref="Content.Type"/> set to "text".</description>
+///     <description>Each <see cref="string"/> is converted to a <see cref="TextContentBlock"/> object with its text set to the string value.</description>
 ///   </item>
 ///   <item>
 ///     <term><see cref="IEnumerable{AIContent}"/> of <see cref="AIContent"/></term>
-///     <description>Each <see cref="AIContent"/> is converted to a <see cref="Content"/> object using <see cref="AIContentExtensions.ToContent(AIContent)"/>.</description>
+///     <description>Each <see cref="AIContent"/> is converted to a <see cref="ContentBlock"/> object using <see cref="AIContentExtensions.ToContent(AIContent)"/>.</description>
 ///   </item>
 ///   <item>
-///     <term><see cref="IEnumerable{Content}"/> of <see cref="Content"/></term>
-///     <description>Returned as the <see cref="Content"/> list.</description>
+///     <term><see cref="IEnumerable{ContentBlock}"/> of <see cref="ContentBlock"/></term>
+///     <description>Returned as the <see cref="ContentBlock"/> list.</description>
 ///   </item>
 ///   <item>
-///     <term><see cref="CallToolResponse"/></term>
+///     <term><see cref="CallToolResult"/></term>
 ///     <description>Returned directly without modification.</description>
 ///   </item>
 ///   <item>
 ///     <term>Other types</term>
-///     <description>Serialized to JSON and returned as a single <see cref="Content"/> object with <see cref="Content.Type"/> set to "text".</description>
+///     <description>Serialized to JSON and returned as a single <see cref="ContentBlock"/> object with <see cref="ContentBlock.Type"/> set to "text".</description>
 ///   </item>
 /// </list>
 /// </remarks>
@@ -146,7 +146,7 @@ public abstract class McpServerTool : IMcpServerPrimitive
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>The call response from invoking the tool.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is <see langword="null"/>.</exception>
-    public abstract ValueTask<CallToolResponse> InvokeAsync(
+    public abstract ValueTask<CallToolResult> InvokeAsync(
         RequestContext<CallToolRequestParams> request,
         CancellationToken cancellationToken = default);
 

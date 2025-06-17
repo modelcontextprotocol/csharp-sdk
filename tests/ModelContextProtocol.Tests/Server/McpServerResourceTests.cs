@@ -433,7 +433,7 @@ public partial class McpServerResourceTests
         McpServerResource resource = McpServerResource.Create((IMcpServer server) =>
         {
             Assert.Same(mockServer.Object, server);
-            return new ReadResourceResult() { Contents = new List<ResourceContents>() { new TextResourceContents() { Text = "hello" } } };
+            return new ReadResourceResult { Contents = new List<ResourceContents> { new TextResourceContents { Text = "hello" } } };
         }, new() { Name = "Test" });
         var result = await resource.ReadAsync(
             new RequestContext<ReadResourceRequestParams>(mockServer.Object) { Params = new() { Uri = "resource://Test" } },
@@ -450,7 +450,7 @@ public partial class McpServerResourceTests
         McpServerResource resource = McpServerResource.Create((IMcpServer server) =>
         {
             Assert.Same(mockServer.Object, server);
-            return new TextResourceContents() { Text = "hello" };
+            return new TextResourceContents { Text = "hello" };
         }, new() { Name = "Test", SerializerOptions = JsonContext6.Default.Options });
         var result = await resource.ReadAsync(
             new RequestContext<ReadResourceRequestParams>(mockServer.Object) { Params = new() { Uri = "resource://Test" } },
@@ -467,11 +467,11 @@ public partial class McpServerResourceTests
         McpServerResource resource = McpServerResource.Create((IMcpServer server) =>
         {
             Assert.Same(mockServer.Object, server);
-            return new List<ResourceContents>()
-            {
-                new TextResourceContents() { Text = "hello" },
-                new BlobResourceContents() { Blob = Convert.ToBase64String(new byte[] { 1, 2, 3 }) },
-            };
+            return (IList<ResourceContents>)
+            [
+                new TextResourceContents { Text = "hello" },
+                new BlobResourceContents { Blob = Convert.ToBase64String(new byte[] { 1, 2, 3 }) },
+            ];
         }, new() { Name = "Test" });
         var result = await resource.ReadAsync(
             new RequestContext<ReadResourceRequestParams>(mockServer.Object) { Params = new() { Uri = "resource://Test" } },
@@ -506,7 +506,7 @@ public partial class McpServerResourceTests
         McpServerResource resource = McpServerResource.Create((IMcpServer server) =>
         {
             Assert.Same(mockServer.Object, server);
-            return new List<string>() { "42", "43" };
+            return new List<string> { "42", "43" };
         }, new() { Name = "Test", SerializerOptions = JsonContext6.Default.Options });
         var result = await resource.ReadAsync(
             new RequestContext<ReadResourceRequestParams>(mockServer.Object) { Params = new() { Uri = "resource://Test" } },

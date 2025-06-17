@@ -118,7 +118,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                         {
                             var requestContent = GetRequestContext(args);
                             if (requestContent?.Server is { } server &&
-                                requestContent?.Params?.Meta?.ProgressToken is { } progressToken)
+                                requestContent?.Params?.ProgressToken is { } progressToken)
                             {
                                 return new TokenProgress(server, progressToken);
                             }
@@ -190,13 +190,15 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 options.OpenWorld is not null ||
                 options.ReadOnly is not null)
             {
+                tool.Title = options.Title;
+
                 tool.Annotations = new()
                 {
-                    Title = options?.Title,
-                    IdempotentHint = options?.Idempotent,
-                    DestructiveHint = options?.Destructive,
-                    OpenWorldHint = options?.OpenWorld,
-                    ReadOnlyHint = options?.ReadOnly,
+                    Title = options.Title,
+                    IdempotentHint = options.Idempotent,
+                    DestructiveHint = options.Destructive,
+                    OpenWorldHint = options.OpenWorld,
+                    ReadOnlyHint = options.ReadOnly,
                 };
             }
         }
@@ -260,7 +262,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     public override Tool ProtocolTool { get; }
 
     /// <inheritdoc />
-    public override async ValueTask<CallToolResponse> InvokeAsync(
+    public override async ValueTask<CallToolResult> InvokeAsync(
         RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(request);
@@ -297,7 +299,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return new()
             {
                 IsError = true,
-                Content = [new() { Text = errorMessage, Type = "text" }],
+                Content = [new TextContentBlock { Text = errorMessage }],
             };
         }
 
@@ -319,11 +321,11 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             
             string text => new()
             {
-                Content = [new() { Text = text, Type = "text" }],
+                Content = [new TextContentBlock { Text = text }],
                 StructuredContent = structuredContent,
             },
             
-            Content content => new()
+            ContentBlock content => new()
             {
                 Content = [content],
                 StructuredContent = structuredContent,
@@ -331,27 +333,23 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             
             IEnumerable<string> texts => new()
             {
-                Content = [.. texts.Select(x => new Content() { Type = "text", Text = x ?? string.Empty })],
+                Content = [.. texts.Select(x => new TextContentBlock { Text = x ?? string.Empty })],
                 StructuredContent = structuredContent,
             },
             
-            IEnumerable<AIContent> contentItems => ConvertAIContentEnumerableToCallToolResponse(contentItems, structuredContent),
+            IEnumerable<AIContent> contentItems => ConvertAIContentEnumerableToCallToolResult(contentItems, structuredContent),
             
-            IEnumerable<Content> contents => new()
+            IEnumerable<ContentBlock> contents => new()
             {
                 Content = [.. contents],
                 StructuredContent = structuredContent,
             },
             
-            CallToolResponse callToolResponse => callToolResponse,
+            CallToolResult callToolResponse => callToolResponse,
 
             _ => new()
             {
-                Content = [new()
-                {
-                    Text = JsonSerializer.Serialize(result, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))),
-                    Type = "text"
-                }],
+                Content = [new TextContentBlock { Text = JsonSerializer.Serialize(result, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))) }],
                 StructuredContent = structuredContent,
             },
         };
@@ -434,9 +432,9 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         return nodeResult;
     }
 
-    private static CallToolResponse ConvertAIContentEnumerableToCallToolResponse(IEnumerable<AIContent> contentItems, JsonNode? structuredContent)
+    private static CallToolResult ConvertAIContentEnumerableToCallToolResult(IEnumerable<AIContent> contentItems, JsonNode? structuredContent)
     {
-        List<Content> contentList = [];
+        List<ContentBlock> contentList = [];
         bool allErrorContent = true;
         bool hasAny = false;
 

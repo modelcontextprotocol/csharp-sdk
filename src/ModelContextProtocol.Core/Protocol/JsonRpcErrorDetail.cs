@@ -11,7 +11,7 @@ namespace ModelContextProtocol.Protocol;
 /// a standard format for error responses that includes a numeric code, a human-readable message,
 /// and optional additional data.
 /// </remarks>
-public class JsonRpcErrorDetail
+public sealed class JsonRpcErrorDetail
 {
     /// <summary>
     /// Gets an integer error code according to the JSON-RPC specification.

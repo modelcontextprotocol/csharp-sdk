@@ -35,7 +35,7 @@ namespace ModelContextProtocol.Server;
 ///   <item>
 ///     <description>
 ///       <see cref="CancellationToken"/> parameters are automatically bound to a <see cref="CancellationToken"/> provided by the
-///       <see cref="IMcpServer"/> and that respects any <see cref="CancelledNotification"/>s sent by the client for this operation's
+///       <see cref="IMcpServer"/> and that respects any <see cref="CancelledNotificationParams"/>s sent by the client for this operation's
 ///       <see cref="RequestId"/>.
 ///     </description>
 ///   </item>
@@ -90,7 +90,7 @@ namespace ModelContextProtocol.Server;
 ///     <description>Wrapped in a list containing the single <see cref="ResourceContents"/>.</description>
 ///   </item>
 ///   <item>
-///     <term><see cref="TextContent"/></term>
+///     <term><see cref="TextContentBlock"/></term>
 ///     <description>Converted to a list containing a single <see cref="TextResourceContents"/>.</description>
 ///   </item>
 ///   <item>
@@ -107,7 +107,7 @@ namespace ModelContextProtocol.Server;
 ///   </item>
 ///   <item>
 ///     <term><see cref="IEnumerable{AIContent}"/> of <see cref="AIContent"/></term>
-///     <description>Converted to a list containing a <see cref="TextResourceContents"/> for each <see cref="TextContent"/> and a <see cref="BlobResourceContents"/> for each <see cref="DataContent"/>.</description>
+///     <description>Converted to a list containing a <see cref="TextResourceContents"/> for each <see cref="TextContentBlock"/> and a <see cref="BlobResourceContents"/> for each <see cref="DataContent"/>.</description>
 ///   </item>
 ///   <item>
 ///     <term><see cref="IEnumerable{String}"/> of <see cref="string"/></term>

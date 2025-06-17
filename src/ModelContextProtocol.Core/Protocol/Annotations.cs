@@ -9,13 +9,13 @@ namespace ModelContextProtocol.Protocol;
 /// Annotations enable filtering and prioritization of content for different audiences.
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
-public class Annotations
+public sealed class Annotations
 {
     /// <summary>
     /// Gets or sets the intended audience for this content as an array of <see cref="Role"/> values.
     /// </summary>
     [JsonPropertyName("audience")]
-    public Role[]? Audience { get; init; }
+    public IList<Role>? Audience { get; init; }
 
     /// <summary>
     /// Gets or sets a value indicating how important this data is for operating the server.
@@ -26,4 +26,14 @@ public class Annotations
     /// </remarks>
     [JsonPropertyName("priority")]
     public float? Priority { get; init; }
+
+    /// <summary>
+    /// Gets or sets the moment the resource was last modified.
+    /// </summary>
+    /// <remarks>
+    /// The corresponding JSON should be an ISO 8601 formatted string (e.g., \"2025-01-12T15:00:58Z\").
+    /// Examples: last activity timestamp in an open file, timestamp when the resource was attached, etc.
+    /// </remarks>
+    [JsonPropertyName("lastModified")]
+    public DateTimeOffset? LastModified { get; set; }
 }

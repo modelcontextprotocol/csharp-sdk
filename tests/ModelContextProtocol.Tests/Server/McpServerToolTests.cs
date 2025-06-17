@@ -47,7 +47,7 @@ public partial class McpServerToolTests
         var result = await tool.InvokeAsync(
             new RequestContext<CallToolRequestParams>(mockServer.Object),
             TestContext.Current.CancellationToken);
-        Assert.Equal("42", result.Content[0].Text);
+        Assert.Equal("42", (result.Content[0] as TextContentBlock)?.Text);
     }
 
     [Theory]
@@ -104,7 +104,7 @@ public partial class McpServerToolTests
         result = await tool.InvokeAsync(
             new RequestContext<CallToolRequestParams>(mockServer.Object) { Services = services },
             TestContext.Current.CancellationToken);
-        Assert.Equal("42", result.Content[0].Text);
+        Assert.Equal("42", (result.Content[0] as TextContentBlock)?.Text);
     }
 
     [Fact]
@@ -125,7 +125,7 @@ public partial class McpServerToolTests
         var result = await tool.InvokeAsync(
             new RequestContext<CallToolRequestParams>(new Mock<IMcpServer>().Object),
             TestContext.Current.CancellationToken);
-        Assert.Equal("42", result.Content[0].Text);
+        Assert.Equal("42", (result.Content[0] as TextContentBlock)?.Text);
     }
 
     [Fact]
@@ -140,7 +140,7 @@ public partial class McpServerToolTests
         var result = await tool1.InvokeAsync(
             new RequestContext<CallToolRequestParams>(new Mock<IMcpServer>().Object),
             TestContext.Current.CancellationToken);
-        Assert.Equal("""{"disposals":1}""", result.Content[0].Text);
+        Assert.Equal("""{"disposals":1}""", (result.Content[0] as TextContentBlock)?.Text);
     }
 
     [Fact]
@@ -155,7 +155,7 @@ public partial class McpServerToolTests
         var result = await tool1.InvokeAsync(
             new RequestContext<CallToolRequestParams>(new Mock<IMcpServer>().Object),
             TestContext.Current.CancellationToken);
-        Assert.Equal("""{"asyncDisposals":1}""", result.Content[0].Text);
+        Assert.Equal("""{"asyncDisposals":1}""", (result.Content[0] as TextContentBlock)?.Text);
     }
 
     [Fact]
@@ -174,7 +174,7 @@ public partial class McpServerToolTests
         var result = await tool1.InvokeAsync(
             new RequestContext<CallToolRequestParams>(new Mock<IMcpServer>().Object) { Services = services },
             TestContext.Current.CancellationToken);
-        Assert.Equal("""{"asyncDisposals":1,"disposals":0}""", result.Content[0].Text);
+        Assert.Equal("""{"asyncDisposals":1,"disposals":0}""", (result.Content[0] as TextContentBlock)?.Text);
     }
 
 
@@ -185,7 +185,7 @@ public partial class McpServerToolTests
         McpServerTool tool = McpServerTool.Create((IMcpServer server) =>
         {
             Assert.Same(mockServer.Object, server);
-            return new List<AIContent>() {
+            return new List<AIContent> {
                 new TextContent("text"),
                 new DataContent("data:image/png;base64,1234"),
                 new DataContent("data:audio/wav;base64,1234")
@@ -198,16 +198,13 @@ public partial class McpServerToolTests
 
         Assert.Equal(3, result.Content.Count);
 
-        Assert.Equal("text", result.Content[0].Text);
-        Assert.Equal("text", result.Content[0].Type);
+        Assert.Equal("text", (result.Content[0] as TextContentBlock)?.Text);
 
-        Assert.Equal("1234", result.Content[1].Data);
-        Assert.Equal("image/png", result.Content[1].MimeType);
-        Assert.Equal("image", result.Content[1].Type);
+        Assert.Equal("1234", (result.Content[1] as ImageContentBlock)?.Data);
+        Assert.Equal("image/png", (result.Content[1] as ImageContentBlock)?.MimeType);
 
-        Assert.Equal("1234", result.Content[2].Data);
-        Assert.Equal("audio/wav", result.Content[2].MimeType);
-        Assert.Equal("audio", result.Content[2].Type);
+        Assert.Equal("1234", (result.Content[2] as AudioContentBlock)?.Data);
+        Assert.Equal("audio/wav", (result.Content[2] as AudioContentBlock)?.MimeType);
     }
 
     [Theory]
@@ -236,15 +233,23 @@ public partial class McpServerToolTests
         Assert.Single(result.Content);
         Assert.Equal(type, result.Content[0].Type);
 
-        if (type != "text")
+        if (result.Content[0] is TextContentBlock tc)
         {
-            Assert.NotNull(result.Content[0].MimeType);
-            Assert.Equal(data.Split(',').Last(), result.Content[0].Data);
+            Assert.Equal(data, tc.Text);
+        }
+        else if (result.Content[0] is ImageContentBlock ic)
+        {
+            Assert.Equal(data.Split(',').Last(), ic.Data);
+            Assert.Equal("image/png", ic.MimeType);
+        }
+        else if (result.Content[0] is AudioContentBlock ac)
+        {
+            Assert.Equal(data.Split(',').Last(), ac.Data);
+            Assert.Equal("audio/wav", ac.MimeType);
         }
         else
         {
-            Assert.Null(result.Content[0].MimeType);
-            Assert.Equal(data, result.Content[0].Text);
+            throw new XunitException($"Unexpected content type: {result.Content[0].GetType()}");
         }
     }
 
@@ -276,8 +281,7 @@ public partial class McpServerToolTests
             new RequestContext<CallToolRequestParams>(mockServer.Object),
             TestContext.Current.CancellationToken);
         Assert.Single(result.Content);
-        Assert.Equal("42", result.Content[0].Text);
-        Assert.Equal("text", result.Content[0].Type);
+        Assert.Equal("42", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
     }
 
     [Fact]
@@ -287,16 +291,14 @@ public partial class McpServerToolTests
         McpServerTool tool = McpServerTool.Create((IMcpServer server) =>
         {
             Assert.Same(mockServer.Object, server);
-            return new List<string>() { "42", "43" };
+            return new List<string> { "42", "43" };
         }, new() { SerializerOptions = JsonContext2.Default.Options });
         var result = await tool.InvokeAsync(
             new RequestContext<CallToolRequestParams>(mockServer.Object),
             TestContext.Current.CancellationToken);
         Assert.Equal(2, result.Content.Count);
-        Assert.Equal("42", result.Content[0].Text);
-        Assert.Equal("text", result.Content[0].Type);
-        Assert.Equal("43", result.Content[1].Text);
-        Assert.Equal("text", result.Content[1].Type);
+        Assert.Equal("42", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
+        Assert.Equal("43", Assert.IsType<TextContentBlock>(result.Content[1]).Text);
     }
 
     [Fact]
@@ -306,13 +308,13 @@ public partial class McpServerToolTests
         McpServerTool tool = McpServerTool.Create((IMcpServer server) =>
         {
             Assert.Same(mockServer.Object, server);
-            return new Content { Text = "42", Type = "text" };
+            return new TextContentBlock { Text = "42" };
         });
         var result = await tool.InvokeAsync(
             new RequestContext<CallToolRequestParams>(mockServer.Object),
             TestContext.Current.CancellationToken);
         Assert.Single(result.Content);
-        Assert.Equal("42", result.Content[0].Text);
+        Assert.Equal("42", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
         Assert.Equal("text", result.Content[0].Type);
     }
 
@@ -323,26 +325,27 @@ public partial class McpServerToolTests
         McpServerTool tool = McpServerTool.Create((IMcpServer server) =>
         {
             Assert.Same(mockServer.Object, server);
-            return new List<Content>() { new() { Text = "42", Type = "text" }, new() { Data = "1234", Type = "image", MimeType = "image/png" } };
+            return (IList<ContentBlock>)
+            [
+                new TextContentBlock { Text = "42" }, 
+                new ImageContentBlock { Data = "1234", MimeType = "image/png" } 
+            ];
         });
         var result = await tool.InvokeAsync(
             new RequestContext<CallToolRequestParams>(mockServer.Object),
             TestContext.Current.CancellationToken);
         Assert.Equal(2, result.Content.Count);
-        Assert.Equal("42", result.Content[0].Text);
-        Assert.Equal("text", result.Content[0].Type);
-        Assert.Equal("1234", result.Content[1].Data);
-        Assert.Equal("image", result.Content[1].Type);
-        Assert.Equal("image/png", result.Content[1].MimeType);
-        Assert.Null(result.Content[1].Text);
+        Assert.Equal("42", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
+        Assert.Equal("1234", Assert.IsType<ImageContentBlock>(result.Content[1]).Data);
+        Assert.Equal("image/png", Assert.IsType<ImageContentBlock>(result.Content[1]).MimeType);
     }
 
     [Fact]
-    public async Task CanReturnCallToolResponse()
+    public async Task CanReturnCallToolResult()
     {
-        CallToolResponse response = new()
+        CallToolResult response = new()
         {
-            Content = [new() { Text = "text", Type = "text" }, new() { Data = "1234", Type = "image" }]
+            Content = new List<ContentBlock> { new TextContentBlock { Text = "text" }, new ImageContentBlock { Data = "1234", MimeType = "image/png" } }
         };
 
         Mock<IMcpServer> mockServer = new();
@@ -358,10 +361,8 @@ public partial class McpServerToolTests
         Assert.Same(response, result);
 
         Assert.Equal(2, result.Content.Count);
-        Assert.Equal("text", result.Content[0].Text);
-        Assert.Equal("text", result.Content[0].Type);
-        Assert.Equal("1234", result.Content[1].Data);
-        Assert.Equal("image", result.Content[1].Type);
+        Assert.Equal("text", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
+        Assert.Equal("1234", Assert.IsType<ImageContentBlock>(result.Content[1]).Data);
     }
 
     [Fact]
@@ -408,7 +409,7 @@ public partial class McpServerToolTests
         var mockServer = new Mock<IMcpServer>();
         var request = new RequestContext<CallToolRequestParams>(mockServer.Object)
         {
-            Params = new CallToolRequestParams() { Name = toolName },
+            Params = new CallToolRequestParams { Name = toolName },
             Services = serviceProvider
         };
 
@@ -418,7 +419,7 @@ public partial class McpServerToolTests
         // Assert
         Assert.True(result.IsError);
         Assert.Single(result.Content);
-        Assert.Equal($"An error occurred invoking '{toolName}'.", result.Content[0].Text);
+        Assert.Equal($"An error occurred invoking '{toolName}'.", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
 
         var errorLog = Assert.Single(mockLoggerProvider.LogMessages, m => m.LogLevel == LogLevel.Error);
         Assert.Equal($"\"{toolName}\" threw an unhandled exception.", errorLog.Message);
@@ -508,7 +509,7 @@ public partial class McpServerToolTests
         yield return new object[] { 42 };
         yield return new object[] { 3.14 };
         yield return new object[] { true };
-        yield return new object[] { new object() };
+        yield return new object[] { new() };
         yield return new object[] { new List<string> { "item1", "item2" } };
         yield return new object[] { new Dictionary<string, int> { ["key1"] = 1, ["key2"] = 2 } };
         yield return new object[] { new Person("John", 27) }; 

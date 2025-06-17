@@ -10,7 +10,7 @@ namespace ModelContextProtocol.Protocol;
 /// This request allows clients to configure the level of logging information they want to receive from the server.
 /// The server will send notifications for log events at the specified level and all higher (more severe) levels.
 /// </remarks>
-public class SetLevelRequestParams : RequestParams
+public sealed class SetLevelRequestParams : RequestParams
 {
     /// <summary>
     /// Gets or sets the level of logging that the client wants to receive from the server. 

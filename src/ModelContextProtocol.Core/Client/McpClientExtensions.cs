@@ -639,11 +639,6 @@ public static class McpClientExtensions
         Throw.IfNull(reference);
         Throw.IfNullOrWhiteSpace(argumentName);
 
-        if (!reference.Validate(out string? validationMessage))
-        {
-            throw new ArgumentException($"Invalid reference: {validationMessage}", nameof(reference));
-        }
-
         return client.SendRequestAsync(
             RequestMethods.CompletionComplete,
             new()
@@ -812,7 +807,7 @@ public static class McpClientExtensions
     /// </param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>
-    /// A task containing the <see cref="CallToolResponse"/> from the tool execution. The response includes
+    /// A task containing the <see cref="CallToolResult"/> from the tool execution. The response includes
     /// the tool's output content, which may be structured data, text, or an error message.
     /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
@@ -829,7 +824,7 @@ public static class McpClientExtensions
     ///     });
     /// </code>
     /// </example>
-    public static ValueTask<CallToolResponse> CallToolAsync(
+    public static ValueTask<CallToolResult> CallToolAsync(
         this IMcpClient client,
         string toolName,
         IReadOnlyDictionary<string, object?>? arguments = null,
@@ -855,10 +850,10 @@ public static class McpClientExtensions
                 Arguments = ToArgumentsDictionary(arguments, serializerOptions),
             },
             McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
-            McpJsonUtilities.JsonContext.Default.CallToolResponse,
+            McpJsonUtilities.JsonContext.Default.CallToolResult,
             cancellationToken: cancellationToken);
 
-        static async ValueTask<CallToolResponse> SendRequestWithProgressAsync(
+        static async ValueTask<CallToolResult> SendRequestWithProgressAsync(
             IMcpClient client,
             string toolName,
             IReadOnlyDictionary<string, object?>? arguments,
@@ -871,7 +866,7 @@ public static class McpClientExtensions
             await using var _ = client.RegisterNotificationHandler(NotificationMethods.ProgressNotification,
                 (notification, cancellationToken) =>
                 {
-                    if (JsonSerializer.Deserialize(notification.Params, McpJsonUtilities.JsonContext.Default.ProgressNotification) is { } pn &&
+                    if (JsonSerializer.Deserialize(notification.Params, McpJsonUtilities.JsonContext.Default.ProgressNotificationParams) is { } pn &&
                         pn.ProgressToken == progressToken)
                     {
                         progress.Report(pn.Progress);
@@ -886,10 +881,10 @@ public static class McpClientExtensions
                 {
                     Name = toolName,
                     Arguments = ToArgumentsDictionary(arguments, serializerOptions),
-                    Meta = new() { ProgressToken = progressToken },
+                    ProgressToken = progressToken,
                 },
                 McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
-                McpJsonUtilities.JsonContext.Default.CallToolResponse,
+                McpJsonUtilities.JsonContext.Default.CallToolResult,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
         }
     }
@@ -924,29 +919,12 @@ public static class McpClientExtensions
             (options ??= new()).StopSequences = stopSequences.ToArray();
         }
 
-        List<ChatMessage> messages = [];
-        foreach (SamplingMessage sm in requestParams.Messages)
-        {
-            ChatMessage message = new()
-            {
-                Role = sm.Role == Role.User ? ChatRole.User : ChatRole.Assistant,
-            };
-
-            if (sm.Content is { Type: "text" })
-            {
-                message.Contents.Add(new TextContent(sm.Content.Text));
-            }
-            else if (sm.Content is { Type: "image" or "audio", MimeType: not null, Data: not null })
-            {
-                message.Contents.Add(new DataContent(Convert.FromBase64String(sm.Content.Data), sm.Content.MimeType));
-            }
-            else if (sm.Content is { Type: "resource", Resource: not null })
-            {
-                message.Contents.Add(sm.Content.Resource.ToAIContent());
-            }
-
-            messages.Add(message);
-        }
+        List<ChatMessage> messages =
+            (from sm in requestParams.Messages
+             let aiContent = sm.Content.ToAIContent()
+             where aiContent is not null
+             select new ChatMessage(sm.Role == Role.Assistant ? ChatRole.Assistant : ChatRole.User, [aiContent]))
+            .ToList();
 
         return (messages, options);
     }
@@ -965,32 +943,21 @@ public static class McpClientExtensions
 
         ChatMessage? lastMessage = chatResponse.Messages.LastOrDefault();
 
-        Content? content = null;
+        ContentBlock? content = null;
         if (lastMessage is not null)
         {
             foreach (var lmc in lastMessage.Contents)
             {
                 if (lmc is DataContent dc && (dc.HasTopLevelMediaType("image") || dc.HasTopLevelMediaType("audio")))
                 {
-                    content = new()
-                    {
-                        Type = dc.HasTopLevelMediaType("image") ? "image" : "audio",
-                        MimeType = dc.MediaType,
-                        Data = dc.Base64Data.ToString(),
-                    };
+                    content = dc.ToContent();
                 }
             }
         }
 
-        content ??= new()
-        {
-            Text = lastMessage?.Text ?? string.Empty,
-            Type = "text",
-        };
-
         return new()
         {
-            Content = content,
+            Content = content ?? new TextContentBlock { Text = lastMessage?.Text ?? string.Empty },
             Model = chatResponse.ModelId ?? "unknown",
             Role = lastMessage?.Role == ChatRole.User ? Role.User : Role.Assistant,
             StopReason = chatResponse.FinishReason == ChatFinishReason.Length ? "maxTokens" : "endTurn",
@@ -1024,7 +991,7 @@ public static class McpClientExtensions
             Throw.IfNull(requestParams);
 
             var (messages, options) = requestParams.ToChatClientArguments();
-            var progressToken = requestParams.Meta?.ProgressToken;
+            var progressToken = requestParams.ProgressToken;
 
             List<ChatResponseUpdate> updates = [];
             await foreach (var update in chatClient.GetStreamingResponseAsync(messages, options, cancellationToken).ConfigureAwait(false))
@@ -1107,7 +1074,7 @@ public static class McpClientExtensions
         SetLoggingLevel(client, McpServer.ToLoggingLevel(level), cancellationToken);
 
     /// <summary>Convers a dictionary with <see cref="object"/> values to a dictionary with <see cref="JsonElement"/> values.</summary>
-    private static IReadOnlyDictionary<string, JsonElement>? ToArgumentsDictionary(
+    private static Dictionary<string, JsonElement>? ToArgumentsDictionary(
         IReadOnlyDictionary<string, object?>? arguments, JsonSerializerOptions options)
     {
         var typeInfo = options.GetTypeInfo<object?>();

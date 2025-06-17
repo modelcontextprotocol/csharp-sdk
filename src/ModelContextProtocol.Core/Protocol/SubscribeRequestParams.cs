@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -20,7 +21,7 @@ namespace ModelContextProtocol.Protocol;
 /// The server may refuse or limit subscriptions based on its capabilities or resource constraints.
 /// </para>
 /// </remarks>
-public class SubscribeRequestParams : RequestParams
+public sealed class SubscribeRequestParams : RequestParams
 {
     /// <summary>
     /// Gets or sets the URI of the resource to subscribe to.
@@ -29,5 +30,6 @@ public class SubscribeRequestParams : RequestParams
     /// The URI can use any protocol; it is up to the server how to interpret it.
     /// </remarks>
     [JsonPropertyName("uri")]
+    [StringSyntax(StringSyntaxAttribute.Uri)]
     public string? Uri { get; init; }
 }

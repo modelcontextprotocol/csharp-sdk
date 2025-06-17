@@ -17,16 +17,15 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
-public class Implementation
+public sealed class Implementation : IBaseMetadata
 {
-    /// <summary>
-    /// Gets or sets the name of the implementation.
-    /// </summary>
-    /// <remarks>
-    /// This is typically the name of the client or server library/application.
-    /// </remarks>
+    /// <inheritdoc />
     [JsonPropertyName("name")]
     public required string Name { get; set; }
+
+    /// <inheritdoc />
+    [JsonPropertyName("title")]
+    public string? Title { get; set; }
 
     /// <summary>
     /// Gets or sets the version of the implementation.

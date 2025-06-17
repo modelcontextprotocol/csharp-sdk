@@ -71,7 +71,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
                 case "FinalCustomPrompt":
                     return new GetPromptResult()
                     {
-                        Messages = [new() { Role = Role.User, Content = new() { Text = $"hello from {request.Params.Name}", Type = "text" } }],
+                        Messages = [new() { Role = Role.User, Content = new TextContentBlock { Text = $"hello from {request.Params.Name}" } }],
                     };
 
                 default:
@@ -160,6 +160,20 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
         prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
         Assert.Equal(6, prompts.Count);
         Assert.DoesNotContain(prompts, t => t.Name == "NewPrompt");
+    }
+
+    [Fact]
+    public async Task TitleAttributeProperty_PropagatedToTitle()
+    {
+        await using IMcpClient client = await CreateMcpClientForServer();
+
+        var prompts = await client.ListPromptsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(prompts);
+        Assert.NotEmpty(prompts);
+
+        McpClientPrompt prompt = prompts.First(t => t.Name == nameof(SimplePrompts.ReturnsString));
+
+        Assert.Equal("This is a title", prompt.Title);
     }
 
     [Fact]
@@ -263,7 +277,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
         public static ChatMessage[] ThrowsException([Description("The first parameter")] string message) =>
             throw new FormatException("uh oh");
 
-        [McpServerPrompt, Description("Returns chat messages")]
+        [McpServerPrompt(Title = "This is a title"), Description("Returns chat messages")]
         public string ReturnsString([Description("The first parameter")] string message) =>
             $"The prompt is: {message}. The id is {id}.";
     }
@@ -273,10 +287,10 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
     {
         [McpServerPrompt]
         public static PromptMessage AnotherPrompt(ObjectWithId id) =>
-            new PromptMessage
+            new()
             {
                 Role = Role.User,
-                Content = new() { Text = "hello", Type = "text" },
+                Content = new TextContentBlock { Text = "hello" },
             };
     }
 

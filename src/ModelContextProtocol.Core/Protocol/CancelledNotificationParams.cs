@@ -11,7 +11,7 @@ namespace ModelContextProtocol.Protocol;
 /// method identifier. When a client sends this notification, the server should attempt to
 /// cancel any ongoing operations associated with the specified request ID.
 /// </remarks>
-public sealed class CancelledNotification
+public sealed class CancelledNotificationParams : NotificationParams
 {
     /// <summary>
     /// Gets or sets the ID of the request to cancel.

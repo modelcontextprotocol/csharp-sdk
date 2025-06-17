@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -16,7 +17,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
-public class ResourceUpdatedNotificationParams
+public sealed class ResourceUpdatedNotificationParams : NotificationParams
 {
     /// <summary>
     /// Gets or sets the URI of the resource that was updated.
@@ -25,5 +26,6 @@ public class ResourceUpdatedNotificationParams
     /// The URI can use any protocol; it is up to the server how to interpret it.
     /// </remarks>
     [JsonPropertyName("uri")]
+    [StringSyntax(StringSyntaxAttribute.Uri)]
     public string? Uri { get; init; }
 }

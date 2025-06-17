@@ -8,7 +8,7 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
-public class ReadResourceResult
+public sealed class ReadResourceResult : Result
 {
     /// <summary>
     /// Gets or sets a list of <see cref="ResourceContents"/> objects that this resource contains.
@@ -19,5 +19,5 @@ public class ReadResourceResult
     /// The type of content included depends on the resource being accessed.
     /// </remarks>
     [JsonPropertyName("contents")]
-    public List<ResourceContents> Contents { get; set; } = [];
+    public IList<ResourceContents> Contents { get; set; } = [];
 }

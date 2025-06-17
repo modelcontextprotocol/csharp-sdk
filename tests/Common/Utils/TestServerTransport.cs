@@ -12,7 +12,7 @@ public class TestServerTransport : ITransport
 
     public ChannelReader<JsonRpcMessage> MessageReader => _messageChannel;
 
-    public List<JsonRpcMessage> SentMessages { get; } = [];
+    public IList<JsonRpcMessage> SentMessages { get; } = [];
 
     public Action<JsonRpcMessage>? OnMessageSent { get; set; }
 
@@ -74,7 +74,7 @@ public class TestServerTransport : ITransport
         await WriteMessageAsync(new JsonRpcResponse
         {
             Id = request.Id,
-            Result = JsonSerializer.SerializeToNode(new CreateMessageResult { Content = new(), Model = "model", Role = Role.User }, McpJsonUtilities.DefaultOptions),
+            Result = JsonSerializer.SerializeToNode(new CreateMessageResult { Content = new TextContentBlock { Text = "" }, Model = "model", Role = Role.User }, McpJsonUtilities.DefaultOptions),
         }, cancellationToken);
     }
 

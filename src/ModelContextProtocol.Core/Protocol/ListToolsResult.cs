@@ -18,11 +18,11 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
-public class ListToolsResult : PaginatedResult
+public sealed class ListToolsResult : PaginatedResult
 {
     /// <summary>
     /// The server's response to a tools/list request from the client.
     /// </summary>
     [JsonPropertyName("tools")]
-    public List<Tool> Tools { get; set; } = [];
+    public IList<Tool> Tools { get; set; } = [];
 }
