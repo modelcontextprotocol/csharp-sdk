@@ -89,6 +89,6 @@ static (string command, string[] arguments) GetCommandAndArguments(string[] args
         [var script] when script.EndsWith(".py") => ("python", args),
         [var script] when script.EndsWith(".js") => ("node", args),
         [var script] when Directory.Exists(script) || (File.Exists(script) && script.EndsWith(".csproj")) => ("dotnet", ["run", "--project", script, "--no-build"]),
-        _ => ("dotnet", ["run", "--project", "../../../../QuickstartWeatherServer", "--no-build"])
+        _ => ("dotnet", ["run", "--project", "../../../../../samples/QuickstartWeatherServer/QuickstartWeatherServer.csproj", "--no-build"])
     };
 }
