@@ -29,12 +29,13 @@ internal sealed partial class McpSession : IDisposable
         "mcp.server.operation.duration", "Measures the duration of inbound message processing.", longBuckets: false);
 
     /// <summary>The latest version of the protocol supported by this implementation.</summary>
-    internal const string LatestProtocolVersion = "2025-03-26";
+    internal const string LatestProtocolVersion = "2025-06-18";
 
     /// <summary>All protocol versions supported by this implementation.</summary>
     internal static readonly string[] SupportedProtocolVersions =
     [
         "2024-11-05",
+        "2025-03-26",
         LatestProtocolVersion,
     ];
 

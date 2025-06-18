@@ -39,7 +39,7 @@ public sealed class SseClientTransportOptions
     /// Streamable HTTP transport and automatically fall back to SSE transport if the server doesn't support it.
     /// </para>
     /// <para>
-    /// <see href="https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http">Streamable HTTP transport specification</see>.
+    /// <see href="https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http">Streamable HTTP transport specification</see>.
     /// <see href="https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse">HTTP with SSE transport specification</see>.
     /// </para>
     /// </remarks>

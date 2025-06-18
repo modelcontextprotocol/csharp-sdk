@@ -171,7 +171,10 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using var mcpClient = await ConnectAsync();
+        await using var mcpClient = await ConnectAsync(clientOptions: new()
+        {
+            ProtocolVersion = "2025-03-26",
+        });
         await mcpClient.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // The header should be included in the GET request, the initialized notification, and the tools/list call.
