@@ -268,8 +268,8 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
         sc.AddMcpServer().WithResourcesFromAssembly();
         IServiceProvider services = sc.BuildServiceProvider();
 
-        Assert.Contains(services.GetServices<McpServerResource>(), t => t.ProtocolResource?.Uri == $"resource://{nameof(SimpleResources.SomeNeatDirectResource)}");
-        Assert.Contains(services.GetServices<McpServerResource>(), t => t.ProtocolResourceTemplate?.UriTemplate == $"resource://{nameof(SimpleResources.SomeNeatTemplatedResource)}{{?name}}");
+        Assert.Contains(services.GetServices<McpServerResource>(), t => t.ProtocolResource?.Uri == $"resource://{nameof(SimpleResources.SomeNeatDirectResource).ToLowerInvariant()}");
+        Assert.Contains(services.GetServices<McpServerResource>(), t => t.ProtocolResourceTemplate?.UriTemplate == $"resource://{nameof(SimpleResources.SomeNeatTemplatedResource).ToLowerInvariant()}{{?name}}");
     }
 
     [Fact]
@@ -279,13 +279,13 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
         sc.AddMcpServer()
             .WithResources<SimpleResources>()
             .WithResources<MoreResources>()
-            .WithResources([McpServerResource.Create(() => "42", new() { UriTemplate = "myResources://Returns42/{something}" })]);
+            .WithResources([McpServerResource.Create(() => "42", new() { UriTemplate = "myResources://returns42/{something}" })]);
         IServiceProvider services = sc.BuildServiceProvider();
 
-        Assert.Contains(services.GetServices<McpServerResource>(), t => t.ProtocolResource?.Uri == $"resource://{nameof(SimpleResources.SomeNeatDirectResource)}");
-        Assert.Contains(services.GetServices<McpServerResource>(), t => t.ProtocolResourceTemplate?.UriTemplate == $"resource://{nameof(SimpleResources.SomeNeatTemplatedResource)}{{?name}}");
-        Assert.Contains(services.GetServices<McpServerResource>(), t => t.ProtocolResourceTemplate?.UriTemplate == $"resource://{nameof(MoreResources.AnotherNeatDirectResource)}");
-        Assert.Contains(services.GetServices<McpServerResource>(), t => t.ProtocolResourceTemplate.UriTemplate == "myResources://Returns42/{something}");
+        Assert.Contains(services.GetServices<McpServerResource>(), t => t.ProtocolResource?.Uri == $"resource://{nameof(SimpleResources.SomeNeatDirectResource).ToLowerInvariant()}");
+        Assert.Contains(services.GetServices<McpServerResource>(), t => t.ProtocolResourceTemplate?.UriTemplate == $"resource://{nameof(SimpleResources.SomeNeatTemplatedResource).ToLowerInvariant()}{{?name}}");
+        Assert.Contains(services.GetServices<McpServerResource>(), t => t.ProtocolResourceTemplate?.UriTemplate == $"resource://{nameof(MoreResources.AnotherNeatDirectResource).ToLowerInvariant()}");
+        Assert.Contains(services.GetServices<McpServerResource>(), t => t.ProtocolResourceTemplate.UriTemplate == "myResources://returns42/{something}");
     }
 
     [McpServerResourceType]
