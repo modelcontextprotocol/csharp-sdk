@@ -28,7 +28,7 @@ public class HttpServerTransportOptions
     /// </summary>
     /// <remarks>
     /// If <see langword="true"/>, the "/sse" endpoint will be disabled, and client information will be round-tripped as part
-    /// of the "mcp-session-id" header instead of stored in memory. Unsolicited server-to-client messages and all server-to-client
+    /// of the "MCP-Session-Id" header instead of stored in memory. Unsolicited server-to-client messages and all server-to-client
     /// requests are also unsupported, because any responses may arrive at another ASP.NET Core application process.
     /// Client sampling and roots capabilities are also disabled in stateless mode, because the server cannot make requests.
     /// Defaults to <see langword="false"/>.
