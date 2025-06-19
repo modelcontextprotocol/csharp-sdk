@@ -155,7 +155,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
             try
             {
-                // Send DELETE request to terminate the session only send if we have a session ID per MCP spec
+                // Send DELETE request to terminate the session. Only send if we have a session ID, per MCP spec.
                 if (!string.IsNullOrEmpty(SessionId))
                 {
                     await SendDeleteRequest();
