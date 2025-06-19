@@ -145,13 +145,9 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
             try
             {
                 // Send DELETE request to terminate the session only send if we have a session ID per MCP spec
-                if (!string.IsNullOrEmpty(_mcpSessionId))
+                if (!string.IsNullOrEmpty(SessionId))
                 {
-                    using var deleteRequest = new HttpRequestMessage(HttpMethod.Delete, _options.Endpoint);
-                    CopyAdditionalHeaders(deleteRequest.Headers, _options.AdditionalHeaders, _mcpSessionId);
-
-                    // Do not validate we get a successful status code, because server support for the DELETE request is optional
-                    using var deleteResponse = await _httpClient.SendAsync(deleteRequest, CancellationToken.None).ConfigureAwait(false);
+                    await SendDeleteRequest();
                 }
 
                 if (_getReceiveTask != null)
@@ -246,6 +242,22 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         return null;
     }
 
+    private async Task SendDeleteRequest()
+    {
+        using var deleteRequest = new HttpRequestMessage(HttpMethod.Delete, _options.Endpoint);
+        CopyAdditionalHeaders(deleteRequest.Headers, _options.AdditionalHeaders, SessionId, _negotiatedProtocolVersion);
+
+        try
+        {
+            // Do not validate we get a successful status code, because server support for the DELETE request is optional
+            (await _httpClient.SendAsync(deleteRequest, CancellationToken.None).ConfigureAwait(false)).Dispose();
+        }
+        catch (Exception ex)
+        {
+            LogTransportShutdownFailed(Name, ex);
+        }
+    }
+
     private void LogJsonException(JsonException ex, string data)
     {
         if (_logger.IsEnabled(LogLevel.Trace))
@@ -261,8 +273,8 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
     internal static void CopyAdditionalHeaders(
         HttpRequestHeaders headers,
         IDictionary<string, string>? additionalHeaders,
-        string? sessionId = null,
-        string? protocolVersion = null)
+        string? sessionId,
+        string? protocolVersion)
     {
         if (sessionId is not null)
         {

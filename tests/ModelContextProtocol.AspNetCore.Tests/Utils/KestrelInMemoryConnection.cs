@@ -81,7 +81,7 @@ public sealed class KestrelInMemoryConnection : ConnectionContext
         protected override void Dispose(bool disposing)
         {
             // Signal to the server the the client has closed the connection, and dispose the client-half of the Pipes.
-            connectionClosedCts.Cancel();
+            ThreadPool.UnsafeQueueUserWorkItem(static cts => ((CancellationTokenSource)cts!).Cancel(), connectionClosedCts);
             duplexPipe.Input.Complete();
             duplexPipe.Output.Complete();
         }
