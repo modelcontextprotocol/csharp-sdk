@@ -15,7 +15,7 @@ namespace ModelContextProtocol.Client;
 /// </summary>
 internal sealed partial class SseClientSessionTransport : TransportBase
 {
-    private readonly HttpClient _httpClient;
+    private readonly McpHttpClient _httpClient;
     private readonly SseClientTransportOptions _options;
     private readonly Uri _sseEndpoint;
     private Uri? _messageEndpoint;
@@ -31,7 +31,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
     public SseClientSessionTransport(
         string endpointName,
         SseClientTransportOptions transportOptions,
-        HttpClient httpClient,
+        McpHttpClient httpClient,
         Channel<JsonRpcMessage>? messageChannel,
         ILoggerFactory? loggerFactory)
         : base(endpointName, messageChannel, loggerFactory)
@@ -74,12 +74,6 @@ internal sealed partial class SseClientSessionTransport : TransportBase
         if (_messageEndpoint == null)
             throw new InvalidOperationException("Transport not connected");
 
-        using var content = new StringContent(
-            JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage),
-            Encoding.UTF8,
-            "application/json"
-        );
-
         string messageId = "(no id)";
 
         if (message is JsonRpcMessageWithId messageWithId)
@@ -87,12 +81,9 @@ internal sealed partial class SseClientSessionTransport : TransportBase
             messageId = messageWithId.Id.ToString();
         }
 
-        using var httpRequestMessage = new HttpRequestMessage(HttpMethod.Post, _messageEndpoint)
-        {
-            Content = content,
-        };
+        using var httpRequestMessage = new HttpRequestMessage(HttpMethod.Post, _messageEndpoint);
         StreamableHttpClientSessionTransport.CopyAdditionalHeaders(httpRequestMessage.Headers, _options.AdditionalHeaders, sessionId: null, protocolVersion: null);
-        var response = await _httpClient.SendAsync(httpRequestMessage, cancellationToken).ConfigureAwait(false);
+        var response = await _httpClient.SendAsync(httpRequestMessage, message, cancellationToken).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -154,11 +145,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
             StreamableHttpClientSessionTransport.CopyAdditionalHeaders(request.Headers, _options.AdditionalHeaders, sessionId: null, protocolVersion: null);
 
-            using var response = await _httpClient.SendAsync(
-                request,
-                HttpCompletionOption.ResponseHeadersRead,
-                cancellationToken
-            ).ConfigureAwait(false);
+            using var response = await _httpClient.SendAsync(request, message: null, cancellationToken).ConfigureAwait(false);
 
             response.EnsureSuccessStatusCode();
 

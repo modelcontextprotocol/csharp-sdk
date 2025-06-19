@@ -16,9 +16,9 @@ namespace ModelContextProtocol.Client;
 public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
 {
     private readonly SseClientTransportOptions _options;
-    private readonly HttpClient _httpClient;
+    private readonly HttpClient? _httpClient;
+    private readonly McpHttpClient _mcpHttpClient;
     private readonly ILoggerFactory? _loggerFactory;
-    private readonly bool _ownsHttpClient;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SseClientTransport"/> class.
@@ -46,37 +46,22 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
         Throw.IfNull(httpClient);
 
         _options = transportOptions;
-        _httpClient = httpClient;
-        _loggerFactory = loggerFactory;
-        _ownsHttpClient = ownsHttpClient;
-        Name = transportOptions.Name ?? transportOptions.Endpoint.ToString();
-    }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="SseClientTransport"/> class with authentication support.
-    /// </summary>
-    /// <param name="transportOptions">Configuration options for the transport.</param>
-    /// <param name="credentialProvider">The authorization provider to use for authentication.</param>
-    /// <param name="loggerFactory">Logger factory for creating loggers used for diagnostic output during transport operations.</param>
-    /// <param name="baseMessageHandler">Optional. The base message handler to use under the authorization handler.
-    /// If null, a new <see cref="HttpClientHandler"/> will be used. This allows for custom HTTP client pipelines (e.g., from HttpClientFactory)
-    /// to be used in conjunction with the token-based authentication provided by <paramref name="credentialProvider"/>.</param>
-    public SseClientTransport(SseClientTransportOptions transportOptions, IMcpCredentialProvider credentialProvider, ILoggerFactory? loggerFactory = null, HttpMessageHandler? baseMessageHandler = null)
-    {
-        Throw.IfNull(transportOptions);
-        Throw.IfNull(credentialProvider);
-
-        _options = transportOptions;
         _loggerFactory = loggerFactory;
         Name = transportOptions.Name ?? transportOptions.Endpoint.ToString();
 
-        var authHandler = new AuthorizationDelegatingHandler(credentialProvider)
+        if (transportOptions.CredentialProvider is { } credentialProvider)
         {
-            InnerHandler = baseMessageHandler ?? new HttpClientHandler()
-        };
+            _mcpHttpClient = new AuthenticatingMcpHttpClient(httpClient, credentialProvider);
+        }
+        else
+        {
+            _mcpHttpClient = new(httpClient);
+        }
 
-        _httpClient = new HttpClient(authHandler);
-        _ownsHttpClient = true;
+        if (ownsHttpClient)
+        {
+            _httpClient = httpClient;
+        }
     }
 
     /// <inheritdoc />
@@ -87,8 +72,8 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
     {
         return _options.TransportMode switch
         {
-            HttpTransportMode.AutoDetect => new AutoDetectingClientSessionTransport(_options, _httpClient, _loggerFactory, Name),
-            HttpTransportMode.StreamableHttp => new StreamableHttpClientSessionTransport(Name, _options, _httpClient, messageChannel: null, _loggerFactory),
+            HttpTransportMode.AutoDetect => new AutoDetectingClientSessionTransport(Name, _options, _mcpHttpClient, _loggerFactory),
+            HttpTransportMode.StreamableHttp => new StreamableHttpClientSessionTransport(Name, _options, _mcpHttpClient, messageChannel: null, _loggerFactory),
             HttpTransportMode.Sse => await ConnectSseTransportAsync(cancellationToken).ConfigureAwait(false),
             _ => throw new InvalidOperationException($"Unsupported transport mode: {_options.TransportMode}"),
         };
@@ -96,7 +81,7 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
 
     private async Task<ITransport> ConnectSseTransportAsync(CancellationToken cancellationToken)
     {
-        var sessionTransport = new SseClientSessionTransport(Name, _options, _httpClient, messageChannel: null, _loggerFactory);
+        var sessionTransport = new SseClientSessionTransport(Name, _options, _mcpHttpClient, messageChannel: null, _loggerFactory);
 
         try
         {
@@ -113,11 +98,7 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
     /// <inheritdoc />
     public ValueTask DisposeAsync()
     {
-        if (_ownsHttpClient)
-        {
-            _httpClient.Dispose();
-        }
-
+        _httpClient?.Dispose();
         return default;
     }
 }

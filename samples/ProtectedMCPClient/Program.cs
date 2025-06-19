@@ -5,7 +5,6 @@ using System.Diagnostics;
 using System.Net;
 using System.Text;
 using System.Web;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 Console.WriteLine("Protected MCP Weather Server");
 Console.WriteLine();
@@ -39,17 +38,12 @@ Console.WriteLine($"Connecting to weather server at {serverUrl}...");
 
 try
 {
-    var transportOptions = new SseClientTransportOptions
+    var transport = new SseClientTransport(new()
     {
         Endpoint = new Uri(serverUrl),
-        Name = "Secure Weather Client"
-    };
-
-    // Create a transport with authentication support using the correct constructor parameters
-    var transport = new SseClientTransport(
-        transportOptions,
-        tokenProvider
-    );
+        Name = "Secure Weather Client",
+        CredentialProvider = tokenProvider,
+    });
 
     var client = await McpClientFactory.CreateAsync(transport);
 

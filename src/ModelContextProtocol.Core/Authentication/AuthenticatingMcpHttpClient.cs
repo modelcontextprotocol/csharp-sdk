@@ -1,3 +1,5 @@
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 using System.Net.Http.Headers;
 
 namespace ModelContextProtocol.Authentication;
@@ -5,42 +7,29 @@ namespace ModelContextProtocol.Authentication;
 /// <summary>
 /// A delegating handler that adds authentication tokens to requests and handles 401 responses.
 /// </summary>
-public class AuthorizationDelegatingHandler : DelegatingHandler
+internal sealed class AuthenticatingMcpHttpClient(HttpClient httpClient, IMcpCredentialProvider credentialProvider) : McpHttpClient(httpClient)
 {
-    private readonly IMcpCredentialProvider _credentialProvider;
-    private string _currentScheme;
-    private static readonly char[] SchemeSplitDelimiters = { ' ', ',' };
+    private static readonly char[] SchemeSplitDelimiters = [' ', ','];
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="AuthorizationDelegatingHandler"/> class.
-    /// </summary>
-    /// <param name="credentialProvider">The provider that supplies authentication tokens.</param>
-    public AuthorizationDelegatingHandler(IMcpCredentialProvider credentialProvider)
-    {
-        Throw.IfNull(credentialProvider);
-
-        _credentialProvider = credentialProvider;
-
-        // Select first supported scheme as the default
-        _currentScheme = _credentialProvider.SupportedSchemes.FirstOrDefault() ??
-            throw new ArgumentException("Authorization provider must support at least one authentication scheme.", nameof(credentialProvider));
-    }
+    // Select first supported scheme as the default
+    private string _currentScheme = credentialProvider.SupportedSchemes.FirstOrDefault() ??
+        throw new ArgumentException("Authorization provider must support at least one authentication scheme.", nameof(credentialProvider));
 
     /// <summary>
     /// Sends an HTTP request with authentication handling.
     /// </summary>
-    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    internal override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, JsonRpcMessage? message, CancellationToken cancellationToken)
     {
         if (request.Headers.Authorization == null)
         {
             await AddAuthorizationHeaderAsync(request, _currentScheme, cancellationToken).ConfigureAwait(false);
         }
 
-        var response = await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        var response = await base.SendAsync(request, message, cancellationToken).ConfigureAwait(false);
 
         if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
         {
-            return await HandleUnauthorizedResponseAsync(request, response, cancellationToken).ConfigureAwait(false);
+            return await HandleUnauthorizedResponseAsync(request, message, response, cancellationToken).ConfigureAwait(false);
         }
 
         return response;
@@ -51,6 +40,7 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
     /// </summary>
     private async Task<HttpResponseMessage> HandleUnauthorizedResponseAsync(
         HttpRequestMessage originalRequest,
+        JsonRpcMessage? originalJsonRpcMessage,
         HttpResponseMessage response,
         CancellationToken cancellationToken)
     {
@@ -64,14 +54,14 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
         string schemeUsed = originalRequest.Headers.Authorization?.Scheme ?? _currentScheme ?? string.Empty;
         if (!string.IsNullOrEmpty(schemeUsed) &&
             serverSchemes.Contains(schemeUsed) &&
-            _credentialProvider.SupportedSchemes.Contains(schemeUsed))
+            credentialProvider.SupportedSchemes.Contains(schemeUsed))
         {
             bestSchemeMatch = schemeUsed;
         }
         else
         {
             // Find the first server scheme that's in our supported set
-            bestSchemeMatch = serverSchemes.Intersect(_credentialProvider.SupportedSchemes, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+            bestSchemeMatch = serverSchemes.Intersect(credentialProvider.SupportedSchemes, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
 
             // If no match was found, either throw an exception or use default
             if (bestSchemeMatch is null)
@@ -81,20 +71,20 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
                     throw new IOException(
                         $"The server does not support any of the provided authentication schemes." +
                         $"Server supports: [{string.Join(", ", serverSchemes)}], " +
-                        $"Provider supports: [{string.Join(", ", _credentialProvider.SupportedSchemes)}].");
+                        $"Provider supports: [{string.Join(", ", credentialProvider.SupportedSchemes)}].");
                 }
 
                 // If the server didn't specify any schemes, use the provider's default
-                bestSchemeMatch = _credentialProvider.SupportedSchemes.FirstOrDefault();
+                bestSchemeMatch = credentialProvider.SupportedSchemes.FirstOrDefault();
             }
         }
-        // If we have a scheme to try, use it
+
         if (bestSchemeMatch != null)
         {
             try
             {
                 // Try to handle the 401 response with the selected scheme
-                var (handled, recommendedScheme) = await _credentialProvider.HandleUnauthorizedResponseAsync(
+                var (handled, recommendedScheme) = await credentialProvider.HandleUnauthorizedResponseAsync(
                     response,
                     bestSchemeMatch,
                     cancellationToken).ConfigureAwait(false);
@@ -108,14 +98,8 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
 
                 _currentScheme = recommendedScheme ?? bestSchemeMatch;
             }
-            catch (McpException)
-            {
-                // Re-throw McpExceptions as-is to preserve the original error information
-                throw;
-            }
             catch (Exception ex)
             {
-                // Wrap other exceptions with additional context while preserving the original exception
                 throw new McpException(
                     $"Failed to handle unauthorized response with scheme '{bestSchemeMatch}'. " +
                     "The authentication provider encountered an error while processing the authentication challenge.",
@@ -128,7 +112,6 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
 #if NET
                 VersionPolicy = originalRequest.VersionPolicy,
 #endif
-                Content = originalRequest.Content
             };
 
             // Copy headers except Authorization which we'll set separately
@@ -139,23 +122,10 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
                     retryRequest.Headers.TryAddWithoutValidation(header.Key, header.Value);
                 }
             }
-#if NET
-            foreach (var property in originalRequest.Options)
-            {
-                retryRequest.Options.Set(new HttpRequestOptionsKey<object?>(property.Key), property.Value);
-            }
-#else
-            foreach (var property in originalRequest.Properties)
-            {
-                retryRequest.Properties.Add(property);
-            }
-#endif
 
-            // Add the new authorization header
             await AddAuthorizationHeaderAsync(retryRequest, _currentScheme, cancellationToken).ConfigureAwait(false);
 
-            // Send the retry request
-            return await base.SendAsync(retryRequest, cancellationToken).ConfigureAwait(false);
+            return await base.SendAsync(retryRequest, originalJsonRpcMessage, cancellationToken).ConfigureAwait(false);
         }
 
         return response; // Return the original response if we couldn't handle it
@@ -189,7 +159,7 @@ public class AuthorizationDelegatingHandler : DelegatingHandler
     {
         if (request.RequestUri != null)
         {
-            var token = await _credentialProvider.GetCredentialAsync(scheme, request.RequestUri, cancellationToken).ConfigureAwait(false);
+            var token = await credentialProvider.GetCredentialAsync(scheme, request.RequestUri, cancellationToken).ConfigureAwait(false);
             if (!string.IsNullOrEmpty(token))
             {
                 request.Headers.Authorization = new AuthenticationHeaderValue(scheme, token);
