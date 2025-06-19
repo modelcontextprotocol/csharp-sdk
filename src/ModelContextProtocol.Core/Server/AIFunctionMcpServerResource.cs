@@ -359,7 +359,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
                 return null;
             }
         }
-        else if (request.Params.Uri != ProtocolResource!.Uri)
+        else if (new Uri(request.Params.Uri) != new Uri(ProtocolResource!.Uri))
         {
             return null;
         }

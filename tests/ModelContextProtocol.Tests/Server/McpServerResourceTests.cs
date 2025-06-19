@@ -269,6 +269,17 @@ public partial class McpServerResourceTests
             TestContext.Current.CancellationToken));
     }
 
+    [Theory]
+    [InlineData("resource://MyCoolResource", "resource://mycoolresource")]
+    [InlineData("resource://MyCoolResource{?arg1}", "resource://mycoolresource?arg1=42")]
+    public async Task UriTemplate_IsHostCaseInsensitive(string actualUri, string queriedUri)
+    {
+        McpServerResource t = McpServerResource.Create(() => "resource", new() { UriTemplate = actualUri });
+        Assert.NotNull(await t.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(new Mock<IMcpServer>().Object) { Params = new() { Uri = queriedUri } },
+            TestContext.Current.CancellationToken));
+    }
+
     [Fact]
     public void MimeType_DefaultsToOctetStream()
     {
