@@ -30,6 +30,9 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
     private string? _negotiatedProtocolVersion;
     private Task? _getReceiveTask;
 
+    private readonly SemaphoreSlim _disposeLock = new(1, 1);
+    private bool _disposed;
+
     public StreamableHttpClientSessionTransport(
         string endpointName,
         SseClientTransportOptions transportOptions,
@@ -138,6 +141,14 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
     public override async ValueTask DisposeAsync()
     {
+        using var _ = await _disposeLock.LockAsync().ConfigureAwait(false);
+
+        if (_disposed)
+        {
+            return;
+        }
+        _disposed = true;
+
         try
         {
             await _connectionCts.CancelAsync().ConfigureAwait(false);
