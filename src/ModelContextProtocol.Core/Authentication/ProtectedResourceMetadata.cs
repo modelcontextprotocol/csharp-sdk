@@ -6,7 +6,7 @@ namespace ModelContextProtocol.Authentication;
 /// Represents the resource metadata for OAuth authorization as defined in RFC 9396.
 /// Defined by <see href="https://datatracker.ietf.org/doc/rfc9728/">RFC 9728</see>.
 /// </summary>
-public class ProtectedResourceMetadata
+public sealed class ProtectedResourceMetadata
 {
     /// <summary>
     /// The resource URI.

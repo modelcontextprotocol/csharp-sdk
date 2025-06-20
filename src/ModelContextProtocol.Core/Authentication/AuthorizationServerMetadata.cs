@@ -5,7 +5,7 @@ namespace ModelContextProtocol.Authentication;
 /// <summary>
 /// Represents the metadata about an OAuth authorization server.
 /// </summary>
-public class AuthorizationServerMetadata
+internal sealed class AuthorizationServerMetadata
 {
     /// <summary>
     /// The authorization endpoint URI.

@@ -19,7 +19,7 @@ internal class McpHttpClient(HttpClient httpClient)
 
         using var content = CreatePostBodyContent(message);
         request.Content = content;
-        return await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        return await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
     }
 
     private HttpContent? CreatePostBodyContent(JsonRpcMessage? message)

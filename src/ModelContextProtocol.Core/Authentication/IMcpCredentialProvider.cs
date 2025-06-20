@@ -34,15 +34,12 @@ public interface IMcpCredentialProvider
     /// <summary>
     /// Handles a 401 Unauthorized response from a resource.
     /// </summary>
-    /// <param name="response">The HTTP response that contained the 401 status code.</param>
     /// <param name="scheme">The authentication scheme that was used when the unauthorized response was received.</param>
+    /// <param name="response">The HTTP response that contained the 401 status code.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>
     /// A result object indicating if the provider was able to handle the unauthorized response,
     /// and the authentication scheme that should be used for the next attempt, if any.
     /// </returns>
-    Task<McpUnauthorizedResponseResult> HandleUnauthorizedResponseAsync(
-        HttpResponseMessage response,
-        string scheme,
-        CancellationToken cancellationToken = default);
+    Task HandleUnauthorizedResponseAsync(string scheme, HttpResponseMessage response, CancellationToken cancellationToken = default);
 }

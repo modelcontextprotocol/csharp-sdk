@@ -4,7 +4,6 @@ using ModelContextProtocol.Protocol;
 using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Net.ServerSentEvents;
-using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
 

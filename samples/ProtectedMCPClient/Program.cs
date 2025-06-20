@@ -9,7 +9,7 @@ using System.Web;
 Console.WriteLine("Protected MCP Weather Server");
 Console.WriteLine();
 
-var serverUrl = "http://localhost:7071/sse";
+var serverUrl = "http://localhost:7071/";
 var clientId = Environment.GetEnvironmentVariable("CLIENT_ID") ?? throw new Exception("The CLIENT_ID environment variable is not set.");
 
 // We can customize a shared HttpClient with a custom handler if desired
@@ -24,14 +24,9 @@ var httpClient = new HttpClient(sharedHandler);
 var tokenProvider = new GenericOAuthProvider(
     new Uri(serverUrl),
     httpClient,
-    null, // AuthorizationHelpers will be created automatically
     clientId: clientId,
-    clientSecret: "", // No secret needed for this client
     redirectUri: new Uri("http://localhost:1179/callback"),
-    scopes: null, // Scopes listed in scopes_supported will be requested automatically
-    logger: null,
-    authorizationUrlHandler: HandleAuthorizationUrlAsync
-);
+    authorizationRedirectDelegate: HandleAuthorizationUrlAsync);
 
 Console.WriteLine();
 Console.WriteLine($"Connecting to weather server at {serverUrl}...");

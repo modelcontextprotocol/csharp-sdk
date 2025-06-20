@@ -9,8 +9,6 @@ namespace ModelContextProtocol.Authentication;
 /// </summary>
 internal sealed class AuthenticatingMcpHttpClient(HttpClient httpClient, IMcpCredentialProvider credentialProvider) : McpHttpClient(httpClient)
 {
-    private static readonly char[] SchemeSplitDelimiters = [' ', ','];
-
     // Select first supported scheme as the default
     private string _currentScheme = credentialProvider.SupportedSchemes.FirstOrDefault() ??
         throw new ArgumentException("Authorization provider must support at least one authentication scheme.", nameof(credentialProvider));
@@ -47,88 +45,41 @@ internal sealed class AuthenticatingMcpHttpClient(HttpClient httpClient, IMcpCre
         // Gather the schemes the server wants us to use from WWW-Authenticate headers
         var serverSchemes = ExtractServerSupportedSchemes(response);
 
-        // Find the intersection between what the server supports and what our provider supports
-        string? bestSchemeMatch = null;
-
-        // First try to find a direct match with the current scheme if it's still valid
-        string schemeUsed = originalRequest.Headers.Authorization?.Scheme ?? _currentScheme ?? string.Empty;
-        if (!string.IsNullOrEmpty(schemeUsed) &&
-            serverSchemes.Contains(schemeUsed) &&
-            credentialProvider.SupportedSchemes.Contains(schemeUsed))
-        {
-            bestSchemeMatch = schemeUsed;
-        }
-        else
+        if (!serverSchemes.Contains(_currentScheme))
         {
             // Find the first server scheme that's in our supported set
-            bestSchemeMatch = serverSchemes.Intersect(credentialProvider.SupportedSchemes, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+            var bestSchemeMatch = serverSchemes.Intersect(credentialProvider.SupportedSchemes, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
 
-            // If no match was found, either throw an exception or use default
-            if (bestSchemeMatch is null)
+            if (bestSchemeMatch is not null)
             {
-                if (serverSchemes.Count > 0)
-                {
-                    throw new IOException(
-                        $"The server does not support any of the provided authentication schemes." +
-                        $"Server supports: [{string.Join(", ", serverSchemes)}], " +
-                        $"Provider supports: [{string.Join(", ", credentialProvider.SupportedSchemes)}].");
-                }
-
-                // If the server didn't specify any schemes, use the provider's default
-                bestSchemeMatch = credentialProvider.SupportedSchemes.FirstOrDefault();
+                _currentScheme = bestSchemeMatch;
             }
-        }
-
-        if (bestSchemeMatch != null)
-        {
-            try
+            else if (serverSchemes.Count > 0)
             {
-                // Try to handle the 401 response with the selected scheme
-                var (handled, recommendedScheme) = await credentialProvider.HandleUnauthorizedResponseAsync(
-                    response,
-                    bestSchemeMatch,
-                    cancellationToken).ConfigureAwait(false);
-
-                if (!handled)
-                {
-                    throw new McpException(
-                        $"Failed to handle unauthorized response with scheme '{bestSchemeMatch}'. " +
-                        "The authentication provider was unable to process the authentication challenge.");
-                }
-
-                _currentScheme = recommendedScheme ?? bestSchemeMatch;
-            }
-            catch (Exception ex)
-            {
+                // If no match was found, either throw an exception or use default
                 throw new McpException(
-                    $"Failed to handle unauthorized response with scheme '{bestSchemeMatch}'. " +
-                    "The authentication provider encountered an error while processing the authentication challenge.",
-                    ex);
+                    $"The server does not support any of the provided authentication schemes." +
+                    $"Server supports: [{string.Join(", ", serverSchemes)}], " +
+                    $"Provider supports: [{string.Join(", ", credentialProvider.SupportedSchemes)}].");
             }
-
-            var retryRequest = new HttpRequestMessage(originalRequest.Method, originalRequest.RequestUri)
-            {
-                Version = originalRequest.Version,
-#if NET
-                VersionPolicy = originalRequest.VersionPolicy,
-#endif
-            };
-
-            // Copy headers except Authorization which we'll set separately
-            foreach (var header in originalRequest.Headers)
-            {
-                if (!header.Key.Equals("Authorization", StringComparison.OrdinalIgnoreCase))
-                {
-                    retryRequest.Headers.TryAddWithoutValidation(header.Key, header.Value);
-                }
-            }
-
-            await AddAuthorizationHeaderAsync(retryRequest, _currentScheme, cancellationToken).ConfigureAwait(false);
-
-            return await base.SendAsync(retryRequest, originalJsonRpcMessage, cancellationToken).ConfigureAwait(false);
         }
 
-        return response; // Return the original response if we couldn't handle it
+        // Try to handle the 401 response with the selected scheme
+        await credentialProvider.HandleUnauthorizedResponseAsync(_currentScheme, response, cancellationToken).ConfigureAwait(false);
+
+        using var retryRequest = new HttpRequestMessage(originalRequest.Method, originalRequest.RequestUri);
+
+        // Copy headers except Authorization which we'll set separately
+        foreach (var header in originalRequest.Headers)
+        {
+            if (!header.Key.Equals("Authorization", StringComparison.OrdinalIgnoreCase))
+            {
+                retryRequest.Headers.TryAddWithoutValidation(header.Key, header.Value);
+            }
+        }
+
+        await AddAuthorizationHeaderAsync(retryRequest, _currentScheme, cancellationToken).ConfigureAwait(false);
+        return await base.SendAsync(retryRequest, originalJsonRpcMessage, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -138,15 +89,9 @@ internal sealed class AuthenticatingMcpHttpClient(HttpClient httpClient, IMcpCre
     {
         var serverSchemes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        if (response.Headers.Contains("WWW-Authenticate"))
+        foreach (var header in response.Headers.WwwAuthenticate)
         {
-            foreach (var authHeader in response.Headers.GetValues("WWW-Authenticate"))
-            {
-                // Extract the scheme from the WWW-Authenticate header
-                // Format is typically: "Scheme param1=value1, param2=value2"
-                string scheme = authHeader.Split(SchemeSplitDelimiters, StringSplitOptions.RemoveEmptyEntries)[0];
-                serverSchemes.Add(scheme);
-            }
+            serverSchemes.Add(header.Scheme);
         }
 
         return serverSchemes;
@@ -157,13 +102,17 @@ internal sealed class AuthenticatingMcpHttpClient(HttpClient httpClient, IMcpCre
     /// </summary>
     private async Task AddAuthorizationHeaderAsync(HttpRequestMessage request, string scheme, CancellationToken cancellationToken)
     {
-        if (request.RequestUri != null)
+        if (request.RequestUri is null)
         {
-            var token = await credentialProvider.GetCredentialAsync(scheme, request.RequestUri, cancellationToken).ConfigureAwait(false);
-            if (!string.IsNullOrEmpty(token))
-            {
-                request.Headers.Authorization = new AuthenticationHeaderValue(scheme, token);
-            }
+            return;
         }
+
+        var token = await credentialProvider.GetCredentialAsync(scheme, request.RequestUri, cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrEmpty(token))
+        {
+            return;
+        }
+
+        request.Headers.Authorization = new AuthenticationHeaderValue(scheme, token);
     }
 }
