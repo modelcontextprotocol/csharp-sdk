@@ -79,10 +79,7 @@ public sealed class GenericOAuthProvider : IMcpCredentialProvider
     /// </summary>
     /// <param name="availableServers">List of available authorization servers.</param>
     /// <returns>The selected authorization server, or null if none are available.</returns>
-    private static Uri? DefaultAuthServerSelector(IReadOnlyList<Uri> availableServers)
-    {
-        return availableServers.FirstOrDefault();
-    }
+    private static Uri? DefaultAuthServerSelector(IReadOnlyList<Uri> availableServers) => availableServers.FirstOrDefault();
 
     /// <summary>
     /// Default authorization URL handler that displays the URL to the user for manual input.

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -19,6 +20,11 @@ var sharedHandler = new SocketsHttpHandler
     PooledConnectionIdleTimeout = TimeSpan.FromMinutes(1)
 };
 
+var consoleLoggerFactory = LoggerFactory.Create(builder =>
+{
+    builder.AddConsole();
+});
+
 var httpClient = new HttpClient(sharedHandler);
 // Create the token provider with our custom HttpClient and authorization URL handler
 var tokenProvider = new GenericOAuthProvider(
@@ -26,7 +32,8 @@ var tokenProvider = new GenericOAuthProvider(
     httpClient,
     clientId: clientId,
     redirectUri: new Uri("http://localhost:1179/callback"),
-    authorizationRedirectDelegate: HandleAuthorizationUrlAsync);
+    authorizationRedirectDelegate: HandleAuthorizationUrlAsync,
+    loggerFactory: consoleLoggerFactory);
 
 Console.WriteLine();
 Console.WriteLine($"Connecting to weather server at {serverUrl}...");
@@ -38,9 +45,9 @@ try
         Endpoint = new Uri(serverUrl),
         Name = "Secure Weather Client",
         CredentialProvider = tokenProvider,
-    });
+    }, httpClient, consoleLoggerFactory);
 
-    var client = await McpClientFactory.CreateAsync(transport);
+    var client = await McpClientFactory.CreateAsync(transport, loggerFactory: consoleLoggerFactory);
 
     var tools = await client.ListToolsAsync();
     if (tools.Count == 0)
