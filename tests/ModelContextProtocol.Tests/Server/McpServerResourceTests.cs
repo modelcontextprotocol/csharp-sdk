@@ -281,6 +281,16 @@ public partial class McpServerResourceTests
     }
 
     [Fact]
+    public async Task ResourceCollection_UsesCaseInsensitiveHostLookup()
+    {
+        McpServerResource t1 = McpServerResource.Create(() => "resource", new() { UriTemplate = "resource://MyCoolResource" });
+        McpServerResource t2 = McpServerResource.Create(() => "resource", new() { UriTemplate = "resource://MyCoolResource2" });
+        McpServerPrimitiveCollection<McpServerResource> collection = new() { t1, t2 };
+        Assert.True(collection.TryGetPrimitive("resource://mycoolresource", out McpServerResource? result));
+        Assert.Same(t1, result);
+    }
+
+    [Fact]
     public void MimeType_DefaultsToOctetStream()
     {
         McpServerResource t = McpServerResource.Create(() => "resource", new() { Name = "My Cool Resource" });

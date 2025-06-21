@@ -10,13 +10,16 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     where T : IMcpServerPrimitive
 {
     /// <summary>Concurrent dictionary of primitives, indexed by their names.</summary>
-    private readonly ConcurrentDictionary<string, T> _primitives = [];
+    private readonly ConcurrentDictionary<string, T> _primitives;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="McpServerPrimitiveCollection{T}"/> class.
     /// </summary>
     public McpServerPrimitiveCollection()
     {
+        _primitives = typeof(T) == typeof(McpServerResource)
+            ? new(UriTemplate.UriTemplateComparer.Instance)
+            : new();
     }
 
     /// <summary>Occurs when the collection is changed.</summary>
