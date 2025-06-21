@@ -264,7 +264,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
             Name = name,
             Title = options?.Title,
             Description = options?.Description,
-            MimeType = options?.MimeType,
+            MimeType = options?.MimeType ?? "application/octet-stream",
         };
 
         return new AIFunctionMcpServerResource(function, resource);
@@ -295,7 +295,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
     {
         StringBuilder template = new();
 
-        template.Append("resource://").Append(Uri.EscapeDataString(name));
+        template.Append("resource:///").Append(Uri.EscapeDataString(name));
 
         if (function.JsonSchema.TryGetProperty("properties", out JsonElement properties))
         {
@@ -359,7 +359,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
                 return null;
             }
         }
-        else if (request.Params.Uri != ProtocolResource!.Uri)
+        else if (new Uri(request.Params.Uri) != new Uri(ProtocolResource!.Uri))
         {
             return null;
         }
