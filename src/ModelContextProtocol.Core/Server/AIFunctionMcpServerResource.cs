@@ -295,7 +295,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
     {
         StringBuilder template = new();
 
-        template.Append("resource:///").Append(Uri.EscapeDataString(name));
+        template.Append("resource://mcp/").Append(Uri.EscapeDataString(name));
 
         if (function.JsonSchema.TryGetProperty("properties", out JsonElement properties))
         {
