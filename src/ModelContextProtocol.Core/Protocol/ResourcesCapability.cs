@@ -103,5 +103,5 @@ public sealed class ResourcesCapability
     /// </para>
     /// </remarks>
     [JsonIgnore]
-    public McpServerPrimitiveCollection<McpServerResource>? ResourceCollection { get; set; }
+    public McpServerResourceCollection? ResourceCollection { get; set; }
 }

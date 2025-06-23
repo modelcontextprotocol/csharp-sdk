@@ -15,11 +15,9 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     /// <summary>
     /// Initializes a new instance of the <see cref="McpServerPrimitiveCollection{T}"/> class.
     /// </summary>
-    public McpServerPrimitiveCollection()
+    public McpServerPrimitiveCollection(IEqualityComparer<string>? keyComparer = null)
     {
-        _primitives = typeof(T) == typeof(McpServerResource)
-            ? new(UriTemplate.UriTemplateComparer.Instance)
-            : new();
+        _primitives = new(keyComparer);
     }
 
     /// <summary>Occurs when the collection is changed.</summary>

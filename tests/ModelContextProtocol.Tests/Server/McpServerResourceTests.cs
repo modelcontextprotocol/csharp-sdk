@@ -285,7 +285,7 @@ public partial class McpServerResourceTests
     {
         McpServerResource t1 = McpServerResource.Create(() => "resource", new() { UriTemplate = "resource://MyCoolResource" });
         McpServerResource t2 = McpServerResource.Create(() => "resource", new() { UriTemplate = "resource://MyCoolResource2" });
-        McpServerPrimitiveCollection<McpServerResource> collection = new() { t1, t2 };
+        McpServerResourceCollection collection = new() { t1, t2 };
         Assert.True(collection.TryGetPrimitive("resource://mycoolresource", out McpServerResource? result));
         Assert.Same(t1, result);
     }
