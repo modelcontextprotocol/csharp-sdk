@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Primitives;
 using ModelContextProtocol.Client;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
@@ -142,5 +143,42 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         });
 
         Assert.Equal("SseTestServer", mcpClient.ServerInfo.Name);
+    }
+
+    [Fact]
+    public async Task StreamableHttpClient_SendsMcpProtocolVersionHeader_AfterInitialization()
+    {
+        var protocolVersionHeaderValues = new List<string?>();
+
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<EchoHttpContextUserTools>();
+
+        await using var app = Builder.Build();
+
+        app.Use(next =>
+        {
+            return async context =>
+            {
+                if (!StringValues.IsNullOrEmpty(context.Request.Headers["mcp-session-id"]))
+                {
+                    protocolVersionHeaderValues.Add(context.Request.Headers["mcp-protocol-version"]);
+                }
+
+                await next(context);
+            };
+        });
+
+        app.MapMcp();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var mcpClient = await ConnectAsync(clientOptions: new()
+        {
+            ProtocolVersion = "2025-03-26",
+        });
+        await mcpClient.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // The header should be included in the GET request, the initialized notification, and the tools/list call.
+        Assert.Equal(3, protocolVersionHeaderValues.Count);
+        Assert.All(protocolVersionHeaderValues, v => Assert.Equal("2025-03-26", v));
     }
 }
