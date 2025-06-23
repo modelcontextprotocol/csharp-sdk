@@ -228,7 +228,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         var unsubscribeHandler = resourcesCapability.UnsubscribeFromResourcesHandler ?? (static async (_, __) => new EmptyResult());
         var resources = resourcesCapability.ResourceCollection;
         var listChanged = resourcesCapability.ListChanged;
-        var subcribe = resourcesCapability.Subscribe;
+        var subscribe = resourcesCapability.Subscribe;
 
         // Handle resources provided via DI.
         if (resources is { IsEmpty: false })
@@ -309,7 +309,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             listChanged = true;
 
             // TODO: Implement subscribe/unsubscribe logic for resource and resource template collections.
-            // subcribe = true;
+            // subscribe = true;
         }
 
         ServerCapabilities.Resources.ListResourcesHandler = listResourcesHandler;
@@ -319,7 +319,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         ServerCapabilities.Resources.SubscribeToResourcesHandler = subscribeHandler;
         ServerCapabilities.Resources.UnsubscribeFromResourcesHandler = unsubscribeHandler;
         ServerCapabilities.Resources.ListChanged = listChanged;
-        ServerCapabilities.Resources.Subscribe = subcribe;
+        ServerCapabilities.Resources.Subscribe = subscribe;
 
         SetHandler(
             RequestMethods.ResourcesList,

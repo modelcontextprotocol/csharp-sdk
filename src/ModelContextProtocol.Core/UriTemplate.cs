@@ -461,8 +461,9 @@ internal static partial class UriTemplate
     /// 2. Templated Uris use regular string equality.
     /// 
     /// We do this because non-templated resources are looked up directly from the resource dictionary
-    /// and we need to make sure equality is implemented correctly. Templated Uris are resolved using
-    /// linear traversal so there's no need for equality comparison to be fully accurate.
+    /// and we need to make sure equality is implemented correctly. Templated Uris are resolved in a
+    /// fallback step using linear traversal of the resource dictionary, so their equality is only
+    /// there to distinguish between different templates.
     /// </summary>
     public sealed class UriTemplateComparer : IEqualityComparer<string>
     {
@@ -499,7 +500,7 @@ internal static partial class UriTemplate
                 return false;
             }
 
-            return Uri.TryCreate(uriTemplate, UriKind.RelativeOrAbsolute, out uri);
+            return Uri.TryCreate(uriTemplate, UriKind.Absolute, out uri);
         }
     }
 }
