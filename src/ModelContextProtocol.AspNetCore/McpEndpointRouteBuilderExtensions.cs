@@ -15,7 +15,7 @@ public static class McpEndpointRouteBuilderExtensions
 {
     /// <summary>
     /// Sets up endpoints for handling MCP Streamable HTTP transport.
-    /// See <see href="https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http">the 2025-03-26 protocol specification</see> for details about the Streamable HTTP transport.
+    /// See <see href="https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http">the 2025-06-18 protocol specification</see> for details about the Streamable HTTP transport.
     /// Also maps legacy SSE endpoints for backward compatibility at the path "/sse" and "/message". <see href="https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse">the 2024-11-05 protocol specification</see> for details about the HTTP with SSE transport.
     /// </summary>
     /// <param name="endpoints">The web application to attach MCP HTTP endpoints.</param>

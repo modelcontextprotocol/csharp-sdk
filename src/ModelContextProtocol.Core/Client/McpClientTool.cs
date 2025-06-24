@@ -78,6 +78,9 @@ public sealed class McpClientTool : AIFunction
     public override JsonElement JsonSchema => ProtocolTool.InputSchema;
 
     /// <inheritdoc/>
+    public override JsonElement? ReturnJsonSchema => ProtocolTool.OutputSchema;
+
+    /// <inheritdoc/>
     public override JsonSerializerOptions JsonSerializerOptions { get; }
 
     /// <inheritdoc/>

@@ -220,7 +220,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
         await using IMcpClient client = await CreateMcpClientForServer();
 
         await Assert.ThrowsAsync<McpException>(async () => await client.ReadResourceAsync(
-            $"resource://{nameof(SimpleResources.ThrowsException)}",
+            $"resource://mcp/{nameof(SimpleResources.ThrowsException)}",
             cancellationToken: TestContext.Current.CancellationToken));
     }
 
@@ -230,7 +230,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
         await using IMcpClient client = await CreateMcpClientForServer();
 
         var e = await Assert.ThrowsAsync<McpException>(async () => await client.ReadResourceAsync(
-            "test://NotRegisteredResource",
+            "test:///NotRegisteredResource",
             cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains("Resource not found", e.Message);
@@ -268,8 +268,8 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
         sc.AddMcpServer().WithResourcesFromAssembly();
         IServiceProvider services = sc.BuildServiceProvider();
 
-        Assert.Contains(services.GetServices<McpServerResource>(), t => t.ProtocolResource?.Uri == $"resource://{nameof(SimpleResources.SomeNeatDirectResource)}");
-        Assert.Contains(services.GetServices<McpServerResource>(), t => t.ProtocolResourceTemplate?.UriTemplate == $"resource://{nameof(SimpleResources.SomeNeatTemplatedResource)}{{?name}}");
+        Assert.Contains(services.GetServices<McpServerResource>(), t => t.ProtocolResource?.Uri == $"resource://mcp/{nameof(SimpleResources.SomeNeatDirectResource)}");
+        Assert.Contains(services.GetServices<McpServerResource>(), t => t.ProtocolResourceTemplate?.UriTemplate == $"resource://mcp/{nameof(SimpleResources.SomeNeatTemplatedResource)}{{?name}}");
     }
 
     [Fact]
@@ -279,13 +279,13 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
         sc.AddMcpServer()
             .WithResources<SimpleResources>()
             .WithResources<MoreResources>()
-            .WithResources([McpServerResource.Create(() => "42", new() { UriTemplate = "myResources://Returns42/{something}" })]);
+            .WithResources([McpServerResource.Create(() => "42", new() { UriTemplate = "myResources:///returns42/{something}" })]);
         IServiceProvider services = sc.BuildServiceProvider();
 
-        Assert.Contains(services.GetServices<McpServerResource>(), t => t.ProtocolResource?.Uri == $"resource://{nameof(SimpleResources.SomeNeatDirectResource)}");
-        Assert.Contains(services.GetServices<McpServerResource>(), t => t.ProtocolResourceTemplate?.UriTemplate == $"resource://{nameof(SimpleResources.SomeNeatTemplatedResource)}{{?name}}");
-        Assert.Contains(services.GetServices<McpServerResource>(), t => t.ProtocolResourceTemplate?.UriTemplate == $"resource://{nameof(MoreResources.AnotherNeatDirectResource)}");
-        Assert.Contains(services.GetServices<McpServerResource>(), t => t.ProtocolResourceTemplate.UriTemplate == "myResources://Returns42/{something}");
+        Assert.Contains(services.GetServices<McpServerResource>(), t => t.ProtocolResource?.Uri == $"resource://mcp/{nameof(SimpleResources.SomeNeatDirectResource)}");
+        Assert.Contains(services.GetServices<McpServerResource>(), t => t.ProtocolResourceTemplate?.UriTemplate == $"resource://mcp/{nameof(SimpleResources.SomeNeatTemplatedResource)}{{?name}}");
+        Assert.Contains(services.GetServices<McpServerResource>(), t => t.ProtocolResourceTemplate?.UriTemplate == $"resource://mcp/{nameof(MoreResources.AnotherNeatDirectResource)}");
+        Assert.Contains(services.GetServices<McpServerResource>(), t => t.ProtocolResourceTemplate.UriTemplate == "myResources:///returns42/{something}");
     }
 
     [McpServerResourceType]

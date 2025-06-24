@@ -63,7 +63,7 @@ internal sealed class McpServerOptionsSetup(
         // a collection, add to it, otherwise create a new one. We want to maintain the identity
         // of an existing collection in case someone has provided their own derived type, wants
         // change notifications, etc.
-        McpServerPrimitiveCollection<McpServerResource> resourceCollection = options.Capabilities?.Resources?.ResourceCollection ?? [];
+        McpServerResourceCollection resourceCollection = options.Capabilities?.Resources?.ResourceCollection ?? [];
         foreach (var resource in serverResources)
         {
             resourceCollection.TryAdd(resource);

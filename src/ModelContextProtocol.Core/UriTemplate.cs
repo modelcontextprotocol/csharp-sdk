@@ -2,6 +2,7 @@
 using System.Buffers;
 #endif
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -451,6 +452,55 @@ internal static partial class UriTemplate
                     builder.AppendFormatted(hexDigits[b & 0xF]);
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// Defines an equality comparer for Uri templates as follows:
+    /// 1. Non-templated Uris use regular System.Uri equality comparison (host name is case insensitive).
+    /// 2. Templated Uris use regular string equality.
+    /// 
+    /// We do this because non-templated resources are looked up directly from the resource dictionary
+    /// and we need to make sure equality is implemented correctly. Templated Uris are resolved in a
+    /// fallback step using linear traversal of the resource dictionary, so their equality is only
+    /// there to distinguish between different templates.
+    /// </summary>
+    public sealed class UriTemplateComparer : IEqualityComparer<string>
+    {
+        public static IEqualityComparer<string> Instance { get; } = new UriTemplateComparer();
+
+        public bool Equals(string? uriTemplate1, string? uriTemplate2)
+        {
+            if (TryParseAsNonTemplatedUri(uriTemplate1, out Uri? uri1) &&
+                TryParseAsNonTemplatedUri(uriTemplate2, out Uri? uri2))
+            {
+                return uri1 == uri2;
+            }
+
+            return string.Equals(uriTemplate1, uriTemplate2, StringComparison.Ordinal);
+        }
+
+        public int GetHashCode([DisallowNull] string uriTemplate)
+        {
+            if (TryParseAsNonTemplatedUri(uriTemplate, out Uri? uri))
+            {
+                return uri.GetHashCode();
+            }
+            else
+            {
+                return StringComparer.Ordinal.GetHashCode(uriTemplate);
+            }
+        }
+
+        private static bool TryParseAsNonTemplatedUri(string? uriTemplate, [NotNullWhen(true)] out Uri? uri)
+        {
+            if (uriTemplate is null || uriTemplate.Contains('{'))
+            {
+                uri = null;
+                return false;
+            }
+
+            return Uri.TryCreate(uriTemplate, UriKind.Absolute, out uri);
         }
     }
 }
