@@ -12,7 +12,7 @@ builder.Configuration
 
 var (command, arguments) = GetCommandAndArguments(args);
 
-var clientTransport = new StdioClientTransport(new
+var clientTransport = new StdioClientTransport(new()
 {
     Name = "Demo Server",
     Command = command,
