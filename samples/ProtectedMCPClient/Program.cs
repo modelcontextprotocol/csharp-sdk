@@ -7,7 +7,7 @@ using System.Net;
 using System.Text;
 using System.Web;
 
-Console.WriteLine("Protected MCP Weather Server");
+Console.WriteLine("Protected MCP Client");
 Console.WriteLine();
 
 var serverUrl = "http://localhost:7071/";
@@ -30,7 +30,9 @@ var httpClient = new HttpClient(sharedHandler);
 var tokenProvider = new GenericOAuthProvider(
     new Uri(serverUrl),
     httpClient,
-    clientId: clientId,
+    //clientId: clientId,
+    clientId: "demo-client",
+    clientSecret: "demo-secret",
     redirectUri: new Uri("http://localhost:1179/callback"),
     authorizationRedirectDelegate: HandleAuthorizationUrlAsync,
     loggerFactory: consoleLoggerFactory);
@@ -169,5 +171,6 @@ static void OpenBrowser(Uri url)
     catch (Exception ex)
     {
         Console.WriteLine($"Error opening browser. {ex.Message}");
+        Console.WriteLine($"Please manually open this URL: {url}");
     }
 }

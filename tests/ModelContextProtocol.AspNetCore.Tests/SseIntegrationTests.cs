@@ -17,7 +17,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
 {
     private readonly SseClientTransportOptions DefaultTransportOptions = new()
     {
-        Endpoint = new Uri("http://localhost/sse"),
+        Endpoint = new("http://localhost:5000/sse"),
         Name = "In-memory SSE Client",
     };
 
@@ -197,7 +197,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
 
         var sseOptions = new SseClientTransportOptions()
         {
-            Endpoint = new Uri("http://localhost/sse"),
+            Endpoint = new("http://localhost:5000/sse"),
             Name = "In-memory SSE Client",
             AdditionalHeaders = new Dictionary<string, string>
             {
@@ -224,7 +224,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
 
         var sseOptions = new SseClientTransportOptions()
         {
-            Endpoint = new Uri("http://localhost/sse"),
+            Endpoint = new("http://localhost:5000/sse"),
             Name = "In-memory SSE Client",
             AdditionalHeaders = new Dictionary<string, string>()
             {
@@ -251,7 +251,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
 
             response.Headers.ContentType = "text/event-stream";
 
-            await using var transport = new SseResponseStreamTransport(response.Body, "http://localhost/message");
+            await using var transport = new SseResponseStreamTransport(response.Body, "http://localhost:5000/message");
             session = transport;
 
             try

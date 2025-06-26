@@ -35,6 +35,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ModelContextProtocol.AspNetCore.Tests/ModelContextProtocol.AspNetCore.Tests.csproj" />
+    <Project Path="tests/ModelContextProtocol.TestOAuthServer/ModelContextProtocol.TestOAuthServer.csproj" />
     <Project Path="tests/ModelContextProtocol.Tests/ModelContextProtocol.Tests.csproj" />
     <Project Path="tests/ModelContextProtocol.TestServer/ModelContextProtocol.TestServer.csproj" />
     <Project Path="tests/ModelContextProtocol.TestSseServer/ModelContextProtocol.TestSseServer.csproj" />

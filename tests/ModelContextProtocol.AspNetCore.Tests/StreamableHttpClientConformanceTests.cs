@@ -114,7 +114,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
 
         await using var transport = new SseClientTransport(new()
         {
-            Endpoint = new("http://localhost/mcp"),
+            Endpoint = new("http://localhost:5000/mcp"),
             TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
@@ -134,7 +134,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
 
         await using var transport = new SseClientTransport(new()
         {
-            Endpoint = new("http://localhost/mcp"),
+            Endpoint = new("http://localhost:5000/mcp"),
             TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
@@ -160,7 +160,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
 
         await using var transport = new SseClientTransport(new()
         {
-            Endpoint = new("http://localhost/mcp"),
+            Endpoint = new("http://localhost:5000/mcp"),
             TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 

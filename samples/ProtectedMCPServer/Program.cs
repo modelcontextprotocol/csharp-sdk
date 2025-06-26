@@ -8,10 +8,9 @@ using System.Security.Claims;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var serverUrl = "http://localhost:7071/";
-var tenantId = builder.Configuration["TenantId"];
-var clientId = builder.Configuration["ClientId"];
-var instance = "https://login.microsoftonline.com/";
+var serverUrl = "http://localhost:7071";
+var inMemoryOAuthServerUrl = "https://localhost:7029";
+var demoClientId = "demo-client";
 
 builder.Services.AddAuthentication(options =>
 {
@@ -20,20 +19,19 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
-    options.Authority = $"{instance}{tenantId}/v2.0";
+    // Configure to validate tokens from our in-memory OAuth server
+    options.Authority = inMemoryOAuthServerUrl;
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuer = true,
         ValidateAudience = true,
         ValidateLifetime = true,
         ValidateIssuerSigningKey = true,
-        ValidAudience = clientId,
-        ValidIssuer = $"{instance}{tenantId}/v2.0",
+        ValidAudience = demoClientId,
+        ValidIssuer = inMemoryOAuthServerUrl,
         NameClaimType = "name",
         RoleClaimType = "roles"
     };
-
-    options.MetadataAddress = $"{instance}{tenantId}/v2.0/.well-known/openid-configuration";
 
     options.Events = new JwtBearerEvents
     {
@@ -62,14 +60,14 @@ builder.Services.AddAuthentication(options =>
     {
         var metadata = new ProtectedResourceMetadata
         {
-            Resource = new Uri("http://localhost:7071/"),
+            Resource = new Uri(serverUrl),
             BearerMethodsSupported = { "header" },
             ResourceDocumentation = new Uri("https://docs.example.com/api/weather"),
-            AuthorizationServers = { new Uri($"{instance}{tenantId}/v2.0") }
+            AuthorizationServers = { new Uri(inMemoryOAuthServerUrl) }
         };
 
         metadata.ScopesSupported.AddRange([
-            $"api://{clientId}/weather.read"
+            "mcp:tools"
         ]);
 
         return metadata;
@@ -99,7 +97,9 @@ app.UseAuthorization();
 app.MapMcp().RequireAuthorization();
 
 Console.WriteLine($"Starting MCP server with authorization at {serverUrl}");
-Console.WriteLine($"PRM Document URL: {serverUrl}.well-known/oauth-protected-resource");
+Console.WriteLine($"Using in-memory OAuth server at {inMemoryOAuthServerUrl}");
+Console.WriteLine($"Protected Resource Metadata URL: {serverUrl}.well-known/oauth-protected-resource");
+Console.WriteLine($"Demo Client ID: {demoClientId}");
 Console.WriteLine("Press Ctrl+C to stop the server");
 
 app.Run(serverUrl);

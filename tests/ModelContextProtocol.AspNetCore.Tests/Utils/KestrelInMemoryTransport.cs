@@ -1,50 +1,59 @@
 ﻿using Microsoft.AspNetCore.Connections;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Threading.Channels;
 
 namespace ModelContextProtocol.AspNetCore.Tests.Utils;
 
-public sealed class KestrelInMemoryTransport : IConnectionListenerFactory, IConnectionListener
+public sealed class KestrelInMemoryTransport : IConnectionListenerFactory
 {
-    private readonly Channel<ConnectionContext> _acceptQueue = Channel.CreateUnbounded<ConnectionContext>();
-    private EndPoint? _endPoint;
+    // socket accept queues keyed by listen port.
+    private readonly ConcurrentDictionary<int, Channel<ConnectionContext>> _acceptQueues = [];
 
-    public EndPoint EndPoint => _endPoint ?? throw new InvalidOperationException("EndPoint is not set. Call BindAsync first.");
-
-    public KestrelInMemoryConnection CreateConnection()
+    public KestrelInMemoryConnection CreateConnection(EndPoint endpoint)
     {
         var connection = new KestrelInMemoryConnection();
-        _acceptQueue.Writer.TryWrite(connection);
+        GetAcceptQueue(endpoint).Writer.TryWrite(connection);
         return connection;
     }
 
-    public async ValueTask<ConnectionContext?> AcceptAsync(CancellationToken cancellationToken = default)
-    {
-        if (await _acceptQueue.Reader.WaitToReadAsync(cancellationToken))
+    public ValueTask<IConnectionListener> BindAsync(EndPoint endpoint, CancellationToken cancellationToken = default) =>
+        new(new KestrelInMemoryListener(endpoint, GetAcceptQueue(endpoint)));
+
+    private Channel<ConnectionContext> GetAcceptQueue(EndPoint endpoint) =>
+        _acceptQueues.GetOrAdd(GetEndpointPort(endpoint), _ => Channel.CreateUnbounded<ConnectionContext>());
+
+    private static int GetEndpointPort(EndPoint endpoint) =>
+        endpoint switch
         {
-            while (_acceptQueue.Reader.TryRead(out var item))
+            DnsEndPoint dnsEndpoint => dnsEndpoint.Port,
+            IPEndPoint ipEndpoint => ipEndpoint.Port,
+            _ => throw new InvalidOperationException($"Unexpected endpoint type: '{endpoint.GetType()}'"),
+        };
+
+    private sealed class KestrelInMemoryListener(EndPoint endpoint, Channel<ConnectionContext> acceptQueue) : IConnectionListener
+    {
+        public EndPoint EndPoint => endpoint;
+
+        public async ValueTask<ConnectionContext?> AcceptAsync(CancellationToken cancellationToken = default)
+        {
+            if (await acceptQueue.Reader.WaitToReadAsync(cancellationToken))
             {
-                return item;
+                while (acceptQueue.Reader.TryRead(out var item))
+                {
+                    return item;
+                }
             }
+
+            return null;
         }
 
-        return null;
-    }
+        public ValueTask UnbindAsync(CancellationToken cancellationToken = default)
+        {
+            acceptQueue.Writer.TryComplete();
+            return default;
+        }
 
-    public ValueTask<IConnectionListener> BindAsync(EndPoint endpoint, CancellationToken cancellationToken = default)
-    {
-        _endPoint = endpoint;
-        return new ValueTask<IConnectionListener>(this);
-    }
-
-    public ValueTask DisposeAsync()
-    {
-        return UnbindAsync(default);
-    }
-
-    public ValueTask UnbindAsync(CancellationToken cancellationToken = default)
-    {
-        _acceptQueue.Writer.TryComplete();
-        return default;
+        public ValueTask DisposeAsync() => UnbindAsync(CancellationToken.None);
     }
 }

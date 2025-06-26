@@ -33,7 +33,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
 
         await using var transport = new SseClientTransport(transportOptions ?? new SseClientTransportOptions()
         {
-            Endpoint = new Uri($"http://localhost{path}"),
+            Endpoint = new Uri($"http://localhost:5000{path}"),
             TransportMode = UseStreamableHttp ? HttpTransportMode.StreamableHttp : HttpTransportMode.Sse,
         }, HttpClient, LoggerFactory);
 

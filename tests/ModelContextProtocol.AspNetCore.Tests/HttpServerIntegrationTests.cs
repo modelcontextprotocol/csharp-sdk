@@ -118,7 +118,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         Assert.False(result1.IsError);
         Assert.False(result2.IsError);
         Assert.False(result3.IsError);
-        
+
         var textContent1 = Assert.Single(result1.Content.OfType<TextContentBlock>());
         var textContent2 = Assert.Single(result2.Content.OfType<TextContentBlock>());
         var textContent3 = Assert.Single(result3.Content.OfType<TextContentBlock>());
@@ -267,10 +267,10 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
 
         // Call the server's sampleLLM tool which should trigger our sampling handler
         var result = await client.CallToolAsync("sampleLLM", new Dictionary<string, object?>
-            {
-                ["prompt"] = "Test prompt",
-                ["maxTokens"] = 100
-            },
+        {
+            ["prompt"] = "Test prompt",
+            ["maxTokens"] = 100
+        },
             cancellationToken: TestContext.Current.CancellationToken);
 
         // assert
@@ -288,7 +288,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         for (int i = 0; i < 4; i++)
         {
             var client = (i % 2 == 0) ? client1 : client2;
-            var result =  await client.CallToolAsync(
+            var result = await client.CallToolAsync(
                 "echo",
                 new Dictionary<string, object?>
                 {

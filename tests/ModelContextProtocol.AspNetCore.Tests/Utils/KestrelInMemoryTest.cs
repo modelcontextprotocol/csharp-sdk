@@ -8,8 +8,6 @@ namespace ModelContextProtocol.AspNetCore.Tests.Utils;
 
 public class KestrelInMemoryTest : LoggedTest
 {
-    private readonly KestrelInMemoryTransport _inMemoryTransport = new();
-
     public KestrelInMemoryTest(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
     {
@@ -17,17 +15,16 @@ public class KestrelInMemoryTest : LoggedTest
         // or a helper that does the same every test. But clear out the existing socket transport to avoid potential port conflicts.
         Builder = WebApplication.CreateSlimBuilder();
         Builder.Services.RemoveAll<IConnectionListenerFactory>();
-        Builder.Services.AddSingleton<IConnectionListenerFactory>(_inMemoryTransport);
+        Builder.Services.AddSingleton<IConnectionListenerFactory>(KestrelInMemoryTransport);
         Builder.Services.AddSingleton(XunitLoggerProvider);
 
-        HttpClient = new HttpClient(new SocketsHttpHandler()
+        SocketsHttpHandler.ConnectCallback = (context, token) =>
         {
-            ConnectCallback = (context, token) =>
-            {
-                var connection = _inMemoryTransport.CreateConnection();
-                return new(connection.ClientStream);
-            },
-        })
+            var connection = KestrelInMemoryTransport.CreateConnection(context.DnsEndPoint);
+            return new(connection.ClientStream);
+        };
+
+        HttpClient = new HttpClient(SocketsHttpHandler)
         {
             BaseAddress = new Uri("http://localhost:5000/"),
             Timeout = TimeSpan.FromSeconds(10),
@@ -37,6 +34,10 @@ public class KestrelInMemoryTest : LoggedTest
     public WebApplicationBuilder Builder { get; }
 
     public HttpClient HttpClient { get; }
+
+    public SocketsHttpHandler SocketsHttpHandler { get; } = new();
+
+    public KestrelInMemoryTransport KestrelInMemoryTransport { get; } = new();
 
     public override void Dispose()
     {
