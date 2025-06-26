@@ -69,7 +69,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
                 case "FirstCustomPrompt":
                 case "SecondCustomPrompt":
                 case "FinalCustomPrompt":
-                    return new GetPromptResult()
+                    return new GetPromptResult
                     {
                         Messages = [new() { Role = Role.User, Content = new TextContentBlock { Text = $"hello from {request.Params.Name}" } }],
                     };

@@ -195,7 +195,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        var sseOptions = new SseClientTransportOptions()
+        var sseOptions = new SseClientTransportOptions
         {
             Endpoint = new Uri("http://localhost/sse"),
             Name = "In-memory SSE Client",
@@ -222,7 +222,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        var sseOptions = new SseClientTransportOptions()
+        var sseOptions = new SseClientTransportOptions
         {
             Endpoint = new Uri("http://localhost/sse"),
             Name = "In-memory SSE Client",

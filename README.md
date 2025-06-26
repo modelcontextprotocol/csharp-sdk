@@ -173,17 +173,17 @@ using System.Text.Json;
 
 McpServerOptions options = new()
 {
-    ServerInfo = new Implementation() { Name = "MyServer", Version = "1.0.0" },
-    Capabilities = new ServerCapabilities()
+    ServerInfo = new Implementation { Name = "MyServer", Version = "1.0.0" },
+    Capabilities = new ServerCapabilities
     {
-        Tools = new ToolsCapability()
+        Tools = new ToolsCapability
         {
             ListToolsHandler = (request, cancellationToken) =>
-                ValueTask.FromResult(new ListToolsResult()
+                ValueTask.FromResult(new ListToolsResult
                 {
                     Tools =
                     [
-                        new Tool()
+                        new Tool
                         {
                             Name = "echo",
                             Description = "Echoes the input back to the client.",

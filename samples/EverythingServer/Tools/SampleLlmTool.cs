@@ -22,9 +22,9 @@ public class SampleLlmTool
 
     private static CreateMessageRequestParams CreateRequestSamplingParams(string context, string uri, int maxTokens = 100)
     {
-        return new CreateMessageRequestParams()
+        return new CreateMessageRequestParams
         {
-            Messages = [new SamplingMessage()
+            Messages = [new SamplingMessage
                 {
                     Role = Role.User,
                     Content = new TextContentBlock { Text = $"Resource {uri} context: {context}" },

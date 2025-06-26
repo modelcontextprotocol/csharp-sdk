@@ -85,7 +85,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
                 return Results.Json(new JsonRpcResponse
                 {
                     Id = request.Id,
-                    Result = JsonSerializer.SerializeToNode(new CallToolResult()
+                    Result = JsonSerializer.SerializeToNode(new CallToolResult
                     {
                         Content = [new TextContentBlock { Text = parameters.Arguments["message"].ToString() }],
                     }, McpJsonUtilities.DefaultOptions),

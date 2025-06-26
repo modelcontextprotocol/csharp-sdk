@@ -27,25 +27,25 @@ public partial class ElicitationTests : ClientServerTestBase
                     {
                         Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>()
                         {
-                            ["prop1"] = new ElicitRequestParams.StringSchema()
+                            ["prop1"] = new ElicitRequestParams.StringSchema
                             {
                                 Title = "title1",
                                 MinLength = 1,
                                 MaxLength = 100,
                             },
-                            ["prop2"] = new ElicitRequestParams.NumberSchema()
+                            ["prop2"] = new ElicitRequestParams.NumberSchema
                             {
                                 Description = "description2",
                                 Minimum = 0,
                                 Maximum = 1000,
                             },
-                            ["prop3"] = new ElicitRequestParams.BooleanSchema()
+                            ["prop3"] = new ElicitRequestParams.BooleanSchema
                             {
                                 Title = "title3",
                                 Description = "description4",
                                 Default = true,
                             },
-                            ["prop4"] = new ElicitRequestParams.EnumSchema()
+                            ["prop4"] = new ElicitRequestParams.EnumSchema
                             {
                                 Enum = ["option1", "option2", "option3"],
                                 EnumNames = ["Name1", "Name2", "Name3"],
@@ -57,9 +57,9 @@ public partial class ElicitationTests : ClientServerTestBase
 
             Assert.Equal("accept", result.Action);
 
-            return new CallToolResult()
+            return new CallToolResult
             {
-                Content = [new TextContentBlock() { Text = "success" }],
+                Content = [new TextContentBlock { Text = "success" }],
             };
         });
     }
@@ -67,7 +67,7 @@ public partial class ElicitationTests : ClientServerTestBase
     [Fact]
     public async Task Can_Elicit_Information()
     {
-        await using IMcpClient client = await CreateMcpClientForServer(new McpClientOptions()
+        await using IMcpClient client = await CreateMcpClientForServer(new McpClientOptions
         {
             Capabilities = new()
             {

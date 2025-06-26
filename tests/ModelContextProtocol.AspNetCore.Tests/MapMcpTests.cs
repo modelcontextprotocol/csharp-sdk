@@ -31,7 +31,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
         // Default behavior when no options are provided
         path ??= UseStreamableHttp ? "/" : "/sse";
 
-        await using var transport = new SseClientTransport(transportOptions ?? new SseClientTransportOptions()
+        await using var transport = new SseClientTransport(transportOptions ?? new SseClientTransportOptions
         {
             Endpoint = new Uri($"http://localhost{path}"),
             TransportMode = UseStreamableHttp ? HttpTransportMode.StreamableHttp : HttpTransportMode.Sse,

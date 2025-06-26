@@ -421,14 +421,14 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
                 Contents = aiContents.Select<AIContent, ResourceContents>(
                     ac => ac switch
                     {
-                        TextContent tc => new TextResourceContents()
+                        TextContent tc => new TextResourceContents
                         {
                             Uri = request.Params!.Uri,
                             MimeType = ProtocolResourceTemplate.MimeType,
                             Text = tc.Text
                         },
 
-                        DataContent dc => new BlobResourceContents()
+                        DataContent dc => new BlobResourceContents
                         {
                             Uri = request.Params!.Uri,
                             MimeType = dc.MediaType,
@@ -441,7 +441,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
 
             IEnumerable<string> strings => new()
             {
-                Contents = strings.Select<string, ResourceContents>(text => new TextResourceContents()
+                Contents = strings.Select<string, ResourceContents>(text => new TextResourceContents
                 {
                     Uri = request.Params!.Uri,
                     MimeType = ProtocolResourceTemplate.MimeType,

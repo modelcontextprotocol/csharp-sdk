@@ -95,7 +95,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                     case "FirstCustomTool":
                     case "SecondCustomTool":
                     case "FinalCustomTool":
-                        return new CallToolResult()
+                        return new CallToolResult
                         {
                             Content = [new TextContentBlock { Text = $"{request.Params.Name}Result" }],
                         };
@@ -671,7 +671,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
 
         await client.SendNotificationAsync(
             NotificationMethods.CancelledNotification,
-            parameters: new CancelledNotificationParams()
+            parameters: new CancelledNotificationParams
             {
                 RequestId = requestId,
             },

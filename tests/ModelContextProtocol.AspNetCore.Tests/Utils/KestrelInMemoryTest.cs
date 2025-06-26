@@ -20,7 +20,7 @@ public class KestrelInMemoryTest : LoggedTest
         Builder.Services.AddSingleton<IConnectionListenerFactory>(_inMemoryTransport);
         Builder.Services.AddSingleton(XunitLoggerProvider);
 
-        HttpClient = new HttpClient(new SocketsHttpHandler()
+        HttpClient = new HttpClient(new SocketsHttpHandler
         {
             ConnectCallback = (context, token) =>
             {

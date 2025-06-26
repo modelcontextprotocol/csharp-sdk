@@ -103,12 +103,12 @@ public static class McpServerExtensions
                             {
                                 Role = role,
                                 Content = dataContent.HasTopLevelMediaType("image") ?
-                                    new ImageContentBlock()
+                                    new ImageContentBlock
                                     {
                                         MimeType = dataContent.MediaType,
                                         Data = dataContent.Base64Data.ToString(),
                                     } :
-                                    new AudioContentBlock()
+                                    new AudioContentBlock
                                     {
                                         MimeType = dataContent.MediaType,
                                         Data = dataContent.Base64Data.ToString(),
@@ -344,7 +344,7 @@ public static class McpServerExtensions
 
                 void Log(LogLevel logLevel, string message)
                 {
-                    _ = server.SendNotificationAsync(NotificationMethods.LoggingMessageNotification, new LoggingMessageNotificationParams()
+                    _ = server.SendNotificationAsync(NotificationMethods.LoggingMessageNotification, new LoggingMessageNotificationParams
                     {
                         Level = McpServer.ToLoggingLevel(logLevel),
                         Data = JsonSerializer.SerializeToElement(message, McpJsonUtilities.JsonContext.Default.String),

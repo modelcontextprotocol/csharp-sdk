@@ -571,7 +571,7 @@ public partial class McpServerResourceTests
         McpServerResource resource = McpServerResource.Create((IMcpServer server) =>
         {
             Assert.Same(mockServer.Object, server);
-            return new List<AIContent>()
+            return new List<AIContent>
             {
                 new TextContent("hello!"),
                 new DataContent(new byte[] { 4, 5, 6 }, "application/json"),

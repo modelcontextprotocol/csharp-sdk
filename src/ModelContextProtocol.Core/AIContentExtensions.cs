@@ -188,21 +188,21 @@ public static class AIContentExtensions
                 Text = textContent.Text,
             },
 
-            DataContent dataContent when dataContent.HasTopLevelMediaType("image") => new ImageContentBlock()
+            DataContent dataContent when dataContent.HasTopLevelMediaType("image") => new ImageContentBlock
             {
                 Data = dataContent.Base64Data.ToString(),
                 MimeType = dataContent.MediaType,
             },
 
-            DataContent dataContent when dataContent.HasTopLevelMediaType("audio") => new AudioContentBlock()
+            DataContent dataContent when dataContent.HasTopLevelMediaType("audio") => new AudioContentBlock
             {
                 Data = dataContent.Base64Data.ToString(),
                 MimeType = dataContent.MediaType,
             },
 
-            DataContent dataContent => new EmbeddedResourceBlock()
+            DataContent dataContent => new EmbeddedResourceBlock
             {
-                Resource = new BlobResourceContents()
+                Resource = new BlobResourceContents
                 {
                     Blob = dataContent.Base64Data.ToString(),
                     MimeType = dataContent.MediaType,

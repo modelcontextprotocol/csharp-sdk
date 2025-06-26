@@ -149,7 +149,7 @@ public abstract class ContentBlock
                     Meta = meta,
                 },
 
-                "image" => new ImageContentBlock()
+                "image" => new ImageContentBlock
                 {
                     Data = data ?? throw new JsonException("Image data must be provided for 'image' type."),
                     MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'image' type."),
@@ -157,7 +157,7 @@ public abstract class ContentBlock
                     Meta = meta,
                 },
 
-                "audio" => new AudioContentBlock()
+                "audio" => new AudioContentBlock
                 {
                     Data = data ?? throw new JsonException("Audio data must be provided for 'audio' type."),
                     MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'audio' type."),
@@ -165,14 +165,14 @@ public abstract class ContentBlock
                     Meta = meta,
                 },
 
-                "resource" => new EmbeddedResourceBlock()
+                "resource" => new EmbeddedResourceBlock
                 {
                     Resource = resource ?? throw new JsonException("Resource contents must be provided for 'resource' type."),
                     Annotations = annotations,
                     Meta = meta,
                 },
 
-                "resource_link" => new ResourceLinkBlock()
+                "resource_link" => new ResourceLinkBlock
                 {
                     Uri = uri ?? throw new JsonException("URI must be provided for 'resource_link' type."),
                     Name = name ?? throw new JsonException("Name must be provided for 'resource_link' type."),
