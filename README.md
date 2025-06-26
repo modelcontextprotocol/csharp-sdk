@@ -166,10 +166,10 @@ public static class MyPrompts
 More control is also available, with fine-grained control over configuring the server and how it should handle client requests. For example:
 
 ```csharp
-using ModelContextProtocol.Server;
-using System.Text.Json;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
+using System.Text.Json;
 
 McpServerOptions options = new()
 {
