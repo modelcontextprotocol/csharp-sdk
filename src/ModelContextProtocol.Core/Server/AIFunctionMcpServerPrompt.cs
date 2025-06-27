@@ -68,7 +68,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
         MethodInfo method, McpServerPromptCreateOptions? options) =>
         new()
         {
-            Name = options?.Name ?? method.GetCustomAttribute<McpServerPromptAttribute>()?.Name,
+            Name = options?.Name ?? method.GetCustomAttribute<McpServerPromptAttribute>()?.Name ?? AIFunctionMcpServerTool.DeriveName(method, JsonNamingPolicy.CamelCase),
             Description = options?.Description,
             MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
             SerializerOptions = options?.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
