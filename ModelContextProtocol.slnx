@@ -9,6 +9,7 @@
     <File Path=".github/workflows/release.yml" />
   </Folder>
   <Folder Name="/samples/">
+    <Project Path="samples/GetSessionId/GetSessionId.csproj" Id="b90422b8-777b-45ce-84d8-5ca8395bd818" />
     <Project Path="samples/AspNetCoreSseServer/AspNetCoreSseServer.csproj" />
     <Project Path="samples/ChatWithTools/ChatWithTools.csproj" />
     <Project Path="samples/EverythingServer/EverythingServer.csproj" />
