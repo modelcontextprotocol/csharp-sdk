@@ -14,9 +14,7 @@ builder.Services.AddSingleton(sp =>
 
     var endpoint = httpClient.BaseAddress?.ToString().Replace("https+", "") ?? throw new InvalidOperationException("No endpoint set for MCP server");
 
-    var transport = new SseClientTransport(new SseClientTransportOptions { 
-        Endpoint = new(endpoint)
-    }, httpClient);
+    var transport = new SseClientTransport(new SseClientTransportOptions(), httpClient);
 
     var t = McpClientFactory.CreateAsync(transport);
     t.Wait();
