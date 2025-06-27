@@ -70,14 +70,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             options);
     }
 
-    // TODO: Fix the need for this suppression.
-    [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2111:ReflectionToDynamicallyAccessedMembers",
-        Justification = "AIFunctionFactory ensures that the Type passed to AIFunctionFactoryOptions.CreateInstance has public constructors preserved")]
-    internal static Func<Type, AIFunctionArguments, object> GetCreateInstanceFunc() =>
-        static ([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] type, args) => args.Services is { } services ?
-            ActivatorUtilities.CreateInstance(services, type) :
-            Activator.CreateInstance(type)!;
-
     private static AIFunctionFactoryOptions CreateAIFunctionFactoryOptions(
         MethodInfo method, McpServerToolCreateOptions? options) =>
         new()
