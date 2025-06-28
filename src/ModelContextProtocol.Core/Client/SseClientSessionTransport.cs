@@ -17,7 +17,6 @@ internal sealed partial class SseClientSessionTransport : TransportBase
 {
     private readonly HttpClient _httpClient;
     private readonly SseClientTransportOptions _options;
-    private readonly Uri _sseEndpoint;
     private Uri? _messageEndpoint;
     private readonly CancellationTokenSource _connectionCts;
     private Task? _receiveTask;
@@ -40,7 +39,6 @@ internal sealed partial class SseClientSessionTransport : TransportBase
         Throw.IfNull(httpClient);
 
         _options = transportOptions;
-        _sseEndpoint = transportOptions.Endpoint;
         _httpClient = httpClient;
         _connectionCts = new CancellationTokenSource();
         _logger = (ILogger?)loggerFactory?.CreateLogger<SseClientTransport>() ?? NullLogger.Instance;
@@ -150,7 +148,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
     {
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, _sseEndpoint);
+            using var request = new HttpRequestMessage(HttpMethod.Get, _httpClient.BaseAddress);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
             StreamableHttpClientSessionTransport.CopyAdditionalHeaders(request.Headers, _options.AdditionalHeaders, sessionId: null, protocolVersion: null);
 
@@ -239,8 +237,8 @@ internal sealed partial class SseClientSessionTransport : TransportBase
             return;
         }
 
-        // If data is an absolute URL, the Uri will be constructed entirely from it and not the _sseEndpoint.
-        _messageEndpoint = new Uri(_sseEndpoint, data);
+        // If data is an absolute URL, the Uri will be constructed entirely from it and not the _httpClient.BaseAddress.
+        _messageEndpoint = new Uri(_httpClient.BaseAddress!, data);
 
         // Set connected state
         SetConnected();

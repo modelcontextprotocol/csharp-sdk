@@ -16,6 +16,12 @@
     <Project Path="samples/QuickstartWeatherServer/QuickstartWeatherServer.csproj" />
     <Project Path="samples/TestServerWithHosting/TestServerWithHosting.csproj" />
   </Folder>
+  <Folder Name="/samples/Aspire/">
+    <Project Path="samples/aspire/McpSample.AppHost/McpSample.AppHost.csproj" Id="ad6fb69f-473d-426a-b714-35a9d0ec6f04" />
+    <Project Path="samples/aspire/McpSample.AspNetServer/McpSample.AspNetServer.csproj" />
+    <Project Path="samples/aspire/McpSample.Client/McpSample.Client.csproj" />
+    <Project Path="samples/aspire/McpSample.ServiceDefaults/McpSample.ServiceDefaults.csproj" Id="0fefa8c5-cbaa-476c-ba38-d1417b5bdf72" />
+  </Folder>
   <Folder Name="/Solution Items/">
     <File Path="Directory.Build.props" />
     <File Path="Directory.Packages.props" />

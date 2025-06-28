@@ -53,7 +53,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         Assert.NotNull(client.ServerCapabilities);
         Assert.NotNull(client.ServerInfo);
 
-        if (ClientTransportOptions.Endpoint.AbsolutePath.EndsWith("/sse"))
+        if (ClientTransportOptions.Endpoint is not null && ClientTransportOptions.Endpoint.AbsolutePath.EndsWith("/sse"))
         {
             Assert.Null(client.SessionId);
         }

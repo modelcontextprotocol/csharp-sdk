@@ -25,7 +25,7 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
     /// <param name="transportOptions">Configuration options for the transport.</param>
     /// <param name="loggerFactory">Logger factory for creating loggers used for diagnostic output during transport operations.</param>
     public SseClientTransport(SseClientTransportOptions transportOptions, ILoggerFactory? loggerFactory = null)
-        : this(transportOptions, new HttpClient(), loggerFactory, ownsHttpClient: true)
+        : this(transportOptions, new HttpClient { BaseAddress = transportOptions.Endpoint ?? throw new InvalidOperationException("No Endpoint provided on the transport options.") }, loggerFactory, ownsHttpClient: true)
     {
     }
 
@@ -44,11 +44,16 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
         Throw.IfNull(transportOptions);
         Throw.IfNull(httpClient);
 
+        if (httpClient.BaseAddress is null)
+        {
+            throw new InvalidOperationException("No BaseAddress set on the HttpClient. Please set the BaseAddress to the server's endpoint.");
+        }
+
         _options = transportOptions;
         _httpClient = httpClient;
         _loggerFactory = loggerFactory;
         _ownsHttpClient = ownsHttpClient;
-        Name = transportOptions.Name ?? transportOptions.Endpoint.ToString();
+        Name = transportOptions.Name ?? httpClient.BaseAddress.ToString();
     }
 
     /// <inheritdoc />

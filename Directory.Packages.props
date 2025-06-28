@@ -4,6 +4,8 @@
     <System9Version>9.0.5</System9Version>
     <System10Version>10.0.0-preview.4.25258.110</System10Version>
     <MicrosoftExtensionsAIVersion>9.6.0</MicrosoftExtensionsAIVersion>
+    <AspireVersion>9.3.0</AspireVersion>
+    <OTELVersion>1.12.0</OTELVersion>
   </PropertyGroup>
 
   <!-- Product dependencies netstandard -->
@@ -37,6 +39,15 @@
     <PackageVersion Include="Microsoft.Extensions.AI" Version="$(MicrosoftExtensionsAIVersion)" />
     <PackageVersion Include="System.Net.ServerSentEvents" Version="$(System10Version)" />
   </ItemGroup>
+    
+  <!-- Aspire packages -->
+  <ItemGroup>
+    <PackageVersion Include="Aspire.Hosting.AppHost" Version="$(AspireVersion)" />
+      
+    <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="9.4.0" />
+    <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="$(AspireVersion)" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="$(OTELVersion)" />
+  </ItemGroup>
 
   <ItemGroup>
 
@@ -59,12 +70,12 @@
     <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="9.5.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.0" />
     <PackageVersion Include="Moq" Version="4.20.72" />
-    <PackageVersion Include="OpenTelemetry" Version="1.12.0" />
-    <PackageVersion Include="OpenTelemetry.Exporter.InMemory" Version="1.12.0" />
-    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.12.0" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.Http " Version="1.12.0" />
-    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.12.0"  />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.12.0"  />
+    <PackageVersion Include="OpenTelemetry" Version="$(OTELVersion)" />
+    <PackageVersion Include="OpenTelemetry.Exporter.InMemory" Version="$(OTELVersion)" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="$(OTELVersion)" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http " Version="$(OTELVersion)" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="$(OTELVersion)"  />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="$(OTELVersion)"  />
     <PackageVersion Include="Serilog.Extensions.Hosting" Version="9.0.0" />
     <PackageVersion Include="Serilog.Extensions.Logging" Version="9.0.1" />
     <PackageVersion Include="Serilog.Sinks.Console" Version="6.0.0" />

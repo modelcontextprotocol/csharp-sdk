@@ -8,7 +8,7 @@ public sealed class SseClientTransportOptions
     /// <summary>
     /// Gets or sets the base address of the server for SSE connections.
     /// </summary>
-    public required Uri Endpoint
+    public Uri? Endpoint
     {
         get;
         set
