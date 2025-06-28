@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.Client;
@@ -15,9 +16,9 @@ namespace ModelContextProtocol.Client;
 public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
 {
     private readonly SseClientTransportOptions _options;
-    private readonly HttpClient _httpClient;
+    private readonly HttpClient? _httpClient;
+    private readonly McpHttpClient _mcpHttpClient;
     private readonly ILoggerFactory? _loggerFactory;
-    private readonly bool _ownsHttpClient;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SseClientTransport"/> class.
@@ -45,10 +46,22 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
         Throw.IfNull(httpClient);
 
         _options = transportOptions;
-        _httpClient = httpClient;
         _loggerFactory = loggerFactory;
-        _ownsHttpClient = ownsHttpClient;
         Name = transportOptions.Name ?? transportOptions.Endpoint.ToString();
+
+        if (transportOptions.CredentialProvider is { } credentialProvider)
+        {
+            _mcpHttpClient = new AuthenticatingMcpHttpClient(httpClient, credentialProvider);
+        }
+        else
+        {
+            _mcpHttpClient = new(httpClient);
+        }
+
+        if (ownsHttpClient)
+        {
+            _httpClient = httpClient;
+        }
     }
 
     /// <inheritdoc />
@@ -59,8 +72,8 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
     {
         return _options.TransportMode switch
         {
-            HttpTransportMode.AutoDetect => new AutoDetectingClientSessionTransport(_options, _httpClient, _loggerFactory, Name),
-            HttpTransportMode.StreamableHttp => new StreamableHttpClientSessionTransport(Name, _options, _httpClient, messageChannel: null, _loggerFactory),
+            HttpTransportMode.AutoDetect => new AutoDetectingClientSessionTransport(Name, _options, _mcpHttpClient, _loggerFactory),
+            HttpTransportMode.StreamableHttp => new StreamableHttpClientSessionTransport(Name, _options, _mcpHttpClient, messageChannel: null, _loggerFactory),
             HttpTransportMode.Sse => await ConnectSseTransportAsync(cancellationToken).ConfigureAwait(false),
             _ => throw new InvalidOperationException($"Unsupported transport mode: {_options.TransportMode}"),
         };
@@ -68,7 +81,7 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
 
     private async Task<ITransport> ConnectSseTransportAsync(CancellationToken cancellationToken)
     {
-        var sessionTransport = new SseClientSessionTransport(Name, _options, _httpClient, messageChannel: null, _loggerFactory);
+        var sessionTransport = new SseClientSessionTransport(Name, _options, _mcpHttpClient, messageChannel: null, _loggerFactory);
 
         try
         {
@@ -85,11 +98,7 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
     /// <inheritdoc />
     public ValueTask DisposeAsync()
     {
-        if (_ownsHttpClient)
-        {
-            _httpClient.Dispose();
-        }
-
+        _httpClient?.Dispose();
         return default;
     }
 }
