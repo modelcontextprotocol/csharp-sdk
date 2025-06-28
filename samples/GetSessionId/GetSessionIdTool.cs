@@ -4,15 +4,13 @@ using System.ComponentModel;
 [McpServerToolType]
 public class GetSessionIdTool
 {
-    private readonly IMcpServer _mcpServer;
-    public GetSessionIdTool(IMcpServer mcpServer)
+    public GetSessionIdTool()
     {
-        _mcpServer = mcpServer;
     }
 
     [McpServerTool(Name = "get_session"), Description("Returns current session id")]
-    public async Task<string?> GetSession()
+    public async Task<string?> GetSession(IMcpServer mcpServer)
     {
-        return _mcpServer.SessionId;
+        return mcpServer.SessionId;
     }
 }
