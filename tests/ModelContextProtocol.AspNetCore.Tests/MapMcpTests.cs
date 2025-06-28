@@ -80,7 +80,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
         await using var mcpClient = await ConnectAsync();
 
         var response = await mcpClient.CallToolAsync(
-            "EchoWithUserName",
+            "echo_with_user_name",
             new Dictionary<string, object?>() { ["message"] = "Hello world!" },
             cancellationToken: TestContext.Current.CancellationToken);
 

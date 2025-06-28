@@ -100,7 +100,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
         var prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
         Assert.Equal(6, prompts.Count);
 
-        var prompt = prompts.First(t => t.Name == nameof(SimplePrompts.ReturnsChatMessages));
+        var prompt = prompts.First(t => t.Name == "returnsChatMessages");
         Assert.Equal("Returns chat messages", prompt.Description);
 
         var result = await prompt.GetAsync(new Dictionary<string, object?>() { ["message"] = "hello" }, cancellationToken: TestContext.Current.CancellationToken);
@@ -171,7 +171,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
         Assert.NotNull(prompts);
         Assert.NotEmpty(prompts);
 
-        McpClientPrompt prompt = prompts.First(t => t.Name == nameof(SimplePrompts.ReturnsString));
+        McpClientPrompt prompt = prompts.First(t => t.Name == "returnsString");
 
         Assert.Equal("This is a title", prompt.Title);
     }
@@ -204,7 +204,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
         await using IMcpClient client = await CreateMcpClientForServer();
 
         var e = await Assert.ThrowsAsync<McpException>(async () => await client.GetPromptAsync(
-            nameof(SimplePrompts.ReturnsChatMessages),
+            "returnsChatMessages",
             cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Equal(McpErrorCode.InternalError, e.ErrorCode);
@@ -242,7 +242,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
         sc.AddMcpServer().WithPromptsFromAssembly();
         IServiceProvider services = sc.BuildServiceProvider();
 
-        Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == nameof(SimplePrompts.ReturnsChatMessages));
+        Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == "returnsChatMessages");
     }
 
     [Fact]
@@ -255,10 +255,10 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
             .WithPrompts([McpServerPrompt.Create(() => "42", new() { Name = "Returns42" })]);
         IServiceProvider services = sc.BuildServiceProvider();
 
-        Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == nameof(SimplePrompts.ReturnsChatMessages));
-        Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == nameof(SimplePrompts.ThrowsException));
-        Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == nameof(SimplePrompts.ReturnsString));
-        Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == nameof(MorePrompts.AnotherPrompt));
+        Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == "returnsChatMessages");
+        Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == "throwsException");
+        Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == "returnsString");
+        Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == "anotherPrompt");
         Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == "Returns42");
     }
 
