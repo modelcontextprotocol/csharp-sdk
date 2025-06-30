@@ -158,6 +158,8 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(ProtectedResourceMetadata))]
     [JsonSerializable(typeof(AuthorizationServerMetadata))]
     [JsonSerializable(typeof(TokenContainer))]
+    [JsonSerializable(typeof(DynamicClientRegistrationRequest))]
+    [JsonSerializable(typeof(DynamicClientRegistrationResponse))]
 
     // Primitive types for use in consuming AIFunctions
     [JsonSerializable(typeof(string))]

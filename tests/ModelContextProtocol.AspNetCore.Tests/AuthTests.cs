@@ -101,7 +101,7 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
 
         await using var transport = new SseClientTransport(new()
         {
-            Endpoint = new("http://localhost:5000"),
+            Endpoint = new(McpServerUrl),
             OAuth = new()
             {
                 ClientId = "demo-client",
@@ -112,7 +112,7 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
         }, HttpClient, LoggerFactory);
 
         await using var client = await McpClientFactory.CreateAsync(
-            transport,  loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -128,7 +128,7 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
 
         await using var transport = new SseClientTransport(new()
         {
-            Endpoint = new("http://localhost:5000"),
+            Endpoint = new(McpServerUrl),
         }, HttpClient, LoggerFactory);
 
         var httpEx = await Assert.ThrowsAsync<HttpRequestException>(async () => await McpClientFactory.CreateAsync(
@@ -150,7 +150,7 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
 
         await using var transport = new SseClientTransport(new()
         {
-            Endpoint = new("http://localhost:5000"),
+            Endpoint = new(McpServerUrl),
             OAuth = new()
             {
                 ClientId = "unregistered-demo-client",
@@ -163,6 +163,34 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
         // The EqualException is thrown by HandleAuthorizationUrlAsync when the /authorize request gets a 400
         var equalEx = await Assert.ThrowsAsync<EqualException>(async () => await McpClientFactory.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task CanAuthenticate_WithDynamicClientRegistration()
+    {
+        Builder.Services.AddMcpServer().WithHttpTransport();
+
+        await using var app = Builder.Build();
+
+        app.MapMcp().RequireAuthorization();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var transport = new SseClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new ClientOAuthOptions()
+            {
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                ClientName = "Test MCP Client",
+                ClientUri = new Uri("https://example.com"),
+                Scopes = ["mcp:tools"]
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClientFactory.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
 
     private async Task<string?> HandleAuthorizationUrlAsync(Uri authorizationUrl, Uri redirectUri, CancellationToken cancellationToken)

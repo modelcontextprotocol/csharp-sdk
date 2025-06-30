@@ -6,14 +6,14 @@ namespace ModelContextProtocol.Authentication;
 public sealed class ClientOAuthOptions
 {
     /// <summary>
-    /// Gets or sets the OAuth client ID.
-    /// </summary>
-    public required string ClientId { get; set; }
-
-    /// <summary>
     /// Gets or sets the OAuth redirect URI.
     /// </summary>
     public required Uri RedirectUri { get; set; }
+
+    /// <summary>
+    /// Gets or sets the OAuth client ID. If not provided, the client will attempt to register dynamically.
+    /// </summary>
+    public string? ClientId { get; set; }
 
     /// <summary>
     /// Gets or sets the OAuth client secret.
@@ -66,4 +66,22 @@ public sealed class ClientOAuthOptions
     /// </para>
     /// </remarks>
     public Func<IReadOnlyList<Uri>, Uri?>? AuthServerSelector { get; set; }
+
+    /// <summary>
+    /// Gets or sets the client name to use during dynamic client registration.
+    /// </summary>
+    /// <remarks>
+    /// This is a human-readable name for the client that may be displayed to users during authorization.
+    /// Only used when a <see cref="ClientId"/> is not specified.
+    /// </remarks>
+    public string? ClientName { get; set; }
+
+    /// <summary>
+    /// Gets or sets the client URI to use during dynamic client registration.
+    /// </summary>
+    /// <remarks>
+    /// This should be a URL pointing to the client's home page or information page.
+    /// Only used when a <see cref="Client"/> is not specified.
+    /// </remarks>
+    public Uri? ClientUri { get; set; }
 }

@@ -84,4 +84,10 @@ internal sealed class OpenIdConnectConfiguration
     /// </summary>
     [JsonPropertyName("introspection_endpoint")]
     public required string IntrospectionEndpoint { get; init; }
+
+    /// <summary>
+    /// Gets or sets the registration endpoint URL for dynamic client registration.
+    /// </summary>
+    [JsonPropertyName("registration_endpoint")]
+    public string? RegistrationEndpoint { get; init; }
 }

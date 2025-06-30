@@ -24,8 +24,8 @@ internal sealed class ClientOAuthProvider
     private readonly Uri _serverUrl;
     private readonly Uri _redirectUri;
     private readonly string[]? _scopes;
-    private readonly string _clientId;
-    private readonly string? _clientSecret;
+    private string? _clientId;
+    private string? _clientSecret;
     private readonly Func<IReadOnlyList<Uri>, Uri?> _authServerSelector;
     private readonly AuthorizationRedirectDelegate _authorizationRedirectDelegate;
 
@@ -34,6 +34,7 @@ internal sealed class ClientOAuthProvider
 
     private TokenContainer? _token;
     private AuthorizationServerMetadata? _authServerMetadata;
+    private readonly ClientOAuthOptions _options;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ClientOAuthProvider"/> class using the specified options.
@@ -49,19 +50,17 @@ internal sealed class ClientOAuthProvider
         HttpClient? httpClient = null,
         ILoggerFactory? loggerFactory = null)
     {
-        _serverUrl = serverUrl ?? throw new ArgumentNullException(nameof(serverUrl));
+        _serverUrl = serverUrl;
         _httpClient = httpClient ?? new HttpClient();
         _logger = (ILogger?)loggerFactory?.CreateLogger<ClientOAuthProvider>() ?? NullLogger.Instance;
-
-        if (options is null)
-        {
-            throw new ArgumentNullException(nameof(options));
-        }
 
         _clientId = options.ClientId;
         _redirectUri = options.RedirectUri;
         _clientSecret = options.ClientSecret;
         _scopes = options.Scopes?.ToArray();
+
+        // Store options for potential dynamic registration
+        _options = options;
 
         // Set up authorization server selection strategy
         _authServerSelector = options.AuthServerSelector ?? DefaultAuthServerSelector;
@@ -94,10 +93,29 @@ internal sealed class ClientOAuthProvider
         return Task.FromResult<string?>(authorizationCode);
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Gets the collection of authentication schemes supported by this provider.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This property returns all authentication schemes that this provider can handle,
+    /// allowing clients to select the appropriate scheme based on server capabilities.
+    /// </para>
+    /// <para>
+    /// Common values include "Bearer" for JWT tokens, "Basic" for username/password authentication,
+    /// and "Negotiate" for integrated Windows authentication.
+    /// </para>
+    /// </remarks>
     public IEnumerable<string> SupportedSchemes => [BearerScheme];
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Gets an authentication token or credential for authenticating requests to a resource
+    /// using the specified authentication scheme.
+    /// </summary>
+    /// <param name="scheme">The authentication scheme to use.</param>
+    /// <param name="resourceUri">The URI of the resource requiring authentication.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>An authentication token string or null if no token could be obtained for the specified scheme.</returns>
     public async Task<string?> GetCredentialAsync(string scheme, Uri resourceUri, CancellationToken cancellationToken = default)
     {
         ThrowIfNotBearerScheme(scheme);
@@ -125,7 +143,16 @@ internal sealed class ClientOAuthProvider
         return null;
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Handles a 401 Unauthorized response from a resource.
+    /// </summary>
+    /// <param name="scheme">The authentication scheme that was used when the unauthorized response was received.</param>
+    /// <param name="response">The HTTP response that contained the 401 status code.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>
+    /// A result object indicating if the provider was able to handle the unauthorized response,
+    /// and the authentication scheme that should be used for the next attempt, if any.
+    /// </returns>
     public async Task HandleUnauthorizedResponseAsync(
         string scheme,
         HttpResponseMessage response,
@@ -185,6 +212,12 @@ internal sealed class ClientOAuthProvider
         // Store auth server metadata for future refresh operations
         _authServerMetadata = authServerMetadata;
 
+        // Perform dynamic client registration if needed
+        if (string.IsNullOrEmpty(_clientId))
+        {
+            await PerformDynamicClientRegistrationAsync(authServerMetadata, cancellationToken).ConfigureAwait(false);
+        }
+
         // Perform the OAuth flow
         var token = await InitiateAuthorizationCodeFlowAsync(protectedResourceMetadata, authServerMetadata, cancellationToken).ConfigureAwait(false);
 
@@ -242,7 +275,7 @@ internal sealed class ClientOAuthProvider
         {
             ["grant_type"] = "refresh_token",
             ["refresh_token"] = refreshToken,
-            ["client_id"] = _clientId
+            ["client_id"] = GetClientIdOrThrow(),
         });
 
         using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.TokenEndpoint)
@@ -322,8 +355,8 @@ internal sealed class ClientOAuthProvider
             ["grant_type"] = "authorization_code",
             ["code"] = authorizationCode,
             ["redirect_uri"] = _redirectUri.ToString(),
-            ["client_id"] = _clientId,
-            ["code_verifier"] = codeVerifier
+            ["client_id"] = GetClientIdOrThrow(),
+            ["code_verifier"] = codeVerifier,
         });
 
         using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.TokenEndpoint)
@@ -370,6 +403,60 @@ internal sealed class ClientOAuthProvider
 
         using var stream = await httpResponse.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         return await JsonSerializer.DeserializeAsync(stream, McpJsonUtilities.JsonContext.Default.ProtectedResourceMetadata, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task PerformDynamicClientRegistrationAsync(
+        AuthorizationServerMetadata authServerMetadata,
+        CancellationToken cancellationToken)
+    {
+        if (authServerMetadata.RegistrationEndpoint is null)
+        {
+            ThrowFailedToHandleUnauthorizedResponse("Authorization server does not support dynamic client registration");
+        }
+
+        _logger.LogInformation("Performing dynamic client registration with {RegistrationEndpoint}", authServerMetadata.RegistrationEndpoint);
+
+        var registrationRequest = new DynamicClientRegistrationRequest
+        {
+            RedirectUris = [_redirectUri.ToString()],
+            GrantTypes = ["authorization_code", "refresh_token"],
+            ResponseTypes = ["code"],
+            TokenEndpointAuthMethod = "client_secret_basic",
+            ClientName = _options.ClientName,
+            ClientUri = _options.ClientUri?.ToString(),
+            Scope = _scopes != null ? string.Join(" ", _scopes) : null
+        };
+
+        var requestJson = JsonSerializer.Serialize(registrationRequest, McpJsonUtilities.JsonContext.Default.DynamicClientRegistrationRequest);
+        var requestContent = new StringContent(requestJson, Encoding.UTF8, "application/json");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.RegistrationEndpoint)
+        {
+            Content = requestContent
+        };
+
+        using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        httpResponse.EnsureSuccessStatusCode();
+
+        using var responseStream = await httpResponse.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        var registrationResponse = await JsonSerializer.DeserializeAsync(
+            responseStream,
+            McpJsonUtilities.JsonContext.Default.DynamicClientRegistrationResponse,
+            cancellationToken).ConfigureAwait(false);
+
+        if (registrationResponse is null)
+        {
+            ThrowFailedToHandleUnauthorizedResponse("Dynamic client registration returned empty response");
+        }
+
+        // Update client credentials
+        _clientId = registrationResponse.ClientId;
+        if (!string.IsNullOrEmpty(registrationResponse.ClientSecret))
+        {
+            _clientSecret = registrationResponse.ClientSecret;
+        }
+
+        _logger.LogInformation("Dynamic client registration successful. Client ID: {ClientId}", _clientId);
     }
 
     /// <summary>
@@ -540,15 +627,17 @@ internal sealed class ClientOAuthProvider
             .Replace('/', '_');
     }
 
+    private string GetClientIdOrThrow() => _clientId ?? throw new InvalidOperationException($"_clientId is uninitialized! This should be unreachable from public API.");
+
     private static void ThrowIfNotBearerScheme(string scheme)
     {
         if (!string.Equals(scheme, BearerScheme, StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidOperationException($"The '{scheme}' is not supported. This credential provider only supports the '{BearerScheme}' scheme");
+            throw new InvalidOperationException($"The '{scheme}' is not supported. This credential provider only supports the '{BearerScheme}' scheme.");
         }
     }
 
     [DoesNotReturn]
-    private static void ThrowFailedToHandleUnauthorizedResponse(string message) =>
-        throw new McpException($"Failed to handle unauthorized response with 'Bearer' scheme. {message}");
+    private static void ThrowFailedToHandleUnauthorizedResponse(string message, Exception? innerException = null) =>
+        throw new McpException($"Failed to handle unauthorized response with 'Bearer' scheme. {message}", innerException);
 }

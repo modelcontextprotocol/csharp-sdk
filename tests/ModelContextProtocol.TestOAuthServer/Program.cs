@@ -11,7 +11,10 @@ namespace ModelContextProtocol.TestOAuthServer;
 public sealed class Program
 {
     private const int _port = 7029;
-    private readonly string _url = $"https://localhost:{_port}";
+    private static readonly string _url = $"https://localhost:{_port}";
+
+    // Port 5000 is used by tests and port 7071 is used by the ProtectedMCPServer sample
+    private static readonly string[] ValidResources = ["http://localhost:5000/", "http://localhost:7071/"];
 
     private readonly ConcurrentDictionary<string, AuthorizationCodeInfo> _authCodes = new();
     private readonly ConcurrentDictionary<string, TokenInfo> _tokens = new();
@@ -99,7 +102,6 @@ public sealed class Program
             ClientId = clientId,
             ClientSecret = clientSecret,
             RedirectUris = ["http://localhost:1179/callback"],
-            ValidResources = ["http://localhost:5000/"],
         };
 
         // OIDC and OAuth Metadata
@@ -119,7 +121,8 @@ public sealed class Program
                 ClaimsSupported = ["sub", "iss", "name", "email", "aud"],
                 CodeChallengeMethodsSupported = ["S256"],
                 GrantTypesSupported = ["authorization_code", "refresh_token"],
-                IntrospectionEndpoint = $"{_url}/introspect"
+                IntrospectionEndpoint = $"{_url}/introspect",
+                RegistrationEndpoint = $"{_url}/register"
             };
 
             return Results.Ok(metadata);
@@ -211,7 +214,7 @@ public sealed class Program
             }
 
             // Validate resource in accordance with RFC 8707
-            if (string.IsNullOrEmpty(resource) || !client.ValidResources.Contains(resource))
+            if (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource))
             {
                 return Results.Redirect($"{redirect_uri}?error=invalid_target&error_description=The+specified+resource+is+not+valid&state={state}");
             }
@@ -377,6 +380,130 @@ public sealed class Program
             }
 
             return Results.Ok(new TokenIntrospectionResponse { Active = false });
+        });
+
+        // Dynamic Client Registration endpoint (RFC 7591)
+        app.MapPost("/register", async (HttpContext context) =>
+        {
+            try
+            {
+                using var stream = context.Request.Body;
+                var registrationRequest = await JsonSerializer.DeserializeAsync(
+                    stream,
+                    OAuthJsonContext.Default.ClientRegistrationRequest,
+                    context.RequestAborted);
+
+                if (registrationRequest is null)
+                {
+                    return Results.BadRequest(new OAuthErrorResponse
+                    {
+                        Error = "invalid_request",
+                        ErrorDescription = "Invalid registration request"
+                    });
+                }
+
+                // Validate redirect URIs are provided
+                if (registrationRequest.RedirectUris.Count == 0)
+                {
+                    return Results.BadRequest(new OAuthErrorResponse
+                    {
+                        Error = "invalid_redirect_uri",
+                        ErrorDescription = "At least one redirect URI must be provided"
+                    });
+                }
+
+                // Validate redirect URIs
+                foreach (var redirectUri in registrationRequest.RedirectUris)
+                {
+                    if (!Uri.TryCreate(redirectUri, UriKind.Absolute, out var uri) ||
+                        (uri.Scheme != "http" && uri.Scheme != "https"))
+                    {
+                        return Results.BadRequest(new OAuthErrorResponse
+                        {
+                            Error = "invalid_redirect_uri",
+                            ErrorDescription = $"Invalid redirect URI: {redirectUri}"
+                        });
+                    }
+                }
+
+                // Generate client credentials
+                var clientId = $"dyn-{Guid.NewGuid():N}";
+                var clientSecret = OAuthUtils.GenerateRandomToken();
+                var issuedAt = DateTimeOffset.UtcNow;
+
+                // Set default values for optional fields
+                var grantTypes = registrationRequest.GrantTypes ?? ["authorization_code"];
+                var responseTypes = registrationRequest.ResponseTypes ?? ["code"];
+                var tokenEndpointAuthMethod = registrationRequest.TokenEndpointAuthMethod ?? "client_secret_basic";
+
+                // Validate grant types
+                var supportedGrantTypes = new[] { "authorization_code", "refresh_token" };
+                if (grantTypes.Any(gt => !supportedGrantTypes.Contains(gt)))
+                {
+                    return Results.BadRequest(new OAuthErrorResponse
+                    {
+                        Error = "invalid_client_metadata",
+                        ErrorDescription = "Unsupported grant type"
+                    });
+                }
+
+                // Validate response types
+                var supportedResponseTypes = new[] { "code" };
+                if (responseTypes.Any(rt => !supportedResponseTypes.Contains(rt)))
+                {
+                    return Results.BadRequest(new OAuthErrorResponse
+                    {
+                        Error = "invalid_client_metadata",
+                        ErrorDescription = "Unsupported response type"
+                    });
+                }
+
+                // Store the registered client
+                _clients[clientId] = new ClientInfo
+                {
+                    ClientId = clientId,
+                    ClientSecret = clientSecret,
+                    RedirectUris = registrationRequest.RedirectUris
+                };
+
+                // Create registration response
+                var registrationResponse = new ClientRegistrationResponse
+                {
+                    ClientId = clientId,
+                    ClientSecret = clientSecret,
+                    ClientIdIssuedAt = issuedAt.ToUnixTimeSeconds(),
+                    ClientSecretExpiresAt = 0, // Never expires
+                    RedirectUris = registrationRequest.RedirectUris,
+                    GrantTypes = grantTypes,
+                    ResponseTypes = responseTypes,
+                    TokenEndpointAuthMethod = tokenEndpointAuthMethod,
+                    ClientName = registrationRequest.ClientName,
+                    ClientUri = registrationRequest.ClientUri,
+                    LogoUri = registrationRequest.LogoUri,
+                    Scope = registrationRequest.Scope,
+                    Contacts = registrationRequest.Contacts,
+                    TosUri = registrationRequest.TosUri,
+                    PolicyUri = registrationRequest.PolicyUri,
+                    JwksUri = registrationRequest.JwksUri,
+                    SoftwareId = registrationRequest.SoftwareId,
+                    SoftwareVersion = registrationRequest.SoftwareVersion
+                };
+
+                return Results.Created($"{_url}/register/{clientId}", registrationResponse);
+            }
+            catch (JsonException)
+            {
+                return Results.BadRequest(new OAuthErrorResponse
+                {
+                    Error = "invalid_request",
+                    ErrorDescription = "Invalid JSON in request body"
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Registration error: {ex}");
+                return Results.Problem("Internal server error");
+            }
         });
 
         app.MapGet("/", () => "Demo In-Memory OAuth 2.0 Server with JWT Support");
