@@ -1,9 +1,11 @@
 ﻿using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Primitives;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Moq;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -42,6 +44,58 @@ public class McpServerPromptTests
         Assert.NotNull(result.Messages);
         Assert.Single(result.Messages);
         Assert.Equal("Hello", Assert.IsType<TextContentBlock>(result.Messages[0].Content).Text);
+    }
+
+    [Fact]
+    public async Task SupportsCtorInjection()
+    {
+        MyService expectedMyService = new();
+
+        ServiceCollection sc = new();
+        sc.AddSingleton(expectedMyService);
+        IServiceProvider services = sc.BuildServiceProvider();
+
+        Mock<IMcpServer> mockServer = new();
+        mockServer.SetupGet(s => s.Services).Returns(services);
+
+        MethodInfo? testMethod = typeof(HasCtorWithSpecialParameters).GetMethod(nameof(HasCtorWithSpecialParameters.TestPrompt));
+        Assert.NotNull(testMethod);
+        McpServerPrompt prompt = McpServerPrompt.Create(testMethod, r =>
+        {
+            Assert.NotNull(r.Services);
+            return ActivatorUtilities.CreateInstance(r.Services, typeof(HasCtorWithSpecialParameters));
+        }, new() { Services = services });
+
+        var result = await prompt.GetAsync(
+            new RequestContext<GetPromptRequestParams>(mockServer.Object),
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.NotNull(result.Messages);
+        Assert.Single(result.Messages);
+        Assert.Equal("True True True True", Assert.IsType<TextContentBlock>(result.Messages[0].Content).Text);
+    }
+
+    private sealed class HasCtorWithSpecialParameters
+    {
+        private readonly MyService _ms;
+        private readonly IMcpServer _server;
+        private readonly RequestContext<GetPromptRequestParams> _request;
+        private readonly IProgress<ProgressNotificationValue> _progress;
+
+        public HasCtorWithSpecialParameters(MyService ms, IMcpServer server, RequestContext<GetPromptRequestParams> request, IProgress<ProgressNotificationValue> progress)
+        {
+            Assert.NotNull(ms);
+            Assert.NotNull(server);
+            Assert.NotNull(request);
+            Assert.NotNull(progress);
+
+            _ms = ms;
+            _server = server;
+            _request = request;
+            _progress = progress;
+        }
+
+        public string TestPrompt() => $"{_ms is not null} {_server is not null} {_request is not null} {_progress is not null}";
     }
 
     [Fact]

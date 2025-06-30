@@ -50,6 +50,58 @@ public partial class McpServerToolTests
         Assert.Equal("42", (result.Content[0] as TextContentBlock)?.Text);
     }
 
+    [Fact]
+    public async Task SupportsCtorInjection()
+    {
+        MyService expectedMyService = new();
+
+        ServiceCollection sc = new();
+        sc.AddSingleton(expectedMyService);
+        IServiceProvider services = sc.BuildServiceProvider();
+
+        Mock<IMcpServer> mockServer = new();
+        mockServer.SetupGet(s => s.Services).Returns(services);
+
+        MethodInfo? testMethod = typeof(HasCtorWithSpecialParameters).GetMethod(nameof(HasCtorWithSpecialParameters.TestTool));
+        Assert.NotNull(testMethod);
+        McpServerTool tool = McpServerTool.Create(testMethod, r =>
+        {
+            Assert.NotNull(r.Services);
+            return ActivatorUtilities.CreateInstance(r.Services, typeof(HasCtorWithSpecialParameters));
+        }, new() { Services = services });
+
+        var result = await tool.InvokeAsync(
+            new RequestContext<CallToolRequestParams>(mockServer.Object),
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.NotNull(result.Content);
+        Assert.Single(result.Content);
+        Assert.Equal("True True True True", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
+    }
+
+    private sealed class HasCtorWithSpecialParameters
+    {
+        private readonly MyService _ms;
+        private readonly IMcpServer _server;
+        private readonly RequestContext<CallToolRequestParams> _request;
+        private readonly IProgress<ProgressNotificationValue> _progress;
+
+        public HasCtorWithSpecialParameters(MyService ms, IMcpServer server, RequestContext<CallToolRequestParams> request, IProgress<ProgressNotificationValue> progress)
+        {
+            Assert.NotNull(ms);
+            Assert.NotNull(server);
+            Assert.NotNull(request);
+            Assert.NotNull(progress);
+
+            _ms = ms;
+            _server = server;
+            _request = request;
+            _progress = progress;
+        }
+
+        public string TestTool() => $"{_ms is not null} {_server is not null} {_request is not null} {_progress is not null}";
+    }
+
     [Theory]
     [InlineData(ServiceLifetime.Singleton)]
     [InlineData(ServiceLifetime.Scoped)]

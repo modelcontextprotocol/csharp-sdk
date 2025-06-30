@@ -360,6 +360,59 @@ public partial class McpServerResourceTests
         Assert.Equal("42", ((TextResourceContents)result.Contents[0]).Text);
     }
 
+    [Fact]
+    public async Task SupportsCtorInjection()
+    {
+        MyService expectedMyService = new();
+
+        ServiceCollection sc = new();
+        sc.AddSingleton(expectedMyService);
+        IServiceProvider services = sc.BuildServiceProvider();
+
+        Mock<IMcpServer> mockServer = new();
+        mockServer.SetupGet(s => s.Services).Returns(services);
+
+        MethodInfo? testMethod = typeof(HasCtorWithSpecialParameters).GetMethod(nameof(HasCtorWithSpecialParameters.TestResource));
+        Assert.NotNull(testMethod);
+        McpServerResource tool = McpServerResource.Create(testMethod, r =>
+        {
+            Assert.NotNull(r.Services);
+            return ActivatorUtilities.CreateInstance(r.Services, typeof(HasCtorWithSpecialParameters));
+        }, new() { Services = services });
+
+        var result = await tool.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(mockServer.Object) { Params = new() { Uri = "https://something" } },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.NotNull(result.Contents);
+        Assert.Single(result.Contents);
+        Assert.Equal("True True True True", Assert.IsType<TextResourceContents>(result.Contents[0]).Text);
+    }
+
+    private sealed class HasCtorWithSpecialParameters
+    {
+        private readonly MyService _ms;
+        private readonly IMcpServer _server;
+        private readonly RequestContext<ReadResourceRequestParams> _request;
+        private readonly IProgress<ProgressNotificationValue> _progress;
+
+        public HasCtorWithSpecialParameters(MyService ms, IMcpServer server, RequestContext<ReadResourceRequestParams> request, IProgress<ProgressNotificationValue> progress)
+        {
+            Assert.NotNull(ms);
+            Assert.NotNull(server);
+            Assert.NotNull(request);
+            Assert.NotNull(progress);
+
+            _ms = ms;
+            _server = server;
+            _request = request;
+            _progress = progress;
+        }
+
+        [McpServerResource(UriTemplate = "https://something")]
+        public string TestResource() => $"{_ms is not null} {_server is not null} {_request is not null} {_progress is not null}";
+    }
+
     [Theory]
     [InlineData(ServiceLifetime.Singleton)]
     [InlineData(ServiceLifetime.Scoped)]
