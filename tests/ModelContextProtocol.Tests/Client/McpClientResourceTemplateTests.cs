@@ -15,7 +15,7 @@ public partial class McpClientResourceTemplateTests : ClientServerTestBase
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
         mcpServerBuilder.WithReadResourceHandler((request, cancellationToken) =>
-            new ValueTask<ReadResourceResult>(new ReadResourceResult()
+            new ValueTask<ReadResourceResult>(new ReadResourceResult
             {
                 Contents = [new TextResourceContents { Text = request.Params?.Uri ?? string.Empty }]
             }));

@@ -99,7 +99,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
                 case "test://Resource3":
                 case "test://ResourceTemplate1":
                 case "test://ResourceTemplate2":
-                    return new ReadResourceResult()
+                    return new ReadResourceResult
                     {
                         Contents = [new TextResourceContents { Text = request.Params?.Uri ?? "(null)" }]
                     };

@@ -39,7 +39,7 @@ public class AnnotatedMessageTool
 
         if (includeImage)
         {
-            contents.Add(new ImageContentBlock()
+            contents.Add(new ImageContentBlock
             {
                 Data = TinyImageTool.MCP_TINY_IMAGE.Split(",").Last(),
                 MimeType = "image/png",

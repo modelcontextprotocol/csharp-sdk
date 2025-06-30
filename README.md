@@ -166,24 +166,24 @@ public static class MyPrompts
 More control is also available, with fine-grained control over configuring the server and how it should handle client requests. For example:
 
 ```csharp
-using ModelContextProtocol.Protocol.Transport;
-using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Text.Json;
 
 McpServerOptions options = new()
 {
-    ServerInfo = new Implementation() { Name = "MyServer", Version = "1.0.0" },
-    Capabilities = new ServerCapabilities()
+    ServerInfo = new Implementation { Name = "MyServer", Version = "1.0.0" },
+    Capabilities = new ServerCapabilities
     {
-        Tools = new ToolsCapability()
+        Tools = new ToolsCapability
         {
             ListToolsHandler = (request, cancellationToken) =>
-                ValueTask.FromResult(new ListToolsResult()
+                ValueTask.FromResult(new ListToolsResult
                 {
                     Tools =
                     [
-                        new Tool()
+                        new Tool
                         {
                             Name = "echo",
                             Description = "Echoes the input back to the client.",
@@ -212,9 +212,9 @@ McpServerOptions options = new()
                         throw new McpException("Missing required argument 'message'");
                     }
 
-                    return ValueTask.FromResult(new CallToolResponse()
+                    return ValueTask.FromResult(new CallToolResult
                     {
-                        Content = [new Content() { Text = $"Echo: {message}", Type = "text" }]
+                        Content = [new TextContentBlock { Text = $"Echo: {message}", Type = "text" }]
                     });
                 }
 

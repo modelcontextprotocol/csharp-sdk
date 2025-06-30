@@ -586,7 +586,7 @@ public class McpServerTests : LoggedTest
         await using var transport = new TestServerTransport();
         await using var server = McpServerFactory.Create(transport, _options, LoggerFactory);
 
-        var logNotification = new JsonRpcNotification()
+        var logNotification = new JsonRpcNotification
         {
             Method = NotificationMethods.LoggingMessageNotification
         };

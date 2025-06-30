@@ -98,7 +98,7 @@ public sealed class ProgressNotificationParams : NotificationParams
             return new ProgressNotificationParams
             {
                 ProgressToken = progressToken.GetValueOrDefault(),
-                Progress = new ProgressNotificationValue()
+                Progress = new ProgressNotificationValue
                 {
                     Progress = progress.GetValueOrDefault(),
                     Total = total,
