@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
 using System.ComponentModel;
-using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -64,8 +64,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         return Create(
             AIFunctionFactory.Create(method, args =>
             {
-                var request = (RequestContext<CallToolRequestParams>)args.Context![typeof(RequestContext<CallToolRequestParams>)]!;
-                return createTargetFunc(request);
+                Debug.Assert(args.Services is RequestServiceProvider<CallToolRequestParams>, $"The service provider should be a {nameof(RequestServiceProvider<CallToolRequestParams>)} for this method to work correctly.");
+                return createTargetFunc(((RequestServiceProvider<CallToolRequestParams>)args.Services!).Request);
             }, CreateAIFunctionFactoryOptions(method, options)),
             options);
     }
@@ -81,54 +81,15 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             JsonSchemaCreateOptions = options?.SchemaCreateOptions,
             ConfigureParameterBinding = pi =>
             {
-                if (pi.ParameterType == typeof(RequestContext<CallToolRequestParams>))
-                {
-                    return new()
-                    {
-                        ExcludeFromSchema = true,
-                        BindParameter = (pi, args) => GetRequestContext(args),
-                    };
-                }
-
-                if (pi.ParameterType == typeof(IMcpServer))
-                {
-                    return new()
-                    {
-                        ExcludeFromSchema = true,
-                        BindParameter = (pi, args) => GetRequestContext(args)?.Server,
-                    };
-                }
-
-                if (pi.ParameterType == typeof(IProgress<ProgressNotificationValue>))
-                {
-                    // Bind IProgress<ProgressNotificationValue> to the progress token in the request,
-                    // if there is one. If we can't get one, return a nop progress.
-                    return new()
-                    {
-                        ExcludeFromSchema = true,
-                        BindParameter = (pi, args) =>
-                        {
-                            var requestContent = GetRequestContext(args);
-                            if (requestContent?.Server is { } server &&
-                                requestContent?.Params?.ProgressToken is { } progressToken)
-                            {
-                                return new TokenProgress(server, progressToken);
-                            }
-
-                            return NullProgress.Instance;
-                        },
-                    };
-                }
-
-                if (options?.Services is { } services &&
-                    services.GetService<IServiceProviderIsService>() is { } ispis &&
-                    ispis.IsService(pi.ParameterType))
+                if (RequestServiceProvider<CallToolRequestParams>.IsAugmentedWith(pi.ParameterType) ||
+                    (options?.Services?.GetService<IServiceProviderIsService>() is { } ispis &&
+                     ispis.IsService(pi.ParameterType)))
                 {
                     return new()
                     {
                         ExcludeFromSchema = true,
                         BindParameter = (pi, args) =>
-                            GetRequestContext(args)?.Services?.GetService(pi.ParameterType) ??
+                            args.Services?.GetService(pi.ParameterType) ??
                             (pi.HasDefaultValue ? null :
                              throw new ArgumentException("No service of the requested type was found.")),
                     };
@@ -140,24 +101,13 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                     {
                         ExcludeFromSchema = true,
                         BindParameter = (pi, args) =>
-                            (GetRequestContext(args)?.Services as IKeyedServiceProvider)?.GetKeyedService(pi.ParameterType, keyedAttr.Key) ??
+                            (args?.Services as IKeyedServiceProvider)?.GetKeyedService(pi.ParameterType, keyedAttr.Key) ??
                             (pi.HasDefaultValue ? null :
                              throw new ArgumentException("No service of the requested type was found.")),
                     };
                 }
 
                 return default;
-
-                static RequestContext<CallToolRequestParams>? GetRequestContext(AIFunctionArguments args)
-                {
-                    if (args.Context?.TryGetValue(typeof(RequestContext<CallToolRequestParams>), out var orc) is true &&
-                        orc is RequestContext<CallToolRequestParams> requestContext)
-                    {
-                        return requestContext;
-                    }
-
-                    return null;
-                }
             },
         };
 
@@ -260,14 +210,10 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         Throw.IfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
-        AIFunctionArguments arguments = new()
-        {
-            Services = request.Services,
-            Context = new Dictionary<object, object?>() { [typeof(RequestContext<CallToolRequestParams>)] = request }
-        };
+        request.Services = new RequestServiceProvider<CallToolRequestParams>(request, request.Services);
+        AIFunctionArguments arguments = new() { Services = request.Services };
 
-        var argDict = request.Params?.Arguments;
-        if (argDict is not null)
+        if (request.Params?.Arguments is { } argDict)
         {
             foreach (var kvp in argDict)
             {
