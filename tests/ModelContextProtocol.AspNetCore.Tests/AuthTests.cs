@@ -25,6 +25,9 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
     {
         // Let the HandleAuthorizationUrlAsync take a look at the Location header
         SocketsHttpHandler.AllowAutoRedirect = false;
+        // The dev cert may not be installed on the CI, but AddJwtBearer requires an HTTPS backchannel by default.
+        // The easiest workaround is to disable cert validation for testing purposes.
+        SocketsHttpHandler.SslOptions.RemoteCertificateValidationCallback = (_, _, _, _) => true;
 
         var oAuthServerProgram = new TestOAuthServer.Program(XunitLoggerProvider, KestrelInMemoryTransport);
         _oAuthRunTask = oAuthServerProgram.RunServerAsync(cancellationToken: _testCts.Token);
