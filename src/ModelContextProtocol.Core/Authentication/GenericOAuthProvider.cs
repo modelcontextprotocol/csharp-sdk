@@ -23,7 +23,7 @@ public sealed class GenericOAuthProvider : IMcpCredentialProvider
 
     private readonly Uri _serverUrl;
     private readonly Uri _redirectUri;
-    private readonly List<string> _additionalScopes;
+    private readonly IList<string>? _scopes;
     private readonly string _clientId;
     private readonly string? _clientSecret;
     private readonly HttpClient _httpClient;
@@ -43,7 +43,7 @@ public sealed class GenericOAuthProvider : IMcpCredentialProvider
     /// <param name="clientSecret">OAuth client secret.</param>
     /// <param name="redirectUri">OAuth redirect URI.</param>
     /// <param name="authorizationRedirectDelegate">Custom handler for processing the OAuth authorization URL. If null, uses the default HTTP listener approach.</param>
-    /// <param name="additionalScopes">Additional OAuth scopes to request beyond those specified in the scopes_supported specified in the .well-known/oauth-protected-resource response.</param>
+    /// <param name="scopes">Additional OAuth scopes to request instead of those specified in the scopes_supported specified in the .well-known/oauth-protected-resource response.</param>
     /// <param name="loggerFactory">A logger factory to handle diagnostic messages.</param>
     /// <param name="authServerSelector">Function to select which authorization server to use from available servers. If null, uses default selection strategy.</param>
     /// <exception cref="ArgumentNullException">Thrown when serverUrl is null.</exception>
@@ -54,7 +54,7 @@ public sealed class GenericOAuthProvider : IMcpCredentialProvider
         Uri redirectUri,
         AuthorizationRedirectDelegate? authorizationRedirectDelegate = null,
         string? clientSecret = null,
-        IEnumerable<string>? additionalScopes = null,
+        IList<string>? scopes = null,
         Func<IReadOnlyList<Uri>, Uri?>? authServerSelector = null,
         ILoggerFactory? loggerFactory = null)
     {
@@ -63,7 +63,7 @@ public sealed class GenericOAuthProvider : IMcpCredentialProvider
         _logger = (ILogger?)loggerFactory?.CreateLogger<GenericOAuthProvider>() ?? NullLogger.Instance;
 
         _redirectUri = redirectUri;
-        _additionalScopes = additionalScopes?.ToList() ?? [];
+        _scopes = scopes;
         _clientId = clientId;
         _clientSecret = clientSecret;
 
@@ -301,9 +301,9 @@ public sealed class GenericOAuthProvider : IMcpCredentialProvider
         queryParams["code_challenge_method"] = "S256";
 
         var scopesSupported = protectedResourceMetadata.ScopesSupported;
-        if (_additionalScopes.Count > 0 || scopesSupported.Count > 0)
+        if (_scopes?.Count > 0 || scopesSupported.Count > 0)
         {
-            queryParams["scope"] = string.Join(" ", [.._additionalScopes, ..scopesSupported]);
+            queryParams["scope"] = string.Join(" ", _scopes ?? scopesSupported);
         }
 
         var uriBuilder = new UriBuilder(authServerMetadata.AuthorizationEndpoint)
