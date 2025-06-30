@@ -21,4 +21,9 @@ internal sealed class ClientInfo
     /// Gets or sets the list of redirect URIs allowed for this client.
     /// </summary>
     public List<string> RedirectUris { get; init; } = [];
+
+    /// <summary>
+    /// Gets or sets the list of valid resources for this client.
+    /// </summary>
+    public List<string> ValidResources { get; init; } = [];
 }

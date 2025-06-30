@@ -16,7 +16,6 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
 {
     private const string McpServerUrl = "http://localhost:5000";
     private const string OAuthServerUrl = "https://localhost:7029";
-    private const string ClientId = "demo-client";
 
     private readonly CancellationTokenSource _testCts = new();
     private readonly Task _oAuthRunTask;
@@ -45,7 +44,7 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
                 ValidateAudience = true,
                 ValidateLifetime = true,
                 ValidateIssuerSigningKey = true,
-                ValidAudience = ClientId,
+                ValidAudience = McpServerUrl,
                 ValidIssuer = OAuthServerUrl,
                 NameClaimType = "name",
                 RoleClaimType = "roles"

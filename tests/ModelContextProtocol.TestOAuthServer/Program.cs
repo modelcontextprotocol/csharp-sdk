@@ -98,7 +98,8 @@ public sealed class Program
         {
             ClientId = clientId,
             ClientSecret = clientSecret,
-            RedirectUris = ["http://localhost:1179/callback"]
+            RedirectUris = ["http://localhost:1179/callback"],
+            ValidResources = ["http://localhost:5000/"],
         };
 
         // OIDC and OAuth Metadata
@@ -207,6 +208,12 @@ public sealed class Program
             if (code_challenge_method != "S256")
             {
                 return Results.Redirect($"{redirect_uri}?error=invalid_request&error_description=Only+S256+code_challenge_method+is+supported&state={state}");
+            }
+
+            // Validate resource in accordance with RFC 8707
+            if (string.IsNullOrEmpty(resource) || !client.ValidResources.Contains(resource))
+            {
+                return Results.Redirect($"{redirect_uri}?error=invalid_target&error_description=The+specified+resource+is+not+valid&state={state}");
             }
 
             // Generate a new authorization code

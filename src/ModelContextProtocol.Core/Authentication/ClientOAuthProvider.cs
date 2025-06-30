@@ -295,6 +295,7 @@ internal sealed class ClientOAuthProvider
         queryParams["response_type"] = "code";
         queryParams["code_challenge"] = codeChallenge;
         queryParams["code_challenge_method"] = "S256";
+        queryParams["resource"] = protectedResourceMetadata.Resource.ToString();
 
         var scopesSupported = protectedResourceMetadata.ScopesSupported;
         if (_scopes is not null || scopesSupported.Count > 0)
