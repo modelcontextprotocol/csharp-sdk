@@ -49,9 +49,10 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
         _loggerFactory = loggerFactory;
         Name = transportOptions.Name ?? transportOptions.Endpoint.ToString();
 
-        if (transportOptions.CredentialProvider is { } credentialProvider)
+        if (transportOptions.OAuth is { } clientOAuthOptions)
         {
-            _mcpHttpClient = new AuthenticatingMcpHttpClient(httpClient, credentialProvider);
+            var oAuthProvider = new ClientOAuthProvider(_options.Endpoint, clientOAuthOptions, httpClient, loggerFactory);
+            _mcpHttpClient = new AuthenticatingMcpHttpClient(httpClient, oAuthProvider);
         }
         else
         {

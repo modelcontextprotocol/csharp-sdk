@@ -8,6 +8,7 @@ using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
 using System.Net;
+using Xunit.Sdk;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
 
@@ -23,6 +24,7 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
     public AuthTests(ITestOutputHelper outputHelper)
         : base(outputHelper)
     {
+        // Let the HandleAuthorizationUrlAsync take a look at the Location header
         SocketsHttpHandler.AllowAutoRedirect = false;
 
         var oAuthServerProgram = new TestOAuthServer.Program(XunitLoggerProvider, KestrelInMemoryTransport);
@@ -98,23 +100,70 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        var tokenProvider = new GenericOAuthProvider(
-            new Uri(McpServerUrl),
-            HttpClient,
-            clientId: "demo-client",
-            clientSecret: "demo-secret",
-            redirectUri: new Uri("http://localhost:1179/callback"),
-            authorizationRedirectDelegate: HandleAuthorizationUrlAsync,
-            loggerFactory: LoggerFactory);
-
-        await using var transport = new SseClientTransport(new SseClientTransportOptions()
+        await using var transport = new SseClientTransport(new()
         {
             Endpoint = new("http://localhost:5000"),
-            CredentialProvider = tokenProvider,
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
         }, HttpClient, LoggerFactory);
 
         await using var client = await McpClientFactory.CreateAsync(
             transport,  loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task CannotAuthenticate_WithoutOAuthConfiguration()
+    {
+        Builder.Services.AddMcpServer().WithHttpTransport();
+
+        await using var app = Builder.Build();
+
+        app.MapMcp().RequireAuthorization();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var transport = new SseClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000"),
+        }, HttpClient, LoggerFactory);
+
+        var httpEx = await Assert.ThrowsAsync<HttpRequestException>(async () => await McpClientFactory.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, httpEx.StatusCode);
+    }
+
+    [Fact]
+    public async Task CannotAuthenticate_WithUnregisteredClient()
+    {
+        Builder.Services.AddMcpServer().WithHttpTransport();
+
+        await using var app = Builder.Build();
+
+        app.MapMcp().RequireAuthorization();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var transport = new SseClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000"),
+            OAuth = new()
+            {
+                ClientId = "unregistered-demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        // The EqualException is thrown by HandleAuthorizationUrlAsync when the /authorize request gets a 400
+        var equalEx = await Assert.ThrowsAsync<EqualException>(async () => await McpClientFactory.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     private async Task<string?> HandleAuthorizationUrlAsync(Uri authorizationUrl, Uri redirectUri, CancellationToken cancellationToken)

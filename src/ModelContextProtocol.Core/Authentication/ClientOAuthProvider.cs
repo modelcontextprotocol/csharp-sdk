@@ -14,7 +14,7 @@ namespace ModelContextProtocol.Authentication;
 /// protection or caching - it acquires a token and server metadata and holds it in memory.
 /// This is suitable for demonstration and development purposes.
 /// </summary>
-public sealed class GenericOAuthProvider : IMcpCredentialProvider
+internal sealed class ClientOAuthProvider
 {
     /// <summary>
     /// The Bearer authentication scheme.
@@ -23,55 +23,51 @@ public sealed class GenericOAuthProvider : IMcpCredentialProvider
 
     private readonly Uri _serverUrl;
     private readonly Uri _redirectUri;
-    private readonly IList<string>? _scopes;
+    private readonly string[]? _scopes;
     private readonly string _clientId;
     private readonly string? _clientSecret;
-    private readonly HttpClient _httpClient;
-    private readonly ILogger _logger;
     private readonly Func<IReadOnlyList<Uri>, Uri?> _authServerSelector;
     private readonly AuthorizationRedirectDelegate _authorizationRedirectDelegate;
+
+    private readonly HttpClient _httpClient;
+    private readonly ILogger _logger;
 
     private TokenContainer? _token;
     private AuthorizationServerMetadata? _authServerMetadata;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="GenericOAuthProvider"/> class with explicit authorization server selection.
+    /// Initializes a new instance of the <see cref="ClientOAuthProvider"/> class using the specified options.
     /// </summary>
     /// <param name="serverUrl">The MCP server URL.</param>
+    /// <param name="options">The OAuth provider configuration options.</param>
     /// <param name="httpClient">The HTTP client to use for OAuth requests. If null, a default HttpClient will be used.</param>
-    /// <param name="clientId">OAuth client ID.</param>
-    /// <param name="clientSecret">OAuth client secret.</param>
-    /// <param name="redirectUri">OAuth redirect URI.</param>
-    /// <param name="authorizationRedirectDelegate">Custom handler for processing the OAuth authorization URL. If null, uses the default HTTP listener approach.</param>
-    /// <param name="scopes">Additional OAuth scopes to request instead of those specified in the scopes_supported specified in the .well-known/oauth-protected-resource response.</param>
     /// <param name="loggerFactory">A logger factory to handle diagnostic messages.</param>
-    /// <param name="authServerSelector">Function to select which authorization server to use from available servers. If null, uses default selection strategy.</param>
-    /// <exception cref="ArgumentNullException">Thrown when serverUrl is null.</exception>
-    public GenericOAuthProvider(
+    /// <exception cref="ArgumentNullException">Thrown when serverUrl or options are null.</exception>
+    public ClientOAuthProvider(
         Uri serverUrl,
-        HttpClient? httpClient,
-        string clientId,
-        Uri redirectUri,
-        AuthorizationRedirectDelegate? authorizationRedirectDelegate = null,
-        string? clientSecret = null,
-        IList<string>? scopes = null,
-        Func<IReadOnlyList<Uri>, Uri?>? authServerSelector = null,
+        ClientOAuthOptions options,
+        HttpClient? httpClient = null,
         ILoggerFactory? loggerFactory = null)
     {
         _serverUrl = serverUrl ?? throw new ArgumentNullException(nameof(serverUrl));
         _httpClient = httpClient ?? new HttpClient();
-        _logger = (ILogger?)loggerFactory?.CreateLogger<GenericOAuthProvider>() ?? NullLogger.Instance;
+        _logger = (ILogger?)loggerFactory?.CreateLogger<ClientOAuthProvider>() ?? NullLogger.Instance;
 
-        _redirectUri = redirectUri;
-        _scopes = scopes;
-        _clientId = clientId;
-        _clientSecret = clientSecret;
+        if (options is null)
+        {
+            throw new ArgumentNullException(nameof(options));
+        }
+
+        _clientId = options.ClientId;
+        _redirectUri = options.RedirectUri;
+        _clientSecret = options.ClientSecret;
+        _scopes = options.Scopes?.ToArray();
 
         // Set up authorization server selection strategy
-        _authServerSelector = authServerSelector ?? DefaultAuthServerSelector;
+        _authServerSelector = options.AuthServerSelector ?? DefaultAuthServerSelector;
 
         // Set up authorization URL handler (use default if not provided)
-        _authorizationRedirectDelegate = authorizationRedirectDelegate ?? DefaultAuthorizationUrlHandler;
+        _authorizationRedirectDelegate = options.AuthorizationRedirectDelegate ?? DefaultAuthorizationUrlHandler;
     }
 
     /// <summary>
@@ -301,9 +297,9 @@ public sealed class GenericOAuthProvider : IMcpCredentialProvider
         queryParams["code_challenge_method"] = "S256";
 
         var scopesSupported = protectedResourceMetadata.ScopesSupported;
-        if (_scopes?.Count > 0 || scopesSupported.Count > 0)
+        if (_scopes is not null || scopesSupported.Count > 0)
         {
-            queryParams["scope"] = string.Join(" ", _scopes ?? scopesSupported);
+            queryParams["scope"] = string.Join(" ", _scopes ?? scopesSupported.ToArray());
         }
 
         var uriBuilder = new UriBuilder(authServerMetadata.AuthorizationEndpoint)

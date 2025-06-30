@@ -7,7 +7,7 @@ namespace ModelContextProtocol.Authentication;
 /// <summary>
 /// A delegating handler that adds authentication tokens to requests and handles 401 responses.
 /// </summary>
-internal sealed class AuthenticatingMcpHttpClient(HttpClient httpClient, IMcpCredentialProvider credentialProvider) : McpHttpClient(httpClient)
+internal sealed class AuthenticatingMcpHttpClient(HttpClient httpClient, ClientOAuthProvider credentialProvider) : McpHttpClient(httpClient)
 {
     // Select first supported scheme as the default
     private string _currentScheme = credentialProvider.SupportedSchemes.FirstOrDefault() ??

@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging;
-using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using System.Diagnostics;
@@ -7,11 +6,11 @@ using System.Net;
 using System.Text;
 using System.Web;
 
-Console.WriteLine("Protected MCP Client");
-Console.WriteLine();
-
 var serverUrl = "http://localhost:7071/";
-var clientId = Environment.GetEnvironmentVariable("CLIENT_ID") ?? throw new Exception("The CLIENT_ID environment variable is not set.");
+
+Console.WriteLine("Protected MCP Client");
+Console.WriteLine($"Connecting to weather server at {serverUrl}...");
+Console.WriteLine();
 
 // We can customize a shared HttpClient with a custom handler if desired
 var sharedHandler = new SocketsHttpHandler
@@ -19,77 +18,51 @@ var sharedHandler = new SocketsHttpHandler
     PooledConnectionLifetime = TimeSpan.FromMinutes(2),
     PooledConnectionIdleTimeout = TimeSpan.FromMinutes(1)
 };
+var httpClient = new HttpClient(sharedHandler);
 
 var consoleLoggerFactory = LoggerFactory.Create(builder =>
 {
     builder.AddConsole();
 });
 
-var httpClient = new HttpClient(sharedHandler);
-// Create the token provider with our custom HttpClient and authorization URL handler
-var tokenProvider = new GenericOAuthProvider(
-    new Uri(serverUrl),
-    httpClient,
-    //clientId: clientId,
-    clientId: "demo-client",
-    clientSecret: "demo-secret",
-    redirectUri: new Uri("http://localhost:1179/callback"),
-    authorizationRedirectDelegate: HandleAuthorizationUrlAsync,
-    loggerFactory: consoleLoggerFactory);
+var transport = new SseClientTransport(new()
+{
+    Endpoint = new Uri(serverUrl),
+    Name = "Secure Weather Client",
+    OAuth = new()
+    {
+        ClientId = "demo-client",
+        ClientSecret = "demo-secret",
+        RedirectUri = new Uri("http://localhost:1179/callback"),
+        AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+    }
+}, httpClient, consoleLoggerFactory);
 
+var client = await McpClientFactory.CreateAsync(transport, loggerFactory: consoleLoggerFactory);
+
+var tools = await client.ListToolsAsync();
+if (tools.Count == 0)
+{
+    Console.WriteLine("No tools available on the server.");
+    return;
+}
+
+Console.WriteLine($"Found {tools.Count} tools on the server.");
 Console.WriteLine();
-Console.WriteLine($"Connecting to weather server at {serverUrl}...");
 
-try
+if (tools.Any(t => t.Name == "GetAlerts"))
 {
-    var transport = new SseClientTransport(new()
-    {
-        Endpoint = new Uri(serverUrl),
-        Name = "Secure Weather Client",
-        CredentialProvider = tokenProvider,
-    }, httpClient, consoleLoggerFactory);
+    Console.WriteLine("Calling GetAlerts tool...");
 
-    var client = await McpClientFactory.CreateAsync(transport, loggerFactory: consoleLoggerFactory);
+    var result = await client.CallToolAsync(
+        "GetAlerts",
+        new Dictionary<string, object?> { { "state", "WA" } }
+    );
 
-    var tools = await client.ListToolsAsync();
-    if (tools.Count == 0)
-    {
-        Console.WriteLine("No tools available on the server.");
-        return;
-    }
-
-    Console.WriteLine($"Found {tools.Count} tools on the server.");
+    Console.WriteLine("Result: " + ((TextContentBlock)result.Content[0]).Text);
     Console.WriteLine();
-
-    if (tools.Any(t => t.Name == "GetAlerts"))
-    {
-        Console.WriteLine("Calling GetAlerts tool...");
-
-        var result = await client.CallToolAsync(
-            "GetAlerts",
-            new Dictionary<string, object?> { { "state", "WA" } }
-        );
-
-        Console.WriteLine("Result: " + ((TextContentBlock)result.Content[0]).Text);
-        Console.WriteLine();
-    }
 }
-catch (Exception ex)
-{
-    Console.WriteLine($"Error: {ex.Message}");
-    if (ex.InnerException != null)
-    {
-        Console.WriteLine($"Inner error: {ex.InnerException.Message}");
-    }
 
-#if DEBUG
-    Console.WriteLine($"Stack trace: {ex.StackTrace}");
-#endif
-}
-Console.WriteLine("Press any key to exit...");
-Console.ReadKey();
-
-/// <summary>
 /// Handles the OAuth authorization URL by starting a local HTTP server and opening a browser.
 /// This implementation demonstrates how SDK consumers can provide their own authorization flow.
 /// </summary>

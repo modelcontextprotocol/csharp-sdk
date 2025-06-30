@@ -171,14 +171,16 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using var mcpClient = await ConnectAsync(clientOptions: new()
+        await using (var mcpClient = await ConnectAsync(clientOptions: new()
         {
             ProtocolVersion = "2025-03-26",
-        });
-        await mcpClient.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        }))
+        {
+            await mcpClient.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        }
 
-        // The header should be included in the GET request, the initialized notification, and the tools/list call.
-        Assert.Equal(3, protocolVersionHeaderValues.Count);
+        // The header should be included in the GET request, the initialized notification, the tools/list call, and the delete request.
+        Assert.Equal(4, protocolVersionHeaderValues.Count);
         Assert.All(protocolVersionHeaderValues, v => Assert.Equal("2025-03-26", v));
     }
 }

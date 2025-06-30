@@ -76,5 +76,5 @@ public sealed class SseClientTransportOptions
     /// <summary>
     /// Gets sor sets the authorization provider to use for authentication.
     /// </summary>
-    public IMcpCredentialProvider? CredentialProvider { get; set; }
+    public ClientOAuthOptions? OAuth { get; set; }
 }
