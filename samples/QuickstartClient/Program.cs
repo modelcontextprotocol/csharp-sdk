@@ -96,10 +96,7 @@ static (string command, string[] arguments) GetCommandAndArguments(string[] args
 
 static string GetCurrentSourceDirectory([CallerFilePath] string? currentFile = null)
 {
-    if (string.IsNullOrWhiteSpace(currentFile))
-    {
-        throw new ArgumentException(nameof(currentFile));
-    }
+    Debug.Assert(!string.IsNullOrWhiteSpace(currentFile));
 
     return Path.GetDirectoryName(currentFile) ?? throw new InvalidOperationException("Unable to determine source directory.");
 }
