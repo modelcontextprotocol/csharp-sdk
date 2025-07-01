@@ -75,7 +75,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         MethodInfo method, McpServerToolCreateOptions? options) =>
         new()
         {
-            Name = options?.Name ?? method.GetCustomAttribute<McpServerToolAttribute>()?.Name ?? DeriveName(method, JsonNamingPolicy.SnakeCaseLower),
+            Name = options?.Name ?? method.GetCustomAttribute<McpServerToolAttribute>()?.Name ?? DeriveName(method),
             Description = options?.Description,
             MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
             SerializerOptions = options?.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
@@ -295,7 +295,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     }
 
     /// <summary>Creates a name to use based on the supplied method and naming policy.</summary>
-    internal static string DeriveName(MethodInfo method, JsonNamingPolicy? policy)
+    internal static string DeriveName(MethodInfo method, JsonNamingPolicy? policy = null)
     {
         string name = method.Name;
 
@@ -318,7 +318,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
 
         // Case the name based on the provided naming policy.
-        return policy?.ConvertName(name) ?? name;
+        return (policy ?? JsonNamingPolicy.SnakeCaseLower).ConvertName(name) ?? name;
 
         static bool IsAsyncMethod(MethodInfo method)
         {

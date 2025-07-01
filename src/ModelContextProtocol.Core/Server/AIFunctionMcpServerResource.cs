@@ -75,7 +75,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
         MethodInfo method, McpServerResourceCreateOptions? options) =>
         new()
         {
-            Name = options?.Name ?? method.GetCustomAttribute<McpServerResourceAttribute>()?.Name,
+            Name = options?.Name ?? method.GetCustomAttribute<McpServerResourceAttribute>()?.Name ?? AIFunctionMcpServerTool.DeriveName(method),
             Description = options?.Description,
             MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
             SerializerOptions = options?.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
