@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
 using System.Collections.Concurrent;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Reflection;
 using System.Text;
@@ -64,8 +65,8 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
         return Create(
             AIFunctionFactory.Create(method, args =>
             {
-                var request = (RequestContext<ReadResourceRequestParams>)args.Context![typeof(RequestContext<ReadResourceRequestParams>)]!;
-                return createTargetFunc(request);
+                Debug.Assert(args.Services is RequestServiceProvider<ReadResourceRequestParams>, $"The service provider should be a {nameof(RequestServiceProvider<ReadResourceRequestParams>)} for this method to work correctly.");
+                return createTargetFunc(((RequestServiceProvider<ReadResourceRequestParams>)args.Services!).Request);
             }, CreateAIFunctionFactoryOptions(method, options)),
             options);
     }
@@ -81,54 +82,15 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
             JsonSchemaCreateOptions = options?.SchemaCreateOptions,
             ConfigureParameterBinding = pi =>
             {
-                if (pi.ParameterType == typeof(RequestContext<ReadResourceRequestParams>))
-                {
-                    return new()
-                    {
-                        ExcludeFromSchema = true,
-                        BindParameter = (pi, args) => GetRequestContext(args),
-                    };
-                }
-
-                if (pi.ParameterType == typeof(IMcpServer))
-                {
-                    return new()
-                    {
-                        ExcludeFromSchema = true,
-                        BindParameter = (pi, args) => GetRequestContext(args)?.Server,
-                    };
-                }
-
-                if (pi.ParameterType == typeof(IProgress<ProgressNotificationValue>))
-                {
-                    // Bind IProgress<ProgressNotificationValue> to the progress token in the request,
-                    // if there is one. If we can't get one, return a nop progress.
-                    return new()
-                    {
-                        ExcludeFromSchema = true,
-                        BindParameter = (pi, args) =>
-                        {
-                            var requestContent = GetRequestContext(args);
-                            if (requestContent?.Server is { } server &&
-                                requestContent?.Params?.ProgressToken is { } progressToken)
-                            {
-                                return new TokenProgress(server, progressToken);
-                            }
-
-                            return NullProgress.Instance;
-                        },
-                    };
-                }
-
-                if (options?.Services is { } services &&
-                    services.GetService<IServiceProviderIsService>() is { } ispis &&
-                    ispis.IsService(pi.ParameterType))
+                if (RequestServiceProvider<ReadResourceRequestParams>.IsAugmentedWith(pi.ParameterType) ||
+                    (options?.Services?.GetService<IServiceProviderIsService>() is { } ispis &&
+                     ispis.IsService(pi.ParameterType)))
                 {
                     return new()
                     {
                         ExcludeFromSchema = true,
                         BindParameter = (pi, args) =>
-                            GetRequestContext(args)?.Services?.GetService(pi.ParameterType) ??
+                            args.Services?.GetService(pi.ParameterType) ??
                             (pi.HasDefaultValue ? null :
                              throw new ArgumentException("No service of the requested type was found.")),
                     };
@@ -140,7 +102,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
                     {
                         ExcludeFromSchema = true,
                         BindParameter = (pi, args) =>
-                            (GetRequestContext(args)?.Services as IKeyedServiceProvider)?.GetKeyedService(pi.ParameterType, keyedAttr.Key) ??
+                            (args?.Services as IKeyedServiceProvider)?.GetKeyedService(pi.ParameterType, keyedAttr.Key) ??
                             (pi.HasDefaultValue ? null :
                              throw new ArgumentException("No service of the requested type was found.")),
                     };
@@ -172,17 +134,6 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
                 }
 
                 return default;
-
-                static RequestContext<ReadResourceRequestParams>? GetRequestContext(AIFunctionArguments args)
-                {
-                    if (args.Context?.TryGetValue(typeof(RequestContext<ReadResourceRequestParams>), out var rc) is true &&
-                        rc is RequestContext<ReadResourceRequestParams> requestContext)
-                    {
-                        return requestContext;
-                    }
-
-                    return null;
-                }
             },
         };
 
@@ -365,11 +316,8 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
         }
 
         // Build up the arguments for the AIFunction call, including all of the name/value pairs from the URI.
-        AIFunctionArguments arguments = new()
-        {
-            Services = request.Services,
-            Context = new Dictionary<object, object?>() { [typeof(RequestContext<ReadResourceRequestParams>)] = request }
-        };
+        request.Services = new RequestServiceProvider<ReadResourceRequestParams>(request, request.Services);
+        AIFunctionArguments arguments = new() { Services = request.Services };
 
         // For templates, populate the arguments from the URI template.
         if (match is not null)

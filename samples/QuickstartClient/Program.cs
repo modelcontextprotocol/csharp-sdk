@@ -3,6 +3,8 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using ModelContextProtocol.Client;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -89,6 +91,12 @@ static (string command, string[] arguments) GetCommandAndArguments(string[] args
         [var script] when script.EndsWith(".py") => ("python", args),
         [var script] when script.EndsWith(".js") => ("node", args),
         [var script] when Directory.Exists(script) || (File.Exists(script) && script.EndsWith(".csproj")) => ("dotnet", ["run", "--project", script]),
-        _ => ("dotnet", ["run", "--project", "../QuickstartWeatherServer"])
+        _ => ("dotnet", ["run", "--project", Path.Combine(GetCurrentSourceDirectory(), "../QuickstartWeatherServer")])
     };
+}
+
+static string GetCurrentSourceDirectory([CallerFilePath] string? currentFile = null)
+{
+    Debug.Assert(!string.IsNullOrWhiteSpace(currentFile));
+    return Path.GetDirectoryName(currentFile) ?? throw new InvalidOperationException("Unable to determine source directory.");
 }

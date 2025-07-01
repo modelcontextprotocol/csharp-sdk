@@ -44,5 +44,5 @@ public sealed class CallToolResult : Result
     /// and potentially self-correct in subsequent requests.
     /// </remarks>
     [JsonPropertyName("isError")]
-    public bool IsError { get; set; }
+    public bool? IsError { get; set; }
 }

@@ -94,7 +94,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
 
         // assert
         Assert.NotNull(result);
-        Assert.False(result.IsError);
+        Assert.Null(result.IsError);
         var textContent = Assert.Single(result.Content.OfType<TextContentBlock>());
         Assert.Equal("Echo: Hello MCP!", textContent.Text);
     }
@@ -115,9 +115,9 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         Assert.NotNull(result2);
         Assert.NotNull(result3);
 
-        Assert.False(result1.IsError);
-        Assert.False(result2.IsError);
-        Assert.False(result3.IsError);
+        Assert.Null(result1.IsError);
+        Assert.Null(result2.IsError);
+        Assert.Null(result3.IsError);
 
         var textContent1 = Assert.Single(result1.Content.OfType<TextContentBlock>());
         var textContent2 = Assert.Single(result2.Content.OfType<TextContentBlock>());
@@ -298,7 +298,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
             );
 
             Assert.NotNull(result);
-            Assert.False(result.IsError);
+            Assert.Null(result.IsError);
             var textContent = Assert.Single(result.Content.OfType<TextContentBlock>());
             Assert.Equal($"Echo: Hello MCP! {i}", textContent.Text);
         }

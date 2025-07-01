@@ -91,7 +91,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
 
         // assert
         Assert.NotNull(result);
-        Assert.False(result.IsError);
+        Assert.Null(result.IsError);
         var textContent = Assert.Single(result.Content.OfType<TextContentBlock>());
         Assert.Equal("Echo: Hello MCP!", textContent.Text);
     }
@@ -107,7 +107,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
 
         // assert
         Assert.NotNull(result);
-        Assert.False(result.IsError);
+        Assert.Null(result.IsError);
         var textContent = Assert.Single(result.Content.OfType<TextContentBlock>());
         Assert.Empty(textContent.Text);
     }
@@ -485,7 +485,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
 
         // assert
         Assert.NotNull(result);
-        Assert.False(result.IsError);
+        Assert.Null(result.IsError);
         Assert.Single(result.Content, c => c.Type == "text");
 
         await client.DisposeAsync();

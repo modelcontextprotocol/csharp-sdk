@@ -171,7 +171,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
         }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
-        Assert.False(result.IsError);
+        Assert.Null(result.IsError);
         var textContent = Assert.Single(result.Content);
         Assert.Equal("text", textContent.Type);
         Assert.Equal("Sampling completed successfully. Client responded: Sampling response from client", Assert.IsType<TextContentBlock>(textContent).Text);
