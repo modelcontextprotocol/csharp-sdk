@@ -3,6 +3,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using ModelContextProtocol.Client;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -97,6 +98,5 @@ static (string command, string[] arguments) GetCommandAndArguments(string[] args
 static string GetCurrentSourceDirectory([CallerFilePath] string? currentFile = null)
 {
     Debug.Assert(!string.IsNullOrWhiteSpace(currentFile));
-
     return Path.GetDirectoryName(currentFile) ?? throw new InvalidOperationException("Unable to determine source directory.");
 }
