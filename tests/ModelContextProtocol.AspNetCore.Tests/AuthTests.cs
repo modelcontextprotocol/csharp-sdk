@@ -55,20 +55,12 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
         })
         .AddMcp(options =>
         {
-            options.ProtectedResourceMetadataProvider = context =>
+            options.ResourceMetadata = new ProtectedResourceMetadata
             {
-                var metadata = new ProtectedResourceMetadata
-                {
-                    Resource = new Uri(McpServerUrl),
-                    BearerMethodsSupported = { "header" },
-                    AuthorizationServers = { new Uri(OAuthServerUrl) }
-                };
-
-                metadata.ScopesSupported.AddRange([
-                    "mcp:tools"
-                ]);
-
-                return metadata;
+                Resource = new Uri(McpServerUrl),
+                AuthorizationServers = { new Uri(OAuthServerUrl) },
+                BearerMethodsSupported = { "header" },
+                ScopesSupported = ["mcp:tools"]
             };
         });
 

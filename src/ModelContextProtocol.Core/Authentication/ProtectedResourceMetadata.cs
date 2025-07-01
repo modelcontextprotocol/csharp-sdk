@@ -15,7 +15,7 @@ public sealed class ProtectedResourceMetadata
     /// REQUIRED. The protected resource's resource identifier.
     /// </remarks>
     [JsonPropertyName("resource")]
-    public required Uri Resource { get; init; }
+    public required Uri Resource { get; set; }
 
     /// <summary>
     /// The list of authorization server URIs.

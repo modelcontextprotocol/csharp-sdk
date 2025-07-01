@@ -4,7 +4,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Authentication;
 using System.Text.Encodings.Web;
-using System.Text.Json;
 
 namespace ModelContextProtocol.AspNetCore.Authentication;
 
@@ -34,11 +33,11 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         // Check if the request is for the resource metadata endpoint
         string requestPath = Request.Path.Value ?? string.Empty;
 
-        string expectedMetadataPath = this.Options.ResourceMetadataUri?.ToString() ?? string.Empty;
-        if (this.Options.ResourceMetadataUri != null && !this.Options.ResourceMetadataUri.IsAbsoluteUri)
+        string expectedMetadataPath = Options.ResourceMetadataUri?.ToString() ?? string.Empty;
+        if (Options.ResourceMetadataUri != null && !Options.ResourceMetadataUri.IsAbsoluteUri)
         {
             // For relative URIs, it's just the path component.
-            expectedMetadataPath = this.Options.ResourceMetadataUri.OriginalString;
+            expectedMetadataPath = Options.ResourceMetadataUri.OriginalString;
         }
 
         // If the path doesn't match, let the request continue through the pipeline
@@ -62,8 +61,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
     /// </summary>
     private string GetAbsoluteResourceMetadataUri()
     {
-        var options = this.Options;
-        var resourceMetadataUri = options.ResourceMetadataUri;
+        var resourceMetadataUri = Options.ResourceMetadataUri;
 
         string currentPath = resourceMetadataUri?.ToString() ?? string.Empty;
 
@@ -88,46 +86,32 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
     /// Handles the resource metadata request.
     /// </summary>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
-    private Task HandleResourceMetadataRequestAsync(CancellationToken cancellationToken = default)
+    private async Task HandleResourceMetadataRequestAsync(CancellationToken cancellationToken = default)
     {
-        var options = this.Options;
-        var resourceMetadata = options.GetResourceMetadata(Request.HttpContext);
+        var resourceMetadata = Options.ResourceMetadata;
 
-        // Create a copy to avoid modifying the original
-        var metadata = new ProtectedResourceMetadata
+        if (Options.Events.OnResourceMetadataRequest is not null)
         {
-            Resource = resourceMetadata.Resource ?? new Uri(GetBaseUrl()),
-            AuthorizationServers = [.. resourceMetadata.AuthorizationServers],
-            BearerMethodsSupported = [.. resourceMetadata.BearerMethodsSupported],
-            ScopesSupported = [.. resourceMetadata.ScopesSupported],
-            ResourceDocumentation = resourceMetadata.ResourceDocumentation
-        };
+            var context = new ResourceMetadataRequestContext(Request.HttpContext, Scheme, Options)
+            {
+                ResourceMetadata = CloneResourceMetadata(resourceMetadata),
+            };
 
-        Response.StatusCode = StatusCodes.Status200OK;
-        Response.ContentType = "application/json";
+            await Options.Events.OnResourceMetadataRequest(context);
+        }
 
-        var json = JsonSerializer.Serialize(
-            metadata,
-            McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(ProtectedResourceMetadata)));
 
-        return Response.WriteAsync(json, cancellationToken);
+        if (resourceMetadata == null)
+        {
+            throw new InvalidOperationException("ResourceMetadata has not been configured. Please set McpAuthenticationOptions.ResourceMetadata.");
+        }
+
+        await Results.Json(resourceMetadata, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(ProtectedResourceMetadata))).ExecuteAsync(Context);
     }
 
     /// <inheritdoc />
-    protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
-    {
-        // If ForwardAuthenticate is set, forward the authentication to the specified scheme
-        if (!string.IsNullOrEmpty(Options.ForwardAuthenticate) &&
-            Options.ForwardAuthenticate != Scheme.Name)
-        {
-            // Simply forward the authentication request to the specified scheme and return its result
-            // This ensures we don't interfere with the authentication process
-            return await Context.AuthenticateAsync(Options.ForwardAuthenticate);
-        }
-
-        // If no forwarding is configured, this handler doesn't perform authentication
-        return AuthenticateResult.NoResult();
-    }
+    // If no forwarding is configured, this handler doesn't perform authentication
+    protected override async Task<AuthenticateResult> HandleAuthenticateAsync() => AuthenticateResult.NoResult();
 
     /// <inheritdoc />
     protected override Task HandleChallengeAsync(AuthenticationProperties properties)
@@ -146,4 +130,31 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
 
         return base.HandleChallengeAsync(properties);
     }
+
+    internal ProtectedResourceMetadata? CloneResourceMetadata(ProtectedResourceMetadata? resourceMetadata)
+    {
+        if (resourceMetadata is null)
+        {
+            return null;
+        }
+
+        return new ProtectedResourceMetadata
+        {
+            Resource = resourceMetadata.Resource,
+            AuthorizationServers = [.. resourceMetadata.AuthorizationServers],
+            BearerMethodsSupported = [.. resourceMetadata.BearerMethodsSupported],
+            ScopesSupported = [.. resourceMetadata.ScopesSupported],
+            JwksUri = resourceMetadata.JwksUri,
+            ResourceSigningAlgValuesSupported = resourceMetadata.ResourceSigningAlgValuesSupported is not null ? [.. resourceMetadata.ResourceSigningAlgValuesSupported] : null,
+            ResourceName = resourceMetadata.ResourceName,
+            ResourceDocumentation = resourceMetadata.ResourceDocumentation,
+            ResourcePolicyUri = resourceMetadata.ResourcePolicyUri,
+            ResourceTosUri = resourceMetadata.ResourceTosUri,
+            TlsClientCertificateBoundAccessTokens = resourceMetadata.TlsClientCertificateBoundAccessTokens,
+            AuthorizationDetailsTypesSupported = resourceMetadata.AuthorizationDetailsTypesSupported is not null ? [.. resourceMetadata.AuthorizationDetailsTypesSupported] : null,
+            DpopSigningAlgValuesSupported = resourceMetadata.DpopSigningAlgValuesSupported is not null ? [.. resourceMetadata.DpopSigningAlgValuesSupported] : null,
+            DpopBoundAccessTokensRequired = resourceMetadata.DpopBoundAccessTokensRequired
+        };
+    }
+
 }
