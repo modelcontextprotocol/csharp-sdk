@@ -117,7 +117,7 @@ public sealed class Program
                 SubjectTypesSupported = ["public"],
                 IdTokenSigningAlgValuesSupported = ["RS256"],
                 ScopesSupported = ["openid", "profile", "email", "mcp:tools"],
-                TokenEndpointAuthMethodsSupported = ["client_secret_basic", "client_secret_post"],
+                TokenEndpointAuthMethodsSupported = ["client_secret_post"],
                 ClaimsSupported = ["sub", "iss", "name", "email", "aud"],
                 CodeChallengeMethodsSupported = ["S256"],
                 GrantTypesSupported = ["authorization_code", "refresh_token"],
@@ -385,125 +385,70 @@ public sealed class Program
         // Dynamic Client Registration endpoint (RFC 7591)
         app.MapPost("/register", async (HttpContext context) =>
         {
-            try
-            {
-                using var stream = context.Request.Body;
-                var registrationRequest = await JsonSerializer.DeserializeAsync(
-                    stream,
-                    OAuthJsonContext.Default.ClientRegistrationRequest,
-                    context.RequestAborted);
+            using var stream = context.Request.Body;
+            var registrationRequest = await JsonSerializer.DeserializeAsync(
+                stream,
+                OAuthJsonContext.Default.ClientRegistrationRequest,
+                context.RequestAborted);
 
-                if (registrationRequest is null)
-                {
-                    return Results.BadRequest(new OAuthErrorResponse
-                    {
-                        Error = "invalid_request",
-                        ErrorDescription = "Invalid registration request"
-                    });
-                }
-
-                // Validate redirect URIs are provided
-                if (registrationRequest.RedirectUris.Count == 0)
-                {
-                    return Results.BadRequest(new OAuthErrorResponse
-                    {
-                        Error = "invalid_redirect_uri",
-                        ErrorDescription = "At least one redirect URI must be provided"
-                    });
-                }
-
-                // Validate redirect URIs
-                foreach (var redirectUri in registrationRequest.RedirectUris)
-                {
-                    if (!Uri.TryCreate(redirectUri, UriKind.Absolute, out var uri) ||
-                        (uri.Scheme != "http" && uri.Scheme != "https"))
-                    {
-                        return Results.BadRequest(new OAuthErrorResponse
-                        {
-                            Error = "invalid_redirect_uri",
-                            ErrorDescription = $"Invalid redirect URI: {redirectUri}"
-                        });
-                    }
-                }
-
-                // Generate client credentials
-                var clientId = $"dyn-{Guid.NewGuid():N}";
-                var clientSecret = OAuthUtils.GenerateRandomToken();
-                var issuedAt = DateTimeOffset.UtcNow;
-
-                // Set default values for optional fields
-                var grantTypes = registrationRequest.GrantTypes ?? ["authorization_code"];
-                var responseTypes = registrationRequest.ResponseTypes ?? ["code"];
-                var tokenEndpointAuthMethod = registrationRequest.TokenEndpointAuthMethod ?? "client_secret_basic";
-
-                // Validate grant types
-                var supportedGrantTypes = new[] { "authorization_code", "refresh_token" };
-                if (grantTypes.Any(gt => !supportedGrantTypes.Contains(gt)))
-                {
-                    return Results.BadRequest(new OAuthErrorResponse
-                    {
-                        Error = "invalid_client_metadata",
-                        ErrorDescription = "Unsupported grant type"
-                    });
-                }
-
-                // Validate response types
-                var supportedResponseTypes = new[] { "code" };
-                if (responseTypes.Any(rt => !supportedResponseTypes.Contains(rt)))
-                {
-                    return Results.BadRequest(new OAuthErrorResponse
-                    {
-                        Error = "invalid_client_metadata",
-                        ErrorDescription = "Unsupported response type"
-                    });
-                }
-
-                // Store the registered client
-                _clients[clientId] = new ClientInfo
-                {
-                    ClientId = clientId,
-                    ClientSecret = clientSecret,
-                    RedirectUris = registrationRequest.RedirectUris
-                };
-
-                // Create registration response
-                var registrationResponse = new ClientRegistrationResponse
-                {
-                    ClientId = clientId,
-                    ClientSecret = clientSecret,
-                    ClientIdIssuedAt = issuedAt.ToUnixTimeSeconds(),
-                    ClientSecretExpiresAt = 0, // Never expires
-                    RedirectUris = registrationRequest.RedirectUris,
-                    GrantTypes = grantTypes,
-                    ResponseTypes = responseTypes,
-                    TokenEndpointAuthMethod = tokenEndpointAuthMethod,
-                    ClientName = registrationRequest.ClientName,
-                    ClientUri = registrationRequest.ClientUri,
-                    LogoUri = registrationRequest.LogoUri,
-                    Scope = registrationRequest.Scope,
-                    Contacts = registrationRequest.Contacts,
-                    TosUri = registrationRequest.TosUri,
-                    PolicyUri = registrationRequest.PolicyUri,
-                    JwksUri = registrationRequest.JwksUri,
-                    SoftwareId = registrationRequest.SoftwareId,
-                    SoftwareVersion = registrationRequest.SoftwareVersion
-                };
-
-                return Results.Created($"{_url}/register/{clientId}", registrationResponse);
-            }
-            catch (JsonException)
+            if (registrationRequest is null)
             {
                 return Results.BadRequest(new OAuthErrorResponse
                 {
                     Error = "invalid_request",
-                    ErrorDescription = "Invalid JSON in request body"
+                    ErrorDescription = "Invalid registration request"
                 });
             }
-            catch (Exception ex)
+
+            // Validate redirect URIs are provided
+            if (registrationRequest.RedirectUris.Count == 0)
             {
-                Console.WriteLine($"Registration error: {ex}");
-                return Results.Problem("Internal server error");
+                return Results.BadRequest(new OAuthErrorResponse
+                {
+                    Error = "invalid_redirect_uri",
+                    ErrorDescription = "At least one redirect URI must be provided"
+                });
             }
+
+            // Validate redirect URIs
+            foreach (var redirectUri in registrationRequest.RedirectUris)
+            {
+                if (!Uri.TryCreate(redirectUri, UriKind.Absolute, out var uri) ||
+                    (uri.Scheme != "http" && uri.Scheme != "https"))
+                {
+                    return Results.BadRequest(new OAuthErrorResponse
+                    {
+                        Error = "invalid_redirect_uri",
+                        ErrorDescription = $"Invalid redirect URI: {redirectUri}"
+                    });
+                }
+            }
+
+            // Generate client credentials
+            var clientId = $"dyn-{Guid.NewGuid():N}";
+            var clientSecret = OAuthUtils.GenerateRandomToken();
+            var issuedAt = DateTimeOffset.UtcNow;
+
+            // Store the registered client
+            _clients[clientId] = new ClientInfo
+            {
+                ClientId = clientId,
+                ClientSecret = clientSecret,
+                RedirectUris = registrationRequest.RedirectUris,
+            };
+
+            var registrationResponse = new ClientRegistrationResponse
+            {
+                ClientId = clientId,
+                ClientSecret = clientSecret,
+                ClientIdIssuedAt = issuedAt.ToUnixTimeSeconds(),
+                RedirectUris = registrationRequest.RedirectUris,
+                GrantTypes = ["authorization_code", "refresh_token"],
+                ResponseTypes = ["code"],
+                TokenEndpointAuthMethod = "client_secret_post",
+            };
+
+            return Results.Ok(registrationResponse);
         });
 
         app.MapGet("/", () => "Demo In-Memory OAuth 2.0 Server with JWT Support");
@@ -525,44 +470,17 @@ public sealed class Program
     /// <returns>The client info if authentication succeeds, null otherwise.</returns>
     private ClientInfo? AuthenticateClient(HttpContext context, IFormCollection form)
     {
-        // Check for client_id and client_secret in form body (client_secret_post)
-        var formClientId = form["client_id"].ToString();
-        var formClientSecret = form["client_secret"].ToString();
+        var clientId = form["client_id"].ToString();
+        var clientSecret = form["client_secret"].ToString();
 
-        if (!string.IsNullOrEmpty(formClientId) && !string.IsNullOrEmpty(formClientSecret))
+        if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(clientSecret))
         {
-            if (_clients.TryGetValue(formClientId, out var client) && client.ClientSecret == formClientSecret)
-            {
-                return client;
-            }
             return null;
         }
 
-        // Check for Basic authentication (client_secret_basic)
-        string? authHeader = context.Request.Headers.Authorization.ToString();
-        if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase))
+        if (_clients.TryGetValue(clientId, out var client) && client.ClientSecret == clientSecret)
         {
-            try
-            {
-                var encodedCredentials = authHeader.Substring("Basic ".Length).Trim();
-                var decodedCredentials = Encoding.UTF8.GetString(Convert.FromBase64String(encodedCredentials));
-                var credentials = decodedCredentials.Split(':', 2);
-
-                if (credentials.Length == 2)
-                {
-                    var clientId = credentials[0];
-                    var clientSecret = credentials[1];
-
-                    if (_clients.TryGetValue(clientId, out var client) && client.ClientSecret == clientSecret)
-                    {
-                        return client;
-                    }
-                }
-            }
-            catch
-            {
-                // Ignore malformed authentication header
-            }
+            return client;
         }
 
         return null;
@@ -575,11 +493,11 @@ public sealed class Program
     /// <param name="scopes">The approved scopes.</param>
     /// <param name="resource">The resource URI.</param>
     /// <returns>A token response.</returns>
-    private TokenResponse GenerateJwtTokenResponse(string clientId, IEnumerable<string> scopes, Uri? resource)
+    private TokenResponse GenerateJwtTokenResponse(string clientId, List<string> scopes, Uri? resource)
     {
-        var scopesList = scopes.ToList();
+        var expiresIn = TimeSpan.FromHours(1);
         var issuedAt = DateTimeOffset.UtcNow;
-        var expiresAt = issuedAt.AddHours(1);
+        var expiresAt = issuedAt.Add(expiresIn);
         var jwtId = Guid.NewGuid().ToString();
 
         // Create JWT header and payload
@@ -600,7 +518,7 @@ public sealed class Program
             { "jti", jwtId },
             { "iat", issuedAt.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture) },
             { "exp", expiresAt.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture) },
-            { "scope", string.Join(" ", scopesList) }
+            { "scope", string.Join(" ", scopes) }
         };
 
         // Create JWT token
@@ -623,7 +541,7 @@ public sealed class Program
         var tokenInfo = new TokenInfo
         {
             ClientId = clientId,
-            Scopes = scopesList,
+            Scopes = scopes,
             IssuedAt = issuedAt,
             ExpiresAt = expiresAt,
             Resource = resource,
@@ -637,8 +555,8 @@ public sealed class Program
             AccessToken = jwtToken,
             RefreshToken = refreshToken,
             TokenType = "Bearer",
-            ExpiresIn = 3600,
-            Scope = string.Join(" ", scopesList)
+            ExpiresIn = (int)expiresIn.TotalSeconds,
+            Scope = string.Join(" ", scopes)
         };
     }
 }
