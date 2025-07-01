@@ -221,7 +221,7 @@ public sealed class Program
 
             // Generate a new authorization code
             var code = OAuthUtils.GenerateRandomToken();
-            var requestedScopes = scope?.Split(' ').ToList() ?? new List<string>();
+            var requestedScopes = scope?.Split(' ').ToList() ?? [];
 
             // Store code information for later verification
             _authCodes[code] = new AuthorizationCodeInfo
@@ -247,7 +247,6 @@ public sealed class Program
         app.MapPost("/token", async (HttpContext context) =>
         {
             var form = await context.Request.ReadFormAsync();
-            var grant_type = form["grant_type"].ToString();
 
             // Authenticate client
             var client = AuthenticateClient(context, form);
@@ -261,6 +260,18 @@ public sealed class Program
                     type: "https://tools.ietf.org/html/rfc6749#section-5.2");
             }
 
+            // Validate resource in accordance with RFC 8707
+            var resource = form["resource"].ToString();
+            if (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource))
+            {
+                return Results.BadRequest(new OAuthErrorResponse
+                {
+                    Error = "invalid_target",
+                    ErrorDescription = "The specified resource is not valid."
+                });
+            }
+
+            var grant_type = form["grant_type"].ToString();
             if (grant_type == "authorization_code")
             {
                 var code = form["code"].ToString();

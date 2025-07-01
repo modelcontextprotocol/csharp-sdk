@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Collections.Specialized;
 using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 using System.Text;
@@ -127,8 +128,6 @@ internal sealed class ClientOAuthProvider
     {
         ThrowIfNotBearerScheme(scheme);
 
-        // REVIEW: Should we be doing anything with the resourceUri? If not, why is it part of the IMcpCredentialProvider interface?
-
         // Return the token if it's valid
         if (_token != null && _token.ExpiresAt > DateTimeOffset.UtcNow.AddMinutes(5))
         {
@@ -138,7 +137,7 @@ internal sealed class ClientOAuthProvider
         // Try to refresh the token if we have a refresh token
         if (_token?.RefreshToken != null && _authServerMetadata != null)
         {
-            var newToken = await RefreshTokenAsync(_token.RefreshToken, _authServerMetadata, cancellationToken).ConfigureAwait(false);
+            var newToken = await RefreshTokenAsync(_token.RefreshToken, resourceUri, _authServerMetadata, cancellationToken).ConfigureAwait(false);
             if (newToken != null)
             {
                 _token = newToken;
@@ -276,7 +275,7 @@ internal sealed class ClientOAuthProvider
         return null;
     }
 
-    private async Task<TokenContainer> RefreshTokenAsync(string refreshToken, AuthorizationServerMetadata authServerMetadata, CancellationToken cancellationToken)
+    private async Task<TokenContainer> RefreshTokenAsync(string refreshToken, Uri resourceUri, AuthorizationServerMetadata authServerMetadata, CancellationToken cancellationToken)
     {
         var requestContent = new FormUrlEncodedContent(new Dictionary<string, string>
         {
@@ -284,7 +283,7 @@ internal sealed class ClientOAuthProvider
             ["refresh_token"] = refreshToken,
             ["client_id"] = GetClientIdOrThrow(),
             ["client_secret"] = _clientSecret ?? string.Empty,
-            // Add resource
+            ["resource"] = resourceUri.ToString(),
         });
 
         using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.TokenEndpoint)
@@ -311,7 +310,7 @@ internal sealed class ClientOAuthProvider
             return null;
         }
 
-        return await ExchangeCodeForTokenAsync(authServerMetadata, authCode!, codeVerifier, cancellationToken).ConfigureAwait(false);
+        return await ExchangeCodeForTokenAsync(protectedResourceMetadata, authServerMetadata, authCode!, codeVerifier, cancellationToken).ConfigureAwait(false);
     }
 
     private Uri BuildAuthorizationUrl(
@@ -326,7 +325,7 @@ internal sealed class ClientOAuthProvider
         }
 
         var queryParams = HttpUtility.ParseQueryString(string.Empty);
-        queryParams["client_id"] = _clientId;
+        queryParams["client_id"] = GetClientIdOrThrow();
         queryParams["redirect_uri"] = _redirectUri.ToString();
         queryParams["response_type"] = "code";
         queryParams["code_challenge"] = codeChallenge;
@@ -348,6 +347,7 @@ internal sealed class ClientOAuthProvider
     }
 
     private async Task<TokenContainer> ExchangeCodeForTokenAsync(
+        ProtectedResourceMetadata protectedResourceMetadata,
         AuthorizationServerMetadata authServerMetadata,
         string authorizationCode,
         string codeVerifier,
@@ -361,7 +361,7 @@ internal sealed class ClientOAuthProvider
             ["client_id"] = GetClientIdOrThrow(),
             ["code_verifier"] = codeVerifier,
             ["client_secret"] = _clientSecret ?? string.Empty,
-            // TODO: Add resource
+            ["resource"] = protectedResourceMetadata.Resource.ToString(),
         });
 
         using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.TokenEndpoint)

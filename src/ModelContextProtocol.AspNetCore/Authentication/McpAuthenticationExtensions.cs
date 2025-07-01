@@ -42,6 +42,6 @@ public static class McpAuthenticationExtensions
         return builder.AddScheme<McpAuthenticationOptions, McpAuthenticationHandler>(
             authenticationScheme,
             displayName,
-            configureOptions); // No-op to avoid overriding
+            configureOptions);
     }
 }
