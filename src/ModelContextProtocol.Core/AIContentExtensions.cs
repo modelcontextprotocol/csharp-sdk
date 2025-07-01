@@ -40,6 +40,29 @@ public static class AIContentExtensions
     }
 
     /// <summary>
+    /// Converts a <see cref="CallToolResult"/> to a <see cref="ChatMessage"/> object.
+    /// </summary>
+    /// <param name="result">The tool result to convert.</param>
+    /// <param name="callId">The identifier for the function call request that triggered the tool invocation.</param>
+    /// <returns>A <see cref="ChatMessage"/> object created from the tool result.</returns>
+    /// <remarks>
+    /// This method transforms a protocol-specific <see cref="CallToolResult"/> from the Model Context Protocol
+    /// into a standard <see cref="ChatMessage"/> object that can be used with AI client libraries. It produces a
+    /// <see cref="ChatRole.Tool"/> message containing a <see cref="FunctionResultContent"/> with result as a
+    /// serialized <see cref="JsonElement"/>.
+    /// </remarks>
+    public static ChatMessage ToChatMessage(this CallToolResult result, string callId)
+    {
+        Throw.IfNull(result);
+        Throw.IfNull(callId);
+
+        return new(ChatRole.Tool, [new FunctionResultContent(callId, JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.CallToolResult))
+        {
+             RawRepresentation = result,
+        }]);
+    }
+
+    /// <summary>
     /// Converts a <see cref="GetPromptResult"/> to a list of <see cref="ChatMessage"/> objects.
     /// </summary>
     /// <param name="promptResult">The prompt result containing messages to convert.</param>
