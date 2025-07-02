@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 
 namespace ModelContextProtocol.Server;
 
@@ -74,7 +75,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         MethodInfo method, McpServerToolCreateOptions? options) =>
         new()
         {
-            Name = options?.Name ?? method.GetCustomAttribute<McpServerToolAttribute>()?.Name,
+            Name = options?.Name ?? method.GetCustomAttribute<McpServerToolAttribute>()?.Name ?? DeriveName(method),
             Description = options?.Description,
             MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
             SerializerOptions = options?.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
@@ -292,6 +293,63 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             },
         };
     }
+
+    /// <summary>Creates a name to use based on the supplied method and naming policy.</summary>
+    internal static string DeriveName(MethodInfo method, JsonNamingPolicy? policy = null)
+    {
+        string name = method.Name;
+
+        // Remove any "Async" suffix if the method is an async method and if the method name isn't just "Async".
+        const string AsyncSuffix = "Async";
+        if (IsAsyncMethod(method) &&
+            name.EndsWith(AsyncSuffix, StringComparison.Ordinal) &&
+            name.Length > AsyncSuffix.Length)
+        {
+            name = name.Substring(0, name.Length - AsyncSuffix.Length);
+        }
+
+        // Replace anything other than ASCII letters or digits with underscores, trim off any leading or trailing underscores.
+        name = NonAsciiLetterDigitsRegex().Replace(name, "_").Trim('_');
+
+        // If after all our transformations the name is empty, just use the original method name.
+        if (name.Length == 0)
+        {
+            name = method.Name;
+        }
+
+        // Case the name based on the provided naming policy.
+        return (policy ?? JsonNamingPolicy.SnakeCaseLower).ConvertName(name) ?? name;
+
+        static bool IsAsyncMethod(MethodInfo method)
+        {
+            Type t = method.ReturnType;
+
+            if (t == typeof(Task) || t == typeof(ValueTask))
+            {
+                return true;
+            }
+
+            if (t.IsGenericType)
+            {
+                t = t.GetGenericTypeDefinition();
+                if (t == typeof(Task<>) || t == typeof(ValueTask<>) || t == typeof(IAsyncEnumerable<>))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
+    /// <summary>Regex that flags runs of characters other than ASCII digits or letters.</summary>
+#if NET
+    [GeneratedRegex("[^0-9A-Za-z]+")]
+    private static partial Regex NonAsciiLetterDigitsRegex();
+#else
+    private static Regex NonAsciiLetterDigitsRegex() => _nonAsciiLetterDigits;
+    private static readonly Regex _nonAsciiLetterDigits = new("[^0-9A-Za-z]+", RegexOptions.Compiled);
+#endif
 
     private static JsonElement? CreateOutputSchema(AIFunction function, McpServerToolCreateOptions? toolCreateOptions, out bool structuredOutputRequiresWrapping)
     {

@@ -149,11 +149,11 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         var tools = await mcpClient.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(2, tools.Count);
-        Assert.Contains(tools, tools => tools.Name == "Echo");
+        Assert.Contains(tools, tools => tools.Name == "echo");
         Assert.Contains(tools, tools => tools.Name == "sampleLLM");
 
         var echoResponse = await mcpClient.CallToolAsync(
-            "Echo",
+            "echo",
             new Dictionary<string, object?>
             {
                 ["message"] = "from client!"
