@@ -19,6 +19,7 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
     private const string OAuthServerUrl = "https://localhost:7029";
 
     private readonly CancellationTokenSource _testCts = new();
+    private readonly TestOAuthServer.Program TestOAuthServer;
     private readonly Task _oAuthRunTask;
 
     public AuthTests(ITestOutputHelper outputHelper)
@@ -30,8 +31,8 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
         // The easiest workaround is to disable cert validation for testing purposes.
         SocketsHttpHandler.SslOptions.RemoteCertificateValidationCallback = (_, _, _, _) => true;
 
-        var oAuthServerProgram = new TestOAuthServer.Program(XunitLoggerProvider, KestrelInMemoryTransport);
-        _oAuthRunTask = oAuthServerProgram.RunServerAsync(cancellationToken: _testCts.Token);
+        TestOAuthServer = new TestOAuthServer.Program(XunitLoggerProvider, KestrelInMemoryTransport);
+        _oAuthRunTask = TestOAuthServer.RunServerAsync(cancellationToken: _testCts.Token);
 
         Builder.Services.AddAuthentication(options =>
         {
@@ -187,6 +188,37 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
 
         await using var client = await McpClientFactory.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task CanAuthenticate_WithTokenRefresh()
+    {
+        Builder.Services.AddMcpServer().WithHttpTransport();
+
+        await using var app = Builder.Build();
+
+        app.MapMcp().RequireAuthorization();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var transport = new SseClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "test-refresh-client",
+                ClientSecret = "test-refresh-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        // The test-refresh-client should get an expired token first,
+        // then automatically refresh it to get a working token
+        await using var client = await McpClientFactory.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(TestOAuthServer.HasIssuedRefreshToken);
     }
 
     [Fact]

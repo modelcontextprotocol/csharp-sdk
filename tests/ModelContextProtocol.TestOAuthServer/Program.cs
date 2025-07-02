@@ -39,6 +39,10 @@ public sealed class Program
         _kestrelTransport = kestrelTransport;
     }
 
+    // Track if we've already issued an already-expired token for the CanAuthenticate_WithTokenRefresh test which uses the test-refresh-client registration.
+    private bool HasIssuedExpiredToken { get; set; }
+    public bool HasIssuedRefreshToken { get; set; }
+
     /// <summary>
     /// Entry point for the application.
     /// </summary>
@@ -101,6 +105,15 @@ public sealed class Program
         {
             ClientId = clientId,
             ClientSecret = clientSecret,
+            RedirectUris = ["http://localhost:1179/callback"],
+        };
+
+        // When this client ID is used, the first token issued will already be expired to make
+        // testing the refresh flow easier.
+        _clients["test-refresh-client"] = new ClientInfo
+        {
+            ClientId = "test-refresh-client",
+            ClientSecret = "test-refresh-secret",
             RedirectUris = ["http://localhost:1179/callback"],
         };
 
@@ -345,6 +358,7 @@ public sealed class Program
                     _tokens.TryRemove(refresh_token, out _);
                 }
 
+                HasIssuedRefreshToken = true;
                 return Results.Ok(response);
             }
             else
@@ -508,6 +522,14 @@ public sealed class Program
     {
         var expiresIn = TimeSpan.FromHours(1);
         var issuedAt = DateTimeOffset.UtcNow;
+
+        // For test-refresh-client, make the first token expired to test refresh functionality.
+        if (clientId == "test-refresh-client" && !HasIssuedExpiredToken)
+        {
+            HasIssuedExpiredToken = true;
+            expiresIn = TimeSpan.FromHours(-1);
+        }
+
         var expiresAt = issuedAt.Add(expiresIn);
         var jwtId = Guid.NewGuid().ToString();
 
