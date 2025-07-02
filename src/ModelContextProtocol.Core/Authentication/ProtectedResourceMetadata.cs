@@ -35,7 +35,7 @@ public sealed class ProtectedResourceMetadata
     /// to the protected resource. Defined values are ["header", "body", "query"].
     /// </remarks>
     [JsonPropertyName("bearer_methods_supported")]
-    public List<string> BearerMethodsSupported { get; set; } = [];
+    public List<string> BearerMethodsSupported { get; set; } = ["header"];
 
     /// <summary>
     /// The supported scopes.

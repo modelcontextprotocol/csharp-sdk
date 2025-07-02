@@ -27,7 +27,7 @@ builder.Services.AddAuthentication(options =>
         ValidateAudience = true,
         ValidateLifetime = true,
         ValidateIssuerSigningKey = true,
-        ValidAudience = demoClientId,
+        ValidAudience = serverUrl, // Validate that the audience matches the resource metadata as suggested in RFC 8707
         ValidIssuer = inMemoryOAuthServerUrl,
         NameClaimType = "name",
         RoleClaimType = "roles"
@@ -59,7 +59,6 @@ builder.Services.AddAuthentication(options =>
     options.ResourceMetadata = new()
     {
         Resource = new Uri(serverUrl),
-        BearerMethodsSupported = { "header" },
         ResourceDocumentation = new Uri("https://docs.example.com/api/weather"),
         AuthorizationServers = { new Uri(inMemoryOAuthServerUrl) },
         ScopesSupported = ["mcp:tools"],
