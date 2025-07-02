@@ -131,7 +131,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         return base.HandleChallengeAsync(properties);
     }
 
-    internal ProtectedResourceMetadata? CloneResourceMetadata(ProtectedResourceMetadata? resourceMetadata)
+    internal static ProtectedResourceMetadata? CloneResourceMetadata(ProtectedResourceMetadata? resourceMetadata)
     {
         if (resourceMetadata is null)
         {
