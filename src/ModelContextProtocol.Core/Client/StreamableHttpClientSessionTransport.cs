@@ -75,7 +75,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         using var content = new StringContent(
             JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage),
             Encoding.UTF8,
-            "application/json; charset=utf-8"
+            "application/json"
         );
 #endif
 
