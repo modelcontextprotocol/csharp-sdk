@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using ModelContextProtocol.Client;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Text;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -17,7 +18,7 @@ IClientTransport? clientTransport = null;
 if (command == "http")
 {
     // make sure AspNetCoreSseServer is running
-    clientTransport = new SseClientTransport(new SseClientTransportOptions { Endpoint = new Uri("https://localhost:7133"), UseStreamableHttp = true });
+    clientTransport = new SseClientTransport(new SseClientTransportOptions { Endpoint = new Uri("https://localhost:7133"), TransportMode = HttpTransportMode.StreamableHttp});
 }
 else
 {

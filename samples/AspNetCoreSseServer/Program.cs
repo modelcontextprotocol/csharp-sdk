@@ -9,7 +9,7 @@ builder.Services.AddMcpServer()
     .WithHttpTransport()
     .WithTools<EchoTool>()
     .WithTools<SampleLlmTool>()
-    .WithResources<SimpleResourceType>();
+    .WithResources<SimpleResourceType>()
     .WithTools<WeatherTools>();
 
 builder.Services.AddOpenTelemetry()
