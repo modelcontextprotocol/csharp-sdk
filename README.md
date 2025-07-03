@@ -4,6 +4,16 @@
 
 The official C# SDK for the [Model Context Protocol](https://modelcontextprotocol.io/), enabling .NET applications, services, and libraries to implement and interact with MCP clients and servers. Please visit our [API documentation](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.html) for more details on available functionality.
 
+## Packages
+
+This SDK consists of three main packages:
+
+- **[ModelContextProtocol](https://www.nuget.org/packages/ModelContextProtocol/absoluteLatest)** [![NuGet preview version](https://img.shields.io/nuget/vpre/ModelContextProtocol.svg)](https://www.nuget.org/packages/ModelContextProtocol/absoluteLatest) - The main package with hosting and dependency injection extensions. This is the right fit for most projects that don't need HTTP server capabilities. This README serves as documentation for this package.
+
+- **[ModelContextProtocol.AspNetCore](https://www.nuget.org/packages/ModelContextProtocol.AspNetCore/absoluteLatest)** [![NuGet preview version](https://img.shields.io/nuget/vpre/ModelContextProtocol.AspNetCore.svg)](https://www.nuget.org/packages/ModelContextProtocol.AspNetCore/absoluteLatest) - The library for HTTP-based MCP servers. [Documentation](src/ModelContextProtocol.AspNetCore/README.md)
+
+- **[ModelContextProtocol.Core](https://www.nuget.org/packages/ModelContextProtocol.Core/absoluteLatest)** [![NuGet preview version](https://img.shields.io/nuget/vpre/ModelContextProtocol.Core.svg)](https://www.nuget.org/packages/ModelContextProtocol.Core/absoluteLatest) - For people who only need to use the client or low-level server APIs and want the minimum number of dependencies. [Documentation](src/ModelContextProtocol.Core/README.md)
+
 > [!NOTE]
 > This project is in preview; breaking changes can be introduced without prior notice.
 
@@ -156,24 +166,24 @@ public static class MyPrompts
 More control is also available, with fine-grained control over configuring the server and how it should handle client requests. For example:
 
 ```csharp
-using ModelContextProtocol.Protocol.Transport;
-using ModelContextProtocol.Protocol.Types;
+using ModelContextProtocol;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Text.Json;
 
 McpServerOptions options = new()
 {
-    ServerInfo = new Implementation() { Name = "MyServer", Version = "1.0.0" },
-    Capabilities = new ServerCapabilities()
+    ServerInfo = new Implementation { Name = "MyServer", Version = "1.0.0" },
+    Capabilities = new ServerCapabilities
     {
-        Tools = new ToolsCapability()
+        Tools = new ToolsCapability
         {
             ListToolsHandler = (request, cancellationToken) =>
-                ValueTask.FromResult(new ListToolsResult()
+                ValueTask.FromResult(new ListToolsResult
                 {
                     Tools =
                     [
-                        new Tool()
+                        new Tool
                         {
                             Name = "echo",
                             Description = "Echoes the input back to the client.",
@@ -202,9 +212,9 @@ McpServerOptions options = new()
                         throw new McpException("Missing required argument 'message'");
                     }
 
-                    return ValueTask.FromResult(new CallToolResponse()
+                    return ValueTask.FromResult(new CallToolResult
                     {
-                        Content = [new Content() { Text = $"Echo: {message}", Type = "text" }]
+                        Content = [new TextContentBlock { Text = $"Echo: {message}", Type = "text" }]
                     });
                 }
 

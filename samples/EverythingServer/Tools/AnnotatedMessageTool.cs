@@ -15,25 +15,22 @@ public class AnnotatedMessageTool
     }
 
     [McpServerTool(Name = "annotatedMessage"), Description("Generates an annotated message")]
-    public static IEnumerable<Content> AnnotatedMessage(MessageType messageType, bool includeImage = true)
+    public static IEnumerable<ContentBlock> AnnotatedMessage(MessageType messageType, bool includeImage = true)
     {
-        List<Content> contents = messageType switch
+        List<ContentBlock> contents = messageType switch
         {
-            MessageType.Error => [new()
+            MessageType.Error => [new TextContentBlock
             {
-                Type = "text",
                 Text = "Error: Operation failed",
                 Annotations = new() { Audience = [Role.User, Role.Assistant], Priority = 1.0f }
             }],
-            MessageType.Success => [new()
+            MessageType.Success => [new TextContentBlock
             {
-                Type = "text",
                 Text = "Operation completed successfully",
                 Annotations = new() { Audience = [Role.User], Priority = 0.7f }
             }],
-            MessageType.Debug => [new()
+            MessageType.Debug => [new TextContentBlock
             {
-                Type = "text",
                 Text = "Debug: Cache hit ratio 0.95, latency 150ms",
                 Annotations = new() { Audience = [Role.Assistant], Priority = 0.3f }
             }],
@@ -42,9 +39,8 @@ public class AnnotatedMessageTool
 
         if (includeImage)
         {
-            contents.Add(new()
+            contents.Add(new ImageContentBlock
             {
-                Type = "image",
                 Data = TinyImageTool.MCP_TINY_IMAGE.Split(",").Last(),
                 MimeType = "image/png",
                 Annotations = new() { Audience = [Role.User], Priority = 0.5f }

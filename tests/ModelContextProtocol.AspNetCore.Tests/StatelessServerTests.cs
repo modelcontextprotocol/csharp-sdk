@@ -113,7 +113,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
 
         var toolResponse = await client.CallToolAsync("testSamplingErrors", cancellationToken: TestContext.Current.CancellationToken);
         var toolContent = Assert.Single(toolResponse.Content);
-        Assert.Equal("Server to client requests are not supported in stateless mode.", toolContent.Text);
+        Assert.Equal("Server to client requests are not supported in stateless mode.", Assert.IsType<TextContentBlock>(toolContent).Text);
     }
 
     [Fact]
@@ -133,7 +133,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
 
         var toolResponse = await client.CallToolAsync("testRootsErrors", cancellationToken: TestContext.Current.CancellationToken);
         var toolContent = Assert.Single(toolResponse.Content);
-        Assert.Equal("Server to client requests are not supported in stateless mode.", toolContent.Text);
+        Assert.Equal("Server to client requests are not supported in stateless mode.", Assert.IsType<TextContentBlock>(toolContent).Text);
     }
 
     [Fact]
@@ -153,7 +153,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
 
         var toolResponse = await client.CallToolAsync("testElicitationErrors", cancellationToken: TestContext.Current.CancellationToken);
         var toolContent = Assert.Single(toolResponse.Content);
-        Assert.Equal("Server to client requests are not supported in stateless mode.", toolContent.Text);
+        Assert.Equal("Server to client requests are not supported in stateless mode.", Assert.IsType<TextContentBlock>(toolContent).Text);
     }
 
     [Fact]
@@ -190,7 +190,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
 
         var toolResponse = await client.CallToolAsync("testScope", cancellationToken: TestContext.Current.CancellationToken);
         var toolContent = Assert.Single(toolResponse.Content);
-        Assert.Equal("From request middleware!", toolContent.Text);
+        Assert.Equal("From request middleware!", Assert.IsType<TextContentBlock>(toolContent).Text);
     }
 
     [McpServerTool(Name = "testSamplingErrors")]

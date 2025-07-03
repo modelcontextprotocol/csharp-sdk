@@ -2,7 +2,6 @@
 using Microsoft.Extensions.Hosting;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using Moq;
 using System.IO.Pipelines;
 
 namespace ModelContextProtocol.Tests.Configuration;
@@ -13,14 +12,13 @@ public class McpServerBuilderExtensionsTransportsTests
     public void WithStdioServerTransport_Sets_Transport()
     {
         var services = new ServiceCollection();
-        var builder = new Mock<IMcpServerBuilder>();
-        builder.SetupGet(b => b.Services).Returns(services);
+        services.AddMcpServer().WithStdioServerTransport();
 
-        builder.Object.WithStdioServerTransport();
+        var transportServiceType = services.FirstOrDefault(s => s.ServiceType == typeof(ITransport));
+        Assert.NotNull(transportServiceType);
 
-        var transportType = services.FirstOrDefault(s => s.ServiceType == typeof(ITransport));
-        Assert.NotNull(transportType);
-        Assert.Equal(typeof(StdioServerTransport), transportType.ImplementationType);
+        var serviceProvider = services.BuildServiceProvider();
+        Assert.IsType<StdioServerTransport>(serviceProvider.GetRequiredService<ITransport>());
     }
 
     [Fact]

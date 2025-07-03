@@ -62,13 +62,14 @@ public abstract class ClientServerTestBase : LoggedTest, IAsyncDisposable
         Dispose();
     }
 
-    protected async Task<IMcpClient> CreateMcpClientForServer()
+    protected async Task<IMcpClient> CreateMcpClientForServer(McpClientOptions? clientOptions = null)
     {
         return await McpClientFactory.CreateAsync(
             new StreamClientTransport(
                 serverInput: _clientToServerPipe.Writer.AsStream(),
                 _serverToClientPipe.Reader.AsStream(),
                 LoggerFactory),
+            clientOptions: clientOptions,
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
     }

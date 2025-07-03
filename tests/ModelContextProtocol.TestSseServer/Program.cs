@@ -28,13 +28,12 @@ public class Program
 
     private static void ConfigureOptions(McpServerOptions options)
     {
-        options.Capabilities = new ServerCapabilities()
+        options.Capabilities = new ServerCapabilities
         {
             Tools = new(),
             Resources = new(),
             Prompts = new(),
         };
-        options.ProtocolVersion = "2024-11-05";
         options.ServerInstructions = "This is a test server with only stub functionality";
 
         Console.WriteLine("Registering handlers.");
@@ -42,21 +41,17 @@ public class Program
         #region Helped method
         static CreateMessageRequestParams CreateRequestSamplingParams(string context, string uri, int maxTokens = 100)
         {
-            return new CreateMessageRequestParams()
-            { 
-                Messages = [new SamplingMessage()
+            return new CreateMessageRequestParams
+            {
+                Messages = [new SamplingMessage
                 {
                     Role = Role.User,
-                    Content = new Content()
-                    {
-                        Type = "text",
-                        Text = $"Resource {uri} context: {context}"
-                    }
+                    Content = new TextContentBlock { Text = $"Resource {uri} context: {context}" },
                 }],
-                SystemPrompt = "You are a helpful test server.", 
-                MaxTokens = maxTokens, 
-                Temperature = 0.7f, 
-                IncludeContext = ContextInclusion.ThisServer 
+                SystemPrompt = "You are a helpful test server.",
+                MaxTokens = maxTokens,
+                Temperature = 0.7f,
+                IncludeContext = ContextInclusion.ThisServer
             };
         }
         #endregion
@@ -68,13 +63,13 @@ public class Program
             string uri = $"test://static/resource/{i + 1}";
             if (i % 2 == 0)
             {
-                resources.Add(new Resource()
+                resources.Add(new Resource
                 {
                     Uri = uri,
                     Name = $"Resource {i + 1}",
                     MimeType = "text/plain"
                 });
-                resourceContents.Add(new TextResourceContents()
+                resourceContents.Add(new TextResourceContents
                 {
                     Uri = uri,
                     MimeType = "text/plain",
@@ -84,13 +79,13 @@ public class Program
             else
             {
                 var buffer = Encoding.UTF8.GetBytes($"Resource {i + 1}: This is a base64 blob");
-                resources.Add(new Resource()
+                resources.Add(new Resource
                 {
                     Uri = uri,
                     Name = $"Resource {i + 1}",
                     MimeType = "application/octet-stream"
                 });
-                resourceContents.Add(new BlobResourceContents()
+                resourceContents.Add(new BlobResourceContents
                 {
                     Uri = uri,
                     MimeType = "application/octet-stream",
@@ -107,11 +102,11 @@ public class Program
             {
                 ListToolsHandler = async (request, cancellationToken) =>
                 {
-                    return new ListToolsResult()
+                    return new ListToolsResult
                     {
-                        Tools = 
+                        Tools =
                         [
-                            new Tool()                
+                            new Tool
                             {
                                 Name = "echo",
                                 Description = "Echoes the input back to the client.",
@@ -128,7 +123,17 @@ public class Program
                                     }
                                     """, McpJsonUtilities.DefaultOptions),
                             },
-                            new Tool()
+                            new Tool
+                            {
+                                Name = "echoSessionId",
+                                Description = "Echoes the session id back to the client.",
+                                InputSchema = JsonSerializer.Deserialize<JsonElement>("""
+                                    {
+                                        "type": "object"
+                                    }
+                                    """, McpJsonUtilities.DefaultOptions),
+                            },
+                            new Tool
                             {
                                 Name = "sampleLLM",
                                 Description = "Samples from an LLM using MCP's sampling feature.",
@@ -164,15 +169,22 @@ public class Program
                         {
                             throw new McpException("Missing required argument 'message'", McpErrorCode.InvalidParams);
                         }
-                        return new CallToolResponse()
+                        return new CallToolResult
                         {
-                            Content = [new Content() { Text = "Echo: " + message.ToString(), Type = "text" }]
+                            Content = [new TextContentBlock { Text = $"Echo: {message}" }]
+                        };
+                    }
+                    else if (request.Params.Name == "echoSessionId")
+                    {
+                        return new CallToolResult
+                        {
+                            Content = [new TextContentBlock { Text = request.Server.SessionId ?? string.Empty }]
                         };
                     }
                     else if (request.Params.Name == "sampleLLM")
                     {
-                        if (request.Params.Arguments is null || 
-                            !request.Params.Arguments.TryGetValue("prompt", out var prompt) || 
+                        if (request.Params.Arguments is null ||
+                            !request.Params.Arguments.TryGetValue("prompt", out var prompt) ||
                             !request.Params.Arguments.TryGetValue("maxTokens", out var maxTokens))
                         {
                             throw new McpException("Missing required arguments 'prompt' and 'maxTokens'", McpErrorCode.InvalidParams);
@@ -180,9 +192,9 @@ public class Program
                         var sampleResult = await request.Server.SampleAsync(CreateRequestSamplingParams(prompt.ToString(), "sampleLLM", Convert.ToInt32(maxTokens.ToString())),
                             cancellationToken);
 
-                        return new CallToolResponse()
+                        return new CallToolResult
                         {
-                            Content = [new Content() { Text = $"LLM sampling result: {sampleResult.Content.Text}", Type = "text" }]
+                            Content = [new TextContentBlock { Text = $"LLM sampling result: {(sampleResult.Content as TextContentBlock)?.Text}" }]
                         };
                     }
                     else
@@ -196,10 +208,10 @@ public class Program
                 ListResourceTemplatesHandler = async (request, cancellationToken) =>
                 {
 
-                    return new ListResourceTemplatesResult()
+                    return new ListResourceTemplatesResult
                     {
                         ResourceTemplates = [
-                            new ResourceTemplate()
+                            new ResourceTemplate
                             {
                                 UriTemplate = "test://dynamic/resource/{id}",
                                 Name = "Dynamic Resource",
@@ -224,16 +236,16 @@ public class Program
                             throw new McpException($"Invalid cursor: '{requestParams.Cursor}'", e, McpErrorCode.InvalidParams);
                         }
                     }
-                    
+
                     int endIndex = Math.Min(startIndex + pageSize, resources.Count);
                     string? nextCursor = null;
-                    
+
                     if (endIndex < resources.Count)
                     {
                         nextCursor = Convert.ToBase64String(Encoding.UTF8.GetBytes(endIndex.ToString()));
                     }
 
-                    return new ListResourcesResult()
+                    return new ListResourcesResult
                     {
                         NextCursor = nextCursor,
                         Resources = resources.GetRange(startIndex, endIndex - startIndex)
@@ -254,10 +266,10 @@ public class Program
                             throw new McpException($"Invalid resource URI: '{request.Params.Uri}'", McpErrorCode.InvalidParams);
                         }
 
-                        return new ReadResourceResult()
+                        return new ReadResourceResult
                         {
                             Contents = [
-                                new TextResourceContents()
+                                new TextResourceContents
                                 {
                                     Uri = request.Params.Uri,
                                     MimeType = "text/plain",
@@ -267,10 +279,10 @@ public class Program
                         };
                     }
 
-                    ResourceContents? contents = resourceContents.FirstOrDefault(r => r.Uri == request.Params.Uri) ?? 
+                    ResourceContents? contents = resourceContents.FirstOrDefault(r => r.Uri == request.Params.Uri) ??
                         throw new McpException($"Resource not found: '{request.Params.Uri}'", McpErrorCode.InvalidParams);
-                    
-                    return new ReadResourceResult()
+
+                    return new ReadResourceResult
                     {
                         Contents = [contents]
                     };
@@ -280,33 +292,33 @@ public class Program
             {
                 ListPromptsHandler = async (request, cancellationToken) =>
                 {
-                    return new ListPromptsResult()
+                    return new ListPromptsResult
                     {
                         Prompts = [
-                            new Prompt()
+                            new Prompt
                             {
                                 Name = "simple_prompt",
                                 Description = "A prompt without arguments"
                             },
-                            new Prompt()
+                            new Prompt
                             {
                                 Name = "complex_prompt",
                                 Description = "A prompt with arguments",
-                                Arguments = new()
-                                {
-                                    new PromptArgument()
+                                Arguments =
+                                [
+                                    new PromptArgument
                                     {
                                         Name = "temperature",
                                         Description = "Temperature setting",
                                         Required = true
                                     },
-                                    new PromptArgument()
+                                    new PromptArgument
                                     {
                                         Name = "style",
                                         Description = "Output style",
                                         Required = false
                                     }
-                                }
+                                ],
                             }
                         ]
                     };
@@ -320,44 +332,31 @@ public class Program
                     List<PromptMessage> messages = new();
                     if (request.Params.Name == "simple_prompt")
                     {
-                        messages.Add(new PromptMessage()
+                        messages.Add(new PromptMessage
                         {
                             Role = Role.User,
-                            Content = new Content()
-                            {
-                                Type = "text",
-                                Text = "This is a simple prompt without arguments."
-                            }
+                            Content = new TextContentBlock { Text = "This is a simple prompt without arguments." },
                         });
                     }
                     else if (request.Params.Name == "complex_prompt")
                     {
                         string temperature = request.Params.Arguments?["temperature"].ToString() ?? "unknown";
                         string style = request.Params.Arguments?["style"].ToString() ?? "unknown";
-                        messages.Add(new PromptMessage()
+                        messages.Add(new PromptMessage
                         {
                             Role = Role.User,
-                            Content = new Content()
-                            {
-                                Type = "text",
-                                Text = $"This is a complex prompt with arguments: temperature={temperature}, style={style}"
-                            }
+                            Content = new TextContentBlock { Text = $"This is a complex prompt with arguments: temperature={temperature}, style={style}" },
                         });
-                        messages.Add(new PromptMessage()
+                        messages.Add(new PromptMessage
                         {
                             Role = Role.Assistant,
-                            Content = new Content()
-                            {
-                                Type = "text",
-                                Text = "I understand. You've provided a complex prompt with temperature and style arguments. How would you like me to proceed?"
-                            }
+                            Content = new TextContentBlock { Text = "I understand. You've provided a complex prompt with temperature and style arguments. How would you like me to proceed?" },
                         });
-                        messages.Add(new PromptMessage()
+                        messages.Add(new PromptMessage
                         {
                             Role = Role.User,
-                            Content = new Content()
+                            Content = new ImageContentBlock
                             {
-                                Type = "image",
                                 Data = MCP_TINY_IMAGE,
                                 MimeType = "image/png"
                             }
@@ -368,7 +367,7 @@ public class Program
                         throw new McpException($"Unknown prompt: {request.Params.Name}", McpErrorCode.InvalidParams);
                     }
 
-                    return new GetPromptResult()
+                    return new GetPromptResult
                     {
                         Messages = messages
                     };

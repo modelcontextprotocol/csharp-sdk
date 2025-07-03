@@ -12,16 +12,16 @@ public class LoggedTest : IDisposable
         {
             CurrentTestOutputHelper = testOutputHelper,
         };
-        LoggerProvider = new XunitLoggerProvider(_delegatingTestOutputHelper);
+        XunitLoggerProvider = new XunitLoggerProvider(_delegatingTestOutputHelper);
         LoggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
         {
-            builder.AddProvider(LoggerProvider);
+            builder.AddProvider(XunitLoggerProvider);
         });
     }
 
     public ITestOutputHelper TestOutputHelper => _delegatingTestOutputHelper;
-    public ILoggerFactory LoggerFactory { get; }
-    public ILoggerProvider LoggerProvider { get; }
+    public ILoggerFactory LoggerFactory { get; set; }
+    public ILoggerProvider XunitLoggerProvider { get; }
 
     public virtual void Dispose()
     {

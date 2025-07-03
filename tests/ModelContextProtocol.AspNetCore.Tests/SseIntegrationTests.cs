@@ -149,17 +149,17 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         var tools = await mcpClient.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(2, tools.Count);
-        Assert.Contains(tools, tools => tools.Name == "Echo");
+        Assert.Contains(tools, tools => tools.Name == "echo");
         Assert.Contains(tools, tools => tools.Name == "sampleLLM");
 
         var echoResponse = await mcpClient.CallToolAsync(
-            "Echo",
+            "echo",
             new Dictionary<string, object?>
             {
                 ["message"] = "from client!"
             },
             cancellationToken: TestContext.Current.CancellationToken);
-        var textContent = Assert.Single(echoResponse.Content, c => c.Type == "text");
+        var textContent = Assert.Single(echoResponse.Content.OfType<TextContentBlock>());
 
         Assert.Equal("hello from client!", textContent.Text);
     }
@@ -195,11 +195,11 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        var sseOptions = new SseClientTransportOptions()
+        var sseOptions = new SseClientTransportOptions
         {
             Endpoint = new Uri("http://localhost/sse"),
             Name = "In-memory SSE Client",
-            AdditionalHeaders = new()
+            AdditionalHeaders = new Dictionary<string, string>
             {
                 ["Authorize"] = "Bearer testToken"
             },
@@ -222,11 +222,11 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        var sseOptions = new SseClientTransportOptions()
+        var sseOptions = new SseClientTransportOptions
         {
             Endpoint = new Uri("http://localhost/sse"),
             Name = "In-memory SSE Client",
-            AdditionalHeaders = new()
+            AdditionalHeaders = new Dictionary<string, string>()
             {
                 [""] = ""
             },

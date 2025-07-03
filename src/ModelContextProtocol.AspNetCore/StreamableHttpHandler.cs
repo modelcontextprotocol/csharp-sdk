@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Microsoft.Extensions.Primitives;
 using Microsoft.Net.Http.Headers;
 using ModelContextProtocol.AspNetCore.Stateless;
 using ModelContextProtocol.Protocol;
@@ -27,6 +26,7 @@ internal sealed class StreamableHttpHandler(
     ILoggerFactory loggerFactory,
     IServiceProvider applicationServices)
 {
+    private const string McpSessionIdHeaderName = "Mcp-Session-Id";
     private static readonly JsonTypeInfo<JsonRpcError> s_errorTypeInfo = GetRequiredJsonTypeInfo<JsonRpcError>();
 
     public ConcurrentDictionary<string, HttpMcpSession<StreamableHttpServerTransport>> Sessions { get; } = new(StringComparer.Ordinal);
@@ -71,8 +71,8 @@ internal sealed class StreamableHttpHandler(
         }
         finally
         {
-            // Stateless sessions are 1:1 with HTTP requests and are outlived by the MCP session tracked by the mcp-session-id.
-            // Non-stateless sessions are 1:1 with the mcp-session-id and outlive the POST request.
+            // Stateless sessions are 1:1 with HTTP requests and are outlived by the MCP session tracked by the Mcp-Session-Id.
+            // Non-stateless sessions are 1:1 with the Mcp-Session-Id and outlive the POST request.
             // Non-stateless sessions get disposed by a DELETE request or the IdleTrackingBackgroundService.
             if (HttpServerTransportOptions.Stateless)
             {
@@ -91,7 +91,7 @@ internal sealed class StreamableHttpHandler(
             return;
         }
 
-        var sessionId = context.Request.Headers["mcp-session-id"].ToString();
+        var sessionId = context.Request.Headers[McpSessionIdHeaderName].ToString();
         var session = await GetSessionAsync(context, sessionId);
         if (session is null)
         {
@@ -118,7 +118,7 @@ internal sealed class StreamableHttpHandler(
 
     public async Task HandleDeleteRequestAsync(HttpContext context)
     {
-        var sessionId = context.Request.Headers["mcp-session-id"].ToString();
+        var sessionId = context.Request.Headers[McpSessionIdHeaderName].ToString();
         if (Sessions.TryRemove(sessionId, out var session))
         {
             await session.DisposeAsync();
@@ -136,6 +136,7 @@ internal sealed class StreamableHttpHandler(
             var transport = new StreamableHttpServerTransport
             {
                 Stateless = true,
+                SessionId = sessionId,
             };
             session = await CreateSessionAsync(context, transport, sessionId, statelessSessionId);
         }
@@ -157,14 +158,14 @@ internal sealed class StreamableHttpHandler(
             return null;
         }
 
-        context.Response.Headers["mcp-session-id"] = session.Id;
+        context.Response.Headers[McpSessionIdHeaderName] = session.Id;
         context.Features.Set(session.Server);
         return session;
     }
 
     private async ValueTask<HttpMcpSession<StreamableHttpServerTransport>?> GetOrCreateSessionAsync(HttpContext context)
     {
-        var sessionId = context.Request.Headers["mcp-session-id"].ToString();
+        var sessionId = context.Request.Headers[McpSessionIdHeaderName].ToString();
 
         if (string.IsNullOrEmpty(sessionId))
         {
@@ -184,12 +185,15 @@ internal sealed class StreamableHttpHandler(
         if (!HttpServerTransportOptions.Stateless)
         {
             sessionId = MakeNewSessionId();
-            transport = new();
-            context.Response.Headers["mcp-session-id"] = sessionId;
+            transport = new()
+            {
+                SessionId = sessionId,
+            };
+            context.Response.Headers[McpSessionIdHeaderName] = sessionId;
         }
         else
         {
-            // "(uninitialized stateless id)" is not written anywhere. We delay writing the mcp-session-id
+            // "(uninitialized stateless id)" is not written anywhere. We delay writing the MCP-Session-Id
             // until after we receive the initialize request with the client info we need to serialize.
             sessionId = "(uninitialized stateless id)";
             transport = new()
@@ -201,7 +205,7 @@ internal sealed class StreamableHttpHandler(
 
         var session = await CreateSessionAsync(context, transport, sessionId);
 
-        // The HttpMcpSession is not stored between requests in stateless mode. Instead, the session is recreated from the mcp-session-id.
+        // The HttpMcpSession is not stored between requests in stateless mode. Instead, the session is recreated from the MCP-Session-Id.
         if (!HttpServerTransportOptions.Stateless)
         {
             if (!Sessions.TryAdd(sessionId, session))
@@ -286,21 +290,19 @@ internal sealed class StreamableHttpHandler(
 
     private void ScheduleStatelessSessionIdWrite(HttpContext context, StreamableHttpServerTransport transport)
     {
-        context.Response.OnStarting(() =>
+        transport.OnInitRequestReceived = initRequestParams =>
         {
             var statelessId = new StatelessSessionId
             {
-                ClientInfo = transport?.InitializeRequest?.ClientInfo,
+                ClientInfo = initRequestParams?.ClientInfo,
                 UserIdClaim = GetUserIdClaim(context.User),
             };
 
             var sessionJson = JsonSerializer.Serialize(statelessId, StatelessSessionIdJsonContext.Default.StatelessSessionId);
-            var sessionId = Protector.Protect(sessionJson);
-
-            context.Response.Headers["mcp-session-id"] = sessionId;
-
-            return Task.CompletedTask;
-        });
+            transport.SessionId = Protector.Protect(sessionJson);
+            context.Response.Headers[McpSessionIdHeaderName] = transport.SessionId;
+            return ValueTask.CompletedTask;
+        };
     }
 
     internal static Task RunSessionAsync(HttpContext httpContext, IMcpServer session, CancellationToken requestAborted)

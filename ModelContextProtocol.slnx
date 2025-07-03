@@ -1,0 +1,40 @@
+<Solution>
+  <Folder Name="/.github/" />
+  <Folder Name="/.github/workflows/">
+    <File Path=".github/workflows/ci-build-test.yml" />
+    <File Path=".github/workflows/ci-code-coverage.yml" />
+    <File Path=".github/workflows/docs.yml" />
+    <File Path=".github/workflows/markdown-link-check.yml" />
+    <File Path=".github/workflows/release.md" />
+    <File Path=".github/workflows/release.yml" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/AspNetCoreSseServer/AspNetCoreSseServer.csproj" />
+    <Project Path="samples/ChatWithTools/ChatWithTools.csproj" />
+    <Project Path="samples/EverythingServer/EverythingServer.csproj" />
+    <Project Path="samples/QuickstartClient/QuickstartClient.csproj" />
+    <Project Path="samples/QuickstartWeatherServer/QuickstartWeatherServer.csproj" />
+    <Project Path="samples/TestServerWithHosting/TestServerWithHosting.csproj" />
+  </Folder>
+  <Folder Name="/Solution Items/">
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="global.json" />
+    <File Path="LICENSE" />
+    <File Path="logo.png" />
+    <File Path="nuget.config" />
+    <File Path="README.MD" />
+  </Folder>
+  <Folder Name="/src/">
+    <File Path="src/Directory.Build.props" />
+    <Project Path="src/ModelContextProtocol.AspNetCore/ModelContextProtocol.AspNetCore.csproj" />
+    <Project Path="src/ModelContextProtocol.Core/ModelContextProtocol.Core.csproj" />
+    <Project Path="src/ModelContextProtocol/ModelContextProtocol.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ModelContextProtocol.AspNetCore.Tests/ModelContextProtocol.AspNetCore.Tests.csproj" />
+    <Project Path="tests/ModelContextProtocol.Tests/ModelContextProtocol.Tests.csproj" />
+    <Project Path="tests/ModelContextProtocol.TestServer/ModelContextProtocol.TestServer.csproj" />
+    <Project Path="tests/ModelContextProtocol.TestSseServer/ModelContextProtocol.TestSseServer.csproj" />
+  </Folder>
+</Solution>

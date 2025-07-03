@@ -54,6 +54,8 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         Assert.NotNull(client.ServerInfo);
         if (clientId != "everything")   // Note: Comment the below assertion back when the everything server is updated to provide instructions
             Assert.NotNull(client.ServerInstructions);
+
+        Assert.Null(client.SessionId);
     }
 
     [Theory]
@@ -89,9 +91,25 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
 
         // assert
         Assert.NotNull(result);
-        Assert.False(result.IsError);
-        var textContent = Assert.Single(result.Content, c => c.Type == "text");
+        Assert.Null(result.IsError);
+        var textContent = Assert.Single(result.Content.OfType<TextContentBlock>());
         Assert.Equal("Echo: Hello MCP!", textContent.Text);
+    }
+
+    [Fact]
+    public async Task CallTool_Stdio_EchoSessionId_ReturnsEmpty()
+    {
+        // arrange
+
+        // act
+        await using var client = await _fixture.CreateClientAsync("test_server");
+        var result = await client.CallToolAsync("echoSessionId", cancellationToken: TestContext.Current.CancellationToken);
+
+        // assert
+        Assert.NotNull(result);
+        Assert.Null(result.IsError);
+        var textContent = Assert.Single(result.Content.OfType<TextContentBlock>());
+        Assert.Empty(textContent.Text);
     }
 
     [Theory]
@@ -308,17 +326,14 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
 
     [Theory]
     [MemberData(nameof(GetClients))]
-    public async Task Complete_Stdio_ResourceReference(string clientId)
+    public async Task Complete_Stdio_ResourceTemplateReference(string clientId)
     {
         // arrange
 
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
-        var result = await client.CompleteAsync(new Reference
-        {
-            Type = "ref/resource",
-            Uri = "test://static/resource/1"
-        },
+        var result = await client.CompleteAsync(
+            new ResourceTemplateReference { Uri = "test://static/resource/1" },
             "argument_name", "1",
             TestContext.Current.CancellationToken
         );
@@ -336,11 +351,8 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
 
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
-        var result = await client.CompleteAsync(new Reference
-        {
-            Type = "ref/prompt",
-            Name = "irrelevant"
-        },
+        var result = await client.CompleteAsync(
+            new PromptReference { Name = "irrelevant" },
             argumentName: "style", argumentValue: "fo",
             TestContext.Current.CancellationToken
         );
@@ -369,11 +381,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
                         {
                             Model = "test-model",
                             Role = Role.Assistant,
-                            Content = new Content
-                            {
-                                Type = "text",
-                                Text = "Test response"
-                            }
+                            Content = new TextContentBlock { Text = "Test response" },
                         };
                     },
                 },
@@ -392,8 +400,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
 
         // assert
         Assert.NotNull(result);
-        var textContent = Assert.Single(result.Content);
-        Assert.Equal("text", textContent.Type);
+        var textContent = Assert.Single(result.Content.OfType<TextContentBlock>());
         Assert.False(string.IsNullOrEmpty(textContent.Text));
     }
 
@@ -435,7 +442,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         await using var client = await _fixture.CreateClientAsync(clientId);
 
         // Verify we can send notifications without errors
-        await client.SendNotificationAsync(NotificationMethods.RootsUpdatedNotification, cancellationToken: TestContext.Current.CancellationToken);
+        await client.SendNotificationAsync(NotificationMethods.RootsListChangedNotification, cancellationToken: TestContext.Current.CancellationToken);
         await client.SendNotificationAsync("test/notification", new TestNotification { Test = true }, cancellationToken: TestContext.Current.CancellationToken, serializerOptions: JsonContext3.Default.Options);
 
         // assert
@@ -478,7 +485,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
 
         // assert
         Assert.NotNull(result);
-        Assert.False(result.IsError);
+        Assert.Null(result.IsError);
         Assert.Single(result.Content, c => c.Type == "text");
 
         await client.DisposeAsync();
@@ -538,9 +545,9 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
 
         Assert.NotNull(result);
         Assert.NotEmpty(result.Content);
-        Assert.Equal("text", result.Content[0].Type);
-        Assert.Contains("LLM sampling result:", result.Content[0].Text);
-        Assert.Contains("Eiffel", result.Content[0].Text);
+        var content = Assert.IsType<TextContentBlock>(result.Content[0]);
+        Assert.Contains("LLM sampling result:", content.Text);
+        Assert.Contains("Eiffel", content.Text);
     }
 
     [Theory]

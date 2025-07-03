@@ -69,9 +69,9 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
                 case "FirstCustomPrompt":
                 case "SecondCustomPrompt":
                 case "FinalCustomPrompt":
-                    return new GetPromptResult()
+                    return new GetPromptResult
                     {
-                        Messages = [new() { Role = Role.User, Content = new() { Text = $"hello from {request.Params.Name}", Type = "text" } }],
+                        Messages = [new() { Role = Role.User, Content = new TextContentBlock { Text = $"hello from {request.Params.Name}" } }],
                     };
 
                 default:
@@ -100,7 +100,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
         var prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
         Assert.Equal(6, prompts.Count);
 
-        var prompt = prompts.First(t => t.Name == nameof(SimplePrompts.ReturnsChatMessages));
+        var prompt = prompts.First(t => t.Name == "returns_chat_messages");
         Assert.Equal("Returns chat messages", prompt.Description);
 
         var result = await prompt.GetAsync(new Dictionary<string, object?>() { ["message"] = "hello" }, cancellationToken: TestContext.Current.CancellationToken);
@@ -163,6 +163,20 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
     }
 
     [Fact]
+    public async Task TitleAttributeProperty_PropagatedToTitle()
+    {
+        await using IMcpClient client = await CreateMcpClientForServer();
+
+        var prompts = await client.ListPromptsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(prompts);
+        Assert.NotEmpty(prompts);
+
+        McpClientPrompt prompt = prompts.First(t => t.Name == "returns_string");
+
+        Assert.Equal("This is a title", prompt.Title);
+    }
+
+    [Fact]
     public async Task Throws_When_Prompt_Fails()
     {
         await using IMcpClient client = await CreateMcpClientForServer();
@@ -190,7 +204,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
         await using IMcpClient client = await CreateMcpClientForServer();
 
         var e = await Assert.ThrowsAsync<McpException>(async () => await client.GetPromptAsync(
-            nameof(SimplePrompts.ReturnsChatMessages),
+            "returns_chat_messages",
             cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Equal(McpErrorCode.InternalError, e.ErrorCode);
@@ -228,7 +242,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
         sc.AddMcpServer().WithPromptsFromAssembly();
         IServiceProvider services = sc.BuildServiceProvider();
 
-        Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == nameof(SimplePrompts.ReturnsChatMessages));
+        Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == "returns_chat_messages");
     }
 
     [Fact]
@@ -241,10 +255,10 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
             .WithPrompts([McpServerPrompt.Create(() => "42", new() { Name = "Returns42" })]);
         IServiceProvider services = sc.BuildServiceProvider();
 
-        Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == nameof(SimplePrompts.ReturnsChatMessages));
-        Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == nameof(SimplePrompts.ThrowsException));
-        Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == nameof(SimplePrompts.ReturnsString));
-        Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == nameof(MorePrompts.AnotherPrompt));
+        Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == "returns_chat_messages");
+        Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == "throws_exception");
+        Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == "returns_string");
+        Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == "another_prompt");
         Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == "Returns42");
     }
 
@@ -263,7 +277,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
         public static ChatMessage[] ThrowsException([Description("The first parameter")] string message) =>
             throw new FormatException("uh oh");
 
-        [McpServerPrompt, Description("Returns chat messages")]
+        [McpServerPrompt(Title = "This is a title"), Description("Returns chat messages")]
         public string ReturnsString([Description("The first parameter")] string message) =>
             $"The prompt is: {message}. The id is {id}.";
     }
@@ -273,10 +287,10 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
     {
         [McpServerPrompt]
         public static PromptMessage AnotherPrompt(ObjectWithId id) =>
-            new PromptMessage
+            new()
             {
                 Role = Role.User,
-                Content = new() { Text = "hello", Type = "text" },
+                Content = new TextContentBlock { Text = "hello" },
             };
     }
 

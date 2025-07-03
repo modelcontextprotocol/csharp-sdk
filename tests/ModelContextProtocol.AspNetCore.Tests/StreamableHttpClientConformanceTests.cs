@@ -14,8 +14,10 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper), IAsyncDisposable
 {
     private WebApplication? _app;
+    private readonly List<string> _deleteRequestSessionIds = [];
 
-    private async Task StartAsync()
+    // Don't add the delete endpoint by default to ensure the client still works with basic sessionless servers.
+    private async Task StartAsync(bool enableDelete = false)
     {
         Builder.Services.Configure<JsonOptions>(options =>
         {
@@ -28,12 +30,18 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
             Services = _app.Services,
         });
 
-        _app.MapPost("/mcp", (JsonRpcMessage message) =>
+        _app.MapPost("/mcp", (JsonRpcMessage message, HttpContext context) =>
         {
             if (message is not JsonRpcRequest request)
             {
                 // Ignore all non-request notifications.
                 return Results.Accepted();
+            }
+
+            if (enableDelete)
+            {
+                // Add a session ID to the response to enable session tracking
+                context.Response.Headers.Append("mcp-session-id", "test-session-123");
             }
 
             if (request.Method == "initialize")
@@ -77,15 +85,24 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
                 return Results.Json(new JsonRpcResponse
                 {
                     Id = request.Id,
-                    Result = JsonSerializer.SerializeToNode(new CallToolResponse()
+                    Result = JsonSerializer.SerializeToNode(new CallToolResult
                     {
-                        Content = [new() { Text = parameters.Arguments["message"].ToString() }],
+                        Content = [new TextContentBlock { Text = parameters.Arguments["message"].ToString() }],
                     }, McpJsonUtilities.DefaultOptions),
                 });
             }
 
             throw new Exception("Unexpected message!");
         });
+
+        if (enableDelete)
+        {
+            _app.MapDelete("/mcp", context =>
+            {
+                _deleteRequestSessionIds.Add(context.Request.Headers["mcp-session-id"].ToString());
+                return Task.CompletedTask;
+            });
+        }
 
         await _app.StartAsync(TestContext.Current.CancellationToken);
     }
@@ -136,13 +153,33 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
         await Task.WhenAll(echoTasks);
     }
 
+    [Fact]
+    public async Task SendsDeleteRequestOnDispose()
+    {
+        await StartAsync(enableDelete: true);
+
+        await using var transport = new SseClientTransport(new()
+        {
+            Endpoint = new("http://localhost/mcp"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClientFactory.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Dispose should trigger DELETE request
+        await client.DisposeAsync();
+
+        // Verify DELETE request was sent with correct session ID
+        var sessionId = Assert.Single(_deleteRequestSessionIds);
+        Assert.Equal("test-session-123", sessionId);
+    }
+
     private static async Task CallEchoAndValidateAsync(McpClientTool echoTool)
     {
         var response = await echoTool.CallAsync(new Dictionary<string, object?>() { ["message"] = "Hello world!" }, cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(response);
         var content = Assert.Single(response.Content);
-        Assert.Equal("text", content.Type);
-        Assert.Equal("Hello world!", content.Text);
+        Assert.Equal("Hello world!", Assert.IsType<TextContentBlock>(content).Text);
     }
 
     public async ValueTask DisposeAsync()

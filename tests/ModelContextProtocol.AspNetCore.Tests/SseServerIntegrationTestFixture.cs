@@ -24,7 +24,7 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
 
     public SseServerIntegrationTestFixture()
     {
-        var socketsHttpHandler = new SocketsHttpHandler()
+        var socketsHttpHandler = new SocketsHttpHandler
         {
             ConnectCallback = (context, token) =>
             {

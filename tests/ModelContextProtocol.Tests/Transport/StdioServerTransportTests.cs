@@ -1,5 +1,4 @@
-﻿using Microsoft.Extensions.Options;
-using ModelContextProtocol.Protocol;
+﻿using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.IO.Pipelines;
@@ -39,7 +38,6 @@ public class StdioServerTransportTests : LoggedTest
     {
         Assert.Throws<ArgumentNullException>("serverName", () => new StdioServerTransport((string)null!));
 
-        Assert.Throws<ArgumentNullException>("serverOptions", () => new StdioServerTransport((IOptions<McpServerOptions>)null!));
         Assert.Throws<ArgumentNullException>("serverOptions", () => new StdioServerTransport((McpServerOptions)null!));
     }
 
