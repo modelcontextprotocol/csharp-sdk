@@ -4,7 +4,7 @@ namespace ModelContextProtocol.Authentication;
 /// <summary>
 /// Represents a method that handles the OAuth authorization URL and returns the authorization code.
 /// </summary>
-/// <param name="authorizationUrl">The authorization URL that the user needs to visit.</param>
+/// <param name="authorizationUri">The authorization URL that the user needs to visit.</param>
 /// <param name="redirectUri">The redirect URI where the authorization code will be sent.</param>
 /// <param name="cancellationToken">The cancellation token.</param>
 /// <returns>A task that represents the asynchronous operation. The task result contains the authorization code if successful, or null if the operation failed or was cancelled.</returns>
@@ -25,4 +25,4 @@ namespace ModelContextProtocol.Authentication;
 /// a query parameter in the redirect URI callback.
 /// </para>
 /// </remarks>
-public delegate Task<string?> AuthorizationRedirectDelegate(Uri authorizationUrl, Uri redirectUri, CancellationToken cancellationToken);
+public delegate Task<string?> AuthorizationRedirectDelegate(Uri authorizationUri, Uri redirectUri, CancellationToken cancellationToken);

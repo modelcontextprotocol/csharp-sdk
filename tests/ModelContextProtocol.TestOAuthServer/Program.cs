@@ -41,7 +41,7 @@ public sealed class Program
     }
 
     // Track if we've already issued an already-expired token for the CanAuthenticate_WithTokenRefresh test which uses the test-refresh-client registration.
-    private bool HasIssuedExpiredToken { get; set; }
+    public bool HasIssuedExpiredToken { get; set; }
     public bool HasIssuedRefreshToken { get; set; }
 
     /// <summary>

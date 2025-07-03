@@ -24,6 +24,7 @@ internal sealed class ClientOAuthProvider
     private readonly Uri _serverUrl;
     private readonly Uri _redirectUri;
     private readonly string[]? _scopes;
+    private readonly IDictionary<string, string> _additionalAuthorizationParameters;
     private readonly Func<IReadOnlyList<Uri>, Uri?> _authServerSelector;
     private readonly AuthorizationRedirectDelegate _authorizationRedirectDelegate;
 
@@ -69,6 +70,7 @@ internal sealed class ClientOAuthProvider
         _clientName = options.ClientName;
         _clientUri = options.ClientUri;
         _scopes = options.Scopes?.ToArray();
+        _additionalAuthorizationParameters = options.AdditionalAuthorizationParameters;
 
         // Set up authorization server selection strategy
         _authServerSelector = options.AuthServerSelector ?? DefaultAuthServerSelector;
@@ -324,18 +326,32 @@ internal sealed class ClientOAuthProvider
             throw new ArgumentException("AuthorizationEndpoint must use HTTP or HTTPS.", nameof(authServerMetadata));
         }
 
-        var queryParams = HttpUtility.ParseQueryString(string.Empty);
-        queryParams["client_id"] = GetClientIdOrThrow();
-        queryParams["redirect_uri"] = _redirectUri.ToString();
-        queryParams["response_type"] = "code";
-        queryParams["code_challenge"] = codeChallenge;
-        queryParams["code_challenge_method"] = "S256";
-        queryParams["resource"] = protectedResourceMetadata.Resource.ToString();
+        var queryParamsDictionary = new Dictionary<string, string>
+        {
+            ["client_id"] = GetClientIdOrThrow(),
+            ["redirect_uri"] = _redirectUri.ToString(),
+            ["response_type"] = "code",
+            ["code_challenge"] = codeChallenge,
+            ["code_challenge_method"] = "S256",
+            ["resource"] = protectedResourceMetadata.Resource.ToString(),
+        };
 
         var scopesSupported = protectedResourceMetadata.ScopesSupported;
         if (_scopes is not null || scopesSupported.Count > 0)
         {
-            queryParams["scope"] = string.Join(" ", _scopes ?? scopesSupported.ToArray());
+            queryParamsDictionary["scope"] = string.Join(" ", _scopes ?? scopesSupported.ToArray());
+        }
+
+        // Add extra parameters if provided. Load into a dictionary before constructing to avoid overwiting values.
+        foreach (var kvp in _additionalAuthorizationParameters)
+        {
+            queryParamsDictionary.Add(kvp.Key, kvp.Value);
+        }
+
+        var queryParams = HttpUtility.ParseQueryString(string.Empty);
+        foreach (var kvp in queryParamsDictionary)
+        {
+            queryParams[kvp.Key] = kvp.Value;
         }
 
         var uriBuilder = new UriBuilder(authServerMetadata.AuthorizationEndpoint)

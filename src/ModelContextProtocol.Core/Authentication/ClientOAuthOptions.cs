@@ -81,7 +81,19 @@ public sealed class ClientOAuthOptions
     /// </summary>
     /// <remarks>
     /// This should be a URL pointing to the client's home page or information page.
-    /// Only used when a <see cref="Client"/> is not specified.
+    /// Only used when a <see cref="ClientId"/> is not specified.
     /// </remarks>
     public Uri? ClientUri { get; set; }
+
+    /// <summary>
+    /// Gets or sets additional parameters to include in the query string of the OAuth authorization request
+    /// providing extra information or fulfilling specific requirements of the OAuth provider.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Parameters specified cannot override or append to any automatically set parameters like the "redirect_uri"
+    /// which should instead be configured via <see cref="RedirectUri"/>.
+    /// </para>
+    /// </remarks>
+    public IDictionary<string, string> AdditionalAuthorizationParameters { get; set; } = new Dictionary<string, string>();
 }

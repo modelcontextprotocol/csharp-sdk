@@ -19,8 +19,10 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
     private const string OAuthServerUrl = "https://localhost:7029";
 
     private readonly CancellationTokenSource _testCts = new();
-    private readonly TestOAuthServer.Program TestOAuthServer;
-    private readonly Task _oAuthRunTask;
+    private readonly TestOAuthServer.Program _testOAuthServer;
+    private readonly Task _testOAuthRunTask;
+
+    private Uri? _lastAuthorizationUri;
 
     public AuthTests(ITestOutputHelper outputHelper)
         : base(outputHelper)
@@ -31,8 +33,8 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
         // The easiest workaround is to disable cert validation for testing purposes.
         SocketsHttpHandler.SslOptions.RemoteCertificateValidationCallback = (_, _, _, _) => true;
 
-        TestOAuthServer = new TestOAuthServer.Program(XunitLoggerProvider, KestrelInMemoryTransport);
-        _oAuthRunTask = TestOAuthServer.RunServerAsync(cancellationToken: _testCts.Token);
+        _testOAuthServer = new TestOAuthServer.Program(XunitLoggerProvider, KestrelInMemoryTransport);
+        _testOAuthRunTask = _testOAuthServer.RunServerAsync(cancellationToken: _testCts.Token);
 
         Builder.Services.AddAuthentication(options =>
         {
@@ -61,7 +63,6 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
             {
                 Resource = new Uri(McpServerUrl),
                 AuthorizationServers = { new Uri(OAuthServerUrl) },
-                BearerMethodsSupported = { "header" },
                 ScopesSupported = ["mcp:tools"]
             };
         });
@@ -74,7 +75,7 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
         _testCts.Cancel();
         try
         {
-            await _oAuthRunTask;
+            await _testOAuthRunTask;
         }
         catch (OperationCanceledException)
         {
@@ -218,7 +219,72 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
         await using var client = await McpClientFactory.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.True(TestOAuthServer.HasIssuedRefreshToken);
+        Assert.True(_testOAuthServer.HasIssuedRefreshToken);
+    }
+
+    [Fact]
+    public async Task CanAuthenticate_WithExtraParams()
+    {
+        Builder.Services.AddMcpServer().WithHttpTransport();
+
+        await using var app = Builder.Build();
+
+        app.MapMcp().RequireAuthorization();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var transport = new SseClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AdditionalAuthorizationParameters = new Dictionary<string, string>
+                {
+                    ["custom_param"] = "custom_value",
+                }
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClientFactory.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(_lastAuthorizationUri?.Query);
+        Assert.Contains("custom_param=custom_value", _lastAuthorizationUri?.Query);
+    }
+
+    [Fact]
+    public async Task CannotOverrideExistingParameters_WithExtraParams()
+    {
+        Builder.Services.AddMcpServer().WithHttpTransport();
+
+        await using var app = Builder.Build();
+
+        app.MapMcp().RequireAuthorization();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var transport = new SseClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AdditionalAuthorizationParameters = new Dictionary<string, string>
+                {
+                    ["redirect_uri"] = "custom_value",
+                }
+            },
+        }, HttpClient, LoggerFactory);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => McpClientFactory.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -322,9 +388,11 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
         Assert.Empty(propertyNames);
     }
 
-    private async Task<string?> HandleAuthorizationUrlAsync(Uri authorizationUrl, Uri redirectUri, CancellationToken cancellationToken)
+    private async Task<string?> HandleAuthorizationUrlAsync(Uri authorizationUri, Uri redirectUri, CancellationToken cancellationToken)
     {
-        var redirectResponse = await HttpClient.GetAsync(authorizationUrl, cancellationToken);
+        _lastAuthorizationUri = authorizationUri;
+
+        var redirectResponse = await HttpClient.GetAsync(authorizationUri, cancellationToken);
         Assert.Equal(HttpStatusCode.Redirect, redirectResponse.StatusCode);
         var location = redirectResponse.Headers.Location;
 
