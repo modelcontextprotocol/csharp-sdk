@@ -13,8 +13,6 @@ namespace ModelContextProtocol.AspNetCore.Authentication;
 /// </summary>
 public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationOptions>, IAuthenticationRequestHandler
 {
-    private readonly IOptionsMonitor<McpAuthenticationOptions> _optionsMonitor;
-
     /// <summary>
     /// Initializes a new instance of the <see cref="McpAuthenticationHandler"/> class.
     /// </summary>
@@ -24,7 +22,6 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         UrlEncoder encoder)
         : base(options, logger, encoder)
     {
-        _optionsMonitor = options;
     }
 
     /// <inheritdoc />
