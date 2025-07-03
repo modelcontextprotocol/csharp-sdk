@@ -117,29 +117,36 @@ public sealed class Program
             RedirectUris = ["http://localhost:1179/callback"],
         };
 
-        // OAuth 2.0 Authorization Server Metadata (RFC 8414)
-        app.MapGet("/.well-known/oauth-authorization-server", () =>
+        // The MCP spec tells the client to use /.well-known/oauth-authorization-server but AddJwtBearer looks for
+        // /.well-known/openid-configuration by default. To make things easier, we support both with the same response
+        // which seems to be common. Ex. https://github.com/keycloak/keycloak/pull/29628
+        string[] metadataEndpoints = ["/.well-known/oauth-authorization-server", "/.well-known/openid-configuration"];
+        foreach (var metadataEndpoint in metadataEndpoints)
         {
-            var metadata = new OAuthServerMetadata
+            // OAuth 2.0 Authorization Server Metadata (RFC 8414)
+            app.MapGet(metadataEndpoint, () =>
             {
-                Issuer = _url,
-                AuthorizationEndpoint = $"{_url}/authorize",
-                TokenEndpoint = $"{_url}/token",
-                JwksUri = $"{_url}/.well-known/jwks.json",
-                ResponseTypesSupported = ["code"],
-                SubjectTypesSupported = ["public"],
-                IdTokenSigningAlgValuesSupported = ["RS256"],
-                ScopesSupported = ["openid", "profile", "email", "mcp:tools"],
-                TokenEndpointAuthMethodsSupported = ["client_secret_post"],
-                ClaimsSupported = ["sub", "iss", "name", "email", "aud"],
-                CodeChallengeMethodsSupported = ["S256"],
-                GrantTypesSupported = ["authorization_code", "refresh_token"],
-                IntrospectionEndpoint = $"{_url}/introspect",
-                RegistrationEndpoint = $"{_url}/register"
-            };
+                var metadata = new OAuthServerMetadata
+                {
+                    Issuer = _url,
+                    AuthorizationEndpoint = $"{_url}/authorize",
+                    TokenEndpoint = $"{_url}/token",
+                    JwksUri = $"{_url}/.well-known/jwks.json",
+                    ResponseTypesSupported = ["code"],
+                    SubjectTypesSupported = ["public"],
+                    IdTokenSigningAlgValuesSupported = ["RS256"],
+                    ScopesSupported = ["openid", "profile", "email", "mcp:tools"],
+                    TokenEndpointAuthMethodsSupported = ["client_secret_post"],
+                    ClaimsSupported = ["sub", "iss", "name", "email", "aud"],
+                    CodeChallengeMethodsSupported = ["S256"],
+                    GrantTypesSupported = ["authorization_code", "refresh_token"],
+                    IntrospectionEndpoint = $"{_url}/introspect",
+                    RegistrationEndpoint = $"{_url}/register"
+                };
 
-            return Results.Ok(metadata);
-        });
+                return Results.Ok(metadata);
+            });
+        }
 
         // JWKS endpoint to expose the public key
         app.MapGet("/.well-known/jwks.json", () =>
