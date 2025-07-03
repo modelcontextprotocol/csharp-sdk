@@ -33,13 +33,15 @@ internal sealed class OAuthServerMetadata
     /// OPTIONAL. URL of the authorization server's JWK Set document.
     /// </summary>
     [JsonPropertyName("jwks_uri")]
-    public required string JwksUri { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? JwksUri { get; init; }
 
     /// <summary>
     /// Gets or sets the registration endpoint URL for dynamic client registration.
     /// OPTIONAL. URL of the authorization server's OAuth 2.0 Dynamic Client Registration endpoint.
     /// </summary>
     [JsonPropertyName("registration_endpoint")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? RegistrationEndpoint { get; init; }
 
     /// <summary>
@@ -47,7 +49,8 @@ internal sealed class OAuthServerMetadata
     /// RECOMMENDED. JSON array containing a list of the OAuth 2.0 scope values that this server supports.
     /// </summary>
     [JsonPropertyName("scopes_supported")]
-    public required List<string> ScopesSupported { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? ScopesSupported { get; init; }
 
     /// <summary>
     /// Gets or sets the response types supported by this server.
@@ -61,6 +64,7 @@ internal sealed class OAuthServerMetadata
     /// OPTIONAL. JSON array containing a list of the OAuth 2.0 "response_mode" values that this server supports.
     /// </summary>
     [JsonPropertyName("response_modes_supported")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<string>? ResponseModesSupported { get; init; }
 
     /// <summary>
@@ -68,20 +72,23 @@ internal sealed class OAuthServerMetadata
     /// OPTIONAL. JSON array containing a list of the OAuth 2.0 grant type values that this server supports.
     /// </summary>
     [JsonPropertyName("grant_types_supported")]
-    public required List<string> GrantTypesSupported { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? GrantTypesSupported { get; init; }
 
     /// <summary>
     /// Gets or sets the token endpoint authentication methods supported by this server.
     /// OPTIONAL. JSON array containing a list of client authentication methods supported by this token endpoint.
     /// </summary>
     [JsonPropertyName("token_endpoint_auth_methods_supported")]
-    public required List<string> TokenEndpointAuthMethodsSupported { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? TokenEndpointAuthMethodsSupported { get; init; }
 
     /// <summary>
     /// Gets or sets the token endpoint authentication signing algorithms supported by this server.
     /// OPTIONAL. JSON array containing a list of the JWS signing algorithms supported by the token endpoint.
     /// </summary>
     [JsonPropertyName("token_endpoint_auth_signing_alg_values_supported")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<string>? TokenEndpointAuthSigningAlgValuesSupported { get; init; }
 
     /// <summary>
@@ -89,13 +96,15 @@ internal sealed class OAuthServerMetadata
     /// OPTIONAL. URL of the authorization server's OAuth 2.0 introspection endpoint.
     /// </summary>
     [JsonPropertyName("introspection_endpoint")]
-    public required string IntrospectionEndpoint { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? IntrospectionEndpoint { get; init; }
 
     /// <summary>
     /// Gets or sets the introspection endpoint authentication methods supported by this server.
     /// OPTIONAL. JSON array containing a list of client authentication methods supported by this introspection endpoint.
     /// </summary>
     [JsonPropertyName("introspection_endpoint_auth_methods_supported")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<string>? IntrospectionEndpointAuthMethodsSupported { get; init; }
 
     /// <summary>
@@ -103,6 +112,7 @@ internal sealed class OAuthServerMetadata
     /// OPTIONAL. JSON array containing a list of the JWS signing algorithms supported by the introspection endpoint.
     /// </summary>
     [JsonPropertyName("introspection_endpoint_auth_signing_alg_values_supported")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<string>? IntrospectionEndpointAuthSigningAlgValuesSupported { get; init; }
 
     /// <summary>
@@ -110,6 +120,7 @@ internal sealed class OAuthServerMetadata
     /// OPTIONAL. URL of the authorization server's OAuth 2.0 revocation endpoint.
     /// </summary>
     [JsonPropertyName("revocation_endpoint")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? RevocationEndpoint { get; init; }
 
     /// <summary>
@@ -117,6 +128,7 @@ internal sealed class OAuthServerMetadata
     /// OPTIONAL. JSON array containing a list of client authentication methods supported by this revocation endpoint.
     /// </summary>
     [JsonPropertyName("revocation_endpoint_auth_methods_supported")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<string>? RevocationEndpointAuthMethodsSupported { get; init; }
 
     /// <summary>
@@ -124,6 +136,7 @@ internal sealed class OAuthServerMetadata
     /// OPTIONAL. JSON array containing a list of the JWS signing algorithms supported by the revocation endpoint.
     /// </summary>
     [JsonPropertyName("revocation_endpoint_auth_signing_alg_values_supported")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<string>? RevocationEndpointAuthSigningAlgValuesSupported { get; init; }
 
     /// <summary>
@@ -131,7 +144,8 @@ internal sealed class OAuthServerMetadata
     /// OPTIONAL. JSON array containing a list of Proof Key for Code Exchange (PKCE) code challenge methods supported by this server.
     /// </summary>
     [JsonPropertyName("code_challenge_methods_supported")]
-    public required List<string> CodeChallengeMethodsSupported { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? CodeChallengeMethodsSupported { get; init; }
 
     // OpenID Connect specific fields that are commonly included in OAuth metadata
     /// <summary>
@@ -139,19 +153,22 @@ internal sealed class OAuthServerMetadata
     /// REQUIRED for OpenID Connect. JSON array containing a list of the Subject Identifier types that this OP supports.
     /// </summary>
     [JsonPropertyName("subject_types_supported")]
-    public required List<string> SubjectTypesSupported { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? SubjectTypesSupported { get; init; }
 
     /// <summary>
     /// Gets or sets the ID token signing algorithms supported by this server.
     /// REQUIRED for OpenID Connect. JSON array containing a list of the JWS signing algorithms (alg values) supported by the OP for the ID Token.
     /// </summary>
     [JsonPropertyName("id_token_signing_alg_values_supported")]
-    public required List<string> IdTokenSigningAlgValuesSupported { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? IdTokenSigningAlgValuesSupported { get; init; }
 
     /// <summary>
     /// Gets or sets the claims supported by this server.
     /// RECOMMENDED for OpenID Connect. JSON array containing a list of the Claim Names of the Claims that the OpenID Provider MAY be able to supply values for.
     /// </summary>
     [JsonPropertyName("claims_supported")]
-    public required List<string> ClaimsSupported { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? ClaimsSupported { get; init; }
 }
