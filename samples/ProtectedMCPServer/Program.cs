@@ -8,7 +8,7 @@ using System.Security.Claims;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var serverUrl = "http://localhost:7071";
+var serverUrl = "http://localhost:7071/";
 var inMemoryOAuthServerUrl = "https://localhost:7029";
 var demoClientId = "demo-client";
 

@@ -117,10 +117,10 @@ public sealed class Program
             RedirectUris = ["http://localhost:1179/callback"],
         };
 
-        // OIDC and OAuth Metadata
-        app.MapGet("/.well-known/openid-configuration", () =>
+        // OAuth 2.0 Authorization Server Metadata (RFC 8414)
+        app.MapGet("/.well-known/oauth-authorization-server", () =>
         {
-            var metadata = new OpenIdConnectConfiguration
+            var metadata = new OAuthServerMetadata
             {
                 Issuer = _url,
                 AuthorizationEndpoint = $"{_url}/authorize",
@@ -479,7 +479,7 @@ public sealed class Program
         app.MapGet("/", () => "Demo In-Memory OAuth 2.0 Server with JWT Support");
 
         Console.WriteLine($"OAuth Authorization Server running at {_url}");
-        Console.WriteLine($"OpenID Connect configuration at {_url}/.well-known/openid-configuration");
+        Console.WriteLine($"OAuth Server Metadata at {_url}/.well-known/oauth-authorization-server");
         Console.WriteLine($"JWT keys available at {_url}/.well-known/jwks.json");
         Console.WriteLine($"Demo Client ID: {clientId}");
         Console.WriteLine($"Demo Client Secret: {clientSecret}");

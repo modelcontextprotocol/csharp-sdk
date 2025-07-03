@@ -2,7 +2,7 @@
 
 namespace ModelContextProtocol.TestOAuthServer;
 
-[JsonSerializable(typeof(OpenIdConnectConfiguration))]
+[JsonSerializable(typeof(OAuthServerMetadata))]
 [JsonSerializable(typeof(AuthorizationServerMetadata))]
 [JsonSerializable(typeof(TokenResponse))]
 [JsonSerializable(typeof(JsonWebKeySet))]
