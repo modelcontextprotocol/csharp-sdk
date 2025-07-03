@@ -289,6 +289,87 @@ public class AuthEventTests : KestrelInMemoryTest, IAsyncDisposable
         Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
     }
 
+    [Fact]
+    public async Task ResourceMetadataEndpoint_HandlesResponse_WhenHandleResponseCalled()
+    {
+        Builder.Services.AddMcpServer().WithHttpTransport();
+
+        // Override the configuration to test HandleResponse behavior
+        Builder.Services.Configure<McpAuthenticationOptions>(
+            McpAuthenticationDefaults.AuthenticationScheme,
+            options =>
+            {
+                options.ResourceMetadata = null;
+                options.Events.OnResourceMetadataRequest = async context =>
+                {
+                    // Call HandleResponse() to discontinue processing and return to client
+                    context.HandleResponse();
+                    await Task.CompletedTask;
+                };
+            }
+        );
+
+        await using var app = Builder.Build();
+
+        app.MapMcp().RequireAuthorization();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        // Make a direct request to the resource metadata endpoint
+        using var response = await HttpClient.GetAsync(
+            "/.well-known/oauth-protected-resource",
+            TestContext.Current.CancellationToken
+        );
+
+        // The request should be handled by the event handler without returning metadata
+        // Since HandleResponse() was called, the handler should have taken responsibility
+        // for generating the response, which in this case means an empty response
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        
+        // The response should be empty since the event handler called HandleResponse()
+        // but didn't write any content to the response
+        var content = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Empty(content);
+    }
+
+    [Fact]
+    public async Task ResourceMetadataEndpoint_SkipsHandler_WhenSkipHandlerCalled()
+    {
+        Builder.Services.AddMcpServer().WithHttpTransport();
+
+        // Override the configuration to test SkipHandler behavior
+        Builder.Services.Configure<McpAuthenticationOptions>(
+            McpAuthenticationDefaults.AuthenticationScheme,
+            options =>
+            {
+                options.ResourceMetadata = null;
+                options.Events.OnResourceMetadataRequest = async context =>
+                {
+                    // Call SkipHandler() to discontinue processing in the current handler
+                    context.SkipHandler();
+                    await Task.CompletedTask;
+                };
+            }
+        );
+
+        await using var app = Builder.Build();
+
+        app.MapMcp().RequireAuthorization();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        // Make a direct request to the resource metadata endpoint
+        using var response = await HttpClient.GetAsync(
+            "/.well-known/oauth-protected-resource",
+            TestContext.Current.CancellationToken
+        );
+
+        // When SkipHandler() is called, the authentication handler should skip processing
+        // and let other handlers in the pipeline handle the request. Since there are no
+        // other handlers configured for this endpoint, this should result in a 404
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
     private async Task<string?> HandleAuthorizationUrlAsync(
         Uri authorizationUri,
         Uri redirectUri,

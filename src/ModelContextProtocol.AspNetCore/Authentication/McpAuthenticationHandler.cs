@@ -78,10 +78,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         return absoluteUri.ToString();
     }
 
-    /// <summary>
-    /// Handles the resource metadata request.
-    /// </summary>
-    private async Task HandleResourceMetadataRequestAsync()
+    private async Task<bool> HandleResourceMetadataRequestAsync()
     {
         var resourceMetadata = Options.ResourceMetadata;
 
@@ -93,6 +90,23 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
             };
 
             await Options.Events.OnResourceMetadataRequest(context);
+
+            if (context.Result is not null)
+            {
+                if (context.Result.Handled)
+                {
+                    return true;
+                }
+                else if (context.Result.Skipped)
+                {
+                    return false;
+                }
+                else if (context.Result.Failure is not null)
+                {
+                    throw new AuthenticationFailureException("An error occurred from the OnResourceMetadataRequest event.", context.Result.Failure);
+                }
+            }
+
             resourceMetadata = context.ResourceMetadata;
         }
 
@@ -104,6 +118,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         }
 
         await Results.Json(resourceMetadata, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(ProtectedResourceMetadata))).ExecuteAsync(Context);
+        return true;
     }
 
     /// <inheritdoc />
