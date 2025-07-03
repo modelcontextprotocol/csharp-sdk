@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using ModelContextProtocol.AspNetCore.Authentication;
-using ModelContextProtocol.Authentication;
 using ProtectedMCPServer.Tools;
 using System.Net.Http.Headers;
 using System.Security.Claims;
@@ -10,7 +9,6 @@ var builder = WebApplication.CreateBuilder(args);
 
 var serverUrl = "http://localhost:7071/";
 var inMemoryOAuthServerUrl = "https://localhost:7029";
-var demoClientId = "demo-client";
 
 builder.Services.AddAuthentication(options =>
 {
@@ -90,7 +88,6 @@ app.MapMcp().RequireAuthorization();
 Console.WriteLine($"Starting MCP server with authorization at {serverUrl}");
 Console.WriteLine($"Using in-memory OAuth server at {inMemoryOAuthServerUrl}");
 Console.WriteLine($"Protected Resource Metadata URL: {serverUrl}.well-known/oauth-protected-resource");
-Console.WriteLine($"Demo Client ID: {demoClientId}");
 Console.WriteLine("Press Ctrl+C to stop the server");
 
 app.Run(serverUrl);

@@ -31,8 +31,7 @@ var transport = new SseClientTransport(new()
     Name = "Secure Weather Client",
     OAuth = new()
     {
-        ClientId = "demo-client",
-        ClientSecret = "demo-secret",
+        ClientName = "ProtectedMcpClient",
         RedirectUri = new Uri("http://localhost:1179/callback"),
         AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
     }
@@ -50,12 +49,12 @@ if (tools.Count == 0)
 Console.WriteLine($"Found {tools.Count} tools on the server.");
 Console.WriteLine();
 
-if (tools.Any(t => t.Name == "GetAlerts"))
+if (tools.Any(t => t.Name == "get_alerts"))
 {
-    Console.WriteLine("Calling GetAlerts tool...");
+    Console.WriteLine("Calling get_alerts tool...");
 
     var result = await client.CallToolAsync(
-        "GetAlerts",
+        "get_alerts",
         new Dictionary<string, object?> { { "state", "WA" } }
     );
 
