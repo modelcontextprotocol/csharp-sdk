@@ -14,7 +14,7 @@ namespace ModelContextProtocol.Authentication;
 /// protection or caching - it acquires a token and server metadata and holds it in memory.
 /// This is suitable for demonstration and development purposes.
 /// </summary>
-internal sealed class ClientOAuthProvider
+internal sealed partial class ClientOAuthProvider
 {
     /// <summary>
     /// The Bearer authentication scheme.
@@ -207,7 +207,7 @@ internal sealed class ClientOAuthProvider
             ThrowFailedToHandleUnauthorizedResponse($"Authorization server selector returned a server not in the available list: {selectedAuthServer}. Available servers: {string.Join(", ", availableAuthorizationServers)}");
         }
 
-        _logger.LogInformation("Selected authorization server: {Server} from {Count} available servers", selectedAuthServer, availableAuthorizationServers.Count);
+        LogSelectedAuthorizationServer(selectedAuthServer, availableAuthorizationServers.Count);
 
         // Get auth server metadata
         var authServerMetadata = await GetAuthServerMetadataAsync(selectedAuthServer, cancellationToken).ConfigureAwait(false);
@@ -235,7 +235,7 @@ internal sealed class ClientOAuthProvider
         }
 
         _token = token;
-        _logger.LogInformation("OAuth authorization completed successfully");
+        LogOAuthAuthorizationCompleted();
     }
 
     private async Task<AuthorizationServerMetadata?> GetAuthServerMetadataAsync(Uri authServerUri, CancellationToken cancellationToken)
@@ -270,7 +270,7 @@ internal sealed class ClientOAuthProvider
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error fetching auth server metadata from {Path}", path);
+                LogErrorFetchingAuthServerMetadata(ex, path);
             }
         }
 
@@ -435,7 +435,7 @@ internal sealed class ClientOAuthProvider
             ThrowFailedToHandleUnauthorizedResponse("Authorization server does not support dynamic client registration");
         }
 
-        _logger.LogInformation("Performing dynamic client registration with {RegistrationEndpoint}", authServerMetadata.RegistrationEndpoint);
+        LogPerformingDynamicClientRegistration(authServerMetadata.RegistrationEndpoint);
 
         var registrationRequest = new DynamicClientRegistrationRequest
         {
@@ -482,7 +482,7 @@ internal sealed class ClientOAuthProvider
             _clientSecret = registrationResponse.ClientSecret;
         }
 
-        _logger.LogInformation("Dynamic client registration successful. Client ID: {ClientId}", _clientId);
+        LogDynamicClientRegistrationSuccessful(_clientId!);
     }
 
     /// <summary>
@@ -581,7 +581,7 @@ internal sealed class ClientOAuthProvider
 
         // Per RFC: The resource value must be identical to the URL that the client used
         // to make the request to the resource server
-        _logger.LogDebug($"Validating resource metadata against original server URL: {serverUrl}");
+        LogValidatingResourceMetadata(serverUrl);
 
         if (!VerifyResourceMatch(metadata, serverUrl))
         {
@@ -666,4 +666,22 @@ internal sealed class ClientOAuthProvider
     [DoesNotReturn]
     private static void ThrowFailedToHandleUnauthorizedResponse(string message) =>
         throw new McpException($"Failed to handle unauthorized response with 'Bearer' scheme. {message}");
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Selected authorization server: {Server} from {Count} available servers")]
+    partial void LogSelectedAuthorizationServer(Uri server, int count);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "OAuth authorization completed successfully")]
+    partial void LogOAuthAuthorizationCompleted();
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error fetching auth server metadata from {Path}")]
+    partial void LogErrorFetchingAuthServerMetadata(Exception ex, string path);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Performing dynamic client registration with {RegistrationEndpoint}")]
+    partial void LogPerformingDynamicClientRegistration(Uri registrationEndpoint);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Dynamic client registration successful. Client ID: {ClientId}")]
+    partial void LogDynamicClientRegistrationSuccessful(string clientId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Validating resource metadata against original server URL: {ServerUrl}")]
+    partial void LogValidatingResourceMetadata(Uri serverUrl);
 }

@@ -16,9 +16,10 @@ namespace ModelContextProtocol.Client;
 public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
 {
     private readonly SseClientTransportOptions _options;
-    private readonly HttpClient? _httpClient;
     private readonly McpHttpClient _mcpHttpClient;
     private readonly ILoggerFactory? _loggerFactory;
+
+    private readonly HttpClient? _ownedHttpClient;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SseClientTransport"/> class.
@@ -61,7 +62,7 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
 
         if (ownsHttpClient)
         {
-            _httpClient = httpClient;
+            _ownedHttpClient = httpClient;
         }
     }
 
@@ -99,7 +100,7 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
     /// <inheritdoc />
     public ValueTask DisposeAsync()
     {
-        _httpClient?.Dispose();
+        _ownedHttpClient?.Dispose();
         return default;
     }
 }
