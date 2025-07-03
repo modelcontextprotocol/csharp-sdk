@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.WebUtilities;
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Security.Cryptography;
@@ -120,6 +121,11 @@ public sealed class Program
         // The MCP spec tells the client to use /.well-known/oauth-authorization-server but AddJwtBearer looks for
         // /.well-known/openid-configuration by default. To make things easier, we support both with the same response
         // which seems to be common. Ex. https://github.com/keycloak/keycloak/pull/29628
+        //
+        // The requirements for these endpoints are at https://www.rfc-editor.org/rfc/rfc8414 and
+        // https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata respectively.
+        // They do differ, but it's close enough at least for our current testing to use the same response for both.
+        // See https://gist.github.com/localden/26d8bcf641703c08a5d8741aa9c3336c
         string[] metadataEndpoints = ["/.well-known/oauth-authorization-server", "/.well-known/openid-configuration"];
         foreach (var metadataEndpoint in metadataEndpoints)
         {
@@ -154,8 +160,8 @@ public sealed class Program
             var parameters = _rsa.ExportParameters(false);
 
             // Convert parameters to base64url encoding
-            var e = OAuthUtils.Base64UrlEncode(parameters.Exponent ?? Array.Empty<byte>());
-            var n = OAuthUtils.Base64UrlEncode(parameters.Modulus ?? Array.Empty<byte>());
+            var e = WebEncoders.Base64UrlEncode(parameters.Exponent ?? Array.Empty<byte>());
+            var n = WebEncoders.Base64UrlEncode(parameters.Modulus ?? Array.Empty<byte>());
 
             var jwks = new JsonWebKeySet
             {
@@ -240,7 +246,7 @@ public sealed class Program
             }
 
             // Generate a new authorization code
-            var code = OAuthUtils.GenerateRandomToken();
+            var code = GenerateRandomToken();
             var requestedScopes = scope?.Split(' ').ToList() ?? [];
 
             // Store code information for later verification
@@ -329,7 +335,7 @@ public sealed class Program
                 }
 
                 // Validate code verifier
-                if (string.IsNullOrEmpty(code_verifier) || !OAuthUtils.VerifyCodeChallenge(code_verifier, codeInfo.CodeChallenge))
+                if (string.IsNullOrEmpty(code_verifier) || !VerifyCodeChallenge(code_verifier, codeInfo.CodeChallenge))
                 {
                     return Results.BadRequest(new OAuthErrorResponse
                     {
@@ -458,7 +464,7 @@ public sealed class Program
 
             // Generate client credentials
             var clientId = $"dyn-{Guid.NewGuid():N}";
-            var clientSecret = OAuthUtils.GenerateRandomToken();
+            var clientSecret = GenerateRandomToken();
             var issuedAt = DateTimeOffset.UtcNow;
 
             // Store the registered client
@@ -565,17 +571,17 @@ public sealed class Program
         var headerJson = JsonSerializer.Serialize(header, OAuthJsonContext.Default.DictionaryStringString);
         var payloadJson = JsonSerializer.Serialize(payload, OAuthJsonContext.Default.DictionaryStringString);
 
-        var headerBase64 = OAuthUtils.Base64UrlEncode(Encoding.UTF8.GetBytes(headerJson));
-        var payloadBase64 = OAuthUtils.Base64UrlEncode(Encoding.UTF8.GetBytes(payloadJson));
+        var headerBase64 = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(headerJson));
+        var payloadBase64 = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(payloadJson));
 
         var dataToSign = $"{headerBase64}.{payloadBase64}";
         var signature = _rsa.SignData(Encoding.UTF8.GetBytes(dataToSign), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-        var signatureBase64 = OAuthUtils.Base64UrlEncode(signature);
+        var signatureBase64 = WebEncoders.Base64UrlEncode(signature);
 
         var jwtToken = $"{headerBase64}.{payloadBase64}.{signatureBase64}";
 
         // Generate opaque refresh token
-        var refreshToken = OAuthUtils.GenerateRandomToken();
+        var refreshToken = GenerateRandomToken();
 
         // Store token info (for refresh token and introspection)
         var tokenInfo = new TokenInfo
@@ -598,5 +604,31 @@ public sealed class Program
             ExpiresIn = (int)expiresIn.TotalSeconds,
             Scope = string.Join(" ", scopes)
         };
+    }
+
+    /// <summary>
+    /// Generates a random token for authorization code or refresh token.
+    /// </summary>
+    /// <returns>A Base64Url encoded random token.</returns>
+    public static string GenerateRandomToken()
+    {
+        var bytes = new byte[32];
+        Random.Shared.NextBytes(bytes);
+        return WebEncoders.Base64UrlEncode(bytes);
+    }
+
+    /// <summary>
+    /// Verifies a PKCE code challenge against a code verifier.
+    /// </summary>
+    /// <param name="codeVerifier">The code verifier to verify.</param>
+    /// <param name="codeChallenge">The code challenge to verify against.</param>
+    /// <returns>True if the code challenge is valid, false otherwise.</returns>
+    public static bool VerifyCodeChallenge(string codeVerifier, string codeChallenge)
+    {
+        using var sha256 = SHA256.Create();
+        var challengeBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(codeVerifier));
+        var computedChallenge = WebEncoders.Base64UrlEncode(challengeBytes);
+
+        return computedChallenge == codeChallenge;
     }
 }
