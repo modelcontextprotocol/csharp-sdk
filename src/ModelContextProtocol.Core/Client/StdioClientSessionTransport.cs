@@ -13,7 +13,7 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
     private int _cleanedUp = 0;
 
     public StdioClientSessionTransport(StdioClientTransportOptions options, Process process, string endpointName, Queue<string> stderrRollingLog, ILoggerFactory? loggerFactory)
-        : base(process.StandardInput, process.StandardOutput, endpointName, loggerFactory)
+        : base(process.StandardInput.BaseStream, process.StandardOutput.BaseStream, encoding: null, endpointName, loggerFactory)
     {
         _process = process;
         _options = options;

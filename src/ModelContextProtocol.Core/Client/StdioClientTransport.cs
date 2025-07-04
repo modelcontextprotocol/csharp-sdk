@@ -69,8 +69,6 @@ public sealed partial class StdioClientTransport : IClientTransport
         {
             LogTransportConnecting(logger, endpointName);
 
-            UTF8Encoding noBomUTF8 = new(encoderShouldEmitUTF8Identifier: false);
-
             ProcessStartInfo startInfo = new()
             {
                 FileName = command,
@@ -80,10 +78,10 @@ public sealed partial class StdioClientTransport : IClientTransport
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 WorkingDirectory = _options.WorkingDirectory ?? Environment.CurrentDirectory,
-                StandardOutputEncoding = noBomUTF8,
-                StandardErrorEncoding = noBomUTF8,
+                StandardOutputEncoding = StreamClientSessionTransport.NoBomUtf8Encoding,
+                StandardErrorEncoding = StreamClientSessionTransport.NoBomUtf8Encoding,
 #if NET
-                StandardInputEncoding = noBomUTF8,
+                StandardInputEncoding = StreamClientSessionTransport.NoBomUtf8Encoding,
 #endif
             };
 
@@ -164,7 +162,7 @@ public sealed partial class StdioClientTransport : IClientTransport
             Encoding originalInputEncoding = Console.InputEncoding;
             try
             {
-                Console.InputEncoding = noBomUTF8;
+                Console.InputEncoding = StreamClientSessionTransport.NoBomUtf8Encoding;
                 processStarted = process.Start();
             }
             finally

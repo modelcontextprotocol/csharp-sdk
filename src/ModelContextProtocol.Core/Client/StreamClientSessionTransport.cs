@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
+using System.Text;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Client;
@@ -7,6 +8,8 @@ namespace ModelContextProtocol.Client;
 /// <summary>Provides the client side of a stream-based session transport.</summary>
 internal class StreamClientSessionTransport : TransportBase
 {
+    internal static UTF8Encoding NoBomUtf8Encoding { get; } = new(encoderShouldEmitUTF8Identifier: false);
+
     private readonly TextReader _serverOutput;
     private readonly TextWriter _serverInput;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
@@ -52,6 +55,43 @@ internal class StreamClientSessionTransport : TransportBase
             TaskCreationOptions.DenyChildAttach);
         _readTask = readTask.Unwrap();
         readTask.Start();
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="StreamClientSessionTransport"/> class.
+    /// </summary>
+    /// <param name="serverInput">
+    /// The server's input stream. Messages written to this stream will be sent to the server.
+    /// </param>
+    /// <param name="serverOutput">
+    /// The server's output stream. Messages read from this stream will be received from the server.
+    /// </param>
+    /// <param name="encoding">
+    /// The encoding used for reading and writing messages from the input and output streams. Defaults to UTF-8 without BOM if null.
+    /// </param>
+    /// <param name="endpointName">
+    /// A name that identifies this transport endpoint in logs.
+    /// </param>
+    /// <param name="loggerFactory">
+    /// Optional factory for creating loggers. If null, a NullLogger will be used.
+    /// </param>
+    /// <remarks>
+    /// This constructor starts a background task to read messages from the server output stream.
+    /// The transport will be marked as connected once initialized.
+    /// </remarks>
+    public StreamClientSessionTransport(Stream serverInput, Stream serverOutput, Encoding? encoding, string endpointName, ILoggerFactory? loggerFactory)
+        : this(
+            new StreamWriter(serverInput, encoding ?? NoBomUtf8Encoding),
+#if NET
+            new StreamReader(serverOutput, encoding ?? NoBomUtf8Encoding),
+#else
+            new CancellableStreamReader(serverOutput, encoding ?? NoBomUtf8Encoding),
+#endif
+            endpointName,
+            loggerFactory)
+    {
+        Throw.IfNull(serverInput);
+        Throw.IfNull(serverOutput);
     }
 
     /// <inheritdoc/>
