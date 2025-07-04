@@ -49,7 +49,7 @@ public class EverythingSseServerFixture : IAsyncDisposable
 
             using var stopProcess = Process.Start(stopInfo)
                 ?? throw new InvalidOperationException($"Could not stop process for {stopInfo.FileName} with '{stopInfo.Arguments}'.");
-            await stopProcess.WaitForExitAsync();
+            await stopProcess.WaitForExitAsync(TimeSpan.FromSeconds(10));
         }
         catch (Exception ex)
         {
@@ -60,6 +60,7 @@ public class EverythingSseServerFixture : IAsyncDisposable
 
     private static bool CheckIsDockerAvailable()
     {
+#if NET
         try
         {
             ProcessStartInfo processStartInfo = new()
@@ -78,5 +79,9 @@ public class EverythingSseServerFixture : IAsyncDisposable
         {
             return false;
         }
+#else
+        // Do not run docker tests using .NET framework.
+        return false;
+#endif
     }
 }

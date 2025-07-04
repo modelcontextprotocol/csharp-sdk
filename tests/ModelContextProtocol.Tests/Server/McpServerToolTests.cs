@@ -525,7 +525,7 @@ public partial class McpServerToolTests
         Assert.Null(tool.ProtocolTool.OutputSchema);
         Assert.Null(result.StructuredContent);
 
-        tool = McpServerTool.Create(() => ValueTask.CompletedTask);
+        tool = McpServerTool.Create(() => default(ValueTask));
         request = new RequestContext<CallToolRequestParams>(mockServer.Object)
         {
             Params = new CallToolRequestParams { Name = "tool" },

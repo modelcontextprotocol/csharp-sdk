@@ -606,7 +606,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
 
         McpClientTool progressTool = tools.First(t => t.Name == "sends_progress_notifications");
 
-        TaskCompletionSource tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int remainingNotifications = 10;
 
         ConcurrentQueue<ProgressNotificationParams> notifications = new();
@@ -618,7 +618,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                 notifications.Enqueue(pn);
                 if (Interlocked.Decrement(ref remainingNotifications) == 0)
                 {
-                    tcs.SetResult();
+                    tcs.SetResult(true);
                 }
             }
 

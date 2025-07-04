@@ -3,17 +3,26 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFrameworks>net9.0;net8.0</TargetFrameworks>
+    <!-- https://github.com/modelcontextprotocol/csharp-sdk/issues/587 -->
+    <TargetFrameworks Condition="'$(OS)' != 'Windows_NT'">$(TargetFrameworks);net472</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <RootNamespace>ModelContextProtocol.Tests</RootNamespace>
+    <!-- The target framework to use for the test server. Defaults to the current TFM. -->
+    <TestServerTargetFramework>$(TargetFramework)</TestServerTargetFramework>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' == 'net9.0'">
     <!-- For better test coverage, only disable reflection in one of the targets -->
     <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net472'">
+    <!-- Test servers don't support netfx, so hardcode to net8.0 in that case. -->
+    <TestServerTargetFramework>net8.0</TestServerTargetFramework>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -25,6 +34,11 @@
 
   <ItemGroup>
     <Compile Include="..\Common\**\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net472'">
+    <Compile Include="..\..\src\Common\Throw.cs" Link="Throw.cs" />
+    <Compile Include="..\..\src\Common\Polyfills\**\*.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -44,7 +58,9 @@
     <PackageReference Include="Moq" />
     <PackageReference Include="OpenTelemetry" />
     <PackageReference Include="OpenTelemetry.Exporter.InMemory" />
+    <PackageReference Include="Serilog" />
     <PackageReference Include="System.Linq.AsyncEnumerable" />
+    <PackageReference Include="System.Net.Http" />
     <PackageReference Include="JsonSchema.Net" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio">
@@ -60,16 +76,16 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Condition="$([MSBuild]::IsOSPlatform('Windows'))" Include="$([System.IO.Path]::GetFullPath('$(ArtifactsBinDir)ModelContextProtocol.TestServer\$(Configuration)'))\$(TargetFramework)\TestServer.exe">
+    <Content Condition="$([MSBuild]::IsOSPlatform('Windows'))" Include="$([System.IO.Path]::GetFullPath('$(ArtifactsBinDir)ModelContextProtocol.TestServer\$(Configuration)'))\$(TestServerTargetFramework)\TestServer.exe">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Condition="$([MSBuild]::IsOSPlatform('Linux'))" Include="$([System.IO.Path]::GetFullPath('$(ArtifactsBinDir)ModelContextProtocol.TestServer\$(Configuration)'))\$(TargetFramework)\TestServer.dll">
+    <Content Condition="$([MSBuild]::IsOSPlatform('Linux'))" Include="$([System.IO.Path]::GetFullPath('$(ArtifactsBinDir)ModelContextProtocol.TestServer\$(Configuration)'))\$(TestServerTargetFramework)\TestServer.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Condition="$([MSBuild]::IsOSPlatform('Windows'))" Include="$([System.IO.Path]::GetFullPath('$(ArtifactsBinDir)TestServerWithHosting\$(Configuration)'))\$(TargetFramework)\TestServerWithHosting.exe">
+    <Content Condition="$([MSBuild]::IsOSPlatform('Windows'))" Include="$([System.IO.Path]::GetFullPath('$(ArtifactsBinDir)TestServerWithHosting\$(Configuration)'))\$(TestServerTargetFramework)\TestServerWithHosting.exe">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Condition="$([MSBuild]::IsOSPlatform('Linux'))" Include="$([System.IO.Path]::GetFullPath('$(ArtifactsBinDir)TestServerWithHosting\$(Configuration)'))\$(TargetFramework)\TestServerWithHosting.dll">
+    <Content Condition="$([MSBuild]::IsOSPlatform('Linux'))" Include="$([System.IO.Path]::GetFullPath('$(ArtifactsBinDir)TestServerWithHosting\$(Configuration)'))\$(TestServerTargetFramework)\TestServerWithHosting.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

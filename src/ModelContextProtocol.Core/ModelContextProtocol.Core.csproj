@@ -7,6 +7,7 @@
     <PackageId>ModelContextProtocol.Core</PackageId>
     <Description>Core .NET SDK for the Model Context Protocol (MCP)</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' != 'netstandard2.0'">
@@ -20,6 +21,7 @@
   <!-- Dependencies only needed by netstandard2.0 -->
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
     <Compile Include="..\Common\Polyfills\**\*.cs" />
+    <Compile Include="..\Common\CancellableStreamReader\**\*.cs" />
     <PackageReference Include="Microsoft.Bcl.Memory" />
     <PackageReference Include="System.Diagnostics.DiagnosticSource" />
     <PackageReference Include="System.Text.Json" />

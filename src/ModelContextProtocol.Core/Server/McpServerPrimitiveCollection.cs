@@ -17,7 +17,7 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     /// </summary>
     public McpServerPrimitiveCollection(IEqualityComparer<string>? keyComparer = null)
     {
-        _primitives = new(keyComparer);
+        _primitives = new(keyComparer ?? EqualityComparer<string>.Default);
     }
 
     /// <summary>Occurs when the collection is changed.</summary>

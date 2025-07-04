@@ -47,8 +47,9 @@ public sealed class StreamClientTransport : IClientTransport
     public Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default)
     {
         return Task.FromResult<ITransport>(new StreamClientSessionTransport(
-            new StreamWriter(_serverInput),
-            new StreamReader(_serverOutput),
+            _serverInput,
+            _serverOutput,
+            encoding: null,
             "Client (stream)",
             _loggerFactory));
     }
