@@ -9,7 +9,8 @@ builder.Services.AddMcpServer()
     .WithHttpTransport()
     .WithTools<EchoTool>()
     .WithTools<SampleLlmTool>()
-    .WithResources<SimpleResourceType>();
+    .WithResources<SimpleResourceType>()
+    .WithTools<WeatherTools>();
 
 builder.Services.AddOpenTelemetry()
     .WithTracing(b => b.AddSource("*")
@@ -20,7 +21,7 @@ builder.Services.AddOpenTelemetry()
         .AddHttpClientInstrumentation())
     .WithLogging()
     .UseOtlpExporter();
-
+builder.Services.AddHttpClient();
 var app = builder.Build();
 
 app.MapMcp();
