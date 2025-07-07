@@ -1,11 +1,19 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using System.Runtime.InteropServices;
 
 namespace ModelContextProtocol.Tests.Server;
 
 public class McpServerLoggingLevelTests
 {
+    public McpServerLoggingLevelTests()
+    {
+#if !NET
+        Assert.SkipWhen(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "https://github.com/modelcontextprotocol/csharp-sdk/issues/587");
+#endif
+    }
+
     [Fact]
     public void CanCreateServerWithLoggingLevelHandler()
     {

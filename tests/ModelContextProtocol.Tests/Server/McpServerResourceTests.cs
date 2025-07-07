@@ -4,12 +4,20 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Moq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Tests.Server;
 
 public partial class McpServerResourceTests
 {
+    public McpServerResourceTests()
+    {
+#if !NET
+        Assert.SkipWhen(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "https://github.com/modelcontextprotocol/csharp-sdk/issues/587");
+#endif
+    }
+
     [Fact]
     public void CanCreateServerWithResource()
     {

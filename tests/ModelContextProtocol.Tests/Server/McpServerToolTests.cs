@@ -7,6 +7,7 @@ using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using Moq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -17,6 +18,13 @@ namespace ModelContextProtocol.Tests.Server;
 
 public partial class McpServerToolTests
 {
+    public McpServerToolTests()
+    {
+#if !NET
+        Assert.SkipWhen(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "https://github.com/modelcontextprotocol/csharp-sdk/issues/587");
+#endif
+    }
+
     [Fact]
     public void Create_InvalidArgs_Throws()
     {
