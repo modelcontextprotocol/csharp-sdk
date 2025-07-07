@@ -3,7 +3,6 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFrameworks>net9.0;net8.0;net472</TargetFrameworks>
-    <!-- https://github.com/modelcontextprotocol/csharp-sdk/issues/587 -->
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 
