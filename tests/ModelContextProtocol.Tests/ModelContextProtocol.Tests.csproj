@@ -67,16 +67,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Condition="$([MSBuild]::IsOSPlatform('Windows'))" Include="$([System.IO.Path]::GetFullPath('$(ArtifactsBinDir)ModelContextProtocol.TestServer\$(Configuration)'))\$(TargetFramework)\TestServer.exe">
+    <Content Include="$([System.IO.Path]::GetFullPath('$(ArtifactsBinDir)'))ModelContextProtocol.TestServer\$(Configuration)\$(TargetFramework)\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Condition="$([MSBuild]::IsOSPlatform('Linux'))" Include="$([System.IO.Path]::GetFullPath('$(ArtifactsBinDir)ModelContextProtocol.TestServer\$(Configuration)'))\$(TargetFramework)\TestServer.dll">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Condition="$([MSBuild]::IsOSPlatform('Windows'))" Include="$([System.IO.Path]::GetFullPath('$(ArtifactsBinDir)TestServerWithHosting\$(Configuration)'))\$(TargetFramework)\TestServerWithHosting.exe">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Condition="$([MSBuild]::IsOSPlatform('Linux'))" Include="$([System.IO.Path]::GetFullPath('$(ArtifactsBinDir)TestServerWithHosting\$(Configuration)'))\$(TargetFramework)\TestServerWithHosting.dll">
+    <Content Include="$([System.IO.Path]::GetFullPath('$(ArtifactsBinDir)'))TestServerWithHosting\$(Configuration)\$(TargetFramework)\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
