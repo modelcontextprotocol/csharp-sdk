@@ -17,19 +17,14 @@ public sealed class SampleLlmTool
         [Description("Maximum number of tokens to generate")] int maxTokens,
         CancellationToken cancellationToken)
     {
-        ChatMessage[] messages =
-        [
-            new(ChatRole.System, "You are a helpful test server."),
-            new(ChatRole.User, prompt),
-        ];
-
         ChatOptions options = new()
         {
+            Instructions = "You are a helpful test server.",
             MaxOutputTokens = maxTokens,
             Temperature = 0.7f,
         };
 
-        var samplingResponse = await thisServer.AsSamplingChatClient().GetResponseAsync(messages, options, cancellationToken);
+        var samplingResponse = await thisServer.AsSamplingChatClient().GetResponseAsync(prompt, options, cancellationToken);
 
         return $"LLM sampling result: {samplingResponse}";
     }
