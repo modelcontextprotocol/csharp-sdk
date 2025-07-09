@@ -448,6 +448,11 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
                 {
                     foreach (var t in tools)
                     {
+                        if (t.Filters.Any(f => !f.OnToolListed(t.ProtocolTool,request)))
+                        {
+                            continue;
+                        }
+                        
                         result.Tools.Add(t.ProtocolTool);
                     }
                 }
@@ -461,7 +466,22 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
                 if (request.Params is not null &&
                     tools.TryGetPrimitive(request.Params.Name, out var tool))
                 {
-                    return tool.InvokeAsync(request, cancellationToken);
+                    foreach (var filter in tool.Filters)
+                    {
+                        var filterResult = filter.OnToolCalling(tool.ProtocolTool, request);
+                        if(filterResult != null)
+                            return filterResult.Value;
+                    }
+
+                    var result = tool.InvokeAsync(request, cancellationToken);
+                    
+                    foreach (var filter in tool.Filters)
+                    {
+                        var filterResult = filter.OnToolCalled(tool.ProtocolTool, request, result);
+                        if(filterResult != null)
+                            return filterResult.Value;
+                    }
+                    return result;
                 }
 
                 return originalCallToolHandler(request, cancellationToken);

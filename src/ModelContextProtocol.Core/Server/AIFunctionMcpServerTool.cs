@@ -9,6 +9,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using ModelContextProtocol.Core;
 
 namespace ModelContextProtocol.Server;
 
@@ -146,7 +147,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             }
         }
 
-        return new AIFunctionMcpServerTool(function, tool, options?.Services, structuredOutputRequiresWrapping);
+        return new AIFunctionMcpServerTool(function, tool, options?.Services, structuredOutputRequiresWrapping, options?.Filters ?? []);
     }
 
     private static McpServerToolCreateOptions DeriveOptions(MethodInfo method, McpServerToolCreateOptions? options)
@@ -185,6 +186,9 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         {
             newOptions.Description ??= descAttr.Description;
         }
+        
+        var filters = method.GetCustomAttributes<ToolFilter>().OrderBy(f => f.Order).ToArray<IToolFilter>();
+        newOptions.Filters = filters;
 
         return newOptions;
     }
@@ -193,16 +197,20 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     internal AIFunction AIFunction { get; }
 
     /// <summary>Initializes a new instance of the <see cref="McpServerTool"/> class.</summary>
-    private AIFunctionMcpServerTool(AIFunction function, Tool tool, IServiceProvider? serviceProvider, bool structuredOutputRequiresWrapping)
+    private AIFunctionMcpServerTool(AIFunction function, Tool tool, IServiceProvider? serviceProvider, bool structuredOutputRequiresWrapping, IToolFilter[] filters)
     {
         AIFunction = function;
         ProtocolTool = tool;
+        Filters = filters;
         _logger = serviceProvider?.GetService<ILoggerFactory>()?.CreateLogger<McpServerTool>() ?? (ILogger)NullLogger.Instance;
         _structuredOutputRequiresWrapping = structuredOutputRequiresWrapping;
     }
 
     /// <inheritdoc />
     public override Tool ProtocolTool { get; }
+
+    /// <inheritdoc />
+    public override IToolFilter[] Filters { get; }
 
     /// <inheritdoc />
     public override async ValueTask<CallToolResult> InvokeAsync(

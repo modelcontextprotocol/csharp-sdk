@@ -2,6 +2,7 @@ using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol;
 using System.ComponentModel;
 using System.Text.Json;
+using ModelContextProtocol.Core;
 
 namespace ModelContextProtocol.Server;
 
@@ -154,6 +155,9 @@ public sealed class McpServerToolCreateOptions
     /// Defaults to <see cref="AIJsonSchemaCreateOptions.Default"/> if left unspecified.
     /// </remarks>
     public AIJsonSchemaCreateOptions? SchemaCreateOptions { get; set; }
+
+    /// TODO
+    public IToolFilter[] Filters { get; set; } = [];
 
     /// <summary>
     /// Creates a shallow clone of the current <see cref="McpServerToolCreateOptions"/> instance.

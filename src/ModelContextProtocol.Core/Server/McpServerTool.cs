@@ -4,6 +4,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using System.Reflection;
 using System.Text.Json;
+using ModelContextProtocol.Core;
 
 namespace ModelContextProtocol.Server;
 
@@ -140,6 +141,9 @@ public abstract class McpServerTool : IMcpServerPrimitive
 
     /// <summary>Gets the protocol <see cref="Tool"/> type for this instance.</summary>
     public abstract Tool ProtocolTool { get; }
+    
+    /// <summary>Gets the filters (<see cref="ToolFilter"/>) associated to this tool.</summary>
+    public abstract IToolFilter[] Filters { get; }
 
     /// <summary>Invokes the <see cref="McpServerTool"/>.</summary>
     /// <param name="request">The request information resulting in the invocation of this tool.</param>
