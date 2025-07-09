@@ -43,8 +43,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
             return false;
         }
 
-        var cancellationToken = Request.HttpContext.RequestAborted;
-        await HandleResourceMetadataRequestAsync(cancellationToken);
+        await HandleResourceMetadataRequestAsync();
         return true;
     }
 
@@ -82,8 +81,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
     /// <summary>
     /// Handles the resource metadata request.
     /// </summary>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
-    private async Task HandleResourceMetadataRequestAsync(CancellationToken cancellationToken = default)
+    private async Task HandleResourceMetadataRequestAsync()
     {
         var resourceMetadata = Options.ResourceMetadata;
 
@@ -95,12 +93,14 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
             };
 
             await Options.Events.OnResourceMetadataRequest(context);
+            resourceMetadata = context.ResourceMetadata;
         }
-
 
         if (resourceMetadata == null)
         {
-            throw new InvalidOperationException("ResourceMetadata has not been configured. Please set McpAuthenticationOptions.ResourceMetadata.");
+            throw new InvalidOperationException(
+                "ResourceMetadata has not been configured. Please set McpAuthenticationOptions.ResourceMetadata or ensure context.ResourceMetadata is set inside McpAuthenticationOptions.Events.OnResourceMetadataRequest."
+            );
         }
 
         await Results.Json(resourceMetadata, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(ProtectedResourceMetadata))).ExecuteAsync(Context);
