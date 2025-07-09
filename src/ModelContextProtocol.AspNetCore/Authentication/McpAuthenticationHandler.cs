@@ -43,8 +43,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
             return false;
         }
 
-        await HandleResourceMetadataRequestAsync();
-        return true;
+        return await HandleResourceMetadataRequestAsync();
     }
 
     /// <summary>

@@ -325,7 +325,7 @@ public class AuthEventTests : KestrelInMemoryTest, IAsyncDisposable
         // Since HandleResponse() was called, the handler should have taken responsibility
         // for generating the response, which in this case means an empty response
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        
+
         // The response should be empty since the event handler called HandleResponse()
         // but didn't write any content to the response
         var content = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
