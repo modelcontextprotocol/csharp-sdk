@@ -27,6 +27,7 @@ internal sealed partial class ClientOAuthProvider
     private readonly IDictionary<string, string> _additionalAuthorizationParameters;
     private readonly Func<IReadOnlyList<Uri>, Uri?> _authServerSelector;
     private readonly AuthorizationRedirectDelegate _authorizationRedirectDelegate;
+    private readonly DynamicClientRegistrationDelegate? _dynamicClientRegistrationDelegate;
 
     // _clientName and _client URI is used for dynamic client registration (RFC 7591)
     private readonly string? _clientName;
@@ -77,6 +78,9 @@ internal sealed partial class ClientOAuthProvider
 
         // Set up authorization URL handler (use default if not provided)
         _authorizationRedirectDelegate = options.AuthorizationRedirectDelegate ?? DefaultAuthorizationUrlHandler;
+
+        // Set up dynamic client registration delegate
+        _dynamicClientRegistrationDelegate = options.DynamicClientRegistrationDelegate;
     }
 
     /// <summary>
@@ -483,6 +487,11 @@ internal sealed partial class ClientOAuthProvider
         }
 
         LogDynamicClientRegistrationSuccessful(_clientId!);
+
+        if (_dynamicClientRegistrationDelegate is not null)
+        {
+            await _dynamicClientRegistrationDelegate(registrationResponse, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <summary>

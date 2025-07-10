@@ -53,6 +53,19 @@ public sealed class ClientOAuthOptions
     public AuthorizationRedirectDelegate? AuthorizationRedirectDelegate { get; set; }
 
     /// <summary>
+    /// Gets or sets the delegate used for handling the dynamic client registration response.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This delegate is responsible for processing the response from the dynamic client registration endpoint.
+    /// </para>
+    /// <para>
+    /// The implementation should save the client credentials securely for future use.
+    /// </para>
+    /// </remarks>
+    public DynamicClientRegistrationDelegate? DynamicClientRegistrationDelegate { get; set; }
+
+    /// <summary>
     /// Gets or sets the authorization server selector function.
     /// </summary>
     /// <remarks>
