@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Collections.Specialized;
 using System.Diagnostics.CodeAnalysis;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -27,10 +28,12 @@ internal sealed partial class ClientOAuthProvider
     private readonly IDictionary<string, string> _additionalAuthorizationParameters;
     private readonly Func<IReadOnlyList<Uri>, Uri?> _authServerSelector;
     private readonly AuthorizationRedirectDelegate _authorizationRedirectDelegate;
+    private readonly DynamicClientRegistrationDelegate? _dynamicClientRegistrationDelegate;
 
-    // _clientName and _client URI is used for dynamic client registration (RFC 7591)
+    // _clientName, _clientUri, and _clientType is used for dynamic client registration (RFC 7591)
     private readonly string? _clientName;
     private readonly Uri? _clientUri;
+    private readonly OAuthClientType _clientType;
 
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
@@ -69,6 +72,7 @@ internal sealed partial class ClientOAuthProvider
         _redirectUri = options.RedirectUri ?? throw new ArgumentException("ClientOAuthOptions.RedirectUri must configured.");
         _clientName = options.ClientName;
         _clientUri = options.ClientUri;
+        _clientType = options.ClientType ?? OAuthClientType.Confidential;
         _scopes = options.Scopes?.ToArray();
         _additionalAuthorizationParameters = options.AdditionalAuthorizationParameters;
 
@@ -77,6 +81,20 @@ internal sealed partial class ClientOAuthProvider
 
         // Set up authorization URL handler (use default if not provided)
         _authorizationRedirectDelegate = options.AuthorizationRedirectDelegate ?? DefaultAuthorizationUrlHandler;
+
+        // Set up dynamic client registration delegate
+        _dynamicClientRegistrationDelegate = options.DynamicClientRegistrationDelegate;
+
+        if (options.InitialAccessToken is not null)
+        {
+            _token = new()
+            {
+                AccessToken = options.InitialAccessToken,
+                ExpiresIn = 900,
+                TokenType = BearerScheme,
+                ObtainedAt = DateTimeOffset.UtcNow,
+            };
+        }
     }
 
     /// <summary>
@@ -173,6 +191,25 @@ internal sealed partial class ClientOAuthProvider
         }
 
         await PerformOAuthAuthorizationAsync(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Adds an authorization header to the request.
+    /// </summary>
+    internal async Task AddAuthorizationHeaderAsync(HttpRequestMessage request, string scheme, CancellationToken cancellationToken)
+    {
+        if (request.RequestUri is null)
+        {
+            return;
+        }
+
+        var token = await GetCredentialAsync(scheme, request.RequestUri, cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrEmpty(token))
+        {
+            return;
+        }
+
+        request.Headers.Authorization = new AuthenticationHeaderValue(scheme, token);
     }
 
     /// <summary>
@@ -442,7 +479,7 @@ internal sealed partial class ClientOAuthProvider
             RedirectUris = [_redirectUri.ToString()],
             GrantTypes = ["authorization_code", "refresh_token"],
             ResponseTypes = ["code"],
-            TokenEndpointAuthMethod = "client_secret_post",
+            TokenEndpointAuthMethod = _clientType == OAuthClientType.Confidential ? "client_secret_post" : "none",
             ClientName = _clientName,
             ClientUri = _clientUri?.ToString(),
             Scope = _scopes is not null ? string.Join(" ", _scopes) : null
@@ -455,6 +492,11 @@ internal sealed partial class ClientOAuthProvider
         {
             Content = requestContent
         };
+
+        if (_token is not null)
+        {
+            await AddAuthorizationHeaderAsync(request, _token.TokenType, cancellationToken).ConfigureAwait(false);
+        }
 
         using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
@@ -483,6 +525,11 @@ internal sealed partial class ClientOAuthProvider
         }
 
         LogDynamicClientRegistrationSuccessful(_clientId!);
+
+        if (_dynamicClientRegistrationDelegate is not null)
+        {
+            await _dynamicClientRegistrationDelegate(registrationResponse, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <summary>
