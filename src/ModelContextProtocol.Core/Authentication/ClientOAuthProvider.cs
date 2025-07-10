@@ -212,11 +212,6 @@ internal sealed partial class ClientOAuthProvider
         // Get auth server metadata
         var authServerMetadata = await GetAuthServerMetadataAsync(selectedAuthServer, cancellationToken).ConfigureAwait(false);
 
-        if (authServerMetadata is null)
-        {
-            ThrowFailedToHandleUnauthorizedResponse($"Failed to retrieve metadata for authorization server: '{selectedAuthServer}'");
-        }
-
         // Store auth server metadata for future refresh operations
         _authServerMetadata = authServerMetadata;
 
@@ -238,7 +233,7 @@ internal sealed partial class ClientOAuthProvider
         LogOAuthAuthorizationCompleted();
     }
 
-    private async Task<AuthorizationServerMetadata?> GetAuthServerMetadataAsync(Uri authServerUri, CancellationToken cancellationToken)
+    private async Task<AuthorizationServerMetadata> GetAuthServerMetadataAsync(Uri authServerUri, CancellationToken cancellationToken)
     {
         if (!authServerUri.OriginalString.EndsWith("/"))
         {
@@ -249,7 +244,9 @@ internal sealed partial class ClientOAuthProvider
         {
             try
             {
-                var response = await _httpClient.GetAsync(new Uri(authServerUri, path), cancellationToken).ConfigureAwait(false);
+                var wellKnownEndpoint = new Uri(authServerUri, path);
+
+                var response = await _httpClient.GetAsync(wellKnownEndpoint, cancellationToken).ConfigureAwait(false);
                 if (!response.IsSuccessStatusCode)
                 {
                     continue;
@@ -258,15 +255,28 @@ internal sealed partial class ClientOAuthProvider
                 using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
                 var metadata = await JsonSerializer.DeserializeAsync(stream, McpJsonUtilities.JsonContext.Default.AuthorizationServerMetadata, cancellationToken).ConfigureAwait(false);
 
-                if (metadata != null)
+                if (metadata is null)
                 {
-                    metadata.ResponseTypesSupported ??= ["code"];
-                    metadata.GrantTypesSupported ??= ["authorization_code", "refresh_token"];
-                    metadata.TokenEndpointAuthMethodsSupported ??= ["client_secret_post"];
-                    metadata.CodeChallengeMethodsSupported ??= ["S256"];
-
-                    return metadata;
+                    continue;
                 }
+
+                if (metadata.AuthorizationEndpoint is null)
+                {
+                    ThrowFailedToHandleUnauthorizedResponse($"No authorization_endpoint was provided via '{wellKnownEndpoint}'.");
+                }
+
+                if (metadata.AuthorizationEndpoint.Scheme != Uri.UriSchemeHttp &&
+                    metadata.AuthorizationEndpoint.Scheme != Uri.UriSchemeHttps)
+                {
+                    ThrowFailedToHandleUnauthorizedResponse($"AuthorizationEndpoint must use HTTP or HTTPS. '{metadata.AuthorizationEndpoint}' does not meet this requirement.");
+                }
+
+                metadata.ResponseTypesSupported ??= ["code"];
+                metadata.GrantTypesSupported ??= ["authorization_code", "refresh_token"];
+                metadata.TokenEndpointAuthMethodsSupported ??= ["client_secret_post"];
+                metadata.CodeChallengeMethodsSupported ??= ["S256"];
+
+                return metadata;
             }
             catch (Exception ex)
             {
@@ -274,7 +284,7 @@ internal sealed partial class ClientOAuthProvider
             }
         }
 
-        return null;
+        throw new McpException($"Failed to find .well-known/openid-configuration or .well-known/oauth-authorization-server metadata for authorization server: '{authServerUri}'");
     }
 
     private async Task<TokenContainer> RefreshTokenAsync(string refreshToken, Uri resourceUri, AuthorizationServerMetadata authServerMetadata, CancellationToken cancellationToken)
@@ -320,11 +330,6 @@ internal sealed partial class ClientOAuthProvider
         AuthorizationServerMetadata authServerMetadata,
         string codeChallenge)
     {
-        if (authServerMetadata.AuthorizationEndpoint.Scheme != Uri.UriSchemeHttp &&
-            authServerMetadata.AuthorizationEndpoint.Scheme != Uri.UriSchemeHttps)
-        {
-            throw new ArgumentException("AuthorizationEndpoint must use HTTP or HTTPS.", nameof(authServerMetadata));
-        }
 
         var queryParamsDictionary = new Dictionary<string, string>
         {
