@@ -99,6 +99,20 @@ public sealed class ClientOAuthOptions
     public Uri? ClientUri { get; set; }
 
     /// <summary>
+    /// Gets or sets the client type to use during dynamic client registration.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This indicates whether the client is confidential (requires a client secret) or public (does not require a client secret).
+    /// Only used when a <see cref="ClientId"/> is not specified.
+    /// </para>
+    /// <para>
+    /// When not specified, the client type will default to <see cref="OAuthClientType.Confidential"/>.
+    /// </para>
+    /// </remarks>
+    public OAuthClientType? ClientType { get; set; }
+
+    /// <summary>
     /// Gets or sets additional parameters to include in the query string of the OAuth authorization request
     /// providing extra information or fulfilling specific requirements of the OAuth provider.
     /// </summary>

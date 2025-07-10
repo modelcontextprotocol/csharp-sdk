@@ -29,9 +29,10 @@ internal sealed partial class ClientOAuthProvider
     private readonly AuthorizationRedirectDelegate _authorizationRedirectDelegate;
     private readonly DynamicClientRegistrationDelegate? _dynamicClientRegistrationDelegate;
 
-    // _clientName and _client URI is used for dynamic client registration (RFC 7591)
+    // _clientName, _clientUri, and _clientType is used for dynamic client registration (RFC 7591)
     private readonly string? _clientName;
     private readonly Uri? _clientUri;
+    private readonly OAuthClientType _clientType;
 
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
@@ -70,6 +71,7 @@ internal sealed partial class ClientOAuthProvider
         _redirectUri = options.RedirectUri ?? throw new ArgumentException("ClientOAuthOptions.RedirectUri must configured.");
         _clientName = options.ClientName;
         _clientUri = options.ClientUri;
+        _clientType = options.ClientType ?? OAuthClientType.Confidential;
         _scopes = options.Scopes?.ToArray();
         _additionalAuthorizationParameters = options.AdditionalAuthorizationParameters;
 
@@ -446,7 +448,7 @@ internal sealed partial class ClientOAuthProvider
             RedirectUris = [_redirectUri.ToString()],
             GrantTypes = ["authorization_code", "refresh_token"],
             ResponseTypes = ["code"],
-            TokenEndpointAuthMethod = "client_secret_post",
+            TokenEndpointAuthMethod = _clientType == OAuthClientType.Confidential ? "client_secret_post" : "none",
             ClientName = _clientName,
             ClientUri = _clientUri?.ToString(),
             Scope = _scopes is not null ? string.Join(" ", _scopes) : null
