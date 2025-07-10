@@ -7,9 +7,6 @@ namespace ModelContextProtocol.Core;
 public interface IToolFilter
 {
     /// TODO:
-    public int Order { get; }
-    
-    /// TODO:
     bool OnToolListed(Tool tool, RequestContext<ListToolsRequestParams> context);
 
     /// TODO:
@@ -23,7 +20,10 @@ public interface IToolFilter
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]
 public abstract class ToolFilterAttribute(int order) : Attribute, IToolFilter
 {
-    /// <inheritdoc />
+    /// <summary>
+    /// Gets the order value for determining the order of execution of filters. Filters execute in
+    /// ascending numeric value of the <see cref="Order"/> property.
+    /// </summary>
     public int Order { get; } = order;
 
     /// <inheritdoc />
