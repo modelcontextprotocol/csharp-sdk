@@ -4,7 +4,7 @@ using ModelContextProtocol.Server;
 
 namespace AspNetCoreSseServer.Attributes;
 
-public class LimitCallsAttribute(int maxCalls, int order = 0) : ToolFilterAttribute(order)
+public class LimitCallsAttribute(int maxCalls) : ToolFilterAttribute
 {
     private int _callCount;
 

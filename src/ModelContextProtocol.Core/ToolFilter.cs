@@ -18,7 +18,7 @@ public interface IToolFilter
 
 /// TODO:
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]
-public abstract class ToolFilterAttribute(int order) : Attribute, IToolFilter
+public abstract class ToolFilterAttribute(int order = 0) : Attribute, IToolFilter
 {
     /// <summary>
     /// Gets the order value for determining the order of execution of filters. Filters execute in
