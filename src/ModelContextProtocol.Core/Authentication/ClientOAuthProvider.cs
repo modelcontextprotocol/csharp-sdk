@@ -330,7 +330,6 @@ internal sealed partial class ClientOAuthProvider
         AuthorizationServerMetadata authServerMetadata,
         string codeChallenge)
     {
-
         var queryParamsDictionary = new Dictionary<string, string>
         {
             ["client_id"] = GetClientIdOrThrow(),
