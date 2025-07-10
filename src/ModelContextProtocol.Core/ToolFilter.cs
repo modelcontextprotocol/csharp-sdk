@@ -21,7 +21,7 @@ public interface IToolFilter
 
 /// TODO:
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]
-public abstract class ToolFilter(int order) : Attribute, IToolFilter
+public abstract class ToolFilterAttribute(int order) : Attribute, IToolFilter
 {
     /// <inheritdoc />
     public int Order { get; } = order;

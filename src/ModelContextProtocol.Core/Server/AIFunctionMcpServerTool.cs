@@ -187,7 +187,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             newOptions.Description ??= descAttr.Description;
         }
         
-        var filters = method.GetCustomAttributes<ToolFilter>().OrderBy(f => f.Order).ToArray<IToolFilter>();
+        var filters = method.GetCustomAttributes<ToolFilterAttribute>().OrderBy(f => f.Order).ToArray<IToolFilter>();
         newOptions.Filters = filters;
 
         return newOptions;

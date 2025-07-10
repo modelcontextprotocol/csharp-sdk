@@ -142,7 +142,7 @@ public abstract class McpServerTool : IMcpServerPrimitive
     /// <summary>Gets the protocol <see cref="Tool"/> type for this instance.</summary>
     public abstract Tool ProtocolTool { get; }
     
-    /// <summary>Gets the filters (<see cref="ToolFilter"/>) associated to this tool.</summary>
+    /// <summary>Gets the filters (<see cref="IToolFilter"/>) associated to this tool.</summary>
     public abstract IToolFilter[] Filters { get; }
 
     /// <summary>Invokes the <see cref="McpServerTool"/>.</summary>
