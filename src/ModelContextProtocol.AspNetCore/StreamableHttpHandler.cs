@@ -18,7 +18,7 @@ using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.AspNetCore;
 
-internal sealed partial class StreamableHttpHandler(
+internal sealed class StreamableHttpHandler(
     IOptions<McpServerOptions> mcpServerOptionsSnapshot,
     IOptionsFactory<McpServerOptions> mcpServerOptionsFactory,
     IOptions<HttpServerTransportOptions> httpServerTransportOptions,
@@ -28,20 +28,6 @@ internal sealed partial class StreamableHttpHandler(
 {
     private const string McpSessionIdHeaderName = "Mcp-Session-Id";
     private static readonly JsonTypeInfo<JsonRpcError> s_errorTypeInfo = GetRequiredJsonTypeInfo<JsonRpcError>();
-    
-    private readonly ILogger _logger = loggerFactory.CreateLogger<StreamableHttpHandler>();
-    
-    // Headers that are safe and relevant to log for MCP over HTTP
-    private static readonly HashSet<string> SafeHeadersToLog = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Accept",
-        "Content-Type",
-        "Content-Length",
-        "User-Agent",
-        McpSessionIdHeaderName,
-        "X-Request-ID",
-        "X-Correlation-ID"
-    };
 
     public ConcurrentDictionary<string, HttpMcpSession<StreamableHttpServerTransport>> Sessions { get; } = new(StringComparer.Ordinal);
 
@@ -51,9 +37,6 @@ internal sealed partial class StreamableHttpHandler(
 
     public async Task HandlePostRequestAsync(HttpContext context)
     {
-        // Log request headers for debugging
-        LogHttpRequestHeadersIfEnabled(context);
-
         // The Streamable HTTP spec mandates the client MUST accept both application/json and text/event-stream.
         // ASP.NET Core Minimal APIs mostly try to stay out of the business of response content negotiation,
         // so we have to do this manually. The spec doesn't mandate that servers MUST reject these requests,
@@ -100,9 +83,6 @@ internal sealed partial class StreamableHttpHandler(
 
     public async Task HandleGetRequestAsync(HttpContext context)
     {
-        // Log request headers for debugging
-        LogHttpRequestHeadersIfEnabled(context);
-
         if (!context.Request.GetTypedHeaders().Accept.Any(MatchesTextEventStreamMediaType))
         {
             await WriteJsonRpcErrorAsync(context,
@@ -138,9 +118,6 @@ internal sealed partial class StreamableHttpHandler(
 
     public async Task HandleDeleteRequestAsync(HttpContext context)
     {
-        // Log request headers for debugging
-        LogHttpRequestHeadersIfEnabled(context);
-
         var sessionId = context.Request.Headers[McpSessionIdHeaderName].ToString();
         if (Sessions.TryRemove(sessionId, out var session))
         {
@@ -358,27 +335,6 @@ internal sealed partial class StreamableHttpHandler(
 
     private static bool MatchesTextEventStreamMediaType(MediaTypeHeaderValue acceptHeaderValue)
         => acceptHeaderValue.MatchesMediaType("text/event-stream");
-
-    private void LogHttpRequestHeadersIfEnabled(HttpContext context)
-    {
-        if (_logger.IsEnabled(LogLevel.Trace))
-        {
-            var safeHeaders = new Dictionary<string, string>();
-            
-            foreach (var header in context.Request.Headers)
-            {
-                if (SafeHeadersToLog.Contains(header.Key))
-                {
-                    safeHeaders[header.Key] = header.Value.ToString();
-                }
-            }
-            
-            LogHttpRequestHeaders(context.Request.Method, context.Request.Path, safeHeaders);
-        }
-    }
-
-    [LoggerMessage(Level = LogLevel.Trace, Message = "HTTP {Method} {Path} - Headers: {Headers}")]
-    private partial void LogHttpRequestHeaders(string method, string path, Dictionary<string, string> headers);
 
     private sealed class HttpDuplexPipe(HttpContext context) : IDuplexPipe
     {
