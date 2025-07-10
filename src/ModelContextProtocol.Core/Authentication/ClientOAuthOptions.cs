@@ -113,6 +113,20 @@ public sealed class ClientOAuthOptions
     public OAuthClientType? ClientType { get; set; }
 
     /// <summary>
+    /// Gets or sets the initial access token to use during dynamic client registration.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This token is used to authenticate the client during the registration process.
+    /// Only used when a <see cref="ClientId"/> is not specified.
+    /// </para>
+    /// <para>
+    /// This is required if the authorization server does not allow anonymous client registration.
+    /// </para>
+    /// </remarks>
+    public string? InitialAccessToken { get; set; }
+
+    /// <summary>
     /// Gets or sets additional parameters to include in the query string of the OAuth authorization request
     /// providing extra information or fulfilling specific requirements of the OAuth provider.
     /// </summary>

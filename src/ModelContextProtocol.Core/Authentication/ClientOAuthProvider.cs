@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Collections.Specialized;
 using System.Diagnostics.CodeAnalysis;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -83,6 +84,17 @@ internal sealed partial class ClientOAuthProvider
 
         // Set up dynamic client registration delegate
         _dynamicClientRegistrationDelegate = options.DynamicClientRegistrationDelegate;
+
+        if (options.InitialAccessToken is not null)
+        {
+            _token = new()
+            {
+                AccessToken = options.InitialAccessToken,
+                ExpiresIn = 900,
+                TokenType = BearerScheme,
+                ObtainedAt = DateTimeOffset.UtcNow,
+            };
+        }
     }
 
     /// <summary>
@@ -179,6 +191,25 @@ internal sealed partial class ClientOAuthProvider
         }
 
         await PerformOAuthAuthorizationAsync(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Adds an authorization header to the request.
+    /// </summary>
+    internal async Task AddAuthorizationHeaderAsync(HttpRequestMessage request, string scheme, CancellationToken cancellationToken)
+    {
+        if (request.RequestUri is null)
+        {
+            return;
+        }
+
+        var token = await GetCredentialAsync(scheme, request.RequestUri, cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrEmpty(token))
+        {
+            return;
+        }
+
+        request.Headers.Authorization = new AuthenticationHeaderValue(scheme, token);
     }
 
     /// <summary>
@@ -461,6 +492,11 @@ internal sealed partial class ClientOAuthProvider
         {
             Content = requestContent
         };
+
+        if (_token is not null)
+        {
+            await AddAuthorizationHeaderAsync(request, _token.TokenType, cancellationToken).ConfigureAwait(false);
+        }
 
         using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
