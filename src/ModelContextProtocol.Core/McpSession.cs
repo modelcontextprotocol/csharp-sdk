@@ -109,7 +109,6 @@ internal sealed partial class McpSession : IDisposable
     /// </summary>
     public async Task ProcessMessagesAsync(CancellationToken cancellationToken)
     {
-        LogSessionConnected(EndpointName, _sessionId, _transportKind);
         try
         {
             await foreach (var message in _transport.MessageReader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
@@ -778,12 +777,9 @@ internal sealed partial class McpSession : IDisposable
     [LoggerMessage(Level = LogLevel.Trace, Message = "{EndpointName} sending message. Message: '{Message}'.")]
     private partial void LogSendingMessageSensitive(string endpointName, string message);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "{EndpointName} session {SessionId} created with transport {TransportKind}")]
+    [LoggerMessage(Level = LogLevel.Trace, Message = "{EndpointName} session {SessionId} created with transport {TransportKind}")]
     private partial void LogSessionCreated(string endpointName, string sessionId, string transportKind);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "{EndpointName} session {SessionId} connected and processing messages with transport {TransportKind}")]
-    private partial void LogSessionConnected(string endpointName, string sessionId, string transportKind);
-
-    [LoggerMessage(Level = LogLevel.Debug, Message = "{EndpointName} session {SessionId} disposed with transport {TransportKind}")]
+    [LoggerMessage(Level = LogLevel.Trace, Message = "{EndpointName} session {SessionId} disposed with transport {TransportKind}")]
     private partial void LogSessionDisposed(string endpointName, string sessionId, string transportKind);
 }
