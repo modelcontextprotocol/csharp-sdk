@@ -95,6 +95,7 @@ internal sealed partial class McpSession : IDisposable
         _requestHandlers = requestHandlers;
         _notificationHandlers = notificationHandlers;
         _logger = logger ?? NullLogger.Instance;
+        LogSessionCreated(EndpointName, _sessionId, _transportKind);
     }
 
     /// <summary>
@@ -609,9 +610,9 @@ internal sealed partial class McpSession : IDisposable
             e = ae.InnerException;
         }
 
-        int? intErrorCode = 
+        int? intErrorCode =
             (int?)((e as McpException)?.ErrorCode) is int errorCode ? errorCode :
-            e is JsonException ? (int)McpErrorCode.ParseError : 
+            e is JsonException ? (int)McpErrorCode.ParseError :
             null;
 
         string? errorType = intErrorCode?.ToString() ?? e.GetType().FullName;
@@ -692,6 +693,7 @@ internal sealed partial class McpSession : IDisposable
         }
 
         _pendingRequests.Clear();
+        LogSessionDisposed(EndpointName, _sessionId, _transportKind);
     }
 
 #if !NET
@@ -774,4 +776,10 @@ internal sealed partial class McpSession : IDisposable
 
     [LoggerMessage(Level = LogLevel.Trace, Message = "{EndpointName} sending message. Message: '{Message}'.")]
     private partial void LogSendingMessageSensitive(string endpointName, string message);
+
+    [LoggerMessage(Level = LogLevel.Trace, Message = "{EndpointName} session {SessionId} created with transport {TransportKind}")]
+    private partial void LogSessionCreated(string endpointName, string sessionId, string transportKind);
+
+    [LoggerMessage(Level = LogLevel.Trace, Message = "{EndpointName} session {SessionId} disposed with transport {TransportKind}")]
+    private partial void LogSessionDisposed(string endpointName, string sessionId, string transportKind);
 }
