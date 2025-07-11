@@ -1,9 +1,11 @@
 ### Azure B2C Client Credentials MCP Server Testing
 
-# Your Azure B2C configuration
+# Your Azure B2C configuration for Client Credentials Flow
+# IMPORTANT: Azure B2C requires a policy even for client credentials flow
+# This is different from Azure AD which supports policy-free client credentials
 @tenantName = yourtenant
 @tenantDomain = yourtenant.onmicrosoft.com
-@policyName = B2C_1_signupsignin
+@policyName = B2C_1A_SIGNUP_SIGNIN
 @clientId = your-client-id-here
 @clientSecret = your-client-secret-here
 @serverUrl = http://localhost:7071
@@ -11,7 +13,7 @@
 # This will be populated after running step 1
 @accessToken = your-access-token-here
 
-# Derived variables
+# Azure B2C endpoints - policy is required even for client credentials
 @authority = https://{{tenantName}}.b2clogin.com/{{tenantDomain}}/{{policyName}}
 @tokenEndpoint = {{authority}}/oauth2/v2.0/token
 @scope = https://{{tenantDomain}}/{{clientId}}/.default

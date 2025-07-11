@@ -9,11 +9,14 @@ var builder = WebApplication.CreateBuilder(args);
 
 var serverUrl = "http://localhost:7071/";
 
-// Azure B2C Configuration
+// Azure B2C Configuration for Client Credentials Flow
+// IMPORTANT: Azure B2C requires a policy even for client credentials flow
+// This is different from Azure AD which supports policy-free client credentials
 var azureB2CInstance = builder.Configuration["AzureB2C:Instance"] ?? "https://yourtenant.b2clogin.com";
 var azureB2CTenant = builder.Configuration["AzureB2C:Tenant"] ?? "yourtenant.onmicrosoft.com";
 var azureB2CPolicy = builder.Configuration["AzureB2C:Policy"] ?? "B2C_1_signupsignin";
 var azureB2CClientId = builder.Configuration["AzureB2C:ClientId"] ?? "your-client-id";
+// Azure B2C requires the policy in the authority URL even for client credentials flow
 var azureB2CAuthority = $"{azureB2CInstance}/{azureB2CTenant}/{azureB2CPolicy}/v2.0";
 var azureB2CMetadataAddress = $"{azureB2CAuthority}/.well-known/openid-configuration";
 
@@ -33,7 +36,7 @@ builder.Services.AddAuthentication(options =>
         ValidateAudience = true,
         ValidateLifetime = true,
         ValidateIssuerSigningKey = true,
-        ValidAudience = azureB2CClientId, // The client ID of your application
+        ValidAudience = azureB2CClientId, 
         ValidIssuer = azureB2CAuthority,
         NameClaimType = ClaimTypes.Name,
         RoleClaimType = ClaimTypes.Role,
@@ -47,11 +50,14 @@ builder.Services.AddAuthentication(options =>
     {
         OnTokenValidated = context =>
         {
-            var name = context.Principal?.Identity?.Name ?? "unknown";
-            var email = context.Principal?.FindFirstValue("preferred_username") ?? 
-                       context.Principal?.FindFirstValue("email") ?? "unknown";
-            var objectId = context.Principal?.FindFirstValue("http://schemas.microsoft.com/identity/claims/objectidentifier") ?? "unknown";
-            Console.WriteLine($"Token validated for: {name} ({email}) - ObjectId: {objectId}");
+            // For client credentials flow, we don't have user claims like email
+            // Instead, we have application/service claims
+            var clientId = context.Principal?.FindFirstValue("aud") ?? "unknown";
+            var appId = context.Principal?.FindFirstValue("appid") ?? 
+                       context.Principal?.FindFirstValue("azp") ?? "unknown";
+            var objectId = context.Principal?.FindFirstValue("oid") ?? 
+                          context.Principal?.FindFirstValue("sub") ?? "unknown";
+            Console.WriteLine($"Token validated for client: {clientId} - App ID: {appId} - Object ID: {objectId}");
             return Task.CompletedTask;
         },
         OnAuthenticationFailed = context =>

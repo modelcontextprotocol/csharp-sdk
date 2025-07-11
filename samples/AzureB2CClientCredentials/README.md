@@ -2,6 +2,8 @@
 
 This sample demonstrates how to create an MCP (Model Context Protocol) server that requires OAuth 2.0 Client Credentials authentication using Azure B2C to protect its tools and resources.
 
+> **⚠️ Important Note**: Azure B2C requires a policy/user flow even for client credentials flow, which is different from Azure AD. This is a key architectural difference between Azure B2C (consumer identity) and Azure AD (enterprise identity).
+
 ## Overview
 
 The Azure B2C Client Credentials MCP Server shows how to:
@@ -35,20 +37,19 @@ The Azure B2C Client Credentials MCP Server shows how to:
    - **Redirect URI**: Leave blank (not needed for client credentials flow)
 4. After creation, note the **Application (client) ID**
 
-### 3. Create User Flow or Custom Policy
+### 3. Create User Flow (Required for Azure B2C)
 
-For this client credentials flow example, you need either:
+**IMPORTANT**: Unlike Azure AD, Azure B2C requires a policy/user flow even for client credentials flow. This is a key difference between Azure B2C and Azure AD.
 
-**Option A: User Flow (Simple)**
+**For Azure B2C Client Credentials Flow:**
 1. Go to **User flows** in your B2C tenant
 2. Click **New user flow**
 3. Select **Sign up and sign in**
 4. Choose **Recommended** version
 5. Name it `B2C_1_signupsignin` (or your preferred name)
+6. Configure the user flow (even though it won't be used for user interaction)
 
-**Option B: Custom Policy (Advanced)**
-1. Create a custom policy (e.g., `B2C_1A_SIGNUP_SIGNIN`)
-2. This provides more control over the token issuance
+**Note**: While the user flow won't be used for actual user sign-in (since this is machine-to-machine authentication), Azure B2C's architecture requires the policy context for token issuance. This is different from Azure AD which supports policy-free client credentials flow.
 
 ### 4. Generate Client Secret
 
@@ -80,7 +81,7 @@ Update the configuration in `appsettings.Development.json`:
   "AzureB2C": {
     "Instance": "https://yourtenant.b2clogin.com",
     "Tenant": "yourtenant.onmicrosoft.com",
-    "Policy": "B2C_1_signupsignin",
+    "Policy": "B2C_1A_SIGNUP_SIGNIN",
     "ClientId": "your-actual-client-id"
   }
 }
@@ -89,7 +90,8 @@ Update the configuration in `appsettings.Development.json`:
 **Important Notes:**
 - Replace `yourtenant` with your actual B2C tenant name
 - Replace `your-actual-client-id` with your application's client ID
-- The `Policy` should match the user flow or custom policy you created (e.g., `B2C_1_signupsignin` for user flows or `B2C_1A_SIGNUP_SIGNIN` for custom policies)
+- **Policy is Required**: Azure B2C requires the policy even for client credentials flow (unlike Azure AD)
+- The `Policy` should match the user flow you created (e.g., `B2C_1_signupsignin`) or custom policy (e.g., `B2C_1A_SIGNUP_SIGNIN`)
 - Client secrets are not stored in configuration files for security reasons - they should be provided via environment variables or Azure Key Vault in production
 
 ## Running the Server
@@ -133,7 +135,7 @@ The server provides weather-related tools that require authentication:
 
 ```http
 ### Get Azure B2C Token
-POST https://yourtenant.b2clogin.com/yourtenant.onmicrosoft.com/B2C_1_signupsignin/oauth2/v2.0/token
+POST https://yourtenant.b2clogin.com/yourtenant.onmicrosoft.com/B2C_1A_SIGNUP_SIGNIN/oauth2/v2.0/token
 Content-Type: application/x-www-form-urlencoded
 
 grant_type=client_credentials
@@ -186,13 +188,14 @@ Content-Type: application/json
 ## Authentication Flow
 
 1. **Client Credentials Grant**: Client (application) requests token from Azure B2C using client credentials (client ID and client secret)
-2. **Token Request**: POST to `https://yourtenant.b2clogin.com/yourtenant.onmicrosoft.com/policy/oauth2/v2.0/token`
-3. **Token Response**: Azure B2C returns JWT access token
+2. **Token Request**: POST to `https://yourtenant.b2clogin.com/yourtenant.onmicrosoft.com/B2C_1A_SIGNUP_SIGNIN/oauth2/v2.0/token`
+3. **Token Response**: Azure B2C returns JWT access token (note: policy is required in URL even for client credentials)
 4. **API Call**: Client includes token in Authorization header: `Bearer <token>`
 5. **Token Validation**: MCP Server validates token against Azure B2C's public keys
 6. **Access Granted**: If valid, MCP tools are accessible
 
 **Key Points:**
+- **Policy Required**: Azure B2C requires a policy in the URL even for client credentials flow (unlike Azure AD)
 - No user interaction required (server-to-server authentication)
 - Client must be registered in Azure B2C
 - Client secret must be kept secure
@@ -210,12 +213,18 @@ The server uses:
 ## Configuration Details
 
 - **Server URL**: `http://localhost:7071`
-- **Azure B2C Authority**: `https://yourtenant.b2clogin.com/yourtenant.onmicrosoft.com/policy/v2.0`
-- **OAuth Metadata**: `https://yourtenant.b2clogin.com/yourtenant.onmicrosoft.com/policy/v2.0/.well-known/openid-configuration`
-- **Token Endpoint**: `https://yourtenant.b2clogin.com/yourtenant.onmicrosoft.com/policy/oauth2/v2.0/token`
+- **Azure B2C Authority**: `https://yourtenant.b2clogin.com/yourtenant.onmicrosoft.com/B2C_1A_SIGNUP_SIGNIN/v2.0`
+- **OAuth Metadata**: `https://yourtenant.b2clogin.com/yourtenant.onmicrosoft.com/B2C_1A_SIGNUP_SIGNIN/v2.0/.well-known/openid-configuration`
+- **Token Endpoint**: `https://yourtenant.b2clogin.com/yourtenant.onmicrosoft.com/B2C_1A_SIGNUP_SIGNIN/oauth2/v2.0/token`
 - **Token Validation**: Audience (ClientId) and issuer validation against Azure B2C
 - **CORS**: Enabled for all origins (configure appropriately for production)
 - **Scope Format**: `https://yourtenant.onmicrosoft.com/your-client-id/.default`
+
+**Azure B2C vs Azure AD Differences:**
+- **Azure B2C**: Requires policy in URL even for client credentials flow
+- **Azure AD**: Supports policy-free client credentials flow
+- **Azure B2C**: Designed for consumer identity scenarios  
+- **Azure AD**: Designed for enterprise/application scenarios
 
 ## Security Considerations
 
@@ -231,22 +240,22 @@ The server uses:
 ### Common Issues
 
 1. **Token validation fails**: 
-   - Check that the Authority URL is correct and matches your B2C tenant and policy
-   - Verify the policy name matches exactly (case-sensitive)
-   - Ensure the metadata endpoint is accessible
+   - Check that the Authority URL is correct and matches your B2C tenant
+   - Verify the metadata endpoint is accessible (no policy needed for client credentials)
+   - Ensure the tenant domain is correct
 
 2. **Audience validation fails**: 
    - Ensure ClientId in configuration matches the token audience
    - Check that the client ID is correct in both the token request and server configuration
 
 3. **Issuer validation fails**: 
-   - Verify the Azure B2C policy and tenant configuration
-   - Check that the issuer URL format matches the expected pattern
+   - Verify the Azure B2C tenant configuration
+   - Check that the issuer URL format matches the expected pattern (without policy)
 
 4. **Authentication fails**: 
    - Verify client secret is correct and not expired
    - Check that the scope format is correct: `https://yourtenant.onmicrosoft.com/your-client-id/.default`
-   - Ensure the token endpoint URL is correct
+   - Ensure the token endpoint URL is correct (without policy path)
 
 5. **CORS issues**: 
    - Check browser developer tools for CORS-related errors
