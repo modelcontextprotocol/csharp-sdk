@@ -1,0 +1,106 @@
+### Azure B2C Client Credentials MCP Server Testing
+
+# Your Azure B2C configuration
+@tenantName = yourtenant
+@tenantDomain = yourtenant.onmicrosoft.com
+@policyName = B2C_1_signupsignin
+@clientId = your-client-id-here
+@clientSecret = your-client-secret-here
+@serverUrl = http://localhost:7071
+
+# This will be populated after running step 1
+@accessToken = your-access-token-here
+
+# Derived variables
+@authority = https://{{tenantName}}.b2clogin.com/{{tenantDomain}}/{{policyName}}
+@tokenEndpoint = {{authority}}/oauth2/v2.0/token
+@scope = https://{{tenantDomain}}/{{clientId}}/.default
+
+### 1. Get Access Token from Azure B2C
+# Run this first and copy the access_token from the response
+# Then update the @accessToken variable above with the token value
+POST {{tokenEndpoint}}
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials
+&client_id={{clientId}}
+&client_secret={{clientSecret}}
+&scope={{scope}}
+
+### 2. Test MCP Server Metadata (make sure to update @accessToken first)
+GET {{serverUrl}}/.well-known/oauth-protected-resource
+Authorization: Bearer {{accessToken}}
+
+### 3. Test MCP Server with JSON-RPC (this is the correct way to call MCP tools)
+### This is a JSON-RPC request to list available tools
+POST {{serverUrl}}/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+Accept: application/json, text/event-stream
+
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/list",
+  "params": {}
+}
+
+### 4. Test Weather Forecast Tool using JSON-RPC
+POST {{serverUrl}}/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+Accept: application/json, text/event-stream
+
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "get_forecast",
+    "arguments": {
+      "latitude": 47.6062,
+      "longitude": -122.3321
+    }
+  }
+}
+
+### 5. Test Weather Alerts Tool using JSON-RPC
+POST {{serverUrl}}/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+Accept: application/json, text/event-stream
+
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "tools/call",
+  "params": {
+    "name": "get_alerts",
+    "arguments": {
+      "state": "WA"
+    }
+  }
+}
+
+### 6. Test without Authorization (should fail)
+POST {{serverUrl}}/
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "method": "tools/list",
+  "params": {}
+}
+
+### 7. Test with Invalid Token (should fail)
+POST {{serverUrl}}/
+Authorization: Bearer invalid-token
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "id": 5,
+  "method": "tools/list",
+  "params": {}
+}
