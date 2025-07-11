@@ -33,7 +33,7 @@ internal sealed partial class ClientOAuthProvider
     // _clientName, _clientUri, _clientType, and _initialAccessToken is used for dynamic client registration (RFC 7591)
     private readonly string? _clientName;
     private readonly Uri? _clientUri;
-    private readonly OAuthClientType _clientType;
+    private readonly OAuthClientType _dcrRequestedAuthMethod;
     private readonly string? _initialAccessToken;
 
     private readonly HttpClient _httpClient;
@@ -73,7 +73,7 @@ internal sealed partial class ClientOAuthProvider
         _redirectUri = options.RedirectUri ?? throw new ArgumentException("ClientOAuthOptions.RedirectUri must configured.");
         _clientName = options.ClientName;
         _clientUri = options.ClientUri;
-        _clientType = options.ClientType ?? OAuthClientType.Confidential;
+        _dcrRequestedAuthMethod = options.ClientType ?? OAuthClientType.Confidential;
         _initialAccessToken = options.InitialAccessToken;
         _scopes = options.Scopes?.ToArray();
         _additionalAuthorizationParameters = options.AdditionalAuthorizationParameters;
@@ -451,7 +451,7 @@ internal sealed partial class ClientOAuthProvider
             RedirectUris = [_redirectUri.ToString()],
             GrantTypes = ["authorization_code", "refresh_token"],
             ResponseTypes = ["code"],
-            TokenEndpointAuthMethod = _clientType == OAuthClientType.Confidential ? "client_secret_post" : "none",
+            TokenEndpointAuthMethod = _dcrRequestedAuthMethod == OAuthClientType.Confidential ? "client_secret_post" : "none",
             ClientName = _clientName,
             ClientUri = _clientUri?.ToString(),
             Scope = _scopes is not null ? string.Join(" ", _scopes) : null
