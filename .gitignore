@@ -81,3 +81,26 @@ docs/api
 # Rider
 .idea/
 .idea_modules/
+
+# Development configuration files (may contain secrets)
+**/appsettings.Development.json
+**/appsettings.Local.json
+**/appsettings.*.json
+!**/appsettings.json
+!**/appsettings.Production.json
+
+# User secrets
+**/secrets.json
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.production
+
+# Azure CLI credentials
+.azure/
+
+# Test files with actual credentials
+**/*test*.http
+!**/*test*example*.http
