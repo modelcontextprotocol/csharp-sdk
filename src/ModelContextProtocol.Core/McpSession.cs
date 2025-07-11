@@ -115,7 +115,16 @@ internal sealed partial class McpSession : IDisposable
                 LogMessageRead(EndpointName, message.GetType().Name);
 
                 // Fire and forget the message handling to avoid blocking the transport.
-                _ = ProcessMessageAsync();
+                if (message.ExecutionContext is null)
+                {
+                    _ = ProcessMessageAsync();
+                }
+                else
+                {
+                    // Flow the execution context from the HTTP request corresponding to this message if provided.
+                    ExecutionContext.Run(message.ExecutionContext, _ => _ = ProcessMessageAsync(), null);
+                }
+
                 async Task ProcessMessageAsync()
                 {
                     JsonRpcMessageWithId? messageWithId = message as JsonRpcMessageWithId;
@@ -609,9 +618,9 @@ internal sealed partial class McpSession : IDisposable
             e = ae.InnerException;
         }
 
-        int? intErrorCode = 
+        int? intErrorCode =
             (int?)((e as McpException)?.ErrorCode) is int errorCode ? errorCode :
-            e is JsonException ? (int)McpErrorCode.ParseError : 
+            e is JsonException ? (int)McpErrorCode.ParseError :
             null;
 
         string? errorType = intErrorCode?.ToString() ?? e.GetType().FullName;

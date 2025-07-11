@@ -1,3 +1,4 @@
+using ModelContextProtocol.Server;
 using System.ComponentModel;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -37,6 +38,19 @@ public abstract class JsonRpcMessage
     /// </remarks>
     [JsonIgnore]
     public ITransport? RelatedTransport { get; set; }
+
+    /// <summary>
+    /// Gets or sets the <see cref="ExecutionContext"/> that should be used to run any handlers
+    /// </summary>
+    /// <remarks>
+    /// This is used to support the Streamable HTTP transport in its default stateful mode. In this mode,
+    /// the <see cref="IMcpServer"/> outlives the initial HTTP request context it was created on, and new
+    /// JSON-RPC messages can originate from future HTTP requests. This allows the transport to flow the
+    /// context with the JSON-RPC message. This is particularly useful for enabling IHttpContextAccessor
+    /// in tool calls.
+    /// </remarks>
+    [JsonIgnore]
+    public ExecutionContext? ExecutionContext { get; set; }
 
     /// <summary>
     /// Provides a <see cref="JsonConverter"/> for <see cref="JsonRpcMessage"/> messages,

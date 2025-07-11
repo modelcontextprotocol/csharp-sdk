@@ -188,6 +188,7 @@ internal sealed class StreamableHttpHandler(
             transport = new()
             {
                 SessionId = sessionId,
+                FlowExecutionContextFromRequests = !HttpServerTransportOptions.PerSessionExecutionContext,
             };
             context.Response.Headers[McpSessionIdHeaderName] = sessionId;
         }
