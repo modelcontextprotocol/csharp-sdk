@@ -10,7 +10,7 @@ namespace ModelContextProtocol.Server;
 /// <remarks>
 /// <para>
 /// This transport provides one-way communication from server to client using the SSE protocol over HTTP,
-/// while receiving client messages through a separate mechanism. It writes messages as 
+/// while receiving client messages through a separate mechanism. It writes messages as
 /// SSE events to a response stream, typically associated with an HTTP response.
 /// </para>
 /// <para>
@@ -36,6 +36,9 @@ public sealed class StreamableHttpServerTransport : ITransport
 
     private int _getRequestStarted;
 
+    /// <inheritdoc/>
+    public string? SessionId { get; set; }
+
     /// <summary>
     /// Configures whether the transport should be in stateless mode that does not require all requests for a given session
     /// to arrive to the same ASP.NET Core application process. Unsolicited server-to-client messages are not supported in this mode,
@@ -46,6 +49,15 @@ public sealed class StreamableHttpServerTransport : ITransport
     public bool Stateless { get; init; }
 
     /// <summary>
+    /// Gets a value indicating whether the execution context should flow from the calls to <see cref="HandlePostRequest(IDuplexPipe, CancellationToken)"/>
+    /// to the corresponding <see cref="JsonRpcMessage.ExecutionContext"/> emitted by the <see cref="MessageReader"/>.
+    /// </summary>
+    /// <remarks>
+    /// Defaults to <see langword="false"/>.
+    /// </remarks>
+    public bool FlowExecutionContextFromRequests { get; init; }
+
+    /// <summary>
     /// Gets or sets a callback to be invoked before handling the initialize request.
     /// </summary>
     public Func<InitializeRequestParams?, ValueTask>? OnInitRequestReceived { get; set; }
@@ -54,9 +66,6 @@ public sealed class StreamableHttpServerTransport : ITransport
     public ChannelReader<JsonRpcMessage> MessageReader => _incomingChannel.Reader;
 
     internal ChannelWriter<JsonRpcMessage> MessageWriter => _incomingChannel.Writer;
-
-    /// <inheritdoc/>
-    public string? SessionId { get; set; }
 
     /// <summary>
     /// Handles an optional SSE GET request a client using the Streamable HTTP transport might make by
