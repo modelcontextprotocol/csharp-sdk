@@ -81,3 +81,10 @@ docs/api
 # Rider
 .idea/
 .idea_modules/
+
+# Development configuration files (may contain secrets)
+**/appsettings.Development.json
+**/appsettings.Local.json
+**/appsettings.*.json
+!**/appsettings.json
+ 
