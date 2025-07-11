@@ -30,10 +30,11 @@ internal sealed partial class ClientOAuthProvider
     private readonly AuthorizationRedirectDelegate _authorizationRedirectDelegate;
     private readonly DynamicClientRegistrationDelegate? _dynamicClientRegistrationDelegate;
 
-    // _clientName, _clientUri, and _clientType is used for dynamic client registration (RFC 7591)
+    // _clientName, _clientUri, _clientType, and _initialAccessToken is used for dynamic client registration (RFC 7591)
     private readonly string? _clientName;
     private readonly Uri? _clientUri;
     private readonly OAuthClientType _clientType;
+    private readonly string? _initialAccessToken;
 
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
@@ -73,6 +74,7 @@ internal sealed partial class ClientOAuthProvider
         _clientName = options.ClientName;
         _clientUri = options.ClientUri;
         _clientType = options.ClientType ?? OAuthClientType.Confidential;
+        _initialAccessToken = options.InitialAccessToken;
         _scopes = options.Scopes?.ToArray();
         _additionalAuthorizationParameters = options.AdditionalAuthorizationParameters;
 
@@ -84,17 +86,6 @@ internal sealed partial class ClientOAuthProvider
 
         // Set up dynamic client registration delegate
         _dynamicClientRegistrationDelegate = options.DynamicClientRegistrationDelegate;
-
-        if (options.InitialAccessToken is not null)
-        {
-            _token = new()
-            {
-                AccessToken = options.InitialAccessToken,
-                ExpiresIn = 900,
-                TokenType = BearerScheme,
-                ObtainedAt = DateTimeOffset.UtcNow,
-            };
-        }
     }
 
     /// <summary>
@@ -191,25 +182,6 @@ internal sealed partial class ClientOAuthProvider
         }
 
         await PerformOAuthAuthorizationAsync(response, cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Adds an authorization header to the request.
-    /// </summary>
-    internal async Task AddAuthorizationHeaderAsync(HttpRequestMessage request, string scheme, CancellationToken cancellationToken)
-    {
-        if (request.RequestUri is null)
-        {
-            return;
-        }
-
-        var token = await GetCredentialAsync(scheme, request.RequestUri, cancellationToken).ConfigureAwait(false);
-        if (string.IsNullOrEmpty(token))
-        {
-            return;
-        }
-
-        request.Headers.Authorization = new AuthenticationHeaderValue(scheme, token);
     }
 
     /// <summary>
@@ -493,9 +465,9 @@ internal sealed partial class ClientOAuthProvider
             Content = requestContent
         };
 
-        if (_token is not null)
+        if (!string.IsNullOrEmpty(_initialAccessToken))
         {
-            await AddAuthorizationHeaderAsync(request, _token.TokenType, cancellationToken).ConfigureAwait(false);
+            request.Headers.Authorization = new AuthenticationHeaderValue(BearerScheme, _initialAccessToken);
         }
 
         using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);

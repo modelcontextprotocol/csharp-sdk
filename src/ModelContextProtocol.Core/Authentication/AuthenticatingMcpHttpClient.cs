@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 
@@ -19,7 +20,7 @@ internal sealed class AuthenticatingMcpHttpClient(HttpClient httpClient, ClientO
     {
         if (request.Headers.Authorization == null)
         {
-            await credentialProvider.AddAuthorizationHeaderAsync(request, _currentScheme, cancellationToken).ConfigureAwait(false);
+            await AddAuthorizationHeaderAsync(request, _currentScheme, cancellationToken).ConfigureAwait(false);
         }
 
         var response = await base.SendAsync(request, message, cancellationToken).ConfigureAwait(false);
@@ -77,7 +78,7 @@ internal sealed class AuthenticatingMcpHttpClient(HttpClient httpClient, ClientO
             }
         }
 
-        await credentialProvider.AddAuthorizationHeaderAsync(retryRequest, _currentScheme, cancellationToken).ConfigureAwait(false);
+        await AddAuthorizationHeaderAsync(retryRequest, _currentScheme, cancellationToken).ConfigureAwait(false);
         return await base.SendAsync(retryRequest, originalJsonRpcMessage, cancellationToken).ConfigureAwait(false);
     }
 
@@ -94,5 +95,24 @@ internal sealed class AuthenticatingMcpHttpClient(HttpClient httpClient, ClientO
         }
 
         return serverSchemes;
+    }
+
+    /// <summary>
+    /// Adds an authorization header to the request.
+    /// </summary>
+    private async Task AddAuthorizationHeaderAsync(HttpRequestMessage request, string scheme, CancellationToken cancellationToken)
+    {
+        if (request.RequestUri is null)
+        {
+            return;
+        }
+
+        var token = await credentialProvider.GetCredentialAsync(scheme, request.RequestUri, cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrEmpty(token))
+        {
+            return;
+        }
+
+        request.Headers.Authorization = new AuthenticationHeaderValue(scheme, token);
     }
 }
