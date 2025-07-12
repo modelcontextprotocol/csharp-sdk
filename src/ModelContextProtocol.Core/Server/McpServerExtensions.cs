@@ -64,6 +64,11 @@ public static class McpServerExtensions
 
         StringBuilder? systemPrompt = null;
 
+        if (options?.Instructions is { } instructions)
+        {
+            (systemPrompt ??= new()).Append(instructions);
+        }
+
         List<SamplingMessage> samplingMessages = [];
         foreach (var message in messages)
         {
