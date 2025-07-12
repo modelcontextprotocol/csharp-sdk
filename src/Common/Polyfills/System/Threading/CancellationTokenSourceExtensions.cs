@@ -1,3 +1,4 @@
+#if !NET
 using ModelContextProtocol;
 
 namespace System.Threading.Tasks;
@@ -12,3 +13,4 @@ internal static class CancellationTokenSourceExtensions
         return Task.CompletedTask;
     }
 }
+#endif

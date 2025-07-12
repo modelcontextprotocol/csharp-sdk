@@ -24,6 +24,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\Common\Polyfills\**\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Include="$(RepoRoot)\logo.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>

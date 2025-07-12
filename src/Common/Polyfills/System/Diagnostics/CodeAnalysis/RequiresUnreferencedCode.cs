@@ -1,6 +1,7 @@
 ﻿// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+#if !NET
 namespace System.Diagnostics.CodeAnalysis;
 
 /// <summary>
@@ -37,3 +38,4 @@ internal sealed class RequiresUnreferencedCodeAttribute : Attribute
     /// </summary>
     public string? Url { get; set; }
 }
+#endif

@@ -5,6 +5,7 @@
 // https://github.com/dotnet/runtime/blob/d2650b6ae7023a2d9d2c74c56116f1f18472ab04/src/libraries/System.Private.CoreLib/src/System/PasteArguments.cs
 // and changed from using ValueStringBuilder to StringBuilder.
 
+#if !NET
 using System.Text;
 
 namespace System;
@@ -99,3 +100,4 @@ internal static partial class PasteArguments
     private const char Quote = '\"';
     private const char Backslash = '\\';
 }
+#endif
