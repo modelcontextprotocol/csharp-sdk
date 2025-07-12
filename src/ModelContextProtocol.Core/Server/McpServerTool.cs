@@ -141,6 +141,21 @@ public abstract class McpServerTool : IMcpServerPrimitive
     /// <summary>Gets the protocol <see cref="Tool"/> type for this instance.</summary>
     public abstract Tool ProtocolTool { get; }
 
+    /// <summary>
+    /// Gets the HTTP routes where this tool should be available.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// If <see langword="null"/>, the tool is available on all routes (global tool).
+    /// Global tools are always accessible regardless of the specific route requested.
+    /// </para>
+    /// <para>
+    /// This property is used in AspNetCore scenarios to control which HTTP endpoints
+    /// expose this tool. It is ignored in stdio/console scenarios.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string>? Routes { get; protected set; }
+
     /// <summary>Invokes the <see cref="McpServerTool"/>.</summary>
     /// <param name="request">The request information resulting in the invocation of this tool.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>

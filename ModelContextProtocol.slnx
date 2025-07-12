@@ -17,6 +17,7 @@
     <Project Path="samples/QuickstartClient/QuickstartClient.csproj" />
     <Project Path="samples/QuickstartWeatherServer/QuickstartWeatherServer.csproj" />
     <Project Path="samples/TestServerWithHosting/TestServerWithHosting.csproj" />
+    <Project Path="samples/UrlRoutingSseServer/UrlRoutingSseServer.csproj" />
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path="Directory.Build.props" />

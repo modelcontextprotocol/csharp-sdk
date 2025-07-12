@@ -146,7 +146,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             }
         }
 
-        return new AIFunctionMcpServerTool(function, tool, options?.Services, structuredOutputRequiresWrapping);
+        return new AIFunctionMcpServerTool(function, tool, options?.Services, structuredOutputRequiresWrapping, options?.GetRoutes());
     }
 
     private static McpServerToolCreateOptions DeriveOptions(MethodInfo method, McpServerToolCreateOptions? options)
@@ -186,6 +186,11 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             newOptions.Description ??= descAttr.Description;
         }
 
+        if (method.GetCustomAttribute<McpServerToolRouteAttribute>() is { } routeAttr)
+        {
+            newOptions.SetRoutes(routeAttr.Routes);
+        }
+
         return newOptions;
     }
 
@@ -193,12 +198,13 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     internal AIFunction AIFunction { get; }
 
     /// <summary>Initializes a new instance of the <see cref="McpServerTool"/> class.</summary>
-    private AIFunctionMcpServerTool(AIFunction function, Tool tool, IServiceProvider? serviceProvider, bool structuredOutputRequiresWrapping)
+    private AIFunctionMcpServerTool(AIFunction function, Tool tool, IServiceProvider? serviceProvider, bool structuredOutputRequiresWrapping, IReadOnlyList<string>? routes = null)
     {
         AIFunction = function;
         ProtocolTool = tool;
         _logger = serviceProvider?.GetService<ILoggerFactory>()?.CreateLogger<McpServerTool>() ?? (ILogger)NullLogger.Instance;
         _structuredOutputRequiresWrapping = structuredOutputRequiresWrapping;
+        Routes = routes;
     }
 
     /// <inheritdoc />

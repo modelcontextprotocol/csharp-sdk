@@ -24,4 +24,8 @@
     <ProjectReference Include="..\ModelContextProtocol\ModelContextProtocol.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Attributes\" />
+  </ItemGroup>
+
 </Project>
