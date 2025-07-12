@@ -1,3 +1,4 @@
+#if !NET
 using System.Runtime.CompilerServices;
 
 namespace System.Threading;
@@ -15,3 +16,4 @@ internal readonly struct ForceYielding : INotifyCompletion, ICriticalNotifyCompl
     public void UnsafeOnCompleted(Action continuation) => ThreadPool.UnsafeQueueUserWorkItem(a => ((Action)a!)(), continuation);
     public void GetResult() { }
 }
+#endif
