@@ -1,3 +1,4 @@
+#if !NET
 using System.Runtime.CompilerServices;
 
 namespace System.Threading.Channels;
@@ -15,3 +16,4 @@ internal static class ChannelExtensions
         }
     }
 }
+#endif
