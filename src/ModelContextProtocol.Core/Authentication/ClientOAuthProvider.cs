@@ -69,7 +69,7 @@ internal sealed partial class ClientOAuthProvider
 
         _clientId = options.ClientId;
         _clientSecret = options.ClientSecret;
-        _redirectUri = options.RedirectUri ?? throw new ArgumentException("ClientOAuthOptions.RedirectUri must configured.");
+        _redirectUri = options.RedirectUri ?? throw new ArgumentException("ClientOAuthOptions.RedirectUri must configured.", nameof(options));
         _scopes = options.Scopes?.ToArray();
         _additionalAuthorizationParameters = options.AdditionalAuthorizationParameters;
 
@@ -83,7 +83,7 @@ internal sealed partial class ClientOAuthProvider
         {
             if (options.DynamicClientRegistration is null)
             {
-                throw new ArgumentException("ClientOAuthOptions.DynamicClientRegistration must be configured when ClientId is not set.");
+                throw new ArgumentException("ClientOAuthOptions.DynamicClientRegistration must be configured when ClientId is not set.", nameof(options));
             }
 
             _clientName = options.DynamicClientRegistration.ClientName;
