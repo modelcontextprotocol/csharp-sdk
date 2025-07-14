@@ -30,10 +30,9 @@ internal sealed partial class ClientOAuthProvider
     private readonly AuthorizationRedirectDelegate _authorizationRedirectDelegate;
     private readonly DynamicClientRegistrationDelegate? _dynamicClientRegistrationDelegate;
 
-    // _clientName, _clientUri, _clientType, and _initialAccessToken is used for dynamic client registration (RFC 7591)
+    // _clientName, _clientUri, and _initialAccessToken is used for dynamic client registration (RFC 7591)
     private readonly string? _clientName;
     private readonly Uri? _clientUri;
-    private readonly OAuthClientType _dcrRequestedAuthMethod;
     private readonly string? _initialAccessToken;
 
     private readonly HttpClient _httpClient;
@@ -89,7 +88,6 @@ internal sealed partial class ClientOAuthProvider
 
             _clientName = options.DynamicClientRegistration.ClientName;
             _clientUri = options.DynamicClientRegistration.ClientUri;
-            _dcrRequestedAuthMethod = options.DynamicClientRegistration.ClientType;
             _initialAccessToken = options.DynamicClientRegistration.InitialAccessToken;
 
             // Set up dynamic client registration delegate
@@ -460,7 +458,7 @@ internal sealed partial class ClientOAuthProvider
             RedirectUris = [_redirectUri.ToString()],
             GrantTypes = ["authorization_code", "refresh_token"],
             ResponseTypes = ["code"],
-            TokenEndpointAuthMethod = _dcrRequestedAuthMethod == OAuthClientType.Confidential ? "client_secret_post" : "none",
+            TokenEndpointAuthMethod = "client_secret_post",
             ClientName = _clientName,
             ClientUri = _clientUri?.ToString(),
             Scope = _scopes is not null ? string.Join(" ", _scopes) : null

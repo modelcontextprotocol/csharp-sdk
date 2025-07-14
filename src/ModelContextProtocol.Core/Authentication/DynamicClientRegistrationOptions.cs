@@ -22,19 +22,6 @@ public sealed class DynamicClientRegistrationOptions
     public Uri? ClientUri { get; set; }
 
     /// <summary>
-    /// Gets or sets the client type to use during dynamic client registration.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// This indicates whether the client is confidential (requires a client secret) or public (does not require a client secret).
-    /// </para>
-    /// <para>
-    /// The default value is <see cref="OAuthClientType.Confidential"/>.
-    /// </para>
-    /// </remarks>
-    public OAuthClientType ClientType { get; set; } = OAuthClientType.Confidential;
-
-    /// <summary>
     /// Gets or sets the initial access token to use during dynamic client registration.
     /// </summary>
     /// <remarks>
