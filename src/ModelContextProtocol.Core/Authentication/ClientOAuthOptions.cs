@@ -53,19 +53,6 @@ public sealed class ClientOAuthOptions
     public AuthorizationRedirectDelegate? AuthorizationRedirectDelegate { get; set; }
 
     /// <summary>
-    /// Gets or sets the delegate used for handling the dynamic client registration response.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// This delegate is responsible for processing the response from the dynamic client registration endpoint.
-    /// </para>
-    /// <para>
-    /// The implementation should save the client credentials securely for future use.
-    /// </para>
-    /// </remarks>
-    public DynamicClientRegistrationDelegate? DynamicClientRegistrationDelegate { get; set; }
-
-    /// <summary>
     /// Gets or sets the authorization server selector function.
     /// </summary>
     /// <remarks>
@@ -81,50 +68,12 @@ public sealed class ClientOAuthOptions
     public Func<IReadOnlyList<Uri>, Uri?>? AuthServerSelector { get; set; }
 
     /// <summary>
-    /// Gets or sets the client name to use during dynamic client registration.
+    /// Gets or sets the options to use during dynamic client registration.
     /// </summary>
     /// <remarks>
-    /// This is a human-readable name for the client that may be displayed to users during authorization.
     /// Only used when a <see cref="ClientId"/> is not specified.
     /// </remarks>
-    public string? ClientName { get; set; }
-
-    /// <summary>
-    /// Gets or sets the client URI to use during dynamic client registration.
-    /// </summary>
-    /// <remarks>
-    /// This should be a URL pointing to the client's home page or information page.
-    /// Only used when a <see cref="ClientId"/> is not specified.
-    /// </remarks>
-    public Uri? ClientUri { get; set; }
-
-    /// <summary>
-    /// Gets or sets the client type to use during dynamic client registration.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// This indicates whether the client is confidential (requires a client secret) or public (does not require a client secret).
-    /// Only used when a <see cref="ClientId"/> is not specified.
-    /// </para>
-    /// <para>
-    /// When not specified, the client type will default to <see cref="OAuthClientType.Confidential"/>.
-    /// </para>
-    /// </remarks>
-    public OAuthClientType? ClientType { get; set; }
-
-    /// <summary>
-    /// Gets or sets the initial access token to use during dynamic client registration.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// This token is used to authenticate the client during the registration process.
-    /// Only used when a <see cref="ClientId"/> is not specified.
-    /// </para>
-    /// <para>
-    /// This is required if the authorization server does not allow anonymous client registration.
-    /// </para>
-    /// </remarks>
-    public string? InitialAccessToken { get; set; }
+    public DynamicClientRegistrationOptions? DynamicClientRegistration { get; set; }
 
     /// <summary>
     /// Gets or sets additional parameters to include in the query string of the OAuth authorization request

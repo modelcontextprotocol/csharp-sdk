@@ -71,10 +71,6 @@ internal sealed partial class ClientOAuthProvider
         _clientId = options.ClientId;
         _clientSecret = options.ClientSecret;
         _redirectUri = options.RedirectUri ?? throw new ArgumentException("ClientOAuthOptions.RedirectUri must configured.");
-        _clientName = options.ClientName;
-        _clientUri = options.ClientUri;
-        _dcrRequestedAuthMethod = options.ClientType ?? OAuthClientType.Confidential;
-        _initialAccessToken = options.InitialAccessToken;
         _scopes = options.Scopes?.ToArray();
         _additionalAuthorizationParameters = options.AdditionalAuthorizationParameters;
 
@@ -84,8 +80,21 @@ internal sealed partial class ClientOAuthProvider
         // Set up authorization URL handler (use default if not provided)
         _authorizationRedirectDelegate = options.AuthorizationRedirectDelegate ?? DefaultAuthorizationUrlHandler;
 
-        // Set up dynamic client registration delegate
-        _dynamicClientRegistrationDelegate = options.DynamicClientRegistrationDelegate;
+        if (string.IsNullOrEmpty(_clientId))
+        {
+            if (options.DynamicClientRegistration is null)
+            {
+                throw new ArgumentException("ClientOAuthOptions.DynamicClientRegistration must be configured when ClientId is not set.");
+            }
+
+            _clientName = options.DynamicClientRegistration.ClientName;
+            _clientUri = options.DynamicClientRegistration.ClientUri;
+            _dcrRequestedAuthMethod = options.DynamicClientRegistration.ClientType;
+            _initialAccessToken = options.DynamicClientRegistration.InitialAccessToken;
+
+            // Set up dynamic client registration delegate
+            _dynamicClientRegistrationDelegate = options.DynamicClientRegistration.DynamicClientRegistrationDelegate;
+        }
     }
 
     /// <summary>
