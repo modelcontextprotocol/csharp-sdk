@@ -1,6 +1,6 @@
-using System.Net.Http.Headers;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using System.Net.Http.Headers;
 
 namespace ModelContextProtocol.Authentication;
 
