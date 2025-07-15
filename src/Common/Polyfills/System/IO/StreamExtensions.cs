@@ -3,6 +3,7 @@ using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Text;
 
+#if !NET
 namespace System.IO;
 
 internal static class StreamExtensions
@@ -62,3 +63,4 @@ internal static class StreamExtensions
         }
     }
 }
+#endif
