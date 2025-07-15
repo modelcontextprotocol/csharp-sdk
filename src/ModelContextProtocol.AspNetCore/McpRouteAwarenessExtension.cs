@@ -1,7 +1,6 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
-using ModelContextProtocol.AspNetCore.Services;
 using ModelContextProtocol.Server;
 using System.Diagnostics.CodeAnalysis;
 

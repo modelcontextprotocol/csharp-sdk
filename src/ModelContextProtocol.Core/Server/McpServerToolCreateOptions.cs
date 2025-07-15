@@ -64,37 +64,21 @@ public sealed class McpServerToolCreateOptions
     /// </remarks>
     public string? Title { get; set; }
 
-    private IReadOnlyList<string>? routes;
-
     /// <summary>
-    /// Gets the HTTP routes where this tool should be available.
+    /// Gets or sets the HTTP routes where this tool should be available.
     /// </summary>
-    /// <returns>
-    /// An array of route names, or <see langword="null"/> if the tool should be available on all routes (global tool).
-    /// </returns>
     /// <remarks>
+    /// <para>
     /// Routes are used in AspNetCore scenarios to control which HTTP endpoints expose this tool.
+    /// If <see langword="null"/>, the tool will be available on all routes (global tool).
     /// This setting is ignored in stdio/console scenarios.
-    /// </remarks>
-    public IReadOnlyList<string>? GetRoutes()
-    {
-        return routes;
-    }
-
-    /// <summary>
-    /// Sets the HTTP routes where this tool should be available.
-    /// </summary>
-    /// <param name="value">
-    /// An array of route names, or <see langword="null"/> to make the tool available on all routes (global tool).
-    /// </param>
-    /// <remarks>
+    /// </para>
+    /// <para>
     /// Routes are typically populated from <see cref="McpServerToolRouteAttribute"/> during tool creation,
     /// but can be set programmatically when creating tools without attributes.
+    /// </para>
     /// </remarks>
-    public void SetRoutes(IReadOnlyList<string>? value)
-    {
-        routes = value;
-    }
+    public IReadOnlyList<string>? Routes { get; set; }
 
     /// <summary>
     /// Gets or sets whether the tool may perform destructive updates to its environment.
@@ -204,6 +188,6 @@ public sealed class McpServerToolCreateOptions
             UseStructuredContent = UseStructuredContent,
             SerializerOptions = SerializerOptions,
             SchemaCreateOptions = SchemaCreateOptions,
-            routes = routes
+            Routes = Routes
         };
 }

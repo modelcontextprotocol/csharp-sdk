@@ -146,7 +146,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             }
         }
 
-        return new AIFunctionMcpServerTool(function, tool, options?.Services, structuredOutputRequiresWrapping, options?.GetRoutes());
+        return new AIFunctionMcpServerTool(function, tool, options?.Services, structuredOutputRequiresWrapping, options?.Routes);
     }
 
     private static McpServerToolCreateOptions DeriveOptions(MethodInfo method, McpServerToolCreateOptions? options)
@@ -188,7 +188,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         if (method.GetCustomAttribute<McpServerToolRouteAttribute>() is { } routeAttr)
         {
-            newOptions.SetRoutes(routeAttr.Routes);
+            newOptions.Routes ??= routeAttr.Routes;
         }
 
         return newOptions;

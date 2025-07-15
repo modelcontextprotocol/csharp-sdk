@@ -2,7 +2,7 @@
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
-namespace ModelContextProtocol.AspNetCore.Services;
+namespace ModelContextProtocol.AspNetCore;
 
 /// <summary>
 /// Service that handles route-aware tool filtering and automatic route discovery.
