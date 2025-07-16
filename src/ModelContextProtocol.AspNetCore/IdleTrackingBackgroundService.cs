@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Hosting;
+﻿using System.Runtime.InteropServices;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Server;
@@ -21,6 +22,7 @@ internal sealed partial class IdleTrackingBackgroundService(
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(options.Value.IdleTimeout, TimeSpan.Zero);
         }
+
         ArgumentOutOfRangeException.ThrowIfLessThan(options.Value.MaxIdleSessionCount, 0);
 
         try
@@ -31,8 +33,11 @@ internal sealed partial class IdleTrackingBackgroundService(
             var idleTimeoutTicks = options.Value.IdleTimeout.Ticks;
             var maxIdleSessionCount = options.Value.MaxIdleSessionCount;
 
-            // The default ValueTuple Comparer will check the first item then the second which preserves both order and uniqueness.
-            var idleSessions = new SortedSet<(long Timestamp, string SessionId)>();
+            // Create two lists that will be reused between runs.
+            // This assumes that the number of idle sessions is not breached frequently.
+            // If the idle sessions often breach the maximum, a priority queue could be considered.
+            var idleSessionsTimestamps = new List<long>();
+            var idleSessionSessionIds = new List<string>();
 
             while (!stoppingToken.IsCancellationRequested && await timer.WaitForNextTickAsync(stoppingToken))
             {
@@ -56,26 +61,34 @@ internal sealed partial class IdleTrackingBackgroundService(
                         continue;
                     }
 
-                    idleSessions.Add((session.LastActivityTicks, session.Id));
+                    // Add the timestamp and the session
+                    idleSessionsTimestamps.Add(session.LastActivityTicks);
+                    idleSessionSessionIds.Add(session.Id);
 
                     // Emit critical log at most once every 5 seconds the idle count it exceeded,
                     // since the IdleTimeout will no longer be respected.
-                    if (idleSessions.Count == maxIdleSessionCount + 1)
+                    if (idleSessionsTimestamps.Count == maxIdleSessionCount + 1)
                     {
                         LogMaxSessionIdleCountExceeded(maxIdleSessionCount);
                     }
                 }
 
-                if (idleSessions.Count > maxIdleSessionCount)
+                if (idleSessionsTimestamps.Count > maxIdleSessionCount)
                 {
-                    var sessionsToPrune = idleSessions.ToArray()[..^maxIdleSessionCount];
-                    foreach (var (_, id) in sessionsToPrune)
+                    var timestamps = CollectionsMarshal.AsSpan(idleSessionsTimestamps);
+
+                    // Sort only if the maximum is breached and sort solely by the timestamp. Sort both collections.
+                    timestamps.Sort(CollectionsMarshal.AsSpan(idleSessionSessionIds));
+
+                    var sessionsToPrune = CollectionsMarshal.AsSpan(idleSessionSessionIds)[..^maxIdleSessionCount];
+                    foreach (var id in sessionsToPrune)
                     {
                         RemoveAndCloseSession(id);
                     }
                 }
 
-                idleSessions.Clear();
+                idleSessionsTimestamps.Clear();
+                idleSessionSessionIds.Clear();
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -140,7 +153,9 @@ internal sealed partial class IdleTrackingBackgroundService(
     [LoggerMessage(Level = LogLevel.Error, Message = "Error disposing session {sessionId}.")]
     private partial void LogSessionDisposeError(string sessionId, Exception ex);
 
-    [LoggerMessage(Level = LogLevel.Critical, Message = "Exceeded maximum of {maxIdleSessionCount} idle sessions. Now closing sessions active more recently than configured IdleTimeout.")]
+    [LoggerMessage(Level = LogLevel.Critical,
+        Message =
+            "Exceeded maximum of {maxIdleSessionCount} idle sessions. Now closing sessions active more recently than configured IdleTimeout.")]
     private partial void LogMaxSessionIdleCountExceeded(int maxIdleSessionCount);
 
     [LoggerMessage(Level = LogLevel.Critical, Message = "The IdleTrackingBackgroundService has stopped unexpectedly.")]
