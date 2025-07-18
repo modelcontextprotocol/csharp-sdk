@@ -563,6 +563,27 @@ public partial class McpServerToolTests
         Assert.Null(result.StructuredContent);
     }
 
+    [Theory]
+    [InlineData(JsonNumberHandling.Strict)]
+    [InlineData(JsonNumberHandling.AllowReadingFromString)]
+    public async Task ToolWithNullableParameters_ReturnsExpectedSchema(JsonNumberHandling nunmberHandling)
+    {
+        JsonSerializerOptions options = new(JsonContext2.Default.Options) { NumberHandling = nunmberHandling };
+        McpServerTool tool = McpServerTool.Create((int? x = 42, DateTimeOffset? y = null) => { }, new() { SerializerOptions = options });
+
+        JsonElement expectedSchema = JsonDocument.Parse("""
+            {
+                "type": "object",
+                "properties": {
+                    "x": { "type": ["integer", "null"], "default": 42 },
+                    "y": { "type": ["string", "null"], "format": "date-time", "default": null }
+                }
+            }
+            """).RootElement;
+
+        Assert.True(JsonElement.DeepEquals(expectedSchema, tool.ProtocolTool.InputSchema));
+    }
+
     public static IEnumerable<object[]> StructuredOutput_ReturnsExpectedSchema_Inputs()
     {
         yield return new object[] { "string" };
@@ -695,5 +716,7 @@ public partial class McpServerToolTests
     [JsonSerializable(typeof(JsonSchema))]
     [JsonSerializable(typeof(List<AIContent>))]
     [JsonSerializable(typeof(List<string>))]
+    [JsonSerializable(typeof(int?))]
+    [JsonSerializable(typeof(DateTimeOffset?))]
     partial class JsonContext2 : JsonSerializerContext;
 }
