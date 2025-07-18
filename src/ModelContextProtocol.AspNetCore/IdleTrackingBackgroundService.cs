@@ -153,9 +153,7 @@ internal sealed partial class IdleTrackingBackgroundService(
     [LoggerMessage(Level = LogLevel.Error, Message = "Error disposing session {sessionId}.")]
     private partial void LogSessionDisposeError(string sessionId, Exception ex);
 
-    [LoggerMessage(Level = LogLevel.Critical,
-        Message =
-            "Exceeded maximum of {maxIdleSessionCount} idle sessions. Now closing sessions active more recently than configured IdleTimeout.")]
+    [LoggerMessage(Level = LogLevel.Critical, Message = "Exceeded maximum of {maxIdleSessionCount} idle sessions. Now closing sessions active more recently than configured IdleTimeout.")]
     private partial void LogMaxSessionIdleCountExceeded(int maxIdleSessionCount);
 
     [LoggerMessage(Level = LogLevel.Critical, Message = "The IdleTrackingBackgroundService has stopped unexpectedly.")]
