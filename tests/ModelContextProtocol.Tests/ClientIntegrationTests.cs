@@ -96,6 +96,30 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         Assert.Equal("Echo: Hello MCP!", textContent.Text);
     }
 
+    [Theory]
+    [MemberData(nameof(GetClients))]
+    public async Task CallTool_Stdio_EchoServer_WithJsonElementArguments(string clientId)
+    {
+        // arrange
+
+        // act
+        await using var client = await _fixture.CreateClientAsync(clientId);
+        var result = await client.CallToolAsync(
+            "echo",
+            new Dictionary<string, JsonElement>
+            {
+                ["message"] = JsonDocument.Parse("\"Hello MCP with JsonElement!\"").RootElement
+            },
+            cancellationToken: TestContext.Current.CancellationToken
+        );
+
+        // assert
+        Assert.NotNull(result);
+        Assert.Null(result.IsError);
+        var textContent = Assert.Single(result.Content.OfType<TextContentBlock>());
+        Assert.Equal("Echo: Hello MCP with JsonElement!", textContent.Text);
+    }
+
     [Fact]
     public async Task CallTool_Stdio_EchoSessionId_ReturnsEmpty()
     {
