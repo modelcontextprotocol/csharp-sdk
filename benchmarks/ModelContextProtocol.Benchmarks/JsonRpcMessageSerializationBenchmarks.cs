@@ -1,15 +1,18 @@
-using BenchmarkDotNet.Attributes;
-using ModelContextProtocol;
-using ModelContextProtocol.Protocol;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using BenchmarkDotNet.Attributes;
+using ModelContextProtocol.Protocol;
 
-public class JsonRpcMessageDeserializationBenchmarks
+namespace ModelContextProtocol.Benchmarks;
+
+[MemoryDiagnoser]
+public class JsonRpcMessageSerializationBenchmarks
 {
     private byte[] _requestJson = null!;
     private byte[] _notificationJson = null!;
     private byte[] _responseJson = null!;
     private byte[] _errorJson = null!;
+    
     private JsonSerializerOptions _options = null!;
 
     [GlobalSetup]
