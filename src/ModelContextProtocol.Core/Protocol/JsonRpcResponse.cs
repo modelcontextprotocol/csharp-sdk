@@ -18,12 +18,14 @@ namespace ModelContextProtocol.Protocol;
 /// </remarks>
 public sealed class JsonRpcResponse : JsonRpcMessageWithId
 {
+    internal const string ResultPropertyName = "result";
+
     /// <summary>
     /// Gets the result of the method invocation.
     /// </summary>
     /// <remarks>
     /// This property contains the result data returned by the server in response to the JSON-RPC method request.
     /// </remarks>
-    [JsonPropertyName("result")]
+    [JsonPropertyName(ResultPropertyName)]
     public required JsonNode? Result { get; init; }
 }

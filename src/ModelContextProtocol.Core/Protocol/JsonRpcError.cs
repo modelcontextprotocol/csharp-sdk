@@ -18,10 +18,12 @@ namespace ModelContextProtocol.Protocol;
 /// </remarks>
 public sealed class JsonRpcError : JsonRpcMessageWithId
 {
+    internal const string ErrorPropertyName = "error";
+
     /// <summary>
     /// Gets detailed error information for the failed request, containing an error code, 
     /// message, and optional additional data
     /// </summary>
-    [JsonPropertyName("error")]
+    [JsonPropertyName(ErrorPropertyName)]
     public required JsonRpcErrorDetail Error { get; init; }
 }

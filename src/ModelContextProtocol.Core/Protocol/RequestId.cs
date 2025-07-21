@@ -34,6 +34,11 @@ public readonly struct RequestId : IEquatable<RequestId>
     /// <remarks>This will either be a <see cref="string"/>, a boxed <see cref="long"/>, or <see langword="null"/>.</remarks>
     public object? Id => _id;
 
+    /// <summary>
+    /// Returns true if the underlying id is set.
+    /// </summary>
+    public bool HasValue => _id != null;
+
     /// <inheritdoc />
     public override string ToString() =>
         _id is string stringValue ? stringValue :

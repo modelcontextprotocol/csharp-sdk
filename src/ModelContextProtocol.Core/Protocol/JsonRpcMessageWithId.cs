@@ -14,6 +14,8 @@ namespace ModelContextProtocol.Protocol;
 /// </remarks>
 public abstract class JsonRpcMessageWithId : JsonRpcMessage
 {
+    internal const string IdPropertyName = "id";
+
     /// <summary>Prevent external derivations.</summary>
     private protected JsonRpcMessageWithId()
     {
@@ -25,6 +27,6 @@ public abstract class JsonRpcMessageWithId : JsonRpcMessage
     /// <remarks>
     /// Each ID is expected to be unique within the context of a given session.
     /// </remarks>
-    [JsonPropertyName("id")]
+    [JsonPropertyName(IdPropertyName)]
     public RequestId Id { get; init; }
 }
