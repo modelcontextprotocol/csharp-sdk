@@ -793,6 +793,98 @@ public static class McpClientExtensions
     /// Invokes a tool on the server.
     /// </summary>
     /// <param name="client">The client instance used to communicate with the MCP server.</param>
+    /// <param name="toolName">The name of the tool to call on the server.</param>
+    /// <param name="arguments">A dictionary of arguments to pass to the tool. Each key represents a parameter name,
+    /// and its associated value represents the argument value as a <see cref="JsonElement"/>.
+    /// </param>
+    /// <param name="progress">
+    /// An optional <see cref="IProgress{T}"/> to have progress notifications reported to it. Setting this to a non-<see langword="null"/>
+    /// value will result in a progress token being included in the call, and any resulting progress notifications during the operation
+    /// routed to this instance.
+    /// </param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>
+    /// A task containing the <see cref="CallToolResult"/> from the tool execution. The response includes
+    /// the tool's output content, which may be structured data, text, or an error message.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="toolName"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The server could not find the requested tool, or the server encountered an error while processing the request.</exception>
+    /// <example>
+    /// <code>
+    /// // Call a tool with JsonElement arguments
+    /// var arguments = new Dictionary&lt;string, JsonElement&gt;
+    /// {
+    ///     ["message"] = JsonSerializer.SerializeToElement("Hello MCP!")
+    /// };
+    /// var result = await client.CallToolAsync("echo", arguments);
+    /// </code>
+    /// </example>
+    public static ValueTask<CallToolResult> CallToolAsync(
+        this IMcpClient client,
+        string toolName,
+        IReadOnlyDictionary<string, JsonElement> arguments,
+        IProgress<ProgressNotificationValue>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(client);
+        Throw.IfNull(toolName);
+
+        if (progress is not null)
+        {
+            return SendRequestWithProgressAsync(client, toolName, arguments, progress, cancellationToken);
+        }
+
+        return client.SendRequestAsync(
+            RequestMethods.ToolsCall,
+            new()
+            {
+                Name = toolName,
+                Arguments = arguments,
+            },
+            McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
+            McpJsonUtilities.JsonContext.Default.CallToolResult,
+            cancellationToken: cancellationToken);
+
+        static async ValueTask<CallToolResult> SendRequestWithProgressAsync(
+            IMcpClient client,
+            string toolName,
+            IReadOnlyDictionary<string, JsonElement> arguments,
+            IProgress<ProgressNotificationValue> progress,
+            CancellationToken cancellationToken)
+        {
+            ProgressToken progressToken = new(Guid.NewGuid().ToString("N"));
+
+            await using var _ = client.RegisterNotificationHandler(NotificationMethods.ProgressNotification,
+                (notification, cancellationToken) =>
+                {
+                    if (JsonSerializer.Deserialize(notification.Params, McpJsonUtilities.JsonContext.Default.ProgressNotificationParams) is { } pn &&
+                        pn.ProgressToken == progressToken)
+                    {
+                        progress.Report(pn.Progress);
+                    }
+
+                    return default;
+                }).ConfigureAwait(false);
+
+            return await client.SendRequestAsync(
+                RequestMethods.ToolsCall,
+                new()
+                {
+                    Name = toolName,
+                    Arguments = arguments,
+                    ProgressToken = progressToken,
+                },
+                McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
+                McpJsonUtilities.JsonContext.Default.CallToolResult,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Invokes a tool on the server.
+    /// </summary>
+    /// <param name="client">The client instance used to communicate with the MCP server.</param>
     /// <param name="toolName">The name of the tool to call on the server..</param>
     /// <param name="arguments">An optional dictionary of arguments to pass to the tool. Each key represents a parameter name,
     /// and its associated value represents the argument value.
