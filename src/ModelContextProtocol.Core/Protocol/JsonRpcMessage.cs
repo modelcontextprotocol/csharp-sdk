@@ -81,7 +81,7 @@ public abstract class JsonRpcMessage
         /// <summary>
         /// The union to deserialize.
         /// </summary>
-        public struct Union
+        internal struct Union
         {
             /// <summary>
             /// <see cref="JsonRpcMessage.JsonRpc"/>
