@@ -1,24 +1,26 @@
-using System.IO;
+using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Client;
 using PublicApiGenerator;
-using Xunit;
 
 namespace ModelContextProtocol.Tests;
 
 public class PublicApiTests
 {
+    private static readonly ApiGeneratorOptions Options = new() { IncludeAssemblyAttributes = false };
+
     [Fact]
     public void ModelContextProtocol_PublicApi_Approved()
     {
-        var api = typeof(ModelContextProtocol.McpServerHandlers).Assembly.GeneratePublicApi(new ApiGeneratorOptions { IncludeAssemblyAttributes = false });
-        var approved = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "PublicAPI.ModelContextProtocol.txt"));
+        var api = typeof(IMcpServerBuilder).Assembly.GeneratePublicApi(Options);
+        var approved = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "PublicApiTests.ModelContextProtocol.txt"));
         Assert.Equal(approved, api);
     }
 
     [Fact]
     public void ModelContextProtocolCore_PublicApi_Approved()
     {
-        var api = typeof(ModelContextProtocol.McpEndpoint).Assembly.GeneratePublicApi(new ApiGeneratorOptions { IncludeAssemblyAttributes = false });
-        var approved = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "PublicAPI.ModelContextProtocol.Core.txt"));
+        var api = typeof(IMcpClient).Assembly.GeneratePublicApi(Options);
+        var approved = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "PublicApiTests.ModelContextProtocol.Core.txt"));
         Assert.Equal(approved, api);
     }
 }

@@ -1,6 +1,5 @@
-using System.IO;
+using Microsoft.AspNetCore.Builder;
 using PublicApiGenerator;
-using Xunit;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
 
@@ -9,8 +8,8 @@ public class PublicApiTests
     [Fact]
     public void AspNetCore_PublicApi_Approved()
     {
-        var api = typeof(ModelContextProtocol.AspNetCore.HttpMcpServerBuilderExtensions).Assembly.GeneratePublicApi(new ApiGeneratorOptions { IncludeAssemblyAttributes = false });
-        var approved = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "PublicAPI.ModelContextProtocol.AspNetCore.txt"));
+        var api = typeof(McpEndpointRouteBuilderExtensions).Assembly.GeneratePublicApi(new ApiGeneratorOptions { IncludeAssemblyAttributes = false });
+        var approved = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "PublicApiTests.ModelContextProtocol.AspNetCore.txt"));
         Assert.Equal(approved, api);
     }
 }
