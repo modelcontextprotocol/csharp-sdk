@@ -1,0 +1,46 @@
+namespace ModelContextProtocol.AspNetCore.Authentication
+{
+    public static class McpAuthenticationDefaults
+    {
+        public const string AuthenticationScheme = "McpAuth";
+        public const string DisplayName = "MCP Authentication";
+    }
+    public class McpAuthenticationEvents
+    {
+        public McpAuthenticationEvents() { }
+        public System.Func<ModelContextProtocol.AspNetCore.Authentication.ResourceMetadataRequestContext, System.Threading.Tasks.Task> OnResourceMetadataRequest { get; set; }
+    }
+    public class McpAuthenticationHandler : Microsoft.AspNetCore.Authentication.AuthenticationHandler<ModelContextProtocol.AspNetCore.Authentication.McpAuthenticationOptions>, Microsoft.AspNetCore.Authentication.IAuthenticationHandler, Microsoft.AspNetCore.Authentication.IAuthenticationRequestHandler
+    {
+        public McpAuthenticationHandler(Microsoft.Extensions.Options.IOptionsMonitor<ModelContextProtocol.AspNetCore.Authentication.McpAuthenticationOptions> options, Microsoft.Extensions.Logging.ILoggerFactory logger, System.Text.Encodings.Web.UrlEncoder encoder) { }
+        protected override System.Threading.Tasks.Task<Microsoft.AspNetCore.Authentication.AuthenticateResult> HandleAuthenticateAsync() { }
+        protected override System.Threading.Tasks.Task HandleChallengeAsync(Microsoft.AspNetCore.Authentication.AuthenticationProperties properties) { }
+        public System.Threading.Tasks.Task<bool> HandleRequestAsync() { }
+    }
+    public class McpAuthenticationOptions : Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions
+    {
+        public McpAuthenticationOptions() { }
+        public new ModelContextProtocol.AspNetCore.Authentication.McpAuthenticationEvents Events { get; set; }
+        public ModelContextProtocol.Authentication.ProtectedResourceMetadata? ResourceMetadata { get; set; }
+        public System.Uri ResourceMetadataUri { get; set; }
+    }
+    public class ResourceMetadataRequestContext : Microsoft.AspNetCore.Authentication.HandleRequestContext<ModelContextProtocol.AspNetCore.Authentication.McpAuthenticationOptions>
+    {
+        public ResourceMetadataRequestContext(Microsoft.AspNetCore.Http.HttpContext context, Microsoft.AspNetCore.Authentication.AuthenticationScheme scheme, ModelContextProtocol.AspNetCore.Authentication.McpAuthenticationOptions options) { }
+        public ModelContextProtocol.Authentication.ProtectedResourceMetadata? ResourceMetadata { get; set; }
+    }
+}
+namespace ModelContextProtocol.AspNetCore
+{
+    public class HttpServerTransportOptions
+    {
+        public HttpServerTransportOptions() { }
+        public System.Func<Microsoft.AspNetCore.Http.HttpContext, ModelContextProtocol.Server.McpServerOptions, System.Threading.CancellationToken, System.Threading.Tasks.Task>? ConfigureSessionOptions { get; set; }
+        public System.TimeSpan IdleTimeout { get; set; }
+        public int MaxIdleSessionCount { get; set; }
+        public bool PerSessionExecutionContext { get; set; }
+        public System.Func<Microsoft.AspNetCore.Http.HttpContext, ModelContextProtocol.Server.IMcpServer, System.Threading.CancellationToken, System.Threading.Tasks.Task>? RunSessionHandler { get; set; }
+        public bool Stateless { get; set; }
+        public System.TimeProvider TimeProvider { get; set; }
+    }
+}

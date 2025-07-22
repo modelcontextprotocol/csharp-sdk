@@ -1,0 +1,1483 @@
+namespace ModelContextProtocol
+{
+    public static class AIContentExtensions
+    {
+        public static Microsoft.Extensions.AI.AIContent? ToAIContent(this ModelContextProtocol.Protocol.ContentBlock content) { }
+        public static Microsoft.Extensions.AI.AIContent ToAIContent(this ModelContextProtocol.Protocol.ResourceContents content) { }
+        public static System.Collections.Generic.IList<Microsoft.Extensions.AI.AIContent> ToAIContents(this System.Collections.Generic.IEnumerable<ModelContextProtocol.Protocol.ContentBlock> contents) { }
+        public static System.Collections.Generic.IList<Microsoft.Extensions.AI.AIContent> ToAIContents(this System.Collections.Generic.IEnumerable<ModelContextProtocol.Protocol.ResourceContents> contents) { }
+        public static Microsoft.Extensions.AI.ChatMessage ToChatMessage(this ModelContextProtocol.Protocol.PromptMessage promptMessage) { }
+        public static Microsoft.Extensions.AI.ChatMessage ToChatMessage(this ModelContextProtocol.Protocol.CallToolResult result, string callId) { }
+        public static System.Collections.Generic.IList<Microsoft.Extensions.AI.ChatMessage> ToChatMessages(this ModelContextProtocol.Protocol.GetPromptResult promptResult) { }
+        public static System.Collections.Generic.IList<ModelContextProtocol.Protocol.PromptMessage> ToPromptMessages(this Microsoft.Extensions.AI.ChatMessage chatMessage) { }
+    }
+    [System.Diagnostics.CodeAnalysis.RequiresDynamicCode("Requires dynamic code to instantiate the generic enum converter.")]
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode("Requires unreferenced code to instantiate the generic enum converter.")]
+    public sealed class CustomizableJsonStringEnumConverter : System.Text.Json.Serialization.JsonConverterFactory
+    {
+        public CustomizableJsonStringEnumConverter() { }
+        public override bool CanConvert(System.Type typeToConvert) { }
+        public override System.Text.Json.Serialization.JsonConverter? CreateConverter(System.Type typeToConvert, System.Text.Json.JsonSerializerOptions options) { }
+    }
+    public sealed class CustomizableJsonStringEnumConverter<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicFields)]  TEnum> : System.Text.Json.Serialization.JsonStringEnumConverter<TEnum>
+        where TEnum :  struct, System.Enum
+    {
+        public CustomizableJsonStringEnumConverter() { }
+    }
+    public interface IMcpEndpoint : System.IAsyncDisposable
+    {
+        string? SessionId { get; }
+        System.IAsyncDisposable RegisterNotificationHandler(string method, System.Func<ModelContextProtocol.Protocol.JsonRpcNotification, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask> handler);
+        System.Threading.Tasks.Task SendMessageAsync(ModelContextProtocol.Protocol.JsonRpcMessage message, System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.Tasks.Task<ModelContextProtocol.Protocol.JsonRpcResponse> SendRequestAsync(ModelContextProtocol.Protocol.JsonRpcRequest request, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public static class McpEndpointExtensions
+    {
+        public static System.Threading.Tasks.Task NotifyProgressAsync(this ModelContextProtocol.IMcpEndpoint endpoint, ModelContextProtocol.Protocol.ProgressToken progressToken, ModelContextProtocol.ProgressNotificationValue progress, System.Threading.CancellationToken cancellationToken = default) { }
+        public static System.Threading.Tasks.Task SendNotificationAsync(this ModelContextProtocol.IMcpEndpoint client, string method, System.Threading.CancellationToken cancellationToken = default) { }
+        public static System.Threading.Tasks.Task SendNotificationAsync<TParameters>(this ModelContextProtocol.IMcpEndpoint endpoint, string method, TParameters parameters, System.Text.Json.JsonSerializerOptions? serializerOptions = null, System.Threading.CancellationToken cancellationToken = default) { }
+        public static System.Threading.Tasks.ValueTask<TResult> SendRequestAsync<TParameters, TResult>(this ModelContextProtocol.IMcpEndpoint endpoint, string method, TParameters parameters, System.Text.Json.JsonSerializerOptions? serializerOptions = null, ModelContextProtocol.Protocol.RequestId requestId = default, System.Threading.CancellationToken cancellationToken = default)
+            where TResult :  notnull { }
+    }
+    public enum McpErrorCode
+    {
+        ParseError = -32700,
+        InvalidRequest = -32600,
+        MethodNotFound = -32601,
+        InvalidParams = -32602,
+        InternalError = -32603,
+    }
+    public class McpException : System.Exception
+    {
+        public McpException() { }
+        public McpException(string message) { }
+        public McpException(string message, ModelContextProtocol.McpErrorCode errorCode) { }
+        public McpException(string message, System.Exception? innerException) { }
+        public McpException(string message, System.Exception? innerException, ModelContextProtocol.McpErrorCode errorCode) { }
+        public ModelContextProtocol.McpErrorCode ErrorCode { get; }
+    }
+    public static class McpJsonUtilities
+    {
+        public static System.Text.Json.JsonSerializerOptions DefaultOptions { get; }
+    }
+    public sealed class ProgressNotificationValue
+    {
+        public ProgressNotificationValue() { }
+        public string? Message { get; init; }
+        public required float Progress { get; init; }
+        public float? Total { get; init; }
+    }
+}
+namespace ModelContextProtocol.Authentication
+{
+    public delegate System.Threading.Tasks.Task<string?> AuthorizationRedirectDelegate(System.Uri authorizationUri, System.Uri redirectUri, System.Threading.CancellationToken cancellationToken);
+    public sealed class ClientOAuthOptions
+    {
+        public ClientOAuthOptions() { }
+        public System.Collections.Generic.IDictionary<string, string> AdditionalAuthorizationParameters { get; set; }
+        public System.Func<System.Collections.Generic.IReadOnlyList<System.Uri>, System.Uri?>? AuthServerSelector { get; set; }
+        public ModelContextProtocol.Authentication.AuthorizationRedirectDelegate? AuthorizationRedirectDelegate { get; set; }
+        public string? ClientId { get; set; }
+        public string? ClientName { get; set; }
+        public string? ClientSecret { get; set; }
+        public System.Uri? ClientUri { get; set; }
+        public required System.Uri RedirectUri { get; set; }
+        public System.Collections.Generic.IEnumerable<string>? Scopes { get; set; }
+    }
+    public sealed class ProtectedResourceMetadata
+    {
+        public ProtectedResourceMetadata() { }
+        [System.Text.Json.Serialization.JsonPropertyName("authorization_details_types_supported")]
+        public System.Collections.Generic.List<string>? AuthorizationDetailsTypesSupported { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("authorization_servers")]
+        public System.Collections.Generic.List<System.Uri> AuthorizationServers { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("bearer_methods_supported")]
+        public System.Collections.Generic.List<string> BearerMethodsSupported { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("dpop_bound_access_tokens_required")]
+        public bool? DpopBoundAccessTokensRequired { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("dpop_signing_alg_values_supported")]
+        public System.Collections.Generic.List<string>? DpopSigningAlgValuesSupported { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("jwks_uri")]
+        public System.Uri? JwksUri { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("resource")]
+        public required System.Uri Resource { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("resource_documentation")]
+        public System.Uri? ResourceDocumentation { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("resource_name")]
+        public string? ResourceName { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("resource_policy_uri")]
+        public System.Uri? ResourcePolicyUri { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("resource_signing_alg_values_supported")]
+        public System.Collections.Generic.List<string>? ResourceSigningAlgValuesSupported { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("resource_tos_uri")]
+        public System.Uri? ResourceTosUri { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("scopes_supported")]
+        public System.Collections.Generic.List<string> ScopesSupported { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("tls_client_certificate_bound_access_tokens")]
+        public bool? TlsClientCertificateBoundAccessTokens { get; set; }
+    }
+}
+namespace ModelContextProtocol.Client
+{
+    public enum HttpTransportMode
+    {
+        AutoDetect = 0,
+        StreamableHttp = 1,
+        Sse = 2,
+    }
+    public interface IClientTransport
+    {
+        string Name { get; }
+        System.Threading.Tasks.Task<ModelContextProtocol.Protocol.ITransport> ConnectAsync(System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IMcpClient : ModelContextProtocol.IMcpEndpoint, System.IAsyncDisposable
+    {
+        ModelContextProtocol.Protocol.ServerCapabilities ServerCapabilities { get; }
+        ModelContextProtocol.Protocol.Implementation ServerInfo { get; }
+        string? ServerInstructions { get; }
+    }
+    public static class McpClientExtensions
+    {
+        public static System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.CallToolResult> CallToolAsync(this ModelContextProtocol.Client.IMcpClient client, string toolName, System.Collections.Generic.IReadOnlyDictionary<string, object?>? arguments = null, System.IProgress<ModelContextProtocol.ProgressNotificationValue>? progress = null, System.Text.Json.JsonSerializerOptions? serializerOptions = null, System.Threading.CancellationToken cancellationToken = default) { }
+        public static System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.CompleteResult> CompleteAsync(this ModelContextProtocol.Client.IMcpClient client, ModelContextProtocol.Protocol.Reference reference, string argumentName, string argumentValue, System.Threading.CancellationToken cancellationToken = default) { }
+        public static System.Func<ModelContextProtocol.Protocol.CreateMessageRequestParams?, System.IProgress<ModelContextProtocol.ProgressNotificationValue>, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.CreateMessageResult>> CreateSamplingHandler(this Microsoft.Extensions.AI.IChatClient chatClient) { }
+        [System.Runtime.CompilerServices.AsyncIteratorStateMachine(typeof(ModelContextProtocol.Client.McpClientExtensions.<EnumeratePromptsAsync>d__4))]
+        public static System.Collections.Generic.IAsyncEnumerable<ModelContextProtocol.Client.McpClientPrompt> EnumeratePromptsAsync(this ModelContextProtocol.Client.IMcpClient client, [System.Runtime.CompilerServices.EnumeratorCancellation] System.Threading.CancellationToken cancellationToken = default) { }
+        [System.Runtime.CompilerServices.AsyncIteratorStateMachine(typeof(ModelContextProtocol.Client.McpClientExtensions.<EnumerateResourceTemplatesAsync>d__7))]
+        public static System.Collections.Generic.IAsyncEnumerable<ModelContextProtocol.Client.McpClientResourceTemplate> EnumerateResourceTemplatesAsync(this ModelContextProtocol.Client.IMcpClient client, [System.Runtime.CompilerServices.EnumeratorCancellation] System.Threading.CancellationToken cancellationToken = default) { }
+        [System.Runtime.CompilerServices.AsyncIteratorStateMachine(typeof(ModelContextProtocol.Client.McpClientExtensions.<EnumerateResourcesAsync>d__9))]
+        public static System.Collections.Generic.IAsyncEnumerable<ModelContextProtocol.Client.McpClientResource> EnumerateResourcesAsync(this ModelContextProtocol.Client.IMcpClient client, [System.Runtime.CompilerServices.EnumeratorCancellation] System.Threading.CancellationToken cancellationToken = default) { }
+        [System.Runtime.CompilerServices.AsyncIteratorStateMachine(typeof(ModelContextProtocol.Client.McpClientExtensions.<EnumerateToolsAsync>d__2))]
+        public static System.Collections.Generic.IAsyncEnumerable<ModelContextProtocol.Client.McpClientTool> EnumerateToolsAsync(this ModelContextProtocol.Client.IMcpClient client, System.Text.Json.JsonSerializerOptions? serializerOptions = null, [System.Runtime.CompilerServices.EnumeratorCancellation] System.Threading.CancellationToken cancellationToken = default) { }
+        public static System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.GetPromptResult> GetPromptAsync(this ModelContextProtocol.Client.IMcpClient client, string name, System.Collections.Generic.IReadOnlyDictionary<string, object?>? arguments = null, System.Text.Json.JsonSerializerOptions? serializerOptions = null, System.Threading.CancellationToken cancellationToken = default) { }
+        public static System.Threading.Tasks.ValueTask<System.Collections.Generic.IList<ModelContextProtocol.Client.McpClientPrompt>> ListPromptsAsync(this ModelContextProtocol.Client.IMcpClient client, System.Threading.CancellationToken cancellationToken = default) { }
+        public static System.Threading.Tasks.ValueTask<System.Collections.Generic.IList<ModelContextProtocol.Client.McpClientResourceTemplate>> ListResourceTemplatesAsync(this ModelContextProtocol.Client.IMcpClient client, System.Threading.CancellationToken cancellationToken = default) { }
+        public static System.Threading.Tasks.ValueTask<System.Collections.Generic.IList<ModelContextProtocol.Client.McpClientResource>> ListResourcesAsync(this ModelContextProtocol.Client.IMcpClient client, System.Threading.CancellationToken cancellationToken = default) { }
+        public static System.Threading.Tasks.ValueTask<System.Collections.Generic.IList<ModelContextProtocol.Client.McpClientTool>> ListToolsAsync(this ModelContextProtocol.Client.IMcpClient client, System.Text.Json.JsonSerializerOptions? serializerOptions = null, System.Threading.CancellationToken cancellationToken = default) { }
+        public static System.Threading.Tasks.Task PingAsync(this ModelContextProtocol.Client.IMcpClient client, System.Threading.CancellationToken cancellationToken = default) { }
+        public static System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.ReadResourceResult> ReadResourceAsync(this ModelContextProtocol.Client.IMcpClient client, System.Uri uri, System.Threading.CancellationToken cancellationToken = default) { }
+        public static System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.ReadResourceResult> ReadResourceAsync(this ModelContextProtocol.Client.IMcpClient client, string uri, System.Threading.CancellationToken cancellationToken = default) { }
+        public static System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.ReadResourceResult> ReadResourceAsync(this ModelContextProtocol.Client.IMcpClient client, string uriTemplate, System.Collections.Generic.IReadOnlyDictionary<string, object?> arguments, System.Threading.CancellationToken cancellationToken = default) { }
+        public static System.Threading.Tasks.Task SetLoggingLevel(this ModelContextProtocol.Client.IMcpClient client, Microsoft.Extensions.Logging.LogLevel level, System.Threading.CancellationToken cancellationToken = default) { }
+        public static System.Threading.Tasks.Task SetLoggingLevel(this ModelContextProtocol.Client.IMcpClient client, ModelContextProtocol.Protocol.LoggingLevel level, System.Threading.CancellationToken cancellationToken = default) { }
+        public static System.Threading.Tasks.Task SubscribeToResourceAsync(this ModelContextProtocol.Client.IMcpClient client, System.Uri uri, System.Threading.CancellationToken cancellationToken = default) { }
+        public static System.Threading.Tasks.Task SubscribeToResourceAsync(this ModelContextProtocol.Client.IMcpClient client, string uri, System.Threading.CancellationToken cancellationToken = default) { }
+        public static System.Threading.Tasks.Task UnsubscribeFromResourceAsync(this ModelContextProtocol.Client.IMcpClient client, System.Uri uri, System.Threading.CancellationToken cancellationToken = default) { }
+        public static System.Threading.Tasks.Task UnsubscribeFromResourceAsync(this ModelContextProtocol.Client.IMcpClient client, string uri, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class McpClientFactory
+    {
+        public static System.Threading.Tasks.Task<ModelContextProtocol.Client.IMcpClient> CreateAsync(ModelContextProtocol.Client.IClientTransport clientTransport, ModelContextProtocol.Client.McpClientOptions? clientOptions = null, Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class McpClientOptions
+    {
+        public McpClientOptions() { }
+        public ModelContextProtocol.Protocol.ClientCapabilities? Capabilities { get; set; }
+        public ModelContextProtocol.Protocol.Implementation? ClientInfo { get; set; }
+        public System.TimeSpan InitializationTimeout { get; set; }
+        public string? ProtocolVersion { get; set; }
+    }
+    public sealed class McpClientPrompt
+    {
+        public string? Description { get; }
+        public string Name { get; }
+        public ModelContextProtocol.Protocol.Prompt ProtocolPrompt { get; }
+        public string? Title { get; }
+        public System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.GetPromptResult> GetAsync(System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<string, object?>>? arguments = null, System.Text.Json.JsonSerializerOptions? serializerOptions = null, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class McpClientResource
+    {
+        public string? Description { get; }
+        public string? MimeType { get; }
+        public string Name { get; }
+        public ModelContextProtocol.Protocol.Resource ProtocolResource { get; }
+        public string? Title { get; }
+        public string Uri { get; }
+        public System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.ReadResourceResult> ReadAsync(System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class McpClientResourceTemplate
+    {
+        public string? Description { get; }
+        public string? MimeType { get; }
+        public string Name { get; }
+        public ModelContextProtocol.Protocol.ResourceTemplate ProtocolResourceTemplate { get; }
+        public string? Title { get; }
+        public string UriTemplate { get; }
+        public System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.ReadResourceResult> ReadAsync(System.Collections.Generic.IReadOnlyDictionary<string, object?> arguments, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class McpClientTool : Microsoft.Extensions.AI.AIFunction
+    {
+        public override System.Collections.Generic.IReadOnlyDictionary<string, object?> AdditionalProperties { get; }
+        public override string Description { get; }
+        public override System.Text.Json.JsonElement JsonSchema { get; }
+        public override System.Text.Json.JsonSerializerOptions JsonSerializerOptions { get; }
+        public override string Name { get; }
+        public ModelContextProtocol.Protocol.Tool ProtocolTool { get; }
+        public override System.Text.Json.JsonElement? ReturnJsonSchema { get; }
+        public string? Title { get; }
+        public System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.CallToolResult> CallAsync(System.Collections.Generic.IReadOnlyDictionary<string, object?>? arguments = null, System.IProgress<ModelContextProtocol.ProgressNotificationValue>? progress = null, System.Text.Json.JsonSerializerOptions? serializerOptions = null, System.Threading.CancellationToken cancellationToken = default) { }
+        protected override System.Threading.Tasks.ValueTask<object?> InvokeCoreAsync(Microsoft.Extensions.AI.AIFunctionArguments arguments, System.Threading.CancellationToken cancellationToken) { }
+        public ModelContextProtocol.Client.McpClientTool WithDescription(string description) { }
+        public ModelContextProtocol.Client.McpClientTool WithName(string name) { }
+        public ModelContextProtocol.Client.McpClientTool WithProgress(System.IProgress<ModelContextProtocol.ProgressNotificationValue> progress) { }
+    }
+    public sealed class SseClientTransport : ModelContextProtocol.Client.IClientTransport, System.IAsyncDisposable
+    {
+        public SseClientTransport(ModelContextProtocol.Client.SseClientTransportOptions transportOptions, Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null) { }
+        public SseClientTransport(ModelContextProtocol.Client.SseClientTransportOptions transportOptions, System.Net.Http.HttpClient httpClient, Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null, bool ownsHttpClient = false) { }
+        public string Name { get; }
+        public System.Threading.Tasks.Task<ModelContextProtocol.Protocol.ITransport> ConnectAsync(System.Threading.CancellationToken cancellationToken = default) { }
+        public System.Threading.Tasks.ValueTask DisposeAsync() { }
+    }
+    public sealed class SseClientTransportOptions
+    {
+        public SseClientTransportOptions() { }
+        public System.Collections.Generic.IDictionary<string, string>? AdditionalHeaders { get; set; }
+        public System.TimeSpan ConnectionTimeout { get; set; }
+        public required System.Uri Endpoint { get; set; }
+        public string? Name { get; set; }
+        public ModelContextProtocol.Authentication.ClientOAuthOptions? OAuth { get; set; }
+        public ModelContextProtocol.Client.HttpTransportMode TransportMode { get; set; }
+    }
+    public sealed class StdioClientTransport : ModelContextProtocol.Client.IClientTransport
+    {
+        public StdioClientTransport(ModelContextProtocol.Client.StdioClientTransportOptions options, Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null) { }
+        public string Name { get; }
+        public System.Threading.Tasks.Task<ModelContextProtocol.Protocol.ITransport> ConnectAsync(System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class StdioClientTransportOptions
+    {
+        public StdioClientTransportOptions() { }
+        public System.Collections.Generic.IList<string>? Arguments { get; set; }
+        public required string Command { get; set; }
+        public System.Collections.Generic.IDictionary<string, string?>? EnvironmentVariables { get; set; }
+        public string? Name { get; set; }
+        public System.TimeSpan ShutdownTimeout { get; set; }
+        public System.Action<string>? StandardErrorLines { get; set; }
+        public string? WorkingDirectory { get; set; }
+    }
+}
+namespace ModelContextProtocol.Protocol
+{
+    public sealed class Annotations
+    {
+        public Annotations() { }
+        [System.Text.Json.Serialization.JsonPropertyName("audience")]
+        public System.Collections.Generic.IList<ModelContextProtocol.Protocol.Role>? Audience { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("lastModified")]
+        public System.DateTimeOffset? LastModified { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("priority")]
+        public float? Priority { get; init; }
+    }
+    public sealed class Argument
+    {
+        public Argument() { }
+        [System.Text.Json.Serialization.JsonPropertyName("name")]
+        public string Name { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("value")]
+        public string Value { get; set; }
+    }
+    public sealed class AudioContentBlock : ModelContextProtocol.Protocol.ContentBlock
+    {
+        public AudioContentBlock() { }
+        [System.Text.Json.Serialization.JsonPropertyName("data")]
+        public required string Data { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("_meta")]
+        public System.Text.Json.Nodes.JsonObject? Meta { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("mimeType")]
+        public required string MimeType { get; set; }
+    }
+    public sealed class BlobResourceContents : ModelContextProtocol.Protocol.ResourceContents
+    {
+        public BlobResourceContents() { }
+        [System.Text.Json.Serialization.JsonPropertyName("blob")]
+        public string Blob { get; set; }
+    }
+    public sealed class CallToolRequestParams : ModelContextProtocol.Protocol.RequestParams
+    {
+        public CallToolRequestParams() { }
+        [System.Text.Json.Serialization.JsonPropertyName("arguments")]
+        public System.Collections.Generic.IReadOnlyDictionary<string, System.Text.Json.JsonElement>? Arguments { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("name")]
+        public required string Name { get; init; }
+    }
+    public sealed class CallToolResult : ModelContextProtocol.Protocol.Result
+    {
+        public CallToolResult() { }
+        [System.Text.Json.Serialization.JsonPropertyName("content")]
+        public System.Collections.Generic.IList<ModelContextProtocol.Protocol.ContentBlock> Content { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("isError")]
+        public bool? IsError { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("structuredContent")]
+        public System.Text.Json.Nodes.JsonNode? StructuredContent { get; set; }
+    }
+    public sealed class CancelledNotificationParams : ModelContextProtocol.Protocol.NotificationParams
+    {
+        public CancelledNotificationParams() { }
+        [System.Text.Json.Serialization.JsonPropertyName("reason")]
+        public string? Reason { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("requestId")]
+        public ModelContextProtocol.Protocol.RequestId RequestId { get; set; }
+    }
+    public sealed class ClientCapabilities
+    {
+        public ClientCapabilities() { }
+        [System.Text.Json.Serialization.JsonPropertyName("elicitation")]
+        public ModelContextProtocol.Protocol.ElicitationCapability? Elicitation { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("experimental")]
+        public System.Collections.Generic.IDictionary<string, object>? Experimental { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<string, System.Func<ModelContextProtocol.Protocol.JsonRpcNotification, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask>>>? NotificationHandlers { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("roots")]
+        public ModelContextProtocol.Protocol.RootsCapability? Roots { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("sampling")]
+        public ModelContextProtocol.Protocol.SamplingCapability? Sampling { get; set; }
+    }
+    public sealed class CompleteContext
+    {
+        public CompleteContext() { }
+        [System.Text.Json.Serialization.JsonPropertyName("arguments")]
+        public System.Collections.Generic.IDictionary<string, string>? Arguments { get; init; }
+    }
+    public sealed class CompleteRequestParams : ModelContextProtocol.Protocol.RequestParams
+    {
+        public CompleteRequestParams() { }
+        [System.Text.Json.Serialization.JsonPropertyName("argument")]
+        public required ModelContextProtocol.Protocol.Argument Argument { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("context")]
+        public ModelContextProtocol.Protocol.CompleteContext? Context { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("ref")]
+        public required ModelContextProtocol.Protocol.Reference Ref { get; init; }
+    }
+    public sealed class CompleteResult : ModelContextProtocol.Protocol.Result
+    {
+        public CompleteResult() { }
+        [System.Text.Json.Serialization.JsonPropertyName("completion")]
+        public ModelContextProtocol.Protocol.Completion Completion { get; set; }
+    }
+    public sealed class Completion
+    {
+        public Completion() { }
+        [System.Text.Json.Serialization.JsonPropertyName("hasMore")]
+        public bool? HasMore { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("total")]
+        public int? Total { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("values")]
+        public System.Collections.Generic.IList<string> Values { get; set; }
+    }
+    public sealed class CompletionsCapability
+    {
+        public CompletionsCapability() { }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public System.Func<ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.CompleteRequestParams>, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.CompleteResult>>? CompleteHandler { get; set; }
+    }
+    [System.Text.Json.Serialization.JsonConverter(typeof(ModelContextProtocol.Protocol.ContentBlock.Converter))]
+    public abstract class ContentBlock
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("annotations")]
+        public ModelContextProtocol.Protocol.Annotations? Annotations { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("type")]
+        public string Type { get; set; }
+        public class Converter : System.Text.Json.Serialization.JsonConverter<ModelContextProtocol.Protocol.ContentBlock>
+        {
+            public Converter() { }
+            public override ModelContextProtocol.Protocol.ContentBlock? Read(ref System.Text.Json.Utf8JsonReader reader, System.Type typeToConvert, System.Text.Json.JsonSerializerOptions options) { }
+            public override void Write(System.Text.Json.Utf8JsonWriter writer, ModelContextProtocol.Protocol.ContentBlock value, System.Text.Json.JsonSerializerOptions options) { }
+        }
+    }
+    [System.Text.Json.Serialization.JsonConverter(typeof(ModelContextProtocol.CustomizableJsonStringEnumConverter<ModelContextProtocol.Protocol.ContextInclusion>))]
+    public enum ContextInclusion
+    {
+        [System.Text.Json.Serialization.JsonStringEnumMemberName("none")]
+        None = 0,
+        [System.Text.Json.Serialization.JsonStringEnumMemberName("thisServer")]
+        ThisServer = 1,
+        [System.Text.Json.Serialization.JsonStringEnumMemberName("allServers")]
+        AllServers = 2,
+    }
+    public sealed class CreateMessageRequestParams : ModelContextProtocol.Protocol.RequestParams
+    {
+        public CreateMessageRequestParams() { }
+        [System.Text.Json.Serialization.JsonPropertyName("includeContext")]
+        public ModelContextProtocol.Protocol.ContextInclusion? IncludeContext { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("maxTokens")]
+        public int? MaxTokens { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("messages")]
+        public required System.Collections.Generic.IReadOnlyList<ModelContextProtocol.Protocol.SamplingMessage> Messages { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("metadata")]
+        public System.Text.Json.JsonElement? Metadata { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("modelPreferences")]
+        public ModelContextProtocol.Protocol.ModelPreferences? ModelPreferences { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("stopSequences")]
+        public System.Collections.Generic.IReadOnlyList<string>? StopSequences { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("systemPrompt")]
+        public string? SystemPrompt { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("temperature")]
+        public float? Temperature { get; init; }
+    }
+    public sealed class CreateMessageResult : ModelContextProtocol.Protocol.Result
+    {
+        public CreateMessageResult() { }
+        [System.Text.Json.Serialization.JsonPropertyName("content")]
+        public required ModelContextProtocol.Protocol.ContentBlock Content { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("model")]
+        public required string Model { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("role")]
+        public required ModelContextProtocol.Protocol.Role Role { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("stopReason")]
+        public string? StopReason { get; init; }
+    }
+    public sealed class ElicitRequestParams
+    {
+        public ElicitRequestParams() { }
+        [System.Text.Json.Serialization.JsonPropertyName("message")]
+        public string Message { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("requestedSchema")]
+        public ModelContextProtocol.Protocol.ElicitRequestParams.RequestSchema RequestedSchema { get; set; }
+        public sealed class BooleanSchema : ModelContextProtocol.Protocol.ElicitRequestParams.PrimitiveSchemaDefinition
+        {
+            public BooleanSchema() { }
+            [System.Text.Json.Serialization.JsonPropertyName("default")]
+            public bool? Default { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("type")]
+            public override string Type { get; set; }
+        }
+        public sealed class EnumSchema : ModelContextProtocol.Protocol.ElicitRequestParams.PrimitiveSchemaDefinition
+        {
+            public EnumSchema() { }
+            [System.Text.Json.Serialization.JsonPropertyName("enum")]
+            public System.Collections.Generic.IList<string> Enum { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("enumNames")]
+            public System.Collections.Generic.IList<string>? EnumNames { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("type")]
+            public override string Type { get; set; }
+        }
+        public sealed class NumberSchema : ModelContextProtocol.Protocol.ElicitRequestParams.PrimitiveSchemaDefinition
+        {
+            public NumberSchema() { }
+            [System.Text.Json.Serialization.JsonPropertyName("maximum")]
+            public double? Maximum { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("minimum")]
+            public double? Minimum { get; set; }
+            public override string Type { get; set; }
+        }
+        [System.Text.Json.Serialization.JsonConverter(typeof(ModelContextProtocol.Protocol.ElicitRequestParams.PrimitiveSchemaDefinition.Converter?))]
+        public abstract class PrimitiveSchemaDefinition
+        {
+            [System.Text.Json.Serialization.JsonPropertyName("description")]
+            public string? Description { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("title")]
+            public string? Title { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("type")]
+            public abstract string Type { get; set; }
+            public class Converter : System.Text.Json.Serialization.JsonConverter<ModelContextProtocol.Protocol.ElicitRequestParams.PrimitiveSchemaDefinition>
+            {
+                public Converter() { }
+                public override ModelContextProtocol.Protocol.ElicitRequestParams.PrimitiveSchemaDefinition? Read(ref System.Text.Json.Utf8JsonReader reader, System.Type typeToConvert, System.Text.Json.JsonSerializerOptions options) { }
+                public override void Write(System.Text.Json.Utf8JsonWriter writer, ModelContextProtocol.Protocol.ElicitRequestParams.PrimitiveSchemaDefinition value, System.Text.Json.JsonSerializerOptions options) { }
+            }
+        }
+        public class RequestSchema
+        {
+            public RequestSchema() { }
+            [System.Text.Json.Serialization.JsonPropertyName("properties")]
+            public System.Collections.Generic.IDictionary<string, ModelContextProtocol.Protocol.ElicitRequestParams.PrimitiveSchemaDefinition> Properties { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("required")]
+            public System.Collections.Generic.IList<string>? Required { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("type")]
+            public string Type { get; }
+        }
+        public sealed class StringSchema : ModelContextProtocol.Protocol.ElicitRequestParams.PrimitiveSchemaDefinition
+        {
+            public StringSchema() { }
+            [System.Text.Json.Serialization.JsonPropertyName("format")]
+            public string? Format { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("maxLength")]
+            public int? MaxLength { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("minLength")]
+            public int? MinLength { get; set; }
+            [System.Text.Json.Serialization.JsonPropertyName("type")]
+            public override string Type { get; set; }
+        }
+    }
+    public sealed class ElicitResult : ModelContextProtocol.Protocol.Result
+    {
+        public ElicitResult() { }
+        [System.Text.Json.Serialization.JsonPropertyName("action")]
+        public string Action { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("content")]
+        public System.Collections.Generic.IDictionary<string, System.Text.Json.JsonElement>? Content { get; set; }
+    }
+    public sealed class ElicitationCapability
+    {
+        public ElicitationCapability() { }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public System.Func<ModelContextProtocol.Protocol.ElicitRequestParams?, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.ElicitResult>>? ElicitationHandler { get; set; }
+    }
+    public sealed class EmbeddedResourceBlock : ModelContextProtocol.Protocol.ContentBlock
+    {
+        public EmbeddedResourceBlock() { }
+        [System.Text.Json.Serialization.JsonPropertyName("_meta")]
+        public System.Text.Json.Nodes.JsonObject? Meta { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("resource")]
+        public required ModelContextProtocol.Protocol.ResourceContents Resource { get; set; }
+    }
+    public sealed class EmptyResult : ModelContextProtocol.Protocol.Result
+    {
+        public EmptyResult() { }
+    }
+    public sealed class GetPromptRequestParams : ModelContextProtocol.Protocol.RequestParams
+    {
+        public GetPromptRequestParams() { }
+        [System.Text.Json.Serialization.JsonPropertyName("arguments")]
+        public System.Collections.Generic.IReadOnlyDictionary<string, System.Text.Json.JsonElement>? Arguments { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("name")]
+        public required string Name { get; init; }
+    }
+    public sealed class GetPromptResult : ModelContextProtocol.Protocol.Result
+    {
+        public GetPromptResult() { }
+        [System.Text.Json.Serialization.JsonPropertyName("description")]
+        public string? Description { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("messages")]
+        public System.Collections.Generic.IList<ModelContextProtocol.Protocol.PromptMessage> Messages { get; set; }
+    }
+    public interface IBaseMetadata
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("name")]
+        string Name { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("title")]
+        string? Title { get; set; }
+    }
+    public interface ITransport : System.IAsyncDisposable
+    {
+        System.Threading.Channels.ChannelReader<ModelContextProtocol.Protocol.JsonRpcMessage> MessageReader { get; }
+        string? SessionId { get; }
+        System.Threading.Tasks.Task SendMessageAsync(ModelContextProtocol.Protocol.JsonRpcMessage message, System.Threading.CancellationToken cancellationToken = default);
+    }
+    public sealed class ImageContentBlock : ModelContextProtocol.Protocol.ContentBlock
+    {
+        public ImageContentBlock() { }
+        [System.Text.Json.Serialization.JsonPropertyName("data")]
+        public required string Data { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("_meta")]
+        public System.Text.Json.Nodes.JsonObject? Meta { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("mimeType")]
+        public required string MimeType { get; set; }
+    }
+    public sealed class Implementation : ModelContextProtocol.Protocol.IBaseMetadata
+    {
+        public Implementation() { }
+        [System.Text.Json.Serialization.JsonPropertyName("name")]
+        public required string Name { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("title")]
+        public string? Title { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("version")]
+        public required string Version { get; set; }
+    }
+    public sealed class InitializeRequestParams : ModelContextProtocol.Protocol.RequestParams
+    {
+        public InitializeRequestParams() { }
+        [System.Text.Json.Serialization.JsonPropertyName("capabilities")]
+        public ModelContextProtocol.Protocol.ClientCapabilities? Capabilities { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("clientInfo")]
+        public required ModelContextProtocol.Protocol.Implementation ClientInfo { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("protocolVersion")]
+        public required string ProtocolVersion { get; init; }
+    }
+    public sealed class InitializeResult : ModelContextProtocol.Protocol.Result
+    {
+        public InitializeResult() { }
+        [System.Text.Json.Serialization.JsonPropertyName("capabilities")]
+        public required ModelContextProtocol.Protocol.ServerCapabilities Capabilities { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("instructions")]
+        public string? Instructions { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("protocolVersion")]
+        public required string ProtocolVersion { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("serverInfo")]
+        public required ModelContextProtocol.Protocol.Implementation ServerInfo { get; init; }
+    }
+    public sealed class InitializedNotificationParams : ModelContextProtocol.Protocol.NotificationParams
+    {
+        public InitializedNotificationParams() { }
+    }
+    public sealed class JsonRpcError : ModelContextProtocol.Protocol.JsonRpcMessageWithId
+    {
+        public JsonRpcError() { }
+        [System.Text.Json.Serialization.JsonPropertyName("error")]
+        public required ModelContextProtocol.Protocol.JsonRpcErrorDetail Error { get; init; }
+    }
+    public sealed class JsonRpcErrorDetail
+    {
+        public JsonRpcErrorDetail() { }
+        [System.Text.Json.Serialization.JsonPropertyName("code")]
+        public required int Code { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("data")]
+        public object? Data { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("message")]
+        public required string Message { get; init; }
+    }
+    [System.Text.Json.Serialization.JsonConverter(typeof(ModelContextProtocol.Protocol.JsonRpcMessage.Converter?))]
+    public abstract class JsonRpcMessage
+    {
+        [System.Text.Json.Serialization.JsonIgnore]
+        public System.Threading.ExecutionContext? ExecutionContext { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("jsonrpc")]
+        public string JsonRpc { get; init; }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public ModelContextProtocol.Protocol.ITransport? RelatedTransport { get; set; }
+        public sealed class Converter : System.Text.Json.Serialization.JsonConverter<ModelContextProtocol.Protocol.JsonRpcMessage>
+        {
+            public Converter() { }
+            public override ModelContextProtocol.Protocol.JsonRpcMessage? Read(ref System.Text.Json.Utf8JsonReader reader, System.Type typeToConvert, System.Text.Json.JsonSerializerOptions options) { }
+            public override void Write(System.Text.Json.Utf8JsonWriter writer, ModelContextProtocol.Protocol.JsonRpcMessage value, System.Text.Json.JsonSerializerOptions options) { }
+        }
+    }
+    public abstract class JsonRpcMessageWithId : ModelContextProtocol.Protocol.JsonRpcMessage
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("id")]
+        public ModelContextProtocol.Protocol.RequestId Id { get; init; }
+    }
+    public sealed class JsonRpcNotification : ModelContextProtocol.Protocol.JsonRpcMessage
+    {
+        public JsonRpcNotification() { }
+        [System.Text.Json.Serialization.JsonPropertyName("method")]
+        public required string Method { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("params")]
+        public System.Text.Json.Nodes.JsonNode? Params { get; init; }
+    }
+    public sealed class JsonRpcRequest : ModelContextProtocol.Protocol.JsonRpcMessageWithId
+    {
+        public JsonRpcRequest() { }
+        [System.Text.Json.Serialization.JsonPropertyName("method")]
+        public required string Method { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("params")]
+        public System.Text.Json.Nodes.JsonNode? Params { get; init; }
+    }
+    public sealed class JsonRpcResponse : ModelContextProtocol.Protocol.JsonRpcMessageWithId
+    {
+        public JsonRpcResponse() { }
+        [System.Text.Json.Serialization.JsonPropertyName("result")]
+        public required System.Text.Json.Nodes.JsonNode? Result { get; init; }
+    }
+    public sealed class ListPromptsRequestParams : ModelContextProtocol.Protocol.PaginatedRequestParams
+    {
+        public ListPromptsRequestParams() { }
+    }
+    public sealed class ListPromptsResult : ModelContextProtocol.Protocol.PaginatedResult
+    {
+        public ListPromptsResult() { }
+        [System.Text.Json.Serialization.JsonPropertyName("prompts")]
+        public System.Collections.Generic.IList<ModelContextProtocol.Protocol.Prompt> Prompts { get; set; }
+    }
+    public sealed class ListResourceTemplatesRequestParams : ModelContextProtocol.Protocol.PaginatedRequestParams
+    {
+        public ListResourceTemplatesRequestParams() { }
+    }
+    public sealed class ListResourceTemplatesResult : ModelContextProtocol.Protocol.PaginatedResult
+    {
+        public ListResourceTemplatesResult() { }
+        [System.Text.Json.Serialization.JsonPropertyName("resourceTemplates")]
+        public System.Collections.Generic.IList<ModelContextProtocol.Protocol.ResourceTemplate> ResourceTemplates { get; set; }
+    }
+    public sealed class ListResourcesRequestParams : ModelContextProtocol.Protocol.PaginatedRequestParams
+    {
+        public ListResourcesRequestParams() { }
+    }
+    public sealed class ListResourcesResult : ModelContextProtocol.Protocol.PaginatedResult
+    {
+        public ListResourcesResult() { }
+        [System.Text.Json.Serialization.JsonPropertyName("resources")]
+        public System.Collections.Generic.IList<ModelContextProtocol.Protocol.Resource> Resources { get; set; }
+    }
+    public sealed class ListRootsRequestParams : ModelContextProtocol.Protocol.RequestParams
+    {
+        public ListRootsRequestParams() { }
+    }
+    public sealed class ListRootsResult : ModelContextProtocol.Protocol.Result
+    {
+        public ListRootsResult() { }
+        [System.Text.Json.Serialization.JsonPropertyName("roots")]
+        public required System.Collections.Generic.IReadOnlyList<ModelContextProtocol.Protocol.Root> Roots { get; init; }
+    }
+    public sealed class ListToolsRequestParams : ModelContextProtocol.Protocol.PaginatedRequestParams
+    {
+        public ListToolsRequestParams() { }
+    }
+    public sealed class ListToolsResult : ModelContextProtocol.Protocol.PaginatedResult
+    {
+        public ListToolsResult() { }
+        [System.Text.Json.Serialization.JsonPropertyName("tools")]
+        public System.Collections.Generic.IList<ModelContextProtocol.Protocol.Tool> Tools { get; set; }
+    }
+    public sealed class LoggingCapability
+    {
+        public LoggingCapability() { }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public System.Func<ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.SetLevelRequestParams>, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.EmptyResult>>? SetLoggingLevelHandler { get; set; }
+    }
+    [System.Text.Json.Serialization.JsonConverter(typeof(ModelContextProtocol.CustomizableJsonStringEnumConverter<ModelContextProtocol.Protocol.LoggingLevel>))]
+    public enum LoggingLevel
+    {
+        [System.Text.Json.Serialization.JsonStringEnumMemberName("debug")]
+        Debug = 0,
+        [System.Text.Json.Serialization.JsonStringEnumMemberName("info")]
+        Info = 1,
+        [System.Text.Json.Serialization.JsonStringEnumMemberName("notice")]
+        Notice = 2,
+        [System.Text.Json.Serialization.JsonStringEnumMemberName("warning")]
+        Warning = 3,
+        [System.Text.Json.Serialization.JsonStringEnumMemberName("error")]
+        Error = 4,
+        [System.Text.Json.Serialization.JsonStringEnumMemberName("critical")]
+        Critical = 5,
+        [System.Text.Json.Serialization.JsonStringEnumMemberName("alert")]
+        Alert = 6,
+        [System.Text.Json.Serialization.JsonStringEnumMemberName("emergency")]
+        Emergency = 7,
+    }
+    public sealed class LoggingMessageNotificationParams : ModelContextProtocol.Protocol.NotificationParams
+    {
+        public LoggingMessageNotificationParams() { }
+        [System.Text.Json.Serialization.JsonPropertyName("data")]
+        public System.Text.Json.JsonElement? Data { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("level")]
+        public ModelContextProtocol.Protocol.LoggingLevel Level { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("logger")]
+        public string? Logger { get; init; }
+    }
+    public sealed class ModelHint
+    {
+        public ModelHint() { }
+        [System.Text.Json.Serialization.JsonPropertyName("name")]
+        public string? Name { get; init; }
+    }
+    public sealed class ModelPreferences
+    {
+        public ModelPreferences() { }
+        [System.Text.Json.Serialization.JsonPropertyName("costPriority")]
+        public float? CostPriority { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("hints")]
+        public System.Collections.Generic.IReadOnlyList<ModelContextProtocol.Protocol.ModelHint>? Hints { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("intelligencePriority")]
+        public float? IntelligencePriority { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("speedPriority")]
+        public float? SpeedPriority { get; init; }
+    }
+    public static class NotificationMethods
+    {
+        public const string CancelledNotification = "notifications/cancelled";
+        public const string InitializedNotification = "notifications/initialized";
+        public const string LoggingMessageNotification = "notifications/message";
+        public const string ProgressNotification = "notifications/progress";
+        public const string PromptListChangedNotification = "notifications/prompts/list_changed";
+        public const string ResourceListChangedNotification = "notifications/resources/list_changed";
+        public const string ResourceUpdatedNotification = "notifications/resources/updated";
+        public const string RootsListChangedNotification = "notifications/roots/list_changed";
+        public const string ToolListChangedNotification = "notifications/tools/list_changed";
+    }
+    public abstract class NotificationParams
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("_meta")]
+        public System.Text.Json.Nodes.JsonObject? Meta { get; set; }
+    }
+    public abstract class PaginatedRequestParams : ModelContextProtocol.Protocol.RequestParams
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("cursor")]
+        public string? Cursor { get; init; }
+    }
+    public abstract class PaginatedResult : ModelContextProtocol.Protocol.Result
+    {
+        public string? NextCursor { get; set; }
+    }
+    public sealed class PingResult : ModelContextProtocol.Protocol.Result
+    {
+        public PingResult() { }
+    }
+    [System.Text.Json.Serialization.JsonConverter(typeof(ModelContextProtocol.Protocol.ProgressNotificationParams.Converter))]
+    public sealed class ProgressNotificationParams : ModelContextProtocol.Protocol.NotificationParams
+    {
+        public ProgressNotificationParams() { }
+        public required ModelContextProtocol.ProgressNotificationValue Progress { get; init; }
+        public required ModelContextProtocol.Protocol.ProgressToken ProgressToken { get; init; }
+        public sealed class Converter : System.Text.Json.Serialization.JsonConverter<ModelContextProtocol.Protocol.ProgressNotificationParams>
+        {
+            public Converter() { }
+            public override ModelContextProtocol.Protocol.ProgressNotificationParams? Read(ref System.Text.Json.Utf8JsonReader reader, System.Type typeToConvert, System.Text.Json.JsonSerializerOptions options) { }
+            public override void Write(System.Text.Json.Utf8JsonWriter writer, ModelContextProtocol.Protocol.ProgressNotificationParams value, System.Text.Json.JsonSerializerOptions options) { }
+        }
+    }
+    [System.Text.Json.Serialization.JsonConverter(typeof(ModelContextProtocol.Protocol.ProgressToken.Converter?))]
+    public readonly struct ProgressToken : System.IEquatable<ModelContextProtocol.Protocol.ProgressToken>
+    {
+        public ProgressToken(long value) { }
+        public ProgressToken(string value) { }
+        public object? Token { get; }
+        public bool Equals(ModelContextProtocol.Protocol.ProgressToken other) { }
+        public override bool Equals(object? obj) { }
+        public override int GetHashCode() { }
+        public override string? ToString() { }
+        public static bool operator !=(ModelContextProtocol.Protocol.ProgressToken left, ModelContextProtocol.Protocol.ProgressToken right) { }
+        public static bool operator ==(ModelContextProtocol.Protocol.ProgressToken left, ModelContextProtocol.Protocol.ProgressToken right) { }
+        public sealed class Converter : System.Text.Json.Serialization.JsonConverter<ModelContextProtocol.Protocol.ProgressToken>
+        {
+            public Converter() { }
+            public override ModelContextProtocol.Protocol.ProgressToken Read(ref System.Text.Json.Utf8JsonReader reader, System.Type typeToConvert, System.Text.Json.JsonSerializerOptions options) { }
+            public override void Write(System.Text.Json.Utf8JsonWriter writer, ModelContextProtocol.Protocol.ProgressToken value, System.Text.Json.JsonSerializerOptions options) { }
+        }
+    }
+    public sealed class Prompt : ModelContextProtocol.Protocol.IBaseMetadata
+    {
+        public Prompt() { }
+        [System.Text.Json.Serialization.JsonPropertyName("arguments")]
+        public System.Collections.Generic.IList<ModelContextProtocol.Protocol.PromptArgument>? Arguments { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("description")]
+        public string? Description { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("_meta")]
+        public System.Text.Json.Nodes.JsonObject? Meta { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("name")]
+        public required string Name { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("title")]
+        public string? Title { get; set; }
+    }
+    public sealed class PromptArgument : ModelContextProtocol.Protocol.IBaseMetadata
+    {
+        public PromptArgument() { }
+        [System.Text.Json.Serialization.JsonPropertyName("description")]
+        public string? Description { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("name")]
+        public required string Name { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("required")]
+        public bool? Required { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("title")]
+        public string? Title { get; set; }
+    }
+    public sealed class PromptListChangedNotificationParams : ModelContextProtocol.Protocol.NotificationParams
+    {
+        public PromptListChangedNotificationParams() { }
+    }
+    public sealed class PromptMessage
+    {
+        public PromptMessage() { }
+        [System.Text.Json.Serialization.JsonPropertyName("content")]
+        public ModelContextProtocol.Protocol.ContentBlock Content { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("role")]
+        public ModelContextProtocol.Protocol.Role Role { get; set; }
+    }
+    public sealed class PromptReference : ModelContextProtocol.Protocol.Reference, ModelContextProtocol.Protocol.IBaseMetadata
+    {
+        public PromptReference() { }
+        [System.Text.Json.Serialization.JsonPropertyName("name")]
+        public required string Name { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("title")]
+        public string? Title { get; set; }
+        public override string ToString() { }
+    }
+    public sealed class PromptsCapability
+    {
+        public PromptsCapability() { }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public System.Func<ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.GetPromptRequestParams>, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.GetPromptResult>>? GetPromptHandler { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("listChanged")]
+        public bool? ListChanged { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public System.Func<ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.ListPromptsRequestParams>, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.ListPromptsResult>>? ListPromptsHandler { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public ModelContextProtocol.Server.McpServerPrimitiveCollection<ModelContextProtocol.Server.McpServerPrompt>? PromptCollection { get; set; }
+    }
+    public sealed class ReadResourceRequestParams : ModelContextProtocol.Protocol.RequestParams
+    {
+        public ReadResourceRequestParams() { }
+        [System.Text.Json.Serialization.JsonPropertyName("uri")]
+        public required string Uri { get; init; }
+    }
+    public sealed class ReadResourceResult : ModelContextProtocol.Protocol.Result
+    {
+        public ReadResourceResult() { }
+        [System.Text.Json.Serialization.JsonPropertyName("contents")]
+        public System.Collections.Generic.IList<ModelContextProtocol.Protocol.ResourceContents> Contents { get; set; }
+    }
+    [System.Text.Json.Serialization.JsonConverter(typeof(ModelContextProtocol.Protocol.Reference.Converter))]
+    public abstract class Reference
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("type")]
+        public string Type { get; set; }
+        public sealed class Converter : System.Text.Json.Serialization.JsonConverter<ModelContextProtocol.Protocol.Reference>
+        {
+            public Converter() { }
+            public override ModelContextProtocol.Protocol.Reference? Read(ref System.Text.Json.Utf8JsonReader reader, System.Type typeToConvert, System.Text.Json.JsonSerializerOptions options) { }
+            public override void Write(System.Text.Json.Utf8JsonWriter writer, ModelContextProtocol.Protocol.Reference value, System.Text.Json.JsonSerializerOptions options) { }
+        }
+    }
+    [System.Text.Json.Serialization.JsonConverter(typeof(ModelContextProtocol.Protocol.RequestId.Converter?))]
+    public readonly struct RequestId : System.IEquatable<ModelContextProtocol.Protocol.RequestId>
+    {
+        public RequestId(long value) { }
+        public RequestId(string value) { }
+        public object? Id { get; }
+        public bool Equals(ModelContextProtocol.Protocol.RequestId other) { }
+        public override bool Equals(object? obj) { }
+        public override int GetHashCode() { }
+        public override string ToString() { }
+        public static bool operator !=(ModelContextProtocol.Protocol.RequestId left, ModelContextProtocol.Protocol.RequestId right) { }
+        public static bool operator ==(ModelContextProtocol.Protocol.RequestId left, ModelContextProtocol.Protocol.RequestId right) { }
+        public sealed class Converter : System.Text.Json.Serialization.JsonConverter<ModelContextProtocol.Protocol.RequestId>
+        {
+            public Converter() { }
+            public override ModelContextProtocol.Protocol.RequestId Read(ref System.Text.Json.Utf8JsonReader reader, System.Type typeToConvert, System.Text.Json.JsonSerializerOptions options) { }
+            public override void Write(System.Text.Json.Utf8JsonWriter writer, ModelContextProtocol.Protocol.RequestId value, System.Text.Json.JsonSerializerOptions options) { }
+        }
+    }
+    public static class RequestMethods
+    {
+        public const string CompletionComplete = "completion/complete";
+        public const string ElicitationCreate = "elicitation/create";
+        public const string Initialize = "initialize";
+        public const string LoggingSetLevel = "logging/setLevel";
+        public const string Ping = "ping";
+        public const string PromptsGet = "prompts/get";
+        public const string PromptsList = "prompts/list";
+        public const string ResourcesList = "resources/list";
+        public const string ResourcesRead = "resources/read";
+        public const string ResourcesSubscribe = "resources/subscribe";
+        public const string ResourcesTemplatesList = "resources/templates/list";
+        public const string ResourcesUnsubscribe = "resources/unsubscribe";
+        public const string RootsList = "roots/list";
+        public const string SamplingCreateMessage = "sampling/createMessage";
+        public const string ToolsCall = "tools/call";
+        public const string ToolsList = "tools/list";
+    }
+    public abstract class RequestParams
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("_meta")]
+        public System.Text.Json.Nodes.JsonObject? Meta { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public ModelContextProtocol.Protocol.ProgressToken? ProgressToken { get; set; }
+    }
+    public sealed class RequestParamsMetadata
+    {
+        public RequestParamsMetadata() { }
+        [System.Text.Json.Serialization.JsonPropertyName("progressToken")]
+        public ModelContextProtocol.Protocol.ProgressToken? ProgressToken { get; set; }
+    }
+    public sealed class Resource : ModelContextProtocol.Protocol.IBaseMetadata
+    {
+        public Resource() { }
+        [System.Text.Json.Serialization.JsonPropertyName("annotations")]
+        public ModelContextProtocol.Protocol.Annotations? Annotations { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("description")]
+        public string? Description { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("_meta")]
+        public System.Text.Json.Nodes.JsonObject? Meta { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("mimeType")]
+        public string? MimeType { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("name")]
+        public required string Name { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("size")]
+        public long? Size { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("title")]
+        public string? Title { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("uri")]
+        public required string Uri { get; init; }
+    }
+    [System.Text.Json.Serialization.JsonConverter(typeof(ModelContextProtocol.Protocol.ResourceContents.Converter?))]
+    public abstract class ResourceContents
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("_meta")]
+        public System.Text.Json.Nodes.JsonObject? Meta { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("mimeType")]
+        public string? MimeType { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("uri")]
+        public string Uri { get; set; }
+        public class Converter : System.Text.Json.Serialization.JsonConverter<ModelContextProtocol.Protocol.ResourceContents>
+        {
+            public Converter() { }
+            public override ModelContextProtocol.Protocol.ResourceContents? Read(ref System.Text.Json.Utf8JsonReader reader, System.Type typeToConvert, System.Text.Json.JsonSerializerOptions options) { }
+            public override void Write(System.Text.Json.Utf8JsonWriter writer, ModelContextProtocol.Protocol.ResourceContents value, System.Text.Json.JsonSerializerOptions options) { }
+        }
+    }
+    public sealed class ResourceLinkBlock : ModelContextProtocol.Protocol.ContentBlock
+    {
+        public ResourceLinkBlock() { }
+        [System.Text.Json.Serialization.JsonPropertyName("description")]
+        public string? Description { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("mimeType")]
+        public string? MimeType { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("name")]
+        public required string Name { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("size")]
+        public long? Size { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("uri")]
+        public required string Uri { get; init; }
+    }
+    public sealed class ResourceListChangedNotificationParams : ModelContextProtocol.Protocol.NotificationParams
+    {
+        public ResourceListChangedNotificationParams() { }
+    }
+    public sealed class ResourceTemplate : ModelContextProtocol.Protocol.IBaseMetadata
+    {
+        public ResourceTemplate() { }
+        [System.Text.Json.Serialization.JsonPropertyName("annotations")]
+        public ModelContextProtocol.Protocol.Annotations? Annotations { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("description")]
+        public string? Description { get; init; }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public bool IsTemplated { get; }
+        [System.Text.Json.Serialization.JsonPropertyName("_meta")]
+        public System.Text.Json.Nodes.JsonObject? Meta { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("mimeType")]
+        public string? MimeType { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("name")]
+        public required string Name { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("title")]
+        public string? Title { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("uriTemplate")]
+        public required string UriTemplate { get; init; }
+        public ModelContextProtocol.Protocol.Resource? AsResource() { }
+    }
+    public sealed class ResourceTemplateReference : ModelContextProtocol.Protocol.Reference
+    {
+        public ResourceTemplateReference() { }
+        [System.Diagnostics.CodeAnalysis.StringSyntax("Uri")]
+        [System.Text.Json.Serialization.JsonPropertyName("uri")]
+        public required string? Uri { get; set; }
+        public override string ToString() { }
+    }
+    public sealed class ResourceUpdatedNotificationParams : ModelContextProtocol.Protocol.NotificationParams
+    {
+        public ResourceUpdatedNotificationParams() { }
+        [System.Diagnostics.CodeAnalysis.StringSyntax("Uri")]
+        [System.Text.Json.Serialization.JsonPropertyName("uri")]
+        public string? Uri { get; init; }
+    }
+    public sealed class ResourcesCapability
+    {
+        public ResourcesCapability() { }
+        [System.Text.Json.Serialization.JsonPropertyName("listChanged")]
+        public bool? ListChanged { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public System.Func<ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.ListResourceTemplatesRequestParams>, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.ListResourceTemplatesResult>>? ListResourceTemplatesHandler { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public System.Func<ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.ListResourcesRequestParams>, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.ListResourcesResult>>? ListResourcesHandler { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public System.Func<ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.ReadResourceRequestParams>, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.ReadResourceResult>>? ReadResourceHandler { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public ModelContextProtocol.Server.McpServerResourceCollection? ResourceCollection { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("subscribe")]
+        public bool? Subscribe { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public System.Func<ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.SubscribeRequestParams>, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.EmptyResult>>? SubscribeToResourcesHandler { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public System.Func<ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.UnsubscribeRequestParams>, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.EmptyResult>>? UnsubscribeFromResourcesHandler { get; set; }
+    }
+    public abstract class Result
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("_meta")]
+        public System.Text.Json.Nodes.JsonObject? Meta { get; init; }
+    }
+    [System.Text.Json.Serialization.JsonConverter(typeof(ModelContextProtocol.CustomizableJsonStringEnumConverter<ModelContextProtocol.Protocol.Role>))]
+    public enum Role
+    {
+        [System.Text.Json.Serialization.JsonStringEnumMemberName("user")]
+        User = 0,
+        [System.Text.Json.Serialization.JsonStringEnumMemberName("assistant")]
+        Assistant = 1,
+    }
+    public sealed class Root
+    {
+        public Root() { }
+        [System.Text.Json.Serialization.JsonPropertyName("_meta")]
+        public System.Text.Json.JsonElement? Meta { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("name")]
+        public string? Name { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("uri")]
+        public required string Uri { get; init; }
+    }
+    public sealed class RootsCapability
+    {
+        public RootsCapability() { }
+        [System.Text.Json.Serialization.JsonPropertyName("listChanged")]
+        public bool? ListChanged { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public System.Func<ModelContextProtocol.Protocol.ListRootsRequestParams?, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.ListRootsResult>>? RootsHandler { get; set; }
+    }
+    public sealed class RootsListChangedNotificationParams : ModelContextProtocol.Protocol.NotificationParams
+    {
+        public RootsListChangedNotificationParams() { }
+    }
+    public sealed class SamplingCapability
+    {
+        public SamplingCapability() { }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public System.Func<ModelContextProtocol.Protocol.CreateMessageRequestParams?, System.IProgress<ModelContextProtocol.ProgressNotificationValue>, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.CreateMessageResult>>? SamplingHandler { get; set; }
+    }
+    public sealed class SamplingMessage
+    {
+        public SamplingMessage() { }
+        [System.Text.Json.Serialization.JsonPropertyName("content")]
+        public required ModelContextProtocol.Protocol.ContentBlock Content { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("role")]
+        public required ModelContextProtocol.Protocol.Role Role { get; init; }
+    }
+    public sealed class ServerCapabilities
+    {
+        public ServerCapabilities() { }
+        [System.Text.Json.Serialization.JsonPropertyName("completions")]
+        public ModelContextProtocol.Protocol.CompletionsCapability? Completions { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("experimental")]
+        public System.Collections.Generic.IDictionary<string, object>? Experimental { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("logging")]
+        public ModelContextProtocol.Protocol.LoggingCapability? Logging { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<string, System.Func<ModelContextProtocol.Protocol.JsonRpcNotification, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask>>>? NotificationHandlers { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("prompts")]
+        public ModelContextProtocol.Protocol.PromptsCapability? Prompts { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("resources")]
+        public ModelContextProtocol.Protocol.ResourcesCapability? Resources { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("tools")]
+        public ModelContextProtocol.Protocol.ToolsCapability? Tools { get; set; }
+    }
+    public sealed class SetLevelRequestParams : ModelContextProtocol.Protocol.RequestParams
+    {
+        public SetLevelRequestParams() { }
+        [System.Text.Json.Serialization.JsonPropertyName("level")]
+        public required ModelContextProtocol.Protocol.LoggingLevel Level { get; init; }
+    }
+    public sealed class StreamClientTransport : ModelContextProtocol.Client.IClientTransport
+    {
+        public StreamClientTransport(System.IO.Stream serverInput, System.IO.Stream serverOutput, Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null) { }
+        public string Name { get; }
+        public System.Threading.Tasks.Task<ModelContextProtocol.Protocol.ITransport> ConnectAsync(System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class SubscribeRequestParams : ModelContextProtocol.Protocol.RequestParams
+    {
+        public SubscribeRequestParams() { }
+        [System.Diagnostics.CodeAnalysis.StringSyntax("Uri")]
+        [System.Text.Json.Serialization.JsonPropertyName("uri")]
+        public string? Uri { get; init; }
+    }
+    public sealed class TextContentBlock : ModelContextProtocol.Protocol.ContentBlock
+    {
+        public TextContentBlock() { }
+        [System.Text.Json.Serialization.JsonPropertyName("_meta")]
+        public System.Text.Json.Nodes.JsonObject? Meta { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("text")]
+        public required string Text { get; set; }
+    }
+    public sealed class TextResourceContents : ModelContextProtocol.Protocol.ResourceContents
+    {
+        public TextResourceContents() { }
+        [System.Text.Json.Serialization.JsonPropertyName("text")]
+        public string Text { get; set; }
+    }
+    public sealed class Tool : ModelContextProtocol.Protocol.IBaseMetadata
+    {
+        public Tool() { }
+        [System.Text.Json.Serialization.JsonPropertyName("annotations")]
+        public ModelContextProtocol.Protocol.ToolAnnotations? Annotations { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("description")]
+        public string? Description { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("inputSchema")]
+        public System.Text.Json.JsonElement InputSchema { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("_meta")]
+        public System.Text.Json.Nodes.JsonObject? Meta { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("name")]
+        public string Name { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("outputSchema")]
+        public System.Text.Json.JsonElement? OutputSchema { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("title")]
+        public string? Title { get; set; }
+    }
+    public sealed class ToolAnnotations
+    {
+        public ToolAnnotations() { }
+        [System.Text.Json.Serialization.JsonPropertyName("destructiveHint")]
+        public bool? DestructiveHint { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("idempotentHint")]
+        public bool? IdempotentHint { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("openWorldHint")]
+        public bool? OpenWorldHint { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("readOnlyHint")]
+        public bool? ReadOnlyHint { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("title")]
+        public string? Title { get; set; }
+    }
+    public sealed class ToolListChangedNotificationParams : ModelContextProtocol.Protocol.NotificationParams
+    {
+        public ToolListChangedNotificationParams() { }
+    }
+    public sealed class ToolsCapability
+    {
+        public ToolsCapability() { }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public System.Func<ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.CallToolRequestParams>, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.CallToolResult>>? CallToolHandler { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("listChanged")]
+        public bool? ListChanged { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public System.Func<ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.ListToolsRequestParams>, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.ListToolsResult>>? ListToolsHandler { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public ModelContextProtocol.Server.McpServerPrimitiveCollection<ModelContextProtocol.Server.McpServerTool>? ToolCollection { get; set; }
+    }
+    public abstract class TransportBase : ModelContextProtocol.Protocol.ITransport, System.IAsyncDisposable
+    {
+        protected TransportBase(string name, Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory) { }
+        public bool IsConnected { get; }
+        public System.Threading.Channels.ChannelReader<ModelContextProtocol.Protocol.JsonRpcMessage> MessageReader { get; }
+        protected string Name { get; }
+        public virtual string? SessionId { get; protected set; }
+        public abstract System.Threading.Tasks.ValueTask DisposeAsync();
+        public abstract System.Threading.Tasks.Task SendMessageAsync(ModelContextProtocol.Protocol.JsonRpcMessage message, System.Threading.CancellationToken cancellationToken = default);
+        protected void SetConnected() { }
+        protected void SetDisconnected(System.Exception? error = null) { }
+        protected System.Threading.Tasks.Task WriteMessageAsync(ModelContextProtocol.Protocol.JsonRpcMessage message, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class UnsubscribeRequestParams : ModelContextProtocol.Protocol.RequestParams
+    {
+        public UnsubscribeRequestParams() { }
+        [System.Diagnostics.CodeAnalysis.StringSyntax("Uri")]
+        [System.Text.Json.Serialization.JsonPropertyName("uri")]
+        public string? Uri { get; init; }
+    }
+}
+namespace ModelContextProtocol.Server
+{
+    public abstract class DelegatingMcpServerPrompt : ModelContextProtocol.Server.McpServerPrompt
+    {
+        protected DelegatingMcpServerPrompt(ModelContextProtocol.Server.McpServerPrompt innerPrompt) { }
+        public override ModelContextProtocol.Protocol.Prompt ProtocolPrompt { get; }
+        public override System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.GetPromptResult> GetAsync(ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.GetPromptRequestParams> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public override string ToString() { }
+    }
+    public abstract class DelegatingMcpServerResource : ModelContextProtocol.Server.McpServerResource
+    {
+        protected DelegatingMcpServerResource(ModelContextProtocol.Server.McpServerResource innerResource) { }
+        public override ModelContextProtocol.Protocol.Resource? ProtocolResource { get; }
+        public override ModelContextProtocol.Protocol.ResourceTemplate ProtocolResourceTemplate { get; }
+        public override System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.ReadResourceResult?> ReadAsync(ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.ReadResourceRequestParams> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public override string ToString() { }
+    }
+    public abstract class DelegatingMcpServerTool : ModelContextProtocol.Server.McpServerTool
+    {
+        protected DelegatingMcpServerTool(ModelContextProtocol.Server.McpServerTool innerTool) { }
+        public override ModelContextProtocol.Protocol.Tool ProtocolTool { get; }
+        public override System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.CallToolResult> InvokeAsync(ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.CallToolRequestParams> request, System.Threading.CancellationToken cancellationToken = default) { }
+        public override string ToString() { }
+    }
+    public interface IMcpServer : ModelContextProtocol.IMcpEndpoint, System.IAsyncDisposable
+    {
+        ModelContextProtocol.Protocol.ClientCapabilities? ClientCapabilities { get; }
+        ModelContextProtocol.Protocol.Implementation? ClientInfo { get; }
+        ModelContextProtocol.Protocol.LoggingLevel? LoggingLevel { get; }
+        ModelContextProtocol.Server.McpServerOptions ServerOptions { get; }
+        System.IServiceProvider? Services { get; }
+        System.Threading.Tasks.Task RunAsync(System.Threading.CancellationToken cancellationToken = default);
+    }
+    public interface IMcpServerPrimitive
+    {
+        string Id { get; }
+    }
+    public static class McpServerExtensions
+    {
+        public static Microsoft.Extensions.Logging.ILoggerProvider AsClientLoggerProvider(this ModelContextProtocol.Server.IMcpServer server) { }
+        public static Microsoft.Extensions.AI.IChatClient AsSamplingChatClient(this ModelContextProtocol.Server.IMcpServer server) { }
+        public static System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.ElicitResult> ElicitAsync(this ModelContextProtocol.Server.IMcpServer server, ModelContextProtocol.Protocol.ElicitRequestParams request, System.Threading.CancellationToken cancellationToken = default) { }
+        public static System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.ListRootsResult> RequestRootsAsync(this ModelContextProtocol.Server.IMcpServer server, ModelContextProtocol.Protocol.ListRootsRequestParams request, System.Threading.CancellationToken cancellationToken = default) { }
+        public static System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.CreateMessageResult> SampleAsync(this ModelContextProtocol.Server.IMcpServer server, ModelContextProtocol.Protocol.CreateMessageRequestParams request, System.Threading.CancellationToken cancellationToken = default) { }
+        public static System.Threading.Tasks.Task<Microsoft.Extensions.AI.ChatResponse> SampleAsync(this ModelContextProtocol.Server.IMcpServer server, System.Collections.Generic.IEnumerable<Microsoft.Extensions.AI.ChatMessage> messages, Microsoft.Extensions.AI.ChatOptions? options = null, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public static class McpServerFactory
+    {
+        public static ModelContextProtocol.Server.IMcpServer Create(ModelContextProtocol.Protocol.ITransport transport, ModelContextProtocol.Server.McpServerOptions serverOptions, Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null, System.IServiceProvider? serviceProvider = null) { }
+    }
+    public sealed class McpServerOptions
+    {
+        public McpServerOptions() { }
+        public ModelContextProtocol.Protocol.ServerCapabilities? Capabilities { get; set; }
+        public System.TimeSpan InitializationTimeout { get; set; }
+        public ModelContextProtocol.Protocol.Implementation? KnownClientInfo { get; set; }
+        public string? ProtocolVersion { get; set; }
+        public bool ScopeRequests { get; set; }
+        public ModelContextProtocol.Protocol.Implementation? ServerInfo { get; set; }
+        public string? ServerInstructions { get; set; }
+    }
+    public class McpServerPrimitiveCollection<T> : System.Collections.Generic.ICollection<T>, System.Collections.Generic.IEnumerable<T>, System.Collections.Generic.IReadOnlyCollection<T>, System.Collections.IEnumerable
+        where T : ModelContextProtocol.Server.IMcpServerPrimitive
+    {
+        public McpServerPrimitiveCollection(System.Collections.Generic.IEqualityComparer<string>? keyComparer = null) { }
+        public int Count { get; }
+        public bool IsEmpty { get; }
+        public T this[string name] { get; }
+        public virtual System.Collections.Generic.ICollection<string> PrimitiveNames { get; }
+        public event System.EventHandler? Changed;
+        public void Add(T primitive) { }
+        public virtual void Clear() { }
+        public virtual bool Contains(T primitive) { }
+        public virtual void CopyTo(T[] array, int arrayIndex) { }
+        public virtual System.Collections.Generic.IEnumerator<T> GetEnumerator() { }
+        protected void RaiseChanged() { }
+        public virtual bool Remove(T primitive) { }
+        public virtual T[] ToArray() { }
+        public virtual bool TryAdd(T primitive) { }
+        public virtual bool TryGetPrimitive(string name, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out T? primitive) { }
+    }
+    public abstract class McpServerPrompt : ModelContextProtocol.Server.IMcpServerPrimitive
+    {
+        protected McpServerPrompt() { }
+        public abstract ModelContextProtocol.Protocol.Prompt ProtocolPrompt { get; }
+        public abstract System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.GetPromptResult> GetAsync(ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.GetPromptRequestParams> request, System.Threading.CancellationToken cancellationToken = default);
+        public override string ToString() { }
+        public static ModelContextProtocol.Server.McpServerPrompt Create(Microsoft.Extensions.AI.AIFunction function, ModelContextProtocol.Server.McpServerPromptCreateOptions? options = null) { }
+        public static ModelContextProtocol.Server.McpServerPrompt Create(System.Delegate method, ModelContextProtocol.Server.McpServerPromptCreateOptions? options = null) { }
+        public static ModelContextProtocol.Server.McpServerPrompt Create(System.Reflection.MethodInfo method, System.Func<ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.GetPromptRequestParams>, object> createTargetFunc, ModelContextProtocol.Server.McpServerPromptCreateOptions? options = null) { }
+        public static ModelContextProtocol.Server.McpServerPrompt Create(System.Reflection.MethodInfo method, object? target = null, ModelContextProtocol.Server.McpServerPromptCreateOptions? options = null) { }
+    }
+    [System.AttributeUsage(System.AttributeTargets.Method)]
+    public sealed class McpServerPromptAttribute : System.Attribute
+    {
+        public McpServerPromptAttribute() { }
+        public string? Name { get; set; }
+        public string? Title { get; set; }
+    }
+    public sealed class McpServerPromptCreateOptions
+    {
+        public McpServerPromptCreateOptions() { }
+        public string? Description { get; set; }
+        public string? Name { get; set; }
+        public Microsoft.Extensions.AI.AIJsonSchemaCreateOptions? SchemaCreateOptions { get; set; }
+        public System.Text.Json.JsonSerializerOptions? SerializerOptions { get; set; }
+        public System.IServiceProvider? Services { get; set; }
+        public string? Title { get; set; }
+    }
+    [System.AttributeUsage(System.AttributeTargets.Class)]
+    public sealed class McpServerPromptTypeAttribute : System.Attribute
+    {
+        public McpServerPromptTypeAttribute() { }
+    }
+    public abstract class McpServerResource : ModelContextProtocol.Server.IMcpServerPrimitive
+    {
+        protected McpServerResource() { }
+        public bool IsTemplated { get; }
+        public virtual ModelContextProtocol.Protocol.Resource? ProtocolResource { get; }
+        public abstract ModelContextProtocol.Protocol.ResourceTemplate ProtocolResourceTemplate { get; }
+        public abstract System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.ReadResourceResult?> ReadAsync(ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.ReadResourceRequestParams> request, System.Threading.CancellationToken cancellationToken = default);
+        public override string ToString() { }
+        public static ModelContextProtocol.Server.McpServerResource Create(Microsoft.Extensions.AI.AIFunction function, ModelContextProtocol.Server.McpServerResourceCreateOptions? options = null) { }
+        public static ModelContextProtocol.Server.McpServerResource Create(System.Delegate method, ModelContextProtocol.Server.McpServerResourceCreateOptions? options = null) { }
+        public static ModelContextProtocol.Server.McpServerResource Create(System.Reflection.MethodInfo method, System.Func<ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.ReadResourceRequestParams>, object> createTargetFunc, ModelContextProtocol.Server.McpServerResourceCreateOptions? options = null) { }
+        public static ModelContextProtocol.Server.McpServerResource Create(System.Reflection.MethodInfo method, object? target = null, ModelContextProtocol.Server.McpServerResourceCreateOptions? options = null) { }
+    }
+    [System.AttributeUsage(System.AttributeTargets.Method)]
+    public sealed class McpServerResourceAttribute : System.Attribute
+    {
+        public McpServerResourceAttribute() { }
+        public string? MimeType { get; set; }
+        public string? Name { get; set; }
+        public string? Title { get; set; }
+        public string? UriTemplate { get; set; }
+    }
+    public sealed class McpServerResourceCollection : ModelContextProtocol.Server.McpServerPrimitiveCollection<ModelContextProtocol.Server.McpServerResource>
+    {
+        public McpServerResourceCollection() { }
+    }
+    public sealed class McpServerResourceCreateOptions
+    {
+        public McpServerResourceCreateOptions() { }
+        public string? Description { get; set; }
+        public string? MimeType { get; set; }
+        public string? Name { get; set; }
+        public Microsoft.Extensions.AI.AIJsonSchemaCreateOptions? SchemaCreateOptions { get; set; }
+        public System.Text.Json.JsonSerializerOptions? SerializerOptions { get; set; }
+        public System.IServiceProvider? Services { get; set; }
+        public string? Title { get; set; }
+        public string? UriTemplate { get; set; }
+    }
+    [System.AttributeUsage(System.AttributeTargets.Class)]
+    public sealed class McpServerResourceTypeAttribute : System.Attribute
+    {
+        public McpServerResourceTypeAttribute() { }
+    }
+    public abstract class McpServerTool : ModelContextProtocol.Server.IMcpServerPrimitive
+    {
+        protected McpServerTool() { }
+        public abstract ModelContextProtocol.Protocol.Tool ProtocolTool { get; }
+        public abstract System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.CallToolResult> InvokeAsync(ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.CallToolRequestParams> request, System.Threading.CancellationToken cancellationToken = default);
+        public override string ToString() { }
+        public static ModelContextProtocol.Server.McpServerTool Create(Microsoft.Extensions.AI.AIFunction function, ModelContextProtocol.Server.McpServerToolCreateOptions? options = null) { }
+        public static ModelContextProtocol.Server.McpServerTool Create(System.Delegate method, ModelContextProtocol.Server.McpServerToolCreateOptions? options = null) { }
+        public static ModelContextProtocol.Server.McpServerTool Create(System.Reflection.MethodInfo method, System.Func<ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.CallToolRequestParams>, object> createTargetFunc, ModelContextProtocol.Server.McpServerToolCreateOptions? options = null) { }
+        public static ModelContextProtocol.Server.McpServerTool Create(System.Reflection.MethodInfo method, object? target = null, ModelContextProtocol.Server.McpServerToolCreateOptions? options = null) { }
+    }
+    [System.AttributeUsage(System.AttributeTargets.Method)]
+    public sealed class McpServerToolAttribute : System.Attribute
+    {
+        public McpServerToolAttribute() { }
+        public bool Destructive { get; set; }
+        public bool Idempotent { get; set; }
+        public string? Name { get; set; }
+        public bool OpenWorld { get; set; }
+        public bool ReadOnly { get; set; }
+        public string? Title { get; set; }
+        public bool UseStructuredContent { get; set; }
+    }
+    public sealed class McpServerToolCreateOptions
+    {
+        public McpServerToolCreateOptions() { }
+        public string? Description { get; set; }
+        public bool? Destructive { get; set; }
+        public bool? Idempotent { get; set; }
+        public string? Name { get; set; }
+        public bool? OpenWorld { get; set; }
+        public bool? ReadOnly { get; set; }
+        public Microsoft.Extensions.AI.AIJsonSchemaCreateOptions? SchemaCreateOptions { get; set; }
+        public System.Text.Json.JsonSerializerOptions? SerializerOptions { get; set; }
+        public System.IServiceProvider? Services { get; set; }
+        public string? Title { get; set; }
+        public bool UseStructuredContent { get; set; }
+    }
+    [System.AttributeUsage(System.AttributeTargets.Class)]
+    public sealed class McpServerToolTypeAttribute : System.Attribute
+    {
+        public McpServerToolTypeAttribute() { }
+    }
+    public sealed class RequestContext<TParams>
+    {
+        public RequestContext(ModelContextProtocol.Server.IMcpServer server) { }
+        public TParams Params { get; set; }
+        public ModelContextProtocol.Server.IMcpServer Server { get; set; }
+        public System.IServiceProvider? Services { get; set; }
+    }
+    public sealed class SseResponseStreamTransport : ModelContextProtocol.Protocol.ITransport, System.IAsyncDisposable
+    {
+        public SseResponseStreamTransport(System.IO.Stream sseResponseStream, string? messageEndpoint = "/message", string? sessionId = null) { }
+        public System.Threading.Channels.ChannelReader<ModelContextProtocol.Protocol.JsonRpcMessage> MessageReader { get; }
+        public string? SessionId { get; }
+        public System.Threading.Tasks.ValueTask DisposeAsync() { }
+        public System.Threading.Tasks.Task OnMessageReceivedAsync(ModelContextProtocol.Protocol.JsonRpcMessage message, System.Threading.CancellationToken cancellationToken) { }
+        public System.Threading.Tasks.Task RunAsync(System.Threading.CancellationToken cancellationToken) { }
+        public System.Threading.Tasks.Task SendMessageAsync(ModelContextProtocol.Protocol.JsonRpcMessage message, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class StdioServerTransport : ModelContextProtocol.Server.StreamServerTransport
+    {
+        public StdioServerTransport(ModelContextProtocol.Server.McpServerOptions serverOptions, Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null) { }
+        public StdioServerTransport(string serverName, Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null) { }
+    }
+    public class StreamServerTransport : ModelContextProtocol.Protocol.TransportBase
+    {
+        public StreamServerTransport(System.IO.Stream inputStream, System.IO.Stream outputStream, string? serverName = null, Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null) { }
+        public override System.Threading.Tasks.ValueTask DisposeAsync() { }
+        public override System.Threading.Tasks.Task SendMessageAsync(ModelContextProtocol.Protocol.JsonRpcMessage message, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class StreamableHttpServerTransport : ModelContextProtocol.Protocol.ITransport, System.IAsyncDisposable
+    {
+        public StreamableHttpServerTransport() { }
+        public bool FlowExecutionContextFromRequests { get; init; }
+        public System.Threading.Channels.ChannelReader<ModelContextProtocol.Protocol.JsonRpcMessage> MessageReader { get; }
+        public System.Func<ModelContextProtocol.Protocol.InitializeRequestParams?, System.Threading.Tasks.ValueTask>? OnInitRequestReceived { get; set; }
+        public string? SessionId { get; set; }
+        public bool Stateless { get; init; }
+        public System.Threading.Tasks.ValueTask DisposeAsync() { }
+        public System.Threading.Tasks.Task HandleGetRequest(System.IO.Stream sseResponseStream, System.Threading.CancellationToken cancellationToken) { }
+        public System.Threading.Tasks.Task<bool> HandlePostRequest(System.IO.Pipelines.IDuplexPipe httpBodies, System.Threading.CancellationToken cancellationToken) { }
+        public System.Threading.Tasks.Task SendMessageAsync(ModelContextProtocol.Protocol.JsonRpcMessage message, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+}

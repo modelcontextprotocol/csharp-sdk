@@ -1,0 +1,18 @@
+namespace ModelContextProtocol.Server
+{
+    public sealed class McpServerHandlers
+    {
+        public McpServerHandlers() { }
+        public System.Func<ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.CallToolRequestParams>, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.CallToolResult>>? CallToolHandler { get; set; }
+        public System.Func<ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.CompleteRequestParams>, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.CompleteResult>>? CompleteHandler { get; set; }
+        public System.Func<ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.GetPromptRequestParams>, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.GetPromptResult>>? GetPromptHandler { get; set; }
+        public System.Func<ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.ListPromptsRequestParams>, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.ListPromptsResult>>? ListPromptsHandler { get; set; }
+        public System.Func<ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.ListResourceTemplatesRequestParams>, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.ListResourceTemplatesResult>>? ListResourceTemplatesHandler { get; set; }
+        public System.Func<ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.ListResourcesRequestParams>, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.ListResourcesResult>>? ListResourcesHandler { get; set; }
+        public System.Func<ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.ListToolsRequestParams>, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.ListToolsResult>>? ListToolsHandler { get; set; }
+        public System.Func<ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.ReadResourceRequestParams>, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.ReadResourceResult>>? ReadResourceHandler { get; set; }
+        public System.Func<ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.SetLevelRequestParams>, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.EmptyResult>>? SetLoggingLevelHandler { get; set; }
+        public System.Func<ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.SubscribeRequestParams>, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.EmptyResult>>? SubscribeToResourcesHandler { get; set; }
+        public System.Func<ModelContextProtocol.Server.RequestContext<ModelContextProtocol.Protocol.UnsubscribeRequestParams>, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<ModelContextProtocol.Protocol.EmptyResult>>? UnsubscribeFromResourcesHandler { get; set; }
+    }
+}
