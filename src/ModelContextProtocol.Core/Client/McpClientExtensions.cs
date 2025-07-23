@@ -809,6 +809,7 @@ public static class McpClientExtensions
     /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="toolName"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="arguments"/> does not represent a JSON object.</exception>
     /// <exception cref="McpException">The server could not find the requested tool, or the server encountered an error while processing the request.</exception>
     /// <example>
     /// <code>
@@ -826,6 +827,11 @@ public static class McpClientExtensions
     {
         Throw.IfNull(client);
         Throw.IfNull(toolName);
+
+        if (arguments.ValueKind != JsonValueKind.Object)
+        {
+            throw new ArgumentException($"The arguments parameter must represent a JSON object, but was {arguments.ValueKind}.", nameof(arguments));
+        }
 
         if (progress is not null)
         {

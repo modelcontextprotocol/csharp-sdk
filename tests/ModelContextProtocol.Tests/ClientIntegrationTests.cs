@@ -122,6 +122,30 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         Assert.Equal("Echo: Hello MCP with JsonElement!", textContent.Text);
     }
 
+    [Theory]
+    [MemberData(nameof(GetClients))]
+    public async Task CallTool_Stdio_EchoServer_WithJsonElementArguments_ThrowsForNonObject(string clientId)
+    {
+        // arrange - JsonElement representing a string, not an object
+        JsonElement stringArguments = JsonDocument.Parse("""
+        "Hello MCP!"
+        """).RootElement;
+
+        // act & assert
+        await using var client = await _fixture.CreateClientAsync(clientId);
+        var exception = await Assert.ThrowsAsync<ArgumentException>(async () =>
+            await client.CallToolAsync(
+                "echo",
+                stringArguments,
+                cancellationToken: TestContext.Current.CancellationToken
+            )
+        );
+
+        Assert.Contains("arguments parameter must represent a JSON object", exception.Message);
+        Assert.Contains("String", exception.Message);
+        Assert.Equal("arguments", exception.ParamName);
+    }
+
     [Fact]
     public async Task CallTool_Stdio_EchoSessionId_ReturnsEmpty()
     {
