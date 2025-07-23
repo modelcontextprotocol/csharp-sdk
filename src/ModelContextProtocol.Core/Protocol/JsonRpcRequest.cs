@@ -16,16 +16,19 @@ namespace ModelContextProtocol.Protocol;
 /// </remarks>
 public sealed class JsonRpcRequest : JsonRpcMessageWithId
 {
+    internal const string MethodPropertyName = "method";
+    internal const string ParamsPropertyName = "params";
+
     /// <summary>
     /// Name of the method to invoke.
     /// </summary>
-    [JsonPropertyName("method")]
+    [JsonPropertyName(MethodPropertyName)]
     public required string Method { get; init; }
 
     /// <summary>
     /// Optional parameters for the method.
     /// </summary>
-    [JsonPropertyName("params")]
+    [JsonPropertyName(ParamsPropertyName)]
     public JsonNode? Params { get; init; }
 
     internal JsonRpcRequest WithId(RequestId id)

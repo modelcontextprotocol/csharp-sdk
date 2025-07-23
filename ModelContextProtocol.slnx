@@ -40,4 +40,7 @@
     <Project Path="tests/ModelContextProtocol.TestServer/ModelContextProtocol.TestServer.csproj" />
     <Project Path="tests/ModelContextProtocol.TestSseServer/ModelContextProtocol.TestSseServer.csproj" />
   </Folder>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/ModelContextProtocol.Benchmarks/ModelContextProtocol.Benchmarks.csproj" />
+  </Folder>
 </Solution>
