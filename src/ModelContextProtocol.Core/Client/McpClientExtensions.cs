@@ -794,7 +794,7 @@ public static class McpClientExtensions
     /// </summary>
     /// <param name="client">The client instance used to communicate with the MCP server.</param>
     /// <param name="toolName">The name of the tool to call on the server.</param>
-    /// <param name="arguments">A dictionary of arguments to pass to the tool. Each key represents a parameter name,
+    /// <param name="arguments">A <see cref="JsonElement"/> containing arguments to pass to the tool. Each property represents a tool parameter name,
     /// and its associated value represents the argument value as a <see cref="JsonElement"/>.
     /// </param>
     /// <param name="progress">
@@ -813,17 +813,14 @@ public static class McpClientExtensions
     /// <example>
     /// <code>
     /// // Call a tool with JsonElement arguments
-    /// var arguments = new Dictionary&lt;string, JsonElement&gt;
-    /// {
-    ///     ["message"] = JsonSerializer.SerializeToElement("Hello MCP!")
-    /// };
+    /// var arguments = JsonDocument.Parse("""{"message": "Hello MCP!"}""").RootElement;
     /// var result = await client.CallToolAsync("echo", arguments);
     /// </code>
     /// </example>
     public static ValueTask<CallToolResult> CallToolAsync(
         this IMcpClient client,
         string toolName,
-        IReadOnlyDictionary<string, JsonElement> arguments,
+        JsonElement arguments,
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken cancellationToken = default)
     {
@@ -840,7 +837,7 @@ public static class McpClientExtensions
             new()
             {
                 Name = toolName,
-                Arguments = arguments,
+                Arguments = arguments.EnumerateObject().ToDictionary(prop => prop.Name, prop => prop.Value) ?? []
             },
             McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
             McpJsonUtilities.JsonContext.Default.CallToolResult,
@@ -849,7 +846,7 @@ public static class McpClientExtensions
         static async ValueTask<CallToolResult> SendRequestWithProgressAsync(
             IMcpClient client,
             string toolName,
-            IReadOnlyDictionary<string, JsonElement> arguments,
+            JsonElement arguments,
             IProgress<ProgressNotificationValue> progress,
             CancellationToken cancellationToken)
         {
@@ -872,7 +869,7 @@ public static class McpClientExtensions
                 new()
                 {
                     Name = toolName,
-                    Arguments = arguments,
+                    Arguments = arguments.EnumerateObject().ToDictionary(prop => prop.Name, prop => prop.Value) ?? [],
                     ProgressToken = progressToken,
                 },
                 McpJsonUtilities.JsonContext.Default.CallToolRequestParams,

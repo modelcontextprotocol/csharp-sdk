@@ -101,15 +101,17 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
     public async Task CallTool_Stdio_EchoServer_WithJsonElementArguments(string clientId)
     {
         // arrange
+        JsonElement arguments = JsonDocument.Parse("""
+        {
+          "message": "Hello MCP with JsonElement!"
+        }
+        """).RootElement;
 
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
         var result = await client.CallToolAsync(
             "echo",
-            new Dictionary<string, JsonElement>
-            {
-                ["message"] = JsonDocument.Parse("\"Hello MCP with JsonElement!\"").RootElement
-            },
+            arguments,
             cancellationToken: TestContext.Current.CancellationToken
         );
 
