@@ -40,13 +40,13 @@ public class ContentBlockTests
     public void ResourceLinkBlock_DeserializationWithMinimalProperties_Succeeds()
     {
         // Arrange - JSON with only required properties
-        string json = """
-        {
-            "type": "resource_link",
-            "uri": "https://example.com/minimal",
-            "name": "Minimal Resource"
-        }
-        """;
+        const string json = """
+            {
+                "type": "resource_link",
+                "uri": "https://example.com/minimal",
+                "name": "Minimal Resource"
+            }
+            """;
 
         // Act
         var deserialized = JsonSerializer.Deserialize<ContentBlock>(json, McpJsonUtilities.DefaultOptions);
@@ -67,12 +67,12 @@ public class ContentBlockTests
     public void ResourceLinkBlock_DeserializationWithoutName_ThrowsJsonException()
     {
         // Arrange - JSON missing the required "name" property
-        string json = """
-        {
-            "type": "resource_link",
-            "uri": "https://example.com/missing-name"
-        }
-        """;
+        const string json = """
+            {
+                "type": "resource_link",
+                "uri": "https://example.com/missing-name"
+            }
+            """;
 
         // Act & Assert
         var exception = Assert.Throws<JsonException>(() =>
