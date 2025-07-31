@@ -14,6 +14,7 @@
     <Project Path="samples/EverythingServer/EverythingServer.csproj" />
     <Project Path="samples/ProtectedMCPClient/ProtectedMCPClient.csproj" />
     <Project Path="samples/ProtectedMCPServer/ProtectedMCPServer.csproj" />
+    <Project Path="samples/QuickSartInternalTools/QuickSartInternalTools.csproj" />
     <Project Path="samples/QuickstartClient/QuickstartClient.csproj" />
     <Project Path="samples/QuickstartWeatherServer/QuickstartWeatherServer.csproj" />
     <Project Path="samples/TestServerWithHosting/TestServerWithHosting.csproj" />

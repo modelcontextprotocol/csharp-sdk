@@ -1,5 +1,6 @@
 ﻿using ModelContextProtocol.Server;
 using System.ComponentModel;
+using System.Reflection;
 
 namespace EverythingServer.Tools;
 
@@ -9,8 +10,12 @@ public class WriteTextTool
     [McpServerTool(Name = "writetext"), Description("Write a text file to local")]
     public static string WriteLog(string message)
     {
-        string filePath = "F:\\Development\\Git\\csharp-sdk\\samples\\output.txt";  // 文件路径
-        string content = "Hello World MCP User";    // 要写入的内容
+        string? assemblyDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+        if (assemblyDirectory == null)
+            return string.Empty;
+
+        string filePath = Path.Combine(assemblyDirectory, "output.txt");
+        string content = "Hello World MCP User" + "\n" + message;
 
         try
         {

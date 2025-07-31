@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "QuickstartClient": {
+      "commandName": "Project",
+      "commandLineArgs": "F:\\Development\\ForkGitHub\\csharp-sdk\\samples\\EverythingServer"
+    }
+  }
+}

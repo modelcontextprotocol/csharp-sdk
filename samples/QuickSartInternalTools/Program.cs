@@ -1,0 +1,146 @@
+﻿using Anthropic.SDK;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
+using OpenAI;
+using OpenAI.Chat;
+using OpenTelemetry;
+using OpenTelemetry.Logs;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Trace;
+using System.ClientModel;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
+
+var builder = Host.CreateApplicationBuilder(args);
+
+builder.Configuration
+    .AddEnvironmentVariables()
+    .AddUserSecrets<Program>();
+
+using var loggerFactory = LoggerFactory.Create(builder => builder.AddOpenTelemetry(opt => opt.AddOtlpExporter()));
+
+var (command, arguments) = GetCommandAndArguments(args);
+
+var clientTransport = new StdioClientTransport(new()
+{
+    Name = "Demo Server",
+    Command = command,
+    Arguments = arguments,
+});
+
+await using var mcpClient = await McpClientFactory.CreateAsync(clientTransport);
+
+var tools = await mcpClient.ListToolsAsync();
+foreach (var tool in tools)
+{
+    Console.WriteLine($"Connected to server with tools: {tool.Name}");
+}
+
+// 【Create ChatClient】
+string apikey = builder.Configuration["DEEPSEEK_API_KEY"] ?? string.Empty;
+ApiKeyCredential apiKeyCredential = new ApiKeyCredential(apikey);
+
+var openaiOptions = new OpenAIClientOptions
+{
+    Endpoint = new Uri("https://api.deepseek.com/v1"),
+    UserAgentApplicationId = "WeatherBot/2.0",
+};
+
+ChatClient client = new ChatClient(model: "deepseek-chat", apiKeyCredential, openaiOptions);
+
+using IChatClient samplingClient = client.AsIChatClient()
+    .AsBuilder()
+    .UseOpenTelemetry(loggerFactory: loggerFactory, configure: o => o.EnableSensitiveData = true)
+    .Build();
+
+var options = new ChatOptions
+{
+    //MaxOutputTokens = 1000,
+    ModelId = "deepseek-chat",
+    Tools = [.. tools],
+    AllowMultipleToolCalls = true,
+};
+
+Console.ForegroundColor = ConsoleColor.Green;
+Console.WriteLine("MCP Client Started!");
+Console.ResetColor();
+
+PromptForInput();
+while(Console.ReadLine() is string query && !"exit".Equals(query, StringComparison.OrdinalIgnoreCase))
+{
+    if (string.IsNullOrWhiteSpace(query))
+    {
+        PromptForInput();
+        continue;
+    }
+
+    await foreach (var message in samplingClient.GetStreamingResponseAsync(query, options))
+    {
+        Console.Write(message);
+
+        var finishReason = message.FinishReason;
+        if (finishReason != null)
+        {
+            string _str = finishReason.Value.ToString();
+            var toolContent = message.Contents.First();
+            string typeName = toolContent.GetType().Name;
+            if (toolContent is FunctionCallContent)
+            {
+                FunctionCallContent textContent = (FunctionCallContent)toolContent;
+                string toolName = textContent.Name;
+                var toolargs = textContent.Arguments;
+                if (toolName != null)
+                {
+                    var _result = mcpClient.CallToolAsync(toolName, (IReadOnlyDictionary<string, object?>?)toolargs);
+                    Console.WriteLine("Result: " + ((TextContentBlock)_result.Result.Content[0]).Text);
+                }
+            }
+
+        }
+
+    }
+    Console.WriteLine();
+
+    PromptForInput();
+}
+
+static void PromptForInput()
+{
+    Console.WriteLine("Enter a command (or 'exit' to quit):");
+    Console.ForegroundColor = ConsoleColor.Cyan;
+    Console.Write("> ");
+    Console.ResetColor();
+}
+
+/// <summary>
+/// Determines the command (executable) to run and the script/path to pass to it. This allows different
+/// languages/runtime environments to be used as the MCP server.
+/// </summary>
+/// <remarks>
+/// This method uses the file extension of the first argument to determine the command, if it's py, it'll run python,
+/// if it's js, it'll run node, if it's a directory or a csproj file, it'll run dotnet.
+/// 
+/// If no arguments are provided, it defaults to running the QuickstartWeatherServer project from the current repo.
+/// 
+/// This method would only be required if you're creating a generic client, such as we use for the quickstart.
+/// </remarks>
+static (string command, string[] arguments) GetCommandAndArguments(string[] args)
+{
+    return args switch
+    {
+        [var script] when script.EndsWith(".py") => ("python", args),
+        [var script] when script.EndsWith(".js") => ("node", args),
+        [var script] when Directory.Exists(script) || (File.Exists(script) && script.EndsWith(".csproj")) => ("dotnet", ["run", "--project", script]),
+        _ => ("dotnet", ["run", "--project", Path.Combine(GetCurrentSourceDirectory(), "../QuickstartWeatherServer")])
+    };
+}
+
+static string GetCurrentSourceDirectory([CallerFilePath] string? currentFile = null)
+{
+    Debug.Assert(!string.IsNullOrWhiteSpace(currentFile));
+    return Path.GetDirectoryName(currentFile) ?? throw new InvalidOperationException("Unable to determine source directory.");
+}
