@@ -1,8 +1,7 @@
-﻿using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
 
-namespace TestServerWithHosting.Resources;
+namespace AspNetCoreMcpServer.Resources;
 
 [McpServerResourceType]
 public class SimpleResourceType

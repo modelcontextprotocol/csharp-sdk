@@ -1,8 +1,8 @@
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
-using TestServerWithHosting.Tools;
-using TestServerWithHosting.Resources;
+using AspNetCoreMcpServer.Tools;
+using AspNetCoreMcpServer.Resources;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddMcpServer()
