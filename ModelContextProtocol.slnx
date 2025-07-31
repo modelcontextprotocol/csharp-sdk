@@ -12,8 +12,8 @@
     <Project Path="samples/AspNetCoreMcpServer/AspNetCoreMcpServer.csproj" />
     <Project Path="samples/ChatWithTools/ChatWithTools.csproj" />
     <Project Path="samples/EverythingServer/EverythingServer.csproj" />
-    <Project Path="samples/ProtectedMCPClient/ProtectedMCPClient.csproj" />
-    <Project Path="samples/ProtectedMCPServer/ProtectedMCPServer.csproj" />
+    <Project Path="samples/ProtectedMcpClient/ProtectedMcpClient.csproj" />
+    <Project Path="samples/ProtectedMcpServer/ProtectedMcpServer.csproj" />
     <Project Path="samples/QuickstartClient/QuickstartClient.csproj" />
     <Project Path="samples/QuickstartWeatherServer/QuickstartWeatherServer.csproj" />
     <Project Path="samples/TestServerWithHosting/TestServerWithHosting.csproj" />
