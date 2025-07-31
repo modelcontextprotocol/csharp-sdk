@@ -9,7 +9,7 @@
     <File Path=".github/workflows/release.yml" />
   </Folder>
   <Folder Name="/samples/">
-    <Project Path="samples/AspNetCoreSseServer/AspNetCoreSseServer.csproj" />
+    <Project Path="samples/AspNetCoreServer/AspNetCoreServer.csproj" />
     <Project Path="samples/ChatWithTools/ChatWithTools.csproj" />
     <Project Path="samples/EverythingServer/EverythingServer.csproj" />
     <Project Path="samples/ProtectedMCPClient/ProtectedMCPClient.csproj" />
