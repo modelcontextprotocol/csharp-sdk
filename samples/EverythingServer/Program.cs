@@ -38,6 +38,7 @@ builder.Services
     .WithPrompts<ComplexPromptType>()
     .WithPrompts<SimplePromptType>()
     .WithResources<SimpleResourceType>()
+    .WithTools<WriteTextTool>()
     .WithSubscribeToResourcesHandler(async (ctx, ct) =>
     {
         var uri = ctx.Params?.Uri;
