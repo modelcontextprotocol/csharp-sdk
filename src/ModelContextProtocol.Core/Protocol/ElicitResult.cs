@@ -47,4 +47,25 @@ public sealed class ElicitResult : Result
     /// </remarks>
     [JsonPropertyName("content")]
     public IDictionary<string, JsonElement>? Content { get; set; }
+
+    /// <summary>
+    /// Gets a value indicating whether the user accepted the elicitation request.
+    /// </summary>
+    /// <returns><see langword="true"/> if the action is "accept"; otherwise, <see langword="false"/>.</returns>
+    [JsonIgnore]
+    public bool IsAccepted => string.Equals(Action, "accept", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Gets a value indicating whether the user declined the elicitation request.
+    /// </summary>
+    /// <returns><see langword="true"/> if the action is "decline"; otherwise, <see langword="false"/>.</returns>
+    [JsonIgnore]
+    public bool IsDeclined => string.Equals(Action, "decline", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Gets a value indicating whether the user cancelled the elicitation request.
+    /// </summary>
+    /// <returns><see langword="true"/> if the action is "cancel"; otherwise, <see langword="false"/>.</returns>
+    [JsonIgnore]
+    public bool IsCancelled => string.Equals(Action, "cancel", StringComparison.OrdinalIgnoreCase);
 }
