@@ -65,6 +65,22 @@ public sealed class McpServerToolCreateOptions
     public string? Title { get; set; }
 
     /// <summary>
+    /// Gets or sets the HTTP routes where this tool should be available.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Routes are used in AspNetCore scenarios to control which HTTP endpoints expose this tool.
+    /// If <see langword="null"/>, the tool will be available on all routes (global tool).
+    /// This setting is ignored in stdio/console scenarios.
+    /// </para>
+    /// <para>
+    /// Routes are typically populated from <see cref="McpServerToolRouteAttribute"/> during tool creation,
+    /// but can be set programmatically when creating tools without attributes.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string>? Routes { get; set; }
+
+    /// <summary>
     /// Gets or sets whether the tool may perform destructive updates to its environment.
     /// </summary>
     /// <remarks>
@@ -172,5 +188,6 @@ public sealed class McpServerToolCreateOptions
             UseStructuredContent = UseStructuredContent,
             SerializerOptions = SerializerOptions,
             SchemaCreateOptions = SchemaCreateOptions,
+            Routes = Routes
         };
 }
