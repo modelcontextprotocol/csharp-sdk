@@ -234,6 +234,23 @@ public static class McpServerExtensions
             cancellationToken: cancellationToken);
     }
 
+    /// <summary>
+    /// Determines whether client supports elicitation capability.
+    /// </summary>
+    /// <param name="server">McpServer instance to check.</param>
+    /// <returns>
+    /// <see langword="true"/> if client supports elicitation requests; otherwise, <see langword="false"/>.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="server"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// When <see langword="true"/>, the server can call <see cref="McpServerExtensions.ElicitAsync"/> to request additional information from the user via the client.
+    /// </remarks>
+    public static bool SupportsElicitation(this IMcpServer server)
+    {
+        Throw.IfNull(server);
+        return server.ClientCapabilities?.Elicitation is not null;
+    }
+
     private static void ThrowIfSamplingUnsupported(IMcpServer server)
     {
         if (server.ClientCapabilities?.Sampling is null)
