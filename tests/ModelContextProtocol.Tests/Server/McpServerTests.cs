@@ -178,6 +178,31 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
+    public void SupportsElicitation_Should_Throw_ArgumentNullException_If_Server_Is_Null()
+    {
+        // Arrange
+        IMcpServer? server = null;
+
+        // Act & Assert
+        Assert.Throws<ArgumentNullException>(() => server!.SupportsElicitation());
+    }
+
+    [Fact]
+    public async Task SupportsElicitation_Should_Return_False_If_ElicitationCapability_Is_Not_Set()
+    {
+        // Arrange
+        await using var transport = new TestServerTransport();
+        await using var server = McpServerFactory.Create(transport, _options, LoggerFactory);
+        SetClientCapabilities(server, new ClientCapabilities { Elicitation = null });
+
+        // Act
+        var supportsElicitation = server.SupportsElicitation();
+
+        // Assert
+        Assert.False(supportsElicitation);
+    }
+
+    [Fact]
     public async Task ElicitAsync_Should_SendRequest()
     {
         // Arrange
