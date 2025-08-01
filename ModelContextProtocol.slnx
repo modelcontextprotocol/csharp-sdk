@@ -12,6 +12,7 @@
     <Project Path="samples/AspNetCoreSseServer/AspNetCoreSseServer.csproj" />
     <Project Path="samples/ChatWithTools/ChatWithTools.csproj" />
     <Project Path="samples/EverythingServer/EverythingServer.csproj" />
+    <Project Path="samples/InMemoryTransport/InMemoryTransport.csproj" />
     <Project Path="samples/ProtectedMCPClient/ProtectedMCPClient.csproj" />
     <Project Path="samples/ProtectedMCPServer/ProtectedMCPServer.csproj" />
     <Project Path="samples/QuickstartClient/QuickstartClient.csproj" />
