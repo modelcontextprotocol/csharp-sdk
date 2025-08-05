@@ -1,6 +1,7 @@
 ﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.Tests;
 
@@ -41,6 +42,37 @@ public static class McpJsonUtilitiesTests
             Assert.Equal("1", JsonSerializer.Serialize(EnumWithoutAnnotation.A, options));
             Assert.Equal("\"A\"", JsonSerializer.Serialize(EnumWithAnnotation.A, options));
         }
+    }
+
+    [Fact]
+    public static void DefaultOptions_CanSerializeIEnumerableOfContentBlock()
+    {
+        var options = McpJsonUtilities.DefaultOptions;
+        
+        // Create an IEnumerable<ContentBlock> with different content types
+        IEnumerable<ContentBlock> contentBlocks = new List<ContentBlock>
+        {
+            new TextContentBlock { Text = "Hello World" },
+            new TextContentBlock { Text = "Test message" }
+        };
+
+        // Should not throw NotSupportedException
+        string json = JsonSerializer.Serialize(contentBlocks, options);
+        
+        Assert.NotNull(json);
+        Assert.Contains("Hello World", json);
+        Assert.Contains("Test message", json);
+        Assert.Contains("\"type\":\"text\"", json);
+        
+        // Should also be able to deserialize back
+        var deserialized = JsonSerializer.Deserialize<ContentBlock[]>(json, options);
+        Assert.NotNull(deserialized);
+        Assert.Equal(2, deserialized.Length);
+        Assert.All(deserialized, cb => Assert.Equal("text", cb.Type));
+        
+        var textBlocks = deserialized.Cast<TextContentBlock>().ToArray();
+        Assert.Equal("Hello World", textBlocks[0].Text);
+        Assert.Equal("Test message", textBlocks[1].Text);
     }
 
     public enum EnumWithoutAnnotation { A = 1, B = 2, C = 3 }
