@@ -188,11 +188,16 @@ public sealed class McpServerHandlers
 
             if (SubscribeToResourcesHandler is not null || UnsubscribeFromResourcesHandler is not null)
             {
-                resourcesCapability.SubscribeToResourcesHandler = SubscribeToResourcesHandler ?? resourcesCapability.SubscribeToResourcesHandler;
-                resourcesCapability.UnsubscribeFromResourcesHandler = UnsubscribeFromResourcesHandler ?? resourcesCapability.UnsubscribeFromResourcesHandler;
                 resourcesCapability.Subscribe = true;
             }
         }
+
+        if (SubscribeToResourcesHandler is not null || UnsubscribeFromResourcesHandler is not null)
+        {
+            resourcesCapability.SubscribeToResourcesHandler = SubscribeToResourcesHandler ?? resourcesCapability.SubscribeToResourcesHandler;
+            resourcesCapability.UnsubscribeFromResourcesHandler = UnsubscribeFromResourcesHandler ?? resourcesCapability.UnsubscribeFromResourcesHandler;
+        }
+
 
         ToolsCapability? toolsCapability = options.Capabilities?.Tools;
         if (ListToolsHandler is not null || CallToolHandler is not null)
