@@ -39,7 +39,11 @@ internal sealed class HttpMcpSession<TTransport>(
 
     public IAsyncDisposable AcquireReference()
     {
-        Debug.Assert(_idleSessionSemaphore is not null, "Only StreamableHttpHandler should call AcquireReference.");
+        // We don't do idle tracking for stateless sessions, so we don't need to acquire a reference.
+        if (_idleSessionSemaphore is null)
+        {
+            return new NoopDisposable();
+        }
 
         lock (_referenceCountLock)
         {
@@ -130,5 +134,10 @@ internal sealed class HttpMcpSession<TTransport>(
                 await session._idleSessionSemaphore.WaitAsync();
             }
         }
+    }
+
+    private sealed class NoopDisposable : IAsyncDisposable
+    {
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }
