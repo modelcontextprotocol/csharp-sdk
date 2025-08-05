@@ -1,7 +1,9 @@
 ﻿using ModelContextProtocol.AspNetCore.Stateless;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using System.Diagnostics;
 using System.Security.Claims;
+using System.Threading;
 
 namespace ModelContextProtocol.AspNetCore;
 
@@ -9,12 +11,17 @@ internal sealed class HttpMcpSession<TTransport>(
     string sessionId,
     TTransport transport,
     UserIdClaim? userId,
-    TimeProvider timeProvider) : IAsyncDisposable
+    TimeProvider timeProvider,
+    SemaphoreSlim? idleSessionSemaphore = null) : IAsyncDisposable
     where TTransport : ITransport
 {
     private int _referenceCount;
     private int _getRequestStarted;
-    private CancellationTokenSource _disposeCts = new();
+    private bool _isDisposed;
+
+    private readonly SemaphoreSlim? _idleSessionSemaphore = idleSessionSemaphore;
+    private readonly CancellationTokenSource _disposeCts = new();
+    private readonly object _referenceCountLock = new();
 
     public string Id { get; } = sessionId;
     public TTransport Transport { get; } = transport;
@@ -30,9 +37,19 @@ internal sealed class HttpMcpSession<TTransport>(
     public IMcpServer? Server { get; set; }
     public Task? ServerRunTask { get; set; }
 
-    public IDisposable AcquireReference()
+    public IAsyncDisposable AcquireReference()
     {
-        Interlocked.Increment(ref _referenceCount);
+        Debug.Assert(_idleSessionSemaphore is not null, "Only StreamableHttpHandler should call AcquireReference.");
+
+        lock (_referenceCountLock)
+        {
+            if (!_isDisposed && ++_referenceCount == 1)
+            {
+                // Non-idle sessions should not prevent session creation.
+                _idleSessionSemaphore.Release();
+            }
+        }
+
         return new UnreferenceDisposable(this);
     }
 
@@ -40,6 +57,19 @@ internal sealed class HttpMcpSession<TTransport>(
 
     public async ValueTask DisposeAsync()
     {
+        bool shouldReleaseIdleSessionSemaphore;
+
+        lock (_referenceCountLock)
+        {
+            if (_isDisposed)
+            {
+                return;
+            }
+
+            _isDisposed = true;
+            shouldReleaseIdleSessionSemaphore = _referenceCount == 0;
+        }
+
         try
         {
             await _disposeCts.CancelAsync();
@@ -65,20 +95,39 @@ internal sealed class HttpMcpSession<TTransport>(
             {
                 await Transport.DisposeAsync();
                 _disposeCts.Dispose();
+
+                // If the session was disposed while it was inactive, we need to release the semaphore
+                // to allow new sessions to be created.
+                if (_idleSessionSemaphore is not null && shouldReleaseIdleSessionSemaphore)
+                {
+                    _idleSessionSemaphore.Release();
+                }
             }
         }
     }
 
-    public bool HasSameUserId(ClaimsPrincipal user)
-        => UserIdClaim == StreamableHttpHandler.GetUserIdClaim(user);
+    public bool HasSameUserId(ClaimsPrincipal user) => UserIdClaim == StreamableHttpHandler.GetUserIdClaim(user);
 
-    private sealed class UnreferenceDisposable(HttpMcpSession<TTransport> session) : IDisposable
+    private sealed class UnreferenceDisposable(HttpMcpSession<TTransport> session) : IAsyncDisposable
     {
-        public void Dispose()
+        public async ValueTask DisposeAsync()
         {
-            if (Interlocked.Decrement(ref session._referenceCount) == 0)
+            Debug.Assert(session._idleSessionSemaphore is not null, "Only StreamableHttpHandler should call AcquireReference.");
+
+            bool shouldMarkSessionIdle;
+
+            lock (session._referenceCountLock)
+            {
+                shouldMarkSessionIdle = !session._isDisposed && --session._referenceCount == 0;
+            }
+
+            if (shouldMarkSessionIdle)
             {
                 session.LastActivityTicks = session.TimeProvider.GetTimestamp();
+
+                // Acquire semaphore when session becomes inactive (reference count goes to 0) to slow
+                // down session creation until idle sessions are disposed by the background service.
+                await session._idleSessionSemaphore.WaitAsync();
             }
         }
     }

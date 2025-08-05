@@ -31,6 +31,10 @@ internal sealed class StreamableHttpHandler(
 
     public ConcurrentDictionary<string, HttpMcpSession<StreamableHttpServerTransport>> Sessions { get; } = new(StringComparer.Ordinal);
 
+    // Semaphore to control session creation backpressure when there are too many idle sessions
+    // Initial and max count is 10% more than MaxIdleSessionCount (or 100 more if that's higher)
+    private readonly SemaphoreSlim _idleSessionSemaphore = CreateIdleSessionSemaphore(httpServerTransportOptions.Value);
+
     public HttpServerTransportOptions HttpServerTransportOptions => httpServerTransportOptions.Value;
 
     private IDataProtector Protector { get; } = dataProtection.CreateProtector("Microsoft.AspNetCore.StreamableHttpHandler.StatelessSessionId");
@@ -58,7 +62,7 @@ internal sealed class StreamableHttpHandler(
 
         try
         {
-            using var _ = session.AcquireReference();
+            await using var _ = session.AcquireReference();
 
             InitializeSseResponse(context);
             var wroteResponse = await session.Transport.HandlePostRequest(new HttpDuplexPipe(context), context.RequestAborted);
@@ -106,7 +110,7 @@ internal sealed class StreamableHttpHandler(
             return;
         }
 
-        using var _ = session.AcquireReference();
+        await using var _ = session.AcquireReference();
         InitializeSseResponse(context);
 
         // We should flush headers to indicate a 200 success quickly, because the initialization response
@@ -184,6 +188,11 @@ internal sealed class StreamableHttpHandler(
 
         if (!HttpServerTransportOptions.Stateless)
         {
+            // Acquire semaphore before creating stateful sessions to create backpressure.
+            // This semaphore represents "slots" for idle sessions, and we may need to wait on the
+            // IdleTrackingBackgroundService to dispose idle sessions before continuing.
+            await _idleSessionSemaphore.WaitAsync(context.RequestAborted);
+
             sessionId = MakeNewSessionId();
             transport = new()
             {
@@ -248,7 +257,8 @@ internal sealed class StreamableHttpHandler(
         context.Features.Set(server);
 
         var userIdClaim = statelessId?.UserIdClaim ?? GetUserIdClaim(context.User);
-        var session = new HttpMcpSession<StreamableHttpServerTransport>(sessionId, transport, userIdClaim, HttpServerTransportOptions.TimeProvider)
+        var semaphore = HttpServerTransportOptions.Stateless ? null : _idleSessionSemaphore;
+        var session = new HttpMcpSession<StreamableHttpServerTransport>(sessionId, transport, userIdClaim, HttpServerTransportOptions.TimeProvider, semaphore)
         {
             Server = server,
         };
@@ -336,6 +346,13 @@ internal sealed class StreamableHttpHandler(
 
     private static bool MatchesTextEventStreamMediaType(MediaTypeHeaderValue acceptHeaderValue)
         => acceptHeaderValue.MatchesMediaType("text/event-stream");
+
+    private static SemaphoreSlim CreateIdleSessionSemaphore(HttpServerTransportOptions options)
+    {
+        var maxIdleSessionCount = options.MaxIdleSessionCount;
+        var semaphoreCount = Math.Max(maxIdleSessionCount + 100, (int)(maxIdleSessionCount * 1.1));
+        return new SemaphoreSlim(semaphoreCount, semaphoreCount);
+    }
 
     private sealed class HttpDuplexPipe(HttpContext context) : IDuplexPipe
     {
