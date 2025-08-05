@@ -65,12 +65,13 @@ public static class McpJsonUtilitiesTests
         Assert.Contains("\"type\":\"text\"", json);
         
         // Should also be able to deserialize back
-        var deserialized = JsonSerializer.Deserialize<ContentBlock[]>(json, options);
+        var deserialized = JsonSerializer.Deserialize<IEnumerable<ContentBlock>>(json, options);
         Assert.NotNull(deserialized);
-        Assert.Equal(2, deserialized.Length);
-        Assert.All(deserialized, cb => Assert.Equal("text", cb.Type));
+        var deserializedList = deserialized.ToList();
+        Assert.Equal(2, deserializedList.Count);
+        Assert.All(deserializedList, cb => Assert.Equal("text", cb.Type));
         
-        var textBlocks = deserialized.Cast<TextContentBlock>().ToArray();
+        var textBlocks = deserializedList.Cast<TextContentBlock>().ToArray();
         Assert.Equal("Hello World", textBlocks[0].Text);
         Assert.Equal("Test message", textBlocks[1].Text);
     }
