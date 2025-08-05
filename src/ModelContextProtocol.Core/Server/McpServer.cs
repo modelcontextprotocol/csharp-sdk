@@ -308,7 +308,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
             listChanged = true;
 
-            // TODO: Implement subscribe/unsubscribe logic for resource and resource template collections
+            // TODO: Implement subscribe/unsubscribe logic for resource and resource template collections.
             // subscribe = true;
         }
 
