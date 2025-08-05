@@ -141,6 +141,7 @@ public static partial class McpJsonUtilities
 
     // MCP Content
     [JsonSerializable(typeof(ContentBlock))]
+    [JsonSerializable(typeof(ContentBlock[]))]
     [JsonSerializable(typeof(TextContentBlock))]
     [JsonSerializable(typeof(ImageContentBlock))]
     [JsonSerializable(typeof(AudioContentBlock))]
