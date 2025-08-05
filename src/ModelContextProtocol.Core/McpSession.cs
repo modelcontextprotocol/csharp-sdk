@@ -736,7 +736,7 @@ internal sealed partial class McpSession : IDisposable
     [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} method '{Method}' request handler failed.")]
     private partial void LogRequestHandlerException(string endpointName, string method, Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} received request for unknown request ID '{RequestId}'.")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} received message for unknown request ID '{RequestId}'.")]
     private partial void LogNoRequestFoundForMessageWithId(string endpointName, RequestId requestId);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} request failed for method '{Method}': {ErrorMessage} ({ErrorCode}).")]
