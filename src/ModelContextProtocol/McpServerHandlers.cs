@@ -185,13 +185,13 @@ public sealed class McpServerHandlers
             resourcesCapability.ListResourceTemplatesHandler = ListResourceTemplatesHandler ?? resourcesCapability.ListResourceTemplatesHandler;
             resourcesCapability.ListResourcesHandler = ListResourcesHandler ?? resourcesCapability.ListResourcesHandler;
             resourcesCapability.ReadResourceHandler = ReadResourceHandler ?? resourcesCapability.ReadResourceHandler;
+        }
 
-            if (SubscribeToResourcesHandler is not null || UnsubscribeFromResourcesHandler is not null)
-            {
-                resourcesCapability.SubscribeToResourcesHandler = SubscribeToResourcesHandler ?? resourcesCapability.SubscribeToResourcesHandler;
-                resourcesCapability.UnsubscribeFromResourcesHandler = UnsubscribeFromResourcesHandler ?? resourcesCapability.UnsubscribeFromResourcesHandler;
-                resourcesCapability.Subscribe = true;
-            }
+        if (SubscribeToResourcesHandler is not null || UnsubscribeFromResourcesHandler is not null)
+        {
+            resourcesCapability.SubscribeToResourcesHandler = SubscribeToResourcesHandler ?? resourcesCapability.SubscribeToResourcesHandler;
+            resourcesCapability.UnsubscribeFromResourcesHandler = UnsubscribeFromResourcesHandler ?? resourcesCapability.UnsubscribeFromResourcesHandler;
+            resourcesCapability.Subscribe = true;
         }
 
         ToolsCapability? toolsCapability = options.Capabilities?.Tools;
