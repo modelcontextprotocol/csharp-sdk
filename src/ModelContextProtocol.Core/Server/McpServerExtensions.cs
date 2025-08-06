@@ -30,7 +30,7 @@ public static class McpServerExtensions
         this IMcpServer server, CreateMessageRequestParams request, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(server);
-        ThrowIfSamplingUnsupported(server);
+        ThrowIfClientSamplingUnsupported(server);
 
         return server.SendRequestAsync(
             RequestMethods.SamplingCreateMessage,
@@ -164,7 +164,7 @@ public static class McpServerExtensions
     public static IChatClient AsSamplingChatClient(this IMcpServer server)
     {
         Throw.IfNull(server);
-        ThrowIfSamplingUnsupported(server);
+        ThrowIfClientSamplingUnsupported(server);
 
         return new SamplingChatClient(server);
     }
@@ -198,7 +198,7 @@ public static class McpServerExtensions
         this IMcpServer server, ListRootsRequestParams request, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(server);
-        ThrowIfRootsUnsupported(server);
+        ThrowIfClientRootsUnsupported(server);
 
         return server.SendRequestAsync(
             RequestMethods.RootsList,
@@ -224,7 +224,7 @@ public static class McpServerExtensions
         this IMcpServer server, ElicitRequestParams request, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(server);
-        ThrowIfElicitationUnsupported(server);
+        ThrowIfClientElicitationUnsupported(server);
 
         return server.SendRequestAsync(
             RequestMethods.ElicitationCreate,
@@ -285,7 +285,7 @@ public static class McpServerExtensions
         return server.ClientCapabilities?.Sampling is not null;
     }
 
-    private static void ThrowIfSamplingUnsupported(IMcpServer server)
+    private static void ThrowIfClientSamplingUnsupported(IMcpServer server)
     {
         if (server.ClientCapabilities?.Sampling is null)
         {
@@ -298,7 +298,7 @@ public static class McpServerExtensions
         }
     }
 
-    private static void ThrowIfRootsUnsupported(IMcpServer server)
+    private static void ThrowIfClientRootsUnsupported(IMcpServer server)
     {
         if (server.ClientCapabilities?.Roots is null)
         {
@@ -311,7 +311,7 @@ public static class McpServerExtensions
         }
     }
 
-    private static void ThrowIfElicitationUnsupported(IMcpServer server)
+    private static void ThrowIfClientElicitationUnsupported(IMcpServer server)
     {
         if (server.ClientCapabilities?.Elicitation is null)
         {
