@@ -245,10 +245,44 @@ public static class McpServerExtensions
     /// <remarks>
     /// When <see langword="true"/>, the server can call <see cref="McpServerExtensions.ElicitAsync"/> to request additional information from the user via the client.
     /// </remarks>
-    public static bool SupportsElicitation(this IMcpServer server)
+    public static bool ClientSupportsElicitation(this IMcpServer server)
     {
         Throw.IfNull(server);
         return server.ClientCapabilities?.Elicitation is not null;
+    }
+
+    /// <summary>
+    /// Determines whether client supports roots capability.
+    /// </summary>
+    /// <param name="server">McpServer instance to check.</param>
+    /// <returns>
+    /// <see langword="true"/> if client supports roots requests; otherwise, <see langword="false"/>.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="server"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// When <see langword="true"/>, the server can call <see cref="McpServerExtensions.RequestRootsAsync"/> to request the list of roots exposed by the client.
+    /// </remarks>
+    public static bool ClientSupportsRoots(this IMcpServer server)
+    {
+        Throw.IfNull(server);
+        return server.ClientCapabilities?.Roots is not null;
+    }
+
+    /// <summary>
+    /// Determines whether client supports sampling capability.
+    /// </summary>
+    /// <param name="server">McpServer instance to check.</param>
+    /// <returns>
+    /// <see langword="true"/> if client supports sampling requests; otherwise, <see langword="false"/>.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="server"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// When <see langword="true"/>, the server can call sampling methods to request LLM sampling via the client.
+    /// </remarks>
+    public static bool ClientSupportsSampling(this IMcpServer server)
+    {
+        Throw.IfNull(server);
+        return server.ClientCapabilities?.Sampling is not null;
     }
 
     private static void ThrowIfSamplingUnsupported(IMcpServer server)
