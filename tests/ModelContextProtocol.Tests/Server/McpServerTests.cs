@@ -178,17 +178,17 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
-    public void SupportsElicitation_Should_Throw_ArgumentNullException_If_Server_Is_Null()
+    public void ClientSupportsElicitation_Should_Throw_ArgumentNullException_If_Server_Is_Null()
     {
         // Arrange
         IMcpServer? server = null;
 
         // Act & Assert
-        Assert.Throws<ArgumentNullException>(() => server!.SupportsElicitation());
+        Assert.Throws<ArgumentNullException>(() => server!.ClientSupportsElicitation());
     }
 
     [Fact]
-    public async Task SupportsElicitation_Should_Return_False_If_ElicitationCapability_Is_Not_Set()
+    public async Task ClientSupportsElicitation_Should_Return_False_If_ElicitationCapability_Is_Not_Set()
     {
         // Arrange
         await using var transport = new TestServerTransport();
@@ -196,10 +196,105 @@ public class McpServerTests : LoggedTest
         SetClientCapabilities(server, new ClientCapabilities { Elicitation = null });
 
         // Act
-        var supportsElicitation = server.SupportsElicitation();
+        var clientSupportsElicitation = server.ClientSupportsElicitation();
 
         // Assert
-        Assert.False(supportsElicitation);
+        Assert.False(clientSupportsElicitation);
+    }
+
+    [Fact]
+    public async Task ClientSupportsElicitation_Should_Return_True_If_ElicitationCapability_Is_Set()
+    {
+        // Arrange
+        await using var transport = new TestServerTransport();
+        await using var server = McpServerFactory.Create(transport, _options, LoggerFactory);
+        SetClientCapabilities(server, new ClientCapabilities { Elicitation = new ElicitationCapability() });
+
+        // Act
+        var clientSupportsElicitation = server.ClientSupportsElicitation();
+
+        // Assert
+        Assert.True(clientSupportsElicitation);
+    }
+
+    [Fact]
+    public void ClientSupportsRoots_Should_Throw_ArgumentNullException_If_Server_Is_Null()
+    {
+        // Arrange
+        IMcpServer? server = null;
+
+        // Act & Assert
+        Assert.Throws<ArgumentNullException>(() => server!.ClientSupportsRoots());
+    }
+
+    [Fact]
+    public async Task ClientSupportsRoots_Should_Return_False_If_RootsCapability_Is_Not_Set()
+    {
+        // Arrange
+        await using var transport = new TestServerTransport();
+        await using var server = McpServerFactory.Create(transport, _options, LoggerFactory);
+        SetClientCapabilities(server, new ClientCapabilities { Roots = null });
+
+        // Act
+        var clientSupportsRoots = server.ClientSupportsRoots();
+
+        // Assert
+        Assert.False(clientSupportsRoots);
+    }
+
+    [Fact]
+    public async Task ClientSupportsRoots_Should_Return_True_If_RootsCapability_Is_Set()
+    {
+        // Arrange
+        await using var transport = new TestServerTransport();
+        await using var server = McpServerFactory.Create(transport, _options, LoggerFactory);
+        SetClientCapabilities(server, new ClientCapabilities { Roots = new RootsCapability() });
+
+        // Act
+        var clientSupportsRoots = server.ClientSupportsRoots();
+
+        // Assert
+        Assert.True(clientSupportsRoots);
+    }
+
+    [Fact]
+    public void ClientSupportsSampling_Should_Throw_ArgumentNullException_If_Server_Is_Null()
+    {
+        // Arrange
+        IMcpServer? server = null;
+
+        // Act & Assert
+        Assert.Throws<ArgumentNullException>(() => server!.ClientSupportsSampling());
+    }
+
+    [Fact]
+    public async Task ClientSupportsSampling_Should_Return_False_If_SamplingCapability_Is_Not_Set()
+    {
+        // Arrange
+        await using var transport = new TestServerTransport();
+        await using var server = McpServerFactory.Create(transport, _options, LoggerFactory);
+        SetClientCapabilities(server, new ClientCapabilities { Sampling = null });
+
+        // Act
+        var clientSupportsSampling = server.ClientSupportsSampling();
+
+        // Assert
+        Assert.False(clientSupportsSampling);
+    }
+
+    [Fact]
+    public async Task ClientSupportsSampling_Should_Return_True_If_SamplingCapability_Is_Set()
+    {
+        // Arrange
+        await using var transport = new TestServerTransport();
+        await using var server = McpServerFactory.Create(transport, _options, LoggerFactory);
+        SetClientCapabilities(server, new ClientCapabilities { Sampling = new SamplingCapability() });
+
+        // Act
+        var clientSupportsSampling = server.ClientSupportsSampling();
+
+        // Assert
+        Assert.True(clientSupportsSampling);
     }
 
     [Fact]
