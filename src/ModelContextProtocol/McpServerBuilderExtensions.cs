@@ -783,8 +783,18 @@ public static partial class McpServerBuilderExtensions
     /// <summary>Creates an instance of the target object.</summary>
     private static object CreateTarget(
         IServiceProvider? services,
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type type) =>
-        services is not null ? ActivatorUtilities.CreateInstance(services, type) :
-        Activator.CreateInstance(type)!;
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type type)
+    {
+        if (services is null)
+        {
+            return Activator.CreateInstance(type)!;
+        }
+
+        var isService = services.GetService<IServiceProviderIsService>()?.IsService(type) == true;
+
+        return isService
+            ? services.GetRequiredService(type) 
+            : ActivatorUtilities.CreateInstance(services, type);
+    }
     #endregion
 }

@@ -6,6 +6,11 @@
     <MicrosoftExtensionsAIVersion>9.7.1</MicrosoftExtensionsAIVersion>
   </PropertyGroup>
 
+  <!-- Product dependencies .NET Framework 4.7.2 -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net472'">
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="8.0.1" />
+  </ItemGroup>
+
   <!-- Product dependencies netstandard -->
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
     <PackageVersion Include="Microsoft.Bcl.Memory" Version="$(System9Version)" />
@@ -20,6 +25,7 @@
   <!-- Product dependencies LTS -->
   <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.15" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="8.0.1" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.1" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.3" />
     <PackageVersion Include="System.IO.Pipelines" Version="8.0.0" />
@@ -29,6 +35,7 @@
   <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="$(System9Version)" />
     <PackageVersion Include="Microsoft.IdentityModel.Tokens" Version="8.9.0" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="$(System9Version)" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="$(System9Version)" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="$(System9Version)" />
     <PackageVersion Include="System.IO.Pipelines" Version="$(System9Version)" />

@@ -83,8 +83,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             ConfigureParameterBinding = pi =>
             {
                 if (RequestServiceProvider<CallToolRequestParams>.IsAugmentedWith(pi.ParameterType) ||
-                    (options?.Services?.GetService<IServiceProviderIsService>() is { } ispis &&
-                     ispis.IsService(pi.ParameterType)))
+                    (options?.Services?.GetService<IServiceProviderIsService>() is { } serviceProviderIsService &&
+                     serviceProviderIsService.IsService(pi.ParameterType)))
                 {
                     return new()
                     {

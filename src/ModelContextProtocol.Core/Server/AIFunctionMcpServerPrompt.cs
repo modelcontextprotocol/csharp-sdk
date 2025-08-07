@@ -76,8 +76,8 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
             ConfigureParameterBinding = pi =>
             {
                 if (RequestServiceProvider<GetPromptRequestParams>.IsAugmentedWith(pi.ParameterType) ||
-                    (options?.Services?.GetService<IServiceProviderIsService>() is { } ispis &&
-                     ispis.IsService(pi.ParameterType)))
+                    (options?.Services?.GetService<IServiceProviderIsService>() is { } serviceProviderIsService &&
+                     serviceProviderIsService.IsService(pi.ParameterType)))
                 {
                     return new()
                     {
