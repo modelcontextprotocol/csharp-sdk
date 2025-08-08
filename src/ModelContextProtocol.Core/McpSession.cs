@@ -116,7 +116,16 @@ internal sealed partial class McpSession : IDisposable
                 LogMessageRead(EndpointName, message.GetType().Name);
 
                 // Fire and forget the message handling to avoid blocking the transport.
-                _ = ProcessMessageAsync();
+                if (message.ExecutionContext is null)
+                {
+                    _ = ProcessMessageAsync();
+                }
+                else
+                {
+                    // Flow the execution context from the HTTP request corresponding to this message if provided.
+                    ExecutionContext.Run(message.ExecutionContext, _ => _ = ProcessMessageAsync(), null);
+                }
+
                 async Task ProcessMessageAsync()
                 {
                     JsonRpcMessageWithId? messageWithId = message as JsonRpcMessageWithId;

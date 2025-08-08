@@ -34,7 +34,7 @@ The OAuth server will start at `https://localhost:7029`
 Run this protected server:
 
 ```bash
-cd samples\ProtectedMCPServer
+cd samples\ProtectedMcpServer
 dotnet run
 ```
 
@@ -42,10 +42,10 @@ The protected server will start at `http://localhost:7071`
 
 ### Step 3: Test with Protected MCP Client
 
-You can test the server using the ProtectedMCPClient sample:
+You can test the server using the ProtectedMcpClient sample:
 
 ```bash
-cd samples\ProtectedMCPClient
+cd samples\ProtectedMcpClient
 dotnet run
 ```
 

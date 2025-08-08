@@ -1,6 +1,6 @@
 {
   "profiles": {
-    "ProtectedMCPServer": {
+    "ProtectedMcpServer": {
       "commandName": "Project",
       "launchBrowser": true,
       "environmentVariables": {

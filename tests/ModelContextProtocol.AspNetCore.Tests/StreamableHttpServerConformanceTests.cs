@@ -387,7 +387,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     }
 
     [Fact]
-    public async Task AsyncLocalSetInRunSessionHandlerCallback_Flows_ToAllToolCalls()
+    public async Task AsyncLocalSetInRunSessionHandlerCallback_Flows_ToAllToolCalls_IfPerSessionExecutionContextEnabled()
     {
         var asyncLocal = new AsyncLocal<string>();
         var totalSessionCount = 0;
@@ -395,6 +395,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         Builder.Services.AddMcpServer()
             .WithHttpTransport(options =>
             {
+                options.PerSessionExecutionContext = true;
                 options.RunSessionHandler = async (httpContext, mcpServer, cancellationToken) =>
                 {
                     asyncLocal.Value = $"RunSessionHandler ({totalSessionCount++})";

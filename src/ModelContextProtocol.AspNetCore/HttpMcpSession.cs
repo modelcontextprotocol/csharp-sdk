@@ -25,13 +25,15 @@ internal sealed class HttpMcpSession<TTransport>(
     public bool IsActive => !SessionClosed.IsCancellationRequested && _referenceCount > 0;
     public long LastActivityTicks { get; private set; } = timeProvider.GetTimestamp();
 
+    private TimeProvider TimeProvider => timeProvider;
+
     public IMcpServer? Server { get; set; }
     public Task? ServerRunTask { get; set; }
 
     public IDisposable AcquireReference()
     {
         Interlocked.Increment(ref _referenceCount);
-        return new UnreferenceDisposable(this, timeProvider);
+        return new UnreferenceDisposable(this);
     }
 
     public bool TryStartGetRequest() => Interlocked.Exchange(ref _getRequestStarted, 1) == 0;
@@ -70,13 +72,13 @@ internal sealed class HttpMcpSession<TTransport>(
     public bool HasSameUserId(ClaimsPrincipal user)
         => UserIdClaim == StreamableHttpHandler.GetUserIdClaim(user);
 
-    private sealed class UnreferenceDisposable(HttpMcpSession<TTransport> session, TimeProvider timeProvider) : IDisposable
+    private sealed class UnreferenceDisposable(HttpMcpSession<TTransport> session) : IDisposable
     {
         public void Dispose()
         {
             if (Interlocked.Decrement(ref session._referenceCount) == 0)
             {
-                session.LastActivityTicks = timeProvider.GetTimestamp();
+                session.LastActivityTicks = session.TimeProvider.GetTimestamp();
             }
         }
     }
