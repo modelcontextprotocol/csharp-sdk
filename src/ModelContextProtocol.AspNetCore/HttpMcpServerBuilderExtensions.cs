@@ -28,6 +28,11 @@ public static class HttpMcpServerBuilderExtensions
         builder.Services.AddHostedService<IdleTrackingBackgroundService>();
         builder.Services.AddDataProtection();
 
+        builder.Services.TryAddSingleton<
+            IMcpEndpointRouteBuilderConfigurator,
+            DefaultMcpEndpointRouteBuilderConfigurator
+        >();
+
         if (configureOptions is not null)
         {
             builder.Services.Configure(configureOptions);
