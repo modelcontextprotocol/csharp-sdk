@@ -132,7 +132,7 @@ internal sealed class StreamableHttpSession(
         }
         finally
         {
-            await Transport.DisposeAsync();
+            await transport.DisposeAsync();
         }
     }
 

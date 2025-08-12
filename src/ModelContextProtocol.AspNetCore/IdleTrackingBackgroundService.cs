@@ -48,8 +48,8 @@ internal sealed partial class IdleTrackingBackgroundService(
                 {
                     // Something went terribly wrong. A very unexpected exception must be bubbling up, but let's ensure we also stop the application,
                     // so that it hopefully gets looked at and restarted. This shouldn't really be reachable.
-                    IdleTrackingBackgroundServiceStoppedUnexpectedly();
                     appLifetime.StopApplication();
+                    IdleTrackingBackgroundServiceStoppedUnexpectedly();
                 }
             }
         }
