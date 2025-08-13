@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Server.Authorization;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text.Json;
@@ -776,6 +777,252 @@ public static partial class McpServerBuilderExtensions
             ILoggerFactory? loggerFactory = services.GetService<ILoggerFactory>();
             return McpServerFactory.Create(serverTransport, options.Value, loggerFactory, services);
         });
+    }
+    #endregion
+
+    #region Tool Authorization
+    /// <summary>
+    /// Adds tool authorization services to the MCP server.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// This method registers the default <see cref="IToolAuthorizationService"/> implementation
+    /// that can coordinate multiple tool filters for access control.
+    /// </remarks>
+    public static IMcpServerBuilder WithToolAuthorization(this IMcpServerBuilder builder)
+    {
+        Throw.IfNull(builder);
+
+        builder.Services.TryAddSingleton<IToolAuthorizationService, ToolAuthorizationService>();
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds a specific tool filter to the MCP server.
+    /// </summary>
+    /// <typeparam name="TFilter">The type of tool filter to add.</typeparam>
+    /// <param name="builder">The builder instance.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// This method registers a tool filter that will be automatically discovered
+    /// and used by the tool authorization system. The filter must implement <see cref="IToolFilter"/>.
+    /// </remarks>
+    public static IMcpServerBuilder WithToolFilter<TFilter>(this IMcpServerBuilder builder)
+        where TFilter : class, IToolFilter
+    {
+        Throw.IfNull(builder);
+
+        builder.Services.AddTransient<IToolFilter, TFilter>();
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds a specific tool filter instance to the MCP server.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="filter">The tool filter instance to add.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="filter"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// This method registers a specific tool filter instance that will be used
+    /// by the tool authorization system.
+    /// </remarks>
+    public static IMcpServerBuilder WithToolFilter(this IMcpServerBuilder builder, IToolFilter filter)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(filter);
+
+        builder.Services.AddSingleton(filter);
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds multiple tool filters to the MCP server.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="filters">The tool filter instances to add.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="filters"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// This method registers multiple tool filter instances that will be used
+    /// by the tool authorization system.
+    /// </remarks>
+    public static IMcpServerBuilder WithToolFilters(this IMcpServerBuilder builder, IEnumerable<IToolFilter> filters)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(filters);
+
+        foreach (var filter in filters)
+        {
+            if (filter is not null)
+            {
+                builder.Services.AddSingleton(filter);
+            }
+        }
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds tool filter aggregation to the MCP server, which automatically discovers
+    /// and applies all registered tool filters.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// This method enables automatic discovery and coordination of all tool filters
+    /// registered in the dependency injection container. This is useful when you
+    /// have multiple filters and want them to be automatically applied without
+    /// manual coordination.
+    /// </remarks>
+    public static IMcpServerBuilder WithToolFilterAggregation(this IMcpServerBuilder builder)
+    {
+        Throw.IfNull(builder);
+
+        builder.Services.AddSingleton<IToolFilter, ToolFilterAggregator>();
+        return builder;
+    }
+
+    /// <summary>
+    /// Configures role-based tool filtering for the MCP server.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="configureRoles">A delegate to configure role-based tool access.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="configureRoles"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// This method provides a convenient way to set up role-based access control
+    /// for tools using a simple configuration approach.
+    /// </remarks>
+    public static IMcpServerBuilder WithRoleBasedToolFiltering(this IMcpServerBuilder builder, Action<RoleBasedToolFilterBuilder> configureRoles)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(configureRoles);
+
+        var roleBuilder = new RoleBasedToolFilterBuilder();
+        configureRoles(roleBuilder);
+
+        var filter = roleBuilder.Build();
+        builder.Services.AddSingleton<IToolFilter>(filter);
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds an allow-all tool filter that grants access to all tools without restrictions.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="priority">The priority for this filter. Default is <see cref="int.MaxValue"/> (lowest priority).</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// This filter is useful for development environments or scenarios where
+    /// no access control is required.
+    /// </remarks>
+    public static IMcpServerBuilder WithAllowAllToolFilter(this IMcpServerBuilder builder, int priority = int.MaxValue)
+    {
+        Throw.IfNull(builder);
+
+        builder.Services.AddSingleton<IToolFilter>(new AllowAllToolFilter(priority));
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds a deny-all tool filter that blocks access to all tools.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="priority">The priority for this filter. Default is 0 (highest priority).</param>
+    /// <param name="reason">The reason for denying access. Default is "All tools denied".</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// This filter is useful for lockdown scenarios or as a safety mechanism
+    /// to prevent any tool execution.
+    /// </remarks>
+    public static IMcpServerBuilder WithDenyAllToolFilter(this IMcpServerBuilder builder, int priority = 0, string reason = "All tools denied")
+    {
+        Throw.IfNull(builder);
+
+        builder.Services.AddSingleton<IToolFilter>(new DenyAllToolFilter(priority, reason));
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds a pattern-based tool filter that allows access only to tools matching specified patterns.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="allowPatterns">Regular expression patterns that allow tool access.</param>
+    /// <param name="priority">The priority for this filter. Default is 100.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="allowPatterns"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// This creates an allow-list filter where only tools matching the specified
+    /// regular expression patterns are allowed access.
+    /// </remarks>
+    public static IMcpServerBuilder WithToolAllowListFilter(this IMcpServerBuilder builder, IEnumerable<string> allowPatterns, int priority = 100)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(allowPatterns);
+
+        var filter = ToolNamePatternFilter.CreateAllowList(allowPatterns, priority);
+        builder.Services.AddSingleton<IToolFilter>(filter);
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds a pattern-based tool filter that denies access to tools matching specified patterns.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="denyPatterns">Regular expression patterns that deny tool access.</param>
+    /// <param name="priority">The priority for this filter. Default is 100.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="denyPatterns"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// This creates a deny-list filter where tools matching the specified
+    /// regular expression patterns are denied access, but all others are allowed.
+    /// </remarks>
+    public static IMcpServerBuilder WithToolDenyListFilter(this IMcpServerBuilder builder, IEnumerable<string> denyPatterns, int priority = 100)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(denyPatterns);
+
+        var filter = ToolNamePatternFilter.CreateDenyList(denyPatterns, priority);
+        builder.Services.AddSingleton<IToolFilter>(filter);
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds a pattern-based tool filter with custom configuration.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="configureFilter">A delegate to configure the pattern filter.</param>
+    /// <param name="priority">The priority for this filter. Default is 100.</param>
+    /// <param name="defaultAllow">Whether to allow access by default when no patterns match. Default is false.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="configureFilter"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// This method provides maximum flexibility for configuring pattern-based
+    /// tool filtering with custom allow and deny patterns.
+    /// </remarks>
+    public static IMcpServerBuilder WithToolPatternFilter(this IMcpServerBuilder builder, Action<ToolNamePatternFilter> configureFilter, int priority = 100, bool defaultAllow = false)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(configureFilter);
+
+        var filter = new ToolNamePatternFilter(priority, defaultAllow);
+        configureFilter(filter);
+        builder.Services.AddSingleton<IToolFilter>(filter);
+        return builder;
     }
     #endregion
 

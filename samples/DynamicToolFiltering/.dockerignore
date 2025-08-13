@@ -1,0 +1,70 @@
+# Build artifacts
+bin/
+obj/
+*.dll
+*.exe
+*.pdb
+out/
+
+# Development files
+.vs/
+.vscode/
+*.user
+*.suo
+.idea/
+
+# Logs and temporary files
+logs/
+*.log
+*.tmp
+*.temp
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation (exclude to reduce image size)
+docs/
+*.md
+LICENSE
+
+# Test files and results
+tests/
+TestResults/
+coverage/
+*.http
+
+# Node modules (if any)
+node_modules/
+npm-debug.log*
+
+# Docker files (don't include in context)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Scripts (exclude deployment scripts)
+scripts/
+*.sh
+*.ps1
+
+# Environment files (may contain secrets)
+.env*
+appsettings.Development.json
+appsettings.Local.json
+
+# Data and cache directories
+data/
+cache/
+
+# Monitoring configuration
+monitoring/
+nginx/
