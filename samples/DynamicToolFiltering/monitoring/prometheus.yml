@@ -1,0 +1,62 @@
+# Prometheus configuration for Dynamic Tool Filtering MCP Server
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'dynamic-tool-filtering'
+
+rule_files:
+  - "alert_rules.yml"
+
+# Scrape configurations for monitoring targets
+scrape_configs:
+  # Main MCP server metrics
+  - job_name: 'dynamic-tool-filtering'
+    static_configs:
+      - targets: ['dynamic-tool-filtering:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+    honor_labels: true
+    params:
+      format: ['prometheus']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: dynamic-tool-filtering:8080
+
+  # Redis metrics (if using Redis for rate limiting)
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+    scrape_interval: 30s
+
+  # PostgreSQL metrics (if using PostgreSQL for quota management)
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres_exporter:9187']
+    scrape_interval: 30s
+
+  # Node exporter for system metrics
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    scrape_interval: 30s
+
+# Alerting configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+# Remote write configuration (for external monitoring services)
+# remote_write:
+#   - url: "https://your-monitoring-service/api/v1/write"
+#     basic_auth:
+#       username: "your-username"
+#       password: "your-password"

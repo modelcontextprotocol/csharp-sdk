@@ -1,0 +1,155 @@
+# Dynamic Tool Filtering - Docker Compose Configuration
+# Provides multiple deployment scenarios for development and production
+
+version: '3.8'
+
+services:
+  # Main MCP Server
+  dynamic-tool-filtering:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      # Core settings
+      - ASPNETCORE_ENVIRONMENT=${ENVIRONMENT:-Development}
+      - ASPNETCORE_URLS=http://+:8080
+      
+      # Filter configuration
+      - Filtering__Enabled=${FILTERING_ENABLED:-true}
+      - Filtering__RoleBased__Enabled=${ROLE_BASED_ENABLED:-true}
+      - Filtering__TimeBased__Enabled=${TIME_BASED_ENABLED:-false}
+      - Filtering__ScopeBased__Enabled=${SCOPE_BASED_ENABLED:-true}
+      - Filtering__RateLimiting__Enabled=${RATE_LIMITING_ENABLED:-true}
+      - Filtering__TenantIsolation__Enabled=${TENANT_ISOLATION_ENABLED:-false}
+      - Filtering__BusinessLogic__Enabled=${BUSINESS_LOGIC_ENABLED:-true}
+      - Filtering__BusinessLogic__FeatureFlags__Enabled=${FEATURE_FLAGS_ENABLED:-true}
+      - Filtering__BusinessLogic__QuotaManagement__Enabled=${QUOTA_MANAGEMENT_ENABLED:-false}
+      
+      # JWT Configuration
+      - Jwt__SecretKey=${JWT_SECRET_KEY:-your-256-bit-secret-key-here-make-it-secure-and-change-in-production}
+      - Jwt__Issuer=${JWT_ISSUER:-dynamic-tool-filtering}
+      - Jwt__Audience=${JWT_AUDIENCE:-mcp-api}
+      
+      # External service connections (for production profile)
+      - ConnectionStrings__Redis=${REDIS_CONNECTION:-localhost:6379}
+      - ConnectionStrings__DefaultConnection=${DB_CONNECTION:-}
+      
+    volumes:
+      # Persist logs and data
+      - ./logs:/app/logs
+      - ./data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      - redis
+      - postgres
+    profiles:
+      - development
+      - production
+
+  # Redis for production-ready rate limiting and caching
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    profiles:
+      - production
+
+  # PostgreSQL for quota management and persistent storage
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-dynamic_tool_filtering}
+      - POSTGRES_USER=${POSTGRES_USER:-mcpuser}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-mcppassword}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mcpuser} -d ${POSTGRES_DB:-dynamic_tool_filtering}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    profiles:
+      - production
+
+  # Monitoring with Prometheus (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # Grafana for metrics visualization (optional)
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    profiles:
+      - monitoring
+
+  # Nginx reverse proxy (optional)
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "${NGINX_PORT:-80}:80"
+      - "${NGINX_SSL_PORT:-443}:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - dynamic-tool-filtering
+    restart: unless-stopped
+    profiles:
+      - production
+      - proxy
+
+volumes:
+  redis_data:
+  postgres_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  default:
+    name: dynamic-tool-filtering-network

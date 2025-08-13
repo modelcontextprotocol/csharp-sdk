@@ -30,13 +30,21 @@ public sealed class SampleOAuthToolFilter : IToolFilter
     public int Priority => 100;
 
     /// <inheritdoc/>
-    public Task<AuthorizationResult> AuthorizeAsync(Tool tool, ToolAuthorizationContext context, CancellationToken cancellationToken = default)
+    public Task<bool> ShouldIncludeToolAsync(Tool tool, ToolAuthorizationContext context, CancellationToken cancellationToken = default)
+    {
+        // For tool visibility, include all tools but execution authorization will handle access control
+        // In a more restrictive implementation, you might hide tools the user cannot access
+        return Task.FromResult(true);
+    }
+
+    /// <inheritdoc/>
+    public Task<AuthorizationResult> CanExecuteToolAsync(string toolName, ToolAuthorizationContext context, CancellationToken cancellationToken = default)
     {
         // Simulate checking if the user has the required scope
         // In a real implementation, you would extract and validate the Bearer token
         // from the authorization context and check its scopes
         
-        if (IsHighPrivilegeTool(tool.Name))
+        if (IsHighPrivilegeTool(toolName))
         {
             // For high-privilege tools, require specific scope
             if (!HasRequiredScope(context))
@@ -44,7 +52,7 @@ public sealed class SampleOAuthToolFilter : IToolFilter
                 return Task.FromResult(AuthorizationResult.DenyInsufficientScope(_requiredScope, _realm));
             }
         }
-        else if (RequiresAuthentication(tool.Name))
+        else if (RequiresAuthentication(toolName))
         {
             // For tools that require authentication, check for valid token
             if (!HasValidToken(context))

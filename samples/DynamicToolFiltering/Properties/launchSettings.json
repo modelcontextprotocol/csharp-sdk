@@ -1,0 +1,151 @@
+{
+  "profiles": {
+    "DevelopmentMode": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "http://localhost:8080",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ASPNETCORE_URLS": "http://localhost:8080",
+        "Filtering__Enabled": "true",
+        "Filtering__RoleBased__Enabled": "true",
+        "Filtering__TimeBased__Enabled": "false",
+        "Filtering__ScopeBased__Enabled": "true",
+        "Filtering__RateLimiting__Enabled": "true",
+        "Filtering__TenantIsolation__Enabled": "false",
+        "Filtering__BusinessLogic__Enabled": "true",
+        "Filtering__BusinessLogic__FeatureFlags__Enabled": "true",
+        "Filtering__BusinessLogic__QuotaManagement__Enabled": "false",
+        "Filtering__BusinessLogic__EnvironmentRestrictions__Enabled": "true"
+      }
+    },
+    "StagingMode": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "http://localhost:8080",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Staging",
+        "ASPNETCORE_URLS": "http://localhost:8080",
+        "Filtering__Enabled": "true",
+        "Filtering__RoleBased__Enabled": "true",
+        "Filtering__TimeBased__Enabled": "true",
+        "Filtering__ScopeBased__Enabled": "true",
+        "Filtering__RateLimiting__Enabled": "true",
+        "Filtering__TenantIsolation__Enabled": "true",
+        "Filtering__BusinessLogic__Enabled": "true",
+        "Filtering__BusinessLogic__FeatureFlags__Enabled": "true",
+        "Filtering__BusinessLogic__QuotaManagement__Enabled": "true",
+        "Filtering__BusinessLogic__EnvironmentRestrictions__Enabled": "true"
+      }
+    },
+    "ProductionMode": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "http://localhost:8080",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Production",
+        "ASPNETCORE_URLS": "http://localhost:8080",
+        "Filtering__Enabled": "true",
+        "Filtering__RoleBased__Enabled": "true",
+        "Filtering__TimeBased__Enabled": "true",
+        "Filtering__ScopeBased__Enabled": "true",
+        "Filtering__RateLimiting__Enabled": "true",
+        "Filtering__TenantIsolation__Enabled": "true",
+        "Filtering__BusinessLogic__Enabled": "true",
+        "Filtering__BusinessLogic__FeatureFlags__Enabled": "true",
+        "Filtering__BusinessLogic__QuotaManagement__Enabled": "true",
+        "Filtering__BusinessLogic__EnvironmentRestrictions__Enabled": "true"
+      }
+    },
+    "MinimalFilteringMode": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "http://localhost:8080",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ASPNETCORE_URLS": "http://localhost:8080",
+        "Filtering__Enabled": "true",
+        "Filtering__RoleBased__Enabled": "true",
+        "Filtering__TimeBased__Enabled": "false",
+        "Filtering__ScopeBased__Enabled": "false",
+        "Filtering__RateLimiting__Enabled": "false",
+        "Filtering__TenantIsolation__Enabled": "false",
+        "Filtering__BusinessLogic__Enabled": "false"
+      }
+    },
+    "NoFilteringMode": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "http://localhost:8080",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ASPNETCORE_URLS": "http://localhost:8080",
+        "Filtering__Enabled": "false"
+      }
+    },
+    "TenantDemoMode": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "http://localhost:8080",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ASPNETCORE_URLS": "http://localhost:8080",
+        "Filtering__Enabled": "true",
+        "Filtering__RoleBased__Enabled": "false",
+        "Filtering__TimeBased__Enabled": "false",
+        "Filtering__ScopeBased__Enabled": "false",
+        "Filtering__RateLimiting__Enabled": "false",
+        "Filtering__TenantIsolation__Enabled": "true",
+        "Filtering__BusinessLogic__Enabled": "false"
+      }
+    },
+    "RateLimitingDemoMode": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "http://localhost:8080",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ASPNETCORE_URLS": "http://localhost:8080",
+        "Filtering__Enabled": "true",
+        "Filtering__RoleBased__Enabled": "true",
+        "Filtering__TimeBased__Enabled": "false",
+        "Filtering__ScopeBased__Enabled": "false",
+        "Filtering__RateLimiting__Enabled": "true",
+        "Filtering__RateLimiting__WindowMinutes": "1",
+        "Filtering__RateLimiting__RoleLimits__guest": "3",
+        "Filtering__RateLimiting__RoleLimits__user": "10",
+        "Filtering__RateLimiting__RoleLimits__premium": "25",
+        "Filtering__RateLimiting__RoleLimits__admin": "100",
+        "Filtering__TenantIsolation__Enabled": "false",
+        "Filtering__BusinessLogic__Enabled": "false"
+      }
+    },
+    "BusinessHoursDemoMode": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "http://localhost:8080",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ASPNETCORE_URLS": "http://localhost:8080",
+        "Filtering__Enabled": "true",
+        "Filtering__RoleBased__Enabled": "false",
+        "Filtering__TimeBased__Enabled": "true",
+        "Filtering__TimeBased__BusinessHours__Enabled": "true",
+        "Filtering__TimeBased__BusinessHours__StartTime": "09:00",
+        "Filtering__TimeBased__BusinessHours__EndTime": "17:00",
+        "Filtering__ScopeBased__Enabled": "false",
+        "Filtering__RateLimiting__Enabled": "false",
+        "Filtering__TenantIsolation__Enabled": "false",
+        "Filtering__BusinessLogic__Enabled": "false"
+      }
+    }
+  }
+}

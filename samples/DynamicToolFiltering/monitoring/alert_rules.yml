@@ -1,0 +1,172 @@
+# Prometheus alerting rules for Dynamic Tool Filtering MCP Server
+
+groups:
+  - name: mcp-server-performance
+    rules:
+      - alert: HighResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 0.5
+        for: 2m
+        labels:
+          severity: warning
+          service: dynamic-tool-filtering
+        annotations:
+          summary: "High response time detected"
+          description: "95th percentile response time is {{ $value }}s, which is above the 500ms threshold"
+
+      - alert: VeryHighResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 1.0
+        for: 1m
+        labels:
+          severity: critical
+          service: dynamic-tool-filtering
+        annotations:
+          summary: "Very high response time detected"
+          description: "95th percentile response time is {{ $value }}s, which is critically high"
+
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.01
+        for: 1m
+        labels:
+          severity: warning
+          service: dynamic-tool-filtering
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }}, which is above 1%"
+
+      - alert: CriticalErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+        for: 30s
+        labels:
+          severity: critical
+          service: dynamic-tool-filtering
+        annotations:
+          summary: "Critical error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }}, which is critically high"
+
+  - name: mcp-server-resources
+    rules:
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes / 1024 / 1024 > 500
+        for: 5m
+        labels:
+          severity: warning
+          service: dynamic-tool-filtering
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is {{ $value }}MB, which is above 500MB threshold"
+
+      - alert: CriticalMemoryUsage
+        expr: process_resident_memory_bytes / 1024 / 1024 > 1000
+        for: 2m
+        labels:
+          severity: critical
+          service: dynamic-tool-filtering
+        annotations:
+          summary: "Critical memory usage"
+          description: "Memory usage is {{ $value }}MB, which is critically high"
+
+      - alert: HighCPUUsage
+        expr: rate(process_cpu_seconds_total[5m]) * 100 > 80
+        for: 3m
+        labels:
+          severity: warning
+          service: dynamic-tool-filtering
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is {{ $value }}%, which is above 80%"
+
+  - name: mcp-server-business
+    rules:
+      - alert: HighAuthorizationFailureRate
+        expr: rate(authorization_failures_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+          service: dynamic-tool-filtering
+        annotations:
+          summary: "High authorization failure rate"
+          description: "Authorization failure rate is {{ $value }}/sec, indicating potential security issues"
+
+      - alert: RateLimitingTriggered
+        expr: increase(rate_limit_violations_total[5m]) > 10
+        for: 1m
+        labels:
+          severity: info
+          service: dynamic-tool-filtering
+        annotations:
+          summary: "Rate limiting frequently triggered"
+          description: "Rate limiting has been triggered {{ $value }} times in the last 5 minutes"
+
+      - alert: FilterPerformanceDegraded
+        expr: histogram_quantile(0.95, rate(filter_duration_seconds_bucket[5m])) > 0.1
+        for: 3m
+        labels:
+          severity: warning
+          service: dynamic-tool-filtering
+        annotations:
+          summary: "Filter performance degraded"
+          description: "95th percentile filter execution time is {{ $value }}s, which may impact response times"
+
+  - name: mcp-server-availability
+    rules:
+      - alert: ServiceDown
+        expr: up{job="dynamic-tool-filtering"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          service: dynamic-tool-filtering
+        annotations:
+          summary: "MCP server is down"
+          description: "The Dynamic Tool Filtering MCP server is not responding"
+
+      - alert: HealthCheckFailing
+        expr: probe_success{job="dynamic-tool-filtering"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: dynamic-tool-filtering
+        annotations:
+          summary: "Health check failing"
+          description: "The health check endpoint is not responding successfully"
+
+      - alert: LowRequestVolume
+        expr: rate(http_requests_total[5m]) < 0.1
+        for: 10m
+        labels:
+          severity: info
+          service: dynamic-tool-filtering
+        annotations:
+          summary: "Low request volume"
+          description: "Request rate is {{ $value }}/sec, which is unusually low"
+
+  - name: external-dependencies
+    rules:
+      - alert: RedisConnectionFailed
+        expr: redis_connected_clients == 0
+        for: 1m
+        labels:
+          severity: warning
+          service: redis
+        annotations:
+          summary: "Redis connection failed"
+          description: "No clients connected to Redis, rate limiting may be impacted"
+
+      - alert: DatabaseConnectionIssues
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: postgres
+        annotations:
+          summary: "Database connection failed"
+          description: "PostgreSQL database is not responding, quota management may be impacted"
+
+      - alert: HighDatabaseConnections
+        expr: pg_stat_activity_count > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: postgres
+        annotations:
+          summary: "High database connection count"
+          description: "Database has {{ $value }} active connections, approaching limit"
