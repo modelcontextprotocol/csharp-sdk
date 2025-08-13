@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server.Authorization;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization.Metadata;
 
@@ -434,7 +435,18 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         var tools = toolsCapability.ToolCollection;
         var listChanged = toolsCapability.ListChanged;
 
-        // Handle tools provided via DI by augmenting the handlers to incorporate them.
+        /*
+        This code implements a decorator pattern (not recursion) to layer multiple tool sources together. Here's what
+        the author accomplished:
+
+        The Problem
+
+        The MCP server needs to handle tools from two sources:
+        1. User-provided handlers (via options.Capabilities.Tools)
+        2. DI-registered tools (via tools collection)
+
+        The Solution: Handler Decoration
+        */
         if (tools is { IsEmpty: false })
         {
             var originalListToolsHandler = listToolsHandler;
@@ -446,9 +458,31 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
                 if (request.Params?.Cursor is null)
                 {
+                    // Add tools from this server's collection to the result
                     foreach (var t in tools)
                     {
                         result.Tools.Add(t.ProtocolTool);
+                    }
+                }
+                
+                // Apply tool filtering to the combined result (from all sources) regardless of pagination
+                var authorizationService = Services?.GetService<IToolAuthorizationService>();
+                if (authorizationService is not null)
+                {
+                    try
+                    {
+                        var authContext = CreateAuthorizationContext(request);
+                        var allToolsInResult = result.Tools.ToList();
+                        var filteredTools = await authorizationService.FilterToolsAsync(allToolsInResult, authContext, cancellationToken).ConfigureAwait(false);
+                        
+                        // Replace the tools in the result with the filtered list
+                        result.Tools.Clear();
+                        result.Tools.AddRange(filteredTools);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Log error but keep the unfiltered result
+                        Logger?.LogError(ex, "Error during tool filtering, returning unfiltered tools");
                     }
                 }
 
@@ -456,15 +490,59 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
             };
 
             var originalCallToolHandler = callToolHandler;
-            callToolHandler = (request, cancellationToken) =>
+            callToolHandler = async (request, cancellationToken) =>
             {
-                if (request.Params is not null &&
-                    tools.TryGetPrimitive(request.Params.Name, out var tool))
+                if (request.Params is not null)
                 {
-                    return tool.InvokeAsync(request, cancellationToken);
+                    // Check authorization before executing the tool
+                    var authorizationService = Services?.GetService<IToolAuthorizationService>();
+                    if (authorizationService is not null)
+                    {
+                        try
+                        {
+                            var authContext = CreateAuthorizationContext(request);
+                            var authResult = await authorizationService.AuthorizeToolExecutionAsync(request.Params.Name, authContext, cancellationToken).ConfigureAwait(false);
+                            
+                            if (!authResult.IsAuthorized)
+                            {
+                                // Check if the authorization result includes challenge information
+                                if (authResult.AdditionalData is AuthorizationChallenge challenge)
+                                {
+                                    throw new AuthorizationHttpException(
+                                        request.Params.Name, 
+                                        authResult.Reason ?? "Access denied", 
+                                        challenge.WwwAuthenticateValue,
+                                        challenge.HttpStatusCode);
+                                }
+                                else
+                                {
+                                    // Default to a generic authorization exception
+                                    throw new AuthorizationHttpException(
+                                        request.Params.Name, 
+                                        authResult.Reason ?? "Access denied");
+                                }
+                            }
+                        }
+                        catch (McpException)
+                        {
+                            throw; // Re-throw MCP exceptions as-is
+                        }
+                        catch (Exception ex)
+                        {
+                            // Log error and deny access on authorization failure
+                            Logger?.LogError(ex, "Error during tool authorization check for '{ToolName}', denying access", request.Params.Name);
+                            throw new McpException($"Authorization error for tool '{request.Params.Name}'", McpErrorCode.InternalError);
+                        }
+                    }
+
+                    // Proceed with tool execution if authorized
+                    if (tools.TryGetPrimitive(request.Params.Name, out var tool))
+                    {
+                        return await tool.InvokeAsync(request, cancellationToken).ConfigureAwait(false);
+                    }
                 }
 
-                return originalCallToolHandler(request, cancellationToken);
+                return await originalCallToolHandler(request, cancellationToken).ConfigureAwait(false);
             };
 
             listChanged = true;
@@ -580,6 +658,19 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         }
 
         _endpointName = $"{_serverOnlyEndpointName}, Client ({ClientInfo.Name} {ClientInfo.Version})";
+    }
+
+    /// <summary>
+    /// Creates an authorization context for the current request.
+    /// </summary>
+    /// <param name="request">The request context containing session and client information.</param>
+    /// <returns>A <see cref="ToolAuthorizationContext"/> with current session information.</returns>
+    private ToolAuthorizationContext CreateAuthorizationContext<TParams>(RequestContext<TParams> request)
+    {
+        return new ToolAuthorizationContext(
+            SessionId,
+            ClientInfo,
+            ServerCapabilities);
     }
 
     /// <summary>Maps a <see cref="LogLevel"/> to a <see cref="LoggingLevel"/>.</summary>

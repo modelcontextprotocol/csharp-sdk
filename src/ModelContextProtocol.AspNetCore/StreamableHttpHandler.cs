@@ -8,6 +8,7 @@ using Microsoft.Net.Http.Headers;
 using ModelContextProtocol.AspNetCore.Stateless;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Server.Authorization;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Pipelines;
@@ -68,6 +69,23 @@ internal sealed class StreamableHttpHandler(
                 context.Response.Headers.ContentType = (string?)null;
                 context.Response.StatusCode = StatusCodes.Status202Accepted;
             }
+        }
+        catch (AuthorizationHttpException authEx)
+        {
+            // Handle authorization exceptions with proper HTTP challenge responses
+            await context.WriteAuthorizationChallengeAsync(authEx, context.RequestAborted);
+            return;
+        }
+        catch (Exception ex) when (ex.ShouldChallengeAuthorization())
+        {
+            // Handle other authorization-related exceptions
+            var toolName = ex.TryExtractToolName() ?? "unknown";
+            await context.WriteAuthorizationErrorAsync(
+                toolName, 
+                ex.Message, 
+                StatusCodes.Status403Forbidden, 
+                cancellationToken: context.RequestAborted);
+            return;
         }
         finally
         {
