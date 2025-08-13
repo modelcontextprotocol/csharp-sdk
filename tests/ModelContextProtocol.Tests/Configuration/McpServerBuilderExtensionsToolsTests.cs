@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using Moq;
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.IO.Pipelines;
@@ -403,9 +404,11 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
 
         Assert.Throws<ArgumentNullException>("tools", () => builder.WithTools((IEnumerable<McpServerTool>)null!));
         Assert.Throws<ArgumentNullException>("toolTypes", () => builder.WithTools((IEnumerable<Type>)null!));
+        Assert.Throws<ArgumentNullException>("target", () => builder.WithTools<object>(target: null!));
 
         IMcpServerBuilder nullBuilder = null!;
         Assert.Throws<ArgumentNullException>("builder", () => nullBuilder.WithTools<object>());
+        Assert.Throws<ArgumentNullException>("builder", () => nullBuilder.WithTools(new object()));
         Assert.Throws<ArgumentNullException>("builder", () => nullBuilder.WithTools(Array.Empty<Type>()));
         Assert.Throws<ArgumentNullException>("builder", () => nullBuilder.WithToolsFromAssembly());
     }
@@ -501,6 +504,20 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         {
             Assert.Contains("\"complex\"", JsonSerializer.Serialize(tool.ProtocolTool.InputSchema, AIJsonUtilities.DefaultOptions));
         }
+    }
+
+    [Fact]
+    public async Task WithTools_TargetInstance_UsesTarget()
+    {
+        ServiceCollection sc = new();
+
+        var target = new EchoTool(new ObjectWithId());
+        sc.AddMcpServer().WithTools(target, BuilderToolsJsonContext.Default.Options);
+
+        McpServerTool tool = sc.BuildServiceProvider().GetServices<McpServerTool>().First(t => t.ProtocolTool.Name == "get_ctor_parameter");
+        var result = await tool.InvokeAsync(new RequestContext<CallToolRequestParams>(new Mock<IMcpServer>().Object), TestContext.Current.CancellationToken);
+
+        Assert.Equal(target.GetCtorParameter(), (result.Content[0] as TextContentBlock)?.Text);
     }
 
     [Fact]

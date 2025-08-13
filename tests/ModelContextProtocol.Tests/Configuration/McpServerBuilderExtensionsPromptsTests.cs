@@ -4,7 +4,9 @@ using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using Moq;
 using System.ComponentModel;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Channels;
 
@@ -217,11 +219,37 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
 
         Assert.Throws<ArgumentNullException>("prompts", () => builder.WithPrompts((IEnumerable<McpServerPrompt>)null!));
         Assert.Throws<ArgumentNullException>("promptTypes", () => builder.WithPrompts((IEnumerable<Type>)null!));
+        Assert.Throws<ArgumentNullException>("target", () => builder.WithPrompts<object>(target: null!));
 
         IMcpServerBuilder nullBuilder = null!;
         Assert.Throws<ArgumentNullException>("builder", () => nullBuilder.WithPrompts<object>());
+        Assert.Throws<ArgumentNullException>("builder", () => nullBuilder.WithPrompts(new object()));
         Assert.Throws<ArgumentNullException>("builder", () => nullBuilder.WithPrompts(Array.Empty<Type>()));
         Assert.Throws<ArgumentNullException>("builder", () => nullBuilder.WithPromptsFromAssembly());
+    }
+
+    [Fact]
+    public async Task WithPrompts_TargetInstance_UsesTarget()
+    {
+        ServiceCollection sc = new();
+
+        var target = new SimplePrompts(new ObjectWithId() { Id = "42" });
+        sc.AddMcpServer().WithPrompts(target);
+
+        McpServerPrompt prompt = sc.BuildServiceProvider().GetServices<McpServerPrompt>().First(t => t.ProtocolPrompt.Name == "returns_string");
+        var result = await prompt.GetAsync(new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object)
+        {
+            Params = new GetPromptRequestParams
+            {
+                Name = "returns_string",
+                Arguments = new Dictionary<string, JsonElement>
+                {
+                    ["message"] = JsonSerializer.SerializeToElement("hello", AIJsonUtilities.DefaultOptions),
+                }
+            }
+        }, TestContext.Current.CancellationToken);
+
+        Assert.Equal(target.ReturnsString("hello"), (result.Messages[0].Content as TextContentBlock)?.Text);
     }
 
     [Fact]

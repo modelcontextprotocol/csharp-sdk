@@ -4,8 +4,11 @@ using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using Moq;
 using System.ComponentModel;
+using System.Text.Json;
 using System.Threading.Channels;
+using static ModelContextProtocol.Tests.Configuration.McpServerBuilderExtensionsPromptsTests;
 
 namespace ModelContextProtocol.Tests.Configuration;
 
@@ -243,11 +246,33 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
 
         Assert.Throws<ArgumentNullException>("resourceTemplates", () => builder.WithResources((IEnumerable<McpServerResource>)null!));
         Assert.Throws<ArgumentNullException>("resourceTemplateTypes", () => builder.WithResources((IEnumerable<Type>)null!));
+        Assert.Throws<ArgumentNullException>("target", () => builder.WithResources<object>(target: null!));
 
         IMcpServerBuilder nullBuilder = null!;
         Assert.Throws<ArgumentNullException>("builder", () => nullBuilder.WithResources<object>());
+        Assert.Throws<ArgumentNullException>("builder", () => nullBuilder.WithResources(new object()));
         Assert.Throws<ArgumentNullException>("builder", () => nullBuilder.WithResources(Array.Empty<Type>()));
         Assert.Throws<ArgumentNullException>("builder", () => nullBuilder.WithResourcesFromAssembly());
+    }
+
+    [Fact]
+    public async Task WithResources_TargetInstance_UsesTarget()
+    {
+        ServiceCollection sc = new();
+
+        var target = new ResourceWithId(new ObjectWithId() { Id = "42" });
+        sc.AddMcpServer().WithResources(target);
+
+        McpServerResource resource = sc.BuildServiceProvider().GetServices<McpServerResource>().First(t => t.ProtocolResource?.Name == "returns_string");
+        var result = await resource.ReadAsync(new RequestContext<ReadResourceRequestParams>(new Mock<IMcpServer>().Object)
+        {
+            Params = new()
+            {
+                Uri = "returns://string"
+            }
+        }, TestContext.Current.CancellationToken);
+
+        Assert.Equal(target.ReturnsString(), (result?.Contents[0] as TextResourceContents)?.Text);
     }
 
     [Fact]
@@ -306,5 +331,12 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     {
         [McpServerResource, Description("Another neat direct resource")]
         public static string AnotherNeatDirectResource() => "This is a neat resource";
+    }
+
+    [McpServerResourceType]
+    public sealed class ResourceWithId(ObjectWithId id)
+    {
+        [McpServerResource(UriTemplate = "returns://string")]
+        public string ReturnsString() => $"Id: {id.Id}";
     }
 }
