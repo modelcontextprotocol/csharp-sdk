@@ -63,7 +63,7 @@ public sealed class ElicitResult : Result
     public bool IsDeclined => string.Equals(Action, "decline", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Gets a value indicating whether the user cancelled the elicitation request.
+    /// Gets a value indicating whether the user canceled the elicitation request.
     /// </summary>
     /// <returns><see langword="true"/> if the action is "cancel"; otherwise, <see langword="false"/>.</returns>
     [JsonIgnore]
