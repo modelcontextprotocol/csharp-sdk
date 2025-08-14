@@ -50,7 +50,7 @@ public class ElicitResultTests
         var result = new ElicitResult { Action = action };
 
         // Act
-        var isCancelled = result.IsCancelled;
+        var isCancelled = result.IsCanceled;
 
         // Assert
         Assert.True(isCancelled);
@@ -83,7 +83,7 @@ public class ElicitResultTests
         var result = new ElicitResult();
 
         // Act & Assert
-        Assert.True(result.IsCancelled);
+        Assert.True(result.IsCanceled);
     }
 
     [Fact]
@@ -113,7 +113,7 @@ public class ElicitResultTests
         var result = new ElicitResult { Action = null! };
 
         // Act & Assert
-        Assert.False(result.IsCancelled);
+        Assert.False(result.IsCanceled);
     }
 
     [Theory]
@@ -132,7 +132,7 @@ public class ElicitResultTests
         // Assert
         Assert.DoesNotContain("IsAccepted", json);
         Assert.DoesNotContain("IsDeclined", json);
-        Assert.DoesNotContain("IsCancelled", json);
+        Assert.DoesNotContain("IsCanceled", json);
         Assert.Contains($"\"action\":\"{action}\"", json);
     }
 
@@ -155,6 +155,6 @@ public class ElicitResultTests
         Assert.Equal(action, deserialized.Action);
         Assert.Equal(isAccepted, deserialized.IsAccepted);
         Assert.Equal(isDeclined, deserialized.IsDeclined);
-        Assert.Equal(isCancelled, deserialized.IsCancelled);
+        Assert.Equal(isCancelled, deserialized.IsCanceled);
     }
 }

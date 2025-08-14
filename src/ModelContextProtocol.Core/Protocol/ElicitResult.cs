@@ -67,5 +67,5 @@ public sealed class ElicitResult : Result
     /// </summary>
     /// <returns><see langword="true"/> if the action is "cancel"; otherwise, <see langword="false"/>.</returns>
     [JsonIgnore]
-    public bool IsCancelled => string.Equals(Action, "cancel", StringComparison.OrdinalIgnoreCase);
+    public bool IsCanceled => string.Equals(Action, "cancel", StringComparison.OrdinalIgnoreCase);
 }
