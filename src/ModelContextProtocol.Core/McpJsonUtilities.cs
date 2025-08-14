@@ -96,6 +96,9 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(JsonRpcNotification))]
     [JsonSerializable(typeof(JsonRpcResponse))]
     [JsonSerializable(typeof(JsonRpcError))]
+    
+    // JSON-RPC union to make it faster to deserialize messages
+    [JsonSerializable(typeof(JsonRpcMessage.Converter.Union))]
 
     // MCP Notification Params
     [JsonSerializable(typeof(CancelledNotificationParams))]
