@@ -61,9 +61,15 @@ public static partial class McpServerBuilderExtensions
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     /// <remarks>
-    /// This method discovers all instance methods (public and non-public) on the specified <typeparamref name="TToolType"/>
+    /// <para>
+    /// This method discovers all methods (public and non-public) on the specified <typeparamref name="TToolType"/>
     /// type, where the methods are attributed as <see cref="McpServerToolAttribute"/>, and adds an <see cref="McpServerTool"/>
-    /// instance for each, using <paramref name="target"/> as the associated instance.
+    /// instance for each, using <paramref name="target"/> as the associated instance for instance methods.
+    /// </para>
+    /// <para>
+    /// However, if <typeparamref name="TToolType"/> is itself an <see cref="IEnumerable{T}"/> of <see cref="McpServerTool"/>,
+    /// this method will register those tools directly without scanning for methods on <typeparamref name="TToolType"/>.
+    /// </para>
     /// </remarks>
     public static IMcpServerBuilder WithTools<[DynamicallyAccessedMembers(
         DynamicallyAccessedMemberTypes.PublicMethods |
@@ -75,11 +81,19 @@ public static partial class McpServerBuilderExtensions
         Throw.IfNull(builder);
         Throw.IfNull(target);
 
+        if (target is IEnumerable<McpServerTool> tools)
+        {
+            return builder.WithTools(tools);
+        }
+
         foreach (var toolMethod in typeof(TToolType).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
         {
             if (toolMethod.GetCustomAttribute<McpServerToolAttribute>() is not null)
             {
-                builder.Services.AddSingleton(services => McpServerTool.Create(toolMethod, target, new() { Services = services, SerializerOptions = serializerOptions }));
+                builder.Services.AddSingleton(services => McpServerTool.Create(
+                    toolMethod, 
+                    toolMethod.IsStatic ? null : target,
+                    new() { Services = services, SerializerOptions = serializerOptions }));
             }
         }
 
@@ -234,9 +248,15 @@ public static partial class McpServerBuilderExtensions
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     /// <remarks>
-    /// This method discovers all instance methods (public and non-public) on the specified <typeparamref name="TPromptType"/>
+    /// <para>
+    /// This method discovers all methods (public and non-public) on the specified <typeparamref name="TPromptType"/>
     /// type, where the methods are attributed as <see cref="McpServerPromptAttribute"/>, and adds an <see cref="McpServerPrompt"/>
-    /// instance for each, using <paramref name="target"/> as the associated instance.
+    /// instance for each, using <paramref name="target"/> as the associated instance for instance methods.
+    /// </para>
+    /// <para>
+    /// However, if <typeparamref name="TPromptType"/> is itself an <see cref="IEnumerable{T}"/> of <see cref="McpServerPrompt"/>,
+    /// this method will register those prompts directly without scanning for methods on <typeparamref name="TPromptType"/>.
+    /// </para>
     /// </remarks>
     public static IMcpServerBuilder WithPrompts<[DynamicallyAccessedMembers(
         DynamicallyAccessedMemberTypes.PublicMethods |
@@ -247,6 +267,11 @@ public static partial class McpServerBuilderExtensions
     {
         Throw.IfNull(builder);
         Throw.IfNull(target);
+
+        if (target is IEnumerable<McpServerPrompt> prompts)
+        {
+            return builder.WithPrompts(prompts);
+        }
 
         foreach (var promptMethod in typeof(TPromptType).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
         {
@@ -404,9 +429,15 @@ public static partial class McpServerBuilderExtensions
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     /// <remarks>
-    /// This method discovers all instance methods (public and non-public) on the specified <typeparamref name="TResourceType"/>
-    /// type, where the methods are attributed as <see cref="McpServerResource"/>, and adds an <see cref="McpServerResource"/>
-    /// instance for each, using <paramref name="target"/> as the associated instance.
+    /// <para>
+    /// This method discovers all methods (public and non-public) on the specified <typeparamref name="TResourceType"/>
+    /// type, where the methods are attributed as <see cref="McpServerResourceAttribute"/>, and adds an <see cref="McpServerResource"/>
+    /// instance for each, using <paramref name="target"/> as the associated instance for instance methods.
+    /// </para>
+    /// <para>
+    /// However, if <typeparamref name="TResourceType"/> is itself an <see cref="IEnumerable{T}"/> of <see cref="McpServerResource"/>,
+    /// this method will register those resources directly without scanning for methods on <typeparamref name="TResourceType"/>.
+    /// </para>
     /// </remarks>
     public static IMcpServerBuilder WithResources<[DynamicallyAccessedMembers(
         DynamicallyAccessedMemberTypes.PublicMethods |
@@ -416,6 +447,11 @@ public static partial class McpServerBuilderExtensions
     {
         Throw.IfNull(builder);
         Throw.IfNull(target);
+
+        if (target is IEnumerable<McpServerResource> resources)
+        {
+            return builder.WithResources(resources);
+        }
 
         foreach (var resourceTemplateMethod in typeof(TResourceType).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
         {

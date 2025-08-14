@@ -5,6 +5,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Moq;
+using System.Collections;
 using System.ComponentModel;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -273,6 +274,30 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
         }, TestContext.Current.CancellationToken);
 
         Assert.Equal(target.ReturnsString(), (result?.Contents[0] as TextResourceContents)?.Text);
+    }
+
+    [Fact]
+    public async Task WithResources_TargetInstance_UsesEnumerableImplementation()
+    {
+        ServiceCollection sc = new();
+
+        sc.AddMcpServer().WithResources(new MyResourceProvider());
+
+        var resources = sc.BuildServiceProvider().GetServices<McpServerResource>().ToArray();
+        Assert.Equal(2, resources.Length);
+        Assert.Contains(resources, t => t.ProtocolResource?.Name == "Returns42");
+        Assert.Contains(resources, t => t.ProtocolResource?.Name == "Returns43");
+    }
+
+    private sealed class MyResourceProvider : IEnumerable<McpServerResource>
+    {
+        public IEnumerator<McpServerResource> GetEnumerator()
+        {
+            yield return McpServerResource.Create(() => "42", new() { Name = "Returns42" });
+            yield return McpServerResource.Create(() => "43", new() { Name = "Returns43" });
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
     [Fact]

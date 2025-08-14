@@ -6,6 +6,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Moq;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.IO.Pipelines;
@@ -518,6 +519,30 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         var result = await tool.InvokeAsync(new RequestContext<CallToolRequestParams>(new Mock<IMcpServer>().Object), TestContext.Current.CancellationToken);
 
         Assert.Equal(target.GetCtorParameter(), (result.Content[0] as TextContentBlock)?.Text);
+    }
+
+    [Fact]
+    public async Task WithTools_TargetInstance_UsesEnumerableImplementation()
+    {
+        ServiceCollection sc = new();
+
+        sc.AddMcpServer().WithTools(new MyToolProvider());
+
+        var tools = sc.BuildServiceProvider().GetServices<McpServerTool>().ToArray();
+        Assert.Equal(2, tools.Length);
+        Assert.Contains(tools, t => t.ProtocolTool.Name == "Returns42");
+        Assert.Contains(tools, t => t.ProtocolTool.Name == "Returns43");
+    }
+
+    private sealed class MyToolProvider : IEnumerable<McpServerTool>
+    {
+        public IEnumerator<McpServerTool> GetEnumerator()
+        {
+            yield return McpServerTool.Create(() => "42", new() { Name = "Returns42" });
+            yield return McpServerTool.Create(() => "43", new() { Name = "Returns43" });
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
     [Fact]

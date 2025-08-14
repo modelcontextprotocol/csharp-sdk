@@ -5,6 +5,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Moq;
+using System.Collections;
 using System.ComponentModel;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -250,6 +251,30 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
         }, TestContext.Current.CancellationToken);
 
         Assert.Equal(target.ReturnsString("hello"), (result.Messages[0].Content as TextContentBlock)?.Text);
+    }
+
+    [Fact]
+    public async Task WithPrompts_TargetInstance_UsesEnumerableImplementation()
+    {
+        ServiceCollection sc = new();
+
+        sc.AddMcpServer().WithPrompts(new MyPromptProvider());
+
+        var prompts = sc.BuildServiceProvider().GetServices<McpServerPrompt>().ToArray();
+        Assert.Equal(2, prompts.Length);
+        Assert.Contains(prompts, t => t.ProtocolPrompt.Name == "Returns42");
+        Assert.Contains(prompts, t => t.ProtocolPrompt.Name == "Returns43");
+    }
+
+    private sealed class MyPromptProvider : IEnumerable<McpServerPrompt>
+    {
+        public IEnumerator<McpServerPrompt> GetEnumerator()
+        {
+            yield return McpServerPrompt.Create(() => "42", new() { Name = "Returns42" });
+            yield return McpServerPrompt.Create(() => "43", new() { Name = "Returns43" });
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
     [Fact]
