@@ -3,9 +3,6 @@ using EverythingServer.Prompts;
 using EverythingServer.Resources;
 using EverythingServer.Tools;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -15,19 +12,14 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
-var builder = Host.CreateApplicationBuilder(args);
-builder.Logging.AddConsole(consoleLogOptions =>
-{
-    // Configure all logs to go to stderr
-    consoleLogOptions.LogToStandardErrorThreshold = LogLevel.Trace;
-});
+var builder = WebApplication.CreateBuilder(args);
 
-HashSet<string> subscriptions = [];
-var _minimumLoggingLevel = LoggingLevel.Debug;
+// Subscriptions tracks resource URIs to McpServer instances
+Dictionary<string, List<IMcpServer>> subscriptions = new();
 
 builder.Services
     .AddMcpServer()
-    .WithStdioServerTransport()
+    .WithHttpTransport()
     .WithTools<AddTool>()
     .WithTools<AnnotatedMessageTool>()
     .WithTools<EchoTool>()
@@ -44,7 +36,11 @@ builder.Services
 
         if (uri is not null)
         {
-            subscriptions.Add(uri);
+            if (!subscriptions.ContainsKey(uri))
+            {
+                subscriptions[uri] = new List<IMcpServer>();
+            }
+            subscriptions[uri].Add(ctx.Server);
 
             await ctx.Server.SampleAsync([
                 new ChatMessage(ChatRole.System, "You are a helpful test server"),
@@ -65,7 +61,11 @@ builder.Services
         var uri = ctx.Params?.Uri;
         if (uri is not null)
         {
-            subscriptions.Remove(uri);
+            if (subscriptions.ContainsKey(uri))
+            {
+                // Remove ctx.Server from the subscription list
+                subscriptions[uri].Remove(ctx.Server);
+            }
         }
         return new EmptyResult();
     })
@@ -126,13 +126,13 @@ builder.Services
             throw new McpException("Missing required argument 'level'", McpErrorCode.InvalidParams);
         }
 
-        _minimumLoggingLevel = ctx.Params.Level;
+        // The SDK updates the LoggingLevel field of the IMcpServer
 
         await ctx.Server.SendNotificationAsync("notifications/message", new
         {
             Level = "debug",
             Logger = "test-server",
-            Data = $"Logging level set to {_minimumLoggingLevel}",
+            Data = $"Logging level set to {ctx.Params.Level}",
         }, cancellationToken: ct);
 
         return new EmptyResult();
@@ -145,10 +145,14 @@ builder.Services.AddOpenTelemetry()
     .WithLogging(b => b.SetResourceBuilder(resource))
     .UseOtlpExporter();
 
-builder.Services.AddSingleton(subscriptions);
+builder.Services.AddSingleton<IDictionary<string, List<IMcpServer>>>(subscriptions);
 builder.Services.AddHostedService<SubscriptionMessageSender>();
 builder.Services.AddHostedService<LoggingUpdateMessageSender>();
 
-builder.Services.AddSingleton<Func<LoggingLevel>>(_ => () => _minimumLoggingLevel);
+var app = builder.Build();
 
-await builder.Build().RunAsync();
+app.UseHttpsRedirection();
+
+app.MapMcp();
+
+app.Run();
