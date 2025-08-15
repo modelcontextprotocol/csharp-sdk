@@ -49,13 +49,10 @@ internal sealed partial class StatefulSessionManager(
                 while (_nextIndexToPrune < _idleSessionIds.Count)
                 {
                     var pruneId = _idleSessionIds[_nextIndexToPrune++];
-                    if (TryGetValue(pruneId, out sessionToPrune))
+                    if (_sessions.TryRemove(pruneId, out sessionToPrune))
                     {
-                        if (!sessionToPrune.IsActive && _sessions.TryRemove(pruneId, out sessionToPrune))
-                        {
-                            LogIdleSessionLimit(pruneId, _maxIdleSessionCount);
-                            break;
-                        }
+                        LogIdleSessionLimit(pruneId, _maxIdleSessionCount);
+                        break;
                     }
                 }
 
