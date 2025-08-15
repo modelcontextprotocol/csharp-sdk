@@ -193,6 +193,8 @@ internal sealed partial class SseClientSessionTransport : TransportBase
             return;
         }
 
+        LogTransportReceivedMessageSensitive(Name, data);
+
         try
         {
             var message = JsonSerializer.Deserialize(data, McpJsonUtilities.JsonContext.Default.JsonRpcMessage);

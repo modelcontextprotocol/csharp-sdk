@@ -16,7 +16,7 @@ internal sealed class SseHandler(
     IHostApplicationLifetime hostApplicationLifetime,
     ILoggerFactory loggerFactory)
 {
-    private readonly ConcurrentDictionary<string, HttpMcpSession<SseResponseStreamTransport>> _sessions = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, SseSession> _sessions = new(StringComparer.Ordinal);
 
     public async Task HandleSseRequestAsync(HttpContext context)
     {
@@ -34,9 +34,9 @@ internal sealed class SseHandler(
         await using var transport = new SseResponseStreamTransport(context.Response.Body, $"{endpointPattern}message?sessionId={sessionId}", sessionId);
 
         var userIdClaim = StreamableHttpHandler.GetUserIdClaim(context.User);
-        await using var httpMcpSession = new HttpMcpSession<SseResponseStreamTransport>(sessionId, transport, userIdClaim, httpMcpServerOptions.Value.TimeProvider);
+        var sseSession = new SseSession(transport, userIdClaim);
 
-        if (!_sessions.TryAdd(sessionId, httpMcpSession))
+        if (!_sessions.TryAdd(sessionId, sseSession))
         {
             throw new UnreachableException($"Unreachable given good entropy! Session with ID '{sessionId}' has already been created.");
         }
@@ -55,12 +55,10 @@ internal sealed class SseHandler(
             try
             {
                 await using var mcpServer = McpServerFactory.Create(transport, mcpServerOptions, loggerFactory, context.RequestServices);
-                httpMcpSession.Server = mcpServer;
                 context.Features.Set(mcpServer);
 
                 var runSessionAsync = httpMcpServerOptions.Value.RunSessionHandler ?? StreamableHttpHandler.RunSessionAsync;
-                httpMcpSession.ServerRunTask = runSessionAsync(context, mcpServer, cancellationToken);
-                await httpMcpSession.ServerRunTask;
+                await runSessionAsync(context, mcpServer, cancellationToken);
             }
             finally
             {
@@ -87,13 +85,13 @@ internal sealed class SseHandler(
             return;
         }
 
-        if (!_sessions.TryGetValue(sessionId.ToString(), out var httpMcpSession))
+        if (!_sessions.TryGetValue(sessionId.ToString(), out var sseSession))
         {
             await Results.BadRequest($"Session ID not found.").ExecuteAsync(context);
             return;
         }
 
-        if (!httpMcpSession.HasSameUserId(context.User))
+        if (sseSession.UserId != StreamableHttpHandler.GetUserIdClaim(context.User))
         {
             await Results.Forbid().ExecuteAsync(context);
             return;
@@ -106,8 +104,10 @@ internal sealed class SseHandler(
             return;
         }
 
-        await httpMcpSession.Transport.OnMessageReceivedAsync(message, context.RequestAborted);
+        await sseSession.Transport.OnMessageReceivedAsync(message, context.RequestAborted);
         context.Response.StatusCode = StatusCodes.Status202Accepted;
         await context.Response.WriteAsync("Accepted");
     }
+
+    private record SseSession(SseResponseStreamTransport Transport, UserIdClaim? UserId);
 }

@@ -505,7 +505,6 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         Assert.NotEqual(secondSessionId, thirdSessionId);
 
         // Pruning of the second session results in a 404 since we used the first session more recently.
-        fakeTimeProvider.Advance(TimeSpan.FromSeconds(10));
         SetSessionId(secondSessionId);
         using var response = await HttpClient.PostAsync("", JsonContent(EchoRequest), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
@@ -517,8 +516,9 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         SetSessionId(thirdSessionId);
         await CallEchoAndValidateAsync();
 
-        var logMessage = Assert.Single(mockLoggerProvider.LogMessages, m => m.LogLevel == LogLevel.Critical);
-        Assert.StartsWith("Exceeded maximum of 2 idle sessions.", logMessage.Message);
+        var idleLimitLogMessage = Assert.Single(mockLoggerProvider.LogMessages, m => m.EventId.Name == "LogIdleSessionLimit");
+        Assert.Equal(LogLevel.Information, idleLimitLogMessage.LogLevel);
+        Assert.StartsWith("MaxIdleSessionCount of 2 exceeded. Closing idle session", idleLimitLogMessage.Message);
     }
 
     private static StringContent JsonContent(string json) => new StringContent(json, Encoding.UTF8, "application/json");
