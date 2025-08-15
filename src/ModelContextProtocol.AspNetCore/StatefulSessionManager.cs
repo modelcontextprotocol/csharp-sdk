@@ -70,13 +70,9 @@ internal sealed partial class StatefulSessionManager(
                     }
                     else
                     {
-                        if (Volatile.Read(ref _currentIdleSessionCount) >= _maxIdleSessionCount)
-                        {
-                            // This indicates all idle sessions are in the process of being disposed which should not happen during normal operation.
-                            // Since there are no idle sessions to prune right now, log a critical error and create the new session anyway.
-                            LogTooManyIdleSessionsClosingConcurrently(newSession.Id, _maxIdleSessionCount, Volatile.Read(ref _currentIdleSessionCount));
-                        }
-
+                        // This indicates all idle sessions are in the process of being disposed which should not happen during normal operation.
+                        // Since there are no idle sessions to prune right now, log a critical error and create the new session anyway.
+                        LogTooManyIdleSessionsClosingConcurrently(newSession.Id, _maxIdleSessionCount, Volatile.Read(ref _currentIdleSessionCount));
                         AddSession(newSession);
                         return;
                     }
