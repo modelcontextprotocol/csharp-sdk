@@ -4,6 +4,8 @@ using ModelContextProtocol.Protocol;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Server;
 
@@ -232,6 +234,116 @@ public static class McpServerExtensions
             McpJsonUtilities.JsonContext.Default.ElicitRequestParams,
             McpJsonUtilities.JsonContext.Default.ElicitResult,
             cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// Requests additional information from the user via the client, constructing a request schema from the
+    /// public serializable properties of <typeparamref name="T"/> and deserializing the response into <typeparamref name="T"/>.
+    /// </summary>
+    /// <typeparam name="T">The type describing the expected input shape. Only primitive members are supported (string, number, boolean, enum).</typeparam>
+    /// <param name="server">The server initiating the request.</param>
+    /// <param name="message">The message to present to the user.</param>
+    /// <param name="serializerOptions">Serializer options that influence property naming and deserialization.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
+    /// <returns>An <see cref="ElicitResult{T}"/> with the user's response, if accepted.</returns>
+    /// <remarks>
+    /// Elicitation uses a constrained subset of JSON Schema and only supports strings, numbers/integers, booleans and string enums.
+    /// Unsupported member types are ignored when constructing the schema.
+    /// </remarks>
+    public static async ValueTask<ElicitResult<T?>> ElicitAsync<T>(
+        this IMcpServer server,
+        string message,
+        JsonSerializerOptions? serializerOptions = null,
+        CancellationToken cancellationToken = default) where T : class
+    {
+        Throw.IfNull(server);
+        ThrowIfElicitationUnsupported(server);
+
+        serializerOptions ??= McpJsonUtilities.DefaultOptions;
+        serializerOptions.MakeReadOnly();
+
+        var schema = BuildRequestSchemaFor<T>(serializerOptions);
+
+        var request = new ElicitRequestParams
+        {
+            Message = message,
+            RequestedSchema = schema,
+        };
+
+        var raw = await server.ElicitAsync(request, cancellationToken).ConfigureAwait(false);
+
+        if (!string.Equals(raw.Action, "accept", StringComparison.OrdinalIgnoreCase) || raw.Content is null)
+        {
+            return new ElicitResult<T?> { Action = raw.Action, Content = default };
+        }
+
+        // Compose a JsonObject from the flat content dictionary and deserialize to T
+        var obj = new JsonObject();
+        foreach (var kvp in raw.Content)
+        {
+            // JsonNode.Parse handles numbers/strings/bools that came back as JsonElement
+            obj[kvp.Key] = JsonNode.Parse(kvp.Value.GetRawText());
+        }
+
+        T? typed = JsonSerializer.Deserialize(obj, serializerOptions.GetTypeInfo<T>());
+        return new ElicitResult<T?> { Action = raw.Action, Content = typed };
+    }
+
+    private static ElicitRequestParams.RequestSchema BuildRequestSchemaFor<T>(JsonSerializerOptions serializerOptions)
+    {
+        var schema = new ElicitRequestParams.RequestSchema();
+        var props = schema.Properties;
+
+        JsonTypeInfo<T> typeInfo = serializerOptions.GetTypeInfo<T>();
+        foreach (JsonPropertyInfo pi in typeInfo.Properties)
+        {
+            var memberType = pi.PropertyType;
+            string name = pi.Name; // serialized name honoring naming policy/attributes
+            var def = CreatePrimitiveSchemaFor(memberType);
+            if (def is not null)
+            {
+                props[name] = def;
+            }
+        }
+
+        return schema;
+    }
+
+    private static ElicitRequestParams.PrimitiveSchemaDefinition? CreatePrimitiveSchemaFor(Type type)
+    {
+        Type t = Nullable.GetUnderlyingType(type) ?? type;
+
+        if (t == typeof(string))
+        {
+            return new ElicitRequestParams.StringSchema();
+        }
+
+        if (t.IsEnum)
+        {
+            return new ElicitRequestParams.EnumSchema
+            {
+                Enum = Enum.GetNames(t)
+            };
+        }
+
+        if (t == typeof(bool))
+        {
+            return new ElicitRequestParams.BooleanSchema();
+        }
+
+        if (t == typeof(byte) || t == typeof(sbyte) || t == typeof(short) || t == typeof(ushort) ||
+            t == typeof(int) || t == typeof(uint) || t == typeof(long) || t == typeof(ulong))
+        {
+            return new ElicitRequestParams.NumberSchema { Type = "integer" };
+        }
+
+        if (t == typeof(float) || t == typeof(double) || t == typeof(decimal))
+        {
+            return new ElicitRequestParams.NumberSchema { Type = "number" };
+        }
+
+        // Unsupported type for elicitation schema
+        return null;
     }
 
     private static void ThrowIfSamplingUnsupported(IMcpServer server)

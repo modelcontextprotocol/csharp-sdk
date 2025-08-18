@@ -45,3 +45,22 @@ public sealed class ElicitResult : Result
     [JsonPropertyName("content")]
     public IDictionary<string, JsonElement>? Content { get; set; }
 }
+
+/// <summary>
+/// Represents the client's response to an elicitation request, with typed content payload.
+/// </summary>
+/// <typeparam name="T">The type of the expected content payload.</typeparam>
+public sealed class ElicitResult<T> : Result
+{
+    /// <summary>
+    /// Gets or sets the user action in response to the elicitation.
+    /// </summary>
+    [JsonPropertyName("action")]
+    public string Action { get; set; } = "cancel";
+
+    /// <summary>
+    /// Gets or sets the submitted form data as a typed value.
+    /// </summary>
+    [JsonPropertyName("content")]
+    public T? Content { get; set; }
+}
