@@ -42,7 +42,7 @@
       "_appLogoPath": "images/mcp.svg",
       "_appFaviconPath": "images/favicon.ico",
       "_enableSearch": true,
-      "_appFooter": "<script>(function(){var el=document.querySelector('.next-article');if(el)el.style.display='none';})();</script>",
+      "_disableNextArticle": true,
       "pdf": false
     }
   }
