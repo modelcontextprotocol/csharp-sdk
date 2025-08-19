@@ -28,7 +28,7 @@ McpClientOptions options = new()
 };
 
 await using var mcpClient = await McpClientFactory.CreateAsync(clientTransport, options);
-// </snippet_McpClientUsage>
+// </snippet_McpInitialize>
 
 var tools = await mcpClient.ListToolsAsync();
 foreach (var tool in tools)

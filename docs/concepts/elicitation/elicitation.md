@@ -25,7 +25,7 @@ To help distinguish multiple inputs, each input has a unique name.
 
 The following example demonstrates how a server could request a boolean response from the user.
 
-[!code-csharp[](samples/server/Tools/InteractiveTools.cs?name=snippet_GuessTheNumber)]
+[!code-csharp[](./samples/server/Tools/InteractiveTools.cs?name=snippet_GuessTheNumber)]
 
 ## Client Support for Elicitation
 
@@ -34,7 +34,7 @@ Elicitation is an optional feature so clients declare their support for it in th
 [ElicitationHandler]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.Protocol.ElicitationCapability.html#ModelContextProtocol_Protocol_ElicitationCapability_ElicitationHandler
 [McpClientOptions]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.Client.McpClientOptions.html
 
-[!code-csharp[](samples/client/Program.cs?name=snippet_McpInitialize)]
+[!code-csharp[](./samples/client/Program.cs?name=snippet_McpInitialize)]
 
 The ElicitationHandler is an asynchronous method that will be called when the server requests additional information.
 The ElicitationHandler must request input from the user and return the data in a format that matches the requested schema.
@@ -43,7 +43,9 @@ This will be highly dependent on the client application and how it interacts wit
 If the user provides the requested information, the ElicitationHandler should return an [ElicitResult] with the action set to "accept" and the content containing the user's input.
 If the user does not provide the requested information, the ElicitationHandler should return an [ElicitResult] with the action set to "reject" and no content.
 
+[ElicitResult]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.Protocol.ElicitResult.html
+
 Below is an example of how a console application might handle elicitation requests.
 Here's an example implementation:
 
-[!code-csharp[](samples/client/Program.cs?name=snippet_ElicitationHandler)]
+[!code-csharp[](./samples/client/Program.cs?name=snippet_ElicitationHandler)]
