@@ -1,7 +1,7 @@
 ---
 title: Elicitation
 author: mikekistler
-description: Learn about the telemetry collected by the HttpRepl.
+description: Enable interactive AI experiences by requesting user input during tool execution.
 uid: elicitation
 ---
 
