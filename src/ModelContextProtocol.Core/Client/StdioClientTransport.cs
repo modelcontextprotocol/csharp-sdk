@@ -156,20 +156,21 @@ public sealed partial class StdioClientTransport : IClientTransport
             // up the encoding from Console.InputEncoding. As such, when not targeting .NET Core,
             // we temporarily change Console.InputEncoding to no-BOM UTF-8 around the Process.Start
             // call, to ensure it picks up the correct encoding.
-#if NET
-            processStarted = process.Start();
-#else
+
             Encoding originalInputEncoding = Console.InputEncoding;
-            try
+            if (HasConsole())
             {
-                Console.InputEncoding = StreamClientSessionTransport.NoBomUtf8Encoding;
-                processStarted = process.Start();
+                try
+                {
+                    Console.InputEncoding = StreamClientSessionTransport.NoBomUtf8Encoding;
+                }
+                finally
+                {
+                    Console.InputEncoding = originalInputEncoding;
+                }
             }
-            finally
-            {
-                Console.InputEncoding = originalInputEncoding;
-            }
-#endif
+
+            processStarted = process.Start();
 
             if (!processStarted)
             {
@@ -199,7 +200,13 @@ public sealed partial class StdioClientTransport : IClientTransport
             throw new IOException("Failed to connect transport.", ex);
         }
     }
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetConsoleWindow();
 
+    private static bool HasConsole()
+    {
+        try { return GetConsoleWindow() != IntPtr.Zero; } catch { return false; }
+    }
     internal static void DisposeProcess(
         Process? process, bool processRunning, TimeSpan shutdownTimeout, string endpointName)
     {
