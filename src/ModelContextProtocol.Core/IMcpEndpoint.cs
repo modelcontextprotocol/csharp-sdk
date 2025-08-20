@@ -17,7 +17,7 @@ namespace ModelContextProtocol;
 /// </list>
 /// </para>
 /// <para>
-/// <see cref="IMcpEndpoint"/> serves as the base interface for both <see cref="IMcpClient"/> and 
+/// <see cref="IMcpEndpoint"/> serves as the base interface for both <see cref="McpClientSession"/> and 
 /// <see cref="IMcpServer"/> interfaces, providing the common functionality needed for MCP protocol 
 /// communication. Most applications will use these more specific interfaces rather than working with 
 /// <see cref="IMcpEndpoint"/> directly.

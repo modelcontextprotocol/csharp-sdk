@@ -333,7 +333,7 @@ public static class McpServerExtensions
             /// <inheritdoc />
             public bool IsEnabled(LogLevel logLevel) =>
                 server?.LoggingLevel is { } loggingLevel &&
-                McpServer.ToLoggingLevel(logLevel) >= loggingLevel;
+                McpServerSession.ToLoggingLevel(logLevel) >= loggingLevel;
 
             /// <inheritdoc />
             public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
@@ -351,7 +351,7 @@ public static class McpServerExtensions
                 {
                     _ = server.SendNotificationAsync(NotificationMethods.LoggingMessageNotification, new LoggingMessageNotificationParams
                     {
-                        Level = McpServer.ToLoggingLevel(logLevel),
+                        Level = McpServerSession.ToLoggingLevel(logLevel),
                         Data = JsonSerializer.SerializeToElement(message, McpJsonUtilities.JsonContext.Default.String),
                         Logger = categoryName,
                     });

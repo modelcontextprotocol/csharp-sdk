@@ -85,9 +85,9 @@ public class McpClientFactoryTests
         };
 
         var clientTransport = (IClientTransport)Activator.CreateInstance(transportType)!;
-        IMcpClient? client = null;
+        McpClientSession? client = null;
 
-        var actionTask = McpClientFactory.CreateAsync(clientTransport, clientOptions, new Mock<ILoggerFactory>().Object, CancellationToken.None);
+        var actionTask = McpClientFactory.CreateAsync(clientTransport, clientOptions, loggerFactory: null, CancellationToken.None);
 
         // Act
         if (clientTransport is FailureTransport)

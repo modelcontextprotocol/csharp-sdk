@@ -62,7 +62,7 @@ public abstract class ClientServerTestBase : LoggedTest, IAsyncDisposable
         Dispose();
     }
 
-    protected async Task<IMcpClient> CreateMcpClientForServer(McpClientOptions? clientOptions = null)
+    protected async Task<McpClientSession> CreateMcpClientForServer(McpClientOptions? clientOptions = null)
     {
         return await McpClientFactory.CreateAsync(
             new StreamClientTransport(

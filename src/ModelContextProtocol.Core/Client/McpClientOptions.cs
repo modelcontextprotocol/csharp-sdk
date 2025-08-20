@@ -3,7 +3,7 @@ using ModelContextProtocol.Protocol;
 namespace ModelContextProtocol.Client;
 
 /// <summary>
-/// Provides configuration options for creating <see cref="IMcpClient"/> instances.
+/// Provides configuration options for creating <see cref="McpClientSession"/> instances.
 /// </summary>
 /// <remarks>
 /// These options are typically passed to <see cref="McpClientFactory.CreateAsync"/> when creating a client.
