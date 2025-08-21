@@ -21,7 +21,7 @@ await using IMcpServer server = McpServerFactory.Create(
 _ = server.RunAsync();
 
 // Connect a client using a stream-based transport over the same in-memory pipe.
-await using IMcpClient client = await McpClientFactory.CreateAsync(
+await using McpClientSession client = await McpClientFactory.CreateAsync(
     new StreamClientTransport(clientToServerPipe.Writer.AsStream(), serverToClientPipe.Reader.AsStream()));
 
 // List all tools.

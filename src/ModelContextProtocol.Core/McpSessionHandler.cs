@@ -17,7 +17,7 @@ namespace ModelContextProtocol;
 /// <summary>
 /// Class for managing an MCP JSON-RPC session. This covers both MCP clients and servers.
 /// </summary>
-internal sealed partial class McpSession : IDisposable
+internal sealed partial class McpSessionHandler : IAsyncDisposable
 {
     private static readonly Histogram<double> s_clientSessionDuration = Diagnostics.CreateDurationHistogram(
         "mcp.client.session.duration", "Measures the duration of a client session.", longBuckets: true);
@@ -61,8 +61,11 @@ internal sealed partial class McpSession : IDisposable
     private readonly string _sessionId = Guid.NewGuid().ToString("N");
     private long _lastRequestId;
 
+    private CancellationTokenSource? _messageProcessingCts;
+    private Task? _messageProcessingTask;
+
     /// <summary>
-    /// Initializes a new instance of the <see cref="McpSession"/> class.
+    /// Initializes a new instance of the <see cref="McpSessionHandler"/> class.
     /// </summary>
     /// <param name="isServer">true if this is a server; false if it's a client.</param>
     /// <param name="transport">An MCP transport implementation.</param>
@@ -70,7 +73,7 @@ internal sealed partial class McpSession : IDisposable
     /// <param name="requestHandlers">A collection of request handlers.</param>
     /// <param name="notificationHandlers">A collection of notification handlers.</param>
     /// <param name="logger">The logger.</param>
-    public McpSession(
+    public McpSessionHandler(
         bool isServer,
         ITransport transport,
         string endpointName,
@@ -107,7 +110,21 @@ internal sealed partial class McpSession : IDisposable
     /// Starts processing messages from the transport. This method will block until the transport is disconnected.
     /// This is generally started in a background task or thread from the initialization logic of the derived class.
     /// </summary>
-    public async Task ProcessMessagesAsync(CancellationToken cancellationToken)
+    public Task ProcessMessagesAsync(CancellationToken cancellationToken)
+    {
+        if (_messageProcessingTask is not null)
+        {
+            throw new InvalidOperationException("The message processing loop has already started.");
+        }
+
+        Debug.Assert(_messageProcessingCts is null);
+
+        _messageProcessingCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _messageProcessingTask = ProcessMessagesCoreAsync(_messageProcessingCts.Token);
+        return _messageProcessingTask;
+    }
+
+    private async Task ProcessMessagesCoreAsync(CancellationToken cancellationToken)
     {
         try
         {
@@ -344,7 +361,7 @@ internal sealed partial class McpSession : IDisposable
 
         return cancellationToken.Register(static objState =>
         {
-            var state = (Tuple<McpSession, JsonRpcRequest>)objState!;
+            var state = (Tuple<McpSessionHandler, JsonRpcRequest>)objState!;
             _ = state.Item1.SendMessageAsync(new JsonRpcNotification
             {
                 Method = NotificationMethods.CancelledNotification,
@@ -372,6 +389,8 @@ internal sealed partial class McpSession : IDisposable
     /// <returns>A task containing the server's response.</returns>
     public async Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken)
     {
+        Throw.IfNull(request);
+
         cancellationToken.ThrowIfCancellationRequested();
 
         Histogram<double> durationMetric = _isServer ? s_serverOperationDuration : s_clientOperationDuration;
@@ -682,7 +701,7 @@ internal sealed partial class McpSession : IDisposable
         }
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         Histogram<double> durationMetric = _isServer ? s_serverSessionDuration : s_clientSessionDuration;
         if (durationMetric.Enabled)
@@ -695,13 +714,30 @@ internal sealed partial class McpSession : IDisposable
             durationMetric.Record(GetElapsed(_sessionStartingTimestamp).TotalSeconds, tags);
         }
 
-        // Complete all pending requests with cancellation
         foreach (var entry in _pendingRequests)
         {
             entry.Value.TrySetCanceled();
         }
 
         _pendingRequests.Clear();
+
+        if (_messageProcessingCts is not null)
+        {
+            await _messageProcessingCts.CancelAsync().ConfigureAwait(false);
+        }
+
+        if (_messageProcessingTask is not null)
+        {
+            try
+            {
+                await _messageProcessingTask.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // Ignore cancellation
+            }
+        }
+
         LogSessionDisposed(EndpointName, _sessionId, _transportKind);
     }
 

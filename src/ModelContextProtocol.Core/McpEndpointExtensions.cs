@@ -16,8 +16,8 @@ namespace ModelContextProtocol;
 /// simplifying JSON-RPC communication by handling serialization and deserialization of parameters and results.
 /// </para>
 /// <para>
-/// These extension methods are designed to be used with both client (<see cref="IMcpClient"/>) and
-/// server (<see cref="IMcpServer"/>) implementations of the <see cref="IMcpEndpoint"/> interface.
+/// These extension methods are designed to be used with both client (<see cref="McpClientSession"/>) and
+/// server (<see cref="McpServerSession"/>) implementations of the <see cref="IMcpEndpoint"/> interface.
 /// </para>
 /// </remarks>
 public static class McpEndpointExtensions

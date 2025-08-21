@@ -31,6 +31,6 @@ public static class McpServerFactory
         Throw.IfNull(transport);
         Throw.IfNull(serverOptions);
 
-        return new McpServer(transport, serverOptions, loggerFactory, serviceProvider);
+        return new McpServerSession(transport, serverOptions, loggerFactory, serviceProvider);
     }
 }

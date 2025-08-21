@@ -41,7 +41,7 @@ public class ClientIntegrationTestFixture
         _loggerFactory = loggerFactory;
     }
 
-    public Task<IMcpClient> CreateClientAsync(string clientId, McpClientOptions? clientOptions = null) =>
+    public Task<McpClientSession> CreateClientAsync(string clientId, McpClientOptions? clientOptions = null) =>
         McpClientFactory.CreateAsync(new StdioClientTransport(clientId switch
         {
             "everything" => EverythingServerTransportOptions,

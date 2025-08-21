@@ -23,7 +23,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
         options.Stateless = Stateless;
     }
 
-    protected async Task<IMcpClient> ConnectAsync(
+    protected async Task<McpClientSession> ConnectAsync(
         string? path = null,
         SseClientTransportOptions? transportOptions = null,
         McpClientOptions? clientOptions = null)

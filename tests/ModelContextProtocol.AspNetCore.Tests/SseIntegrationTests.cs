@@ -21,7 +21,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         Name = "In-memory SSE Client",
     };
 
-    private Task<IMcpClient> ConnectMcpClientAsync(HttpClient? httpClient = null, SseClientTransportOptions? transportOptions = null)
+    private Task<McpClientSession> ConnectMcpClientAsync(HttpClient? httpClient = null, SseClientTransportOptions? transportOptions = null)
         => McpClientFactory.CreateAsync(
             new SseClientTransport(transportOptions ?? DefaultTransportOptions, httpClient ?? HttpClient, LoggerFactory),
             loggerFactory: LoggerFactory,

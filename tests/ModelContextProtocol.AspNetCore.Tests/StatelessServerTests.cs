@@ -58,7 +58,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
     }
 
-    private Task<IMcpClient> ConnectMcpClientAsync(McpClientOptions? clientOptions = null)
+    private Task<McpClientSession> ConnectMcpClientAsync(McpClientOptions? clientOptions = null)
         => McpClientFactory.CreateAsync(
             new SseClientTransport(DefaultTransportOptions, HttpClient, LoggerFactory),
             clientOptions, LoggerFactory, TestContext.Current.CancellationToken);

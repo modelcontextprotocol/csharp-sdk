@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization.Metadata;
@@ -7,21 +8,27 @@ using System.Text.Json.Serialization.Metadata;
 namespace ModelContextProtocol.Server;
 
 /// <inheritdoc />
-internal sealed class McpServer : McpEndpoint, IMcpServer
+public sealed class McpServerSession : IMcpServer
 {
     internal static Implementation DefaultImplementation { get; } = new()
     {
-        Name = DefaultAssemblyName.Name ?? nameof(McpServer),
-        Version = DefaultAssemblyName.Version?.ToString() ?? "1.0.0",
+        Name = AssemblyNameHelper.DefaultAssemblyName.Name ?? nameof(McpServerSession),
+        Version = AssemblyNameHelper.DefaultAssemblyName.Version?.ToString() ?? "1.0.0",
     };
 
+    private readonly ILogger _logger;
     private readonly ITransport _sessionTransport;
     private readonly bool _servicesScopePerRequest;
     private readonly List<Action> _disposables = [];
+    private readonly NotificationHandlers _notificationHandlers;
+    private readonly RequestHandlers _requestHandlers;
+    private readonly McpSessionHandler _sessionHandler;
 
     private readonly string _serverOnlyEndpointName;
-    private string? _endpointName;
+    private string _endpointName;
     private int _started;
+
+    private int _isDisposed;
 
     /// <summary>Holds a boxed <see cref="LoggingLevel"/> value for the server.</summary>
     /// <remarks>
@@ -31,7 +38,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
     private StrongBox<LoggingLevel>? _loggingLevel;
 
     /// <summary>
-    /// Creates a new instance of <see cref="McpServer"/>.
+    /// Creates a new instance of <see cref="McpServerSession"/>.
     /// </summary>
     /// <param name="transport">Transport to use for the server representing an already-established session.</param>
     /// <param name="options">Configuration options for this server, including capabilities.
@@ -39,8 +46,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
     /// <param name="loggerFactory">Logger factory to use for logging</param>
     /// <param name="serviceProvider">Optional service provider to use for dependency injection</param>
     /// <exception cref="McpException">The server was incorrectly configured.</exception>
-    public McpServer(ITransport transport, McpServerOptions options, ILoggerFactory? loggerFactory, IServiceProvider? serviceProvider)
-        : base(loggerFactory)
+    public McpServerSession(ITransport transport, McpServerOptions options, ILoggerFactory? loggerFactory, IServiceProvider? serviceProvider)
     {
         Throw.IfNull(transport);
         Throw.IfNull(options);
@@ -51,10 +57,15 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         ServerOptions = options;
         Services = serviceProvider;
         _serverOnlyEndpointName = $"Server ({options.ServerInfo?.Name ?? DefaultImplementation.Name} {options.ServerInfo?.Version ?? DefaultImplementation.Version})";
+        _endpointName = _serverOnlyEndpointName;
         _servicesScopePerRequest = options.ScopeRequests;
+        _logger = loggerFactory?.CreateLogger<McpServerSession>() ?? NullLogger<McpServerSession>.Instance;
 
         ClientInfo = options.KnownClientInfo;
         UpdateEndpointNameWithClientInfo();
+
+        _notificationHandlers = new();
+        _requestHandlers = [];
 
         // Configure all request handlers based on the supplied options.
         ServerCapabilities = new();
@@ -70,7 +81,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         // Register any notification handlers that were provided.
         if (options.Capabilities?.NotificationHandlers is { } notificationHandlers)
         {
-            NotificationHandlers.RegisterRange(notificationHandlers);
+            _notificationHandlers.RegisterRange(notificationHandlers);
         }
 
         // Now that everything has been configured, subscribe to any necessary notifications.
@@ -93,7 +104,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         }
 
         // And initialize the session.
-        InitializeSession(transport);
+        _sessionHandler = new McpSessionHandler(isServer: true, _sessionTransport, _endpointName!, _requestHandlers, _notificationHandlers, _logger);
     }
 
     /// <inheritdoc/>
@@ -115,9 +126,6 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
     public IServiceProvider? Services { get; }
 
     /// <inheritdoc />
-    public override string EndpointName => _endpointName ?? _serverOnlyEndpointName;
-
-    /// <inheritdoc />
     public LoggingLevel? LoggingLevel => _loggingLevel?.Value;
 
     /// <inheritdoc />
@@ -130,8 +138,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
         try
         {
-            StartSession(_sessionTransport, fullSessionCancellationToken: cancellationToken);
-            await MessageProcessingTask.ConfigureAwait(false);
+            await _sessionHandler.ProcessMessagesAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -139,10 +146,29 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         }
     }
 
-    public override async ValueTask DisposeUnsynchronizedAsync()
+
+    /// <inheritdoc/>
+    public Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default)
+        => _sessionHandler.SendRequestAsync(request, cancellationToken);
+
+    /// <inheritdoc/>
+    public Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
+        => _sessionHandler.SendMessageAsync(message, cancellationToken);
+
+    /// <inheritdoc/>
+    public IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler)
+        => _sessionHandler.RegisterNotificationHandler(method, handler);
+
+    /// <inheritdoc/>
+    public async ValueTask DisposeAsync()
     {
+        if (Interlocked.CompareExchange(ref _isDisposed, 1, 0) != 0)
+        {
+            return;
+        }
+
         _disposables.ForEach(d => d());
-        await base.DisposeUnsynchronizedAsync().ConfigureAwait(false);
+        await _sessionHandler.DisposeAsync().ConfigureAwait(false);
     }
 
     private void ConfigurePing()
@@ -155,7 +181,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
     private void ConfigureInitialize(McpServerOptions options)
     {
-        RequestHandlers.Set(RequestMethods.Initialize,
+        _requestHandlers.Set(RequestMethods.Initialize,
             async (request, _, _) =>
             {
                 ClientCapabilities = request?.Capabilities ?? new();
@@ -163,7 +189,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
 
                 // Use the ClientInfo to update the session EndpointName for logging.
                 UpdateEndpointNameWithClientInfo();
-                GetSessionOrThrow().EndpointName = EndpointName;
+                _sessionHandler.EndpointName = _endpointName;
 
                 // Negotiate a protocol version. If the server options provide one, use that.
                 // Otherwise, try to use whatever the client requested as long as it's supported.
@@ -171,9 +197,9 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
                 string? protocolVersion = options.ProtocolVersion;
                 if (protocolVersion is null)
                 {
-                    protocolVersion = request?.ProtocolVersion is string clientProtocolVersion && McpSession.SupportedProtocolVersions.Contains(clientProtocolVersion) ?
+                    protocolVersion = request?.ProtocolVersion is string clientProtocolVersion && McpSessionHandler.SupportedProtocolVersions.Contains(clientProtocolVersion) ?
                         clientProtocolVersion :
-                        McpSession.LatestProtocolVersion;
+                        McpSessionHandler.LatestProtocolVersion;
                 }
 
                 return new InitializeResult
@@ -496,7 +522,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         ServerCapabilities.Logging = new();
         ServerCapabilities.Logging.SetLoggingLevelHandler = setLoggingLevelHandler;
 
-        RequestHandlers.Set(
+        _requestHandlers.Set(
             RequestMethods.LoggingSetLevel,
             (request, destinationTransport, cancellationToken) =>
             {
@@ -566,7 +592,7 @@ internal sealed class McpServer : McpEndpoint, IMcpServer
         JsonTypeInfo<TRequest> requestTypeInfo,
         JsonTypeInfo<TResponse> responseTypeInfo)
     {
-        RequestHandlers.Set(method, 
+        _requestHandlers.Set(method, 
             (request, destinationTransport, cancellationToken) =>
                 InvokeHandlerAsync(handler, request, destinationTransport, cancellationToken),
             requestTypeInfo, responseTypeInfo);
