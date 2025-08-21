@@ -21,5 +21,5 @@ jobs:
       - name: Markup Link Checker (mlc)
         uses: becheran/mlc@c925f90a9a25e16e4c4bfa29058f6f9ffa9f0d8c # v0.21.0
         with:
-          # Ignore external links that result in 403 errors during CI. Do not warn for redirects where we want to keep the vanity URL in the markdown or for GitHub links that redirect to the login.
-          args: --ignore-links "https://www.anthropic.com/*,https://hackerone.com/anthropic-vdp/*" --do-not-warn-for-redirect-to "https://modelcontextprotocol.io/*,https://github.com/login?*" ./
+          # Ignore external links that result in 403 errors during CI. Do not warn for redirects where we want to keep the vanity URL in the markdown or for GitHub links that redirect to the login, and DocFX snippet links.
+          args: --ignore-links "https://www.anthropic.com/*,https://hackerone.com/anthropic-vdp/*" --do-not-warn-for-redirect-to "https://modelcontextprotocol.io/*,https://github.com/login?*" --ignore-links "*samples/*?name=snippet_*" ./docs
