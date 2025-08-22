@@ -4,36 +4,7 @@ This sample demonstrates how to create an MCP (Model Context Protocol) server th
 
 ## Overview
 
-The sample demonstrates route-based tool filtering using the MCP SDK's `ConfigureSessionOptions` callback. Instead of using authentication headers, this approach uses URL routes to determine which tools are available to each MCP session, making it easy to test different tool configurations.
-
-## Features
-
-- **Route-Based Tool Filtering**: Different routes expose different tool sets
-- **Three Tool Categories**: 
-  - **Clock**: Time and date related tools (`/clock`)
-  - **Calculator**: Mathematical calculation tools (`/calculator`)
-  - **UserInfo**: Session and system information tools (`/userinfo`)
-- **Dynamic Tool Loading**: Tools are filtered per session based on the route used to connect
-- **Easy Testing**: Simple URL-based testing without complex authentication setup
-- **Comprehensive Logging**: Logs session configuration and tool access for monitoring
-
-## Tool Categories
-
-### Clock Tools (`/clock`)
-- **GetTime**: Gets the current server time
-- **GetDate**: Gets the current date in various formats
-- **ConvertTimeZone**: Converts time between timezones (simulated)
-
-### Calculator Tools (`/calculator`)
-- **Calculate**: Performs basic arithmetic operations (+, -, *, /)
-- **CalculatePercentage**: Calculates percentage of a number
-- **SquareRoot**: Calculates square root of a number
-
-### UserInfo Tools (`/userinfo`)
-- **GetSessionInfo**: Gets information about the current MCP session
-- **GetSystemInfo**: Gets system information about the server
-- **EchoWithContext**: Echoes messages with session context
-- **GetConnectionInfo**: Gets basic connection information
+The sample demonstrates route-based tool filtering using the SDK's `ConfigureSessionOptions` callback. You could use any mechanism, routing is just one way to achieve this. The point of the sample is to show how an MCP server can dynamically adjust the available tools for each session based on arbitrary criteria, in this case, the URL route.
 
 ## Route-Based Configuration
 
@@ -70,18 +41,11 @@ Connect your MCP client to: `https://localhost:5001/calculator`
 
 ### Testing UserInfo Tools
 Connect your MCP client to: `https://localhost:5001/userinfo`  
-- Available tools: GetSessionInfo, GetSystemInfo, EchoWithContext, GetConnectionInfo
+- Available tools: GetUserInfo
 
 ### Testing All Tools
 Connect your MCP client to: `https://localhost:5001/all` or `https://localhost:5001/`
 - Available tools: All tools from all categories
-
-### Browser Testing
-You can also test the route detection in a browser:
-- `https://localhost:5001/` - Shows available endpoints
-- `https://localhost:5001/test-category/clock` - Tests clock category detection
-- `https://localhost:5001/test-category/calculator` - Tests calculator category detection
-- `https://localhost:5001/test-category/userinfo` - Tests userinfo category detection
 
 ## How It Works
 
