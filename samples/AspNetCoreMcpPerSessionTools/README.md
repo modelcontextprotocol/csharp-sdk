@@ -147,38 +147,3 @@ static string? GetToolCategoryFromRoute(HttpContext context)
     return "all"; // Default
 }
 ```
-
-### 4. Dynamic Tool Loading
-The `AddToolsForType<T>` helper method uses reflection to discover and add all tools from a specific tool type to the session's tool collection.
-
-## Key Benefits
-
-- **Easy Testing**: No need to manage authentication tokens or headers
-- **Clear Separation**: Each tool category is isolated and can be tested independently  
-- **Flexible Architecture**: Easy to add new tool categories or modify existing ones
-- **Production Ready**: The same technique can be extended for production scenarios with proper routing logic
-- **Observable**: Built-in logging shows exactly which tools are configured for each session
-
-## Adapting for Production
-
-For production use, you might want to:
-
-1. **Add Authentication**: Combine route-based filtering with proper authentication
-2. **Database-Driven Categories**: Load tool categories and permissions from a database
-3. **User-Specific Routing**: Use user information to determine allowed categories
-4. **Advanced Routing**: Support nested categories or query parameters
-5. **Rate Limiting**: Add rate limiting per tool category
-6. **Caching**: Cache tool collections for better performance
-
-## Related Issues
-
-- [#714](https://github.com/modelcontextprotocol/csharp-sdk/issues/714) - Support varying tools/resources per user
-- [#237](https://github.com/modelcontextprotocol/csharp-sdk/issues/237) - Session-specific tool configuration  
-- [#476](https://github.com/modelcontextprotocol/csharp-sdk/issues/476) - Dynamic tool management
-- [#612](https://github.com/modelcontextprotocol/csharp-sdk/issues/612) - Per-session resource filtering
-
-## Learn More
-
-- [Model Context Protocol Specification](https://modelcontextprotocol.io/)
-- [ASP.NET Core MCP Integration](../../src/ModelContextProtocol.AspNetCore/README.md)
-- [MCP C# SDK Documentation](https://modelcontextprotocol.github.io/csharp-sdk/)
