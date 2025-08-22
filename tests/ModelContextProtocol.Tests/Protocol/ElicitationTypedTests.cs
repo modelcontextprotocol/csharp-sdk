@@ -191,6 +191,8 @@ public partial class ElicitationTypedTests : ClientServerTestBase
         Assert.Equal("success", (result.Content[0] as TextContentBlock)?.Text);
     }
 
+    [JsonConverter(typeof(CustomizableJsonStringEnumConverter<SampleRole>))]
+
     public enum SampleRole
     {
         User,
