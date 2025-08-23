@@ -262,7 +262,7 @@ public static class McpServerExtensions
         serializerOptions ??= McpJsonUtilities.DefaultOptions;
         serializerOptions.MakeReadOnly();
 
-        var schema = BuildRequestSchemaFor<T>(serializerOptions);
+        var schema = BuildRequestSchema<T>(serializerOptions);
 
         var request = new ElicitRequestParams
         {
@@ -289,7 +289,7 @@ public static class McpServerExtensions
         return new ElicitResult<T?> { Action = raw.Action, Content = typed };
     }
 
-    private static ElicitRequestParams.RequestSchema BuildRequestSchemaFor<T>(JsonSerializerOptions serializerOptions)
+    private static ElicitRequestParams.RequestSchema BuildRequestSchema<T>(JsonSerializerOptions serializerOptions)
     {
         var schema = new ElicitRequestParams.RequestSchema();
         var props = schema.Properties;
@@ -299,7 +299,7 @@ public static class McpServerExtensions
         {
             var memberType = pi.PropertyType;
             string name = pi.Name; // serialized name honoring naming policy/attributes
-            var def = CreatePrimitiveSchemaFor(memberType);
+            var def = CreatePrimitiveSchema(memberType, serializerOptions);
             if (def is not null)
             {
                 props[name] = def;
@@ -309,41 +309,25 @@ public static class McpServerExtensions
         return schema;
     }
 
-    private static ElicitRequestParams.PrimitiveSchemaDefinition? CreatePrimitiveSchemaFor(Type type)
+    private static ElicitRequestParams.PrimitiveSchemaDefinition? CreatePrimitiveSchema(Type type, JsonSerializerOptions serializerOptions)
     {
         Type t = Nullable.GetUnderlyingType(type) ?? type;
 
-        if (t == typeof(string))
+        // Check if t is a supported primitive type for elicitation (string, enum, bool, number)
+        if (
+            t == typeof(string) || t.IsEnum ||
+            t == typeof(bool) ||
+            t == typeof(byte) || t == typeof(sbyte) || t == typeof(short) || t == typeof(ushort) ||
+            t == typeof(int) || t == typeof(uint) || t == typeof(long) || t == typeof(ulong) ||
+            t == typeof(float) || t == typeof(double) || t == typeof(decimal))
         {
-            return new ElicitRequestParams.StringSchema();
+            var jsonElement = AIJsonUtilities.CreateJsonSchema(t, serializerOptions: serializerOptions);
+            var primitiveSchemaDefinition =
+                jsonElement.Deserialize(McpJsonUtilities.JsonContext.Default.PrimitiveSchemaDefinition);
+            return primitiveSchemaDefinition;
         }
 
-        if (t.IsEnum)
-        {
-            return new ElicitRequestParams.EnumSchema
-            {
-                Enum = Enum.GetNames(t)
-            };
-        }
-
-        if (t == typeof(bool))
-        {
-            return new ElicitRequestParams.BooleanSchema();
-        }
-
-        if (t == typeof(byte) || t == typeof(sbyte) || t == typeof(short) || t == typeof(ushort) ||
-            t == typeof(int) || t == typeof(uint) || t == typeof(long) || t == typeof(ulong))
-        {
-            return new ElicitRequestParams.NumberSchema { Type = "integer" };
-        }
-
-        if (t == typeof(float) || t == typeof(double) || t == typeof(decimal))
-        {
-            return new ElicitRequestParams.NumberSchema { Type = "number" };
-        }
-
-        // Unsupported type for elicitation schema
-        return null;
+        return null; // Unsupported type for elicitation schema
     }
 
     private static void ThrowIfSamplingUnsupported(IMcpServer server)
