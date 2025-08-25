@@ -81,3 +81,7 @@ docs/api
 # Rider
 .idea/
 .idea_modules/
+
+# Benchmarkdotnet
+
+benchmarks/ModelContextProtocol.Benchmarks/BenchmarkDotNet.Artifacts/
