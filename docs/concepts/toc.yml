@@ -1,5 +1,15 @@
 items:
 - name: Overview
   href: index.md
-- name: Elicitation
-  uid: elicitation
+- name: Base Protocol
+  items:
+  - name: Progress
+    uid: progress
+- name: Client Features
+  items:
+  - name: Elicitation
+    uid: elicitation
+- name: Server Features
+  items:
+  - name: Logging
+    uid: logging

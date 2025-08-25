@@ -1,0 +1,40 @@
+@HostAddress = http://localhost:3001
+
+POST {{HostAddress}}/
+Accept: application/json, text/event-stream
+Content-Type: application/json
+
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+        "clientInfo": {
+            "name": "RestClient",
+            "version": "0.1.0"
+        },
+        "capabilities": {},
+        "protocolVersion": "2025-06-18"
+    }
+}
+
+###
+
+@SessionId = JCo3W4Q7KA_evyWoFE5qwA
+
+###
+
+POST {{HostAddress}}/
+Accept: application/json, text/event-stream
+Content-Type: application/json
+MCP-Protocol-Version: 2025-06-18
+Mcp-Session-Id: {{SessionId}}
+
+{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+        "name": "logging_tool"
+    }
+}

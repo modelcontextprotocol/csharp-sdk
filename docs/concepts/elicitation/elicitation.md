@@ -1,13 +1,15 @@
 ---
 title: Elicitation
 author: mikekistler
-description: Learn about the telemetry collected by the HttpRepl.
+description: Enable interactive AI experiences by requesting user input during tool execution.
 uid: elicitation
 ---
 
+## Elicitation
+
 The **elicitation** feature allows servers to request additional information from users during interactions. This enables more dynamic and interactive AI experiences, making it easier to gather necessary context before executing tasks.
 
-## Server Support for Elicitation
+### Server Support for Elicitation
 
 Servers request structured data from users with the [ElicitAsync] extension method on [IMcpServer].
 The C# SDK registers an instance of [IMcpServer] with the dependency injection container,
@@ -27,7 +29,7 @@ The following example demonstrates how a server could request a boolean response
 
 [!code-csharp[](samples/server/Tools/InteractiveTools.cs?name=snippet_GuessTheNumber)]
 
-## Client Support for Elicitation
+### Client Support for Elicitation
 
 Elicitation is an optional feature so clients declare their support for it in their capabilities as part of the `initialize` request. In the MCP C# SDK, this is done by configuring an [ElicitationHandler] in the [McpClientOptions]:
 
