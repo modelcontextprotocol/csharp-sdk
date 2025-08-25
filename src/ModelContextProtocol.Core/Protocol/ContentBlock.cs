@@ -103,6 +103,10 @@ public abstract class ContentBlock
                         text = reader.GetString();
                         break;
 
+                    case "name":
+                        name = reader.GetString();
+                        break;
+
                     case "data":
                         data = reader.GetString();
                         break;

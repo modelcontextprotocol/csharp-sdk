@@ -2,7 +2,7 @@
 using ModelContextProtocol.Server;
 using System.ComponentModel;
 
-namespace TestServerWithHosting.Tools;
+namespace AspNetCoreMcpServer.Tools;
 
 /// <summary>
 /// This tool uses dependency injection and async method

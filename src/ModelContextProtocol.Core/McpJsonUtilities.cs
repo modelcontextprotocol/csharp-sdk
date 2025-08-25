@@ -149,6 +149,7 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(AudioContentBlock))]
     [JsonSerializable(typeof(EmbeddedResourceBlock))]
     [JsonSerializable(typeof(ResourceLinkBlock))]
+    [JsonSerializable(typeof(IEnumerable<ContentBlock>))]
     [JsonSerializable(typeof(PromptReference))]
     [JsonSerializable(typeof(ResourceTemplateReference))]
     [JsonSerializable(typeof(BlobResourceContents))]

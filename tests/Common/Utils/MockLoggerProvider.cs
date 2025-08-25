@@ -5,7 +5,7 @@ namespace ModelContextProtocol.Tests.Utils;
 
 public class MockLoggerProvider() : ILoggerProvider
 {
-    public ConcurrentQueue<(string Category, LogLevel LogLevel, string Message, Exception? Exception)> LogMessages { get; } = [];
+    public ConcurrentQueue<(string Category, LogLevel LogLevel, EventId EventId, string Message, Exception? Exception)> LogMessages { get; } = [];
 
     public ILogger CreateLogger(string categoryName)
     {
@@ -21,7 +21,7 @@ public class MockLoggerProvider() : ILoggerProvider
         public void Log<TState>(
             LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
-            mockProvider.LogMessages.Enqueue((category, logLevel, formatter(state, exception), exception));
+            mockProvider.LogMessages.Enqueue((category, logLevel, eventId, formatter(state, exception), exception));
         }
 
         public bool IsEnabled(LogLevel logLevel) => true;

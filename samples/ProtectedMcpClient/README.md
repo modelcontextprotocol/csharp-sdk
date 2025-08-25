@@ -14,7 +14,7 @@ The Protected MCP Client sample shows how to:
 
 - .NET 9.0 or later
 - A running TestOAuthServer (for OAuth authentication)
-- A running ProtectedMCPServer (for MCP services)
+- A running ProtectedMcpServer (for MCP services)
 
 ## Setup and Running
 
@@ -31,10 +31,10 @@ The OAuth server will start at `https://localhost:7029`
 
 ### Step 2: Start the Protected MCP Server
 
-Next, start the ProtectedMCPServer which provides the weather tools:
+Next, start the ProtectedMcpServer which provides the weather tools:
 
 ```bash
-cd samples\ProtectedMCPServer
+cd samples\ProtectedMcpServer
 dotnet run
 ```
 
@@ -45,7 +45,7 @@ The protected server will start at `http://localhost:7071`
 Finally, run this client:
 
 ```bash
-cd samples\ProtectedMCPClient
+cd samples\ProtectedMcpClient
 dotnet run
 ```
 
@@ -90,4 +90,4 @@ Once authenticated, the client can access weather tools including:
 ## Key Files
 
 - `Program.cs`: Main client application with OAuth flow implementation
-- `ProtectedMCPClient.csproj`: Project file with dependencies
+- `ProtectedMcpClient.csproj`: Project file with dependencies

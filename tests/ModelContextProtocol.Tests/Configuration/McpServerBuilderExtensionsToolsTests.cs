@@ -254,8 +254,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
 
         Assert.NotNull(result.Content);
         Assert.NotEmpty(result.Content);
-        Assert.Equal("hello Peter", (result.Content[0] as TextContentBlock)?.Text);
-        Assert.Equal("hello2 Peter", (result.Content[1] as TextContentBlock)?.Text);
+        Assert.Equal("""["hello Peter","hello2 Peter"]""", (result.Content[0] as TextContentBlock)?.Text);
 
         result = await client.CallToolAsync(
             "SecondCustomTool",

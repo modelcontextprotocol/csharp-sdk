@@ -356,9 +356,8 @@ public partial class McpServerToolTests
         var result = await tool.InvokeAsync(
             new RequestContext<CallToolRequestParams>(mockServer.Object),
             TestContext.Current.CancellationToken);
-        Assert.Equal(2, result.Content.Count);
-        Assert.Equal("42", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
-        Assert.Equal("43", Assert.IsType<TextContentBlock>(result.Content[1]).Text);
+        Assert.Single(result.Content);
+        Assert.Equal("""["42","43"]""", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
     }
 
     [Fact]
