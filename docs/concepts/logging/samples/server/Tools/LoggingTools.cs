@@ -16,7 +16,7 @@ public class LoggingTools
         var progressToken = context.Params?.ProgressToken;
         var stepDuration = duration / steps;
 
-        // <sinppet_LoggingConfiguration >
+        // <snippet_LoggingConfiguration >
         ILoggerProvider loggerProvider = context.Server.AsClientLoggerProvider();
         ILogger logger = loggerProvider.CreateLogger("LoggingTools");
         // </snippet_LoggingConfiguration>

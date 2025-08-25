@@ -4,11 +4,14 @@ author: mikekistler
 description:
 uid: progress
 ---
+
+## Progress
+
 The Model Context Protocol (MCP) supports [progress tracking] for long-running operations through notification messages.
 
 [progress tracking]: https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/progress
 
-Typically progress tracking is supported by server tools that perform operations that take a significant amount of time to complete, such as data processing or complex calculations.
+Typically progress tracking is supported by server tools that perform operations that take a significant amount of time to complete, such as image generation or complex calculations.
 However, progress tracking is defined in the MCP specification as a general feature that can be implemented for any request that is handled by either a server or a client.
 This project illustrates the common case of a server tool that performs a long-running operation and sends progress updates to the client.
 
@@ -24,7 +27,7 @@ The parameters passed to [sendNotificationAsync] should be an instance of [Progr
 [IMcpServer]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.Server.IMcpServer.html
 [ProgressNotificationParams]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.Protocol.ProgressNotificationParams.html
 
-The server should verify that the caller provided a `progressToken` in the request and include it in the call to [sendNotificationAsync]. The following example demonstrates how a server can send a progress notification:
+The server must verify that the caller provided a `progressToken` in the request and include it in the call to [sendNotificationAsync]. The following example demonstrates how a server can send a progress notification:
 
 [!code-csharp[](samples/server/Tools/LongRunningTools.cs?name=snippet_SendProgress)]
 
@@ -54,8 +57,13 @@ mcpClient.RegisterNotificationHandler(NotificationMethods.ProgressNotification,
     }).ConfigureAwait(false);
 ```
 
-The second way is to pass a [Progress<T>] instance to the tool method. The MCP C# SDK will automatically handle progress notifications and report them through the [Progress<T>] instance. This notification handler will only receive progress updates for the specific request that was made, rather than all progress notifications from the server.
+The second way is to pass a [Progress`<T>`] instance to the tool method. [Progress`<T>`] is a standard .NET type that provides a way to receive progress updates.
+For the purposes of MCP progress notifications, `T` should be [ProgressNotificationValue].
+The MCP C# SDK will automatically handle progress notifications and report them through the [Progress`<T>`] instance.
+This notification handler will only receive progress updates for the specific request that was made,
+rather than all progress notifications from the server.
 
-[Progress<T>]: https://learn.microsoft.com/en-us/dotnet/api/system.progress-1
+[Progress`<T>`]: https://learn.microsoft.com/en-us/dotnet/api/system.progress-1
+[ProgressNotificationValue]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.ProgressNotificationValue.html
 
 [!code-csharp[](samples/client/Program.cs?name=snippet_ProgressHandler)]

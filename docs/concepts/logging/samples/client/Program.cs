@@ -45,7 +45,7 @@ if (firstArgument is not null)
     }
 }
 
-// </snippet_LoggingHandler>
+// <snippet_LoggingHandler>
 mcpClient.RegisterNotificationHandler(NotificationMethods.LoggingMessageNotification,
     (notification, ct) =>
     {

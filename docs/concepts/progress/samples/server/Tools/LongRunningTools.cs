@@ -36,7 +36,7 @@ public class LongRunningTools
                     },
                 });
             }
-            // </snipped_SendProgress >
+            // </snippet_SendProgress >
         }
 
         return $"Long running tool completed. Duration: {duration} seconds. Steps: {steps}.";
