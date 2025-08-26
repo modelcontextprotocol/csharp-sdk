@@ -7,9 +7,9 @@ namespace ModelContextProtocol.Tests.Transport;
 
 public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : LoggedTest(testOutputHelper)
 {
-    public static bool IsStdErrCallbackSupported => !PlatformDetection.IsMonoRuntime;
-    
-    [Fact]
+    public static bool IsMonoRuntime => PlatformDetection.IsMonoRuntime;
+
+    [Fact(Skip = "Platform not supported by this test.", SkipWhen = nameof(IsMonoRuntime))]
     public async Task CreateAsync_ValidProcessInvalidServer_Throws()
     {
         string id = Guid.NewGuid().ToString("N");
@@ -22,7 +22,7 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         Assert.Contains(id, e.ToString());
     }
     
-    [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
+    [Fact(Skip = "Platform not supported by this test.", SkipWhen = nameof(IsMonoRuntime))]
     public async Task CreateAsync_ValidProcessInvalidServer_StdErrCallbackInvoked()
     {
         string id = Guid.NewGuid().ToString("N");
