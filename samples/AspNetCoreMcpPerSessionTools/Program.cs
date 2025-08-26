@@ -20,9 +20,6 @@ builder.Services.AddMcpServer()
             var toolCollection = mcpOptions.Capabilities?.Tools?.ToolCollection;
             if (toolCollection != null)
             {
-                // Clear all tools first
-                toolCollection.Clear();
-
                 // Add tools based on the requested category
                 switch (toolCategory?.ToLower())
                 {
@@ -51,10 +48,7 @@ builder.Services.AddMcpServer()
                 }
             }
         };
-    })
-    .WithTools<ClockTool>()
-    .WithTools<CalculatorTool>()
-    .WithTools<UserInfoTool>();
+    });
 
 // Add OpenTelemetry for observability
 builder.Services.AddOpenTelemetry()
