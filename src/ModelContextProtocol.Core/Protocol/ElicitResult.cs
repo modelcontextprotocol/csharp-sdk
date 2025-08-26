@@ -11,6 +11,9 @@ public sealed class ElicitResult : Result
     /// <summary>
     /// Gets or sets the user action in response to the elicitation.
     /// </summary>
+    /// <value>
+    /// Defaults to "cancel" if not explicitly set.
+    /// </value>
     /// <remarks>
     /// <list type="bullet">
     ///   <item>
@@ -23,7 +26,7 @@ public sealed class ElicitResult : Result
     ///   </item>
     ///   <item>
     ///     <term>"cancel"</term>
-    ///     <description>User dismissed without making an explicit choice</description>
+    ///     <description>User dismissed without making an explicit choice (default)</description>
     ///   </item>
     /// </list>
     /// </remarks>

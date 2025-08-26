@@ -68,22 +68,12 @@ public sealed class ClientOAuthOptions
     public Func<IReadOnlyList<Uri>, Uri?>? AuthServerSelector { get; set; }
 
     /// <summary>
-    /// Gets or sets the client name to use during dynamic client registration.
+    /// Gets or sets the options to use during dynamic client registration.
     /// </summary>
     /// <remarks>
-    /// This is a human-readable name for the client that may be displayed to users during authorization.
     /// Only used when a <see cref="ClientId"/> is not specified.
     /// </remarks>
-    public string? ClientName { get; set; }
-
-    /// <summary>
-    /// Gets or sets the client URI to use during dynamic client registration.
-    /// </summary>
-    /// <remarks>
-    /// This should be a URL pointing to the client's home page or information page.
-    /// Only used when a <see cref="ClientId"/> is not specified.
-    /// </remarks>
-    public Uri? ClientUri { get; set; }
+    public DynamicClientRegistrationOptions? DynamicClientRegistration { get; set; }
 
     /// <summary>
     /// Gets or sets additional parameters to include in the query string of the OAuth authorization request
