@@ -18,7 +18,7 @@ builder.Services.AddMcpServer()
     {
         // Configure per-session options to filter tools based on route category
         options.ConfigureSessionOptions = async (httpContext, mcpOptions, cancellationToken) =>
-        {
+        {            
             // Determine tool category from route parameters
             var toolCategory = GetToolCategoryFromRoute(httpContext);
 
@@ -29,6 +29,9 @@ builder.Services.AddMcpServer()
                 return;
             }
 
+            // Clear tools (we add them to make sure the capability is initialized)
+            toolCollection.Clear();
+
             // Get pre-populated tools for the requested category
             if (toolDictionary.TryGetValue(toolCategory.ToLower(), out var tools))
             {
@@ -38,7 +41,10 @@ builder.Services.AddMcpServer()
                 }
             }
         };
-    });
+    })
+    .WithTools<ClockTool>()
+    .WithTools<CalculatorTool>()
+    .WithTools<UserInfoTool>();
 
 // Add OpenTelemetry for observability
 builder.Services.AddOpenTelemetry()
