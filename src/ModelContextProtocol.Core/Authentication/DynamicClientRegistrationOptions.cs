@@ -11,7 +11,7 @@ public sealed class DynamicClientRegistrationOptions
     /// <remarks>
     /// This is a human-readable name for the client that may be displayed to users during authorization.
     /// </remarks>
-    public required string ClientName { get; set; }
+    public string? ClientName { get; set; }
 
     /// <summary>
     /// Gets or sets the client URI to use during dynamic client registration.
@@ -45,5 +45,5 @@ public sealed class DynamicClientRegistrationOptions
     /// The implementation should save the client credentials securely for future use.
     /// </para>
     /// </remarks>
-    public DynamicClientRegistrationDelegate? DynamicClientRegistrationDelegate { get; set; }
+    public Func<DynamicClientRegistrationResponse, CancellationToken, Task>? ResponseDelegate { get; set; }
 }

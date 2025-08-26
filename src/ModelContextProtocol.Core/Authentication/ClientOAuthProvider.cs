@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using System.Collections.Specialized;
 using System.Diagnostics.CodeAnalysis;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
@@ -28,12 +27,12 @@ internal sealed partial class ClientOAuthProvider
     private readonly IDictionary<string, string> _additionalAuthorizationParameters;
     private readonly Func<IReadOnlyList<Uri>, Uri?> _authServerSelector;
     private readonly AuthorizationRedirectDelegate _authorizationRedirectDelegate;
-    private readonly DynamicClientRegistrationDelegate? _dynamicClientRegistrationDelegate;
 
-    // _clientName, _clientUri, and _initialAccessToken is used for dynamic client registration (RFC 7591)
-    private readonly string? _clientName;
-    private readonly Uri? _clientUri;
-    private readonly string? _initialAccessToken;
+    // _dcrClientName, _dcrClientUri, _dcrInitialAccessToken and _dcrResponseDelegate are used for dynamic client registration (RFC 7591)
+    private readonly string? _dcrClientName;
+    private readonly Uri? _dcrClientUri;
+    private readonly string? _dcrInitialAccessToken;
+    private readonly Func<DynamicClientRegistrationResponse, CancellationToken, Task>? _dcrResponseDelegate;
 
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
@@ -79,20 +78,10 @@ internal sealed partial class ClientOAuthProvider
         // Set up authorization URL handler (use default if not provided)
         _authorizationRedirectDelegate = options.AuthorizationRedirectDelegate ?? DefaultAuthorizationUrlHandler;
 
-        if (string.IsNullOrEmpty(_clientId))
-        {
-            if (options.DynamicClientRegistration is null)
-            {
-                throw new ArgumentException("ClientOAuthOptions.DynamicClientRegistration must be configured when ClientId is not set.", nameof(options));
-            }
-
-            _clientName = options.DynamicClientRegistration.ClientName;
-            _clientUri = options.DynamicClientRegistration.ClientUri;
-            _initialAccessToken = options.DynamicClientRegistration.InitialAccessToken;
-
-            // Set up dynamic client registration delegate
-            _dynamicClientRegistrationDelegate = options.DynamicClientRegistration.DynamicClientRegistrationDelegate;
-        }
+        _dcrClientName = options.DynamicClientRegistration?.ClientName;
+        _dcrClientUri = options.DynamicClientRegistration?.ClientUri;
+        _dcrInitialAccessToken = options.DynamicClientRegistration?.InitialAccessToken;
+        _dcrResponseDelegate = options.DynamicClientRegistration?.ResponseDelegate;
     }
 
     /// <summary>
@@ -463,8 +452,8 @@ internal sealed partial class ClientOAuthProvider
             GrantTypes = ["authorization_code", "refresh_token"],
             ResponseTypes = ["code"],
             TokenEndpointAuthMethod = "client_secret_post",
-            ClientName = _clientName,
-            ClientUri = _clientUri?.ToString(),
+            ClientName = _dcrClientName,
+            ClientUri = _dcrClientUri?.ToString(),
             Scope = _scopes is not null ? string.Join(" ", _scopes) : null
         };
 
@@ -476,9 +465,9 @@ internal sealed partial class ClientOAuthProvider
             Content = requestContent
         };
 
-        if (!string.IsNullOrEmpty(_initialAccessToken))
+        if (!string.IsNullOrEmpty(_dcrInitialAccessToken))
         {
-            request.Headers.Authorization = new AuthenticationHeaderValue(BearerScheme, _initialAccessToken);
+            request.Headers.Authorization = new AuthenticationHeaderValue(BearerScheme, _dcrInitialAccessToken);
         }
 
         using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
@@ -509,9 +498,9 @@ internal sealed partial class ClientOAuthProvider
 
         LogDynamicClientRegistrationSuccessful(_clientId!);
 
-        if (_dynamicClientRegistrationDelegate is not null)
+        if (_dcrResponseDelegate is not null)
         {
-            await _dynamicClientRegistrationDelegate(registrationResponse, cancellationToken).ConfigureAwait(false);
+            await _dcrResponseDelegate(registrationResponse, cancellationToken).ConfigureAwait(false);
         }
     }
 

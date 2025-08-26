@@ -174,8 +174,6 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        DynamicClientRegistrationResponse? dcrResponse = null;
-
         await using var transport = new SseClientTransport(new()
         {
             Endpoint = new(McpServerUrl),
@@ -188,21 +186,12 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
                 {
                     ClientName = "Test MCP Client",
                     ClientUri = new Uri("https://example.com"),
-                    DynamicClientRegistrationDelegate = (response, cancellationToken) =>
-                    {
-                        dcrResponse = response;
-                        return Task.CompletedTask;
-                    },
                 },
             },
         }, HttpClient, LoggerFactory);
 
         await using var client = await McpClientFactory.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.NotNull(dcrResponse);
-        Assert.False(string.IsNullOrEmpty(dcrResponse.ClientId));
-        Assert.False(string.IsNullOrEmpty(dcrResponse.ClientSecret));
     }
 
     [Fact]

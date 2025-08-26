@@ -155,7 +155,7 @@ public class AuthEventTests : KestrelInMemoryTest, IAsyncDisposable
                     {
                         ClientName = "Test MCP Client",
                         ClientUri = new Uri("https://example.com"),
-                        DynamicClientRegistrationDelegate = (response, cancellationToken) =>
+                        ResponseDelegate = (response, cancellationToken) =>
                         {
                             dcrResponse = response;
                             return Task.CompletedTask;
