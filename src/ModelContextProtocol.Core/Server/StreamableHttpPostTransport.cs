@@ -91,6 +91,11 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
 
         message.RelatedTransport = this;
 
+        if (parentTransport.FlowExecutionContextFromRequests)
+        {
+            message.ExecutionContext = ExecutionContext.Capture();
+        }
+
         await parentTransport.MessageWriter.WriteAsync(message, cancellationToken).ConfigureAwait(false);
     }
 }

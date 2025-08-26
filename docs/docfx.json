@@ -42,6 +42,7 @@
       "_appLogoPath": "images/mcp.svg",
       "_appFaviconPath": "images/favicon.ico",
       "_enableSearch": true,
+      "_disableNextArticle": true,
       "pdf": false
     }
   }
