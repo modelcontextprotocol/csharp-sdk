@@ -3,8 +3,14 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 using AspNetCoreMcpPerSessionTools.Tools;
 using ModelContextProtocol.Server;
+using System.Collections.Concurrent;
+using System.Reflection;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Create and populate the tool dictionary at startup
+var toolDictionary = new ConcurrentDictionary<string, McpServerTool[]>();
+PopulateToolDictionary(toolDictionary);
 
 // Register all MCP server tools - they will be filtered per session based on route
 builder.Services.AddMcpServer()
@@ -18,33 +24,17 @@ builder.Services.AddMcpServer()
 
             // Get the tool collection that we can modify per session
             var toolCollection = mcpOptions.Capabilities?.Tools?.ToolCollection;
-            if (toolCollection != null)
+            if (toolCollection == null)
             {
-                // Add tools based on the requested category
-                switch (toolCategory?.ToLower())
+                return;
+            }
+
+            // Get pre-populated tools for the requested category
+            if (toolDictionary.TryGetValue(toolCategory.ToLower(), out var tools))
+            {
+                foreach (var tool in tools)
                 {
-                    case "clock":
-                        // Clock category gets time/date tools
-                        AddToolsForType<ClockTool>(toolCollection);
-                        break;
-                        
-                    case "calculator":
-                        // Calculator category gets mathematical tools
-                        AddToolsForType<CalculatorTool>(toolCollection);
-                        break;
-                        
-                    case "userinfo":
-                        // UserInfo category gets session and system information tools
-                        AddToolsForType<UserInfoTool>(toolCollection);
-                        break;
-                        
-                    case "all":
-                    default:
-                        // Default or "all" category gets all tools
-                        AddToolsForType<ClockTool>(toolCollection);
-                        AddToolsForType<CalculatorTool>(toolCollection);
-                        AddToolsForType<UserInfoTool>(toolCollection);
-                        break;
+                    toolCollection.Add(tool);
                 }
             }
         };
@@ -68,8 +58,8 @@ app.MapMcp("/{toolCategory?}");
 
 app.Run();
 
-// Helper methods for route-based tool category detection
-static string? GetToolCategoryFromRoute(HttpContext context)
+// Helper method for route-based tool category detection
+static string GetToolCategoryFromRoute(HttpContext context)
 {
     // Try to get tool category from route values
     if (context.Request.RouteValues.TryGetValue("toolCategory", out var categoryObj) && categoryObj is string category)
@@ -81,20 +71,39 @@ static string? GetToolCategoryFromRoute(HttpContext context)
     return "all";
 }
 
-static void AddToolsForType<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(
-    System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)]T>(
-    McpServerPrimitiveCollection<McpServerTool> toolCollection)
+// Helper method to populate the tool dictionary at startup
+static void PopulateToolDictionary(ConcurrentDictionary<string, McpServerTool[]> toolDictionary)
 {
+    // Get tools for each category
+    var clockTools = GetToolsForType<ClockTool>();
+    var calculatorTools = GetToolsForType<CalculatorTool>();
+    var userInfoTools = GetToolsForType<UserInfoTool>();
+    McpServerTool[] allTools = [.. clockTools,
+                                .. calculatorTools,
+                                .. userInfoTools];
+
+    // Populate the dictionary with tools for each category
+    toolDictionary.TryAdd("clock", clockTools);
+    toolDictionary.TryAdd("calculator", calculatorTools);
+    toolDictionary.TryAdd("userinfo", userInfoTools);
+    toolDictionary.TryAdd("all", allTools);
+}
+
+// Helper method to get tools for a specific type using reflection
+static McpServerTool[] GetToolsForType<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(
+    System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>()
+{
+    var tools = new List<McpServerTool>();
     var toolType = typeof(T);
-    var methods = toolType.GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+    var methods = toolType.GetMethods(BindingFlags.Public | BindingFlags.Static)
         .Where(m => m.GetCustomAttributes(typeof(McpServerToolAttribute), false).Any());
-    
+
     foreach (var method in methods)
     {
         try
         {
             var tool = McpServerTool.Create(method, target: null, new McpServerToolCreateOptions());
-            toolCollection.Add(tool);
+            tools.Add(tool);
         }
         catch (Exception ex)
         {
@@ -102,4 +111,6 @@ static void AddToolsForType<[System.Diagnostics.CodeAnalysis.DynamicallyAccessed
             Console.WriteLine($"Failed to add tool {toolType.Name}.{method.Name}: {ex.Message}");
         }
     }
+
+    return [.. tools];
 }
