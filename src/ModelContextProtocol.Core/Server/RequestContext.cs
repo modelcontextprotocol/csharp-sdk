@@ -1,3 +1,6 @@
+using System.Security.Claims;
+using ModelContextProtocol.Protocol;
+
 namespace ModelContextProtocol.Server;
 
 /// <summary>
@@ -15,19 +18,23 @@ public sealed class RequestContext<TParams>
     private IMcpServer _server;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="RequestContext{TParams}"/> class with the specified server.
+    /// Initializes a new instance of the <see cref="RequestContext{TParams}"/> class with the specified server and JSON-RPC request.
     /// </summary>
     /// <param name="server">The server with which this instance is associated.</param>
-    public RequestContext(IMcpServer server)
+    /// <param name="jsonRpcRequest">The JSON-RPC request associated with this context.</param>
+    public RequestContext(IMcpServer server, JsonRpcRequest jsonRpcRequest)
     {
         Throw.IfNull(server);
+        Throw.IfNull(jsonRpcRequest);
 
         _server = server;
+        JsonRpcRequest = jsonRpcRequest;
         Services = server.Services;
+        User = jsonRpcRequest.Context?.User;
     }
 
     /// <summary>Gets or sets the server with which this instance is associated.</summary>
-    public IMcpServer Server 
+    public IMcpServer Server
     {
         get => _server;
         set
@@ -46,6 +53,23 @@ public sealed class RequestContext<TParams>
     /// </remarks>
     public IServiceProvider? Services { get; set; }
 
+    /// <summary>Gets or sets the user associated with this request.</summary>
+    public ClaimsPrincipal? User { get; set; }
+
     /// <summary>Gets or sets the parameters associated with this request.</summary>
     public TParams? Params { get; set; }
+
+    /// <summary>
+    /// Gets or sets the primitive that matched the request.
+    /// </summary>
+    public IMcpServerPrimitive? MatchedPrimitive { get; set; }
+
+    /// <summary>
+    /// Gets the JSON-RPC request associated with this context.
+    /// </summary>
+    /// <remarks>
+    /// This property provides access to the complete JSON-RPC request that initiated this handler invocation,
+    /// including the method name, parameters, request ID, and associated transport and user information.
+    /// </remarks>
+    public JsonRpcRequest JsonRpcRequest { get; }
 }

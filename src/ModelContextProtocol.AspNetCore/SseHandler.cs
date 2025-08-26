@@ -2,7 +2,6 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Collections.Concurrent;
 using System.Diagnostics;
@@ -97,7 +96,7 @@ internal sealed class SseHandler(
             return;
         }
 
-        var message = (JsonRpcMessage?)await context.Request.ReadFromJsonAsync(McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)), context.RequestAborted);
+        var message = await StreamableHttpHandler.ReadJsonRpcMessageAsync(context);
         if (message is null)
         {
             await Results.BadRequest("No message in request body.").ExecuteAsync(context);

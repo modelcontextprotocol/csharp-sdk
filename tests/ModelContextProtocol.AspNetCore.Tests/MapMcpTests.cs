@@ -112,6 +112,35 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     }
 
     [Fact]
+    public async Task ClaimsPrincipal_CanBeInjectedIntoToolMethod()
+    {
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<ClaimsPrincipalTools>();
+        Builder.Services.AddHttpContextAccessor();
+
+        await using var app = Builder.Build();
+
+        app.Use(next => async context =>
+        {
+            context.User = CreateUser("TestUser");
+            await next(context);
+        });
+
+        app.MapMcp();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var client = await ConnectAsync();
+
+        var response = await client.CallToolAsync(
+            "echo_claims_principal",
+            new Dictionary<string, object?>() { ["message"] = "Hello world!" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var content = Assert.Single(response.Content.OfType<TextContentBlock>());
+        Assert.Equal("TestUser: Hello world!", content.Text);
+    }
+
+    [Fact]
     public async Task Sampling_DoesNotCloseStream_Prematurely()
     {
         Assert.SkipWhen(Stateless, "Sampling is not supported in stateless mode.");
@@ -196,6 +225,17 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
         {
             var httpContext = contextAccessor.HttpContext ?? throw new Exception("HttpContext unavailable!");
             var userName = httpContext.User.Identity?.Name ?? "anonymous";
+            return $"{userName}: {message}";
+        }
+    }
+
+    [McpServerToolType]
+    protected class ClaimsPrincipalTools
+    {
+        [McpServerTool, Description("Echoes the input back to the client with the user name from ClaimsPrincipal.")]
+        public string EchoClaimsPrincipal(ClaimsPrincipal? user, string message)
+        {
+            var userName = user?.Identity?.Name ?? "anonymous";
             return $"{userName}: {message}";
         }
     }

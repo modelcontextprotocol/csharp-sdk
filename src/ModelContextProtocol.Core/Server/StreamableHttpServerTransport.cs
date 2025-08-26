@@ -1,5 +1,6 @@
 using ModelContextProtocol.Protocol;
 using System.IO.Pipelines;
+using System.Security.Claims;
 using System.Threading.Channels;
 
 namespace ModelContextProtocol.Server;
@@ -49,8 +50,8 @@ public sealed class StreamableHttpServerTransport : ITransport
     public bool Stateless { get; init; }
 
     /// <summary>
-    /// Gets a value indicating whether the execution context should flow from the calls to <see cref="HandlePostRequest(IDuplexPipe, CancellationToken)"/>
-    /// to the corresponding <see cref="JsonRpcMessage.ExecutionContext"/> emitted by the <see cref="MessageReader"/>.
+    /// Gets a value indicating whether the execution context should flow from the calls to <see cref="HandlePostRequest(JsonRpcMessage, Stream, CancellationToken)"/>
+    /// to the corresponding <see cref="JsonRpcMessageContext.ExecutionContext"/> property contained in the <see cref="JsonRpcMessage"/> instances returned by the <see cref="MessageReader"/>.
     /// </summary>
     /// <remarks>
     /// Defaults to <see langword="false"/>.
@@ -75,8 +76,10 @@ public sealed class StreamableHttpServerTransport : ITransport
     /// <param name="sseResponseStream">The response stream to write MCP JSON-RPC messages as SSE events to.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task representing the send loop that writes JSON-RPC messages to the SSE response stream.</returns>
-    public async Task HandleGetRequest(Stream sseResponseStream, CancellationToken cancellationToken)
+    public async Task HandleGetRequest(Stream sseResponseStream, CancellationToken cancellationToken = default)
     {
+        Throw.IfNull(sseResponseStream);
+
         if (Stateless)
         {
             throw new InvalidOperationException("GET requests are not supported in stateless mode.");
@@ -96,23 +99,33 @@ public sealed class StreamableHttpServerTransport : ITransport
     /// <see cref="JsonRpcResponse"/> and other correlated messages are sent back to the client directly in response
     /// to the <see cref="JsonRpcRequest"/> that initiated the message.
     /// </summary>
-    /// <param name="httpBodies">The duplex pipe facilitates the reading and writing of HTTP request and response data.</param>
-    /// <param name="cancellationToken">This token allows for the operation to be canceled if needed.</param>
+    /// <param name="message">The JSON-RPC message received from the client via the POST request body.</param>
+    /// <param name="cancellationToken">This token allows for the operation to be canceled if needed. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <param name="responseStream">The POST response body to write MCP JSON-RPC messages to.</param>
     /// <returns>
     /// True, if data was written to the response body.
     /// False, if nothing was written because the request body did not contain any <see cref="JsonRpcRequest"/> messages to respond to.
     /// The HTTP application should typically respond with an empty "202 Accepted" response in this scenario.
     /// </returns>
-    public async Task<bool> HandlePostRequest(IDuplexPipe httpBodies, CancellationToken cancellationToken)
+    /// <para>
+    /// If 's an authenticated <see cref="ClaimsPrincipal"/> sent the message, that can be included in the <see cref="JsonRpcMessage.Context"/>.
+    /// No other part of the context should be set.
+    /// </para>
+    public async Task<bool> HandlePostRequest(JsonRpcMessage message, Stream responseStream, CancellationToken cancellationToken = default)
     {
+        Throw.IfNull(message);
+        Throw.IfNull(responseStream);
+
         using var postCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token, cancellationToken);
-        await using var postTransport = new StreamableHttpPostTransport(this, httpBodies);
-        return await postTransport.RunAsync(postCts.Token).ConfigureAwait(false);
+        await using var postTransport = new StreamableHttpPostTransport(this, responseStream);
+        return await postTransport.HandlePostAsync(message, postCts.Token).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
     public async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
+        Throw.IfNull(message);
+
         if (Stateless)
         {
             throw new InvalidOperationException("Unsolicited server to client messages are not supported in stateless mode.");
@@ -126,6 +139,7 @@ public sealed class StreamableHttpServerTransport : ITransport
     {
         try
         {
+            _incomingChannel.Writer.TryComplete();
             await _disposeCts.CancelAsync();
         }
         finally

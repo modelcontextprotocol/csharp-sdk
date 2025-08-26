@@ -13,7 +13,7 @@ public class MapMcpSseTests(ITestOutputHelper outputHelper) : MapMcpTests(output
     [InlineData("/mcp/secondary")]
     public async Task Allows_Customizing_Route(string pattern)
     {
-        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless);
+        Builder.Services.AddMcpServer().WithHttpTransport();
         await using var app = Builder.Build();
 
         app.MapMcp(pattern);

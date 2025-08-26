@@ -20,7 +20,7 @@ namespace ModelContextProtocol.Server;
 /// </para>
 /// <para>
 /// Most commonly, <see cref="McpServerPrompt"/> instances are created using the static <see cref="M:McpServerPrompt.Create"/> methods.
-/// These methods enable creating an <see cref="McpServerPrompt"/> for a method, specified via a <see cref="Delegate"/> or 
+/// These methods enable creating an <see cref="McpServerPrompt"/> for a method, specified via a <see cref="Delegate"/> or
 /// <see cref="MethodInfo"/>, and are what are used implicitly by WithPromptsFromAssembly and WithPrompts. The <see cref="M:McpServerPrompt.Create"/> methods
 /// create <see cref="McpServerPrompt"/> instances capable of working with a large variety of .NET method signatures, automatically handling
 /// how parameters are marshaled into the method from the JSON received from the MCP client, and how the return value is marshaled back
@@ -61,15 +61,15 @@ namespace ModelContextProtocol.Server;
 ///   </item>
 ///   <item>
 ///     <description>
-///       When the <see cref="McpServerPrompt"/> is constructed, it may be passed an <see cref="IServiceProvider"/> via 
+///       When the <see cref="McpServerPrompt"/> is constructed, it may be passed an <see cref="IServiceProvider"/> via
 ///       <see cref="McpServerPromptCreateOptions.Services"/>. Any parameter that can be satisfied by that <see cref="IServiceProvider"/>
-///       according to <see cref="IServiceProviderIsService"/> will be resolved from the <see cref="IServiceProvider"/> provided to 
+///       according to <see cref="IServiceProviderIsService"/> will be resolved from the <see cref="IServiceProvider"/> provided to
 ///       <see cref="GetAsync"/> rather than from the argument collection.
 ///     </description>
 ///   </item>
 ///   <item>
 ///     <description>
-///       Any parameter attributed with <see cref="FromKeyedServicesAttribute"/> will similarly be resolved from the 
+///       Any parameter attributed with <see cref="FromKeyedServicesAttribute"/> will similarly be resolved from the
 ///       <see cref="IServiceProvider"/> provided to <see cref="GetAsync"/> rather than from the argument collection.
 ///     </description>
 ///   </item>
@@ -80,7 +80,7 @@ namespace ModelContextProtocol.Server;
 /// </para>
 /// <para>
 /// In general, the data supplied via the <see cref="GetPromptRequestParams.Arguments"/>'s dictionary is passed along from the caller and
-/// should thus be considered unvalidated and untrusted. To provide validated and trusted data to the invocation of the prompt, consider having 
+/// should thus be considered unvalidated and untrusted. To provide validated and trusted data to the invocation of the prompt, consider having
 /// the prompt be an instance method, referring to data stored in the instance, or using an instance or parameters resolved from the <see cref="IServiceProvider"/>
 /// to provide data to the method.
 /// </para>
@@ -129,6 +129,15 @@ public abstract class McpServerPrompt : IMcpServerPrimitive
     public abstract Prompt ProtocolPrompt { get; }
 
     /// <summary>
+    /// Gets the metadata for this prompt instance.
+    /// </summary>
+    /// <remarks>
+    /// Contains attributes from the associated MethodInfo and declaring class (if any),
+    /// with class-level attributes appearing before method-level attributes.
+    /// </remarks>
+    public abstract IReadOnlyList<object> Metadata { get; }
+
+    /// <summary>
     /// Gets the prompt, rendering it with the provided request parameters and returning the prompt result.
     /// </summary>
     /// <param name="request">
@@ -170,7 +179,7 @@ public abstract class McpServerPrompt : IMcpServerPrimitive
     /// <exception cref="ArgumentNullException"><paramref name="method"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="method"/> is an instance method but <paramref name="target"/> is <see langword="null"/>.</exception>
     public static McpServerPrompt Create(
-        MethodInfo method, 
+        MethodInfo method,
         object? target = null,
         McpServerPromptCreateOptions? options = null) =>
         AIFunctionMcpServerPrompt.Create(method, target, options);

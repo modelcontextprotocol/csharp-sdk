@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Server;
 
@@ -28,6 +29,9 @@ public static class HttpMcpServerBuilderExtensions
         builder.Services.TryAddSingleton<SseHandler>();
         builder.Services.AddHostedService<IdleTrackingBackgroundService>();
         builder.Services.AddDataProtection();
+
+        // Register authorization filter setup for automatic filter configuration
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IConfigureOptions<McpServerOptions>, AuthorizationFilterSetup>());
 
         if (configureOptions is not null)
         {

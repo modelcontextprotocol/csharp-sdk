@@ -13,3 +13,7 @@ items:
   items:
   - name: Logging
     uid: logging
+- name: Server Features
+  items:
+  - name: Filters
+    uid: filters

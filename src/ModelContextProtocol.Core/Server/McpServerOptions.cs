@@ -79,4 +79,14 @@ public sealed class McpServerOptions
     /// </para>
     /// </remarks>
     public Implementation? KnownClientInfo { get; set; }
+
+    /// <summary>
+    /// Gets the filter collections for MCP server handlers.
+    /// </summary>
+    /// <remarks>
+    /// This property provides access to filter collections that can be used to modify the behavior 
+    /// of various MCP server handlers. Filters are applied in reverse order, so the last filter 
+    /// added will be the outermost (first to execute).
+    /// </remarks>
+    public McpServerFilters Filters { get; } = new();
 }

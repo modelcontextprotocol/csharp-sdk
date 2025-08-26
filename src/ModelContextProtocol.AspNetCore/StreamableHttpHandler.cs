@@ -8,7 +8,6 @@ using Microsoft.Net.Http.Headers;
 using ModelContextProtocol.AspNetCore.Stateless;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using System.IO.Pipelines;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -26,6 +25,8 @@ internal sealed class StreamableHttpHandler(
     IServiceProvider applicationServices)
 {
     private const string McpSessionIdHeaderName = "Mcp-Session-Id";
+
+    private static readonly JsonTypeInfo<JsonRpcMessage> s_messageTypeInfo = GetRequiredJsonTypeInfo<JsonRpcMessage>();
     private static readonly JsonTypeInfo<JsonRpcError> s_errorTypeInfo = GetRequiredJsonTypeInfo<JsonRpcError>();
 
     public HttpServerTransportOptions HttpServerTransportOptions => httpServerTransportOptions.Value;
@@ -55,8 +56,17 @@ internal sealed class StreamableHttpHandler(
 
         await using var _ = await session.AcquireReferenceAsync(context.RequestAborted);
 
+        var message = await ReadJsonRpcMessageAsync(context);
+        if (message is null)
+        {
+            await WriteJsonRpcErrorAsync(context,
+                "Bad Request: The POST body did not contain a valid JSON-RPC message.",
+                StatusCodes.Status400BadRequest);
+            return;
+        }
+
         InitializeSseResponse(context);
-        var wroteResponse = await session.Transport.HandlePostRequest(new HttpDuplexPipe(context), context.RequestAborted);
+        var wroteResponse = await session.Transport.HandlePostRequest(message, context.Response.Body, context.RequestAborted);
         if (!wroteResponse)
         {
             // We wound up writing nothing, so there should be no Content-Type response header.
@@ -264,6 +274,24 @@ internal sealed class StreamableHttpHandler(
         return WebEncoders.Base64UrlEncode(buffer);
     }
 
+    internal static async Task<JsonRpcMessage?> ReadJsonRpcMessageAsync(HttpContext context)
+    {
+        // Implementation for reading a JSON-RPC message from the request body
+        var message = await context.Request.ReadFromJsonAsync(s_messageTypeInfo, context.RequestAborted);
+
+        if (context.User?.Identity?.IsAuthenticated ?? false && message is not null)
+        {
+            // We get weird CS0131 errors only on the Windows build GitHub Action if we use "message?.Context = ..."
+            // https://productionresultssa0.blob.core.windows.net/actions-results/f2218319-0fdd-473b-891d-06e5a4a0f826/workflow-job-run-98901492-cf7c-5406-85d9-0f7057e0516f/logs/job/job-logs.txt?rsct=text%2Fplain&se=2025-08-26T16%3A06%3A31Z&sig=RvEQo6DgrpDUW9mnbgDvf6FVDAAoHKzk9rsDdcPxOhw%3D&ske=2025-08-27T03%3A39%3A43Z&skoid=ca7593d4-ee42-46cd-af88-8b886a2f84eb&sks=b&skt=2025-08-26T15%3A39%3A43Z&sktid=398a6654-997b-47e9-b12b-9515b896b4de&skv=2025-05-05&sp=r&spr=https&sr=b&st=2025-08-26T15%3A56%3A26Z&sv=2025-05-05
+            message!.Context = new()
+            {
+                User = context.User,
+            };
+        }
+
+        return message;
+    }
+
     private void ScheduleStatelessSessionIdWrite(HttpContext context, StreamableHttpServerTransport transport)
     {
         transport.OnInitRequestReceived = initRequestParams =>
@@ -304,17 +332,11 @@ internal sealed class StreamableHttpHandler(
         return null;
     }
 
-    private static JsonTypeInfo<T> GetRequiredJsonTypeInfo<T>() => (JsonTypeInfo<T>)McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(T));
+    internal static JsonTypeInfo<T> GetRequiredJsonTypeInfo<T>() => (JsonTypeInfo<T>)McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(T));
 
     private static bool MatchesApplicationJsonMediaType(MediaTypeHeaderValue acceptHeaderValue)
         => acceptHeaderValue.MatchesMediaType("application/json");
 
     private static bool MatchesTextEventStreamMediaType(MediaTypeHeaderValue acceptHeaderValue)
         => acceptHeaderValue.MatchesMediaType("text/event-stream");
-
-    private sealed class HttpDuplexPipe(HttpContext context) : IDuplexPipe
-    {
-        public PipeReader Input => context.Request.BodyReader;
-        public PipeWriter Output => context.Response.BodyWriter;
-    }
 }

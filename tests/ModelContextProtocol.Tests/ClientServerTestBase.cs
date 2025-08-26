@@ -20,7 +20,8 @@ public abstract class ClientServerTestBase : LoggedTest, IAsyncDisposable
         : base(testOutputHelper)
     {
         ServiceCollection sc = new();
-        sc.AddSingleton(LoggerFactory);
+        sc.AddLogging();
+        sc.AddSingleton(XunitLoggerProvider);
         _builder = sc
             .AddMcpServer()
             .WithStreamServerTransport(_clientToServerPipe.Reader.AsStream(), _serverToClientPipe.Writer.AsStream());

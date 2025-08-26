@@ -1,16 +1,17 @@
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
+using System.Security.Claims;
 
 namespace ModelContextProtocol.Server;
 
 /// <summary>Augments a service provider with additional request-related services.</summary>
-internal sealed class RequestServiceProvider<TRequestParams>(
-    RequestContext<TRequestParams> request, IServiceProvider? innerServices) :
-    IServiceProvider,  IKeyedServiceProvider,
-    IServiceProviderIsService, IServiceProviderIsKeyedService,
+internal sealed class RequestServiceProvider<TRequestParams>(RequestContext<TRequestParams> request) :
+    IServiceProvider,  IKeyedServiceProvider, IServiceProviderIsService, IServiceProviderIsKeyedService,
     IDisposable,  IAsyncDisposable
     where TRequestParams : RequestParams
 {
+    private readonly IServiceProvider? _innerServices = request.Services;
+
     /// <summary>Gets the request associated with this instance.</summary>
     public RequestContext<TRequestParams> Request => request;
 
@@ -18,7 +19,8 @@ internal sealed class RequestServiceProvider<TRequestParams>(
     public static bool IsAugmentedWith(Type serviceType) =>
         serviceType == typeof(RequestContext<TRequestParams>) ||
         serviceType == typeof(IMcpServer) ||
-        serviceType == typeof(IProgress<ProgressNotificationValue>);
+        serviceType == typeof(IProgress<ProgressNotificationValue>) ||
+        serviceType == typeof(ClaimsPrincipal);
 
     /// <inheritdoc />
     public object? GetService(Type serviceType) =>
@@ -26,22 +28,23 @@ internal sealed class RequestServiceProvider<TRequestParams>(
         serviceType == typeof(IMcpServer) ? request.Server :
         serviceType == typeof(IProgress<ProgressNotificationValue>) ?
             (request.Params?.ProgressToken is { } progressToken ? new TokenProgress(request.Server, progressToken) : NullProgress.Instance) :
-        innerServices?.GetService(serviceType);
+        serviceType == typeof(ClaimsPrincipal) ? request.User :
+        _innerServices?.GetService(serviceType);
 
     /// <inheritdoc />
     public bool IsService(Type serviceType) =>
         IsAugmentedWith(serviceType) ||
-        (innerServices as IServiceProviderIsService)?.IsService(serviceType) is true;
+        (_innerServices as IServiceProviderIsService)?.IsService(serviceType) is true;
 
     /// <inheritdoc />
     public bool IsKeyedService(Type serviceType, object? serviceKey) =>
         (serviceKey is null && IsService(serviceType)) ||
-        (innerServices as IServiceProviderIsKeyedService)?.IsKeyedService(serviceType, serviceKey) is true;
+        (_innerServices as IServiceProviderIsKeyedService)?.IsKeyedService(serviceType, serviceKey) is true;
 
     /// <inheritdoc />
     public object? GetKeyedService(Type serviceType, object? serviceKey) =>
         serviceKey is null ? GetService(serviceType) :
-        (innerServices as IKeyedServiceProvider)?.GetKeyedService(serviceType, serviceKey);
+        (_innerServices as IKeyedServiceProvider)?.GetKeyedService(serviceType, serviceKey);
 
     /// <inheritdoc />
     public object GetRequiredKeyedService(Type serviceType, object? serviceKey) =>
@@ -50,9 +53,9 @@ internal sealed class RequestServiceProvider<TRequestParams>(
 
     /// <inheritdoc />
     public void Dispose() =>
-        (innerServices as IDisposable)?.Dispose();
+        (_innerServices as IDisposable)?.Dispose();
 
     /// <inheritdoc />
     public ValueTask DisposeAsync() =>
-        innerServices is IAsyncDisposable asyncDisposable ? asyncDisposable.DisposeAsync() : default;
+        _innerServices is IAsyncDisposable asyncDisposable ? asyncDisposable.DisposeAsync() : default;
 }
