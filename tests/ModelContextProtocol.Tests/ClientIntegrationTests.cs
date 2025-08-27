@@ -52,8 +52,12 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         // Assert
         Assert.NotNull(client.ServerCapabilities);
         Assert.NotNull(client.ServerInfo);
+        Assert.NotNull(client.NegotiatedProtocolVersion);
+
         if (clientId != "everything")   // Note: Comment the below assertion back when the everything server is updated to provide instructions
+        {
             Assert.NotNull(client.ServerInstructions);
+        }
 
         Assert.Null(client.SessionId);
     }

@@ -39,13 +39,22 @@ public abstract partial class McpSession : IMcpEndpoint, IAsyncDisposable
     public abstract string? SessionId { get; }
 
     /// <summary>
+    /// Gets the negotiated protocol version for the current MCP session.
+    /// </summary>
+    /// <remarks>
+    /// Returns the protocol version negotiated during session initialization,
+    /// or <see langword="null"/> if initialization hasn't yet occurred.
+    /// </remarks>
+    public abstract string? NegotiatedProtocolVersion { get; }
+
+    /// <summary>
     /// Sends a JSON-RPC request to the connected session and waits for a response.
     /// </summary>
     /// <param name="request">The JSON-RPC request to send.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task containing the session's response.</returns>
     /// <exception cref="InvalidOperationException">The transport is not connected, or another error occurs during request processing.</exception>
-    /// <exception cref="McpException">An error occured during request processing.</exception>
+    /// <exception cref="McpException">An error occurred during request processing.</exception>
     /// <remarks>
     /// This method provides low-level access to send raw JSON-RPC requests. For most use cases,
     /// consider using the strongly-typed methods that provide a more convenient API.

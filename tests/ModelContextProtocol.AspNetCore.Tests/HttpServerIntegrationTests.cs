@@ -52,6 +52,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         // Assert
         Assert.NotNull(client.ServerCapabilities);
         Assert.NotNull(client.ServerInfo);
+        Assert.NotNull(client.NegotiatedProtocolVersion);
 
         if (ClientTransportOptions.Endpoint.AbsolutePath.EndsWith("/sse"))
         {

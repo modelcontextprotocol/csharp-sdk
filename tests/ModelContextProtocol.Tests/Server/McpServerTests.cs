@@ -41,6 +41,7 @@ public class McpServerTests : LoggedTest
 
         // Assert
         Assert.NotNull(server);
+        Assert.Null(server.NegotiatedProtocolVersion);
     }
 
     [Fact]
@@ -232,7 +233,7 @@ public class McpServerTests : LoggedTest
             serverCapabilities: null,
             method: RequestMethods.Ping,
             configureOptions: null,
-            assertResult: response =>
+            assertResult: (_, response) =>
             {
                 JsonObject jObj = Assert.IsType<JsonObject>(response);
                 Assert.Empty(jObj);
@@ -247,13 +248,14 @@ public class McpServerTests : LoggedTest
             serverCapabilities: null,
             method: RequestMethods.Initialize,
             configureOptions: null,
-            assertResult: response =>
+            assertResult: (server, response) =>
             {
                 var result = JsonSerializer.Deserialize<InitializeResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result);
                 Assert.Equal(expectedAssemblyName.Name, result.ServerInfo.Name);
                 Assert.Equal(expectedAssemblyName.Version?.ToString() ?? "1.0.0", result.ServerInfo.Version);
                 Assert.Equal("2024", result.ProtocolVersion);
+                Assert.Equal("2024", server.NegotiatedProtocolVersion);
             });
     }
 
@@ -279,7 +281,7 @@ public class McpServerTests : LoggedTest
             },
             method: RequestMethods.CompletionComplete,
             configureOptions: null,
-            assertResult: response =>
+            assertResult: (_, response) =>
             {
                 var result = JsonSerializer.Deserialize<CompleteResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result?.Completion);
@@ -316,7 +318,7 @@ public class McpServerTests : LoggedTest
             },
             RequestMethods.ResourcesTemplatesList,
             configureOptions: null,
-            assertResult: response =>
+            assertResult: (_, response) =>
             {
                 var result = JsonSerializer.Deserialize<ListResourceTemplatesResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result?.ResourceTemplates);
@@ -345,7 +347,7 @@ public class McpServerTests : LoggedTest
             },
             RequestMethods.ResourcesList,
             configureOptions: null,
-            assertResult: response =>
+            assertResult: (_, response) =>
             {
                 var result = JsonSerializer.Deserialize<ListResourcesResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result?.Resources);
@@ -380,7 +382,7 @@ public class McpServerTests : LoggedTest
             }, 
             method: RequestMethods.ResourcesRead,
             configureOptions: null,
-            assertResult: response =>
+            assertResult: (_, response) =>
             {
                 var result = JsonSerializer.Deserialize<ReadResourceResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result?.Contents);
@@ -417,7 +419,7 @@ public class McpServerTests : LoggedTest
             },
             method: RequestMethods.PromptsList,
             configureOptions: null,
-            assertResult: response =>
+            assertResult: (_, response) =>
             {
                 var result = JsonSerializer.Deserialize<ListPromptsResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result?.Prompts);
@@ -446,7 +448,7 @@ public class McpServerTests : LoggedTest
             },
             method: RequestMethods.PromptsGet,
             configureOptions: null,
-            assertResult: response =>
+            assertResult: (_, response) =>
             {
                 var result = JsonSerializer.Deserialize<GetPromptResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result);
@@ -480,7 +482,7 @@ public class McpServerTests : LoggedTest
             },
             method: RequestMethods.ToolsList,
             configureOptions: null,
-            assertResult: response =>
+            assertResult: (_, response) =>
             {
                 var result = JsonSerializer.Deserialize<ListToolsResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result);
@@ -515,7 +517,7 @@ public class McpServerTests : LoggedTest
             }, 
             method: RequestMethods.ToolsCall,
             configureOptions: null,
-            assertResult: response =>
+            assertResult: (_, response) =>
             {
                 var result = JsonSerializer.Deserialize<CallToolResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result);
@@ -530,7 +532,7 @@ public class McpServerTests : LoggedTest
         await Succeeds_Even_If_No_Handler_Assigned(new ServerCapabilities { Tools = new() }, RequestMethods.ToolsCall, "CallTool handler not configured");
     }
 
-    private async Task Can_Handle_Requests(ServerCapabilities? serverCapabilities, string method, Action<McpServerOptions>? configureOptions, Action<JsonNode?> assertResult)
+    private async Task Can_Handle_Requests(ServerCapabilities? serverCapabilities, string method, Action<McpServerOptions>? configureOptions, Action<McpServer, JsonNode?> assertResult)
     {
         await using var transport = new TestServerTransport();
         var options = CreateOptions(serverCapabilities);
@@ -559,7 +561,7 @@ public class McpServerTests : LoggedTest
         var response = await receivedMessage.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.NotNull(response);
 
-        assertResult(response.Result);
+        assertResult(server, response.Result);
 
         await transport.DisposeAsync();
         await runTask;
@@ -682,6 +684,7 @@ public class McpServerTests : LoggedTest
         public override ValueTask DisposeAsync() => default;
 
         public override string? SessionId => throw new NotImplementedException();
+        public override string? NegotiatedProtocolVersion => throw new NotImplementedException();
         public override Implementation? ClientInfo => throw new NotImplementedException();
         public override IServiceProvider? Services => throw new NotImplementedException();
         public override LoggingLevel? LoggingLevel => throw new NotImplementedException();

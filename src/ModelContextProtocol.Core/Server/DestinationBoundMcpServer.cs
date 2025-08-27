@@ -6,6 +6,7 @@ namespace ModelContextProtocol.Server;
 internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport? transport) : McpServer
 {
     public override string? SessionId => transport?.SessionId ?? server.SessionId;
+    public override string? NegotiatedProtocolVersion => server.NegotiatedProtocolVersion;
     public override ClientCapabilities? ClientCapabilities => server.ClientCapabilities;
     public override Implementation? ClientInfo => server.ClientInfo;
     public override McpServerOptions ServerOptions => server.ServerOptions;

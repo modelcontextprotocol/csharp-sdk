@@ -26,6 +26,7 @@ internal sealed partial class McpClientImpl : McpClient
     private ServerCapabilities? _serverCapabilities;
     private Implementation? _serverInfo;
     private string? _serverInstructions;
+    private string? _negotiatedProtocolVersion;
 
     private bool _disposed;
 
@@ -113,6 +114,9 @@ internal sealed partial class McpClientImpl : McpClient
     public override string? SessionId => _transport.SessionId;
 
     /// <inheritdoc/>
+    public override string? NegotiatedProtocolVersion => _negotiatedProtocolVersion;
+
+    /// <inheritdoc/>
     public override ServerCapabilities ServerCapabilities => _serverCapabilities ?? throw new InvalidOperationException("The client is not connected.");
 
     /// <inheritdoc/>
@@ -176,6 +180,8 @@ internal sealed partial class McpClientImpl : McpClient
                     LogServerProtocolVersionMismatch(_endpointName, requestProtocol, initializeResponse.ProtocolVersion);
                     throw new McpException($"Server protocol version mismatch. Expected {requestProtocol}, got {initializeResponse.ProtocolVersion}");
                 }
+
+                _negotiatedProtocolVersion = initializeResponse.ProtocolVersion;
 
                 // Send initialized notification
                 await this.SendNotificationAsync(

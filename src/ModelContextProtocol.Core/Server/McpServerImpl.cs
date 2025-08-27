@@ -7,8 +7,6 @@ using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Server;
 
-// TODO: Fix merge conflicts in this file.
-
 /// <inheritdoc />
 internal sealed partial class McpServerImpl : McpServer
 {
@@ -31,6 +29,7 @@ internal sealed partial class McpServerImpl : McpServer
     private Implementation? _clientInfo;
 
     private readonly string _serverOnlyEndpointName;
+    private string? _negotiatedProtocolVersion;
     private string _endpointName;
     private int _started;
 
@@ -115,6 +114,9 @@ internal sealed partial class McpServerImpl : McpServer
 
     /// <inheritdoc/>
     public override string? SessionId => _sessionTransport.SessionId;
+
+    /// <inheritdoc/>
+    public override string? NegotiatedProtocolVersion => _negotiatedProtocolVersion;
 
     /// <inheritdoc/>
     public ServerCapabilities ServerCapabilities { get; } = new();
@@ -211,6 +213,8 @@ internal sealed partial class McpServerImpl : McpServer
                         clientProtocolVersion :
                         McpSessionHandler.LatestProtocolVersion;
                 }
+
+                _negotiatedProtocolVersion = protocolVersion;
 
                 return new InitializeResult
                 {

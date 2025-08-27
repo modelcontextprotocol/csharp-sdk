@@ -468,4 +468,13 @@ public class McpClientTests : ClientServerTestBase
             ], 
             data.OrderBy(s => s));
     }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("2025-03-26")]
+    public async Task ReturnsNegotiatedProtocolVersion(string? protocolVersion)
+    {
+        await using McpClient client = await CreateMcpClientForServer(new() { ProtocolVersion = protocolVersion });
+        Assert.Equal(protocolVersion ?? "2025-06-18", client.NegotiatedProtocolVersion);
+    }
 }
