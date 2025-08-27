@@ -25,6 +25,15 @@ internal static class Throw
         }
     }
 
+    public static void IfNegative(int arg, [CallerArgumentExpression(nameof(arg))] string? parameterName = null)
+    {
+        if (arg < 0)
+        {
+            Throw(parameterName);
+            static void Throw(string? parameterName) => throw new ArgumentOutOfRangeException(parameterName, "must not be negative.");
+        }
+    }
+
     [DoesNotReturn]
     private static void ThrowArgumentNullOrWhiteSpaceException(string? parameterName)
     {

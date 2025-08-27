@@ -7,6 +7,7 @@ using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using Moq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -17,6 +18,13 @@ namespace ModelContextProtocol.Tests.Server;
 
 public partial class McpServerToolTests
 {
+    public McpServerToolTests()
+    {
+#if !NET
+        Assert.SkipWhen(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "https://github.com/modelcontextprotocol/csharp-sdk/issues/587");
+#endif
+    }
+
     [Fact]
     public void Create_InvalidArgs_Throws()
     {
@@ -348,9 +356,8 @@ public partial class McpServerToolTests
         var result = await tool.InvokeAsync(
             new RequestContext<CallToolRequestParams>(mockServer.Object),
             TestContext.Current.CancellationToken);
-        Assert.Equal(2, result.Content.Count);
-        Assert.Equal("42", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
-        Assert.Equal("43", Assert.IsType<TextContentBlock>(result.Content[1]).Text);
+        Assert.Single(result.Content);
+        Assert.Equal("""["42","43"]""", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
     }
 
     [Fact]
@@ -525,7 +532,7 @@ public partial class McpServerToolTests
         Assert.Null(tool.ProtocolTool.OutputSchema);
         Assert.Null(result.StructuredContent);
 
-        tool = McpServerTool.Create(() => ValueTask.CompletedTask);
+        tool = McpServerTool.Create(() => default(ValueTask));
         request = new RequestContext<CallToolRequestParams>(mockServer.Object)
         {
             Params = new CallToolRequestParams { Name = "tool" },
@@ -553,6 +560,27 @@ public partial class McpServerToolTests
 
         Assert.Null(tool.ProtocolTool.OutputSchema);
         Assert.Null(result.StructuredContent);
+    }
+
+    [Theory]
+    [InlineData(JsonNumberHandling.Strict)]
+    [InlineData(JsonNumberHandling.AllowReadingFromString)]
+    public async Task ToolWithNullableParameters_ReturnsExpectedSchema(JsonNumberHandling nunmberHandling)
+    {
+        JsonSerializerOptions options = new(JsonContext2.Default.Options) { NumberHandling = nunmberHandling };
+        McpServerTool tool = McpServerTool.Create((int? x = 42, DateTimeOffset? y = null) => { }, new() { SerializerOptions = options });
+
+        JsonElement expectedSchema = JsonDocument.Parse("""
+            {
+                "type": "object",
+                "properties": {
+                    "x": { "type": ["integer", "null"], "default": 42 },
+                    "y": { "type": ["string", "null"], "format": "date-time", "default": null }
+                }
+            }
+            """).RootElement;
+
+        Assert.True(JsonElement.DeepEquals(expectedSchema, tool.ProtocolTool.InputSchema));
     }
 
     public static IEnumerable<object[]> StructuredOutput_ReturnsExpectedSchema_Inputs()
@@ -687,5 +715,7 @@ public partial class McpServerToolTests
     [JsonSerializable(typeof(JsonSchema))]
     [JsonSerializable(typeof(List<AIContent>))]
     [JsonSerializable(typeof(List<string>))]
+    [JsonSerializable(typeof(int?))]
+    [JsonSerializable(typeof(DateTimeOffset?))]
     partial class JsonContext2 : JsonSerializerContext;
 }

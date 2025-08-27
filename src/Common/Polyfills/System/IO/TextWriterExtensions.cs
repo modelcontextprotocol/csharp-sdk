@@ -1,3 +1,4 @@
+#if !NET
 namespace System.IO;
 
 internal static class TextWriterExtensions
@@ -8,3 +9,4 @@ internal static class TextWriterExtensions
         await writer.FlushAsync();
     }
 }
+#endif

@@ -33,7 +33,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
 
         await using var transport = new SseClientTransport(transportOptions ?? new SseClientTransportOptions
         {
-            Endpoint = new Uri($"http://localhost{path}"),
+            Endpoint = new Uri($"http://localhost:5000{path}"),
             TransportMode = UseStreamableHttp ? HttpTransportMode.StreamableHttp : HttpTransportMode.Sse,
         }, HttpClient, LoggerFactory);
 
@@ -52,12 +52,6 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     [Fact]
     public async Task Can_UseIHttpContextAccessor_InTool()
     {
-        Assert.SkipWhen(UseStreamableHttp && !Stateless,
-            """
-            IHttpContextAccessor is not currently supported with non-stateless Streamable HTTP.
-            TODO: Support it in stateless mode by manually capturing and flowing execution context.
-            """);
-
         Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<EchoHttpContextUserTools>();
 
         Builder.Services.AddHttpContextAccessor();

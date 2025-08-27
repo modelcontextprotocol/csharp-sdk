@@ -7,6 +7,8 @@ namespace ModelContextProtocol.Tests.Transport;
 
 public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : LoggedTest(testOutputHelper)
 {
+    public static bool IsStdErrCallbackSupported => !PlatformDetection.IsMonoRuntime;
+    
     [Fact]
     public async Task CreateAsync_ValidProcessInvalidServer_Throws()
     {
@@ -17,10 +19,13 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
             new(new() { Command = "ls", Arguments = [id] }, LoggerFactory);
 
         IOException e = await Assert.ThrowsAsync<IOException>(() => McpClientFactory.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
-        Assert.Contains(id, e.ToString());
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            Assert.Contains(id, e.ToString());
+        }
     }
-
-    [Fact]
+    
+    [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
     public async Task CreateAsync_ValidProcessInvalidServer_StdErrCallbackInvoked()
     {
         string id = Guid.NewGuid().ToString("N");

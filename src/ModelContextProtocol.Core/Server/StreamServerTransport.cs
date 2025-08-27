@@ -46,7 +46,11 @@ public class StreamServerTransport : TransportBase
 
         _logger = loggerFactory?.CreateLogger(GetType()) ?? NullLogger.Instance;
 
+#if NET
         _inputReader = new StreamReader(inputStream, Encoding.UTF8);
+#else
+        _inputReader = new CancellableStreamReader(inputStream, Encoding.UTF8);
+#endif
         _outputStream = outputStream;
 
         SetConnected();

@@ -6,12 +6,6 @@ using System.Text.Json;
 using ModelContextProtocol.Protocol;
 using System.Threading.Channels;
 
-#if NET
-using System.Net.Http.Json;
-#else
-using System.Text;
-#endif
-
 namespace ModelContextProtocol.Client;
 
 /// <summary>
@@ -22,7 +16,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
     private static readonly MediaTypeWithQualityHeaderValue s_applicationJsonMediaType = new("application/json");
     private static readonly MediaTypeWithQualityHeaderValue s_textEventStreamMediaType = new("text/event-stream");
 
-    private readonly HttpClient _httpClient;
+    private readonly McpHttpClient _httpClient;
     private readonly SseClientTransportOptions _options;
     private readonly CancellationTokenSource _connectionCts;
     private readonly ILogger _logger;
@@ -36,7 +30,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
     public StreamableHttpClientSessionTransport(
         string endpointName,
         SseClientTransportOptions transportOptions,
-        HttpClient httpClient,
+        McpHttpClient httpClient,
         Channel<JsonRpcMessage>? messageChannel,
         ILoggerFactory? loggerFactory)
         : base(endpointName, messageChannel, loggerFactory)
@@ -69,19 +63,8 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         using var sendCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _connectionCts.Token);
         cancellationToken = sendCts.Token;
 
-#if NET
-        using var content = JsonContent.Create(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage);
-#else
-        using var content = new StringContent(
-            JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage),
-            Encoding.UTF8,
-            "application/json"
-        );
-#endif
-
         using var httpRequestMessage = new HttpRequestMessage(HttpMethod.Post, _options.Endpoint)
         {
-            Content = content,
             Headers =
             {
                 Accept = { s_applicationJsonMediaType, s_textEventStreamMediaType },
@@ -90,7 +73,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
         CopyAdditionalHeaders(httpRequestMessage.Headers, _options.AdditionalHeaders, SessionId, _negotiatedProtocolVersion);
 
-        var response = await _httpClient.SendAsync(httpRequestMessage, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        var response = await _httpClient.SendAsync(httpRequestMessage, message, cancellationToken).ConfigureAwait(false);
 
         // We'll let the caller decide whether to throw or fall back given an unsuccessful response.
         if (!response.IsSuccessStatusCode)
@@ -192,7 +175,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         request.Headers.Accept.Add(s_textEventStreamMediaType);
         CopyAdditionalHeaders(request.Headers, _options.AdditionalHeaders, SessionId, _negotiatedProtocolVersion);
 
-        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, _connectionCts.Token).ConfigureAwait(false);
+        using var response = await _httpClient.SendAsync(request, message: null, _connectionCts.Token).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -228,6 +211,8 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
     private async Task<JsonRpcMessageWithId?> ProcessMessageAsync(string data, JsonRpcRequest? relatedRpcRequest, CancellationToken cancellationToken)
     {
+        LogTransportReceivedMessageSensitive(Name, data);
+
         try
         {
             var message = JsonSerializer.Deserialize(data, McpJsonUtilities.JsonContext.Default.JsonRpcMessage);
@@ -261,7 +246,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         try
         {
             // Do not validate we get a successful status code, because server support for the DELETE request is optional
-            (await _httpClient.SendAsync(deleteRequest, CancellationToken.None).ConfigureAwait(false)).Dispose();
+            (await _httpClient.SendAsync(deleteRequest, message: null, CancellationToken.None).ConfigureAwait(false)).Dispose();
         }
         catch (Exception ex)
         {

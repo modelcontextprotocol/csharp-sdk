@@ -270,12 +270,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 StructuredContent = structuredContent,
             },
             
-            IEnumerable<string> texts => new()
-            {
-                Content = [.. texts.Select(x => new TextContentBlock { Text = x ?? string.Empty })],
-                StructuredContent = structuredContent,
-            },
-            
             IEnumerable<AIContent> contentItems => ConvertAIContentEnumerableToCallToolResult(contentItems, structuredContent),
             
             IEnumerable<ContentBlock> contents => new()

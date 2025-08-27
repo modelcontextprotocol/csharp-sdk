@@ -3,6 +3,7 @@ using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Tests.Utils;
 using ModelContextProtocol.TestSseServer;
+using System.Net;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
 
@@ -19,7 +20,7 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
 
     private SseClientTransportOptions DefaultTransportOptions { get; set; } = new()
     {
-        Endpoint = new("http://localhost/"),
+        Endpoint = new("http://localhost:5000/"),
     };
 
     public SseServerIntegrationTestFixture()
@@ -28,14 +29,14 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
         {
             ConnectCallback = (context, token) =>
             {
-                var connection = _inMemoryTransport.CreateConnection();
+                var connection = _inMemoryTransport.CreateConnection(new DnsEndPoint("localhost", 5000));
                 return new(connection.ClientStream);
             },
         };
 
         HttpClient = new HttpClient(socketsHttpHandler)
         {
-            BaseAddress = new("http://localhost/"),
+            BaseAddress = new("http://localhost:5000/"),
         };
 
         _serverTask = Program.MainAsync([], new XunitLoggerProvider(_delegatingTestOutputHelper), _inMemoryTransport, _stopCts.Token);

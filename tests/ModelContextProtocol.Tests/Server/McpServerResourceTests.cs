@@ -4,12 +4,20 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Moq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Tests.Server;
 
 public partial class McpServerResourceTests
 {
+    public McpServerResourceTests()
+    {
+#if !NET
+        Assert.SkipWhen(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "https://github.com/modelcontextprotocol/csharp-sdk/issues/587");
+#endif
+    }
+
     [Fact]
     public void CanCreateServerWithResource()
     {
@@ -191,6 +199,7 @@ public partial class McpServerResourceTests
         Assert.NotNull(result);
         Assert.Equal("14e5f43d0d4147d682078249cf669e411.2.3.4", ((TextResourceContents)result.Contents[0]).Text);
 
+#if NET
         t = McpServerResource.Create((Half a2, Int128 a3, UInt128 a4, IntPtr a5) => (a3 + (Int128)a4 + a5).ToString(), new() { Name = Name });
         Assert.Equal($"resource://mcp/Hello{{?a2,a3,a4,a5}}", t.ProtocolResourceTemplate.UriTemplate);
         result = await t.ReadAsync(
@@ -206,6 +215,7 @@ public partial class McpServerResourceTests
             TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.Equal("123", ((TextResourceContents)result.Contents[0]).Text);
+#endif
 
         t = McpServerResource.Create((bool? a2, char? a3, byte? a4, sbyte? a5) => a2?.ToString() + a3 + a4 + a5, new() { Name = Name });
         Assert.Equal($"resource://mcp/Hello{{?a2,a3,a4,a5}}", t.ProtocolResourceTemplate.UriTemplate);
@@ -239,6 +249,7 @@ public partial class McpServerResourceTests
         Assert.NotNull(result);
         Assert.Equal("14e5f43d0d4147d682078249cf669e41", ((TextResourceContents)result.Contents[0]).Text);
 
+#if NET
         t = McpServerResource.Create((Half? a2, Int128? a3, UInt128? a4, IntPtr? a5) => (a3 + (Int128?)a4 + a5).ToString(), new() { Name = Name });
         Assert.Equal($"resource://mcp/Hello{{?a2,a3,a4,a5}}", t.ProtocolResourceTemplate.UriTemplate);
         result = await t.ReadAsync(
@@ -254,6 +265,7 @@ public partial class McpServerResourceTests
             TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.Equal("123", ((TextResourceContents)result.Contents[0]).Text);
+#endif
     }
 
     [Theory]

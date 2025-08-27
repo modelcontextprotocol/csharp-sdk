@@ -3,6 +3,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -15,6 +16,9 @@ public class McpServerTests : LoggedTest
     public McpServerTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
     {
+#if !NET
+        Assert.SkipWhen(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "https://github.com/modelcontextprotocol/csharp-sdk/issues/587");
+#endif
         _options = CreateOptions();
     }
 
@@ -212,6 +216,7 @@ public class McpServerTests : LoggedTest
     [Fact]
     public async Task Can_Handle_Initialize_Requests()
     {
+        AssemblyName expectedAssemblyName = (Assembly.GetEntryAssembly() ?? typeof(IMcpServer).Assembly).GetName();
         await Can_Handle_Requests(
             serverCapabilities: null,
             method: RequestMethods.Initialize,
@@ -220,8 +225,8 @@ public class McpServerTests : LoggedTest
             {
                 var result = JsonSerializer.Deserialize<InitializeResult>(response, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(result);
-                Assert.Equal("ModelContextProtocol.Tests", result.ServerInfo.Name);
-                Assert.Equal("1.0.0.0", result.ServerInfo.Version);
+                Assert.Equal(expectedAssemblyName.Name, result.ServerInfo.Name);
+                Assert.Equal(expectedAssemblyName.Version?.ToString() ?? "1.0.0", result.ServerInfo.Version);
                 Assert.Equal("2024", result.ProtocolVersion);
             });
     }
@@ -518,10 +523,10 @@ public class McpServerTests : LoggedTest
         };
 
         await transport.SendMessageAsync(
-        new JsonRpcRequest
-        {
-            Method = method,
-            Id = new RequestId(55)
+            new JsonRpcRequest
+            {
+                Method = method,
+                Id = new RequestId(55)
         }
         );
 

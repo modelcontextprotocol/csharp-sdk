@@ -20,7 +20,7 @@ public class MapMcpSseTests(ITestOutputHelper outputHelper) : MapMcpTests(output
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        using var response = await HttpClient.GetAsync($"http://localhost{pattern}/sse", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+        using var response = await HttpClient.GetAsync($"http://localhost:5000{pattern}/sse", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
         response.EnsureSuccessStatusCode();
         using var sseStream = await response.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
         using var sseStreamReader = new StreamReader(sseStream, System.Text.Encoding.UTF8);

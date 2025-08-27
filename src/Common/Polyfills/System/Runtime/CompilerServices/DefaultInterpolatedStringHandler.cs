@@ -5,6 +5,7 @@
 // https://github.com/dotnet/runtime/blob/dd75c45c123055baacd7aa4418f425f412797a29/src/libraries/System.Private.CoreLib/src/System/Runtime/CompilerServices/DefaultInterpolatedStringHandler.cs
 // and then modified to build on netstandard2.0.
 
+#if !NET
 using System.Buffers;
 using System.Diagnostics;
 using System.Globalization;
@@ -615,3 +616,4 @@ namespace System.Runtime.CompilerServices
         }
     }
 }
+#endif

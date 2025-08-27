@@ -1,3 +1,5 @@
+using ModelContextProtocol.Authentication;
+
 namespace ModelContextProtocol.Client;
 
 /// <summary>
@@ -46,7 +48,7 @@ public sealed class SseClientTransportOptions
     public HttpTransportMode TransportMode { get; set; } = HttpTransportMode.AutoDetect;
 
     /// <summary>
-    /// Gets a transport identifier used for logging purposes.
+    /// Gets or sets a transport identifier used for logging purposes.
     /// </summary>
     public string? Name { get; set; }
 
@@ -70,4 +72,9 @@ public sealed class SseClientTransportOptions
     /// Use this property to specify custom HTTP headers that should be sent with each request to the server.
     /// </remarks>
     public IDictionary<string, string>? AdditionalHeaders { get; set; }
+
+    /// <summary>
+    /// Gets sor sets the authorization provider to use for authentication.
+    /// </summary>
+    public ClientOAuthOptions? OAuth { get; set; }
 }

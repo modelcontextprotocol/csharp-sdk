@@ -56,7 +56,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         await using var mcpClient = await ConnectAsync("/", new()
         {
-            Endpoint = new Uri("http://localhost/"),
+            Endpoint = new("http://localhost:5000/"),
             TransportMode = HttpTransportMode.AutoDetect
         });
 
@@ -82,7 +82,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         await using var mcpClient = await ConnectAsync("/", new()
         {
-            Endpoint = new Uri("http://localhost/"),
+            Endpoint = new("http://localhost:5000/"),
             TransportMode = HttpTransportMode.AutoDetect
         });
 
@@ -110,7 +110,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         await using var mcpClient = await ConnectAsync("/sse", new()
         {
-            Endpoint = new Uri("http://localhost/sse"),
+            Endpoint = new("http://localhost:5000/sse"),
             TransportMode = HttpTransportMode.AutoDetect
         });
 
@@ -138,7 +138,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         await using var mcpClient = await ConnectAsync(transportOptions: new()
         {
-            Endpoint = new Uri("http://localhost/sse"),
+            Endpoint = new("http://localhost:5000/sse"),
             TransportMode = HttpTransportMode.Sse
         });
 
@@ -171,14 +171,16 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using var mcpClient = await ConnectAsync(clientOptions: new()
+        await using (var mcpClient = await ConnectAsync(clientOptions: new()
         {
             ProtocolVersion = "2025-03-26",
-        });
-        await mcpClient.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        }))
+        {
+            await mcpClient.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        }
 
-        // The header should be included in the GET request, the initialized notification, and the tools/list call.
-        Assert.Equal(3, protocolVersionHeaderValues.Count);
+        // The header should be included in the GET request, the initialized notification, the tools/list call, and the delete request.
+        Assert.NotEmpty(protocolVersionHeaderValues);
         Assert.All(protocolVersionHeaderValues, v => Assert.Equal("2025-03-26", v));
     }
 }

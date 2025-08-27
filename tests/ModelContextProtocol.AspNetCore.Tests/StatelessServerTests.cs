@@ -16,7 +16,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
 
     private readonly SseClientTransportOptions DefaultTransportOptions = new()
     {
-        Endpoint = new Uri("http://localhost/"),
+        Endpoint = new("http://localhost:5000/"),
         Name = "In-memory Streamable HTTP Client",
         TransportMode = HttpTransportMode.StreamableHttp,
     };
