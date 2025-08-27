@@ -277,11 +277,9 @@ public static class McpServerExtensions
             return new ElicitResult<T?> { Action = raw.Action, Content = default };
         }
 
-        // Compose a JsonObject from the flat content dictionary and deserialize to T
         var obj = new JsonObject();
         foreach (var kvp in raw.Content)
         {
-            // JsonNode.Parse handles numbers/strings/bools that came back as JsonElement
             obj[kvp.Key] = JsonNode.Parse(kvp.Value.GetRawText());
         }
 
@@ -311,23 +309,29 @@ public static class McpServerExtensions
 
     private static ElicitRequestParams.PrimitiveSchemaDefinition? CreatePrimitiveSchema(Type type, JsonSerializerOptions serializerOptions)
     {
-        Type t = Nullable.GetUnderlyingType(type) ?? type;
+        Type underlyingType = Nullable.GetUnderlyingType(type) ?? type;
+        
+        JsonTypeInfo typeInfo = serializerOptions.GetTypeInfo(underlyingType);
 
-        // Check if t is a supported primitive type for elicitation (string, enum, bool, number)
-        if (
-            t == typeof(string) || t.IsEnum ||
-            t == typeof(bool) ||
-            t == typeof(byte) || t == typeof(sbyte) || t == typeof(short) || t == typeof(ushort) ||
-            t == typeof(int) || t == typeof(uint) || t == typeof(long) || t == typeof(ulong) ||
-            t == typeof(float) || t == typeof(double) || t == typeof(decimal))
+        if (typeInfo.Kind != JsonTypeInfoKind.None)
         {
-            var jsonElement = AIJsonUtilities.CreateJsonSchema(t, serializerOptions: serializerOptions);
-            var primitiveSchemaDefinition =
-                jsonElement.Deserialize(McpJsonUtilities.JsonContext.Default.PrimitiveSchemaDefinition);
-            return primitiveSchemaDefinition;
+            return null;
         }
 
-        return null; // Unsupported type for elicitation schema
+        var jsonElement = AIJsonUtilities.CreateJsonSchema(underlyingType, serializerOptions: serializerOptions);
+
+        if (jsonElement.TryGetProperty("type", out var typeElement))
+        {
+            var typeValue = typeElement.GetString();
+            if (typeValue is "string" or "number" or "integer" or "boolean")
+            {
+                var primitiveSchemaDefinition =
+                    jsonElement.Deserialize(McpJsonUtilities.JsonContext.Default.PrimitiveSchemaDefinition);
+                return primitiveSchemaDefinition;
+            }
+        }
+        
+        return null;
     }
 
     private static void ThrowIfSamplingUnsupported(IMcpServer server)

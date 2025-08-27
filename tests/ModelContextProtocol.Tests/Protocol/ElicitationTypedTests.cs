@@ -74,8 +74,7 @@ public partial class ElicitationTypedTests : ClientServerTestBase
                         Assert.NotNull(request);
                         Assert.Equal("Please provide more information.", request.Message);
 
-                        // Expect unsupported members like DateTime to be ignored
-                        Assert.Equal(5, request.RequestedSchema.Properties.Count);
+                        Assert.Equal(6, request.RequestedSchema.Properties.Count);
 
                         foreach (var entry in request.RequestedSchema.Properties)
                         {
@@ -109,6 +108,13 @@ public partial class ElicitationTypedTests : ClientServerTestBase
                                     Assert.Equal("number", numSchema.Type);
                                     break;
 
+                                case nameof(SampleForm.Created):
+                                    var dateTimeSchema = Assert.IsType<ElicitRequestParams.StringSchema>(value);
+                                    Assert.Equal("string", dateTimeSchema.Type);
+                                    Assert.Equal("date-time", dateTimeSchema.Format);
+
+                                    break;
+
                                 default:
                                     Assert.Fail($"Unexpected property in schema: {key}");
                                     break;
@@ -134,6 +140,9 @@ public partial class ElicitationTypedTests : ClientServerTestBase
                                     """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
                                 [nameof(SampleForm.Score)] = (JsonElement)JsonSerializer.Deserialize("""
                                     99.5
+                                    """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
+                                [nameof(SampleForm.Created)] = (JsonElement)JsonSerializer.Deserialize("""
+                                    "2023-08-27T03:05:00"
                                     """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
                             },
                         };
@@ -207,7 +216,7 @@ public partial class ElicitationTypedTests : ClientServerTestBase
         public SampleRole Role { get; set; }
         public double Score { get; set; }
 
-        // Unsupported by elicitation schema; should be ignored
+        
         public DateTime Created { get; set; }
     }
 
