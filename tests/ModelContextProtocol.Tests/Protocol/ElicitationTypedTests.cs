@@ -48,6 +48,19 @@ public partial class ElicitationTypedTests : ClientServerTestBase
                 Assert.Equal(90210, result.Content!.ZipCode);
                 Assert.False(result.Content!.IsAdmin);
             }
+            else if (request.Params!.Name == "TestElicitationUnsupportedType")
+            {
+                await request.Server.ElicitAsync<UnsupportedForm>(
+                    message: "Please provide more information.",
+                    serializerOptions: ElicitationUnsupportedJsonContext.Default.Options,
+                    cancellationToken: CancellationToken.None);
+
+                // Should be unreachable
+                return new CallToolResult
+                {
+                    Content = [new TextContentBlock { Text = "unexpected" }],
+                };
+            }
             else
             {
                 Assert.Fail($"Unexpected tool name: {request.Params!.Name}");
@@ -200,6 +213,31 @@ public partial class ElicitationTypedTests : ClientServerTestBase
         Assert.Equal("success", (result.Content[0] as TextContentBlock)?.Text);
     }
 
+    [Fact]
+    public async Task Elicit_Typed_With_Unsupported_Property_Type_Throws()
+    {
+        await using IMcpClient client = await CreateMcpClientForServer(new McpClientOptions
+        {
+            Capabilities = new()
+            {
+                Elicitation = new()
+                {
+                    // Handler should never be invoked because the exception occurs before the request is sent.
+                    ElicitationHandler = async (req, ct) =>
+                    {
+                        Assert.Fail("Elicitation handler should not be called for unsupported schema test.");
+                        return new ElicitResult { Action = "cancel" };
+                    },
+                },
+            },
+        });
+
+        var ex = await Assert.ThrowsAsync<McpException>(async() =>
+            await client.CallToolAsync("TestElicitationUnsupportedType", cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains(typeof(UnsupportedForm.Nested).FullName!, ex.Message);
+    }
+
     [JsonConverter(typeof(CustomizableJsonStringEnumConverter<SampleRole>))]
 
     public enum SampleRole
@@ -236,4 +274,19 @@ public partial class ElicitationTypedTests : ClientServerTestBase
     [JsonSerializable(typeof(CamelForm))]
     [JsonSerializable(typeof(JsonElement))]
     internal partial class ElicitationTypedCamelJsonContext : JsonSerializerContext;
+
+    public sealed class UnsupportedForm
+    {
+        public string? Name { get; set; }
+        public Nested? NestedProperty { get; set; } // Triggers unsupported (complex object)
+        public sealed class Nested
+        {
+            public string? Value { get; set; }
+        }
+    }
+
+    [JsonSerializable(typeof(UnsupportedForm))]
+    [JsonSerializable(typeof(UnsupportedForm.Nested))]
+    [JsonSerializable(typeof(JsonElement))]
+    internal partial class ElicitationUnsupportedJsonContext : JsonSerializerContext;
 }

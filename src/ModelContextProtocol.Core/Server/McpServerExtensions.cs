@@ -315,7 +315,7 @@ public static class McpServerExtensions
 
         if (typeInfo.Kind != JsonTypeInfoKind.None)
         {
-            return null;
+            throw new McpException($"Type '{type.FullName}' is not supported for elicitation requests.");
         }
 
         var jsonElement = AIJsonUtilities.CreateJsonSchema(underlyingType, serializerOptions: serializerOptions);
