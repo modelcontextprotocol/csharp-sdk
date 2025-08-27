@@ -13,12 +13,16 @@ builder.Configuration
     .AddEnvironmentVariables()
     .AddUserSecrets<Program>();
 
+IClientTransport clientTransport;
 var (command, arguments) = GetCommandAndArguments(args);
-IClientTransport? clientTransport = null;
+
 if (command == "http")
 {
     // make sure AspNetCoreMcpServer is running
-    clientTransport = new SseClientTransport(new SseClientTransportOptions { Endpoint = new Uri("http://localhost:3001"), TransportMode = HttpTransportMode.StreamableHttp});
+    clientTransport = new SseClientTransport(new()
+    {
+        Endpoint = new Uri("http://localhost:3001")
+    });
 }
 else
 {
@@ -53,7 +57,10 @@ var options = new ChatOptions
 Console.ForegroundColor = ConsoleColor.Green;
 Console.WriteLine("MCP Client Started!");
 Console.ResetColor();
+
 var messages = new List<ChatMessage>();
+var sb = new StringBuilder();
+
 PromptForInput();
 while(Console.ReadLine() is string query && !"exit".Equals(query, StringComparison.OrdinalIgnoreCase))
 {
@@ -62,15 +69,18 @@ while(Console.ReadLine() is string query && !"exit".Equals(query, StringComparis
         PromptForInput();
         continue;
     }
+
     messages.Add(new ChatMessage(ChatRole.User, query));
-    var sb = new StringBuilder();
     await foreach (var message in anthropicClient.GetStreamingResponseAsync(messages, options))
     {
         Console.Write(message);
-        sb.AppendLine(message.ToString());
+        sb.Append(message.ToString());
     }
-    messages.Add(new ChatMessage(ChatRole.Assistant, sb.ToString()));
+
     Console.WriteLine();
+    sb.AppendLine();
+    messages.Add(new ChatMessage(ChatRole.Assistant, sb.ToString()));
+    sb.Clear();
 
     PromptForInput();
 }
@@ -99,9 +109,9 @@ static (string command, string[] arguments) GetCommandAndArguments(string[] args
 {
     return args switch
     {
+        [var mode] when mode.Equals("http", StringComparison.OrdinalIgnoreCase) => ("http", args),
         [var script] when script.EndsWith(".py") => ("python", args),
         [var script] when script.EndsWith(".js") => ("node", args),
-        [var script] when script.Equals("http", StringComparison.OrdinalIgnoreCase) => ("http", args),
         [var script] when Directory.Exists(script) || (File.Exists(script) && script.EndsWith(".csproj")) => ("dotnet", ["run", "--project", script]),
         _ => ("dotnet", ["run", "--project", Path.Combine(GetCurrentSourceDirectory(), "../QuickstartWeatherServer")])
     };
