@@ -17,8 +17,8 @@ var (command, arguments) = GetCommandAndArguments(args);
 IClientTransport? clientTransport = null;
 if (command == "http")
 {
-    // make sure AspNetCoreSseServer is running
-    clientTransport = new SseClientTransport(new SseClientTransportOptions { Endpoint = new Uri("https://localhost:7133"), TransportMode = HttpTransportMode.StreamableHttp});
+    // make sure AspNetCoreMcpServer is running
+    clientTransport = new SseClientTransport(new SseClientTransportOptions { Endpoint = new Uri("http://localhost:3001"), TransportMode = HttpTransportMode.StreamableHttp});
 }
 else
 {
@@ -73,7 +73,6 @@ while(Console.ReadLine() is string query && !"exit".Equals(query, StringComparis
     Console.WriteLine();
 
     PromptForInput();
-    
 }
 
 static void PromptForInput()
@@ -91,9 +90,9 @@ static void PromptForInput()
 /// <remarks>
 /// This method uses the file extension of the first argument to determine the command, if it's py, it'll run python,
 /// if it's js, it'll run node, if it's a directory or a csproj file, it'll run dotnet.
-/// 
+///
 /// If no arguments are provided, it defaults to running the QuickstartWeatherServer project from the current repo.
-/// 
+///
 /// This method would only be required if you're creating a generic client, such as we use for the quickstart.
 /// </remarks>
 static (string command, string[] arguments) GetCommandAndArguments(string[] args)

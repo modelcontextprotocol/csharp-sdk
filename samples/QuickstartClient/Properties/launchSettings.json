@@ -1,8 +1,0 @@
-{
-  "profiles": {
-    "QuickstartClient": {
-      "commandName": "Project",
-      "commandLineArgs": "http"
-    }
-  }
-}
