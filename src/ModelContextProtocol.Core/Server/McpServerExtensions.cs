@@ -293,6 +293,12 @@ public static class McpServerExtensions
         var props = schema.Properties;
 
         JsonTypeInfo<T> typeInfo = serializerOptions.GetTypeInfo<T>();
+
+        if (typeInfo.Kind != JsonTypeInfoKind.Object)
+        {
+            throw new McpException($"Type '{typeof(T).FullName}' is not supported for elicitation requests.");
+        }
+
         foreach (JsonPropertyInfo pi in typeInfo.Properties)
         {
             var memberType = pi.PropertyType;

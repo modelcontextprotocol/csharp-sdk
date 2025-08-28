@@ -61,6 +61,19 @@ public partial class ElicitationTypedTests : ClientServerTestBase
                     Content = [new TextContentBlock { Text = "unexpected" }],
                 };
             }
+            else if (request.Params!.Name == "TestElicitationNonObjectGenericType")
+            {
+                // This should throw because T is not an object type with properties (string primitive)
+                await request.Server.ElicitAsync<string>(
+                    message: "Any message",
+                    serializerOptions: McpJsonUtilities.DefaultOptions,
+                    cancellationToken: CancellationToken.None);
+
+                return new CallToolResult
+                {
+                    Content = [new TextContentBlock { Text = "unexpected" }],
+                };
+            }
             else
             {
                 Assert.Fail($"Unexpected tool name: {request.Params!.Name}");
@@ -236,6 +249,31 @@ public partial class ElicitationTypedTests : ClientServerTestBase
             await client.CallToolAsync("TestElicitationUnsupportedType", cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains(typeof(UnsupportedForm.Nested).FullName!, ex.Message);
+    }
+
+    [Fact]
+    public async Task Elicit_Typed_With_NonObject_Generic_Type_Throws()
+    {
+        await using IMcpClient client = await CreateMcpClientForServer(new McpClientOptions
+        {
+            Capabilities = new()
+            {
+                Elicitation = new()
+                {
+                    // Should not be invoked
+                    ElicitationHandler = async (req, ct) =>
+                    {
+                        Assert.Fail("Elicitation handler should not be called for non-object generic type test.");
+                        return new ElicitResult { Action = "cancel" };
+                    },
+                },
+            },
+        });
+
+        var ex = await Assert.ThrowsAsync<McpException>(async () =>
+            await client.CallToolAsync("TestElicitationNonObjectGenericType", cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains(typeof(string).FullName!, ex.Message);
     }
 
     [JsonConverter(typeof(CustomizableJsonStringEnumConverter<SampleRole>))]
