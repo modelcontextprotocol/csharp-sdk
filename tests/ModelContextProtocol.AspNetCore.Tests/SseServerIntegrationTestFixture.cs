@@ -44,9 +44,9 @@ public class SseServerIntegrationTestFixture : IAsyncDisposable
 
     public HttpClient HttpClient { get; }
 
-    public Task<McpClientSession> ConnectMcpClientAsync(McpClientOptions? options, ILoggerFactory loggerFactory)
+    public Task<McpClient> ConnectMcpClientAsync(McpClientOptions? options, ILoggerFactory loggerFactory)
     {
-        return McpClientFactory.CreateAsync(
+        return McpClient.CreateAsync(
             new SseClientTransport(DefaultTransportOptions, HttpClient, loggerFactory),
             options,
             loggerFactory,

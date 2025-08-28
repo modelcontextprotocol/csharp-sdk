@@ -6,11 +6,11 @@ using System.Text.Json;
 namespace ModelContextProtocol.Client;
 
 /// <summary>
-/// Provides an <see cref="AIFunction"/> that calls a tool via an <see cref="McpClientSession"/>.
+/// Provides an <see cref="AIFunction"/> that calls a tool via an <see cref="McpClient"/>.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The <see cref="McpClientTool"/> class encapsulates an <see cref="McpClientSession"/> along with a description of 
+/// The <see cref="McpClientTool"/> class encapsulates an <see cref="McpClient"/> along with a description of 
 /// a tool available via that client, allowing it to be invoked as an <see cref="AIFunction"/>. This enables integration
 /// with AI models that support function calling capabilities.
 /// </para>
@@ -20,7 +20,7 @@ namespace ModelContextProtocol.Client;
 /// </para>
 /// <para>
 /// Typically, you would get instances of this class by calling the <see cref="McpClientExtensions.ListToolsAsync"/>
-/// or <see cref="McpClientExtensions.EnumerateToolsAsync"/> extension methods on an <see cref="McpClientSession"/> instance.
+/// or <see cref="McpClientExtensions.EnumerateToolsAsync"/> extension methods on an <see cref="McpClient"/> instance.
 /// </para>
 /// </remarks>
 public sealed class McpClientTool : AIFunction
@@ -32,13 +32,13 @@ public sealed class McpClientTool : AIFunction
             ["Strict"] = false, // some MCP schemas may not meet "strict" requirements
         });
 
-    private readonly McpClientSession _client;
+    private readonly McpClient _client;
     private readonly string _name;
     private readonly string _description;
     private readonly IProgress<ProgressNotificationValue>? _progress;
 
     internal McpClientTool(
-        McpClientSession client,
+        McpClient client,
         Tool tool,
         JsonSerializerOptions serializerOptions,
         string? name = null,

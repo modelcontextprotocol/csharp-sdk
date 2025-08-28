@@ -8,7 +8,7 @@ using System.Text.Json.Serialization.Metadata;
 namespace ModelContextProtocol;
 
 /// <summary>
-/// Provides extension methods for interacting with an <see cref="IMcpEndpoint"/>.
+/// Provides extension methods for interacting with an <see cref="McpSession"/>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -16,8 +16,8 @@ namespace ModelContextProtocol;
 /// simplifying JSON-RPC communication by handling serialization and deserialization of parameters and results.
 /// </para>
 /// <para>
-/// These extension methods are designed to be used with both client (<see cref="McpClientSession"/>) and
-/// server (<see cref="McpServerSession"/>) implementations of the <see cref="IMcpEndpoint"/> interface.
+/// These extension methods are designed to be used with both client (<see cref="McpClient"/>) and
+/// server (<see cref="McpServerImpl"/>) implementations of the <see cref="McpSession"/> interface.
 /// </para>
 /// </remarks>
 public static class McpEndpointExtensions
@@ -35,7 +35,7 @@ public static class McpEndpointExtensions
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous operation. The task result contains the deserialized result.</returns>
     public static ValueTask<TResult> SendRequestAsync<TParameters, TResult>(
-        this IMcpEndpoint endpoint,
+        this McpSession endpoint,
         string method,
         TParameters parameters,
         JsonSerializerOptions? serializerOptions = null,
@@ -65,7 +65,7 @@ public static class McpEndpointExtensions
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous operation. The task result contains the deserialized result.</returns>
     internal static async ValueTask<TResult> SendRequestAsync<TParameters, TResult>(
-        this IMcpEndpoint endpoint,
+        this McpSession endpoint,
         string method,
         TParameters parameters,
         JsonTypeInfo<TParameters> parametersTypeInfo,
@@ -104,7 +104,7 @@ public static class McpEndpointExtensions
     /// changes in state.
     /// </para>
     /// </remarks>
-    public static Task SendNotificationAsync(this IMcpEndpoint client, string method, CancellationToken cancellationToken = default)
+    public static Task SendNotificationAsync(this McpSession client, string method, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
         Throw.IfNullOrWhiteSpace(method);
@@ -136,7 +136,7 @@ public static class McpEndpointExtensions
     /// </para>
     /// </remarks>
     public static Task SendNotificationAsync<TParameters>(
-        this IMcpEndpoint endpoint,
+        this McpSession endpoint,
         string method,
         TParameters parameters,
         JsonSerializerOptions? serializerOptions = null,
@@ -158,7 +158,7 @@ public static class McpEndpointExtensions
     /// <param name="parametersTypeInfo">The type information for request parameter serialization.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     internal static Task SendNotificationAsync<TParameters>(
-        this IMcpEndpoint endpoint,
+        this McpSession endpoint,
         string method,
         TParameters parameters,
         JsonTypeInfo<TParameters> parametersTypeInfo,
@@ -192,7 +192,7 @@ public static class McpEndpointExtensions
     /// </para>
     /// </remarks>
     public static Task NotifyProgressAsync(
-        this IMcpEndpoint endpoint,
+        this McpSession endpoint,
         ProgressToken progressToken,
         ProgressNotificationValue progress, 
         CancellationToken cancellationToken = default)

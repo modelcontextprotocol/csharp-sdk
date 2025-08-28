@@ -244,7 +244,7 @@ internal sealed class StreamableHttpHandler(
             }
         }
 
-        var server = McpServerFactory.Create(transport, mcpServerOptions, loggerFactory, mcpServerServices);
+        var server = McpServer.Create(transport, mcpServerOptions, loggerFactory, mcpServerServices);
         context.Features.Set(server);
 
         var userIdClaim = statelessId?.UserIdClaim ?? GetUserIdClaim(context.User);
@@ -306,7 +306,7 @@ internal sealed class StreamableHttpHandler(
         };
     }
 
-    internal static Task RunSessionAsync(HttpContext httpContext, IMcpServer session, CancellationToken requestAborted)
+    internal static Task RunSessionAsync(HttpContext httpContext, McpServer session, CancellationToken requestAborted)
         => session.RunAsync(requestAborted);
 
     // SignalR only checks for ClaimTypes.NameIdentifier in HttpConnectionDispatcher, but AspNetCore.Antiforgery checks that plus the sub and UPN claims.

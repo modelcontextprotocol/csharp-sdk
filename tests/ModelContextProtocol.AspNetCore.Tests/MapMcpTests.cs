@@ -23,7 +23,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
         options.Stateless = Stateless;
     }
 
-    protected async Task<McpClientSession> ConnectAsync(
+    protected async Task<McpClient> ConnectAsync(
         string? path = null,
         SseClientTransportOptions? transportOptions = null,
         McpClientOptions? clientOptions = null)
@@ -37,7 +37,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
             TransportMode = UseStreamableHttp ? HttpTransportMode.StreamableHttp : HttpTransportMode.Sse,
         }, HttpClient, LoggerFactory);
 
-        return await McpClientFactory.CreateAsync(transport, clientOptions, LoggerFactory, TestContext.Current.CancellationToken);
+        return await McpClient.CreateAsync(transport, clientOptions, LoggerFactory, TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -204,7 +204,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     private class SamplingRegressionTools
     {
         [McpServerTool(Name = "sampling-tool")]
-        public static async Task<string> SamplingToolAsync(IMcpServer server, string prompt, CancellationToken cancellationToken)
+        public static async Task<string> SamplingToolAsync(McpServer server, string prompt, CancellationToken cancellationToken)
         {
             // This tool reproduces the scenario described in https://github.com/modelcontextprotocol/csharp-sdk/issues/464
             // 1. The client calls tool with request ID 2, because it's the first request after the initialize request.

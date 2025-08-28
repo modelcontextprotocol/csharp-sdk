@@ -37,7 +37,7 @@ var transport = new SseClientTransport(new()
     }
 }, httpClient, consoleLoggerFactory);
 
-var client = await McpClientFactory.CreateAsync(transport, loggerFactory: consoleLoggerFactory);
+var client = await McpClient.CreateAsync(transport, loggerFactory: consoleLoggerFactory);
 
 var tools = await client.ListToolsAsync();
 if (tools.Count == 0)

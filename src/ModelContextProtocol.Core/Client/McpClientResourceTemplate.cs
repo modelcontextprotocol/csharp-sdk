@@ -15,9 +15,9 @@ namespace ModelContextProtocol.Client;
 /// </remarks>
 public sealed class McpClientResourceTemplate
 {
-    private readonly McpClientSession _client;
+    private readonly McpClient _client;
 
-    internal McpClientResourceTemplate(McpClientSession client, ResourceTemplate resourceTemplate)
+    internal McpClientResourceTemplate(McpClient client, ResourceTemplate resourceTemplate)
     {
         _client = client;
         ProtocolResourceTemplate = resourceTemplate;

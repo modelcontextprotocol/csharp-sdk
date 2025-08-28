@@ -8,11 +8,11 @@ using System.Text.Json.Serialization.Metadata;
 namespace ModelContextProtocol.Server;
 
 /// <inheritdoc />
-public sealed class McpServerSession : IMcpServer
+internal sealed class McpServerImpl : McpServer
 {
     internal static Implementation DefaultImplementation { get; } = new()
     {
-        Name = AssemblyNameHelper.DefaultAssemblyName.Name ?? nameof(McpServerSession),
+        Name = AssemblyNameHelper.DefaultAssemblyName.Name ?? nameof(McpServer),
         Version = AssemblyNameHelper.DefaultAssemblyName.Version?.ToString() ?? "1.0.0",
     };
 
@@ -23,6 +23,9 @@ public sealed class McpServerSession : IMcpServer
     private readonly NotificationHandlers _notificationHandlers;
     private readonly RequestHandlers _requestHandlers;
     private readonly McpSessionHandler _sessionHandler;
+
+    private ClientCapabilities? _clientCapabilities;
+    private Implementation? _clientInfo;
 
     private readonly string _serverOnlyEndpointName;
     private string _endpointName;
@@ -38,7 +41,7 @@ public sealed class McpServerSession : IMcpServer
     private StrongBox<LoggingLevel>? _loggingLevel;
 
     /// <summary>
-    /// Creates a new instance of <see cref="McpServerSession"/>.
+    /// Creates a new instance of <see cref="McpServerImpl"/>.
     /// </summary>
     /// <param name="transport">Transport to use for the server representing an already-established session.</param>
     /// <param name="options">Configuration options for this server, including capabilities.
@@ -46,7 +49,7 @@ public sealed class McpServerSession : IMcpServer
     /// <param name="loggerFactory">Logger factory to use for logging</param>
     /// <param name="serviceProvider">Optional service provider to use for dependency injection</param>
     /// <exception cref="McpException">The server was incorrectly configured.</exception>
-    public McpServerSession(ITransport transport, McpServerOptions options, ILoggerFactory? loggerFactory, IServiceProvider? serviceProvider)
+    public McpServerImpl(ITransport transport, McpServerOptions options, ILoggerFactory? loggerFactory, IServiceProvider? serviceProvider)
     {
         Throw.IfNull(transport);
         Throw.IfNull(options);
@@ -59,9 +62,9 @@ public sealed class McpServerSession : IMcpServer
         _serverOnlyEndpointName = $"Server ({options.ServerInfo?.Name ?? DefaultImplementation.Name} {options.ServerInfo?.Version ?? DefaultImplementation.Version})";
         _endpointName = _serverOnlyEndpointName;
         _servicesScopePerRequest = options.ScopeRequests;
-        _logger = loggerFactory?.CreateLogger<McpServerSession>() ?? NullLogger<McpServerSession>.Instance;
+        _logger = loggerFactory?.CreateLogger<McpServer>() ?? NullLogger<McpServer>.Instance;
 
-        ClientInfo = options.KnownClientInfo;
+        _clientInfo = options.KnownClientInfo;
         UpdateEndpointNameWithClientInfo();
 
         _notificationHandlers = new();
@@ -108,28 +111,28 @@ public sealed class McpServerSession : IMcpServer
     }
 
     /// <inheritdoc/>
-    public string? SessionId => _sessionTransport.SessionId;
+    public override string? SessionId => _sessionTransport.SessionId;
 
     /// <inheritdoc/>
     public ServerCapabilities ServerCapabilities { get; } = new();
 
     /// <inheritdoc />
-    public ClientCapabilities? ClientCapabilities { get; set; }
+    public override ClientCapabilities? ClientCapabilities => _clientCapabilities;
 
     /// <inheritdoc />
-    public Implementation? ClientInfo { get; set; }
+    public override Implementation? ClientInfo => _clientInfo;
 
     /// <inheritdoc />
-    public McpServerOptions ServerOptions { get; }
+    public override McpServerOptions ServerOptions { get; }
 
     /// <inheritdoc />
-    public IServiceProvider? Services { get; }
+    public override IServiceProvider? Services { get; }
 
     /// <inheritdoc />
-    public LoggingLevel? LoggingLevel => _loggingLevel?.Value;
+    public override LoggingLevel? LoggingLevel => _loggingLevel?.Value;
 
     /// <inheritdoc />
-    public async Task RunAsync(CancellationToken cancellationToken = default)
+    public override async Task RunAsync(CancellationToken cancellationToken = default)
     {
         if (Interlocked.Exchange(ref _started, 1) != 0)
         {
@@ -148,19 +151,19 @@ public sealed class McpServerSession : IMcpServer
 
 
     /// <inheritdoc/>
-    public Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default)
+    public override Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default)
         => _sessionHandler.SendRequestAsync(request, cancellationToken);
 
     /// <inheritdoc/>
-    public Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
+    public override Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
         => _sessionHandler.SendMessageAsync(message, cancellationToken);
 
     /// <inheritdoc/>
-    public IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler)
+    public override IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler)
         => _sessionHandler.RegisterNotificationHandler(method, handler);
 
     /// <inheritdoc/>
-    public async ValueTask DisposeAsync()
+    public override async ValueTask DisposeAsync()
     {
         if (Interlocked.CompareExchange(ref _isDisposed, 1, 0) != 0)
         {
@@ -184,8 +187,8 @@ public sealed class McpServerSession : IMcpServer
         _requestHandlers.Set(RequestMethods.Initialize,
             async (request, _, _) =>
             {
-                ClientCapabilities = request?.Capabilities ?? new();
-                ClientInfo = request?.ClientInfo;
+                _clientCapabilities = request?.Capabilities ?? new();
+                _clientInfo = request?.ClientInfo;
 
                 // Use the ClientInfo to update the session EndpointName for logging.
                 UpdateEndpointNameWithClientInfo();
@@ -558,7 +561,7 @@ public sealed class McpServerSession : IMcpServer
     {
         return _servicesScopePerRequest ?
             InvokeScopedAsync(handler, args, cancellationToken) :
-            handler(new(new DestinationBoundMcpServer(this, destinationTransport)) { Params = args }, cancellationToken);
+            handler(new(new DestinationBoundMcpServerSession(this, destinationTransport)) { Params = args }, cancellationToken);
 
         async ValueTask<TResult> InvokeScopedAsync(
             Func<RequestContext<TParams>, CancellationToken, ValueTask<TResult>> handler,
@@ -569,7 +572,7 @@ public sealed class McpServerSession : IMcpServer
             try
             {
                 return await handler(
-                    new RequestContext<TParams>(new DestinationBoundMcpServer(this, destinationTransport))
+                    new RequestContext<TParams>(new DestinationBoundMcpServerSession(this, destinationTransport))
                     {
                         Services = scope?.ServiceProvider ?? Services,
                         Params = args

@@ -109,7 +109,7 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClientFactory.CreateAsync(
+        await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
 
@@ -129,7 +129,7 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
             Endpoint = new(McpServerUrl),
         }, HttpClient, LoggerFactory);
 
-        var httpEx = await Assert.ThrowsAsync<HttpRequestException>(async () => await McpClientFactory.CreateAsync(
+        var httpEx = await Assert.ThrowsAsync<HttpRequestException>(async () => await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Equal(HttpStatusCode.Unauthorized, httpEx.StatusCode);
@@ -159,7 +159,7 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
         }, HttpClient, LoggerFactory);
 
         // The EqualException is thrown by HandleAuthorizationUrlAsync when the /authorize request gets a 400
-        var equalEx = await Assert.ThrowsAsync<EqualException>(async () => await McpClientFactory.CreateAsync(
+        var equalEx = await Assert.ThrowsAsync<EqualException>(async () => await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
     }
 
@@ -187,7 +187,7 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClientFactory.CreateAsync(
+        await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
 
@@ -216,7 +216,7 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
 
         // The test-refresh-client should get an expired token first,
         // then automatically refresh it to get a working token
-        await using var client = await McpClientFactory.CreateAsync(
+        await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(_testOAuthServer.HasIssuedRefreshToken);
@@ -249,7 +249,7 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClientFactory.CreateAsync(
+        await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(_lastAuthorizationUri?.Query);
@@ -283,7 +283,7 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
             },
         }, HttpClient, LoggerFactory);
 
-        await Assert.ThrowsAsync<ArgumentException>(() => McpClientFactory.CreateAsync(
+        await Assert.ThrowsAsync<ArgumentException>(() => McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
     }
 

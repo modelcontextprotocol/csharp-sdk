@@ -122,7 +122,7 @@ public class AuthEventTests : KestrelInMemoryTest, IAsyncDisposable
             LoggerFactory
         );
 
-        await using var client = await McpClientFactory.CreateAsync(
+        await using var client = await McpClient.CreateAsync(
             transport,
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken
@@ -157,7 +157,7 @@ public class AuthEventTests : KestrelInMemoryTest, IAsyncDisposable
             LoggerFactory
         );
 
-        await using var client = await McpClientFactory.CreateAsync(
+        await using var client = await McpClient.CreateAsync(
             transport,
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken

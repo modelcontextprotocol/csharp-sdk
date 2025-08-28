@@ -8,7 +8,7 @@ using System.Text.Json;
 namespace ModelContextProtocol.Client;
 
 /// <summary>
-/// Provides extension methods for interacting with an <see cref="McpClientSession"/>.
+/// Provides extension methods for interacting with an <see cref="McpClient"/>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -38,7 +38,7 @@ public static class McpClientExtensions
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     /// <exception cref="McpException">Thrown when the server cannot be reached or returns an error response.</exception>
-    public static Task PingAsync(this McpClientSession client, CancellationToken cancellationToken = default)
+    public static Task PingAsync(this McpClient client, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
 
@@ -90,7 +90,7 @@ public static class McpClientExtensions
     /// </example>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     public static async ValueTask<IList<McpClientTool>> ListToolsAsync(
-        this McpClientSession client,
+        this McpClient client,
         JsonSerializerOptions? serializerOptions = null,
         CancellationToken cancellationToken = default)
     {
@@ -156,7 +156,7 @@ public static class McpClientExtensions
     /// </example>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     public static async IAsyncEnumerable<McpClientTool> EnumerateToolsAsync(
-        this McpClientSession client,
+        this McpClient client,
         JsonSerializerOptions? serializerOptions = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
@@ -203,7 +203,7 @@ public static class McpClientExtensions
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     public static async ValueTask<IList<McpClientPrompt>> ListPromptsAsync(
-        this McpClientSession client, CancellationToken cancellationToken = default)
+        this McpClient client, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
 
@@ -259,7 +259,7 @@ public static class McpClientExtensions
     /// </example>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     public static async IAsyncEnumerable<McpClientPrompt> EnumeratePromptsAsync(
-        this McpClientSession client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        this McpClient client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
 
@@ -309,7 +309,7 @@ public static class McpClientExtensions
     /// <exception cref="McpException">Thrown when the prompt does not exist, when required arguments are missing, or when the server encounters an error processing the prompt.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     public static ValueTask<GetPromptResult> GetPromptAsync(
-        this McpClientSession client,
+        this McpClient client,
         string name,
         IReadOnlyDictionary<string, object?>? arguments = null,
         JsonSerializerOptions? serializerOptions = null,
@@ -347,7 +347,7 @@ public static class McpClientExtensions
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     public static async ValueTask<IList<McpClientResourceTemplate>> ListResourceTemplatesAsync(
-        this McpClientSession client, CancellationToken cancellationToken = default)
+        this McpClient client, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
 
@@ -404,7 +404,7 @@ public static class McpClientExtensions
     /// </example>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     public static async IAsyncEnumerable<McpClientResourceTemplate> EnumerateResourceTemplatesAsync(
-        this McpClientSession client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        this McpClient client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
 
@@ -458,7 +458,7 @@ public static class McpClientExtensions
     /// </example>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     public static async ValueTask<IList<McpClientResource>> ListResourcesAsync(
-        this McpClientSession client, CancellationToken cancellationToken = default)
+        this McpClient client, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
 
@@ -515,7 +515,7 @@ public static class McpClientExtensions
     /// </example>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     public static async IAsyncEnumerable<McpClientResource> EnumerateResourcesAsync(
-        this McpClientSession client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        this McpClient client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
 
@@ -549,7 +549,7 @@ public static class McpClientExtensions
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="uri"/> is empty or composed entirely of whitespace.</exception>
     public static ValueTask<ReadResourceResult> ReadResourceAsync(
-        this McpClientSession client, string uri, CancellationToken cancellationToken = default)
+        this McpClient client, string uri, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
         Throw.IfNullOrWhiteSpace(uri);
@@ -571,7 +571,7 @@ public static class McpClientExtensions
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
     public static ValueTask<ReadResourceResult> ReadResourceAsync(
-        this McpClientSession client, Uri uri, CancellationToken cancellationToken = default)
+        this McpClient client, Uri uri, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
         Throw.IfNull(uri);
@@ -590,7 +590,7 @@ public static class McpClientExtensions
     /// <exception cref="ArgumentNullException"><paramref name="uriTemplate"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="uriTemplate"/> is empty or composed entirely of whitespace.</exception>
     public static ValueTask<ReadResourceResult> ReadResourceAsync(
-        this McpClientSession client, string uriTemplate, IReadOnlyDictionary<string, object?> arguments, CancellationToken cancellationToken = default)
+        this McpClient client, string uriTemplate, IReadOnlyDictionary<string, object?> arguments, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
         Throw.IfNullOrWhiteSpace(uriTemplate);
@@ -633,7 +633,7 @@ public static class McpClientExtensions
     /// <exception cref="ArgumentNullException"><paramref name="argumentName"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="argumentName"/> is empty or composed entirely of whitespace.</exception>
     /// <exception cref="McpException">The server returned an error response.</exception>
-    public static ValueTask<CompleteResult> CompleteAsync(this McpClientSession client, Reference reference, string argumentName, string argumentValue, CancellationToken cancellationToken = default)
+    public static ValueTask<CompleteResult> CompleteAsync(this McpClient client, Reference reference, string argumentName, string argumentValue, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
         Throw.IfNull(reference);
@@ -670,13 +670,13 @@ public static class McpClientExtensions
     /// </para>
     /// <para>
     /// To handle resource change notifications, register an event handler for the appropriate notification events,
-    /// such as with <see cref="IMcpEndpoint.RegisterNotificationHandler"/>.
+    /// such as with <see cref="McpSession.RegisterNotificationHandler"/>.
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="uri"/> is empty or composed entirely of whitespace.</exception>
-    public static Task SubscribeToResourceAsync(this McpClientSession client, string uri, CancellationToken cancellationToken = default)
+    public static Task SubscribeToResourceAsync(this McpClient client, string uri, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
         Throw.IfNullOrWhiteSpace(uri);
@@ -708,12 +708,12 @@ public static class McpClientExtensions
     /// </para>
     /// <para>
     /// To handle resource change notifications, register an event handler for the appropriate notification events,
-    /// such as with <see cref="IMcpEndpoint.RegisterNotificationHandler"/>.
+    /// such as with <see cref="McpSession.RegisterNotificationHandler"/>.
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
-    public static Task SubscribeToResourceAsync(this McpClientSession client, Uri uri, CancellationToken cancellationToken = default)
+    public static Task SubscribeToResourceAsync(this McpClient client, Uri uri, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
         Throw.IfNull(uri);
@@ -745,7 +745,7 @@ public static class McpClientExtensions
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="uri"/> is empty or composed entirely of whitespace.</exception>
-    public static Task UnsubscribeFromResourceAsync(this McpClientSession client, string uri, CancellationToken cancellationToken = default)
+    public static Task UnsubscribeFromResourceAsync(this McpClient client, string uri, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
         Throw.IfNullOrWhiteSpace(uri);
@@ -781,7 +781,7 @@ public static class McpClientExtensions
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
-    public static Task UnsubscribeFromResourceAsync(this McpClientSession client, Uri uri, CancellationToken cancellationToken = default)
+    public static Task UnsubscribeFromResourceAsync(this McpClient client, Uri uri, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
         Throw.IfNull(uri);
@@ -825,7 +825,7 @@ public static class McpClientExtensions
     /// </code>
     /// </example>
     public static ValueTask<CallToolResult> CallToolAsync(
-        this McpClientSession client,
+        this McpClient client,
         string toolName,
         IReadOnlyDictionary<string, object?>? arguments = null,
         IProgress<ProgressNotificationValue>? progress = null,
@@ -854,7 +854,7 @@ public static class McpClientExtensions
             cancellationToken: cancellationToken);
 
         static async ValueTask<CallToolResult> SendRequestWithProgressAsync(
-            McpClientSession client,
+            McpClient client,
             string toolName,
             IReadOnlyDictionary<string, object?>? arguments,
             IProgress<ProgressNotificationValue> progress,
@@ -1031,11 +1031,11 @@ public static class McpClientExtensions
     /// </para>
     /// <para>
     /// Log messages are delivered as notifications to the client and can be captured by registering
-    /// appropriate event handlers with the client implementation, such as with <see cref="IMcpEndpoint.RegisterNotificationHandler"/>.
+    /// appropriate event handlers with the client implementation, such as with <see cref="McpSession.RegisterNotificationHandler"/>.
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
-    public static Task SetLoggingLevel(this McpClientSession client, LoggingLevel level, CancellationToken cancellationToken = default)
+    public static Task SetLoggingLevel(this McpClient client, LoggingLevel level, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(client);
 
@@ -1066,12 +1066,12 @@ public static class McpClientExtensions
     /// </para>
     /// <para>
     /// Log messages are delivered as notifications to the client and can be captured by registering
-    /// appropriate event handlers with the client implementation, such as with <see cref="IMcpEndpoint.RegisterNotificationHandler"/>.
+    /// appropriate event handlers with the client implementation, such as with <see cref="McpSession.RegisterNotificationHandler"/>.
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
-    public static Task SetLoggingLevel(this McpClientSession client, LogLevel level, CancellationToken cancellationToken = default) =>
-        SetLoggingLevel(client, McpServerSession.ToLoggingLevel(level), cancellationToken);
+    public static Task SetLoggingLevel(this McpClient client, LogLevel level, CancellationToken cancellationToken = default) =>
+        SetLoggingLevel(client, McpServerImpl.ToLoggingLevel(level), cancellationToken);
 
     /// <summary>Convers a dictionary with <see cref="object"/> values to a dictionary with <see cref="JsonElement"/> values.</summary>
     private static Dictionary<string, JsonElement>? ToArgumentsDictionary(

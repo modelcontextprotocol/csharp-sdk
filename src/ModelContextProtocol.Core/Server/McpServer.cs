@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.Server;
@@ -5,7 +6,7 @@ namespace ModelContextProtocol.Server;
 /// <summary>
 /// Represents an instance of a Model Context Protocol (MCP) server that connects to and communicates with an MCP client.
 /// </summary>
-public interface IMcpServer : IMcpEndpoint
+public abstract class McpServer : McpSession
 {
     /// <summary>
     /// Gets the capabilities supported by the client.
@@ -21,7 +22,7 @@ public interface IMcpServer : IMcpEndpoint
     /// are available when interacting with the client.
     /// </para>
     /// </remarks>
-    ClientCapabilities? ClientCapabilities { get; }
+    public abstract ClientCapabilities? ClientCapabilities { get; }
 
     /// <summary>
     /// Gets the version and implementation information of the connected client.
@@ -36,7 +37,7 @@ public interface IMcpServer : IMcpEndpoint
     /// or implementing client-specific behaviors.
     /// </para>
     /// </remarks>
-    Implementation? ClientInfo { get; }
+    public abstract Implementation? ClientInfo { get; }
 
     /// <summary>
     /// Gets the options used to construct this server.
@@ -45,18 +46,40 @@ public interface IMcpServer : IMcpEndpoint
     /// These options define the server's capabilities, protocol version, and other configuration
     /// settings that were used to initialize the server.
     /// </remarks>
-    McpServerOptions ServerOptions { get; }
+    public abstract McpServerOptions ServerOptions { get; }
 
     /// <summary>
     /// Gets the service provider for the server.
     /// </summary>
-    IServiceProvider? Services { get; }
+    public abstract IServiceProvider? Services { get; }
 
     /// <summary>Gets the last logging level set by the client, or <see langword="null"/> if it's never been set.</summary>
-    LoggingLevel? LoggingLevel { get; }
+    public abstract LoggingLevel? LoggingLevel { get; }
 
     /// <summary>
     /// Runs the server, listening for and handling client requests.
     /// </summary>
-    Task RunAsync(CancellationToken cancellationToken = default);
+    public abstract Task RunAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Creates a new instance of an <see cref="McpServer"/>.
+    /// </summary>
+    /// <param name="transport">Transport to use for the server representing an already-established MCP session.</param>
+    /// <param name="serverOptions">Configuration options for this server, including capabilities. </param>
+    /// <param name="loggerFactory">Logger factory to use for logging. If null, logging will be disabled.</param>
+    /// <param name="serviceProvider">Optional service provider to create new instances of tools and other dependencies.</param>
+    /// <returns>An <see cref="McpServer"/> instance that should be disposed when no longer needed.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="transport"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="serverOptions"/> is <see langword="null"/>.</exception>
+    public static McpServer Create(
+        ITransport transport,
+        McpServerOptions serverOptions,
+        ILoggerFactory? loggerFactory = null,
+        IServiceProvider? serviceProvider = null)
+    {
+        Throw.IfNull(transport);
+        Throw.IfNull(serverOptions);
+
+        return new McpServerImpl(transport, serverOptions, loggerFactory, serviceProvider);
+    }
 }

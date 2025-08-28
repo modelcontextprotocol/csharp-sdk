@@ -8,7 +8,7 @@ using System.Text.Json;
 namespace ModelContextProtocol.Server;
 
 /// <summary>
-/// Provides extension methods for interacting with an <see cref="IMcpServer"/> instance.
+/// Provides extension methods for interacting with an <see cref="McpServer"/> instance.
 /// </summary>
 public static class McpServerExtensions
 {
@@ -27,7 +27,7 @@ public static class McpServerExtensions
     /// and token limits.
     /// </remarks>
     public static ValueTask<CreateMessageResult> SampleAsync(
-        this IMcpServer server, CreateMessageRequestParams request, CancellationToken cancellationToken = default)
+        this McpServer server, CreateMessageRequestParams request, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(server);
         ThrowIfSamplingUnsupported(server);
@@ -56,7 +56,7 @@ public static class McpServerExtensions
     /// handling different content types such as text, images, and audio.
     /// </remarks>
     public static async Task<ChatResponse> SampleAsync(
-        this IMcpServer server,
+        this McpServer server,
         IEnumerable<ChatMessage> messages, ChatOptions? options = default, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(server);
@@ -161,7 +161,7 @@ public static class McpServerExtensions
     /// <returns>The <see cref="IChatClient"/> that can be used to issue sampling requests to the client.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="server"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
-    public static IChatClient AsSamplingChatClient(this IMcpServer server)
+    public static IChatClient AsSamplingChatClient(this McpServer server)
     {
         Throw.IfNull(server);
         ThrowIfSamplingUnsupported(server);
@@ -172,7 +172,7 @@ public static class McpServerExtensions
     /// <summary>Gets an <see cref="ILogger"/> on which logged messages will be sent as notifications to the client.</summary>
     /// <param name="server">The server to wrap as an <see cref="ILogger"/>.</param>
     /// <returns>An <see cref="ILogger"/> that can be used to log to the client..</returns>
-    public static ILoggerProvider AsClientLoggerProvider(this IMcpServer server)
+    public static ILoggerProvider AsClientLoggerProvider(this McpServer server)
     {
         Throw.IfNull(server);
 
@@ -195,7 +195,7 @@ public static class McpServerExtensions
     /// or other structured data sources that the client makes available through the protocol.
     /// </remarks>
     public static ValueTask<ListRootsResult> RequestRootsAsync(
-        this IMcpServer server, ListRootsRequestParams request, CancellationToken cancellationToken = default)
+        this McpServer server, ListRootsRequestParams request, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(server);
         ThrowIfRootsUnsupported(server);
@@ -221,7 +221,7 @@ public static class McpServerExtensions
     /// This method requires the client to support the elicitation capability.
     /// </remarks>
     public static ValueTask<ElicitResult> ElicitAsync(
-        this IMcpServer server, ElicitRequestParams request, CancellationToken cancellationToken = default)
+        this McpServer server, ElicitRequestParams request, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(server);
         ThrowIfElicitationUnsupported(server);
@@ -234,7 +234,7 @@ public static class McpServerExtensions
             cancellationToken: cancellationToken);
     }
 
-    private static void ThrowIfSamplingUnsupported(IMcpServer server)
+    private static void ThrowIfSamplingUnsupported(McpServer server)
     {
         if (server.ClientCapabilities?.Sampling is null)
         {
@@ -247,7 +247,7 @@ public static class McpServerExtensions
         }
     }
 
-    private static void ThrowIfRootsUnsupported(IMcpServer server)
+    private static void ThrowIfRootsUnsupported(McpServer server)
     {
         if (server.ClientCapabilities?.Roots is null)
         {
@@ -260,7 +260,7 @@ public static class McpServerExtensions
         }
     }
 
-    private static void ThrowIfElicitationUnsupported(IMcpServer server)
+    private static void ThrowIfElicitationUnsupported(McpServer server)
     {
         if (server.ClientCapabilities?.Elicitation is null)
         {
@@ -274,7 +274,7 @@ public static class McpServerExtensions
     }
 
     /// <summary>Provides an <see cref="IChatClient"/> implementation that's implemented via client sampling.</summary>
-    private sealed class SamplingChatClient(IMcpServer server) : IChatClient
+    private sealed class SamplingChatClient(McpServer server) : IChatClient
     {
         /// <inheritdoc/>
         public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
@@ -311,7 +311,7 @@ public static class McpServerExtensions
     /// Provides an <see cref="ILoggerProvider"/> implementation for creating loggers
     /// that send logging message notifications to the client for logged messages.
     /// </summary>
-    private sealed class ClientLoggerProvider(IMcpServer server) : ILoggerProvider
+    private sealed class ClientLoggerProvider(McpServer server) : ILoggerProvider
     {
         /// <inheritdoc />
         public ILogger CreateLogger(string categoryName)
@@ -324,7 +324,7 @@ public static class McpServerExtensions
         /// <inheritdoc />
         void IDisposable.Dispose() { }
 
-        private sealed class ClientLogger(IMcpServer server, string categoryName) : ILogger
+        private sealed class ClientLogger(McpServer server, string categoryName) : ILogger
         {
             /// <inheritdoc />
             public IDisposable? BeginScope<TState>(TState state) where TState : notnull =>
@@ -333,7 +333,7 @@ public static class McpServerExtensions
             /// <inheritdoc />
             public bool IsEnabled(LogLevel logLevel) =>
                 server?.LoggingLevel is { } loggingLevel &&
-                McpServerSession.ToLoggingLevel(logLevel) >= loggingLevel;
+                McpServerImpl.ToLoggingLevel(logLevel) >= loggingLevel;
 
             /// <inheritdoc />
             public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
@@ -351,7 +351,7 @@ public static class McpServerExtensions
                 {
                     _ = server.SendNotificationAsync(NotificationMethods.LoggingMessageNotification, new LoggingMessageNotificationParams
                     {
-                        Level = McpServerSession.ToLoggingLevel(logLevel),
+                        Level = McpServerImpl.ToLoggingLevel(logLevel),
                         Data = JsonSerializer.SerializeToElement(message, McpJsonUtilities.JsonContext.Default.String),
                         Logger = categoryName,
                     });

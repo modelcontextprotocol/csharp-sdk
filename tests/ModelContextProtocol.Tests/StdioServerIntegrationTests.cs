@@ -35,7 +35,7 @@ public class StdioServerIntegrationTests(ITestOutputHelper testOutputHelper) : L
             process.StandardInput.BaseStream,
             serverName: "TestServerWithHosting");
 
-        await using var client = await McpClientFactory.CreateAsync(
+        await using var client = await McpClient.CreateAsync(
             new TestClientTransport(streamServerTransport),
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);

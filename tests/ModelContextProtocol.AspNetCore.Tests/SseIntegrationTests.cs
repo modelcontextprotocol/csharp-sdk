@@ -21,8 +21,8 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         Name = "In-memory SSE Client",
     };
 
-    private Task<McpClientSession> ConnectMcpClientAsync(HttpClient? httpClient = null, SseClientTransportOptions? transportOptions = null)
-        => McpClientFactory.CreateAsync(
+    private Task<McpClient> ConnectMcpClientAsync(HttpClient? httpClient = null, SseClientTransportOptions? transportOptions = null)
+        => McpClient.CreateAsync(
             new SseClientTransport(transportOptions ?? DefaultTransportOptions, httpClient ?? HttpClient, LoggerFactory),
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
@@ -257,7 +257,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
             try
             {
                 var transportTask = transport.RunAsync(cancellationToken: requestAborted);
-                await using var server = McpServerFactory.Create(transport, optionsSnapshot.Value, loggerFactory, endpoints.ServiceProvider);
+                await using var server = McpServer.Create(transport, optionsSnapshot.Value, loggerFactory, endpoints.ServiceProvider);
 
                 try
                 {

@@ -43,7 +43,7 @@ public class DockerEverythingServerTests(ITestOutputHelper testOutputHelper) : L
         };
 
         // Create client and run tests
-        await using var client = await McpClientFactory.CreateAsync(
+        await using var client = await McpClient.CreateAsync(
             new SseClientTransport(defaultConfig),
             defaultOptions, 
             loggerFactory: LoggerFactory,
@@ -90,7 +90,7 @@ public class DockerEverythingServerTests(ITestOutputHelper testOutputHelper) : L
             },
         };
 
-        await using var client = await McpClientFactory.CreateAsync(
+        await using var client = await McpClient.CreateAsync(
             new SseClientTransport(defaultConfig),
             defaultOptions,
             loggerFactory: LoggerFactory,

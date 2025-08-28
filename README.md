@@ -37,8 +37,8 @@ dotnet add package ModelContextProtocol --prerelease
 
 ## Getting Started (Client)
 
-To get started writing a client, the `McpClientFactory.CreateAsync` method is used to instantiate and connect an `McpClientSession`
-to a server. Once you have an `McpClientSession`, you can interact with it, such as to enumerate all available tools and invoke tools.
+To get started writing a client, the `McpClient.CreateAsync` method is used to instantiate and connect an `McpClient`
+to a server. Once you have an `McpClient`, you can interact with it, such as to enumerate all available tools and invoke tools.
 
 ```csharp
 var clientTransport = new StdioClientTransport(new StdioClientTransportOptions
@@ -48,7 +48,7 @@ var clientTransport = new StdioClientTransport(new StdioClientTransportOptions
     Arguments = ["-y", "@modelcontextprotocol/server-everything"],
 });
 
-var client = await McpClientFactory.CreateAsync(clientTransport);
+var client = await McpClient.CreateAsync(clientTransport);
 
 // Print the list of tools available from the server.
 foreach (var tool in await client.ListToolsAsync())
@@ -224,7 +224,7 @@ McpServerOptions options = new()
     },
 };
 
-await using IMcpServer server = McpServerFactory.Create(new StdioServerTransport("MyServer"), options);
+await using IMcpServer server = McpServer.Create(new StdioServerTransport("MyServer"), options);
 await server.RunAsync();
 ```
 

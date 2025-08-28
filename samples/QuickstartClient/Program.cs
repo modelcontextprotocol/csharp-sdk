@@ -21,7 +21,7 @@ var clientTransport = new StdioClientTransport(new()
     Arguments = arguments,
 });
 
-await using var mcpClient = await McpClientFactory.CreateAsync(clientTransport);
+await using var mcpClient = await McpClient.CreateAsync(clientTransport);
 
 var tools = await mcpClient.ListToolsAsync();
 foreach (var tool in tools)

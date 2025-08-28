@@ -17,13 +17,13 @@ internal sealed class RequestServiceProvider<TRequestParams>(
     /// <summary>Gets whether the specified type is in the list of additional types this service provider wraps around the one in a provided request's services.</summary>
     public static bool IsAugmentedWith(Type serviceType) =>
         serviceType == typeof(RequestContext<TRequestParams>) ||
-        serviceType == typeof(IMcpServer) ||
+        serviceType == typeof(McpServer) ||
         serviceType == typeof(IProgress<ProgressNotificationValue>);
 
     /// <inheritdoc />
     public object? GetService(Type serviceType) =>
         serviceType == typeof(RequestContext<TRequestParams>) ? request :
-        serviceType == typeof(IMcpServer) ? request.Server :
+        serviceType == typeof(McpServer) ? request.Server :
         serviceType == typeof(IProgress<ProgressNotificationValue>) ?
             (request.Params?.ProgressToken is { } progressToken ? new TokenProgress(request.Server, progressToken) : NullProgress.Instance) :
         innerServices?.GetService(serviceType);

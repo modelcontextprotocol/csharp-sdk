@@ -5,14 +5,12 @@ using System.Text.Json;
 
 namespace ModelContextProtocol.Client;
 
-/// <summary>
-/// Represents an instance of a Model Context Protocol (MCP) client session that connects to and communicates with an MCP server.
-/// </summary>
-public sealed partial class McpClientSession : IMcpEndpoint
+/// <inheritdoc/>
+internal sealed partial class McpClientImpl : McpClient
 {
     private static Implementation DefaultImplementation { get; } = new()
     {
-        Name = AssemblyNameHelper.DefaultAssemblyName.Name ?? nameof(McpClientSession),
+        Name = AssemblyNameHelper.DefaultAssemblyName.Name ?? nameof(McpClient),
         Version = AssemblyNameHelper.DefaultAssemblyName.Version?.ToString() ?? "1.0.0",
     };
 
@@ -31,20 +29,20 @@ public sealed partial class McpClientSession : IMcpEndpoint
     private int _isDisposed;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="McpClientSession"/> class.
+    /// Initializes a new instance of the <see cref="McpClientImpl"/> class.
     /// </summary>
     /// <param name="transport">The transport to use for communication with the server.</param>
     /// <param name="endpointName">The name of the endpoint for logging and debug purposes.</param>
     /// <param name="options">Options for the client, defining protocol version and capabilities.</param>
     /// <param name="loggerFactory">The logger factory.</param>
-    internal McpClientSession(ITransport transport, string endpointName, McpClientOptions? options, ILoggerFactory? loggerFactory)
+    internal McpClientImpl(ITransport transport, string endpointName, McpClientOptions? options, ILoggerFactory? loggerFactory)
     {
         options ??= new();
 
         _transport = transport;
         _endpointName = $"Client ({options.ClientInfo?.Name ?? DefaultImplementation.Name} {options.ClientInfo?.Version ?? DefaultImplementation.Version})";
         _options = options;
-        _logger = loggerFactory?.CreateLogger<McpClientSession>() ?? NullLogger<McpClientSession>.Instance;
+        _logger = loggerFactory?.CreateLogger<McpClient>() ?? NullLogger<McpClient>.Instance;
 
         var notificationHandlers = new NotificationHandlers();
         var requestHandlers = new RequestHandlers();
@@ -111,45 +109,16 @@ public sealed partial class McpClientSession : IMcpEndpoint
     }
 
     /// <inheritdoc/>
-    public string? SessionId => _transport.SessionId;
+    public override string? SessionId => _transport.SessionId;
 
-    /// <summary>
-    /// Gets the capabilities supported by the connected server.
-    /// </summary>
-    /// <exception cref="InvalidOperationException">The client is not connected.</exception>
-    public ServerCapabilities ServerCapabilities => _serverCapabilities ?? throw new InvalidOperationException("The client is not connected.");
+    /// <inheritdoc/>
+    public override ServerCapabilities ServerCapabilities => _serverCapabilities ?? throw new InvalidOperationException("The client is not connected.");
 
-    /// <summary>
-    /// Gets the implementation information of the connected server.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// This property provides identification details about the connected server, including its name and version.
-    /// It is populated during the initialization handshake and is available after a successful connection.
-    /// </para>
-    /// <para>
-    /// This information can be useful for logging, debugging, compatibility checks, and displaying server
-    /// information to users.
-    /// </para>
-    /// </remarks>
-    /// <exception cref="InvalidOperationException">The client is not connected.</exception>
-    public Implementation ServerInfo => _serverInfo ?? throw new InvalidOperationException("The client is not connected.");
+    /// <inheritdoc/>
+    public override Implementation ServerInfo => _serverInfo ?? throw new InvalidOperationException("The client is not connected.");
 
-    /// <summary>
-    /// Gets any instructions describing how to use the connected server and its features.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// This property contains instructions provided by the server during initialization that explain
-    /// how to effectively use its capabilities. These instructions can include details about available
-    /// tools, expected input formats, limitations, or any other helpful information.
-    /// </para>
-    /// <para>
-    /// This can be used by clients to improve an LLM's understanding of available tools, prompts, and resources. 
-    /// It can be thought of like a "hint" to the model and may be added to a system prompt.
-    /// </para>
-    /// </remarks>
-    public string? ServerInstructions => _serverInstructions;
+    /// <inheritdoc/>
+    public override string? ServerInstructions => _serverInstructions;
 
     /// <summary>
     /// Asynchronously connects to an MCP server, establishes the transport connection, and completes the initialization handshake.
@@ -232,19 +201,19 @@ public sealed partial class McpClientSession : IMcpEndpoint
     }
 
     /// <inheritdoc/>
-    public Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default)
+    public override Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default)
         => _sessionHandler.SendRequestAsync(request, cancellationToken);
 
     /// <inheritdoc/>
-    public Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
+    public override Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
         => _sessionHandler.SendMessageAsync(message, cancellationToken);
 
     /// <inheritdoc/>
-    public IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler)
+    public override IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler)
         => _sessionHandler.RegisterNotificationHandler(method, handler);
 
     /// <inheritdoc/>
-    public async ValueTask DisposeAsync()
+    public override async ValueTask DisposeAsync()
     {
         if (Interlocked.CompareExchange(ref _isDisposed, 1, 0) != 0)
         {

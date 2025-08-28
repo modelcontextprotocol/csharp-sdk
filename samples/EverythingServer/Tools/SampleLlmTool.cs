@@ -9,7 +9,7 @@ public class SampleLlmTool
 {
     [McpServerTool(Name = "sampleLLM"), Description("Samples from an LLM using MCP's sampling feature")]
     public static async Task<string> SampleLLM(
-        IMcpServer server,
+        McpServer server,
         [Description("The prompt to send to the LLM")] string prompt,
         [Description("Maximum number of tokens to generate")] int maxTokens,
         CancellationToken cancellationToken)

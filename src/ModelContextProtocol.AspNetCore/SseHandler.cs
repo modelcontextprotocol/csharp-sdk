@@ -54,7 +54,7 @@ internal sealed class SseHandler(
 
             try
             {
-                await using var mcpServer = McpServerFactory.Create(transport, mcpServerOptions, loggerFactory, context.RequestServices);
+                await using var mcpServer = McpServer.Create(transport, mcpServerOptions, loggerFactory, context.RequestServices);
                 httpMcpSession.Server = mcpServer;
                 context.Features.Set(mcpServer);
 

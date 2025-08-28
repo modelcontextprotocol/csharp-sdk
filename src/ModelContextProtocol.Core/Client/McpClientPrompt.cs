@@ -20,9 +20,9 @@ namespace ModelContextProtocol.Client;
 /// </remarks>
 public sealed class McpClientPrompt
 {
-    private readonly McpClientSession _client;
+    private readonly McpClient _client;
 
-    internal McpClientPrompt(McpClientSession client, Prompt prompt)
+    internal McpClientPrompt(McpClient client, Prompt prompt)
     {
         _client = client;
         ProtocolPrompt = prompt;

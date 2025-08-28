@@ -44,7 +44,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         _logger = (ILogger?)loggerFactory?.CreateLogger<SseClientTransport>() ?? NullLogger.Instance;
 
         // We connect with the initialization request with the MCP transport. This means that any errors won't be observed
-        // until the first call to SendMessageAsync. Fortunately, that happens internally in McpClientFactory.ConnectAsync
+        // until the first call to SendMessageAsync. Fortunately, that happens internally in McpClient.ConnectAsync
         // so we still throw any connection-related Exceptions from there and never expose a pre-connected client to the user.
         SetConnected();
     }

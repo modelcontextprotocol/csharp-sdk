@@ -32,7 +32,7 @@ using IChatClient samplingClient = openAIClient.AsIChatClient()
     .UseOpenTelemetry(loggerFactory: loggerFactory, configure: o => o.EnableSensitiveData = true)
     .Build();
 
-var mcpClient = await McpClientFactory.CreateAsync(
+var mcpClient = await McpClient.CreateAsync(
     new StdioClientTransport(new()
     {
         Command = "npx",

@@ -15,9 +15,9 @@ namespace ModelContextProtocol.Client;
 /// </remarks>
 public sealed class McpClientResource
 {
-    private readonly McpClientSession _client;
+    private readonly McpClient _client;
 
-    internal McpClientResource(McpClientSession client, Resource resource)
+    internal McpClientResource(McpClient client, Resource resource)
     {
         _client = client;
         ProtocolResource = resource;
@@ -58,7 +58,7 @@ public sealed class McpClientResource
     /// <returns>A <see cref="ValueTask{ReadResourceResult}"/> containing the resource's result with content and messages.</returns>
     /// <remarks>
     /// <para>
-    /// This is a convenience method that internally calls <see cref="McpClientExtensions.ReadResourceAsync(McpClientSession, string, CancellationToken)"/>.
+    /// This is a convenience method that internally calls <see cref="McpClientExtensions.ReadResourceAsync(McpClient, string, CancellationToken)"/>.
     /// </para>
     /// </remarks>
     public ValueTask<ReadResourceResult> ReadAsync(

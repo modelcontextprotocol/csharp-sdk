@@ -27,7 +27,7 @@ internal sealed class HttpMcpSession<TTransport>(
 
     private TimeProvider TimeProvider => timeProvider;
 
-    public IMcpServer? Server { get; set; }
+    public McpServer? Server { get; set; }
     public Task? ServerRunTask { get; set; }
 
     public IDisposable AcquireReference()
