@@ -8,8 +8,6 @@ using Microsoft.Net.Http.Headers;
 using ModelContextProtocol.AspNetCore.Stateless;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -22,14 +20,13 @@ internal sealed class StreamableHttpHandler(
     IOptions<McpServerOptions> mcpServerOptionsSnapshot,
     IOptionsFactory<McpServerOptions> mcpServerOptionsFactory,
     IOptions<HttpServerTransportOptions> httpServerTransportOptions,
+    StatefulSessionManager sessionManager,
     IDataProtectionProvider dataProtection,
     ILoggerFactory loggerFactory,
     IServiceProvider applicationServices)
 {
     private const string McpSessionIdHeaderName = "Mcp-Session-Id";
     private static readonly JsonTypeInfo<JsonRpcError> s_errorTypeInfo = GetRequiredJsonTypeInfo<JsonRpcError>();
-
-    public ConcurrentDictionary<string, HttpMcpSession<StreamableHttpServerTransport>> Sessions { get; } = new(StringComparer.Ordinal);
 
     public HttpServerTransportOptions HttpServerTransportOptions => httpServerTransportOptions.Value;
 
@@ -56,28 +53,15 @@ internal sealed class StreamableHttpHandler(
             return;
         }
 
-        try
-        {
-            using var _ = session.AcquireReference();
+        await using var _ = await session.AcquireReferenceAsync(context.RequestAborted);
 
-            InitializeSseResponse(context);
-            var wroteResponse = await session.Transport.HandlePostRequest(new HttpDuplexPipe(context), context.RequestAborted);
-            if (!wroteResponse)
-            {
-                // We wound up writing nothing, so there should be no Content-Type response header.
-                context.Response.Headers.ContentType = (string?)null;
-                context.Response.StatusCode = StatusCodes.Status202Accepted;
-            }
-        }
-        finally
+        InitializeSseResponse(context);
+        var wroteResponse = await session.Transport.HandlePostRequest(new HttpDuplexPipe(context), context.RequestAborted);
+        if (!wroteResponse)
         {
-            // Stateless sessions are 1:1 with HTTP requests and are outlived by the MCP session tracked by the Mcp-Session-Id.
-            // Non-stateless sessions are 1:1 with the Mcp-Session-Id and outlive the POST request.
-            // Non-stateless sessions get disposed by a DELETE request or the IdleTrackingBackgroundService.
-            if (HttpServerTransportOptions.Stateless)
-            {
-                await session.DisposeAsync();
-            }
+            // We wound up writing nothing, so there should be no Content-Type response header.
+            context.Response.Headers.ContentType = (string?)null;
+            context.Response.StatusCode = StatusCodes.Status202Accepted;
         }
     }
 
@@ -106,7 +90,7 @@ internal sealed class StreamableHttpHandler(
             return;
         }
 
-        using var _ = session.AcquireReference();
+        await using var _ = await session.AcquireReferenceAsync(context.RequestAborted);
         InitializeSseResponse(context);
 
         // We should flush headers to indicate a 200 success quickly, because the initialization response
@@ -119,17 +103,22 @@ internal sealed class StreamableHttpHandler(
     public async Task HandleDeleteRequestAsync(HttpContext context)
     {
         var sessionId = context.Request.Headers[McpSessionIdHeaderName].ToString();
-        if (Sessions.TryRemove(sessionId, out var session))
+        if (sessionManager.TryRemove(sessionId, out var session))
         {
             await session.DisposeAsync();
         }
     }
 
-    private async ValueTask<HttpMcpSession<StreamableHttpServerTransport>?> GetSessionAsync(HttpContext context, string sessionId)
+    private async ValueTask<StreamableHttpSession?> GetSessionAsync(HttpContext context, string sessionId)
     {
-        HttpMcpSession<StreamableHttpServerTransport>? session;
+        StreamableHttpSession? session;
 
-        if (HttpServerTransportOptions.Stateless)
+        if (string.IsNullOrEmpty(sessionId))
+        {
+            await WriteJsonRpcErrorAsync(context, "Bad Request: Mcp-Session-Id header is required", StatusCodes.Status400BadRequest);
+            return null;
+        }
+        else if (HttpServerTransportOptions.Stateless)
         {
             var sessionJson = Protector.Unprotect(sessionId);
             var statelessSessionId = JsonSerializer.Deserialize(sessionJson, StatelessSessionIdJsonContext.Default.StatelessSessionId);
@@ -140,7 +129,7 @@ internal sealed class StreamableHttpHandler(
             };
             session = await CreateSessionAsync(context, transport, sessionId, statelessSessionId);
         }
-        else if (!Sessions.TryGetValue(sessionId, out session))
+        else if (!sessionManager.TryGetValue(sessionId, out session))
         {
             // -32001 isn't part of the MCP standard, but this is what the typescript-sdk currently does.
             // One of the few other usages I found was from some Ethereum JSON-RPC documentation and this
@@ -163,7 +152,7 @@ internal sealed class StreamableHttpHandler(
         return session;
     }
 
-    private async ValueTask<HttpMcpSession<StreamableHttpServerTransport>?> GetOrCreateSessionAsync(HttpContext context)
+    private async ValueTask<StreamableHttpSession?> GetOrCreateSessionAsync(HttpContext context)
     {
         var sessionId = context.Request.Headers[McpSessionIdHeaderName].ToString();
 
@@ -177,7 +166,7 @@ internal sealed class StreamableHttpHandler(
         }
     }
 
-    private async ValueTask<HttpMcpSession<StreamableHttpServerTransport>> StartNewSessionAsync(HttpContext context)
+    private async ValueTask<StreamableHttpSession> StartNewSessionAsync(HttpContext context)
     {
         string sessionId;
         StreamableHttpServerTransport transport;
@@ -204,21 +193,10 @@ internal sealed class StreamableHttpHandler(
             ScheduleStatelessSessionIdWrite(context, transport);
         }
 
-        var session = await CreateSessionAsync(context, transport, sessionId);
-
-        // The HttpMcpSession is not stored between requests in stateless mode. Instead, the session is recreated from the MCP-Session-Id.
-        if (!HttpServerTransportOptions.Stateless)
-        {
-            if (!Sessions.TryAdd(sessionId, session))
-            {
-                throw new UnreachableException($"Unreachable given good entropy! Session with ID '{sessionId}' has already been created.");
-            }
-        }
-
-        return session;
+        return await CreateSessionAsync(context, transport, sessionId);
     }
 
-    private async ValueTask<HttpMcpSession<StreamableHttpServerTransport>> CreateSessionAsync(
+    private async ValueTask<StreamableHttpSession> CreateSessionAsync(
         HttpContext context,
         StreamableHttpServerTransport transport,
         string sessionId,
@@ -248,10 +226,7 @@ internal sealed class StreamableHttpHandler(
         context.Features.Set(server);
 
         var userIdClaim = statelessId?.UserIdClaim ?? GetUserIdClaim(context.User);
-        var session = new HttpMcpSession<StreamableHttpServerTransport>(sessionId, transport, userIdClaim, HttpServerTransportOptions.TimeProvider)
-        {
-            Server = server,
-        };
+        var session = new StreamableHttpSession(sessionId, transport, server, userIdClaim, sessionManager);
 
         var runSessionAsync = HttpServerTransportOptions.RunSessionHandler ?? RunSessionAsync;
         session.ServerRunTask = runSessionAsync(context, server, session.SessionClosed);

@@ -54,6 +54,53 @@ public static partial class McpServerBuilderExtensions
     }
 
     /// <summary>Adds <see cref="McpServerTool"/> instances to the service collection backing <paramref name="builder"/>.</summary>
+    /// <typeparam name="TToolType">The tool type.</typeparam>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="target">The target instance from which the tools should be sourced.</param>
+    /// <param name="serializerOptions">The serializer options governing tool parameter marshalling.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This method discovers all methods (public and non-public) on the specified <typeparamref name="TToolType"/>
+    /// type, where the methods are attributed as <see cref="McpServerToolAttribute"/>, and adds an <see cref="McpServerTool"/>
+    /// instance for each, using <paramref name="target"/> as the associated instance for instance methods.
+    /// </para>
+    /// <para>
+    /// However, if <typeparamref name="TToolType"/> is itself an <see cref="IEnumerable{T}"/> of <see cref="McpServerTool"/>,
+    /// this method will register those tools directly without scanning for methods on <typeparamref name="TToolType"/>.
+    /// </para>
+    /// </remarks>
+    public static IMcpServerBuilder WithTools<[DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicMethods |
+        DynamicallyAccessedMemberTypes.NonPublicMethods)] TToolType>(
+        this IMcpServerBuilder builder,
+        TToolType target,
+        JsonSerializerOptions? serializerOptions = null)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(target);
+
+        if (target is IEnumerable<McpServerTool> tools)
+        {
+            return builder.WithTools(tools);
+        }
+
+        foreach (var toolMethod in typeof(TToolType).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
+        {
+            if (toolMethod.GetCustomAttribute<McpServerToolAttribute>() is not null)
+            {
+                builder.Services.AddSingleton(services => McpServerTool.Create(
+                    toolMethod, 
+                    toolMethod.IsStatic ? null : target,
+                    new() { Services = services, SerializerOptions = serializerOptions }));
+            }
+        }
+
+        return builder;
+    }
+
+    /// <summary>Adds <see cref="McpServerTool"/> instances to the service collection backing <paramref name="builder"/>.</summary>
     /// <param name="builder">The builder instance.</param>
     /// <param name="tools">The <see cref="McpServerTool"/> instances to add to the server.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
@@ -137,7 +184,7 @@ public static partial class McpServerBuilderExtensions
     /// </para>
     /// <para>
     /// Note that this method performs reflection at runtime and may not work in Native AOT scenarios. For
-    /// Native AOT compatibility, consider using the generic <see cref="WithTools{TToolType}"/> method instead.
+    /// Native AOT compatibility, consider using the generic <see cref="M:WithTools"/> method instead.
     /// </para>
     /// </remarks>
     [RequiresUnreferencedCode(WithToolsRequiresUnreferencedCodeMessage)]
@@ -187,6 +234,50 @@ public static partial class McpServerBuilderExtensions
                 builder.Services.AddSingleton((Func<IServiceProvider, McpServerPrompt>)(promptMethod.IsStatic ?
                     services => McpServerPrompt.Create(promptMethod, options: new() { Services = services, SerializerOptions = serializerOptions }) :
                     services => McpServerPrompt.Create(promptMethod, static r => CreateTarget(r.Services, typeof(TPromptType)), new() { Services = services, SerializerOptions = serializerOptions })));
+            }
+        }
+
+        return builder;
+    }
+
+    /// <summary>Adds <see cref="McpServerPrompt"/> instances to the service collection backing <paramref name="builder"/>.</summary>
+    /// <typeparam name="TPromptType">The prompt type.</typeparam>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="target">The target instance from which the prompts should be sourced.</param>
+    /// <param name="serializerOptions">The serializer options governing prompt parameter marshalling.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This method discovers all methods (public and non-public) on the specified <typeparamref name="TPromptType"/>
+    /// type, where the methods are attributed as <see cref="McpServerPromptAttribute"/>, and adds an <see cref="McpServerPrompt"/>
+    /// instance for each, using <paramref name="target"/> as the associated instance for instance methods.
+    /// </para>
+    /// <para>
+    /// However, if <typeparamref name="TPromptType"/> is itself an <see cref="IEnumerable{T}"/> of <see cref="McpServerPrompt"/>,
+    /// this method will register those prompts directly without scanning for methods on <typeparamref name="TPromptType"/>.
+    /// </para>
+    /// </remarks>
+    public static IMcpServerBuilder WithPrompts<[DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicMethods |
+        DynamicallyAccessedMemberTypes.NonPublicMethods)] TPromptType>(
+        this IMcpServerBuilder builder,
+        TPromptType target,
+        JsonSerializerOptions? serializerOptions = null)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(target);
+
+        if (target is IEnumerable<McpServerPrompt> prompts)
+        {
+            return builder.WithPrompts(prompts);
+        }
+
+        foreach (var promptMethod in typeof(TPromptType).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
+        {
+            if (promptMethod.GetCustomAttribute<McpServerPromptAttribute>() is not null)
+            {
+                builder.Services.AddSingleton(services => McpServerPrompt.Create(promptMethod, target, new() { Services = services, SerializerOptions = serializerOptions }));
             }
         }
 
@@ -277,7 +368,7 @@ public static partial class McpServerBuilderExtensions
     /// </para>
     /// <para>
     /// Note that this method performs reflection at runtime and may not work in Native AOT scenarios. For
-    /// Native AOT compatibility, consider using the generic <see cref="WithPrompts{TPromptType}"/> method instead.
+    /// Native AOT compatibility, consider using the generic <see cref="M:WithPrompts"/> method instead.
     /// </para>
     /// </remarks>
     [RequiresUnreferencedCode(WithPromptsRequiresUnreferencedCodeMessage)]
@@ -311,7 +402,8 @@ public static partial class McpServerBuilderExtensions
     /// instance for each. For instance members, an instance will be constructed for each invocation of the resource.
     /// </remarks>
     public static IMcpServerBuilder WithResources<[DynamicallyAccessedMembers(
-        DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods |
+        DynamicallyAccessedMemberTypes.PublicMethods |
+        DynamicallyAccessedMemberTypes.NonPublicMethods |
         DynamicallyAccessedMemberTypes.PublicConstructors)] TResourceType>(
         this IMcpServerBuilder builder)
     {
@@ -324,6 +416,48 @@ public static partial class McpServerBuilderExtensions
                 builder.Services.AddSingleton((Func<IServiceProvider, McpServerResource>)(resourceTemplateMethod.IsStatic ?
                     services => McpServerResource.Create(resourceTemplateMethod, options: new() { Services = services }) :
                     services => McpServerResource.Create(resourceTemplateMethod, static r => CreateTarget(r.Services, typeof(TResourceType)), new() { Services = services })));
+            }
+        }
+
+        return builder;
+    }
+
+    /// <summary>Adds <see cref="McpServerResource"/> instances to the service collection backing <paramref name="builder"/>.</summary>
+    /// <typeparam name="TResourceType">The resource type.</typeparam>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="target">The target instance from which the prompts should be sourced.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This method discovers all methods (public and non-public) on the specified <typeparamref name="TResourceType"/>
+    /// type, where the methods are attributed as <see cref="McpServerResourceAttribute"/>, and adds an <see cref="McpServerResource"/>
+    /// instance for each, using <paramref name="target"/> as the associated instance for instance methods.
+    /// </para>
+    /// <para>
+    /// However, if <typeparamref name="TResourceType"/> is itself an <see cref="IEnumerable{T}"/> of <see cref="McpServerResource"/>,
+    /// this method will register those resources directly without scanning for methods on <typeparamref name="TResourceType"/>.
+    /// </para>
+    /// </remarks>
+    public static IMcpServerBuilder WithResources<[DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicMethods |
+        DynamicallyAccessedMemberTypes.NonPublicMethods)] TResourceType>(
+        this IMcpServerBuilder builder,
+        TResourceType target)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(target);
+
+        if (target is IEnumerable<McpServerResource> resources)
+        {
+            return builder.WithResources(resources);
+        }
+
+        foreach (var resourceTemplateMethod in typeof(TResourceType).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
+        {
+            if (resourceTemplateMethod.GetCustomAttribute<McpServerResourceAttribute>() is not null)
+            {
+                builder.Services.AddSingleton(services => McpServerResource.Create(resourceTemplateMethod, target, new() { Services = services }));
             }
         }
 
@@ -412,7 +546,7 @@ public static partial class McpServerBuilderExtensions
     /// </para>
     /// <para>
     /// Note that this method performs reflection at runtime and may not work in Native AOT scenarios. For
-    /// Native AOT compatibility, consider using the generic <see cref="WithResources{TResourceType}"/> method instead.
+    /// Native AOT compatibility, consider using the generic <see cref="M:WithResources"/> method instead.
     /// </para>
     /// </remarks>
     [RequiresUnreferencedCode(WithResourcesRequiresUnreferencedCodeMessage)]
