@@ -3,7 +3,7 @@ using System.Diagnostics;
 
 namespace ModelContextProtocol.Server;
 
-internal sealed class DestinationBoundMcpServerSession(McpServerImpl server, ITransport? transport) : McpServer
+internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport? transport) : McpServer
 {
     public override string? SessionId => transport?.SessionId ?? server.SessionId;
     public override ClientCapabilities? ClientCapabilities => server.ClientCapabilities;

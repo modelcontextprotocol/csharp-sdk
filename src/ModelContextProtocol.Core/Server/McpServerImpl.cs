@@ -561,7 +561,7 @@ internal sealed class McpServerImpl : McpServer
     {
         return _servicesScopePerRequest ?
             InvokeScopedAsync(handler, args, cancellationToken) :
-            handler(new(new DestinationBoundMcpServerSession(this, destinationTransport)) { Params = args }, cancellationToken);
+            handler(new(new DestinationBoundMcpServer(this, destinationTransport)) { Params = args }, cancellationToken);
 
         async ValueTask<TResult> InvokeScopedAsync(
             Func<RequestContext<TParams>, CancellationToken, ValueTask<TResult>> handler,
@@ -572,7 +572,7 @@ internal sealed class McpServerImpl : McpServer
             try
             {
                 return await handler(
-                    new RequestContext<TParams>(new DestinationBoundMcpServerSession(this, destinationTransport))
+                    new RequestContext<TParams>(new DestinationBoundMcpServer(this, destinationTransport))
                     {
                         Services = scope?.ServiceProvider ?? Services,
                         Params = args

@@ -65,7 +65,7 @@ public abstract class McpSession : IAsyncDisposable
     /// <para>
     /// This method provides low-level access to send any JSON-RPC message. For specific message types,
     /// consider using the higher-level methods such as <see cref="SendRequestAsync"/> or extension methods
-    /// like <see cref="McpEndpointExtensions.SendNotificationAsync(McpSession, string, CancellationToken)"/>,
+    /// like <see cref="McpSessionExtensions.SendNotificationAsync(McpSession, string, CancellationToken)"/>,
     /// which provide a simpler API.
     /// </para>
     /// <para>
