@@ -10,6 +10,7 @@ namespace ModelContextProtocol.Server;
 /// This is the recommended way to create <see cref="IMcpServer"/> instances.
 /// The factory handles proper initialization of server instances with the required dependencies.
 /// </remarks>
+[Obsolete($"Use {nameof(McpServer)}.{nameof(McpServer.Create)} instead.")]
 public static class McpServerFactory
 {
     /// <summary>
@@ -22,7 +23,6 @@ public static class McpServerFactory
     /// <returns>An <see cref="IMcpServer"/> instance that should be disposed when no longer needed.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="transport"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="serverOptions"/> is <see langword="null"/>.</exception>
-    [Obsolete($"Use {nameof(McpServer)}.{nameof(McpServer.Create)} instead.")]
     public static IMcpServer Create(
         ITransport transport,
         McpServerOptions serverOptions,

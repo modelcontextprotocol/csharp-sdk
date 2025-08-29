@@ -10,6 +10,7 @@ namespace ModelContextProtocol.Client;
 /// that connect to MCP servers. It handles the creation and connection
 /// of appropriate implementations through the supplied transport.
 /// </remarks>
+[Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.CreateAsync)} instead.")]
 public static partial class McpClientFactory
 {
     /// <summary>Creates an <see cref="IMcpClient"/>, connecting it to the specified server.</summary>
@@ -23,7 +24,6 @@ public static partial class McpClientFactory
     /// <returns>An <see cref="IMcpClient"/> that's connected to the specified server.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="clientTransport"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="clientOptions"/> is <see langword="null"/>.</exception>
-    [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.CreateAsync)} instead.")]
     public static async Task<IMcpClient> CreateAsync(
         IClientTransport clientTransport,
         McpClientOptions? clientOptions = null,
