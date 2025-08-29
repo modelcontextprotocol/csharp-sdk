@@ -10,7 +10,9 @@ namespace ModelContextProtocol.Server;
 /// <summary>
 /// Represents an instance of a Model Context Protocol (MCP) server that connects to and communicates with an MCP client.
 /// </summary>
-public abstract class McpServer : McpSession
+#pragma warning disable CS0618 // Type or member is obsolete
+public abstract class McpServer : McpSession, IMcpServer
+#pragma warning restore CS0618 // Type or member is obsolete
 {
     /// <summary>
     /// Gets the capabilities supported by the client.
