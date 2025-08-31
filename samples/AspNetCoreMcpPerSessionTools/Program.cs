@@ -1,6 +1,3 @@
-using OpenTelemetry;
-using OpenTelemetry.Metrics;
-using OpenTelemetry.Trace;
 using AspNetCoreMcpPerSessionTools.Tools;
 using ModelContextProtocol.Server;
 using System.Collections.Concurrent;
@@ -20,21 +17,15 @@ builder.Services.AddMcpServer()
         options.ConfigureSessionOptions = async (httpContext, mcpOptions, cancellationToken) =>
         {            
             // Determine tool category from route parameters
-            var toolCategory = GetToolCategoryFromRoute(httpContext);
-
-            // Get the tool collection that we can modify per session
-            var toolCollection = mcpOptions.Capabilities?.Tools?.ToolCollection;
-            if (toolCollection == null)
-            {
-                return;
-            }
-
-            // Clear tools (we add them to make sure the capability is initialized)
-            toolCollection.Clear();
+            var toolCategory = httpContext.Request.RouteValues["toolCategory"]?.ToString()?.ToLower() ?? "all";
 
             // Get pre-populated tools for the requested category
-            if (toolDictionary.TryGetValue(toolCategory.ToLower(), out var tools))
+            if (toolDictionary.TryGetValue(toolCategory, out var tools))
             {
+                mcpOptions.Capabilities = new();
+                mcpOptions.Capabilities.Tools = new();
+                var toolCollection = mcpOptions.Capabilities.Tools.ToolCollection = new();
+
                 foreach (var tool in tools)
                 {
                     toolCollection.Add(tool);
@@ -46,36 +37,12 @@ builder.Services.AddMcpServer()
     .WithTools<CalculatorTool>()
     .WithTools<UserInfoTool>();
 
-// Add OpenTelemetry for observability
-builder.Services.AddOpenTelemetry()
-    .WithTracing(b => b.AddSource("*")
-        .AddAspNetCoreInstrumentation()
-        .AddHttpClientInstrumentation())
-    .WithMetrics(b => b.AddMeter("*")
-        .AddAspNetCoreInstrumentation()
-        .AddHttpClientInstrumentation())
-    .WithLogging()
-    .UseOtlpExporter();
-
 var app = builder.Build();
 
 // Map MCP with route parameter for tool category filtering
 app.MapMcp("/{toolCategory?}");
 
 app.Run();
-
-// Helper method for route-based tool category detection
-static string GetToolCategoryFromRoute(HttpContext context)
-{
-    // Try to get tool category from route values
-    if (context.Request.RouteValues.TryGetValue("toolCategory", out var categoryObj) && categoryObj is string category)
-    {
-        return string.IsNullOrEmpty(category) ? "all" : category;
-    }
-
-    // Default to "all" if no category specified or empty
-    return "all";
-}
 
 // Helper method to populate the tool dictionary at startup
 static void PopulateToolDictionary(ConcurrentDictionary<string, McpServerTool[]> toolDictionary)
