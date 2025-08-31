@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using System.Collections.Specialized;
 using System.Diagnostics.CodeAnalysis;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -28,9 +28,11 @@ internal sealed partial class ClientOAuthProvider
     private readonly Func<IReadOnlyList<Uri>, Uri?> _authServerSelector;
     private readonly AuthorizationRedirectDelegate _authorizationRedirectDelegate;
 
-    // _clientName and _client URI is used for dynamic client registration (RFC 7591)
-    private readonly string? _clientName;
-    private readonly Uri? _clientUri;
+    // _dcrClientName, _dcrClientUri, _dcrInitialAccessToken and _dcrResponseDelegate are used for dynamic client registration (RFC 7591)
+    private readonly string? _dcrClientName;
+    private readonly Uri? _dcrClientUri;
+    private readonly string? _dcrInitialAccessToken;
+    private readonly Func<DynamicClientRegistrationResponse, CancellationToken, Task>? _dcrResponseDelegate;
 
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
@@ -66,9 +68,7 @@ internal sealed partial class ClientOAuthProvider
 
         _clientId = options.ClientId;
         _clientSecret = options.ClientSecret;
-        _redirectUri = options.RedirectUri ?? throw new ArgumentException("ClientOAuthOptions.RedirectUri must configured.");
-        _clientName = options.ClientName;
-        _clientUri = options.ClientUri;
+        _redirectUri = options.RedirectUri ?? throw new ArgumentException("ClientOAuthOptions.RedirectUri must configured.", nameof(options));
         _scopes = options.Scopes?.ToArray();
         _additionalAuthorizationParameters = options.AdditionalAuthorizationParameters;
 
@@ -77,6 +77,11 @@ internal sealed partial class ClientOAuthProvider
 
         // Set up authorization URL handler (use default if not provided)
         _authorizationRedirectDelegate = options.AuthorizationRedirectDelegate ?? DefaultAuthorizationUrlHandler;
+
+        _dcrClientName = options.DynamicClientRegistration?.ClientName;
+        _dcrClientUri = options.DynamicClientRegistration?.ClientUri;
+        _dcrInitialAccessToken = options.DynamicClientRegistration?.InitialAccessToken;
+        _dcrResponseDelegate = options.DynamicClientRegistration?.ResponseDelegate;
     }
 
     /// <summary>
@@ -447,8 +452,8 @@ internal sealed partial class ClientOAuthProvider
             GrantTypes = ["authorization_code", "refresh_token"],
             ResponseTypes = ["code"],
             TokenEndpointAuthMethod = "client_secret_post",
-            ClientName = _clientName,
-            ClientUri = _clientUri?.ToString(),
+            ClientName = _dcrClientName,
+            ClientUri = _dcrClientUri?.ToString(),
             Scope = _scopes is not null ? string.Join(" ", _scopes) : null
         };
 
@@ -459,6 +464,11 @@ internal sealed partial class ClientOAuthProvider
         {
             Content = requestContent
         };
+
+        if (!string.IsNullOrEmpty(_dcrInitialAccessToken))
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue(BearerScheme, _dcrInitialAccessToken);
+        }
 
         using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
@@ -487,6 +497,11 @@ internal sealed partial class ClientOAuthProvider
         }
 
         LogDynamicClientRegistrationSuccessful(_clientId!);
+
+        if (_dcrResponseDelegate is not null)
+        {
+            await _dcrResponseDelegate(registrationResponse, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <summary>

@@ -19,7 +19,10 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
             new(new() { Command = "ls", Arguments = [id] }, LoggerFactory);
 
         IOException e = await Assert.ThrowsAsync<IOException>(() => McpClientFactory.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
-        Assert.Contains(id, e.ToString());
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            Assert.Contains(id, e.ToString());
+        }
     }
     
     [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]

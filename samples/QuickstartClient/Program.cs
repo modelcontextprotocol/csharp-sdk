@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using ModelContextProtocol.Client;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Text;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -12,16 +13,27 @@ builder.Configuration
     .AddEnvironmentVariables()
     .AddUserSecrets<Program>();
 
+IClientTransport clientTransport;
 var (command, arguments) = GetCommandAndArguments(args);
 
-var clientTransport = new StdioClientTransport(new()
+if (command == "http")
 {
-    Name = "Demo Server",
-    Command = command,
-    Arguments = arguments,
-});
-
-await using var mcpClient = await McpClientFactory.CreateAsync(clientTransport);
+    // make sure AspNetCoreMcpServer is running
+    clientTransport = new SseClientTransport(new()
+    {
+        Endpoint = new Uri("http://localhost:3001")
+    });
+}
+else
+{
+    clientTransport = new StdioClientTransport(new()
+    {
+        Name = "Demo Server",
+        Command = command,
+        Arguments = arguments,
+    });
+}
+await using var mcpClient = await McpClientFactory.CreateAsync(clientTransport!);
 
 var tools = await mcpClient.ListToolsAsync();
 foreach (var tool in tools)
@@ -46,6 +58,9 @@ Console.ForegroundColor = ConsoleColor.Green;
 Console.WriteLine("MCP Client Started!");
 Console.ResetColor();
 
+var messages = new List<ChatMessage>();
+var sb = new StringBuilder();
+
 PromptForInput();
 while(Console.ReadLine() is string query && !"exit".Equals(query, StringComparison.OrdinalIgnoreCase))
 {
@@ -55,11 +70,17 @@ while(Console.ReadLine() is string query && !"exit".Equals(query, StringComparis
         continue;
     }
 
-    await foreach (var message in anthropicClient.GetStreamingResponseAsync(query, options))
+    messages.Add(new ChatMessage(ChatRole.User, query));
+    await foreach (var message in anthropicClient.GetStreamingResponseAsync(messages, options))
     {
         Console.Write(message);
+        sb.Append(message.ToString());
     }
+
     Console.WriteLine();
+    sb.AppendLine();
+    messages.Add(new ChatMessage(ChatRole.Assistant, sb.ToString()));
+    sb.Clear();
 
     PromptForInput();
 }
@@ -79,15 +100,16 @@ static void PromptForInput()
 /// <remarks>
 /// This method uses the file extension of the first argument to determine the command, if it's py, it'll run python,
 /// if it's js, it'll run node, if it's a directory or a csproj file, it'll run dotnet.
-/// 
+///
 /// If no arguments are provided, it defaults to running the QuickstartWeatherServer project from the current repo.
-/// 
+///
 /// This method would only be required if you're creating a generic client, such as we use for the quickstart.
 /// </remarks>
 static (string command, string[] arguments) GetCommandAndArguments(string[] args)
 {
     return args switch
     {
+        [var mode] when mode.Equals("http", StringComparison.OrdinalIgnoreCase) => ("http", args),
         [var script] when script.EndsWith(".py") => ("python", args),
         [var script] when script.EndsWith(".js") => ("node", args),
         [var script] when Directory.Exists(script) || (File.Exists(script) && script.EndsWith(".csproj")) => ("dotnet", ["run", "--project", script]),

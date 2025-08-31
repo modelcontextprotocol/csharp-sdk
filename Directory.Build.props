@@ -34,4 +34,9 @@
   <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
     <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
   </PropertyGroup>
+
+  <PropertyGroup Condition="$(TargetFramework.StartsWith('net4'))">
+    <!-- Don't use x64 when running netfx test procs on Windows ARM -->
+    <PreferNativeArm64>true</PreferNativeArm64>
+  </PropertyGroup>
 </Project>

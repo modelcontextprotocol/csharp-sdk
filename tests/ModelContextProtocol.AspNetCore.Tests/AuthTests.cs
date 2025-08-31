@@ -181,9 +181,12 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
             {
                 RedirectUri = new Uri("http://localhost:1179/callback"),
                 AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
-                ClientName = "Test MCP Client",
-                ClientUri = new Uri("https://example.com"),
-                Scopes = ["mcp:tools"]
+                Scopes = ["mcp:tools"],
+                DynamicClientRegistration = new()
+                {
+                    ClientName = "Test MCP Client",
+                    ClientUri = new Uri("https://example.com"),
+                },
             },
         }, HttpClient, LoggerFactory);
 
