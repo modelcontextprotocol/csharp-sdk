@@ -324,9 +324,111 @@ public static class McpServerExtensions
 
         var jsonElement = AIJsonUtilities.CreateJsonSchema(type, serializerOptions: serializerOptions);
 
+        if (!TryValidateElicitationPrimitiveSchema(type, jsonElement, out var error))
+        {
+            throw new McpException(error);
+        }
+
         var primitiveSchemaDefinition =
             jsonElement.Deserialize(McpJsonUtilities.JsonContext.Default.PrimitiveSchemaDefinition);
         return primitiveSchemaDefinition;
+    }
+
+    /// <summary>
+    /// Validate the produced schema strictly to the subset we support. We only accept an object schema
+    /// with a supported primitive type keyword and no additional unsupported keywords.Reject things like
+    /// {}, 'true', or schemas that include unrelated keywords(e.g.items, properties, patternProperties, etc.).
+    /// </summary>
+    /// <param name="type">The type of the schema being validated.</param>
+    /// <param name="schema">The schema to validate.</param>
+    /// <param name="error">The error message, if validation fails.</param>
+    /// <returns></returns>
+    private static bool TryValidateElicitationPrimitiveSchema(Type type, JsonElement schema, out string error)
+    {
+        if (schema.ValueKind is not JsonValueKind.Object)
+        {
+            error = $"Schema generated for type '{type.FullName}' is invalid: expected a JSON object.";
+            return false;
+        }
+
+        if (!schema.TryGetProperty("type", out JsonElement typeProperty)
+            || !(typeProperty.ValueKind is JsonValueKind.String or JsonValueKind.Array))
+        {
+            error = $"Schema generated for type '{type.FullName}' is invalid: missing or non-string 'type' property.";
+            return false;
+        }
+
+        string? typeKeyword = null;
+        if (typeProperty.ValueKind == JsonValueKind.Array) // bool? will parse as ["boolean", "null"]
+        {
+            var types = JsonSerializer.Deserialize(typeProperty.GetRawText(), McpJsonUtilities.JsonContext.Default.StringArray);
+            if (types is [var nullableType, "null"])
+            {
+                typeKeyword = nullableType;
+            }
+            else
+            {
+                error = $"Schema generated for type '{type.FullName}' is invalid: unsupported 'type' array.";
+                return false;
+            }
+        }
+        else
+        {
+            typeKeyword = typeProperty.GetString();
+        }
+
+        if (string.IsNullOrEmpty(typeKeyword))
+        {
+            error = $"Schema generated for type '{type.FullName}' is invalid: empty 'type' value.";
+            return false;
+        }
+
+        // Accept number or integer as the numeric primitive (both map to NumberSchema)
+        bool isString = typeKeyword == "string";
+        bool isBoolean = typeKeyword == "boolean";
+        bool isNumber = typeKeyword == "number" || typeKeyword == "integer";
+        if (!isString && !isBoolean && !isNumber)
+        {
+            error = $"Schema generated for type '{type.FullName}' is invalid: unsupported primitive type '{typeKeyword}'.";
+            return false;
+        }
+
+        // Allowed property names per primitive schema we support.
+        HashSet<string> allowed = new(StringComparer.Ordinal)
+        {
+            "type",
+            "title",
+            "description"
+        };
+        if (isString)
+        {
+            allowed.Add("minLength");
+            allowed.Add("maxLength");
+            allowed.Add("format");
+            allowed.Add("enum"); // for string enums
+            allowed.Add("enumNames"); // for string enums
+        }
+        else if (isNumber)
+        {
+            allowed.Add("minimum");
+            allowed.Add("maximum");
+        }
+        else if (isBoolean)
+        {
+            allowed.Add("default");
+        }
+
+        foreach (JsonProperty prop in schema.EnumerateObject())
+        {
+            if (!allowed.Contains(prop.Name))
+            {
+                error = $"The property '{type.FullName}.{prop.Name}' is not supported for elicitation.";
+                return false;
+            }
+        }
+
+        error = string.Empty;
+        return true;
     }
 
     private static void ThrowIfSamplingUnsupported(IMcpServer server)
