@@ -7,7 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="0.3.0-preview.3" />
+    <ProjectReference Include="../../../../../src/ModelContextProtocol.AspNetCore/ModelContextProtocol.AspNetCore.csproj" />
   </ItemGroup>
 
 </Project>
