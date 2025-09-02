@@ -315,29 +315,18 @@ public static class McpServerExtensions
 
     private static ElicitRequestParams.PrimitiveSchemaDefinition? CreatePrimitiveSchema(Type type, JsonSerializerOptions serializerOptions)
     {
-        Type underlyingType = Nullable.GetUnderlyingType(type) ?? type;
-        
-        JsonTypeInfo typeInfo = serializerOptions.GetTypeInfo(underlyingType);
+        JsonTypeInfo typeInfo = serializerOptions.GetTypeInfo(type);
 
         if (typeInfo.Kind != JsonTypeInfoKind.None)
         {
             throw new McpException($"Type '{type.FullName}' is not supported for elicitation requests.");
         }
 
-        var jsonElement = AIJsonUtilities.CreateJsonSchema(underlyingType, serializerOptions: serializerOptions);
+        var jsonElement = AIJsonUtilities.CreateJsonSchema(type, serializerOptions: serializerOptions);
 
-        if (jsonElement.TryGetProperty("type", out var typeElement))
-        {
-            var typeValue = typeElement.GetString();
-            if (typeValue is "string" or "number" or "integer" or "boolean")
-            {
-                var primitiveSchemaDefinition =
-                    jsonElement.Deserialize(McpJsonUtilities.JsonContext.Default.PrimitiveSchemaDefinition);
-                return primitiveSchemaDefinition;
-            }
-        }
-        
-        return null;
+        var primitiveSchemaDefinition =
+            jsonElement.Deserialize(McpJsonUtilities.JsonContext.Default.PrimitiveSchemaDefinition);
+        return primitiveSchemaDefinition;
     }
 
     private static void ThrowIfSamplingUnsupported(IMcpServer server)

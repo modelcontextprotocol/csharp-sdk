@@ -126,7 +126,19 @@ public sealed class ElicitRequestParams
                     switch (propertyName)
                     {
                         case "type":
-                            type = reader.GetString();
+                            if (reader.TokenType == JsonTokenType.String)
+                            {
+                                type = reader.GetString();
+                            }
+                            else if (reader.TokenType == JsonTokenType.StartArray)
+                            {
+                                var types = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.StringArray);
+                                if (types is [var nullableType, "null"])
+                                {
+                                    type = nullableType;
+                                }
+                            }
+                            
                             break;
 
                         case "title":
