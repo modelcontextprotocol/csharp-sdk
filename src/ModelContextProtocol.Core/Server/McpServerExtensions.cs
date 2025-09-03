@@ -362,9 +362,13 @@ public static class McpServerExtensions
         if (typeProperty.ValueKind == JsonValueKind.Array) // bool? will parse as ["boolean", "null"]
         {
             var types = JsonSerializer.Deserialize(typeProperty.GetRawText(), McpJsonUtilities.JsonContext.Default.StringArray);
-            if (types is [var nullableType, "null"])
+            if (types is [var leftNullableType, "null"])
             {
-                typeKeyword = nullableType;
+                typeKeyword = leftNullableType;
+            }
+            else if (types is ["null", var rightNullableType])
+            {
+                typeKeyword = rightNullableType;
             }
             else
             {

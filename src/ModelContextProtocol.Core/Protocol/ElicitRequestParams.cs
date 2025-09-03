@@ -133,9 +133,13 @@ public sealed class ElicitRequestParams
                             else if (reader.TokenType == JsonTokenType.StartArray)
                             {
                                 var types = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.StringArray);
-                                if (types is [var nullableType, "null"])
+                                if (types is [var leftNullableType, "null"])
                                 {
-                                    type = nullableType;
+                                    type = leftNullableType;
+                                } 
+                                else if (types is ["null", var rightNullableType])
+                                {
+                                    type = rightNullableType;
                                 }
                             }
                             
