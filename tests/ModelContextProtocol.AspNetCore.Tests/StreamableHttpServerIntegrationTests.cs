@@ -11,7 +11,7 @@ public class StreamableHttpServerIntegrationTests(SseServerIntegrationTestFixtur
         {"jsonrpc":"2.0","id":"1","method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"IntegrationTestClient","version":"1.0.0"}}}
         """;
 
-    protected override SseClientTransportOptions ClientTransportOptions => new()
+    protected override HttpClientTransportOptions ClientTransportOptions => new()
     {
         Endpoint = new("http://localhost:5000/"),
         Name = "In-memory Streamable HTTP Client",

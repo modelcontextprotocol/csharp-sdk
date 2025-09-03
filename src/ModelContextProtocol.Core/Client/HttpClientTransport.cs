@@ -13,26 +13,26 @@ namespace ModelContextProtocol.Client;
 /// Unlike the <see cref="StdioClientTransport"/>, this transport connects to an existing server
 /// rather than launching a new process.
 /// </remarks>
-public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
+public sealed class HttpClientTransport : IClientTransport, IAsyncDisposable
 {
-    private readonly SseClientTransportOptions _options;
+    private readonly HttpClientTransportOptions _options;
     private readonly McpHttpClient _mcpHttpClient;
     private readonly ILoggerFactory? _loggerFactory;
 
     private readonly HttpClient? _ownedHttpClient;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="SseClientTransport"/> class.
+    /// Initializes a new instance of the <see cref="HttpClientTransport"/> class.
     /// </summary>
     /// <param name="transportOptions">Configuration options for the transport.</param>
     /// <param name="loggerFactory">Logger factory for creating loggers used for diagnostic output during transport operations.</param>
-    public SseClientTransport(SseClientTransportOptions transportOptions, ILoggerFactory? loggerFactory = null)
+    public HttpClientTransport(HttpClientTransportOptions transportOptions, ILoggerFactory? loggerFactory = null)
         : this(transportOptions, new HttpClient(), loggerFactory, ownsHttpClient: true)
     {
     }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="SseClientTransport"/> class with a provided HTTP client.
+    /// Initializes a new instance of the <see cref="HttpClientTransport"/> class with a provided HTTP client.
     /// </summary>
     /// <param name="transportOptions">Configuration options for the transport.</param>
     /// <param name="httpClient">The HTTP client instance used for requests.</param>
@@ -41,7 +41,7 @@ public sealed class SseClientTransport : IClientTransport, IAsyncDisposable
     /// <see langword="true"/> to dispose of <paramref name="httpClient"/> when the transport is disposed;
     /// <see langword="false"/> if the caller is retaining ownership of the <paramref name="httpClient"/>'s lifetime.
     /// </param>
-    public SseClientTransport(SseClientTransportOptions transportOptions, HttpClient httpClient, ILoggerFactory? loggerFactory = null, bool ownsHttpClient = false)
+    public HttpClientTransport(HttpClientTransportOptions transportOptions, HttpClient httpClient, ILoggerFactory? loggerFactory = null, bool ownsHttpClient = false)
     {
         Throw.IfNull(transportOptions);
         Throw.IfNull(httpClient);

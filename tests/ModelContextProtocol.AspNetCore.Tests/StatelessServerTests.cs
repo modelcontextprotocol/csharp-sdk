@@ -14,7 +14,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
 {
     private WebApplication? _app;
 
-    private readonly SseClientTransportOptions DefaultTransportOptions = new()
+    private readonly HttpClientTransportOptions DefaultTransportOptions = new()
     {
         Endpoint = new("http://localhost:5000/"),
         Name = "In-memory Streamable HTTP Client",
@@ -60,7 +60,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
 
     private Task<McpClient> ConnectMcpClientAsync(McpClientOptions? clientOptions = null)
         => McpClient.CreateAsync(
-            new SseClientTransport(DefaultTransportOptions, HttpClient, LoggerFactory),
+            new HttpClientTransport(DefaultTransportOptions, HttpClient, LoggerFactory),
             clientOptions, LoggerFactory, TestContext.Current.CancellationToken);
 
     public async ValueTask DisposeAsync()

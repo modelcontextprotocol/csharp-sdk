@@ -112,7 +112,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
     {
         await StartAsync();
 
-        await using var transport = new SseClientTransport(new()
+        await using var transport = new HttpClientTransport(new()
         {
             Endpoint = new("http://localhost:5000/mcp"),
             TransportMode = HttpTransportMode.StreamableHttp,
@@ -132,7 +132,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
     {
         await StartAsync();
 
-        await using var transport = new SseClientTransport(new()
+        await using var transport = new HttpClientTransport(new()
         {
             Endpoint = new("http://localhost:5000/mcp"),
             TransportMode = HttpTransportMode.StreamableHttp,
@@ -158,7 +158,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
     {
         await StartAsync(enableDelete: true);
 
-        await using var transport = new SseClientTransport(new()
+        await using var transport = new HttpClientTransport(new()
         {
             Endpoint = new("http://localhost:5000/mcp"),
             TransportMode = HttpTransportMode.StreamableHttp,

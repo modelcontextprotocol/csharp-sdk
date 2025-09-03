@@ -25,7 +25,7 @@ var consoleLoggerFactory = LoggerFactory.Create(builder =>
     builder.AddConsole();
 });
 
-var transport = new SseClientTransport(new()
+var transport = new HttpClientTransport(new()
 {
     Endpoint = new Uri(serverUrl),
     Name = "Secure Weather Client",

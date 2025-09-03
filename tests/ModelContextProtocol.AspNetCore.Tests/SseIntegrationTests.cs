@@ -15,15 +15,15 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 
 public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper)
 {
-    private readonly SseClientTransportOptions DefaultTransportOptions = new()
+    private readonly HttpClientTransportOptions DefaultTransportOptions = new()
     {
         Endpoint = new("http://localhost:5000/sse"),
         Name = "In-memory SSE Client",
     };
 
-    private Task<McpClient> ConnectMcpClientAsync(HttpClient? httpClient = null, SseClientTransportOptions? transportOptions = null)
+    private Task<McpClient> ConnectMcpClientAsync(HttpClient? httpClient = null, HttpClientTransportOptions? transportOptions = null)
         => McpClient.CreateAsync(
-            new SseClientTransport(transportOptions ?? DefaultTransportOptions, httpClient ?? HttpClient, LoggerFactory),
+            new HttpClientTransport(transportOptions ?? DefaultTransportOptions, httpClient ?? HttpClient, LoggerFactory),
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
 
@@ -195,7 +195,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        var sseOptions = new SseClientTransportOptions
+        var sseOptions = new HttpClientTransportOptions
         {
             Endpoint = new("http://localhost:5000/sse"),
             Name = "In-memory SSE Client",
@@ -222,7 +222,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        var sseOptions = new SseClientTransportOptions
+        var sseOptions = new HttpClientTransportOptions
         {
             Endpoint = new("http://localhost:5000/sse"),
             Name = "In-memory SSE Client",

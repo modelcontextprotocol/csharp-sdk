@@ -97,7 +97,7 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using var transport = new SseClientTransport(new()
+        await using var transport = new HttpClientTransport(new()
         {
             Endpoint = new(McpServerUrl),
             OAuth = new()
@@ -124,7 +124,7 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using var transport = new SseClientTransport(new()
+        await using var transport = new HttpClientTransport(new()
         {
             Endpoint = new(McpServerUrl),
         }, HttpClient, LoggerFactory);
@@ -146,7 +146,7 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using var transport = new SseClientTransport(new()
+        await using var transport = new HttpClientTransport(new()
         {
             Endpoint = new(McpServerUrl),
             OAuth = new()
@@ -174,7 +174,7 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using var transport = new SseClientTransport(new()
+        await using var transport = new HttpClientTransport(new()
         {
             Endpoint = new(McpServerUrl),
             OAuth = new ClientOAuthOptions()
@@ -205,7 +205,7 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using var transport = new SseClientTransport(new()
+        await using var transport = new HttpClientTransport(new()
         {
             Endpoint = new(McpServerUrl),
             OAuth = new()
@@ -236,7 +236,7 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using var transport = new SseClientTransport(new()
+        await using var transport = new HttpClientTransport(new()
         {
             Endpoint = new(McpServerUrl),
             OAuth = new()
@@ -270,7 +270,7 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using var transport = new SseClientTransport(new()
+        await using var transport = new HttpClientTransport(new()
         {
             Endpoint = new(McpServerUrl),
             OAuth = new()

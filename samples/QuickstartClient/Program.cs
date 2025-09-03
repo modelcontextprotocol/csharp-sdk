@@ -19,7 +19,7 @@ var (command, arguments) = GetCommandAndArguments(args);
 if (command == "http")
 {
     // make sure AspNetCoreMcpServer is running
-    clientTransport = new SseClientTransport(new()
+    clientTransport = new HttpClientTransport(new()
     {
         Endpoint = new Uri("http://localhost:3001")
     });

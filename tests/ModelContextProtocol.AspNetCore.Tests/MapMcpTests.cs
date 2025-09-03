@@ -25,13 +25,13 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
 
     protected async Task<McpClient> ConnectAsync(
         string? path = null,
-        SseClientTransportOptions? transportOptions = null,
+        HttpClientTransportOptions? transportOptions = null,
         McpClientOptions? clientOptions = null)
     {
         // Default behavior when no options are provided
         path ??= UseStreamableHttp ? "/" : "/sse";
 
-        await using var transport = new SseClientTransport(transportOptions ?? new SseClientTransportOptions
+        await using var transport = new HttpClientTransport(transportOptions ?? new HttpClientTransportOptions
         {
             Endpoint = new Uri($"http://localhost:5000{path}"),
             TransportMode = UseStreamableHttp ? HttpTransportMode.StreamableHttp : HttpTransportMode.Sse,

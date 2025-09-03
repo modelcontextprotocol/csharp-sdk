@@ -12,14 +12,14 @@ namespace ModelContextProtocol.Client;
 /// </summary>
 internal sealed partial class AutoDetectingClientSessionTransport : ITransport
 {
-    private readonly SseClientTransportOptions _options;
+    private readonly HttpClientTransportOptions _options;
     private readonly McpHttpClient _httpClient;
     private readonly ILoggerFactory? _loggerFactory;
     private readonly ILogger _logger;
     private readonly string _name;
     private readonly Channel<JsonRpcMessage> _messageChannel;
 
-    public AutoDetectingClientSessionTransport(string endpointName, SseClientTransportOptions transportOptions, McpHttpClient httpClient, ILoggerFactory? loggerFactory)
+    public AutoDetectingClientSessionTransport(string endpointName, HttpClientTransportOptions transportOptions, McpHttpClient httpClient, ILoggerFactory? loggerFactory)
     {
         Throw.IfNull(transportOptions);
         Throw.IfNull(httpClient);

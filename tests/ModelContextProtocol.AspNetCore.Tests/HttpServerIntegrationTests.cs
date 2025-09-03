@@ -21,7 +21,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         base.Dispose();
     }
 
-    protected abstract SseClientTransportOptions ClientTransportOptions { get; }
+    protected abstract HttpClientTransportOptions ClientTransportOptions { get; }
 
     private Task<McpClient> GetClientAsync(McpClientOptions? options = null)
     {
