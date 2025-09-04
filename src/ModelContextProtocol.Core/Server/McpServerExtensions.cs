@@ -342,7 +342,7 @@ public static class McpServerExtensions
     /// <param name="schema">The schema to validate.</param>
     /// <param name="error">The error message, if validation fails.</param>
     /// <returns></returns>
-    private static bool TryValidateElicitationPrimitiveSchema(Type type, JsonElement schema, out string error)
+    private static bool TryValidateElicitationPrimitiveSchema(Type type, JsonElement schema, [NotNullWhen(false)] out string? error)
     {
         if (schema.ValueKind is not JsonValueKind.Object)
         {
