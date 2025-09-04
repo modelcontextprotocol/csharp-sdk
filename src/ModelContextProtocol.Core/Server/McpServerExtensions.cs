@@ -346,7 +346,7 @@ public static class McpServerExtensions
     {
         if (schema.ValueKind is not JsonValueKind.Object)
         {
-            error = $"Schema generated for type '{type.FullName}' is invalid: expected a JSON object.";
+            error = $"Schema generated for type '{type.FullName}' is invalid: expected an object schema.";
             return false;
         }
 
