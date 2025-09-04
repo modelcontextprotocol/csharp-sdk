@@ -98,7 +98,7 @@ public abstract class McpClient : McpSession, IMcpClient
     {
         var opts = McpJsonUtilities.DefaultOptions;
         opts.MakeReadOnly();
-        return this.SendRequestAsync<object?, object>(
+        return SendRequestAsync<object?, object>(
             RequestMethods.Ping,
             parameters: null,
             serializerOptions: opts,
