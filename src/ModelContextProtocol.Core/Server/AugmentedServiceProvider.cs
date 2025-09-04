@@ -26,7 +26,9 @@ internal sealed class RequestServiceProvider<TRequestParams>(
     /// <inheritdoc />
     public object? GetService(Type serviceType) =>
         serviceType == typeof(RequestContext<TRequestParams>) ? request :
-        serviceType == typeof(McpServer) ? request.Server :
+#pragma warning disable CS0618 // Type or member is obsolete
+        serviceType == typeof(McpServer) || serviceType == typeof(IMcpServer) ? request.Server :
+#pragma warning restore CS0618 // Type or member is obsolete
         serviceType == typeof(IProgress<ProgressNotificationValue>) ?
             (request.Params?.ProgressToken is { } progressToken ? new TokenProgress(request.Server, progressToken) : NullProgress.Instance) :
         innerServices?.GetService(serviceType);
