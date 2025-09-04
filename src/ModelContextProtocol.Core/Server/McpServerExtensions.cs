@@ -353,7 +353,7 @@ public static class McpServerExtensions
         if (!schema.TryGetProperty("type", out JsonElement typeProperty)
             || !(typeProperty.ValueKind is JsonValueKind.String or JsonValueKind.Array))
         {
-            error = $"Schema generated for type '{type.FullName}' is invalid: missing or non-string 'type' property.";
+            error = $"Schema generated for type '{type.FullName}' is invalid: missing or invalid 'type' keyword.";
             return false;
         }
 
