@@ -302,11 +302,10 @@ public static class McpServerExtensions
         foreach (JsonPropertyInfo pi in typeInfo.Properties)
         {
             var memberType = pi.PropertyType;
-            string name = pi.Name; // serialized name honoring naming policy/attributes
             var def = CreatePrimitiveSchema(memberType, serializerOptions);
             if (def is not null)
             {
-                props[name] = def;
+                props[pi.Name] = def;
             }
         }
 
