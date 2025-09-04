@@ -18,6 +18,9 @@ internal sealed class RequestServiceProvider<TRequestParams>(
     public static bool IsAugmentedWith(Type serviceType) =>
         serviceType == typeof(RequestContext<TRequestParams>) ||
         serviceType == typeof(McpServer) ||
+#pragma warning disable CS0618 // Type or member is obsolete
+        serviceType == typeof(IMcpServer) ||
+#pragma warning restore CS0618 // Type or member is obsolete
         serviceType == typeof(IProgress<ProgressNotificationValue>);
 
     /// <inheritdoc />
