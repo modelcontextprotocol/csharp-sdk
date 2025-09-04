@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Client;
@@ -19,6 +20,7 @@ internal sealed partial class McpClientImpl : McpClient
     private readonly string _endpointName;
     private readonly McpClientOptions _options;
     private readonly McpSessionHandler _sessionHandler;
+    private readonly SemaphoreSlim _disposeLock = new(1, 1);
 
     private CancellationTokenSource? _connectCts;
 
@@ -26,7 +28,7 @@ internal sealed partial class McpClientImpl : McpClient
     private Implementation? _serverInfo;
     private string? _serverInstructions;
 
-    private int _isDisposed;
+    private bool _disposed;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="McpClientImpl"/> class.
@@ -215,10 +217,14 @@ internal sealed partial class McpClientImpl : McpClient
     /// <inheritdoc/>
     public override async ValueTask DisposeAsync()
     {
-        if (Interlocked.CompareExchange(ref _isDisposed, 1, 0) != 0)
+        using var _ = await _disposeLock.LockAsync().ConfigureAwait(false);
+
+        if (_disposed)
         {
             return;
         }
+
+        _disposed = true;
 
         await _sessionHandler.DisposeAsync().ConfigureAwait(false);
         await _transport.DisposeAsync().ConfigureAwait(false);

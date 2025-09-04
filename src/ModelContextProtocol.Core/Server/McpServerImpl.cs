@@ -23,6 +23,7 @@ internal sealed class McpServerImpl : McpServer
     private readonly NotificationHandlers _notificationHandlers;
     private readonly RequestHandlers _requestHandlers;
     private readonly McpSessionHandler _sessionHandler;
+    private readonly SemaphoreSlim _disposeLock = new(1, 1);
 
     private ClientCapabilities? _clientCapabilities;
     private Implementation? _clientInfo;
@@ -31,7 +32,7 @@ internal sealed class McpServerImpl : McpServer
     private string _endpointName;
     private int _started;
 
-    private int _isDisposed;
+    private bool _disposed;
 
     /// <summary>Holds a boxed <see cref="LoggingLevel"/> value for the server.</summary>
     /// <remarks>
@@ -165,10 +166,14 @@ internal sealed class McpServerImpl : McpServer
     /// <inheritdoc/>
     public override async ValueTask DisposeAsync()
     {
-        if (Interlocked.CompareExchange(ref _isDisposed, 1, 0) != 0)
+        using var _ = await _disposeLock.LockAsync().ConfigureAwait(false);
+
+        if (_disposed)
         {
             return;
         }
+
+        _disposed = true;
 
         _disposables.ForEach(d => d());
         await _sessionHandler.DisposeAsync().ConfigureAwait(false);
