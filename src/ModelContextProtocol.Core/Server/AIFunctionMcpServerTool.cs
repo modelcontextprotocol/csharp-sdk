@@ -260,8 +260,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
             string text => new()
             {
-                // If there is structuredOutput we must stringify it, as the MCP specification requires Content to be for backwards compatibility
-                // but otherwise not differ
+                // If there is structuredOutput we must return that in stringified form,
+                // as required for backward compatibility by the MCP specification.
                 Content = [new TextContentBlock { Text = structuredContent == null ? text :
                  JsonSerializer.Serialize(structuredContent, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object)))}],
                 StructuredContent = structuredContent,
