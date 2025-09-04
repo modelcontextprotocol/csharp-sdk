@@ -15,7 +15,7 @@ namespace ModelContextProtocol.Client;
 internal sealed partial class SseClientSessionTransport : TransportBase
 {
     private readonly McpHttpClient _httpClient;
-    private readonly SseClientTransportOptions _options;
+    private readonly HttpClientTransportOptions _options;
     private readonly Uri _sseEndpoint;
     private Uri? _messageEndpoint;
     private readonly CancellationTokenSource _connectionCts;
@@ -29,7 +29,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
     /// </summary>
     public SseClientSessionTransport(
         string endpointName,
-        SseClientTransportOptions transportOptions,
+        HttpClientTransportOptions transportOptions,
         McpHttpClient httpClient,
         Channel<JsonRpcMessage>? messageChannel,
         ILoggerFactory? loggerFactory)
@@ -42,7 +42,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
         _sseEndpoint = transportOptions.Endpoint;
         _httpClient = httpClient;
         _connectionCts = new CancellationTokenSource();
-        _logger = (ILogger?)loggerFactory?.CreateLogger<SseClientTransport>() ?? NullLogger.Instance;
+        _logger = (ILogger?)loggerFactory?.CreateLogger<HttpClientTransport>() ?? NullLogger.Instance;
         _connectionEstablished = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 

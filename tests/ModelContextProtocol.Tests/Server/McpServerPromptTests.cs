@@ -35,9 +35,9 @@ public class McpServerPromptTests
     [Fact]
     public async Task SupportsIMcpServer()
     {
-        Mock<IMcpServer> mockServer = new();
+        Mock<McpServer> mockServer = new();
 
-        McpServerPrompt prompt = McpServerPrompt.Create((IMcpServer server) =>
+        McpServerPrompt prompt = McpServerPrompt.Create((McpServer server) =>
         {
             Assert.Same(mockServer.Object, server);
             return new ChatMessage(ChatRole.User, "Hello");
@@ -63,7 +63,7 @@ public class McpServerPromptTests
         sc.AddSingleton(expectedMyService);
         IServiceProvider services = sc.BuildServiceProvider();
 
-        Mock<IMcpServer> mockServer = new();
+        Mock<McpServer> mockServer = new();
         mockServer.SetupGet(s => s.Services).Returns(services);
 
         MethodInfo? testMethod = typeof(HasCtorWithSpecialParameters).GetMethod(nameof(HasCtorWithSpecialParameters.TestPrompt));
@@ -86,11 +86,11 @@ public class McpServerPromptTests
     private sealed class HasCtorWithSpecialParameters
     {
         private readonly MyService _ms;
-        private readonly IMcpServer _server;
+        private readonly McpServer _server;
         private readonly RequestContext<GetPromptRequestParams> _request;
         private readonly IProgress<ProgressNotificationValue> _progress;
 
-        public HasCtorWithSpecialParameters(MyService ms, IMcpServer server, RequestContext<GetPromptRequestParams> request, IProgress<ProgressNotificationValue> progress)
+        public HasCtorWithSpecialParameters(MyService ms, McpServer server, RequestContext<GetPromptRequestParams> request, IProgress<ProgressNotificationValue> progress)
         {
             Assert.NotNull(ms);
             Assert.NotNull(server);
@@ -125,11 +125,11 @@ public class McpServerPromptTests
         Assert.DoesNotContain("actualMyService", prompt.ProtocolPrompt.Arguments?.Select(a => a.Name) ?? []);
 
         await Assert.ThrowsAnyAsync<ArgumentException>(async () => await prompt.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object),
             TestContext.Current.CancellationToken));
 
         var result = await prompt.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object) { Services = services },
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object) { Services = services },
             TestContext.Current.CancellationToken);
         Assert.Equal("Hello", Assert.IsType<TextContentBlock>(result.Messages[0].Content).Text);
     }
@@ -150,7 +150,7 @@ public class McpServerPromptTests
         }, new() { Services = services });
 
         var result = await prompt.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object),
             TestContext.Current.CancellationToken);
         Assert.Equal("Hello", Assert.IsType<TextContentBlock>(result.Messages[0].Content).Text);
     }
@@ -163,7 +163,7 @@ public class McpServerPromptTests
             _ => new DisposablePromptType());
 
         var result = await prompt1.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object),
             TestContext.Current.CancellationToken);
         Assert.Equal("disposals:1", Assert.IsType<TextContentBlock>(result.Messages[0].Content).Text);
     }
@@ -176,7 +176,7 @@ public class McpServerPromptTests
             _ => new AsyncDisposablePromptType());
 
         var result = await prompt1.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object),
             TestContext.Current.CancellationToken);
         Assert.Equal("asyncDisposals:1", Assert.IsType<TextContentBlock>(result.Messages[0].Content).Text);
     }
@@ -189,7 +189,7 @@ public class McpServerPromptTests
             _ => new AsyncDisposableAndDisposablePromptType());
 
         var result = await prompt1.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object),
             TestContext.Current.CancellationToken);
         Assert.Equal("disposals:0, asyncDisposals:1", Assert.IsType<TextContentBlock>(result.Messages[0].Content).Text);
     }
@@ -205,7 +205,7 @@ public class McpServerPromptTests
         });
 
         var actual = await prompt.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object),
             TestContext.Current.CancellationToken);
 
         Assert.Same(expected, actual);
@@ -222,7 +222,7 @@ public class McpServerPromptTests
         });
 
         var actual = await prompt.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object),
             TestContext.Current.CancellationToken);
 
         Assert.NotNull(actual);
@@ -248,7 +248,7 @@ public class McpServerPromptTests
         });
 
         var actual = await prompt.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object),
             TestContext.Current.CancellationToken);
 
         Assert.NotNull(actual);
@@ -280,7 +280,7 @@ public class McpServerPromptTests
         });
 
         var actual = await prompt.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object),
             TestContext.Current.CancellationToken);
 
         Assert.NotNull(actual);
@@ -307,7 +307,7 @@ public class McpServerPromptTests
         });
 
         var actual = await prompt.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object),
             TestContext.Current.CancellationToken);
 
         Assert.NotNull(actual);
@@ -339,7 +339,7 @@ public class McpServerPromptTests
         });
 
         var actual = await prompt.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object),
             TestContext.Current.CancellationToken);
 
         Assert.NotNull(actual);
@@ -360,7 +360,7 @@ public class McpServerPromptTests
         });
 
         await Assert.ThrowsAsync<InvalidOperationException>(async () => await prompt.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object),
             TestContext.Current.CancellationToken));
     }
 
@@ -373,7 +373,7 @@ public class McpServerPromptTests
         });
 
         await Assert.ThrowsAsync<InvalidOperationException>(async () => await prompt.GetAsync(
-            new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object),
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object),
             TestContext.Current.CancellationToken));
     }
 

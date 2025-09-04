@@ -25,7 +25,7 @@ public class McpServerLoggingLevelTests
 
         var provider = services.BuildServiceProvider();
 
-        provider.GetRequiredService<IMcpServer>();
+        provider.GetRequiredService<McpServer>();
     }
 
     [Fact]
@@ -39,7 +39,7 @@ public class McpServerLoggingLevelTests
 
         var provider = services.BuildServiceProvider();
 
-        var server = provider.GetRequiredService<IMcpServer>();
+        var server = provider.GetRequiredService<McpServer>();
 
         Assert.NotNull(server.ServerOptions.Capabilities?.Logging);
         Assert.NotNull(server.ServerOptions.Capabilities.Logging.SetLoggingLevelHandler);
@@ -52,7 +52,7 @@ public class McpServerLoggingLevelTests
         services.AddMcpServer()
             .WithStdioServerTransport();
         var provider = services.BuildServiceProvider();
-        var server = provider.GetRequiredService<IMcpServer>();
+        var server = provider.GetRequiredService<McpServer>();
         Assert.Null(server.ServerOptions.Capabilities?.Logging);
     }
 }

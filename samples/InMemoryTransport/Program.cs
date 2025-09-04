@@ -6,7 +6,7 @@ using System.IO.Pipelines;
 Pipe clientToServerPipe = new(), serverToClientPipe = new();
 
 // Create a server using a stream-based transport over an in-memory pipe.
-await using IMcpServer server = McpServerFactory.Create(
+await using McpServer server = McpServer.Create(
     new StreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream()),
     new McpServerOptions()
     {
@@ -21,7 +21,7 @@ await using IMcpServer server = McpServerFactory.Create(
 _ = server.RunAsync();
 
 // Connect a client using a stream-based transport over the same in-memory pipe.
-await using IMcpClient client = await McpClientFactory.CreateAsync(
+await using McpClient client = await McpClient.CreateAsync(
     new StreamClientTransport(clientToServerPipe.Writer.AsStream(), serverToClientPipe.Reader.AsStream()));
 
 // List all tools.

@@ -33,11 +33,37 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
+    public async Task Create_Should_Initialize_With_Valid_Parameters()
+    {
+        // Arrange & Act
+        await using var transport = new TestServerTransport();
+        await using McpServer server = McpServer.Create(transport, _options, LoggerFactory);
+
+        // Assert
+        Assert.NotNull(server);
+    }
+
+    [Fact]
+    public void Create_Throws_For_Null_ServerTransport()
+    {
+        // Arrange, Act & Assert
+        Assert.Throws<ArgumentNullException>("transport", () => McpServer.Create(null!, _options, LoggerFactory));
+    }
+
+    [Fact]
+    public async Task Create_Throws_For_Null_Options()
+    {
+        // Arrange, Act & Assert
+        await using var transport = new TestServerTransport();
+        Assert.Throws<ArgumentNullException>("serverOptions", () => McpServer.Create(transport, null!, LoggerFactory));
+    }
+
+    [Fact]
     public async Task Constructor_Should_Initialize_With_Valid_Parameters()
     {
         // Arrange & Act
         await using var transport = new TestServerTransport();
-        await using var server = McpServerFactory.Create(transport, _options, LoggerFactory);
+        await using var server = McpServer.Create(transport, _options, LoggerFactory);
 
         // Assert
         Assert.NotNull(server);
@@ -47,7 +73,7 @@ public class McpServerTests : LoggedTest
     public void Constructor_Throws_For_Null_Transport()
     {
         // Arrange, Act & Assert
-        Assert.Throws<ArgumentNullException>(() => McpServerFactory.Create(null!, _options, LoggerFactory));
+        Assert.Throws<ArgumentNullException>(() => McpServer.Create(null!, _options, LoggerFactory));
     }
 
     [Fact]
@@ -55,7 +81,7 @@ public class McpServerTests : LoggedTest
     {
         // Arrange, Act & Assert
         await using var transport = new TestServerTransport();
-        Assert.Throws<ArgumentNullException>(() => McpServerFactory.Create(transport, null!, LoggerFactory));
+        Assert.Throws<ArgumentNullException>(() => McpServer.Create(transport, null!, LoggerFactory));
     }
 
     [Fact]
@@ -63,7 +89,7 @@ public class McpServerTests : LoggedTest
     {
         // Arrange & Act
         await using var transport = new TestServerTransport();
-        await using var server = McpServerFactory.Create(transport, _options, null);
+        await using var server = McpServer.Create(transport, _options, null);
 
         // Assert
         Assert.NotNull(server);
@@ -74,7 +100,7 @@ public class McpServerTests : LoggedTest
     {
         // Arrange & Act
         await using var transport = new TestServerTransport();
-        await using var server = McpServerFactory.Create(transport, _options, LoggerFactory, null);
+        await using var server = McpServer.Create(transport, _options, LoggerFactory, null);
 
         // Assert
         Assert.NotNull(server);
@@ -85,7 +111,7 @@ public class McpServerTests : LoggedTest
     {
         // Arrange
         await using var transport = new TestServerTransport();
-        await using var server = McpServerFactory.Create(transport, _options, LoggerFactory);
+        await using var server = McpServer.Create(transport, _options, LoggerFactory);
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
 
         // Act & Assert
@@ -100,7 +126,7 @@ public class McpServerTests : LoggedTest
     {
         // Arrange
         await using var transport = new TestServerTransport();
-        await using var server = McpServerFactory.Create(transport, _options, LoggerFactory);
+        await using var server = McpServer.Create(transport, _options, LoggerFactory);
         SetClientCapabilities(server, new ClientCapabilities());
 
         var action = async () => await server.SampleAsync(new CreateMessageRequestParams { Messages = [] }, CancellationToken.None);
@@ -114,7 +140,7 @@ public class McpServerTests : LoggedTest
     {
         // Arrange
         await using var transport = new TestServerTransport();
-        await using var server = McpServerFactory.Create(transport, _options, LoggerFactory);
+        await using var server = McpServer.Create(transport, _options, LoggerFactory);
         SetClientCapabilities(server, new ClientCapabilities { Sampling = new SamplingCapability() });
 
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
@@ -136,7 +162,7 @@ public class McpServerTests : LoggedTest
     {
         // Arrange
         await using var transport = new TestServerTransport();
-        await using var server = McpServerFactory.Create(transport, _options, LoggerFactory);
+        await using var server = McpServer.Create(transport, _options, LoggerFactory);
         SetClientCapabilities(server, new ClientCapabilities());
 
         // Act & Assert
@@ -148,7 +174,7 @@ public class McpServerTests : LoggedTest
     {
         // Arrange
         await using var transport = new TestServerTransport();
-        await using var server = McpServerFactory.Create(transport, _options, LoggerFactory);
+        await using var server = McpServer.Create(transport, _options, LoggerFactory);
         SetClientCapabilities(server, new ClientCapabilities { Roots = new RootsCapability() });
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
 
@@ -170,7 +196,7 @@ public class McpServerTests : LoggedTest
     {
         // Arrange
         await using var transport = new TestServerTransport();
-        await using var server = McpServerFactory.Create(transport, _options, LoggerFactory);
+        await using var server = McpServer.Create(transport, _options, LoggerFactory);
         SetClientCapabilities(server, new ClientCapabilities());
 
         // Act & Assert
@@ -182,7 +208,7 @@ public class McpServerTests : LoggedTest
     {
         // Arrange
         await using var transport = new TestServerTransport();
-        await using var server = McpServerFactory.Create(transport, _options, LoggerFactory);
+        await using var server = McpServer.Create(transport, _options, LoggerFactory);
         SetClientCapabilities(server, new ClientCapabilities { Elicitation = new ElicitationCapability() });
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
 
@@ -216,7 +242,7 @@ public class McpServerTests : LoggedTest
     [Fact]
     public async Task Can_Handle_Initialize_Requests()
     {
-        AssemblyName expectedAssemblyName = (Assembly.GetEntryAssembly() ?? typeof(IMcpServer).Assembly).GetName();
+        AssemblyName expectedAssemblyName = (Assembly.GetEntryAssembly() ?? typeof(McpServer).Assembly).GetName();
         await Can_Handle_Requests(
             serverCapabilities: null,
             method: RequestMethods.Initialize,
@@ -510,7 +536,7 @@ public class McpServerTests : LoggedTest
         var options = CreateOptions(serverCapabilities);
         configureOptions?.Invoke(options);
 
-        await using var server = McpServerFactory.Create(transport, options, LoggerFactory);
+        await using var server = McpServer.Create(transport, options, LoggerFactory);
 
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
 
@@ -544,7 +570,7 @@ public class McpServerTests : LoggedTest
         await using var transport = new TestServerTransport();
         var options = CreateOptions(serverCapabilities);
 
-        var server = McpServerFactory.Create(transport, options, LoggerFactory);
+        var server = McpServer.Create(transport, options, LoggerFactory);
         await server.DisposeAsync();
     }
 
@@ -589,7 +615,7 @@ public class McpServerTests : LoggedTest
     public async Task Can_SendMessage_Before_RunAsync()
     {
         await using var transport = new TestServerTransport();
-        await using var server = McpServerFactory.Create(transport, _options, LoggerFactory);
+        await using var server = McpServer.Create(transport, _options, LoggerFactory);
 
         var logNotification = new JsonRpcNotification
         {
@@ -605,22 +631,22 @@ public class McpServerTests : LoggedTest
         Assert.Same(logNotification, transport.SentMessages[0]);
     }
 
-    private static void SetClientCapabilities(IMcpServer server, ClientCapabilities capabilities)
+    private static void SetClientCapabilities(McpServer server, ClientCapabilities capabilities)
     {
-        PropertyInfo? property = server.GetType().GetProperty("ClientCapabilities", BindingFlags.Public | BindingFlags.Instance);
-        Assert.NotNull(property);
-        property.SetValue(server, capabilities);
+        FieldInfo? field = server.GetType().GetField("_clientCapabilities", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(field);
+        field.SetValue(server, capabilities);
     }
 
-    private sealed class TestServerForIChatClient(bool supportsSampling) : IMcpServer
+    private sealed class TestServerForIChatClient(bool supportsSampling) : McpServer
     {
-        public ClientCapabilities? ClientCapabilities =>
+        public override ClientCapabilities? ClientCapabilities =>
             supportsSampling ? new ClientCapabilities { Sampling = new SamplingCapability() } :
             null;
 
-        public McpServerOptions ServerOptions => new();
+        public override McpServerOptions ServerOptions => new();
 
-        public Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken)
+        public override Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken)
         {
             CreateMessageRequestParams? rp = JsonSerializer.Deserialize<CreateMessageRequestParams>(request.Params, McpJsonUtilities.DefaultOptions);
 
@@ -653,17 +679,17 @@ public class McpServerTests : LoggedTest
             });
         }
 
-        public ValueTask DisposeAsync() => default;
+        public override ValueTask DisposeAsync() => default;
 
-        public string? SessionId => throw new NotImplementedException();
-        public Implementation? ClientInfo => throw new NotImplementedException();
-        public IServiceProvider? Services => throw new NotImplementedException();
-        public LoggingLevel? LoggingLevel => throw new NotImplementedException();
-        public Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default) =>
+        public override string? SessionId => throw new NotImplementedException();
+        public override Implementation? ClientInfo => throw new NotImplementedException();
+        public override IServiceProvider? Services => throw new NotImplementedException();
+        public override LoggingLevel? LoggingLevel => throw new NotImplementedException();
+        public override Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
-        public Task RunAsync(CancellationToken cancellationToken = default) =>
+        public override Task RunAsync(CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
-        public IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler) =>
+        public override IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler) =>
             throw new NotImplementedException();
     }
 
@@ -683,7 +709,7 @@ public class McpServerTests : LoggedTest
             })],
         };
 
-        var server = McpServerFactory.Create(transport, options, LoggerFactory);
+        var server = McpServer.Create(transport, options, LoggerFactory);
 
         Task serverTask = server.RunAsync(TestContext.Current.CancellationToken);
 

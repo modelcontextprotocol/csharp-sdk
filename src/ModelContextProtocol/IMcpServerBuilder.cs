@@ -3,7 +3,7 @@ using ModelContextProtocol.Server;
 namespace Microsoft.Extensions.DependencyInjection;
 
 /// <summary>
-/// Provides a builder for configuring <see cref="IMcpServer"/> instances.
+/// Provides a builder for configuring <see cref="McpServer"/> instances.
 /// </summary>
 /// <remarks>
 /// <para>

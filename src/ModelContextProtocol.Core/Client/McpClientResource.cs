@@ -9,15 +9,15 @@ namespace ModelContextProtocol.Client;
 /// <para>
 /// This class provides a client-side wrapper around a resource defined on an MCP server. It allows
 /// retrieving the resource's content by sending a request to the server with the resource's URI.
-/// Instances of this class are typically obtained by calling <see cref="McpClientExtensions.ListResourcesAsync"/>
-/// or <see cref="McpClientExtensions.EnumerateResourcesAsync"/>.
+/// Instances of this class are typically obtained by calling <see cref="McpClient.ListResourcesAsync"/>
+/// or <see cref="McpClient.EnumerateResourcesAsync"/>.
 /// </para>
 /// </remarks>
 public sealed class McpClientResource
 {
-    private readonly IMcpClient _client;
+    private readonly McpClient _client;
 
-    internal McpClientResource(IMcpClient client, Resource resource)
+    internal McpClientResource(McpClient client, Resource resource)
     {
         _client = client;
         ProtocolResource = resource;
@@ -58,7 +58,7 @@ public sealed class McpClientResource
     /// <returns>A <see cref="ValueTask{ReadResourceResult}"/> containing the resource's result with content and messages.</returns>
     /// <remarks>
     /// <para>
-    /// This is a convenience method that internally calls <see cref="McpClientExtensions.ReadResourceAsync(IMcpClient, string, CancellationToken)"/>.
+    /// This is a convenience method that internally calls <see cref="McpClient.ReadResourceAsync(string, CancellationToken)"/>.
     /// </para>
     /// </remarks>
     public ValueTask<ReadResourceResult> ReadAsync(

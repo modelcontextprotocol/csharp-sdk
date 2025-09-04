@@ -25,7 +25,7 @@ var consoleLoggerFactory = LoggerFactory.Create(builder =>
     builder.AddConsole();
 });
 
-var transport = new SseClientTransport(new()
+var transport = new HttpClientTransport(new()
 {
     Endpoint = new Uri(serverUrl),
     Name = "Secure Weather Client",
@@ -40,7 +40,7 @@ var transport = new SseClientTransport(new()
     }
 }, httpClient, consoleLoggerFactory);
 
-var client = await McpClientFactory.CreateAsync(transport, loggerFactory: consoleLoggerFactory);
+var client = await McpClient.CreateAsync(transport, loggerFactory: consoleLoggerFactory);
 
 var tools = await client.ListToolsAsync();
 if (tools.Count == 0)

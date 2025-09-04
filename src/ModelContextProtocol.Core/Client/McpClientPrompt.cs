@@ -10,8 +10,8 @@ namespace ModelContextProtocol.Client;
 /// <para>
 /// This class provides a client-side wrapper around a prompt defined on an MCP server. It allows
 /// retrieving the prompt's content by sending a request to the server with optional arguments.
-/// Instances of this class are typically obtained by calling <see cref="McpClientExtensions.ListPromptsAsync"/>
-/// or <see cref="McpClientExtensions.EnumeratePromptsAsync"/>.
+/// Instances of this class are typically obtained by calling <see cref="McpClient.ListPromptsAsync"/>
+/// or <see cref="McpClient.EnumeratePromptsAsync"/>.
 /// </para>
 /// <para>
 /// Each prompt has a name and optionally a description, and it can be invoked with arguments
@@ -20,9 +20,9 @@ namespace ModelContextProtocol.Client;
 /// </remarks>
 public sealed class McpClientPrompt
 {
-    private readonly IMcpClient _client;
+    private readonly McpClient _client;
 
-    internal McpClientPrompt(IMcpClient client, Prompt prompt)
+    internal McpClientPrompt(McpClient client, Prompt prompt)
     {
         _client = client;
         ProtocolPrompt = prompt;
@@ -63,7 +63,7 @@ public sealed class McpClientPrompt
     /// The server will process the request and return a result containing messages or other content.
     /// </para>
     /// <para>
-    /// This is a convenience method that internally calls <see cref="McpClientExtensions.GetPromptAsync"/> 
+    /// This is a convenience method that internally calls <see cref="McpClient.GetPromptAsync"/> 
     /// with this prompt's name and arguments.
     /// </para>
     /// </remarks>

@@ -10,7 +10,7 @@ public class LongRunningTool
 {
     [McpServerTool(Name = "longRunningOperation"), Description("Demonstrates a long running operation with progress updates")]
     public static async Task<string> LongRunningOperation(
-        IMcpServer server,
+        McpServer server,
         RequestContext<CallToolRequestParams> context,
         int duration = 10,
         int steps = 5)

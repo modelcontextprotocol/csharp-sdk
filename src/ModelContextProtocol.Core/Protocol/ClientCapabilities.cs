@@ -44,7 +44,7 @@ public sealed class ClientCapabilities
     /// server requests for listing root URIs. Root URIs serve as entry points for resource navigation in the protocol.
     /// </para>
     /// <para>
-    /// The server can use <see cref="McpServerExtensions.RequestRootsAsync"/> to request the list of
+    /// The server can use <see cref="McpServer.RequestRootsAsync"/> to request the list of
     /// available roots from the client, which will trigger the client's <see cref="RootsCapability.RootsHandler"/>.
     /// </para>
     /// </remarks>
@@ -78,7 +78,7 @@ public sealed class ClientCapabilities
     /// </para>
     /// <para>
     /// Handlers provided via <see cref="NotificationHandlers"/> will be registered with the client for the lifetime of the client.
-    /// For transient handlers, <see cref="IMcpEndpoint.RegisterNotificationHandler"/> may be used to register a handler that can
+    /// For transient handlers, <see cref="McpSession.RegisterNotificationHandler"/> may be used to register a handler that can
     /// then be unregistered by disposing of the <see cref="IAsyncDisposable"/> returned from the method.
     /// </para>
     /// </remarks>

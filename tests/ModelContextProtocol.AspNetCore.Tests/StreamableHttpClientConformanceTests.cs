@@ -112,13 +112,13 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
     {
         await StartAsync();
 
-        await using var transport = new SseClientTransport(new()
+        await using var transport = new HttpClientTransport(new()
         {
             Endpoint = new("http://localhost:5000/mcp"),
             TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClientFactory.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         var echoTool = Assert.Single(tools);
@@ -132,13 +132,13 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
     {
         await StartAsync();
 
-        await using var transport = new SseClientTransport(new()
+        await using var transport = new HttpClientTransport(new()
         {
             Endpoint = new("http://localhost:5000/mcp"),
             TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClientFactory.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         var echoTool = Assert.Single(tools);
@@ -158,13 +158,13 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
     {
         await StartAsync(enableDelete: true);
 
-        await using var transport = new SseClientTransport(new()
+        await using var transport = new HttpClientTransport(new()
         {
             Endpoint = new("http://localhost:5000/mcp"),
             TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClientFactory.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         // Dispose should trigger DELETE request
         await client.DisposeAsync();
