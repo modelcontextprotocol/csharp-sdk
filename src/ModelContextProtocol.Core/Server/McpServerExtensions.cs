@@ -21,6 +21,13 @@ public static class McpServerExtensions
     /// </summary>
     private static readonly ConditionalWeakTable<JsonSerializerOptions, ConcurrentDictionary<Type, ElicitRequestParams.RequestSchema>> ElicitResultSchemaCache = new();
 
+    private static Lazy<Dictionary<string, HashSet<string>>> LazyElicitAllowedProperties { get; } = new(()=> new()
+    {
+        ["string"]  = ["type", "title", "description", "minLength", "maxLength", "format", "enum", "enumNames"],
+        ["number"]  = ["type", "title", "description", "minimum", "maximum"],
+        ["boolean"] = ["type", "title", "description", "default"]
+    });
+
     /// <summary>
     /// Requests to sample an LLM via the client using the specified request parameters.
     /// </summary>
@@ -381,7 +388,7 @@ public static class McpServerExtensions
         }
 
         string? typeKeyword = null;
-        if (typeProperty.ValueKind == JsonValueKind.Array) // bool? will parse as ["boolean", "null"]
+        if (typeProperty.ValueKind == JsonValueKind.Array)
         {
             var types = JsonSerializer.Deserialize(typeProperty.GetRawText(), McpJsonUtilities.JsonContext.Default.StringArray);
             if (types is [var leftNullableType, "null"])
@@ -409,40 +416,16 @@ public static class McpServerExtensions
             return false;
         }
 
-        // Accept number or integer as the numeric primitive (both map to NumberSchema)
-        bool isString = typeKeyword == "string";
-        bool isBoolean = typeKeyword == "boolean";
-        bool isNumber = typeKeyword == "number" || typeKeyword == "integer";
-        if (!isString && !isBoolean && !isNumber)
+        if (typeKeyword is not ("string" or "number" or "integer" or "boolean"))
         {
             error = $"Schema generated for type '{type.FullName}' is invalid: unsupported primitive type '{typeKeyword}'.";
             return false;
         }
 
-        // Allowed property names per primitive schema we support.
-        HashSet<string> allowed = new(StringComparer.Ordinal)
-        {
-            "type",
-            "title",
-            "description"
-        };
-        if (isString)
-        {
-            allowed.Add("minLength");
-            allowed.Add("maxLength");
-            allowed.Add("format");
-            allowed.Add("enum"); // for string enums
-            allowed.Add("enumNames"); // for string enums
-        }
-        else if (isNumber)
-        {
-            allowed.Add("minimum");
-            allowed.Add("maximum");
-        }
-        else if (isBoolean)
-        {
-            allowed.Add("default");
-        }
+        if (typeKeyword == "integer")
+            typeKeyword = "number";
+
+        var allowed = LazyElicitAllowedProperties.Value[typeKeyword];
 
         foreach (JsonProperty prop in schema.EnumerateObject())
         {
