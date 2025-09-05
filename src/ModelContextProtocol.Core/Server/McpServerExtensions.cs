@@ -19,7 +19,7 @@ public static class McpServerExtensions
     /// <summary>
     /// Caches request schemas for elicitation requests based on the type and serializer options.
     /// </summary>
-    private static readonly ConditionalWeakTable<JsonSerializerOptions, ConcurrentDictionary<Type, ElicitRequestParams.RequestSchema>> ElicitResultSchemaCache = new();
+    private static readonly ConditionalWeakTable<JsonSerializerOptions, ConcurrentDictionary<Type, ElicitRequestParams.RequestSchema>> s_elicitResultSchemaCache = new();
 
     private static Lazy<Dictionary<string, HashSet<string>>> LazyElicitAllowedProperties { get; } = new(()=> new()
     {
