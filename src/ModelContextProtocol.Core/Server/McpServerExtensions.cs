@@ -21,7 +21,7 @@ public static class McpServerExtensions
     /// </summary>
     private static readonly ConditionalWeakTable<JsonSerializerOptions, ConcurrentDictionary<Type, ElicitRequestParams.RequestSchema>> s_elicitResultSchemaCache = new();
 
-    private static Lazy<Dictionary<string, HashSet<string>>> LazyElicitAllowedProperties { get; } = new(()=> new()
+    private static Lazy<Dictionary<string, HashSet<string>>> s_lazyElicitAllowedProperties = new(()=> new()
     {
         ["string"]  = ["type", "title", "description", "minLength", "maxLength", "format", "enum", "enumNames"],
         ["number"]  = ["type", "title", "description", "minimum", "maximum"],
@@ -276,7 +276,7 @@ public static class McpServerExtensions
         serializerOptions ??= McpJsonUtilities.DefaultOptions;
         serializerOptions.MakeReadOnly();
 
-        var dict = ElicitResultSchemaCache.GetValue(serializerOptions, _ => new());
+        var dict = s_elicitResultSchemaCache.GetValue(serializerOptions, _ => new());
         var schema = dict.GetOrAdd(typeof(T), _ => BuildRequestSchema<T>(serializerOptions));
 
         var request = new ElicitRequestParams
@@ -417,7 +417,7 @@ public static class McpServerExtensions
         if (typeKeyword == "integer")
             typeKeyword = "number";
 
-        var allowed = LazyElicitAllowedProperties.Value[typeKeyword];
+        var allowed = s_lazyElicitAllowedProperties.Value[typeKeyword];
 
         foreach (JsonProperty prop in schema.EnumerateObject())
         {
