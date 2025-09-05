@@ -1,6 +1,8 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
+using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -14,6 +16,11 @@ namespace ModelContextProtocol.Server;
 /// </summary>
 public static class McpServerExtensions
 {
+    /// <summary>
+    /// Caches request schemas for elicitation requests based on the type and serializer options.
+    /// </summary>
+    private static readonly ConditionalWeakTable<JsonSerializerOptions, ConcurrentDictionary<Type, ElicitRequestParams.RequestSchema>> ElicitResultSchemaCache = new();
+
     /// <summary>
     /// Requests to sample an LLM via the client using the specified request parameters.
     /// </summary>
@@ -262,7 +269,8 @@ public static class McpServerExtensions
         serializerOptions ??= McpJsonUtilities.DefaultOptions;
         serializerOptions.MakeReadOnly();
 
-        var schema = BuildRequestSchema<T>(serializerOptions);
+        var dict = ElicitResultSchemaCache.GetValue(serializerOptions, _ => new());
+        var schema = dict.GetOrAdd(typeof(T), _ => BuildRequestSchema<T>(serializerOptions));
 
         var request = new ElicitRequestParams
         {
@@ -287,6 +295,13 @@ public static class McpServerExtensions
         return new ElicitResult<T?> { Action = raw.Action, Content = typed };
     }
 
+    /// <summary>
+    /// Builds a request schema for elicitation based on the public serializable properties of <typeparamref name="T"/>.
+    /// </summary>
+    /// <typeparam name="T">The type to build the schema for.</typeparam>
+    /// <param name="serializerOptions">The serializer options to use.</param>
+    /// <returns>The built request schema.</returns>
+    /// <exception cref="McpException"></exception>
     private static ElicitRequestParams.RequestSchema BuildRequestSchema<T>(JsonSerializerOptions serializerOptions)
     {
         var schema = new ElicitRequestParams.RequestSchema();
@@ -303,16 +318,20 @@ public static class McpServerExtensions
         {
             var memberType = pi.PropertyType;
             var def = CreatePrimitiveSchema(memberType, serializerOptions);
-            if (def is not null)
-            {
-                props[pi.Name] = def;
-            }
+            props[pi.Name] = def;
         }
 
         return schema;
     }
 
-    private static ElicitRequestParams.PrimitiveSchemaDefinition? CreatePrimitiveSchema(Type type, JsonSerializerOptions serializerOptions)
+    /// <summary>
+    /// Creates a primitive schema definition for the specified type, if supported.
+    /// </summary>
+    /// <param name="type">The type to create the schema for.</param>
+    /// <param name="serializerOptions">The serializer options to use.</param>
+    /// <returns>The created primitive schema definition.</returns>
+    /// <exception cref="McpException">Thrown when the type is not supported.</exception>
+    private static ElicitRequestParams.PrimitiveSchemaDefinition CreatePrimitiveSchema(Type type, JsonSerializerOptions serializerOptions)
     {
         JsonTypeInfo typeInfo = serializerOptions.GetTypeInfo(type);
 
@@ -330,6 +349,10 @@ public static class McpServerExtensions
 
         var primitiveSchemaDefinition =
             jsonElement.Deserialize(McpJsonUtilities.JsonContext.Default.PrimitiveSchemaDefinition);
+        
+        if (primitiveSchemaDefinition is null)
+            throw new McpException($"Type '{type.FullName}' is not a supported property type for elicitation requests.");
+
         return primitiveSchemaDefinition;
     }
 
