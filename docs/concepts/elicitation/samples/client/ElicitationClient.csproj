@@ -8,7 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ModelContextProtocol.Core" Version="0.3.0-preview.3" />
+    <ProjectReference Include="../../../../../src/ModelContextProtocol.Core/ModelContextProtocol.Core.csproj" />
   </ItemGroup>
 
 </Project>
