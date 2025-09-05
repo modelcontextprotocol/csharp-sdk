@@ -340,16 +340,19 @@ public static class McpServerExtensions
     /// <exception cref="McpException">Thrown when the type is not supported.</exception>
     private static ElicitRequestParams.PrimitiveSchemaDefinition CreatePrimitiveSchema(Type type, JsonSerializerOptions serializerOptions)
     {
-        JsonTypeInfo typeInfo = serializerOptions.GetTypeInfo(type);
+        var originalType = type;
+        var underlyingType = Nullable.GetUnderlyingType(originalType) ?? originalType;
+        
+        var typeInfo = serializerOptions.GetTypeInfo(underlyingType);
 
         if (typeInfo.Kind != JsonTypeInfoKind.None)
         {
-            throw new McpException($"Type '{type.FullName}' is not a supported property type for elicitation requests.");
+            throw new McpException($"Type '{originalType.FullName}' is not a supported property type for elicitation requests.");
         }
 
-        var jsonElement = AIJsonUtilities.CreateJsonSchema(type, serializerOptions: serializerOptions);
+        var jsonElement = AIJsonUtilities.CreateJsonSchema(underlyingType, serializerOptions: serializerOptions);
 
-        if (!TryValidateElicitationPrimitiveSchema(type, jsonElement, out var error))
+        if (!TryValidateElicitationPrimitiveSchema(jsonElement, originalType, out var error))
         {
             throw new McpException(error);
         }
@@ -358,7 +361,7 @@ public static class McpServerExtensions
             jsonElement.Deserialize(McpJsonUtilities.JsonContext.Default.PrimitiveSchemaDefinition);
         
         if (primitiveSchemaDefinition is null)
-            throw new McpException($"Type '{type.FullName}' is not a supported property type for elicitation requests.");
+            throw new McpException($"Type '{originalType.FullName}' is not a supported property type for elicitation requests.");
 
         return primitiveSchemaDefinition;
     }
@@ -368,11 +371,12 @@ public static class McpServerExtensions
     /// with a supported primitive type keyword and no additional unsupported keywords.Reject things like
     /// {}, 'true', or schemas that include unrelated keywords(e.g.items, properties, patternProperties, etc.).
     /// </summary>
-    /// <param name="type">The type of the schema being validated.</param>
     /// <param name="schema">The schema to validate.</param>
+    /// <param name="type">The type of the schema being validated, just for reporting errors.</param>
     /// <param name="error">The error message, if validation fails.</param>
     /// <returns></returns>
-    private static bool TryValidateElicitationPrimitiveSchema(Type type, JsonElement schema, [NotNullWhen(false)] out string? error)
+    private static bool TryValidateElicitationPrimitiveSchema(JsonElement schema, Type type,
+        [NotNullWhen(false)] out string? error)
     {
         if (schema.ValueKind is not JsonValueKind.Object)
         {
@@ -387,27 +391,15 @@ public static class McpServerExtensions
             return false;
         }
 
-        string? typeKeyword = null;
-        if (typeProperty.ValueKind == JsonValueKind.Array)
+        string? typeKeyword;
+        if (typeProperty.ValueKind == JsonValueKind.String)
         {
-            var types = JsonSerializer.Deserialize(typeProperty.GetRawText(), McpJsonUtilities.JsonContext.Default.StringArray);
-            if (types is [var leftNullableType, "null"])
-            {
-                typeKeyword = leftNullableType;
-            }
-            else if (types is ["null", var rightNullableType])
-            {
-                typeKeyword = rightNullableType;
-            }
-            else
-            {
-                error = $"Schema generated for type '{type.FullName}' is invalid: unsupported 'type' array.";
-                return false;
-            }
+            typeKeyword = typeProperty.GetString();
         }
         else
         {
-            typeKeyword = typeProperty.GetString();
+            error = $"Schema generated for type '{type.FullName}' is invalid: unsupported 'type' array.";
+            return false;
         }
 
         if (string.IsNullOrEmpty(typeKeyword))

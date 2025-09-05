@@ -130,19 +130,10 @@ public sealed class ElicitRequestParams
                             {
                                 type = reader.GetString();
                             }
-                            else if (reader.TokenType == JsonTokenType.StartArray)
+                            else
                             {
-                                var types = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.StringArray);
-                                if (types is [var leftNullableType, "null"])
-                                {
-                                    type = leftNullableType;
-                                } 
-                                else if (types is ["null", var rightNullableType])
-                                {
-                                    type = rightNullableType;
-                                }
+                                throw new JsonException("The 'type' property must be a string.");
                             }
-                            
                             break;
 
                         case "title":
