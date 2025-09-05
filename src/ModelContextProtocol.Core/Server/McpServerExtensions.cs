@@ -277,7 +277,7 @@ public static class McpServerExtensions
         serializerOptions.MakeReadOnly();
 
         var dict = s_elicitResultSchemaCache.GetValue(serializerOptions, _ => new());
-        var schema = dict.GetOrAdd(typeof(T), _ => BuildRequestSchema<T>(serializerOptions));
+        var schema = dict.GetOrAdd(typeof(T), type => BuildRequestSchema(type, serializerOptions));
 
         var request = new ElicitRequestParams
         {
@@ -303,28 +303,27 @@ public static class McpServerExtensions
     }
 
     /// <summary>
-    /// Builds a request schema for elicitation based on the public serializable properties of <typeparamref name="T"/>.
+    /// Builds a request schema for elicitation based on the public serializable properties of <paramref name="type"/>.
     /// </summary>
-    /// <typeparam name="T">The type to build the schema for.</typeparam>
+    /// <param name="type">The type of the schema being built.</param>
     /// <param name="serializerOptions">The serializer options to use.</param>
     /// <returns>The built request schema.</returns>
     /// <exception cref="McpException"></exception>
-    private static ElicitRequestParams.RequestSchema BuildRequestSchema<T>(JsonSerializerOptions serializerOptions)
+    private static ElicitRequestParams.RequestSchema BuildRequestSchema(Type type, JsonSerializerOptions serializerOptions)
     {
         var schema = new ElicitRequestParams.RequestSchema();
         var props = schema.Properties;
 
-        JsonTypeInfo<T> typeInfo = serializerOptions.GetTypeInfo<T>();
+        JsonTypeInfo typeInfo = serializerOptions.GetTypeInfo(type);
 
         if (typeInfo.Kind != JsonTypeInfoKind.Object)
         {
-            throw new McpException($"Type '{typeof(T).FullName}' is not supported for elicitation requests.");
+            throw new McpException($"Type '{type.FullName}' is not supported for elicitation requests.");
         }
 
         foreach (JsonPropertyInfo pi in typeInfo.Properties)
         {
-            var memberType = pi.PropertyType;
-            var def = CreatePrimitiveSchema(memberType, serializerOptions);
+            var def = CreatePrimitiveSchema(pi.PropertyType, serializerOptions);
             props[pi.Name] = def;
         }
 
