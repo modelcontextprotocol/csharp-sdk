@@ -126,7 +126,14 @@ public sealed class ElicitRequestParams
                     switch (propertyName)
                     {
                         case "type":
-                            type = reader.GetString();
+                            if (reader.TokenType == JsonTokenType.String)
+                            {
+                                type = reader.GetString();
+                            }
+                            else
+                            {
+                                throw new JsonException("The 'type' property must be a string.");
+                            }
                             break;
 
                         case "title":
