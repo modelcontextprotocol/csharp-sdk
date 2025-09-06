@@ -277,7 +277,12 @@ public static class McpServerExtensions
         serializerOptions.MakeReadOnly();
 
         var dict = s_elicitResultSchemaCache.GetValue(serializerOptions, _ => new());
+
+#if NET
+        var schema = dict.GetOrAdd<JsonSerializerOptions>(typeof(T), (t, s) => BuildRequestSchema(t, s), serializerOptions);
+#else
         var schema = dict.GetOrAdd(typeof(T), type => BuildRequestSchema(type, serializerOptions));
+#endif
 
         var request = new ElicitRequestParams
         {
