@@ -259,11 +259,11 @@ public static class McpServerExtensions
     /// Elicitation uses a constrained subset of JSON Schema and only supports strings, numbers/integers, booleans and string enums.
     /// Unsupported member types are ignored when constructing the schema.
     /// </remarks>
-    public static async ValueTask<ElicitResult<T?>> ElicitAsync<T>(
+    public static async ValueTask<ElicitResult<T>> ElicitAsync<T>(
         this IMcpServer server,
         string message,
         JsonSerializerOptions? serializerOptions = null,
-        CancellationToken cancellationToken = default) where T : class
+        CancellationToken cancellationToken = default)
     {
         Throw.IfNull(server);
         ThrowIfElicitationUnsupported(server);
@@ -289,7 +289,7 @@ public static class McpServerExtensions
 
         if (!string.Equals(raw.Action, "accept", StringComparison.OrdinalIgnoreCase) || raw.Content is null)
         {
-            return new ElicitResult<T?> { Action = raw.Action, Content = default };
+            return new ElicitResult<T> { Action = raw.Action, Content = default };
         }
 
         var obj = new JsonObject();
@@ -299,7 +299,7 @@ public static class McpServerExtensions
         }
 
         T? typed = JsonSerializer.Deserialize(obj, serializerOptions.GetTypeInfo<T>());
-        return new ElicitResult<T?> { Action = raw.Action, Content = typed };
+        return new ElicitResult<T> { Action = raw.Action, Content = typed };
     }
 
     /// <summary>
