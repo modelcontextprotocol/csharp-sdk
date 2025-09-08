@@ -32,10 +32,7 @@ builder.Services.AddMcpServer()
                 }
             }
         };
-    })
-    .WithTools<ClockTool>()
-    .WithTools<CalculatorTool>()
-    .WithTools<UserInfoTool>();
+    });
 
 var app = builder.Build();
 
