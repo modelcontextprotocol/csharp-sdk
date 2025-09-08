@@ -15,7 +15,7 @@ builder.Services.AddMcpServer()
     {
         // Configure per-session options to filter tools based on route category
         options.ConfigureSessionOptions = async (httpContext, mcpOptions, cancellationToken) =>
-        {            
+        {
             // Determine tool category from route parameters
             var toolCategory = httpContext.Request.RouteValues["toolCategory"]?.ToString()?.ToLower() ?? "all";
 
