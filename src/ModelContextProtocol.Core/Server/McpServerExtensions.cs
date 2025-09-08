@@ -21,12 +21,7 @@ public static class McpServerExtensions
     /// </summary>
     private static readonly ConditionalWeakTable<JsonSerializerOptions, ConcurrentDictionary<Type, ElicitRequestParams.RequestSchema>> s_elicitResultSchemaCache = new();
 
-    private static Lazy<Dictionary<string, HashSet<string>>> s_lazyElicitAllowedProperties = new(()=> new()
-    {
-        ["string"]  = ["type", "title", "description", "minLength", "maxLength", "format", "enum", "enumNames"],
-        ["number"]  = ["type", "title", "description", "minimum", "maximum"],
-        ["boolean"] = ["type", "title", "description", "default"]
-    });
+    private static Dictionary<string, HashSet<string>>? s_lazyElicitAllowedProperties = null;
 
     /// <summary>
     /// Requests to sample an LLM via the client using the specified request parameters.
@@ -279,7 +274,7 @@ public static class McpServerExtensions
         var dict = s_elicitResultSchemaCache.GetValue(serializerOptions, _ => new());
 
 #if NET
-        var schema = dict.GetOrAdd<JsonSerializerOptions>(typeof(T), (t, s) => BuildRequestSchema(t, s), serializerOptions);
+        var schema = dict.GetOrAdd(typeof(T), static (t, s) => BuildRequestSchema(t, s), serializerOptions);
 #else
         var schema = dict.GetOrAdd(typeof(T), type => BuildRequestSchema(type, serializerOptions));
 #endif
@@ -344,19 +339,21 @@ public static class McpServerExtensions
     /// <exception cref="McpException">Thrown when the type is not supported.</exception>
     private static ElicitRequestParams.PrimitiveSchemaDefinition CreatePrimitiveSchema(Type type, JsonSerializerOptions serializerOptions)
     {
-        var originalType = type;
-        var underlyingType = Nullable.GetUnderlyingType(originalType) ?? originalType;
-        
-        var typeInfo = serializerOptions.GetTypeInfo(underlyingType);
+        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
+        {
+            throw new McpException($"Type '{type.FullName}' is not a supported property type for elicitation requests. Nullable types are not supported.");
+        }
+
+        var typeInfo = serializerOptions.GetTypeInfo(type);
 
         if (typeInfo.Kind != JsonTypeInfoKind.None)
         {
-            throw new McpException($"Type '{originalType.FullName}' is not a supported property type for elicitation requests.");
+            throw new McpException($"Type '{type.FullName}' is not a supported property type for elicitation requests.");
         }
 
-        var jsonElement = AIJsonUtilities.CreateJsonSchema(underlyingType, serializerOptions: serializerOptions);
+        var jsonElement = AIJsonUtilities.CreateJsonSchema(type, serializerOptions: serializerOptions);
 
-        if (!TryValidateElicitationPrimitiveSchema(jsonElement, originalType, out var error))
+        if (!TryValidateElicitationPrimitiveSchema(jsonElement, type, out var error))
         {
             throw new McpException(error);
         }
@@ -365,7 +362,7 @@ public static class McpServerExtensions
             jsonElement.Deserialize(McpJsonUtilities.JsonContext.Default.PrimitiveSchemaDefinition);
         
         if (primitiveSchemaDefinition is null)
-            throw new McpException($"Type '{originalType.FullName}' is not a supported property type for elicitation requests.");
+            throw new McpException($"Type '{type.FullName}' is not a supported property type for elicitation requests.");
 
         return primitiveSchemaDefinition;
     }
@@ -421,7 +418,14 @@ public static class McpServerExtensions
         if (typeKeyword == "integer")
             typeKeyword = "number";
 
-        var allowed = s_lazyElicitAllowedProperties.Value[typeKeyword];
+        s_lazyElicitAllowedProperties ??= new()
+        {
+            ["string"] = ["type", "title", "description", "minLength", "maxLength", "format", "enum", "enumNames"],
+            ["number"] = ["type", "title", "description", "minimum", "maximum"],
+            ["boolean"] = ["type", "title", "description", "default"]
+        };
+
+        var allowed = s_lazyElicitAllowedProperties[typeKeyword];
 
         foreach (JsonProperty prop in schema.EnumerateObject())
         {

@@ -35,7 +35,7 @@ public partial class ElicitationTypedTests : ClientServerTestBase
                 Assert.Equal(SampleRole.Admin, result.Content!.Role);
                 Assert.Equal(99.5, result.Content!.Score);
             }
-            else if (request.Params!.Name == "TestElicitationTypedCamel")
+            else if (request.Params!.Name == "TestElicitationCamelForm")
             {
                 var result = await request.Server.ElicitAsync<CamelForm>(
                     message: "Please provide more information.",
@@ -47,6 +47,19 @@ public partial class ElicitationTypedTests : ClientServerTestBase
                 Assert.Equal("Bob", result.Content!.FirstName);
                 Assert.Equal(90210, result.Content!.ZipCode);
                 Assert.False(result.Content!.IsAdmin);
+            }
+            else if (request.Params!.Name == "TestElicitationNullablePropertyForm")
+            {
+                var result = await request.Server.ElicitAsync<NullablePropertyForm>(
+                    message: "Please provide more information.",
+                    serializerOptions: ElicitationNullablePropertyJsonContext.Default.Options,
+                    cancellationToken: CancellationToken.None);
+
+                // Should be unreachable
+                return new CallToolResult
+                {
+                    Content = [new TextContentBlock { Text = "unexpected" }],
+                };
             }
             else if (request.Params!.Name == "TestElicitationUnsupportedType")
             {
@@ -222,7 +235,7 @@ public partial class ElicitationTypedTests : ClientServerTestBase
             },
         });
 
-        var result = await client.CallToolAsync("TestElicitationTypedCamel", cancellationToken: TestContext.Current.CancellationToken);
+        var result = await client.CallToolAsync("TestElicitationCamelForm", cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal("success", (result.Content[0] as TextContentBlock)?.Text);
     }
 
@@ -249,6 +262,29 @@ public partial class ElicitationTypedTests : ClientServerTestBase
             await client.CallToolAsync("TestElicitationUnsupportedType", cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains(typeof(UnsupportedForm.Nested).FullName!, ex.Message);
+    }
+
+    [Fact]
+    public async Task Elicit_Typed_With_Nullable_Property_Type_Throws()
+    {
+        await using IMcpClient client = await CreateMcpClientForServer(new McpClientOptions
+        {
+            Capabilities = new()
+            {
+                Elicitation = new()
+                {
+                    // Handler should never be invoked because the exception occurs before the request is sent.
+                    ElicitationHandler = async (req, ct) =>
+                    {
+                        Assert.Fail("Elicitation handler should not be called for unsupported schema test.");
+                        return new ElicitResult { Action = "cancel" };
+                    },
+                },
+            },
+        });
+
+        var ex = await Assert.ThrowsAsync<McpException>(async () =>
+            await client.CallToolAsync("TestElicitationNullablePropertyForm", cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -286,9 +322,9 @@ public partial class ElicitationTypedTests : ClientServerTestBase
 
     public sealed class SampleForm
     {
-        public string? Name { get; set; }
+        public required string Name { get; set; }
         public int Age { get; set; }
-        public bool? Active { get; set; }
+        public bool Active { get; set; }
         public SampleRole Role { get; set; }
         public double Score { get; set; }
 
@@ -297,6 +333,13 @@ public partial class ElicitationTypedTests : ClientServerTestBase
     }
 
     public sealed class CamelForm
+    {
+        public required string FirstName { get; set; }
+        public int ZipCode { get; set; }
+        public bool IsAdmin { get; set; }
+    }
+
+    public sealed class NullablePropertyForm
     {
         public string? FirstName { get; set; }
         public int ZipCode { get; set; }
@@ -312,6 +355,12 @@ public partial class ElicitationTypedTests : ClientServerTestBase
     [JsonSerializable(typeof(CamelForm))]
     [JsonSerializable(typeof(JsonElement))]
     internal partial class ElicitationTypedCamelJsonContext : JsonSerializerContext;
+
+
+    [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+    [JsonSerializable(typeof(NullablePropertyForm))]
+    [JsonSerializable(typeof(JsonElement))]
+    internal partial class ElicitationNullablePropertyJsonContext : JsonSerializerContext;
 
     public sealed class UnsupportedForm
     {
