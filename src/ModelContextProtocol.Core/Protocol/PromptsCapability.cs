@@ -22,10 +22,10 @@ public sealed class PromptsCapability
     /// Gets or sets whether this server supports notifications for changes to the prompt list.
     /// </summary>
     /// <remarks>
-    /// When set to <see langword="true"/>, the server will send notifications using 
-    /// <see cref="NotificationMethods.PromptListChangedNotification"/> when prompts are added, 
+    /// When set to <see langword="true"/>, the server will send notifications using
+    /// <see cref="NotificationMethods.PromptListChangedNotification"/> when prompts are added,
     /// removed, or modified. Clients can register handlers for these notifications to
-    /// refresh their prompt cache. This capability enables clients to stay synchronized with server-side changes 
+    /// refresh their prompt cache. This capability enables clients to stay synchronized with server-side changes
     /// to available prompts.
     /// </remarks>
     [JsonPropertyName("listChanged")]
@@ -40,15 +40,15 @@ public sealed class PromptsCapability
     /// along with any prompts defined in <see cref="PromptCollection"/>.
     /// </remarks>
     [JsonIgnore]
-    public Func<RequestContext<ListPromptsRequestParams>, CancellationToken, ValueTask<ListPromptsResult>>? ListPromptsHandler { get; set; }
+    public McpRequestHandler<ListPromptsRequestParams, ListPromptsResult>? ListPromptsHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.PromptsGet"/> requests.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This handler is invoked when a client requests details for a specific prompt by name and provides arguments 
-    /// for the prompt if needed. The handler receives the request context containing the prompt name and any arguments, 
+    /// This handler is invoked when a client requests details for a specific prompt by name and provides arguments
+    /// for the prompt if needed. The handler receives the request context containing the prompt name and any arguments,
     /// and should return a <see cref="GetPromptResult"/> with the prompt messages and other details.
     /// </para>
     /// <para>
@@ -57,7 +57,7 @@ public sealed class PromptsCapability
     /// </para>
     /// </remarks>
     [JsonIgnore]
-    public Func<RequestContext<GetPromptRequestParams>, CancellationToken, ValueTask<GetPromptResult>>? GetPromptHandler { get; set; }
+    public McpRequestHandler<GetPromptRequestParams, GetPromptResult>? GetPromptHandler { get; set; }
 
     /// <summary>
     /// Gets or sets a collection of prompts that will be served by the server.
@@ -69,7 +69,7 @@ public sealed class PromptsCapability
     /// when those are provided:
     /// </para>
     /// <para>
-    /// - For <see cref="RequestMethods.PromptsList"/> requests: The server returns all prompts from this collection 
+    /// - For <see cref="RequestMethods.PromptsList"/> requests: The server returns all prompts from this collection
     ///   plus any additional prompts provided by the <see cref="ListPromptsHandler"/> if it's set.
     /// </para>
     /// <para>

@@ -26,7 +26,7 @@ public sealed class McpServerFilters
     /// Tools from both sources will be combined when returning results to clients.
     /// </para>
     /// </remarks>
-    public List<Func<Func<RequestContext<ListToolsRequestParams>, CancellationToken, ValueTask<ListToolsResult>>, Func<RequestContext<ListToolsRequestParams>, CancellationToken, ValueTask<ListToolsResult>>>> ListToolsFilters { get; } = new();
+    public List<McpRequestFilter<ListToolsRequestParams, ListToolsResult>> ListToolsFilters { get; } = new();
 
     /// <summary>
     /// Gets the filters for the call tool handler pipeline.
@@ -36,7 +36,7 @@ public sealed class McpServerFilters
     /// The filters can modify, log, or perform additional operations on requests and responses for
     /// <see cref="RequestMethods.ToolsCall"/> requests. The handler should implement logic to execute the requested tool and return appropriate results.
     /// </remarks>
-    public List<Func<Func<RequestContext<CallToolRequestParams>, CancellationToken, ValueTask<CallToolResult>>, Func<RequestContext<CallToolRequestParams>, CancellationToken, ValueTask<CallToolResult>>>> CallToolFilters { get; } = new();
+    public List<McpRequestFilter<CallToolRequestParams, CallToolResult>> CallToolFilters { get; } = new();
 
     /// <summary>
     /// Gets the filters for the list prompts handler pipeline.
@@ -53,7 +53,7 @@ public sealed class McpServerFilters
     /// Prompts from both sources will be combined when returning results to clients.
     /// </para>
     /// </remarks>
-    public List<Func<Func<RequestContext<ListPromptsRequestParams>, CancellationToken, ValueTask<ListPromptsResult>>, Func<RequestContext<ListPromptsRequestParams>, CancellationToken, ValueTask<ListPromptsResult>>>> ListPromptsFilters { get; } = new();
+    public List<McpRequestFilter<ListPromptsRequestParams, ListPromptsResult>> ListPromptsFilters { get; } = new();
 
     /// <summary>
     /// Gets the filters for the get prompt handler pipeline.
@@ -63,7 +63,7 @@ public sealed class McpServerFilters
     /// The filters can modify, log, or perform additional operations on requests and responses for
     /// <see cref="RequestMethods.PromptsGet"/> requests. The handler should implement logic to fetch or generate the requested prompt and return appropriate results.
     /// </remarks>
-    public List<Func<Func<RequestContext<GetPromptRequestParams>, CancellationToken, ValueTask<GetPromptResult>>, Func<RequestContext<GetPromptRequestParams>, CancellationToken, ValueTask<GetPromptResult>>>> GetPromptFilters { get; } = new();
+    public List<McpRequestFilter<GetPromptRequestParams, GetPromptResult>> GetPromptFilters { get; } = new();
 
     /// <summary>
     /// Gets the filters for the list resource templates handler pipeline.
@@ -74,7 +74,7 @@ public sealed class McpServerFilters
     /// <see cref="RequestMethods.ResourcesTemplatesList"/> requests. It supports pagination through the cursor mechanism,
     /// where the client can make repeated calls with the cursor returned by the previous call to retrieve more resource templates.
     /// </remarks>
-    public List<Func<Func<RequestContext<ListResourceTemplatesRequestParams>, CancellationToken, ValueTask<ListResourceTemplatesResult>>, Func<RequestContext<ListResourceTemplatesRequestParams>, CancellationToken, ValueTask<ListResourceTemplatesResult>>>> ListResourceTemplatesFilters { get; } = new();
+    public List<McpRequestFilter<ListResourceTemplatesRequestParams, ListResourceTemplatesResult>> ListResourceTemplatesFilters { get; } = new();
 
     /// <summary>
     /// Gets the filters for the list resources handler pipeline.
@@ -85,7 +85,7 @@ public sealed class McpServerFilters
     /// <see cref="RequestMethods.ResourcesList"/> requests. It supports pagination through the cursor mechanism,
     /// where the client can make repeated calls with the cursor returned by the previous call to retrieve more resources.
     /// </remarks>
-    public List<Func<Func<RequestContext<ListResourcesRequestParams>, CancellationToken, ValueTask<ListResourcesResult>>, Func<RequestContext<ListResourcesRequestParams>, CancellationToken, ValueTask<ListResourcesResult>>>> ListResourcesFilters { get; } = new();
+    public List<McpRequestFilter<ListResourcesRequestParams, ListResourcesResult>> ListResourcesFilters { get; } = new();
 
     /// <summary>
     /// Gets the filters for the read resource handler pipeline.
@@ -95,7 +95,7 @@ public sealed class McpServerFilters
     /// The filters can modify, log, or perform additional operations on requests and responses for
     /// <see cref="RequestMethods.ResourcesRead"/> requests. The handler should implement logic to locate and retrieve the requested resource.
     /// </remarks>
-    public List<Func<Func<RequestContext<ReadResourceRequestParams>, CancellationToken, ValueTask<ReadResourceResult>>, Func<RequestContext<ReadResourceRequestParams>, CancellationToken, ValueTask<ReadResourceResult>>>> ReadResourceFilters { get; } = new();
+    public List<McpRequestFilter<ReadResourceRequestParams, ReadResourceResult>> ReadResourceFilters { get; } = new();
 
     /// <summary>
     /// Gets the filters for the complete handler pipeline.
@@ -106,7 +106,7 @@ public sealed class McpServerFilters
     /// <see cref="RequestMethods.CompletionComplete"/> requests. The handler processes auto-completion requests, returning a list of suggestions based on the
     /// reference type and current argument value.
     /// </remarks>
-    public List<Func<Func<RequestContext<CompleteRequestParams>, CancellationToken, ValueTask<CompleteResult>>, Func<RequestContext<CompleteRequestParams>, CancellationToken, ValueTask<CompleteResult>>>> CompleteFilters { get; } = new();
+    public List<McpRequestFilter<CompleteRequestParams, CompleteResult>> CompleteFilters { get; } = new();
 
     /// <summary>
     /// Gets the filters for the subscribe to resources handler pipeline.
@@ -123,7 +123,7 @@ public sealed class McpServerFilters
     /// whenever a relevant resource is created, updated, or deleted.
     /// </para>
     /// </remarks>
-    public List<Func<Func<RequestContext<SubscribeRequestParams>, CancellationToken, ValueTask<EmptyResult>>, Func<RequestContext<SubscribeRequestParams>, CancellationToken, ValueTask<EmptyResult>>>> SubscribeToResourcesFilters { get; } = new();
+    public List<McpRequestFilter<SubscribeRequestParams, EmptyResult>> SubscribeToResourcesFilters { get; } = new();
 
     /// <summary>
     /// Gets the filters for the unsubscribe from resources handler pipeline.
@@ -140,7 +140,7 @@ public sealed class McpServerFilters
     /// to the client for the specified resources.
     /// </para>
     /// </remarks>
-    public List<Func<Func<RequestContext<UnsubscribeRequestParams>, CancellationToken, ValueTask<EmptyResult>>, Func<RequestContext<UnsubscribeRequestParams>, CancellationToken, ValueTask<EmptyResult>>>> UnsubscribeFromResourcesFilters { get; } = new();
+    public List<McpRequestFilter<UnsubscribeRequestParams, EmptyResult>> UnsubscribeFromResourcesFilters { get; } = new();
 
     /// <summary>
     /// Gets the filters for the set logging level handler pipeline.
@@ -157,5 +157,5 @@ public sealed class McpServerFilters
     /// at or above the specified level to the client as notifications/message notifications.
     /// </para>
     /// </remarks>
-    public List<Func<Func<RequestContext<SetLevelRequestParams>, CancellationToken, ValueTask<EmptyResult>>, Func<RequestContext<SetLevelRequestParams>, CancellationToken, ValueTask<EmptyResult>>>> SetLoggingLevelFilters { get; } = new();
+    public List<McpRequestFilter<SetLevelRequestParams, EmptyResult>> SetLoggingLevelFilters { get; } = new();
 }

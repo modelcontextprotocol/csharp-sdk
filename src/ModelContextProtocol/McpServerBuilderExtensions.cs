@@ -91,7 +91,7 @@ public static partial class McpServerBuilderExtensions
             if (toolMethod.GetCustomAttribute<McpServerToolAttribute>() is not null)
             {
                 builder.Services.AddSingleton(services => McpServerTool.Create(
-                    toolMethod, 
+                    toolMethod,
                     toolMethod.IsStatic ? null : target,
                     new() { Services = services, SerializerOptions = serializerOptions }));
             }
@@ -585,7 +585,7 @@ public static partial class McpServerBuilderExtensions
     /// resource system where templates define the URI patterns and the read handler provides the actual content.
     /// </para>
     /// </remarks>
-    public static IMcpServerBuilder WithListResourceTemplatesHandler(this IMcpServerBuilder builder, Func<RequestContext<ListResourceTemplatesRequestParams>, CancellationToken, ValueTask<ListResourceTemplatesResult>> handler)
+    public static IMcpServerBuilder WithListResourceTemplatesHandler(this IMcpServerBuilder builder, McpRequestHandler<ListResourceTemplatesRequestParams, ListResourceTemplatesResult> handler)
     {
         Throw.IfNull(builder);
 
@@ -618,7 +618,7 @@ public static partial class McpServerBuilderExtensions
     /// executes them when invoked by clients.
     /// </para>
     /// </remarks>
-    public static IMcpServerBuilder WithListToolsHandler(this IMcpServerBuilder builder, Func<RequestContext<ListToolsRequestParams>, CancellationToken, ValueTask<ListToolsResult>> handler)
+    public static IMcpServerBuilder WithListToolsHandler(this IMcpServerBuilder builder, McpRequestHandler<ListToolsRequestParams, ListToolsResult> handler)
     {
         Throw.IfNull(builder);
 
@@ -638,7 +638,7 @@ public static partial class McpServerBuilderExtensions
     /// This method is typically paired with <see cref="WithListToolsHandler"/> to provide a complete tools implementation,
     /// where <see cref="WithListToolsHandler"/> advertises available tools and this handler executes them.
     /// </remarks>
-    public static IMcpServerBuilder WithCallToolHandler(this IMcpServerBuilder builder, Func<RequestContext<CallToolRequestParams>, CancellationToken, ValueTask<CallToolResult>> handler)
+    public static IMcpServerBuilder WithCallToolHandler(this IMcpServerBuilder builder, McpRequestHandler<CallToolRequestParams, CallToolResult> handler)
     {
         Throw.IfNull(builder);
 
@@ -671,7 +671,7 @@ public static partial class McpServerBuilderExtensions
     /// produces them when invoked by clients.
     /// </para>
     /// </remarks>
-    public static IMcpServerBuilder WithListPromptsHandler(this IMcpServerBuilder builder, Func<RequestContext<ListPromptsRequestParams>, CancellationToken, ValueTask<ListPromptsResult>> handler)
+    public static IMcpServerBuilder WithListPromptsHandler(this IMcpServerBuilder builder, McpRequestHandler<ListPromptsRequestParams, ListPromptsResult> handler)
     {
         Throw.IfNull(builder);
 
@@ -686,7 +686,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="handler">The handler function that processes prompt requests.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    public static IMcpServerBuilder WithGetPromptHandler(this IMcpServerBuilder builder, Func<RequestContext<GetPromptRequestParams>, CancellationToken, ValueTask<GetPromptResult>> handler)
+    public static IMcpServerBuilder WithGetPromptHandler(this IMcpServerBuilder builder, McpRequestHandler<GetPromptRequestParams, GetPromptResult> handler)
     {
         Throw.IfNull(builder);
 
@@ -707,7 +707,7 @@ public static partial class McpServerBuilderExtensions
     /// where this handler advertises available resources and the read handler provides their content when requested.
     /// </para>
     /// </remarks>
-    public static IMcpServerBuilder WithListResourcesHandler(this IMcpServerBuilder builder, Func<RequestContext<ListResourcesRequestParams>, CancellationToken, ValueTask<ListResourcesResult>> handler)
+    public static IMcpServerBuilder WithListResourcesHandler(this IMcpServerBuilder builder, McpRequestHandler<ListResourcesRequestParams, ListResourcesResult> handler)
     {
         Throw.IfNull(builder);
 
@@ -726,7 +726,7 @@ public static partial class McpServerBuilderExtensions
     /// This handler is typically paired with <see cref="WithListResourcesHandler"/> to provide a complete resources implementation,
     /// where the list handler advertises available resources and the read handler provides their content when requested.
     /// </remarks>
-    public static IMcpServerBuilder WithReadResourceHandler(this IMcpServerBuilder builder, Func<RequestContext<ReadResourceRequestParams>, CancellationToken, ValueTask<ReadResourceResult>> handler)
+    public static IMcpServerBuilder WithReadResourceHandler(this IMcpServerBuilder builder, McpRequestHandler<ReadResourceRequestParams, ReadResourceResult> handler)
     {
         Throw.IfNull(builder);
 
@@ -745,7 +745,7 @@ public static partial class McpServerBuilderExtensions
     /// The completion handler is invoked when clients request suggestions for argument values.
     /// This enables auto-complete functionality for both prompt arguments and resource references.
     /// </remarks>
-    public static IMcpServerBuilder WithCompleteHandler(this IMcpServerBuilder builder, Func<RequestContext<CompleteRequestParams>, CancellationToken, ValueTask<CompleteResult>> handler)
+    public static IMcpServerBuilder WithCompleteHandler(this IMcpServerBuilder builder, McpRequestHandler<CompleteRequestParams, CompleteResult> handler)
     {
         Throw.IfNull(builder);
 
@@ -775,7 +775,7 @@ public static partial class McpServerBuilderExtensions
     /// resources and to send appropriate notifications through the connection when resources change.
     /// </para>
     /// </remarks>
-    public static IMcpServerBuilder WithSubscribeToResourcesHandler(this IMcpServerBuilder builder, Func<RequestContext<SubscribeRequestParams>, CancellationToken, ValueTask<EmptyResult>> handler)
+    public static IMcpServerBuilder WithSubscribeToResourcesHandler(this IMcpServerBuilder builder, McpRequestHandler<SubscribeRequestParams, EmptyResult> handler)
     {
         Throw.IfNull(builder);
 
@@ -805,7 +805,7 @@ public static partial class McpServerBuilderExtensions
     /// to the specified resource.
     /// </para>
     /// </remarks>
-    public static IMcpServerBuilder WithUnsubscribeFromResourcesHandler(this IMcpServerBuilder builder, Func<RequestContext<UnsubscribeRequestParams>, CancellationToken, ValueTask<EmptyResult>> handler)
+    public static IMcpServerBuilder WithUnsubscribeFromResourcesHandler(this IMcpServerBuilder builder, McpRequestHandler<UnsubscribeRequestParams, EmptyResult> handler)
     {
         Throw.IfNull(builder);
 
@@ -832,7 +832,7 @@ public static partial class McpServerBuilderExtensions
     /// most recently set level.
     /// </para>
     /// </remarks>
-    public static IMcpServerBuilder WithSetLoggingLevelHandler(this IMcpServerBuilder builder, Func<RequestContext<SetLevelRequestParams>, CancellationToken, ValueTask<EmptyResult>> handler)
+    public static IMcpServerBuilder WithSetLoggingLevelHandler(this IMcpServerBuilder builder, McpRequestHandler<SetLevelRequestParams, EmptyResult> handler)
     {
         Throw.IfNull(builder);
 
@@ -857,7 +857,7 @@ public static partial class McpServerBuilderExtensions
     /// where the client can make repeated calls with the cursor returned by the previous call to retrieve more resource templates.
     /// </para>
     /// </remarks>
-    public static IMcpServerBuilder AddListResourceTemplatesFilter(this IMcpServerBuilder builder, Func<Func<RequestContext<ListResourceTemplatesRequestParams>, CancellationToken, ValueTask<ListResourceTemplatesResult>>, Func<RequestContext<ListResourceTemplatesRequestParams>, CancellationToken, ValueTask<ListResourceTemplatesResult>>> filter)
+    public static IMcpServerBuilder AddListResourceTemplatesFilter(this IMcpServerBuilder builder, McpRequestFilter<ListResourceTemplatesRequestParams, ListResourceTemplatesResult> filter)
     {
         Throw.IfNull(builder);
 
@@ -884,7 +884,7 @@ public static partial class McpServerBuilderExtensions
     /// Tools from both sources will be combined when returning results to clients.
     /// </para>
     /// </remarks>
-    public static IMcpServerBuilder AddListToolsFilter(this IMcpServerBuilder builder, Func<Func<RequestContext<ListToolsRequestParams>, CancellationToken, ValueTask<ListToolsResult>>, Func<RequestContext<ListToolsRequestParams>, CancellationToken, ValueTask<ListToolsResult>>> filter)
+    public static IMcpServerBuilder AddListToolsFilter(this IMcpServerBuilder builder, McpRequestFilter<ListToolsRequestParams, ListToolsResult> filter)
     {
         Throw.IfNull(builder);
 
@@ -906,7 +906,7 @@ public static partial class McpServerBuilderExtensions
     /// <see cref="RequestMethods.ToolsCall"/> requests. The handler should implement logic to execute the requested tool and return appropriate results.
     /// </para>
     /// </remarks>
-    public static IMcpServerBuilder AddCallToolFilter(this IMcpServerBuilder builder, Func<Func<RequestContext<CallToolRequestParams>, CancellationToken, ValueTask<CallToolResult>>, Func<RequestContext<CallToolRequestParams>, CancellationToken, ValueTask<CallToolResult>>> filter)
+    public static IMcpServerBuilder AddCallToolFilter(this IMcpServerBuilder builder, McpRequestFilter<CallToolRequestParams, CallToolResult> filter)
     {
         Throw.IfNull(builder);
 
@@ -933,7 +933,7 @@ public static partial class McpServerBuilderExtensions
     /// Prompts from both sources will be combined when returning results to clients.
     /// </para>
     /// </remarks>
-    public static IMcpServerBuilder AddListPromptsFilter(this IMcpServerBuilder builder, Func<Func<RequestContext<ListPromptsRequestParams>, CancellationToken, ValueTask<ListPromptsResult>>, Func<RequestContext<ListPromptsRequestParams>, CancellationToken, ValueTask<ListPromptsResult>>> filter)
+    public static IMcpServerBuilder AddListPromptsFilter(this IMcpServerBuilder builder, McpRequestFilter<ListPromptsRequestParams, ListPromptsResult> filter)
     {
         Throw.IfNull(builder);
 
@@ -955,7 +955,7 @@ public static partial class McpServerBuilderExtensions
     /// <see cref="RequestMethods.PromptsGet"/> requests. The handler should implement logic to fetch or generate the requested prompt and return appropriate results.
     /// </para>
     /// </remarks>
-    public static IMcpServerBuilder AddGetPromptFilter(this IMcpServerBuilder builder, Func<Func<RequestContext<GetPromptRequestParams>, CancellationToken, ValueTask<GetPromptResult>>, Func<RequestContext<GetPromptRequestParams>, CancellationToken, ValueTask<GetPromptResult>>> filter)
+    public static IMcpServerBuilder AddGetPromptFilter(this IMcpServerBuilder builder, McpRequestFilter<GetPromptRequestParams, GetPromptResult> filter)
     {
         Throw.IfNull(builder);
 
@@ -978,7 +978,7 @@ public static partial class McpServerBuilderExtensions
     /// where the client can make repeated calls with the cursor returned by the previous call to retrieve more resources.
     /// </para>
     /// </remarks>
-    public static IMcpServerBuilder AddListResourcesFilter(this IMcpServerBuilder builder, Func<Func<RequestContext<ListResourcesRequestParams>, CancellationToken, ValueTask<ListResourcesResult>>, Func<RequestContext<ListResourcesRequestParams>, CancellationToken, ValueTask<ListResourcesResult>>> filter)
+    public static IMcpServerBuilder AddListResourcesFilter(this IMcpServerBuilder builder, McpRequestFilter<ListResourcesRequestParams, ListResourcesResult> filter)
     {
         Throw.IfNull(builder);
 
@@ -1000,7 +1000,7 @@ public static partial class McpServerBuilderExtensions
     /// <see cref="RequestMethods.ResourcesRead"/> requests. The handler should implement logic to locate and retrieve the requested resource.
     /// </para>
     /// </remarks>
-    public static IMcpServerBuilder AddReadResourceFilter(this IMcpServerBuilder builder, Func<Func<RequestContext<ReadResourceRequestParams>, CancellationToken, ValueTask<ReadResourceResult>>, Func<RequestContext<ReadResourceRequestParams>, CancellationToken, ValueTask<ReadResourceResult>>> filter)
+    public static IMcpServerBuilder AddReadResourceFilter(this IMcpServerBuilder builder, McpRequestFilter<ReadResourceRequestParams, ReadResourceResult> filter)
     {
         Throw.IfNull(builder);
 
@@ -1023,7 +1023,7 @@ public static partial class McpServerBuilderExtensions
     /// reference type and current argument value.
     /// </para>
     /// </remarks>
-    public static IMcpServerBuilder AddCompleteFilter(this IMcpServerBuilder builder, Func<Func<RequestContext<CompleteRequestParams>, CancellationToken, ValueTask<CompleteResult>>, Func<RequestContext<CompleteRequestParams>, CancellationToken, ValueTask<CompleteResult>>> filter)
+    public static IMcpServerBuilder AddCompleteFilter(this IMcpServerBuilder builder, McpRequestFilter<CompleteRequestParams, CompleteResult> filter)
     {
         Throw.IfNull(builder);
 
@@ -1050,7 +1050,7 @@ public static partial class McpServerBuilderExtensions
     /// whenever a relevant resource is created, updated, or deleted.
     /// </para>
     /// </remarks>
-    public static IMcpServerBuilder AddSubscribeToResourcesFilter(this IMcpServerBuilder builder, Func<Func<RequestContext<SubscribeRequestParams>, CancellationToken, ValueTask<EmptyResult>>, Func<RequestContext<SubscribeRequestParams>, CancellationToken, ValueTask<EmptyResult>>> filter)
+    public static IMcpServerBuilder AddSubscribeToResourcesFilter(this IMcpServerBuilder builder, McpRequestFilter<SubscribeRequestParams, EmptyResult> filter)
     {
         Throw.IfNull(builder);
 
@@ -1077,7 +1077,7 @@ public static partial class McpServerBuilderExtensions
     /// to the client for the specified resources.
     /// </para>
     /// </remarks>
-    public static IMcpServerBuilder AddUnsubscribeFromResourcesFilter(this IMcpServerBuilder builder, Func<Func<RequestContext<UnsubscribeRequestParams>, CancellationToken, ValueTask<EmptyResult>>, Func<RequestContext<UnsubscribeRequestParams>, CancellationToken, ValueTask<EmptyResult>>> filter)
+    public static IMcpServerBuilder AddUnsubscribeFromResourcesFilter(this IMcpServerBuilder builder, McpRequestFilter<UnsubscribeRequestParams, EmptyResult> filter)
     {
         Throw.IfNull(builder);
 
@@ -1104,7 +1104,7 @@ public static partial class McpServerBuilderExtensions
     /// at or above the specified level to the client as notifications/message notifications.
     /// </para>
     /// </remarks>
-    public static IMcpServerBuilder AddSetLoggingLevelFilter(this IMcpServerBuilder builder, Func<Func<RequestContext<SetLevelRequestParams>, CancellationToken, ValueTask<EmptyResult>>, Func<RequestContext<SetLevelRequestParams>, CancellationToken, ValueTask<EmptyResult>>> filter)
+    public static IMcpServerBuilder AddSetLoggingLevelFilter(this IMcpServerBuilder builder, McpRequestFilter<SetLevelRequestParams, EmptyResult> filter)
     {
         Throw.IfNull(builder);
 

@@ -612,7 +612,7 @@ internal sealed partial class McpServer : McpEndpoint, IMcpServer
     }
 
     private ValueTask<TResult> InvokeHandlerAsync<TParams, TResult>(
-        Func<RequestContext<TParams>, CancellationToken, ValueTask<TResult>> handler,
+        McpRequestHandler<TParams, TResult> handler,
         TParams? args,
         JsonRpcRequest jsonRpcRequest,
         CancellationToken cancellationToken = default)
@@ -622,7 +622,7 @@ internal sealed partial class McpServer : McpEndpoint, IMcpServer
             handler(new(new DestinationBoundMcpServer(this, jsonRpcRequest.Context?.RelatedTransport), jsonRpcRequest) { Params = args }, cancellationToken);
 
         async ValueTask<TResult> InvokeScopedAsync(
-            Func<RequestContext<TParams>, CancellationToken, ValueTask<TResult>> handler,
+            McpRequestHandler<TParams, TResult> handler,
             TParams? args,
             JsonRpcRequest jsonRpcRequest,
             CancellationToken cancellationToken)
@@ -648,11 +648,11 @@ internal sealed partial class McpServer : McpEndpoint, IMcpServer
         }
     }
 
-    private void SetHandler<TRequest, TResponse>(
+    private void SetHandler<TParams, TResult>(
         string method,
-        Func<RequestContext<TRequest>, CancellationToken, ValueTask<TResponse>> handler,
-        JsonTypeInfo<TRequest> requestTypeInfo,
-        JsonTypeInfo<TResponse> responseTypeInfo)
+        McpRequestHandler<TParams, TResult> handler,
+        JsonTypeInfo<TParams> requestTypeInfo,
+        JsonTypeInfo<TResult> responseTypeInfo)
     {
         RequestHandlers.Set(method,
             (request, jsonRpcRequest, cancellationToken) =>
@@ -660,12 +660,13 @@ internal sealed partial class McpServer : McpEndpoint, IMcpServer
             requestTypeInfo, responseTypeInfo);
     }
 
-    private static THandler BuildFilterPipeline<THandler>(
-        THandler baseHandler, List<Func<THandler, THandler>> filters,
-        Func<THandler, THandler>? initialHandler = null,
-        Func<THandler, THandler>? finalHandler = null)
+    private static McpRequestHandler<TParams, TResult> BuildFilterPipeline<TParams, TResult>(
+        McpRequestHandler<TParams, TResult> baseHandler,
+        List<McpRequestFilter<TParams, TResult>> filters,
+        McpRequestFilter<TParams, TResult>? initialHandler = null,
+        McpRequestFilter<TParams, TResult>? finalHandler = null)
     {
-        THandler current = baseHandler;
+        var current = baseHandler;
         if (finalHandler is not null)
         {
             current = finalHandler(current);

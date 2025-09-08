@@ -9,7 +9,7 @@ namespace ModelContextProtocol.Protocol;
 /// </summary>
 /// <remarks>
 /// <para>
-/// When enabled, this capability allows a Model Context Protocol server to provide 
+/// When enabled, this capability allows a Model Context Protocol server to provide
 /// auto-completion suggestions. This capability is advertised to clients during the initialize handshake.
 /// </para>
 /// <para>
@@ -33,5 +33,5 @@ public sealed class CompletionsCapability
     /// and should return appropriate completion suggestions.
     /// </remarks>
     [JsonIgnore]
-    public Func<RequestContext<CompleteRequestParams>, CancellationToken, ValueTask<CompleteResult>>? CompleteHandler { get; set; }
+    public McpRequestHandler<CompleteRequestParams, CompleteResult>? CompleteHandler { get; set; }
 }
