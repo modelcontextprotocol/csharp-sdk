@@ -4,7 +4,10 @@ using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using Moq;
+using System.Collections;
 using System.ComponentModel;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Channels;
 
@@ -217,11 +220,61 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
 
         Assert.Throws<ArgumentNullException>("prompts", () => builder.WithPrompts((IEnumerable<McpServerPrompt>)null!));
         Assert.Throws<ArgumentNullException>("promptTypes", () => builder.WithPrompts((IEnumerable<Type>)null!));
+        Assert.Throws<ArgumentNullException>("target", () => builder.WithPrompts<object>(target: null!));
 
         IMcpServerBuilder nullBuilder = null!;
         Assert.Throws<ArgumentNullException>("builder", () => nullBuilder.WithPrompts<object>());
+        Assert.Throws<ArgumentNullException>("builder", () => nullBuilder.WithPrompts(new object()));
         Assert.Throws<ArgumentNullException>("builder", () => nullBuilder.WithPrompts(Array.Empty<Type>()));
         Assert.Throws<ArgumentNullException>("builder", () => nullBuilder.WithPromptsFromAssembly());
+    }
+
+    [Fact]
+    public async Task WithPrompts_TargetInstance_UsesTarget()
+    {
+        ServiceCollection sc = new();
+
+        var target = new SimplePrompts(new ObjectWithId() { Id = "42" });
+        sc.AddMcpServer().WithPrompts(target);
+
+        McpServerPrompt prompt = sc.BuildServiceProvider().GetServices<McpServerPrompt>().First(t => t.ProtocolPrompt.Name == "returns_string");
+        var result = await prompt.GetAsync(new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object)
+        {
+            Params = new GetPromptRequestParams
+            {
+                Name = "returns_string",
+                Arguments = new Dictionary<string, JsonElement>
+                {
+                    ["message"] = JsonSerializer.SerializeToElement("hello", AIJsonUtilities.DefaultOptions),
+                }
+            }
+        }, TestContext.Current.CancellationToken);
+
+        Assert.Equal(target.ReturnsString("hello"), (result.Messages[0].Content as TextContentBlock)?.Text);
+    }
+
+    [Fact]
+    public async Task WithPrompts_TargetInstance_UsesEnumerableImplementation()
+    {
+        ServiceCollection sc = new();
+
+        sc.AddMcpServer().WithPrompts(new MyPromptProvider());
+
+        var prompts = sc.BuildServiceProvider().GetServices<McpServerPrompt>().ToArray();
+        Assert.Equal(2, prompts.Length);
+        Assert.Contains(prompts, t => t.ProtocolPrompt.Name == "Returns42");
+        Assert.Contains(prompts, t => t.ProtocolPrompt.Name == "Returns43");
+    }
+
+    private sealed class MyPromptProvider : IEnumerable<McpServerPrompt>
+    {
+        public IEnumerator<McpServerPrompt> GetEnumerator()
+        {
+            yield return McpServerPrompt.Create(() => "42", new() { Name = "Returns42" });
+            yield return McpServerPrompt.Create(() => "43", new() { Name = "Returns43" });
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
     [Fact]

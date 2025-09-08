@@ -18,6 +18,7 @@ on:
       - "src/**"
       - "tests/**"
       - "samples/**"
+      - "docs/**"
 
 permissions:
   contents: read

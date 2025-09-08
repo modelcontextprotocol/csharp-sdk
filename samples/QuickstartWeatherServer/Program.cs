@@ -15,11 +15,8 @@ builder.Logging.AddConsole(options =>
     options.LogToStandardErrorThreshold = LogLevel.Trace;
 });
 
-builder.Services.AddSingleton(_ =>
-{
-    var client = new HttpClient { BaseAddress = new Uri("https://api.weather.gov") };
-    client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("weather-tool", "1.0"));
-    return client;
-});
+using var httpClient = new HttpClient { BaseAddress = new Uri("https://api.weather.gov") };
+httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("weather-tool", "1.0"));
+builder.Services.AddSingleton(httpClient);
 
 await builder.Build().RunAsync();

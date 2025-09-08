@@ -56,13 +56,13 @@ foreach (var block in result.Content)
 async ValueTask<ElicitResult> HandleElicitationAsync(ElicitRequestParams? requestParams, CancellationToken token)
 {
     // Bail out if the requestParams is null or if the requested schema has no properties
-    if (requestParams?.RequestedSchema?.Properties == null)
+    if (requestParams is null || requestParams.RequestedSchema?.Properties is null)
     {
         return new ElicitResult();
     }
 
     // Process the elicitation request
-    if (requestParams?.Message is not null)
+    if (requestParams.Message is not null)
     {
         Console.WriteLine(requestParams.Message);
     }
