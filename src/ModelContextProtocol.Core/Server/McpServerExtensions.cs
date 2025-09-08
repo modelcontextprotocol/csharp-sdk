@@ -386,22 +386,13 @@ public static class McpServerExtensions
         }
 
         if (!schema.TryGetProperty("type", out JsonElement typeProperty)
-            || !(typeProperty.ValueKind is JsonValueKind.String or JsonValueKind.Array))
+            || typeProperty.ValueKind is not JsonValueKind.String)
         {
             error = $"Schema generated for type '{type.FullName}' is invalid: missing or invalid 'type' keyword.";
             return false;
         }
 
-        string? typeKeyword;
-        if (typeProperty.ValueKind == JsonValueKind.String)
-        {
-            typeKeyword = typeProperty.GetString();
-        }
-        else
-        {
-            error = $"Schema generated for type '{type.FullName}' is invalid: unsupported 'type' array.";
-            return false;
-        }
+        var typeKeyword = typeProperty.GetString();
 
         if (string.IsNullOrEmpty(typeKeyword))
         {
@@ -415,13 +406,11 @@ public static class McpServerExtensions
             return false;
         }
 
-        if (typeKeyword == "integer")
-            typeKeyword = "number";
-
         s_lazyElicitAllowedProperties ??= new()
         {
             ["string"] = ["type", "title", "description", "minLength", "maxLength", "format", "enum", "enumNames"],
             ["number"] = ["type", "title", "description", "minimum", "maximum"],
+            ["integer"] = ["type", "title", "description", "minimum", "maximum"],
             ["boolean"] = ["type", "title", "description", "default"]
         };
 
