@@ -13,7 +13,7 @@ public sealed class InteractiveTools
     // <snippet_GuessTheNumber>
     [McpServerTool, Description("A simple game where the user has to guess a number between 1 and 10.")]
     public async Task<string> GuessTheNumber(
-        IMcpServer server, // Get the McpServer from DI container
+        McpServer server, // Get the McpServer from DI container
         CancellationToken token
     )
     {

@@ -4,13 +4,13 @@ using System.Text.Json;
 
 var endpoint = Environment.GetEnvironmentVariable("ENDPOINT") ?? "http://localhost:3001";
 
-var clientTransport = new SseClientTransport(new()
+var clientTransport = new HttpClientTransport(new()
 {
     Endpoint = new Uri(endpoint),
     TransportMode = HttpTransportMode.StreamableHttp,
 });
 
-await using var mcpClient = await McpClientFactory.CreateAsync(clientTransport);
+await using var mcpClient = await McpClient.CreateAsync(clientTransport);
 
 // <snippet_LoggingCapabilities>
 // Verify that the server supports logging
