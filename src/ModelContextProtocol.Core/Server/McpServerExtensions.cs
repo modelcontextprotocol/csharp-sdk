@@ -21,7 +21,7 @@ public static class McpServerExtensions
     /// </summary>
     private static readonly ConditionalWeakTable<JsonSerializerOptions, ConcurrentDictionary<Type, ElicitRequestParams.RequestSchema>> s_elicitResultSchemaCache = new();
 
-    private static Dictionary<string, HashSet<string>>? s_lazyElicitAllowedProperties = null;
+    private static Dictionary<string, HashSet<string>>? s_elicitAllowedProperties = null;
 
     /// <summary>
     /// Requests to sample an LLM via the client using the specified request parameters.
