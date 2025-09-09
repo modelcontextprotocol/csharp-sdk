@@ -64,18 +64,15 @@ public sealed class ElicitResult<T> : Result
     /// <summary>
     /// Gets or sets the user action in response to the elicitation.
     /// </summary>
-    [JsonPropertyName("action")]
     public string Action { get; set; } = "cancel";
 
     /// <summary>
     /// Convenience indicator for whether the elicitation was accepted by the user.
     /// </summary>
-    [JsonIgnore]
     public bool IsAccepted => string.Equals(Action, "accept", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Gets or sets the submitted form data as a typed value.
     /// </summary>
-    [JsonPropertyName("content")]
     public T? Content { get; set; }
 }
