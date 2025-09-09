@@ -406,7 +406,7 @@ public static class McpServerExtensions
             return false;
         }
 
-        s_lazyElicitAllowedProperties ??= new()
+        s_elicitAllowedProperties ??= new()
         {
             ["string"] = ["type", "title", "description", "minLength", "maxLength", "format", "enum", "enumNames"],
             ["number"] = ["type", "title", "description", "minimum", "maximum"],
@@ -414,7 +414,7 @@ public static class McpServerExtensions
             ["boolean"] = ["type", "title", "description", "default"]
         };
 
-        var allowed = s_lazyElicitAllowedProperties[typeKeyword];
+        var allowed = s_elicitAllowedProperties[typeKeyword];
 
         foreach (JsonProperty prop in schema.EnumerateObject())
         {
