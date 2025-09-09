@@ -17,6 +17,8 @@ public sealed class RequestContext<TParams>
     /// <summary>The server with which this instance is associated.</summary>
     private IMcpServer _server;
 
+    private IDictionary<string, object?>? _items;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="RequestContext{TParams}"/> class with the specified server and JSON-RPC request.
     /// </summary>
@@ -41,6 +43,21 @@ public sealed class RequestContext<TParams>
         {
             Throw.IfNull(value);
             _server = value;
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets a key/value collection that can be used to share data within the scope of this request.
+    /// </summary>
+    public IDictionary<string, object?> Items
+    {
+        get
+        {
+            return _items ??= new Dictionary<string, object?>();
+        }
+        set
+        {
+            _items = value;
         }
     }
 

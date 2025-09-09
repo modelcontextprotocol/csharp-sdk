@@ -121,7 +121,20 @@ Execution flow: `filter1 -> filter2 -> filter3 -> baseHandler -> filter3 -> filt
 
 ## Built-in Authorization Filters
 
-When using the ASP.NET Core integration (`ModelContextProtocol.AspNetCore`), authorization filters are automatically configured to support `[Authorize]` and `[AllowAnonymous]` attributes on MCP server tools, prompts, and resources.
+When using the ASP.NET Core integration (`ModelContextProtocol.AspNetCore`), you can add authorization filters to support `[Authorize]` and `[AllowAnonymous]` attributes on MCP server tools, prompts, and resources by calling `AddAuthorizationFilters()` on your MCP server builder.
+
+### Enabling Authorization Filters
+
+To enable authorization support, call `AddAuthorizationFilters()` when configuring your MCP server:
+
+```csharp
+services.AddMcpServer()
+    .WithHttpTransport()
+    .AddAuthorizationFilters() // Enable authorization filter support
+    .WithTools<WeatherTools>();
+```
+
+**Important**: You should always call `AddAuthorizationFilters()` when using ASP.NET Core integration if you want to use authorization attributes like `[Authorize]` on your MCP server tools, prompts, or resources.
 
 ### Authorization Attributes Support
 
@@ -200,9 +213,45 @@ For individual operations, the filters return authorization errors when access i
 - **Prompts**: Throws an `McpException` with "Access forbidden" message
 - **Resources**: Throws an `McpException` with "Access forbidden" message
 
+### Filter Execution Order and Authorization
+
+Authorization filters are applied automatically when you call `AddAuthorizationFilters()`. These filters run at a specific point in the filter pipeline, which means:
+
+**Filters added before authorization filters** can see:
+- Unauthorized requests for operations before they are rejected by the authorization filters
+- Complete listings for unauthorized primitives before they are filtered out by the authorization filters
+
+**Filters added after authorization filters** will only see:
+- Authorized requests that passed authorization checks
+- Filtered listings containing only authorized primitives
+
+This allows you to implement logging, metrics, or other cross-cutting concerns that need to see all requests, while still maintaining proper authorization:
+
+```csharp
+services.AddMcpServer()
+    .WithHttpTransport()
+    .AddListToolsFilter(next => async (context, cancellationToken) =>
+    {
+        // This filter runs BEFORE authorization - sees all tools
+        Console.WriteLine("Request for tools list - will see all tools");
+        var result = await next(context, cancellationToken);
+        Console.WriteLine($"Returning {result.Tools?.Count ?? 0} tools after authorization");
+        return result;
+    })
+    .AddAuthorizationFilters() // Authorization filtering happens here
+    .AddListToolsFilter(next => async (context, cancellationToken) =>
+    {
+        // This filter runs AFTER authorization - only sees authorized tools
+        var result = await next(context, cancellationToken);
+        Console.WriteLine($"Post-auth filter sees {result.Tools?.Count ?? 0} authorized tools");
+        return result;
+    })
+    .WithTools<WeatherTools>();
+```
+
 ### Setup Requirements
 
-To use authorization features, you must configure authentication and authorization in your ASP.NET Core application:
+To use authorization features, you must configure authentication and authorization in your ASP.NET Core application and call `AddAuthorizationFilters()`:
 
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
@@ -214,6 +263,7 @@ builder.Services.AddAuthorization();
 
 builder.Services.AddMcpServer()
     .WithHttpTransport()
+    .AddAuthorizationFilters() // Required for authorization support
     .WithTools<WeatherTools>()
     .AddCallToolFilter(next => async (context, cancellationToken) =>
     {

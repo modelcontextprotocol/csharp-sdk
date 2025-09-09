@@ -1,10 +1,12 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
 using System.ComponentModel;
 using System.Security.Claims;
 
@@ -15,6 +17,8 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 /// </summary>
 public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : KestrelInMemoryTest(testOutputHelper)
 {
+    private readonly MockLoggerProvider _mockLoggerProvider = new();
+
     private async Task<IMcpClient> ConnectAsync()
     {
         await using var transport = new SseClientTransport(new SseClientTransportOptions
@@ -266,11 +270,147 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
         Assert.Equal("resource://anonymous", resources[0].Uri);
     }
 
+    [Fact]
+    public async Task ListTools_WithoutAuthFilters_ThrowsInvalidOperationException()
+    {
+        _mockLoggerProvider.LogMessages.Clear();
+        await using var app = await StartServerWithoutAuthFilters(builder => builder.WithTools<AuthorizationTestTools>());
+        var client = await ConnectAsync();
+
+        var exception = await Assert.ThrowsAsync<McpException>(async () =>
+            await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal("Request failed (remote): An error occurred.", exception.Message);
+        Assert.Contains(_mockLoggerProvider.LogMessages, log =>
+            log.LogLevel == LogLevel.Warning &&
+            log.Exception is InvalidOperationException &&
+            log.Exception.Message.Contains("Authorization filter was not invoked for tools/list operation") &&
+            log.Exception.Message.Contains("Ensure that AddAuthorizationFilters() is called"));
+    }
+
+    [Fact]
+    public async Task CallTool_WithoutAuthFilters_ThrowsInvalidOperationException()
+    {
+        _mockLoggerProvider.LogMessages.Clear();
+        await using var app = await StartServerWithoutAuthFilters(builder => builder.WithTools<AuthorizationTestTools>());
+        var client = await ConnectAsync();
+
+        var exception = await Assert.ThrowsAsync<McpException>(async () =>
+            await client.CallToolAsync(
+                "authorized_tool",
+                new Dictionary<string, object?> { ["message"] = "test" },
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal("Request failed (remote): An error occurred.", exception.Message);
+        Assert.Contains(_mockLoggerProvider.LogMessages, log =>
+            log.LogLevel == LogLevel.Warning &&
+            log.Exception is InvalidOperationException &&
+            log.Exception.Message.Contains("Authorization filter was not invoked for tools/call operation") &&
+            log.Exception.Message.Contains("Ensure that AddAuthorizationFilters() is called"));
+    }
+
+    [Fact]
+    public async Task ListPrompts_WithoutAuthFilters_ThrowsInvalidOperationException()
+    {
+        _mockLoggerProvider.LogMessages.Clear();
+        await using var app = await StartServerWithoutAuthFilters(builder => builder.WithPrompts<AuthorizationTestPrompts>());
+        var client = await ConnectAsync();
+
+        var exception = await Assert.ThrowsAsync<McpException>(async () =>
+            await client.ListPromptsAsync(cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal("Request failed (remote): An error occurred.", exception.Message);
+        Assert.Contains(_mockLoggerProvider.LogMessages, log =>
+            log.LogLevel == LogLevel.Warning &&
+            log.Exception is InvalidOperationException &&
+            log.Exception.Message.Contains("Authorization filter was not invoked for prompts/list operation") &&
+            log.Exception.Message.Contains("Ensure that AddAuthorizationFilters() is called"));
+    }
+
+    [Fact]
+    public async Task GetPrompt_WithoutAuthFilters_ThrowsInvalidOperationException()
+    {
+        _mockLoggerProvider.LogMessages.Clear();
+        await using var app = await StartServerWithoutAuthFilters(builder => builder.WithPrompts<AuthorizationTestPrompts>());
+        var client = await ConnectAsync();
+
+        var exception = await Assert.ThrowsAsync<McpException>(async () =>
+            await client.GetPromptAsync(
+                "authorized_prompt",
+                new Dictionary<string, object?> { ["message"] = "test" },
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal("Request failed (remote): An error occurred.", exception.Message);
+        Assert.Contains(_mockLoggerProvider.LogMessages, log =>
+            log.LogLevel == LogLevel.Warning &&
+            log.Exception is InvalidOperationException &&
+            log.Exception.Message.Contains("Authorization filter was not invoked for prompts/get operation") &&
+            log.Exception.Message.Contains("Ensure that AddAuthorizationFilters() is called"));
+    }
+
+    [Fact]
+    public async Task ListResources_WithoutAuthFilters_ThrowsInvalidOperationException()
+    {
+        _mockLoggerProvider.LogMessages.Clear();
+        await using var app = await StartServerWithoutAuthFilters(builder => builder.WithResources<AuthorizationTestResources>());
+        var client = await ConnectAsync();
+
+        var exception = await Assert.ThrowsAsync<McpException>(async () =>
+            await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal("Request failed (remote): An error occurred.", exception.Message);
+        Assert.Contains(_mockLoggerProvider.LogMessages, log =>
+            log.LogLevel == LogLevel.Warning &&
+            log.Exception is InvalidOperationException &&
+            log.Exception.Message.Contains("Authorization filter was not invoked for resources/list operation") &&
+            log.Exception.Message.Contains("Ensure that AddAuthorizationFilters() is called"));
+    }
+
+    [Fact]
+    public async Task ReadResource_WithoutAuthFilters_ThrowsInvalidOperationException()
+    {
+        _mockLoggerProvider.LogMessages.Clear();
+        await using var app = await StartServerWithoutAuthFilters(builder => builder.WithResources<AuthorizationTestResources>());
+        var client = await ConnectAsync();
+
+        var exception = await Assert.ThrowsAsync<McpException>(async () =>
+            await client.ReadResourceAsync(
+                "resource://authorized",
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal("Request failed (remote): An error occurred.", exception.Message);
+        Assert.Contains(_mockLoggerProvider.LogMessages, log =>
+            log.LogLevel == LogLevel.Warning &&
+            log.Exception is InvalidOperationException &&
+            log.Exception.Message.Contains("Authorization filter was not invoked for resources/read operation") &&
+            log.Exception.Message.Contains("Ensure that AddAuthorizationFilters() is called"));
+    }
+
+    [Fact]
+    public async Task ListResourceTemplates_WithoutAuthFilters_ThrowsInvalidOperationException()
+    {
+        _mockLoggerProvider.LogMessages.Clear();
+        await using var app = await StartServerWithoutAuthFilters(builder => builder.WithResources<AuthorizationTestResources>());
+        var client = await ConnectAsync();
+
+        var exception = await Assert.ThrowsAsync<McpException>(async () =>
+            await client.ListResourceTemplatesAsync(cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal("Request failed (remote): An error occurred.", exception.Message);
+        Assert.Contains(_mockLoggerProvider.LogMessages, log =>
+            log.LogLevel == LogLevel.Warning &&
+            log.Exception is InvalidOperationException &&
+            log.Exception.Message.Contains("Authorization filter was not invoked for resources/templates/list operation") &&
+            log.Exception.Message.Contains("Ensure that AddAuthorizationFilters() is called"));
+    }
+
     private async Task<WebApplication> StartServerWithAuth(Action<IMcpServerBuilder> configure, string? userName = null, params string[] roles)
     {
-        var builder = Builder.Services.AddMcpServer().WithHttpTransport();
-        configure(builder);
+        var mcpServerBuilder = Builder.Services.AddMcpServer().WithHttpTransport().AddAuthorizationFilters();
+        configure(mcpServerBuilder);
+
         Builder.Services.AddAuthorization();
+        Builder.Services.AddSingleton<ILoggerProvider>(_mockLoggerProvider);
 
         var app = Builder.Build();
 
@@ -286,6 +426,20 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
             });
         }
 
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+        return app;
+    }
+
+    private async Task<WebApplication> StartServerWithoutAuthFilters(Action<IMcpServerBuilder> configure)
+    {
+        var mcpServerBuilder = Builder.Services.AddMcpServer().WithHttpTransport(); // No AddAuthorizationFilters() call
+        configure(mcpServerBuilder);
+
+        Builder.Services.AddAuthorization();
+        Builder.Services.AddSingleton<ILoggerProvider>(_mockLoggerProvider);
+
+        var app = Builder.Build();
         app.MapMcp();
         await app.StartAsync(TestContext.Current.CancellationToken);
         return app;
@@ -367,6 +521,13 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
         [McpServerResource(UriTemplate = "resource://authorized"), Description("A resource that requires authorization.")]
         [Authorize]
         public static string AuthorizedResource()
+        {
+            return "Authorized resource content";
+        }
+
+        [McpServerResource(UriTemplate = "resource://authorized/{id}"), Description("A resource template that requires authorization.")]
+        [Authorize]
+        public static string AuthorizedResourceWithTemplate(string id)
         {
             return "Authorized resource content";
         }
