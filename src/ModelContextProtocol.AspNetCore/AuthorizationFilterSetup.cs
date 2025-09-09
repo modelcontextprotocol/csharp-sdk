@@ -78,11 +78,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
             var authResult = await GetAuthorizationResultAsync(context.User, context.MatchedPrimitive, context.Services, context);
             if (!authResult.Succeeded)
             {
-                return new CallToolResult
-                {
-                    Content = [new TextContentBlock { Text = "Access forbidden: This tool requires authorization." }],
-                    IsError = true
-                };
+                throw new McpException("Access forbidden: This tool requires authorization.", McpErrorCode.InvalidRequest);
             }
 
             context.Items[AuthorizationFilterInvokedKey] = true;

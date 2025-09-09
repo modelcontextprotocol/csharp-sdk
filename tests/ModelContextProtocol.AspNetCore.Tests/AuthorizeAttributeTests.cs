@@ -35,15 +35,15 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
         await using var app = await StartServerWithAuth(builder => builder.WithTools<AuthorizationTestTools>());
 
         var client = await ConnectAsync();
-        var result = await client.CallToolAsync(
-            "authorized_tool",
-            new Dictionary<string, object?> { ["message"] = "test" },
-            cancellationToken: TestContext.Current.CancellationToken);
 
-        // Should return error because tool requires authorization but user is anonymous
-        Assert.True(result.IsError ?? false);
-        var content = Assert.Single(result.Content.OfType<TextContentBlock>());
-        Assert.Equal("Access forbidden: This tool requires authorization.", content.Text);
+        var exception = await Assert.ThrowsAsync<McpException>(async () =>
+            await client.CallToolAsync(
+                "authorized_tool",
+                new Dictionary<string, object?> { ["message"] = "test" },
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal("Request failed (remote): Access forbidden: This tool requires authorization.", exception.Message);
+        Assert.Equal(McpErrorCode.InvalidRequest, exception.ErrorCode);
     }
 
     [Fact]
@@ -100,15 +100,15 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
         await using var app = await StartServerWithAuth(builder => builder.WithTools<AuthorizationTestTools>(), "TestUser", "User");
 
         var client = await ConnectAsync();
-        var result = await client.CallToolAsync(
-            "admin_tool",
-            new Dictionary<string, object?> { ["message"] = "test" },
-            cancellationToken: TestContext.Current.CancellationToken);
 
-        // Should return error because tool requires Admin role but user only has User role
-        Assert.True(result.IsError ?? false);
-        var content = Assert.Single(result.Content.OfType<TextContentBlock>());
-        Assert.Equal("Access forbidden: This tool requires authorization.", content.Text);
+        var exception = await Assert.ThrowsAsync<McpException>(async () =>
+            await client.CallToolAsync(
+                "admin_tool",
+                new Dictionary<string, object?> { ["message"] = "test" },
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal("Request failed (remote): Access forbidden: This tool requires authorization.", exception.Message);
+        Assert.Equal(McpErrorCode.InvalidRequest, exception.ErrorCode);
     }
 
     [Fact]
