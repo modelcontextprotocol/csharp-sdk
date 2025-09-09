@@ -282,7 +282,6 @@ internal sealed class StreamableHttpHandler(
         if (context.User?.Identity?.IsAuthenticated ?? false && message is not null)
         {
             // We get weird CS0131 errors only on the Windows build GitHub Action if we use "message?.Context = ..."
-            // https://productionresultssa0.blob.core.windows.net/actions-results/f2218319-0fdd-473b-891d-06e5a4a0f826/workflow-job-run-98901492-cf7c-5406-85d9-0f7057e0516f/logs/job/job-logs.txt?rsct=text%2Fplain&se=2025-08-26T16%3A06%3A31Z&sig=RvEQo6DgrpDUW9mnbgDvf6FVDAAoHKzk9rsDdcPxOhw%3D&ske=2025-08-27T03%3A39%3A43Z&skoid=ca7593d4-ee42-46cd-af88-8b886a2f84eb&sks=b&skt=2025-08-26T15%3A39%3A43Z&sktid=398a6654-997b-47e9-b12b-9515b896b4de&skv=2025-05-05&sp=r&spr=https&sr=b&st=2025-08-26T15%3A56%3A26Z&sv=2025-05-05
             message!.Context = new()
             {
                 User = context.User,
