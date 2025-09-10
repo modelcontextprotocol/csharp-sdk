@@ -69,6 +69,9 @@ public sealed class ElicitResult<T> : Result
     /// <summary>
     /// Convenience indicator for whether the elicitation was accepted by the user.
     /// </summary>
+    /// <remarks>
+    ///  Indicates that the elicitation request completed successfully and value of <see cref="Content"/> has been populated with a value.
+    /// </remarks>
     public bool IsAccepted => string.Equals(Action, "accept", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
