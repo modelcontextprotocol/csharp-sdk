@@ -23,7 +23,7 @@ public static class McpServerExtensions
     /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
     /// <remarks>
     /// This method requires the client to support sampling capabilities.
-    /// It allows detailed control over sampling parameters including messages, system prompt, temperature, 
+    /// It allows detailed control over sampling parameters including messages, system prompt, temperature,
     /// and token limits.
     /// </remarks>
     public static ValueTask<CreateMessageResult> SampleAsync(
@@ -238,7 +238,7 @@ public static class McpServerExtensions
     {
         if (server.ClientCapabilities?.Sampling is null)
         {
-            if (server.ServerOptions.KnownClientInfo is not null)
+            if (server.ClientCapabilities is null)
             {
                 throw new InvalidOperationException("Sampling is not supported in stateless mode.");
             }
@@ -251,7 +251,7 @@ public static class McpServerExtensions
     {
         if (server.ClientCapabilities?.Roots is null)
         {
-            if (server.ServerOptions.KnownClientInfo is not null)
+            if (server.ClientCapabilities is null)
             {
                 throw new InvalidOperationException("Roots are not supported in stateless mode.");
             }
@@ -264,7 +264,7 @@ public static class McpServerExtensions
     {
         if (server.ClientCapabilities?.Elicitation is null)
         {
-            if (server.ServerOptions.KnownClientInfo is not null)
+            if (server.ClientCapabilities is null)
             {
                 throw new InvalidOperationException("Elicitation is not supported in stateless mode.");
             }

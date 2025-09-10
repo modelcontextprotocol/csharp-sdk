@@ -85,6 +85,8 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     [Fact]
     public async Task Messages_FromNewUser_AreRejected()
     {
+        Assert.SkipWhen(Stateless, "User validation across requests is not applicable in stateless mode.");
+
         Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<EchoHttpContextUserTools>();
 
         // Add an authentication scheme that will send a 403 Forbidden response.
