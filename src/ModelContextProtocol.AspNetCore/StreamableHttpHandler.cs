@@ -279,10 +279,9 @@ internal sealed class StreamableHttpHandler(
         // Implementation for reading a JSON-RPC message from the request body
         var message = await context.Request.ReadFromJsonAsync(s_messageTypeInfo, context.RequestAborted);
 
-        if (context.User?.Identity?.IsAuthenticated ?? false && message is not null)
+        if (context.User?.Identity?.IsAuthenticated == true && message is not null)
         {
-            // We get weird CS0131 errors only on the Windows build GitHub Action if we use "message?.Context = ..."
-            message!.Context = new()
+            message.Context = new()
             {
                 User = context.User,
             };

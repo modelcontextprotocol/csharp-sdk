@@ -38,13 +38,15 @@ services.AddMcpServer()
     })
     .AddListToolsFilter(next => async (context, cancellationToken) =>
     {
+        var logger = context.Services?.GetService<ILogger<Program>>();
+
         // Pre-processing logic
-        Console.WriteLine("Before handler execution");
+        logger?.LogInformation("Before handler execution");
 
         var result = await next(context, cancellationToken);
 
         // Post-processing logic
-        Console.WriteLine("After handler execution");
+        logger?.LogInformation("After handler execution");
         return result;
     });
 ```
@@ -67,9 +69,11 @@ Execution flow: `filter1 -> filter2 -> filter3 -> baseHandler -> filter3 -> filt
 ```csharp
 .AddListToolsFilter(next => async (context, cancellationToken) =>
 {
-    Console.WriteLine($"Processing request from {context.Meta.ProgressToken}");
+    var logger = context.Services?.GetService<ILogger<Program>>();
+
+    logger?.LogInformation($"Processing request from {context.Meta.ProgressToken}");
     var result = await next(context, cancellationToken);
-    Console.WriteLine($"Returning {result.Tools?.Count ?? 0} tools");
+    logger?.LogInformation($"Returning {result.Tools?.Count ?? 0} tools");
     return result;
 });
 ```
@@ -97,10 +101,12 @@ Execution flow: `filter1 -> filter2 -> filter3 -> baseHandler -> filter3 -> filt
 ```csharp
 .AddListToolsFilter(next => async (context, cancellationToken) =>
 {
+    var logger = context.Services?.GetService<ILogger<Program>>();
+
     var stopwatch = Stopwatch.StartNew();
     var result = await next(context, cancellationToken);
     stopwatch.Stop();
-    Console.WriteLine($"Handler took {stopwatch.ElapsedMilliseconds}ms");
+    logger?.LogInformation($"Handler took {stopwatch.ElapsedMilliseconds}ms");
     return result;
 });
 ```
@@ -109,9 +115,13 @@ Execution flow: `filter1 -> filter2 -> filter3 -> baseHandler -> filter3 -> filt
 ```csharp
 .AddListResourcesFilter(next => async (context, cancellationToken) =>
 {
+    var cache = context.Services!.GetRequiredService<IMemoryCache>();
+
     var cacheKey = $"resources:{context.Params.Cursor}";
     if (cache.TryGetValue(cacheKey, out var cached))
-        return cached;
+    {
+        return (ListResourcesResult)cached;
+    }
 
     var result = await next(context, cancellationToken);
     cache.Set(cacheKey, result, TimeSpan.FromMinutes(5));
@@ -207,11 +217,7 @@ The authorization filters work differently for list operations versus individual
 For list operations, the filters automatically remove unauthorized items from the results. Users only see tools, prompts, or resources they have permission to access.
 
 #### Individual Operations (CallTool, GetPrompt, ReadResource)
-For individual operations, the filters return authorization errors when access is denied:
-
-- **Tools**: Returns a `CallToolResult` with `IsError = true` and an error message
-- **Prompts**: Throws an `McpException` with "Access forbidden" message
-- **Resources**: Throws an `McpException` with "Access forbidden" message
+For individual operations, the filters throw an `McpException` with "Access forbidden" message. These get turned into JSON-RPC errors if uncaught by middleware.
 
 ### Filter Execution Order and Authorization
 
@@ -232,18 +238,22 @@ services.AddMcpServer()
     .WithHttpTransport()
     .AddListToolsFilter(next => async (context, cancellationToken) =>
     {
+        var logger = context.Services?.GetService<ILogger<Program>>();
+
         // This filter runs BEFORE authorization - sees all tools
-        Console.WriteLine("Request for tools list - will see all tools");
+        logger?.LogInformation("Request for tools list - will see all tools");
         var result = await next(context, cancellationToken);
-        Console.WriteLine($"Returning {result.Tools?.Count ?? 0} tools after authorization");
+        logger?.LogInformation($"Returning {result.Tools?.Count ?? 0} tools after authorization");
         return result;
     })
     .AddAuthorizationFilters() // Authorization filtering happens here
     .AddListToolsFilter(next => async (context, cancellationToken) =>
     {
+        var logger = context.Services?.GetService<ILogger<Program>>();
+
         // This filter runs AFTER authorization - only sees authorized tools
         var result = await next(context, cancellationToken);
-        Console.WriteLine($"Post-auth filter sees {result.Tools?.Count ?? 0} authorized tools");
+        logger?.LogInformation($"Post-auth filter sees {result.Tools?.Count ?? 0} authorized tools");
         return result;
     })
     .WithTools<WeatherTools>();

@@ -667,18 +667,22 @@ internal sealed partial class McpServer : McpEndpoint, IMcpServer
         McpRequestFilter<TParams, TResult>? finalHandler = null)
     {
         var current = baseHandler;
+
         if (finalHandler is not null)
         {
             current = finalHandler(current);
         }
+
         for (int i = filters.Count - 1; i >= 0; i--)
         {
             current = filters[i](current);
         }
+
         if (initialHandler is not null)
         {
             current = initialHandler(current);
         }
+
         return current;
     }
 

@@ -283,7 +283,6 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
             throw new InvalidOperationException($"You must call AddAuthorization() because an authorization related attribute was found on {primitive.Id}");
         }
 
-        // TODO: Cache policy lookup. We would probably use a singleton (not-static) ConditionalWeakTable<IMcpServerPrimitive, AuthorizationPolicy?>.
         var policy = await CombineAsync(policyProvider, primitive.Metadata);
         if (policy is null)
         {
