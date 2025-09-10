@@ -1,236 +1,751 @@
+﻿using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Client;
 
-/// <inheritdoc/>
-internal sealed partial class McpClient : McpEndpoint, IMcpClient
+/// <summary>
+/// Represents an instance of a Model Context Protocol (MCP) client session that connects to and communicates with an MCP server.
+/// </summary>
+#pragma warning disable CS0618 // Type or member is obsolete
+public abstract class McpClient : McpSession, IMcpClient
+#pragma warning restore CS0618 // Type or member is obsolete
 {
-    private static Implementation DefaultImplementation { get; } = new()
-    {
-        Name = DefaultAssemblyName.Name ?? nameof(McpClient),
-        Version = DefaultAssemblyName.Version?.ToString() ?? "1.0.0",
-    };
-
-    private readonly IClientTransport _clientTransport;
-    private readonly McpClientOptions _options;
-
-    private ITransport? _sessionTransport;
-    private CancellationTokenSource? _connectCts;
-
-    private ServerCapabilities? _serverCapabilities;
-    private Implementation? _serverInfo;
-    private string? _serverInstructions;
+    /// <summary>
+    /// Gets the capabilities supported by the connected server.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The client is not connected.</exception>
+    public abstract ServerCapabilities ServerCapabilities { get; }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="McpClient"/> class.
+    /// Gets the implementation information of the connected server.
     /// </summary>
-    /// <param name="clientTransport">The transport to use for communication with the server.</param>
-    /// <param name="options">Options for the client, defining protocol version and capabilities.</param>
-    /// <param name="loggerFactory">The logger factory.</param>
-    public McpClient(IClientTransport clientTransport, McpClientOptions? options, ILoggerFactory? loggerFactory)
-        : base(loggerFactory)
-    {
-        options ??= new();
-
-        _clientTransport = clientTransport;
-        _options = options;
-
-        EndpointName = clientTransport.Name;
-
-        if (options.Capabilities is { } capabilities)
-        {
-            if (capabilities.NotificationHandlers is { } notificationHandlers)
-            {
-                NotificationHandlers.RegisterRange(notificationHandlers);
-            }
-
-            if (capabilities.Sampling is { } samplingCapability)
-            {
-                if (samplingCapability.SamplingHandler is not { } samplingHandler)
-                {
-                    throw new InvalidOperationException("Sampling capability was set but it did not provide a handler.");
-                }
-
-                RequestHandlers.Set(
-                    RequestMethods.SamplingCreateMessage,
-                    (request, _, cancellationToken) => samplingHandler(
-                        request,
-                        request?.ProgressToken is { } token ? new TokenProgress(this, token) : NullProgress.Instance,
-                        cancellationToken),
-                    McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams,
-                    McpJsonUtilities.JsonContext.Default.CreateMessageResult);
-            }
-
-            if (capabilities.Roots is { } rootsCapability)
-            {
-                if (rootsCapability.RootsHandler is not { } rootsHandler)
-                {
-                    throw new InvalidOperationException("Roots capability was set but it did not provide a handler.");
-                }
-
-                RequestHandlers.Set(
-                    RequestMethods.RootsList,
-                    (request, _, cancellationToken) => rootsHandler(request, cancellationToken),
-                    McpJsonUtilities.JsonContext.Default.ListRootsRequestParams,
-                    McpJsonUtilities.JsonContext.Default.ListRootsResult);
-            }
-
-            if (capabilities.Elicitation is { } elicitationCapability)
-            {
-                if (elicitationCapability.ElicitationHandler is not { } elicitationHandler)
-                {
-                    throw new InvalidOperationException("Elicitation capability was set but it did not provide a handler.");
-                }
-
-                RequestHandlers.Set(
-                    RequestMethods.ElicitationCreate,
-                    (request, _, cancellationToken) => elicitationHandler(request, cancellationToken),
-                    McpJsonUtilities.JsonContext.Default.ElicitRequestParams,
-                    McpJsonUtilities.JsonContext.Default.ElicitResult);
-            }
-        }
-    }
-
-    /// <inheritdoc/>
-    public string? SessionId
-    {
-        get
-        {
-            if (_sessionTransport is null)
-            {
-                throw new InvalidOperationException("Must have already initialized a session when invoking this property.");
-            }
-
-            return _sessionTransport.SessionId;
-        }
-    }
-
-    /// <inheritdoc/>
-    public ServerCapabilities ServerCapabilities => _serverCapabilities ?? throw new InvalidOperationException("The client is not connected.");
-
-    /// <inheritdoc/>
-    public Implementation ServerInfo => _serverInfo ?? throw new InvalidOperationException("The client is not connected.");
-
-    /// <inheritdoc/>
-    public string? ServerInstructions => _serverInstructions;
-
-    /// <inheritdoc/>
-    public override string EndpointName { get; }
+    /// <remarks>
+    /// <para>
+    /// This property provides identification details about the connected server, including its name and version.
+    /// It is populated during the initialization handshake and is available after a successful connection.
+    /// </para>
+    /// <para>
+    /// This information can be useful for logging, debugging, compatibility checks, and displaying server
+    /// information to users.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">The client is not connected.</exception>
+    public abstract Implementation ServerInfo { get; }
 
     /// <summary>
-    /// Asynchronously connects to an MCP server, establishes the transport connection, and completes the initialization handshake.
+    /// Gets any instructions describing how to use the connected server and its features.
     /// </summary>
-    public async Task ConnectAsync(CancellationToken cancellationToken = default)
-    {
-        _connectCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        cancellationToken = _connectCts.Token;
+    /// <remarks>
+    /// <para>
+    /// This property contains instructions provided by the server during initialization that explain
+    /// how to effectively use its capabilities. These instructions can include details about available
+    /// tools, expected input formats, limitations, or any other helpful information.
+    /// </para>
+    /// <para>
+    /// This can be used by clients to improve an LLM's understanding of available tools, prompts, and resources. 
+    /// It can be thought of like a "hint" to the model and may be added to a system prompt.
+    /// </para>
+    /// </remarks>
+    public abstract string? ServerInstructions { get; }
 
+    /// <summary>Creates an <see cref="McpClient"/>, connecting it to the specified server.</summary>
+    /// <param name="clientTransport">The transport instance used to communicate with the server.</param>
+    /// <param name="clientOptions">
+    /// A client configuration object which specifies client capabilities and protocol version.
+    /// If <see langword="null"/>, details based on the current process will be employed.
+    /// </param>
+    /// <param name="loggerFactory">A logger factory for creating loggers for clients.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>An <see cref="McpClient"/> that's connected to the specified server.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="clientTransport"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="clientOptions"/> is <see langword="null"/>.</exception>
+    public static async Task<McpClient> CreateAsync(
+        IClientTransport clientTransport,
+        McpClientOptions? clientOptions = null,
+        ILoggerFactory? loggerFactory = null,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(clientTransport);
+
+        var transport = await clientTransport.ConnectAsync(cancellationToken).ConfigureAwait(false);
+        var endpointName = clientTransport.Name;
+
+        var clientSession = new McpClientImpl(transport, endpointName, clientOptions, loggerFactory);
         try
         {
-            // Connect transport
-            _sessionTransport = await _clientTransport.ConnectAsync(cancellationToken).ConfigureAwait(false);
-            InitializeSession(_sessionTransport);
-            // We don't want the ConnectAsync token to cancel the session after we've successfully connected.
-            // The base class handles cleaning up the session in DisposeAsync without our help.
-            StartSession(_sessionTransport, fullSessionCancellationToken: CancellationToken.None);
-
-            // Perform initialization sequence
-            using var initializationCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            initializationCts.CancelAfter(_options.InitializationTimeout);
-
-            try
-            {
-                // Send initialize request
-                string requestProtocol = _options.ProtocolVersion ?? McpSession.LatestProtocolVersion;
-                var initializeResponse = await this.SendRequestAsync(
-                    RequestMethods.Initialize,
-                    new InitializeRequestParams
-                    {
-                        ProtocolVersion = requestProtocol,
-                        Capabilities = _options.Capabilities ?? new ClientCapabilities(),
-                        ClientInfo = _options.ClientInfo ?? DefaultImplementation,
-                    },
-                    McpJsonUtilities.JsonContext.Default.InitializeRequestParams,
-                    McpJsonUtilities.JsonContext.Default.InitializeResult,
-                    cancellationToken: initializationCts.Token).ConfigureAwait(false);
-
-                // Store server information
-                if (_logger.IsEnabled(LogLevel.Information))
-                {
-                    LogServerCapabilitiesReceived(EndpointName,
-                        capabilities: JsonSerializer.Serialize(initializeResponse.Capabilities, McpJsonUtilities.JsonContext.Default.ServerCapabilities),
-                        serverInfo: JsonSerializer.Serialize(initializeResponse.ServerInfo, McpJsonUtilities.JsonContext.Default.Implementation));
-                }
-
-                _serverCapabilities = initializeResponse.Capabilities;
-                _serverInfo = initializeResponse.ServerInfo;
-                _serverInstructions = initializeResponse.Instructions;
-
-                // Validate protocol version
-                bool isResponseProtocolValid =
-                    _options.ProtocolVersion is { } optionsProtocol ? optionsProtocol == initializeResponse.ProtocolVersion :
-                    McpSession.SupportedProtocolVersions.Contains(initializeResponse.ProtocolVersion);
-                if (!isResponseProtocolValid)
-                {
-                    LogServerProtocolVersionMismatch(EndpointName, requestProtocol, initializeResponse.ProtocolVersion);
-                    throw new McpException($"Server protocol version mismatch. Expected {requestProtocol}, got {initializeResponse.ProtocolVersion}");
-                }
-
-                // Send initialized notification
-                await this.SendNotificationAsync(
-                    NotificationMethods.InitializedNotification,
-                    new InitializedNotificationParams(),
-                    McpJsonUtilities.JsonContext.Default.InitializedNotificationParams,
-                    cancellationToken: initializationCts.Token).ConfigureAwait(false);
-
-            }
-            catch (OperationCanceledException oce) when (initializationCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
-            {
-                LogClientInitializationTimeout(EndpointName);
-                throw new TimeoutException("Initialization timed out", oce);
-            }
+            await clientSession.ConnectAsync(cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception e)
+        catch
         {
-            LogClientInitializationError(EndpointName, e);
-            await DisposeAsync().ConfigureAwait(false);
+            await clientSession.DisposeAsync().ConfigureAwait(false);
             throw;
         }
+
+        return clientSession;
     }
 
-    /// <inheritdoc/>
-    public override async ValueTask DisposeUnsynchronizedAsync()
+    /// <summary>
+    /// Sends a ping request to verify server connectivity.
+    /// </summary>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A task that completes when the ping is successful.</returns>
+    /// <exception cref="McpException">Thrown when the server cannot be reached or returns an error response.</exception>
+    public Task PingAsync(CancellationToken cancellationToken = default)
     {
-        try
+        var opts = McpJsonUtilities.DefaultOptions;
+        opts.MakeReadOnly();
+        return SendRequestAsync<object?, object>(
+            RequestMethods.Ping,
+            parameters: null,
+            serializerOptions: opts,
+            cancellationToken: cancellationToken).AsTask();
+    }
+
+    /// <summary>
+    /// Retrieves a list of available tools from the server.
+    /// </summary>
+    /// <param name="serializerOptions">The serializer options governing tool parameter serialization. If null, the default options will be used.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A list of all available tools as <see cref="McpClientTool"/> instances.</returns>
+    public async ValueTask<IList<McpClientTool>> ListToolsAsync(
+        JsonSerializerOptions? serializerOptions = null,
+        CancellationToken cancellationToken = default)
+    {
+        serializerOptions ??= McpJsonUtilities.DefaultOptions;
+        serializerOptions.MakeReadOnly();
+
+        List<McpClientTool>? tools = null;
+        string? cursor = null;
+        do
         {
-            if (_connectCts is not null)
+            var toolResults = await SendRequestAsync(
+                RequestMethods.ToolsList,
+                new() { Cursor = cursor },
+                McpJsonUtilities.JsonContext.Default.ListToolsRequestParams,
+                McpJsonUtilities.JsonContext.Default.ListToolsResult,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            tools ??= new List<McpClientTool>(toolResults.Tools.Count);
+            foreach (var tool in toolResults.Tools)
             {
-                await _connectCts.CancelAsync().ConfigureAwait(false);
-                _connectCts.Dispose();
+                tools.Add(new McpClientTool(this, tool, serializerOptions));
             }
 
-            await base.DisposeUnsynchronizedAsync().ConfigureAwait(false);
+            cursor = toolResults.NextCursor;
         }
-        finally
+        while (cursor is not null);
+
+        return tools;
+    }
+
+    /// <summary>
+    /// Creates an enumerable for asynchronously enumerating all available tools from the server.
+    /// </summary>
+    /// <param name="serializerOptions">The serializer options governing tool parameter serialization. If null, the default options will be used.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>An asynchronous sequence of all available tools as <see cref="McpClientTool"/> instances.</returns>
+    public async IAsyncEnumerable<McpClientTool> EnumerateToolsAsync(
+        JsonSerializerOptions? serializerOptions = null,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        serializerOptions ??= McpJsonUtilities.DefaultOptions;
+        serializerOptions.MakeReadOnly();
+
+        string? cursor = null;
+        do
         {
-            if (_sessionTransport is not null)
+            var toolResults = await SendRequestAsync(
+                RequestMethods.ToolsList,
+                new() { Cursor = cursor },
+                McpJsonUtilities.JsonContext.Default.ListToolsRequestParams,
+                McpJsonUtilities.JsonContext.Default.ListToolsResult,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            foreach (var tool in toolResults.Tools)
             {
-                await _sessionTransport.DisposeAsync().ConfigureAwait(false);
+                yield return new McpClientTool(this, tool, serializerOptions);
             }
+
+            cursor = toolResults.NextCursor;
+        }
+        while (cursor is not null);
+    }
+
+    /// <summary>
+    /// Retrieves a list of available prompts from the server.
+    /// </summary>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A list of all available prompts as <see cref="McpClientPrompt"/> instances.</returns>
+    public async ValueTask<IList<McpClientPrompt>> ListPromptsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        List<McpClientPrompt>? prompts = null;
+        string? cursor = null;
+        do
+        {
+            var promptResults = await SendRequestAsync(
+                RequestMethods.PromptsList,
+                new() { Cursor = cursor },
+                McpJsonUtilities.JsonContext.Default.ListPromptsRequestParams,
+                McpJsonUtilities.JsonContext.Default.ListPromptsResult,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            prompts ??= new List<McpClientPrompt>(promptResults.Prompts.Count);
+            foreach (var prompt in promptResults.Prompts)
+            {
+                prompts.Add(new McpClientPrompt(this, prompt));
+            }
+
+            cursor = promptResults.NextCursor;
+        }
+        while (cursor is not null);
+
+        return prompts;
+    }
+
+    /// <summary>
+    /// Creates an enumerable for asynchronously enumerating all available prompts from the server.
+    /// </summary>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>An asynchronous sequence of all available prompts as <see cref="McpClientPrompt"/> instances.</returns>
+    public async IAsyncEnumerable<McpClientPrompt> EnumeratePromptsAsync(
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        string? cursor = null;
+        do
+        {
+            var promptResults = await SendRequestAsync(
+                RequestMethods.PromptsList,
+                new() { Cursor = cursor },
+                McpJsonUtilities.JsonContext.Default.ListPromptsRequestParams,
+                McpJsonUtilities.JsonContext.Default.ListPromptsResult,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            foreach (var prompt in promptResults.Prompts)
+            {
+                yield return new(this, prompt);
+            }
+
+            cursor = promptResults.NextCursor;
+        }
+        while (cursor is not null);
+    }
+
+    /// <summary>
+    /// Retrieves a specific prompt from the MCP server.
+    /// </summary>
+    /// <param name="name">The name of the prompt to retrieve.</param>
+    /// <param name="arguments">Optional arguments for the prompt. Keys are parameter names, and values are the argument values.</param>
+    /// <param name="serializerOptions">The serialization options governing argument serialization.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A task containing the prompt's result with content and messages.</returns>
+    public ValueTask<GetPromptResult> GetPromptAsync(
+        string name,
+        IReadOnlyDictionary<string, object?>? arguments = null,
+        JsonSerializerOptions? serializerOptions = null,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNullOrWhiteSpace(name);
+
+        serializerOptions ??= McpJsonUtilities.DefaultOptions;
+        serializerOptions.MakeReadOnly();
+
+        return SendRequestAsync(
+            RequestMethods.PromptsGet,
+            new() { Name = name, Arguments = ToArgumentsDictionary(arguments, serializerOptions) },
+            McpJsonUtilities.JsonContext.Default.GetPromptRequestParams,
+            McpJsonUtilities.JsonContext.Default.GetPromptResult,
+            cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// Retrieves a list of available resource templates from the server.
+    /// </summary>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A list of all available resource templates as <see cref="ResourceTemplate"/> instances.</returns>
+    public async ValueTask<IList<McpClientResourceTemplate>> ListResourceTemplatesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        List<McpClientResourceTemplate>? resourceTemplates = null;
+
+        string? cursor = null;
+        do
+        {
+            var templateResults = await SendRequestAsync(
+                RequestMethods.ResourcesTemplatesList,
+                new() { Cursor = cursor },
+                McpJsonUtilities.JsonContext.Default.ListResourceTemplatesRequestParams,
+                McpJsonUtilities.JsonContext.Default.ListResourceTemplatesResult,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            resourceTemplates ??= new List<McpClientResourceTemplate>(templateResults.ResourceTemplates.Count);
+            foreach (var template in templateResults.ResourceTemplates)
+            {
+                resourceTemplates.Add(new McpClientResourceTemplate(this, template));
+            }
+
+            cursor = templateResults.NextCursor;
+        }
+        while (cursor is not null);
+
+        return resourceTemplates;
+    }
+
+    /// <summary>
+    /// Creates an enumerable for asynchronously enumerating all available resource templates from the server.
+    /// </summary>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>An asynchronous sequence of all available resource templates as <see cref="ResourceTemplate"/> instances.</returns>
+    public async IAsyncEnumerable<McpClientResourceTemplate> EnumerateResourceTemplatesAsync(
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        string? cursor = null;
+        do
+        {
+            var templateResults = await SendRequestAsync(
+                RequestMethods.ResourcesTemplatesList,
+                new() { Cursor = cursor },
+                McpJsonUtilities.JsonContext.Default.ListResourceTemplatesRequestParams,
+                McpJsonUtilities.JsonContext.Default.ListResourceTemplatesResult,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            foreach (var templateResult in templateResults.ResourceTemplates)
+            {
+                yield return new McpClientResourceTemplate(this, templateResult);
+            }
+
+            cursor = templateResults.NextCursor;
+        }
+        while (cursor is not null);
+    }
+
+    /// <summary>
+    /// Retrieves a list of available resources from the server.
+    /// </summary>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A list of all available resources as <see cref="Resource"/> instances.</returns>
+    public async ValueTask<IList<McpClientResource>> ListResourcesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        List<McpClientResource>? resources = null;
+
+        string? cursor = null;
+        do
+        {
+            var resourceResults = await SendRequestAsync(
+                RequestMethods.ResourcesList,
+                new() { Cursor = cursor },
+                McpJsonUtilities.JsonContext.Default.ListResourcesRequestParams,
+                McpJsonUtilities.JsonContext.Default.ListResourcesResult,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            resources ??= new List<McpClientResource>(resourceResults.Resources.Count);
+            foreach (var resource in resourceResults.Resources)
+            {
+                resources.Add(new McpClientResource(this, resource));
+            }
+
+            cursor = resourceResults.NextCursor;
+        }
+        while (cursor is not null);
+
+        return resources;
+    }
+
+    /// <summary>
+    /// Creates an enumerable for asynchronously enumerating all available resources from the server.
+    /// </summary>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>An asynchronous sequence of all available resources as <see cref="Resource"/> instances.</returns>
+    public async IAsyncEnumerable<McpClientResource> EnumerateResourcesAsync(
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        string? cursor = null;
+        do
+        {
+            var resourceResults = await SendRequestAsync(
+                RequestMethods.ResourcesList,
+                new() { Cursor = cursor },
+                McpJsonUtilities.JsonContext.Default.ListResourcesRequestParams,
+                McpJsonUtilities.JsonContext.Default.ListResourcesResult,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            foreach (var resource in resourceResults.Resources)
+            {
+                yield return new McpClientResource(this, resource);
+            }
+
+            cursor = resourceResults.NextCursor;
+        }
+        while (cursor is not null);
+    }
+
+    /// <summary>
+    /// Reads a resource from the server.
+    /// </summary>
+    /// <param name="uri">The uri of the resource.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    public ValueTask<ReadResourceResult> ReadResourceAsync(
+        string uri, CancellationToken cancellationToken = default)
+    {
+        Throw.IfNullOrWhiteSpace(uri);
+
+        return SendRequestAsync(
+            RequestMethods.ResourcesRead,
+            new() { Uri = uri },
+            McpJsonUtilities.JsonContext.Default.ReadResourceRequestParams,
+            McpJsonUtilities.JsonContext.Default.ReadResourceResult,
+            cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads a resource from the server.
+    /// </summary>
+    /// <param name="uri">The uri of the resource.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    public ValueTask<ReadResourceResult> ReadResourceAsync(
+        Uri uri, CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(uri);
+
+        return ReadResourceAsync(uri.ToString(), cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads a resource from the server.
+    /// </summary>
+    /// <param name="uriTemplate">The uri template of the resource.</param>
+    /// <param name="arguments">Arguments to use to format <paramref name="uriTemplate"/>.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    public ValueTask<ReadResourceResult> ReadResourceAsync(
+        string uriTemplate, IReadOnlyDictionary<string, object?> arguments, CancellationToken cancellationToken = default)
+    {
+        Throw.IfNullOrWhiteSpace(uriTemplate);
+        Throw.IfNull(arguments);
+
+        return SendRequestAsync(
+            RequestMethods.ResourcesRead,
+            new() { Uri = UriTemplate.FormatUri(uriTemplate, arguments) },
+            McpJsonUtilities.JsonContext.Default.ReadResourceRequestParams,
+            McpJsonUtilities.JsonContext.Default.ReadResourceResult,
+            cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// Requests completion suggestions for a prompt argument or resource reference.
+    /// </summary>
+    /// <param name="reference">The reference object specifying the type and optional URI or name.</param>
+    /// <param name="argumentName">The name of the argument for which completions are requested.</param>
+    /// <param name="argumentValue">The current value of the argument, used to filter relevant completions.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A <see cref="CompleteResult"/> containing completion suggestions.</returns>
+    public ValueTask<CompleteResult> CompleteAsync(Reference reference, string argumentName, string argumentValue, CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(reference);
+        Throw.IfNullOrWhiteSpace(argumentName);
+
+        return SendRequestAsync(
+            RequestMethods.CompletionComplete,
+            new()
+            {
+                Ref = reference,
+                Argument = new Argument { Name = argumentName, Value = argumentValue }
+            },
+            McpJsonUtilities.JsonContext.Default.CompleteRequestParams,
+            McpJsonUtilities.JsonContext.Default.CompleteResult,
+            cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// Subscribes to a resource on the server to receive notifications when it changes.
+    /// </summary>
+    /// <param name="uri">The URI of the resource to which to subscribe.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    public Task SubscribeToResourceAsync(string uri, CancellationToken cancellationToken = default)
+    {
+        Throw.IfNullOrWhiteSpace(uri);
+
+        return SendRequestAsync(
+            RequestMethods.ResourcesSubscribe,
+            new() { Uri = uri },
+            McpJsonUtilities.JsonContext.Default.SubscribeRequestParams,
+            McpJsonUtilities.JsonContext.Default.EmptyResult,
+            cancellationToken: cancellationToken).AsTask();
+    }
+
+    /// <summary>
+    /// Subscribes to a resource on the server to receive notifications when it changes.
+    /// </summary>
+    /// <param name="uri">The URI of the resource to which to subscribe.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    public Task SubscribeToResourceAsync(Uri uri, CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(uri);
+
+        return SubscribeToResourceAsync(uri.ToString(), cancellationToken);
+    }
+
+    /// <summary>
+    /// Unsubscribes from a resource on the server to stop receiving notifications about its changes.
+    /// </summary>
+    /// <param name="uri">The URI of the resource to unsubscribe from.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    public Task UnsubscribeFromResourceAsync(string uri, CancellationToken cancellationToken = default)
+    {
+        Throw.IfNullOrWhiteSpace(uri);
+
+        return SendRequestAsync(
+            RequestMethods.ResourcesUnsubscribe,
+            new() { Uri = uri },
+            McpJsonUtilities.JsonContext.Default.UnsubscribeRequestParams,
+            McpJsonUtilities.JsonContext.Default.EmptyResult,
+            cancellationToken: cancellationToken).AsTask();
+    }
+
+    /// <summary>
+    /// Unsubscribes from a resource on the server to stop receiving notifications about its changes.
+    /// </summary>
+    /// <param name="uri">The URI of the resource to unsubscribe from.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    public Task UnsubscribeFromResourceAsync(Uri uri, CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(uri);
+
+        return UnsubscribeFromResourceAsync(uri.ToString(), cancellationToken);
+    }
+
+    /// <summary>
+    /// Invokes a tool on the server.
+    /// </summary>
+    /// <param name="toolName">The name of the tool to call on the server..</param>
+    /// <param name="arguments">An optional dictionary of arguments to pass to the tool.</param>
+    /// <param name="progress">Optional progress reporter for server notifications.</param>
+    /// <param name="serializerOptions">JSON serializer options.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>The <see cref="CallToolResult"/> from the tool execution.</returns>
+    public ValueTask<CallToolResult> CallToolAsync(
+        string toolName,
+        IReadOnlyDictionary<string, object?>? arguments = null,
+        IProgress<ProgressNotificationValue>? progress = null,
+        JsonSerializerOptions? serializerOptions = null,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(toolName);
+        serializerOptions ??= McpJsonUtilities.DefaultOptions;
+        serializerOptions.MakeReadOnly();
+
+        if (progress is not null)
+        {
+            return SendRequestWithProgressAsync(toolName, arguments, progress, serializerOptions, cancellationToken);
+        }
+
+        return SendRequestAsync(
+            RequestMethods.ToolsCall,
+            new()
+            {
+                Name = toolName,
+                Arguments = ToArgumentsDictionary(arguments, serializerOptions),
+            },
+            McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
+            McpJsonUtilities.JsonContext.Default.CallToolResult,
+            cancellationToken: cancellationToken);
+
+        async ValueTask<CallToolResult> SendRequestWithProgressAsync(
+            string toolName,
+            IReadOnlyDictionary<string, object?>? arguments,
+            IProgress<ProgressNotificationValue> progress,
+            JsonSerializerOptions serializerOptions,
+            CancellationToken cancellationToken)
+        {
+            ProgressToken progressToken = new(Guid.NewGuid().ToString("N"));
+
+            await using var _ = RegisterNotificationHandler(NotificationMethods.ProgressNotification,
+                (notification, cancellationToken) =>
+                {
+                    if (JsonSerializer.Deserialize(notification.Params, McpJsonUtilities.JsonContext.Default.ProgressNotificationParams) is { } pn &&
+                        pn.ProgressToken == progressToken)
+                    {
+                        progress.Report(pn.Progress);
+                    }
+
+                    return default;
+                }).ConfigureAwait(false);
+
+            return await SendRequestAsync(
+                RequestMethods.ToolsCall,
+                new()
+                {
+                    Name = toolName,
+                    Arguments = ToArgumentsDictionary(arguments, serializerOptions),
+                    ProgressToken = progressToken,
+                },
+                McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
+                McpJsonUtilities.JsonContext.Default.CallToolResult,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} client received server '{ServerInfo}' capabilities: '{Capabilities}'.")]
-    private partial void LogServerCapabilitiesReceived(string endpointName, string capabilities, string serverInfo);
+    /// <summary>
+    /// Converts the contents of a <see cref="CreateMessageRequestParams"/> into a pair of
+    /// <see cref="IEnumerable{ChatMessage}"/> and <see cref="ChatOptions"/> instances to use
+    /// as inputs into a <see cref="IChatClient"/> operation.
+    /// </summary>
+    /// <param name="requestParams"></param>
+    /// <returns>The created pair of messages and options.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    internal static (IList<ChatMessage> Messages, ChatOptions? Options) ToChatClientArguments(
+        CreateMessageRequestParams requestParams)
+    {
+        Throw.IfNull(requestParams);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "{EndpointName} client initialization error.")]
-    private partial void LogClientInitializationError(string endpointName, Exception exception);
+        ChatOptions? options = null;
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "{EndpointName} client initialization timed out.")]
-    private partial void LogClientInitializationTimeout(string endpointName);
+        if (requestParams.MaxTokens is int maxTokens)
+        {
+            (options ??= new()).MaxOutputTokens = maxTokens;
+        }
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "{EndpointName} client protocol version mismatch with server. Expected '{Expected}', received '{Received}'.")]
-    private partial void LogServerProtocolVersionMismatch(string endpointName, string expected, string received);
+        if (requestParams.Temperature is float temperature)
+        {
+            (options ??= new()).Temperature = temperature;
+        }
+
+        if (requestParams.StopSequences is { } stopSequences)
+        {
+            (options ??= new()).StopSequences = stopSequences.ToArray();
+        }
+
+        List<ChatMessage> messages =
+            (from sm in requestParams.Messages
+             let aiContent = sm.Content.ToAIContent()
+             where aiContent is not null
+             select new ChatMessage(sm.Role == Role.Assistant ? ChatRole.Assistant : ChatRole.User, [aiContent]))
+            .ToList();
+
+        return (messages, options);
+    }
+
+    /// <summary>Converts the contents of a <see cref="ChatResponse"/> into a <see cref="CreateMessageResult"/>.</summary>
+    /// <param name="chatResponse">The <see cref="ChatResponse"/> whose contents should be extracted.</param>
+    /// <returns>The created <see cref="CreateMessageResult"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="chatResponse"/> is <see langword="null"/>.</exception>
+    internal static CreateMessageResult ToCreateMessageResult(ChatResponse chatResponse)
+    {
+        Throw.IfNull(chatResponse);
+
+        // The ChatResponse can include multiple messages, of varying modalities, but CreateMessageResult supports
+        // only either a single blob of text or a single image. Heuristically, we'll use an image if there is one
+        // in any of the response messages, or we'll use all the text from them concatenated, otherwise.
+
+        ChatMessage? lastMessage = chatResponse.Messages.LastOrDefault();
+
+        ContentBlock? content = null;
+        if (lastMessage is not null)
+        {
+            foreach (var lmc in lastMessage.Contents)
+            {
+                if (lmc is DataContent dc && (dc.HasTopLevelMediaType("image") || dc.HasTopLevelMediaType("audio")))
+                {
+                    content = dc.ToContent();
+                }
+            }
+        }
+
+        return new()
+        {
+            Content = content ?? new TextContentBlock { Text = lastMessage?.Text ?? string.Empty },
+            Model = chatResponse.ModelId ?? "unknown",
+            Role = lastMessage?.Role == ChatRole.User ? Role.User : Role.Assistant,
+            StopReason = chatResponse.FinishReason == ChatFinishReason.Length ? "maxTokens" : "endTurn",
+        };
+    }
+
+    /// <summary>
+    /// Creates a sampling handler for use with <see cref="SamplingCapability.SamplingHandler"/> that will
+    /// satisfy sampling requests using the specified <see cref="IChatClient"/>.
+    /// </summary>
+    /// <param name="chatClient">The <see cref="IChatClient"/> with which to satisfy sampling requests.</param>
+    /// <returns>The created handler delegate that can be assigned to <see cref="SamplingCapability.SamplingHandler"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="chatClient"/> is <see langword="null"/>.</exception>
+    public static Func<CreateMessageRequestParams?, IProgress<ProgressNotificationValue>, CancellationToken, ValueTask<CreateMessageResult>> CreateSamplingHandler(
+        IChatClient chatClient)
+    {
+        Throw.IfNull(chatClient);
+
+        return async (requestParams, progress, cancellationToken) =>
+        {
+            Throw.IfNull(requestParams);
+
+            var (messages, options) = ToChatClientArguments(requestParams);
+            var progressToken = requestParams.ProgressToken;
+
+            List<ChatResponseUpdate> updates = [];
+            await foreach (var update in chatClient.GetStreamingResponseAsync(messages, options, cancellationToken).ConfigureAwait(false))
+            {
+                updates.Add(update);
+
+                if (progressToken is not null)
+                {
+                    progress.Report(new()
+                    {
+                        Progress = updates.Count,
+                    });
+                }
+            }
+
+            return ToCreateMessageResult(updates.ToChatResponse());
+        };
+    }
+
+    /// <summary>
+    /// Sets the logging level for the server to control which log messages are sent to the client.
+    /// </summary>
+    /// <param name="level">The minimum severity level of log messages to receive from the server.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    public Task SetLoggingLevel(LoggingLevel level, CancellationToken cancellationToken = default)
+    {
+        return SendRequestAsync(
+            RequestMethods.LoggingSetLevel,
+            new() { Level = level },
+            McpJsonUtilities.JsonContext.Default.SetLevelRequestParams,
+            McpJsonUtilities.JsonContext.Default.EmptyResult,
+            cancellationToken: cancellationToken).AsTask();
+    }
+
+    /// <summary>
+    /// Sets the logging level for the server to control which log messages are sent to the client.
+    /// </summary>
+    /// <param name="level">The minimum severity level of log messages to receive from the server.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    public Task SetLoggingLevel(LogLevel level, CancellationToken cancellationToken = default) =>
+        SetLoggingLevel(McpServerImpl.ToLoggingLevel(level), cancellationToken);
+
+    /// <summary>Convers a dictionary with <see cref="object"/> values to a dictionary with <see cref="JsonElement"/> values.</summary>
+    private static Dictionary<string, JsonElement>? ToArgumentsDictionary(
+        IReadOnlyDictionary<string, object?>? arguments, JsonSerializerOptions options)
+    {
+        var typeInfo = options.GetTypeInfo<object?>();
+
+        Dictionary<string, JsonElement>? result = null;
+        if (arguments is not null)
+        {
+            result = new(arguments.Count);
+            foreach (var kvp in arguments)
+            {
+                result.Add(kvp.Key, kvp.Value is JsonElement je ? je : JsonSerializer.SerializeToElement(kvp.Value, typeInfo));
+            }
+        }
+
+        return result;
+    }
 }

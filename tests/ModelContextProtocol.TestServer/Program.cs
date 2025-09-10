@@ -51,7 +51,7 @@ internal static class Program
 
         using var loggerFactory = CreateLoggerFactory();
         await using var stdioTransport = new StdioServerTransport("TestServer", loggerFactory);
-        await using IMcpServer server = McpServerFactory.Create(stdioTransport, options, loggerFactory);
+        await using McpServer server = McpServer.Create(stdioTransport, options, loggerFactory);
 
         Log.Logger.Information("Server running...");
 
@@ -61,7 +61,7 @@ internal static class Program
         await server.RunAsync();
     }
 
-    private static async Task RunBackgroundLoop(IMcpServer server, CancellationToken cancellationToken = default)
+    private static async Task RunBackgroundLoop(McpServer server, CancellationToken cancellationToken = default)
     {
         var loggingLevels = (LoggingLevel[])Enum.GetValues(typeof(LoggingLevel));
         var random = new Random();

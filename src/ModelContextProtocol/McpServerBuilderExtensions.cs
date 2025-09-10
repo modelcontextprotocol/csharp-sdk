@@ -827,8 +827,8 @@ public static partial class McpServerBuilderExtensions
     /// and may begin sending log messages at or above the specified level to the client.
     /// </para>
     /// <para>
-    /// Regardless of whether a handler is provided, an <see cref="IMcpServer"/> should itself handle
-    /// such notifications by updating its <see cref="IMcpServer.LoggingLevel"/> property to return the
+    /// Regardless of whether a handler is provided, an <see cref="McpServer"/> should itself handle
+    /// such notifications by updating its <see cref="McpServer.LoggingLevel"/> property to return the
     /// most recently set level.
     /// </para>
     /// </remarks>
@@ -1180,7 +1180,7 @@ public static partial class McpServerBuilderExtensions
             ITransport serverTransport = services.GetRequiredService<ITransport>();
             IOptions<McpServerOptions> options = services.GetRequiredService<IOptions<McpServerOptions>>();
             ILoggerFactory? loggerFactory = services.GetService<ILoggerFactory>();
-            return McpServerFactory.Create(serverTransport, options.Value, loggerFactory, services);
+            return McpServer.Create(serverTransport, options.Value, loggerFactory, services);
         });
     }
     #endregion

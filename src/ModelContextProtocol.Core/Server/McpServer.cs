@@ -1,714 +1,418 @@
-using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 using System.Runtime.CompilerServices;
-using System.Text.Json.Serialization.Metadata;
+using System.Text;
+using System.Text.Json;
 
 namespace ModelContextProtocol.Server;
 
-/// <inheritdoc />
-internal sealed partial class McpServer : McpEndpoint, IMcpServer
+/// <summary>
+/// Represents an instance of a Model Context Protocol (MCP) server that connects to and communicates with an MCP client.
+/// </summary>
+#pragma warning disable CS0618 // Type or member is obsolete
+public abstract class McpServer : McpSession, IMcpServer
+#pragma warning restore CS0618 // Type or member is obsolete
 {
-    internal static Implementation DefaultImplementation { get; } = new()
-    {
-        Name = DefaultAssemblyName.Name ?? nameof(McpServer),
-        Version = DefaultAssemblyName.Version?.ToString() ?? "1.0.0",
-    };
-
-    private readonly ITransport _sessionTransport;
-    private readonly bool _servicesScopePerRequest;
-    private readonly List<Action> _disposables = [];
-
-    private readonly string _serverOnlyEndpointName;
-    private string? _endpointName;
-    private int _started;
-
-    /// <summary>Holds a boxed <see cref="LoggingLevel"/> value for the server.</summary>
+    /// <summary>
+    /// Gets the capabilities supported by the client.
+    /// </summary>
     /// <remarks>
-    /// Initialized to non-null the first time SetLevel is used. This is stored as a strong box
-    /// rather than a nullable to be able to manipulate it atomically.
+    /// <para>
+    /// These capabilities are established during the initialization handshake and indicate
+    /// which features the client supports, such as sampling, roots, and other
+    /// protocol-specific functionality.
+    /// </para>
+    /// <para>
+    /// Server implementations can check these capabilities to determine which features
+    /// are available when interacting with the client.
+    /// </para>
     /// </remarks>
-    private StrongBox<LoggingLevel>? _loggingLevel;
+    public abstract ClientCapabilities? ClientCapabilities { get; }
 
     /// <summary>
-    /// Creates a new instance of <see cref="McpServer"/>.
+    /// Gets the version and implementation information of the connected client.
     /// </summary>
-    /// <param name="transport">Transport to use for the server representing an already-established session.</param>
-    /// <param name="options">Configuration options for this server, including capabilities.
-    /// Make sure to accurately reflect exactly what capabilities the server supports and does not support.</param>
-    /// <param name="loggerFactory">Logger factory to use for logging</param>
-    /// <param name="serviceProvider">Optional service provider to use for dependency injection</param>
-    /// <exception cref="McpException">The server was incorrectly configured.</exception>
-    public McpServer(ITransport transport, McpServerOptions options, ILoggerFactory? loggerFactory, IServiceProvider? serviceProvider)
-        : base(loggerFactory)
+    /// <remarks>
+    /// <para>
+    /// This property contains identification information about the client that has connected to this server,
+    /// including its name and version. This information is provided by the client during initialization.
+    /// </para>
+    /// <para>
+    /// Server implementations can use this information for logging, tracking client versions, 
+    /// or implementing client-specific behaviors.
+    /// </para>
+    /// </remarks>
+    public abstract Implementation? ClientInfo { get; }
+
+    /// <summary>
+    /// Gets the options used to construct this server.
+    /// </summary>
+    /// <remarks>
+    /// These options define the server's capabilities, protocol version, and other configuration
+    /// settings that were used to initialize the server.
+    /// </remarks>
+    public abstract McpServerOptions ServerOptions { get; }
+
+    /// <summary>
+    /// Gets the service provider for the server.
+    /// </summary>
+    public abstract IServiceProvider? Services { get; }
+
+    /// <summary>Gets the last logging level set by the client, or <see langword="null"/> if it's never been set.</summary>
+    public abstract LoggingLevel? LoggingLevel { get; }
+
+    /// <summary>
+    /// Runs the server, listening for and handling client requests.
+    /// </summary>
+    public abstract Task RunAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Creates a new instance of an <see cref="McpServer"/>.
+    /// </summary>
+    /// <param name="transport">Transport to use for the server representing an already-established MCP session.</param>
+    /// <param name="serverOptions">Configuration options for this server, including capabilities. </param>
+    /// <param name="loggerFactory">Logger factory to use for logging. If null, logging will be disabled.</param>
+    /// <param name="serviceProvider">Optional service provider to create new instances of tools and other dependencies.</param>
+    /// <returns>An <see cref="McpServer"/> instance that should be disposed when no longer needed.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="transport"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="serverOptions"/> is <see langword="null"/>.</exception>
+    public static McpServer Create(
+        ITransport transport,
+        McpServerOptions serverOptions,
+        ILoggerFactory? loggerFactory = null,
+        IServiceProvider? serviceProvider = null)
     {
         Throw.IfNull(transport);
-        Throw.IfNull(options);
+        Throw.IfNull(serverOptions);
 
-        options ??= new();
-
-        _sessionTransport = transport;
-        ServerOptions = options;
-        Services = serviceProvider;
-        _serverOnlyEndpointName = $"Server ({options.ServerInfo?.Name ?? DefaultImplementation.Name} {options.ServerInfo?.Version ?? DefaultImplementation.Version})";
-        _servicesScopePerRequest = options.ScopeRequests;
-
-        ClientInfo = options.KnownClientInfo;
-        UpdateEndpointNameWithClientInfo();
-
-        // Configure all request handlers based on the supplied options.
-        ServerCapabilities = new();
-        ConfigureInitialize(options);
-        ConfigureTools(options);
-        ConfigurePrompts(options);
-        ConfigureResources(options);
-        ConfigureLogging(options);
-        ConfigureCompletion(options);
-        ConfigureExperimental(options);
-        ConfigurePing();
-
-        // Register any notification handlers that were provided.
-        if (options.Capabilities?.NotificationHandlers is { } notificationHandlers)
-        {
-            NotificationHandlers.RegisterRange(notificationHandlers);
-        }
-
-        // Now that everything has been configured, subscribe to any necessary notifications.
-        if (transport is not StreamableHttpServerTransport streamableHttpTransport || streamableHttpTransport.Stateless is false)
-        {
-            Register(ServerOptions.Capabilities?.Tools?.ToolCollection, NotificationMethods.ToolListChangedNotification);
-            Register(ServerOptions.Capabilities?.Prompts?.PromptCollection, NotificationMethods.PromptListChangedNotification);
-            Register(ServerOptions.Capabilities?.Resources?.ResourceCollection, NotificationMethods.ResourceListChangedNotification);
-
-            void Register<TPrimitive>(McpServerPrimitiveCollection<TPrimitive>? collection, string notificationMethod)
-                where TPrimitive : IMcpServerPrimitive
-            {
-                if (collection is not null)
-                {
-                    EventHandler changed = (sender, e) => _ = this.SendNotificationAsync(notificationMethod);
-                    collection.Changed += changed;
-                    _disposables.Add(() => collection.Changed -= changed);
-                }
-            }
-        }
-
-        // And initialize the session.
-        InitializeSession(transport);
+        return new McpServerImpl(transport, serverOptions, loggerFactory, serviceProvider);
     }
 
-    /// <inheritdoc/>
-    public string? SessionId => _sessionTransport.SessionId;
-
-    /// <inheritdoc/>
-    public ServerCapabilities ServerCapabilities { get; } = new();
-
-    /// <inheritdoc />
-    public ClientCapabilities? ClientCapabilities { get; set; }
-
-    /// <inheritdoc />
-    public Implementation? ClientInfo { get; set; }
-
-    /// <inheritdoc />
-    public McpServerOptions ServerOptions { get; }
-
-    /// <inheritdoc />
-    public IServiceProvider? Services { get; }
-
-    /// <inheritdoc />
-    public override string EndpointName => _endpointName ?? _serverOnlyEndpointName;
-
-    /// <inheritdoc />
-    public LoggingLevel? LoggingLevel => _loggingLevel?.Value;
-
-    /// <inheritdoc />
-    public async Task RunAsync(CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Requests to sample an LLM via the client using the specified request parameters.
+    /// </summary>
+    /// <param name="request">The parameters for the sampling request.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
+    /// <returns>A task containing the sampling result from the client.</returns>
+    /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
+    public ValueTask<CreateMessageResult> SampleAsync(
+        CreateMessageRequestParams request, CancellationToken cancellationToken = default)
     {
-        if (Interlocked.Exchange(ref _started, 1) != 0)
-        {
-            throw new InvalidOperationException($"{nameof(RunAsync)} must only be called once.");
-        }
+        ThrowIfSamplingUnsupported();
 
-        try
-        {
-            StartSession(_sessionTransport, fullSessionCancellationToken: cancellationToken);
-            await MessageProcessingTask.ConfigureAwait(false);
-        }
-        finally
-        {
-            await DisposeAsync().ConfigureAwait(false);
-        }
+        return SendRequestAsync(
+            RequestMethods.SamplingCreateMessage,
+            request,
+            McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams,
+            McpJsonUtilities.JsonContext.Default.CreateMessageResult,
+            cancellationToken: cancellationToken);
     }
 
-    public override async ValueTask DisposeUnsynchronizedAsync()
+    /// <summary>
+    /// Requests to sample an LLM via the client using the provided chat messages and options.
+    /// </summary>
+    /// <param name="messages">The messages to send as part of the request.</param>
+    /// <param name="options">The options to use for the request, including model parameters and constraints.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A task containing the chat response from the model.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="messages"/> is <see langword="null"/>.</exception>
+    /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
+    public async Task<ChatResponse> SampleAsync(
+        IEnumerable<ChatMessage> messages, ChatOptions? options = default, CancellationToken cancellationToken = default)
     {
-        _disposables.ForEach(d => d());
-        await base.DisposeUnsynchronizedAsync().ConfigureAwait(false);
-    }
+        Throw.IfNull(messages);
 
-    private void ConfigurePing()
-    {
-        SetHandler(RequestMethods.Ping,
-            async (request, _) => new PingResult(),
-            McpJsonUtilities.JsonContext.Default.JsonNode,
-            McpJsonUtilities.JsonContext.Default.PingResult);
-    }
+        StringBuilder? systemPrompt = null;
 
-    private void ConfigureInitialize(McpServerOptions options)
-    {
-        RequestHandlers.Set(RequestMethods.Initialize,
-            async (request, _, _) =>
-            {
-                ClientCapabilities = request?.Capabilities ?? new();
-                ClientInfo = request?.ClientInfo;
-
-                // Use the ClientInfo to update the session EndpointName for logging.
-                UpdateEndpointNameWithClientInfo();
-                GetSessionOrThrow().EndpointName = EndpointName;
-
-                // Negotiate a protocol version. If the server options provide one, use that.
-                // Otherwise, try to use whatever the client requested as long as it's supported.
-                // If it's not supported, fall back to the latest supported version.
-                string? protocolVersion = options.ProtocolVersion;
-                if (protocolVersion is null)
-                {
-                    protocolVersion = request?.ProtocolVersion is string clientProtocolVersion && McpSession.SupportedProtocolVersions.Contains(clientProtocolVersion) ?
-                        clientProtocolVersion :
-                        McpSession.LatestProtocolVersion;
-                }
-
-                return new InitializeResult
-                {
-                    ProtocolVersion = protocolVersion,
-                    Instructions = options.ServerInstructions,
-                    ServerInfo = options.ServerInfo ?? DefaultImplementation,
-                    Capabilities = ServerCapabilities ?? new(),
-                };
-            },
-            McpJsonUtilities.JsonContext.Default.InitializeRequestParams,
-            McpJsonUtilities.JsonContext.Default.InitializeResult);
-    }
-
-    private void ConfigureCompletion(McpServerOptions options)
-    {
-        if (options.Capabilities?.Completions is not { } completionsCapability)
+        if (options?.Instructions is { } instructions)
         {
-            return;
+            (systemPrompt ??= new()).Append(instructions);
         }
 
-        var completeHandler = completionsCapability.CompleteHandler ?? (static async (_, __) => new CompleteResult());
-        completeHandler = BuildFilterPipeline(completeHandler, options.Filters.CompleteFilters);
-
-        ServerCapabilities.Completions = new()
+        List<SamplingMessage> samplingMessages = [];
+        foreach (var message in messages)
         {
-            CompleteHandler = completeHandler
-        };
-
-        SetHandler(
-            RequestMethods.CompletionComplete,
-            ServerCapabilities.Completions.CompleteHandler,
-            McpJsonUtilities.JsonContext.Default.CompleteRequestParams,
-            McpJsonUtilities.JsonContext.Default.CompleteResult);
-    }
-
-    private void ConfigureExperimental(McpServerOptions options)
-    {
-        ServerCapabilities.Experimental = options.Capabilities?.Experimental;
-    }
-
-    private void ConfigureResources(McpServerOptions options)
-    {
-        if (options.Capabilities?.Resources is not { } resourcesCapability)
-        {
-            return;
-        }
-
-        ServerCapabilities.Resources = new();
-
-        var listResourcesHandler = resourcesCapability.ListResourcesHandler ?? (static async (_, __) => new ListResourcesResult());
-        var listResourceTemplatesHandler = resourcesCapability.ListResourceTemplatesHandler ?? (static async (_, __) => new ListResourceTemplatesResult());
-        var readResourceHandler = resourcesCapability.ReadResourceHandler ?? (static async (request, _) => throw new McpException($"Unknown resource URI: '{request.Params?.Uri}'", McpErrorCode.InvalidParams));
-        var subscribeHandler = resourcesCapability.SubscribeToResourcesHandler ?? (static async (_, __) => new EmptyResult());
-        var unsubscribeHandler = resourcesCapability.UnsubscribeFromResourcesHandler ?? (static async (_, __) => new EmptyResult());
-        var resources = resourcesCapability.ResourceCollection;
-        var listChanged = resourcesCapability.ListChanged;
-        var subscribe = resourcesCapability.Subscribe;
-
-        // Handle resources provided via DI.
-        if (resources is { IsEmpty: false })
-        {
-            var originalListResourcesHandler = listResourcesHandler;
-            listResourcesHandler = async (request, cancellationToken) =>
+            if (message.Role == ChatRole.System)
             {
-                ListResourcesResult result = originalListResourcesHandler is not null ?
-                    await originalListResourcesHandler(request, cancellationToken).ConfigureAwait(false) :
-                    new();
-
-                if (request.Params?.Cursor is null)
+                if (systemPrompt is null)
                 {
-                    foreach (var r in resources)
-                    {
-                        if (r.ProtocolResource is { } resource)
-                        {
-                            result.Resources.Add(resource);
-                        }
-                    }
-                }
-
-                return result;
-            };
-
-            var originalListResourceTemplatesHandler = listResourceTemplatesHandler;
-            listResourceTemplatesHandler = async (request, cancellationToken) =>
-            {
-                ListResourceTemplatesResult result = originalListResourceTemplatesHandler is not null ?
-                    await originalListResourceTemplatesHandler(request, cancellationToken).ConfigureAwait(false) :
-                    new();
-
-                if (request.Params?.Cursor is null)
-                {
-                    foreach (var rt in resources)
-                    {
-                        if (rt.IsTemplated)
-                        {
-                            result.ResourceTemplates.Add(rt.ProtocolResourceTemplate);
-                        }
-                    }
-                }
-
-                return result;
-            };
-
-            // Synthesize read resource handler, which covers both resources and resource templates.
-            var originalReadResourceHandler = readResourceHandler;
-            readResourceHandler = async (request, cancellationToken) =>
-            {
-                if (request.MatchedPrimitive is McpServerResource matchedResource)
-                {
-                    if (await matchedResource.ReadAsync(request, cancellationToken).ConfigureAwait(false) is { } result)
-                    {
-                        return result;
-                    }
-                }
-
-                return await originalReadResourceHandler(request, cancellationToken).ConfigureAwait(false);
-            };
-
-            listChanged = true;
-
-            // TODO: Implement subscribe/unsubscribe logic for resource and resource template collections.
-            // subscribe = true;
-        }
-
-        listResourcesHandler = BuildFilterPipeline(listResourcesHandler, options.Filters.ListResourcesFilters);
-        listResourceTemplatesHandler = BuildFilterPipeline(listResourceTemplatesHandler, options.Filters.ListResourceTemplatesFilters);
-        readResourceHandler = BuildFilterPipeline(readResourceHandler, options.Filters.ReadResourceFilters, handler =>
-            async (request, cancellationToken) =>
-            {
-                // Initial handler that sets MatchedPrimitive
-                if (request.Params?.Uri is { } uri && resources is not null)
-                {
-                    // First try an O(1) lookup by exact match.
-                    if (resources.TryGetPrimitive(uri, out var resource))
-                    {
-                        request.MatchedPrimitive = resource;
-                    }
-                    else
-                    {
-                        // Fall back to an O(N) lookup, trying to match against each URI template.
-                        // The number of templates is controlled by the server developer, and the number is expected to be
-                        // not terribly large. If that changes, this can be tweaked to enable a more efficient lookup.
-                        foreach (var resourceTemplate in resources)
-                        {
-                            // Check if this template would handle the request by testing if ReadAsync would succeed
-                            if (resourceTemplate.IsTemplated)
-                            {
-                                // This is a simplified check - a more robust implementation would match the URI pattern
-                                // For now, we'll let the actual handler attempt the match
-                                request.MatchedPrimitive = resourceTemplate;
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                return await handler(request, cancellationToken).ConfigureAwait(false);
-            });
-        subscribeHandler = BuildFilterPipeline(subscribeHandler, options.Filters.SubscribeToResourcesFilters);
-        unsubscribeHandler = BuildFilterPipeline(unsubscribeHandler, options.Filters.UnsubscribeFromResourcesFilters);
-
-        ServerCapabilities.Resources.ListResourcesHandler = listResourcesHandler;
-        ServerCapabilities.Resources.ListResourceTemplatesHandler = listResourceTemplatesHandler;
-        ServerCapabilities.Resources.ReadResourceHandler = readResourceHandler;
-        ServerCapabilities.Resources.ResourceCollection = resources;
-        ServerCapabilities.Resources.SubscribeToResourcesHandler = subscribeHandler;
-        ServerCapabilities.Resources.UnsubscribeFromResourcesHandler = unsubscribeHandler;
-        ServerCapabilities.Resources.ListChanged = listChanged;
-        ServerCapabilities.Resources.Subscribe = subscribe;
-
-        SetHandler(
-            RequestMethods.ResourcesList,
-            listResourcesHandler,
-            McpJsonUtilities.JsonContext.Default.ListResourcesRequestParams,
-            McpJsonUtilities.JsonContext.Default.ListResourcesResult);
-
-        SetHandler(
-            RequestMethods.ResourcesTemplatesList,
-            listResourceTemplatesHandler,
-            McpJsonUtilities.JsonContext.Default.ListResourceTemplatesRequestParams,
-            McpJsonUtilities.JsonContext.Default.ListResourceTemplatesResult);
-
-        SetHandler(
-            RequestMethods.ResourcesRead,
-            readResourceHandler,
-            McpJsonUtilities.JsonContext.Default.ReadResourceRequestParams,
-            McpJsonUtilities.JsonContext.Default.ReadResourceResult);
-
-        SetHandler(
-            RequestMethods.ResourcesSubscribe,
-            subscribeHandler,
-            McpJsonUtilities.JsonContext.Default.SubscribeRequestParams,
-            McpJsonUtilities.JsonContext.Default.EmptyResult);
-
-        SetHandler(
-            RequestMethods.ResourcesUnsubscribe,
-            unsubscribeHandler,
-            McpJsonUtilities.JsonContext.Default.UnsubscribeRequestParams,
-            McpJsonUtilities.JsonContext.Default.EmptyResult);
-    }
-
-    private void ConfigurePrompts(McpServerOptions options)
-    {
-        if (options.Capabilities?.Prompts is not { } promptsCapability)
-        {
-            return;
-        }
-
-        ServerCapabilities.Prompts = new();
-
-        var listPromptsHandler = promptsCapability.ListPromptsHandler ?? (static async (_, __) => new ListPromptsResult());
-        var getPromptHandler = promptsCapability.GetPromptHandler ?? (static async (request, _) => throw new McpException($"Unknown prompt: '{request.Params?.Name}'", McpErrorCode.InvalidParams));
-        var prompts = promptsCapability.PromptCollection;
-        var listChanged = promptsCapability.ListChanged;
-
-        // Handle tools provided via DI by augmenting the handlers to incorporate them.
-        if (prompts is { IsEmpty: false })
-        {
-            var originalListPromptsHandler = listPromptsHandler;
-            listPromptsHandler = async (request, cancellationToken) =>
-            {
-                ListPromptsResult result = originalListPromptsHandler is not null ?
-                    await originalListPromptsHandler(request, cancellationToken).ConfigureAwait(false) :
-                    new();
-
-                if (request.Params?.Cursor is null)
-                {
-                    foreach (var p in prompts)
-                    {
-                        result.Prompts.Add(p.ProtocolPrompt);
-                    }
-                }
-
-                return result;
-            };
-
-            var originalGetPromptHandler = getPromptHandler;
-            getPromptHandler = (request, cancellationToken) =>
-            {
-                if (request.MatchedPrimitive is McpServerPrompt prompt)
-                {
-                    return prompt.GetAsync(request, cancellationToken);
-                }
-
-                return originalGetPromptHandler(request, cancellationToken);
-            };
-
-            listChanged = true;
-        }
-
-        listPromptsHandler = BuildFilterPipeline(listPromptsHandler, options.Filters.ListPromptsFilters);
-        getPromptHandler = BuildFilterPipeline(getPromptHandler, options.Filters.GetPromptFilters, handler =>
-            (request, cancellationToken) =>
-            {
-                // Initial handler that sets MatchedPrimitive
-                if (request.Params?.Name is { } promptName && prompts is not null &&
-                    prompts.TryGetPrimitive(promptName, out var prompt))
-                {
-                    request.MatchedPrimitive = prompt;
-                }
-
-                return handler(request, cancellationToken);
-            });
-
-        ServerCapabilities.Prompts.ListPromptsHandler = listPromptsHandler;
-        ServerCapabilities.Prompts.GetPromptHandler = getPromptHandler;
-        ServerCapabilities.Prompts.PromptCollection = prompts;
-        ServerCapabilities.Prompts.ListChanged = listChanged;
-
-        SetHandler(
-            RequestMethods.PromptsList,
-            listPromptsHandler,
-            McpJsonUtilities.JsonContext.Default.ListPromptsRequestParams,
-            McpJsonUtilities.JsonContext.Default.ListPromptsResult);
-
-        SetHandler(
-            RequestMethods.PromptsGet,
-            getPromptHandler,
-            McpJsonUtilities.JsonContext.Default.GetPromptRequestParams,
-            McpJsonUtilities.JsonContext.Default.GetPromptResult);
-    }
-
-    private void ConfigureTools(McpServerOptions options)
-    {
-        if (options.Capabilities?.Tools is not { } toolsCapability)
-        {
-            return;
-        }
-
-        ServerCapabilities.Tools = new();
-
-        var listToolsHandler = toolsCapability.ListToolsHandler ?? (static async (_, __) => new ListToolsResult());
-        var callToolHandler = toolsCapability.CallToolHandler ?? (static async (request, _) => throw new McpException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams));
-        var tools = toolsCapability.ToolCollection;
-        var listChanged = toolsCapability.ListChanged;
-
-        // Handle tools provided via DI by augmenting the handlers to incorporate them.
-        if (tools is { IsEmpty: false })
-        {
-            var originalListToolsHandler = listToolsHandler;
-            listToolsHandler = async (request, cancellationToken) =>
-            {
-                ListToolsResult result = originalListToolsHandler is not null ?
-                    await originalListToolsHandler(request, cancellationToken).ConfigureAwait(false) :
-                    new();
-
-                if (request.Params?.Cursor is null)
-                {
-                    foreach (var t in tools)
-                    {
-                        result.Tools.Add(t.ProtocolTool);
-                    }
-                }
-
-                return result;
-            };
-
-            var originalCallToolHandler = callToolHandler;
-            callToolHandler = (request, cancellationToken) =>
-            {
-                if (request.MatchedPrimitive is McpServerTool tool)
-                {
-                    return tool.InvokeAsync(request, cancellationToken);
-                }
-
-                return originalCallToolHandler(request, cancellationToken);
-            };
-
-            listChanged = true;
-        }
-
-        listToolsHandler = BuildFilterPipeline(listToolsHandler, options.Filters.ListToolsFilters);
-        callToolHandler = BuildFilterPipeline(callToolHandler, options.Filters.CallToolFilters, handler =>
-            (request, cancellationToken) =>
-            {
-                // Initial handler that sets MatchedPrimitive
-                if (request.Params?.Name is { } toolName && tools is not null &&
-                    tools.TryGetPrimitive(toolName, out var tool))
-                {
-                    request.MatchedPrimitive = tool;
-                }
-
-                return handler(request, cancellationToken);
-            }, handler =>
-            async (request, cancellationToken) =>
-            {
-                // Final handler that provides exception handling only for tool execution
-                // Only wrap tool execution in try-catch, not tool resolution
-                if (request.MatchedPrimitive is McpServerTool)
-                {
-                    try
-                    {
-                        return await handler(request, cancellationToken).ConfigureAwait(false);
-                    }
-                    catch (Exception e) when (e is not OperationCanceledException)
-                    {
-                        ToolCallError(request.Params?.Name ?? string.Empty, e);
-
-                        string errorMessage = e is McpException ?
-                            $"An error occurred invoking '{request.Params?.Name}': {e.Message}" :
-                            $"An error occurred invoking '{request.Params?.Name}'.";
-
-                        return new()
-                        {
-                            IsError = true,
-                            Content = [new TextContentBlock { Text = errorMessage }],
-                        };
-                    }
+                    systemPrompt = new();
                 }
                 else
                 {
-                    // For unmatched tools, let exceptions bubble up as protocol errors
-                    return await handler(request, cancellationToken).ConfigureAwait(false);
+                    systemPrompt.AppendLine();
                 }
-            });
 
-        ServerCapabilities.Tools.ListToolsHandler = listToolsHandler;
-        ServerCapabilities.Tools.CallToolHandler = callToolHandler;
-        ServerCapabilities.Tools.ToolCollection = tools;
-        ServerCapabilities.Tools.ListChanged = listChanged;
+                systemPrompt.Append(message.Text);
+                continue;
+            }
 
-        SetHandler(
-            RequestMethods.ToolsList,
-            listToolsHandler,
-            McpJsonUtilities.JsonContext.Default.ListToolsRequestParams,
-            McpJsonUtilities.JsonContext.Default.ListToolsResult);
-
-        SetHandler(
-            RequestMethods.ToolsCall,
-            callToolHandler,
-            McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
-            McpJsonUtilities.JsonContext.Default.CallToolResult);
-    }
-
-    private void ConfigureLogging(McpServerOptions options)
-    {
-        // We don't require that the handler be provided, as we always store the provided log level to the server.
-        var setLoggingLevelHandler = options.Capabilities?.Logging?.SetLoggingLevelHandler;
-
-        // Apply filters to the handler
-        if (setLoggingLevelHandler is not null)
-        {
-            setLoggingLevelHandler = BuildFilterPipeline(setLoggingLevelHandler, options.Filters.SetLoggingLevelFilters);
-        }
-
-        ServerCapabilities.Logging = new();
-        ServerCapabilities.Logging.SetLoggingLevelHandler = setLoggingLevelHandler;
-
-        RequestHandlers.Set(
-            RequestMethods.LoggingSetLevel,
-            (request, jsonRpcRequest, cancellationToken) =>
+            if (message.Role == ChatRole.User || message.Role == ChatRole.Assistant)
             {
-                // Store the provided level.
-                if (request is not null)
+                Role role = message.Role == ChatRole.User ? Role.User : Role.Assistant;
+
+                foreach (var content in message.Contents)
                 {
-                    if (_loggingLevel is null)
+                    switch (content)
                     {
-                        Interlocked.CompareExchange(ref _loggingLevel, new(request.Level), null);
+                        case TextContent textContent:
+                            samplingMessages.Add(new()
+                            {
+                                Role = role,
+                                Content = new TextContentBlock { Text = textContent.Text },
+                            });
+                            break;
+
+                        case DataContent dataContent when dataContent.HasTopLevelMediaType("image") || dataContent.HasTopLevelMediaType("audio"):
+                            samplingMessages.Add(new()
+                            {
+                                Role = role,
+                                Content = dataContent.HasTopLevelMediaType("image") ?
+                                    new ImageContentBlock
+                                    {
+                                        MimeType = dataContent.MediaType,
+                                        Data = dataContent.Base64Data.ToString(),
+                                    } :
+                                    new AudioContentBlock
+                                    {
+                                        MimeType = dataContent.MediaType,
+                                        Data = dataContent.Base64Data.ToString(),
+                                    },
+                            });
+                            break;
                     }
-
-                    _loggingLevel.Value = request.Level;
-                }
-
-                // If a handler was provided, now delegate to it.
-                if (setLoggingLevelHandler is not null)
-                {
-                    return InvokeHandlerAsync(setLoggingLevelHandler, request, jsonRpcRequest, cancellationToken);
-                }
-
-                // Otherwise, consider it handled.
-                return new ValueTask<EmptyResult>(EmptyResult.Instance);
-            },
-            McpJsonUtilities.JsonContext.Default.SetLevelRequestParams,
-            McpJsonUtilities.JsonContext.Default.EmptyResult);
-    }
-
-    private ValueTask<TResult> InvokeHandlerAsync<TParams, TResult>(
-        McpRequestHandler<TParams, TResult> handler,
-        TParams? args,
-        JsonRpcRequest jsonRpcRequest,
-        CancellationToken cancellationToken = default)
-    {
-        return _servicesScopePerRequest ?
-            InvokeScopedAsync(handler, args, jsonRpcRequest, cancellationToken) :
-            handler(new(new DestinationBoundMcpServer(this, jsonRpcRequest.Context?.RelatedTransport), jsonRpcRequest) { Params = args }, cancellationToken);
-
-        async ValueTask<TResult> InvokeScopedAsync(
-            McpRequestHandler<TParams, TResult> handler,
-            TParams? args,
-            JsonRpcRequest jsonRpcRequest,
-            CancellationToken cancellationToken)
-        {
-            var scope = Services?.GetService<IServiceScopeFactory>()?.CreateAsyncScope();
-            try
-            {
-                return await handler(
-                    new RequestContext<TParams>(new DestinationBoundMcpServer(this, jsonRpcRequest.Context?.RelatedTransport), jsonRpcRequest)
-                    {
-                        Services = scope?.ServiceProvider ?? Services,
-                        Params = args
-                    },
-                    cancellationToken).ConfigureAwait(false);
-            }
-            finally
-            {
-                if (scope is not null)
-                {
-                    await scope.Value.DisposeAsync().ConfigureAwait(false);
                 }
             }
         }
-    }
 
-    private void SetHandler<TParams, TResult>(
-        string method,
-        McpRequestHandler<TParams, TResult> handler,
-        JsonTypeInfo<TParams> requestTypeInfo,
-        JsonTypeInfo<TResult> responseTypeInfo)
-    {
-        RequestHandlers.Set(method,
-            (request, jsonRpcRequest, cancellationToken) =>
-                InvokeHandlerAsync(handler, request, jsonRpcRequest, cancellationToken),
-            requestTypeInfo, responseTypeInfo);
-    }
-
-    private static McpRequestHandler<TParams, TResult> BuildFilterPipeline<TParams, TResult>(
-        McpRequestHandler<TParams, TResult> baseHandler,
-        List<McpRequestFilter<TParams, TResult>> filters,
-        McpRequestFilter<TParams, TResult>? initialHandler = null,
-        McpRequestFilter<TParams, TResult>? finalHandler = null)
-    {
-        var current = baseHandler;
-
-        if (finalHandler is not null)
+        ModelPreferences? modelPreferences = null;
+        if (options?.ModelId is { } modelId)
         {
-            current = finalHandler(current);
+            modelPreferences = new() { Hints = [new() { Name = modelId }] };
         }
 
-        for (int i = filters.Count - 1; i >= 0; i--)
+        var result = await SampleAsync(new()
         {
-            current = filters[i](current);
-        }
+            Messages = samplingMessages,
+            MaxTokens = options?.MaxOutputTokens,
+            StopSequences = options?.StopSequences?.ToArray(),
+            SystemPrompt = systemPrompt?.ToString(),
+            Temperature = options?.Temperature,
+            ModelPreferences = modelPreferences,
+        }, cancellationToken).ConfigureAwait(false);
 
-        if (initialHandler is not null)
+        AIContent? responseContent = result.Content.ToAIContent();
+
+        return new(new ChatMessage(result.Role is Role.User ? ChatRole.User : ChatRole.Assistant, responseContent is not null ? [responseContent] : []))
         {
-            current = initialHandler(current);
-        }
-
-        return current;
-    }
-
-    private void UpdateEndpointNameWithClientInfo()
-    {
-        if (ClientInfo is null)
-        {
-            return;
-        }
-
-        _endpointName = $"{_serverOnlyEndpointName}, Client ({ClientInfo.Name} {ClientInfo.Version})";
-    }
-
-    /// <summary>Maps a <see cref="LogLevel"/> to a <see cref="LoggingLevel"/>.</summary>
-    internal static LoggingLevel ToLoggingLevel(LogLevel level) =>
-        level switch
-        {
-            LogLevel.Trace => Protocol.LoggingLevel.Debug,
-            LogLevel.Debug => Protocol.LoggingLevel.Debug,
-            LogLevel.Information => Protocol.LoggingLevel.Info,
-            LogLevel.Warning => Protocol.LoggingLevel.Warning,
-            LogLevel.Error => Protocol.LoggingLevel.Error,
-            LogLevel.Critical => Protocol.LoggingLevel.Critical,
-            _ => Protocol.LoggingLevel.Emergency,
+            ModelId = result.Model,
+            FinishReason = result.StopReason switch
+            {
+                "maxTokens" => ChatFinishReason.Length,
+                "endTurn" or "stopSequence" or _ => ChatFinishReason.Stop,
+            }
         };
+    }
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "\"{ToolName}\" threw an unhandled exception.")]
-    private partial void ToolCallError(string toolName, Exception exception);
+    /// <summary>
+    /// Creates an <see cref="IChatClient"/> wrapper that can be used to send sampling requests to the client.
+    /// </summary>
+    /// <returns>The <see cref="IChatClient"/> that can be used to issue sampling requests to the client.</returns>
+    /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
+    public IChatClient AsSamplingChatClient()
+    {
+        ThrowIfSamplingUnsupported();
+        return new SamplingChatClient(this);
+    }
+
+    /// <summary>Gets an <see cref="ILogger"/> on which logged messages will be sent as notifications to the client.</summary>
+    /// <returns>An <see cref="ILogger"/> that can be used to log to the client..</returns>
+    public ILoggerProvider AsClientLoggerProvider()
+    {
+        return new ClientLoggerProvider(this);
+    }
+
+    /// <summary>
+    /// Requests the client to list the roots it exposes.
+    /// </summary>
+    /// <param name="request">The parameters for the list roots request.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
+    /// <returns>A task containing the list of roots exposed by the client.</returns>
+    /// <exception cref="InvalidOperationException">The client does not support roots.</exception>
+    public ValueTask<ListRootsResult> RequestRootsAsync(
+        ListRootsRequestParams request, CancellationToken cancellationToken = default)
+    {
+        ThrowIfRootsUnsupported();
+
+        return SendRequestAsync(
+            RequestMethods.RootsList,
+            request,
+            McpJsonUtilities.JsonContext.Default.ListRootsRequestParams,
+            McpJsonUtilities.JsonContext.Default.ListRootsResult,
+            cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// Requests additional information from the user via the client, allowing the server to elicit structured data.
+    /// </summary>
+    /// <param name="request">The parameters for the elicitation request.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
+    /// <returns>A task containing the elicitation result.</returns>
+    /// <exception cref="InvalidOperationException">The client does not support elicitation.</exception>
+    public ValueTask<ElicitResult> ElicitAsync(
+        ElicitRequestParams request, CancellationToken cancellationToken = default)
+    {
+        ThrowIfElicitationUnsupported();
+
+        return SendRequestAsync(
+            RequestMethods.ElicitationCreate,
+            request,
+            McpJsonUtilities.JsonContext.Default.ElicitRequestParams,
+            McpJsonUtilities.JsonContext.Default.ElicitResult,
+            cancellationToken: cancellationToken);
+    }
+
+    private void ThrowIfSamplingUnsupported()
+    {
+        if (ClientCapabilities?.Sampling is null)
+        {
+            if (ServerOptions.KnownClientInfo is not null)
+            {
+                throw new InvalidOperationException("Sampling is not supported in stateless mode.");
+            }
+
+            throw new InvalidOperationException("Client does not support sampling.");
+        }
+    }
+
+    private void ThrowIfRootsUnsupported()
+    {
+        if (ClientCapabilities?.Roots is null)
+        {
+            if (ServerOptions.KnownClientInfo is not null)
+            {
+                throw new InvalidOperationException("Roots are not supported in stateless mode.");
+            }
+
+            throw new InvalidOperationException("Client does not support roots.");
+        }
+    }
+
+    private void ThrowIfElicitationUnsupported()
+    {
+        if (ClientCapabilities?.Elicitation is null)
+        {
+            if (ServerOptions.KnownClientInfo is not null)
+            {
+                throw new InvalidOperationException("Elicitation is not supported in stateless mode.");
+            }
+
+            throw new InvalidOperationException("Client does not support elicitation requests.");
+        }
+    }
+
+    /// <summary>Provides an <see cref="IChatClient"/> implementation that's implemented via client sampling.</summary>
+    private sealed class SamplingChatClient : IChatClient
+    {
+        private readonly McpServer _server;
+
+        public SamplingChatClient(McpServer server) => _server = server;
+
+        /// <inheritdoc/>
+        public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
+            _server.SampleAsync(messages, options, cancellationToken);
+
+        /// <inheritdoc/>
+        async IAsyncEnumerable<ChatResponseUpdate> IChatClient.GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages, ChatOptions? options, [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            var response = await GetResponseAsync(messages, options, cancellationToken).ConfigureAwait(false);
+            foreach (var update in response.ToChatResponseUpdates())
+            {
+                yield return update;
+            }
+        }
+
+        /// <inheritdoc/>
+        object? IChatClient.GetService(Type serviceType, object? serviceKey)
+        {
+            Throw.IfNull(serviceType);
+
+            return
+                serviceKey is not null ? null :
+                serviceType.IsInstanceOfType(this) ? this :
+                serviceType.IsInstanceOfType(_server) ? _server :
+                null;
+        }
+
+        /// <inheritdoc/>
+        void IDisposable.Dispose() { } // nop
+    }
+
+    /// <summary>
+    /// Provides an <see cref="ILoggerProvider"/> implementation for creating loggers
+    /// that send logging message notifications to the client for logged messages.
+    /// </summary>
+    private sealed class ClientLoggerProvider : ILoggerProvider
+    {
+        private readonly McpServer _server;
+
+        public ClientLoggerProvider(McpServer server) => _server = server;
+
+        /// <inheritdoc />
+        public ILogger CreateLogger(string categoryName)
+        {
+            Throw.IfNull(categoryName);
+
+            return new ClientLogger(_server, categoryName);
+        }
+
+        /// <inheritdoc />
+        void IDisposable.Dispose() { }
+
+        private sealed class ClientLogger : ILogger
+        {
+            private readonly McpServer _server;
+            private readonly string _categoryName;
+
+            public ClientLogger(McpServer server, string categoryName)
+            {
+                _server = server;
+                _categoryName = categoryName;
+            }
+
+            /// <inheritdoc />
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull =>
+                null;
+
+            /// <inheritdoc />
+            public bool IsEnabled(LogLevel logLevel) =>
+                _server?.LoggingLevel is { } loggingLevel &&
+                McpServerImpl.ToLoggingLevel(logLevel) >= loggingLevel;
+
+            /// <inheritdoc />
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                if (!IsEnabled(logLevel))
+                {
+                    return;
+                }
+
+                Throw.IfNull(formatter);
+
+                LogInternal(logLevel, formatter(state, exception));
+
+                void LogInternal(LogLevel level, string message)
+                {
+                    _ = _server.SendNotificationAsync(NotificationMethods.LoggingMessageNotification, new LoggingMessageNotificationParams
+                    {
+                        Level = McpServerImpl.ToLoggingLevel(level),
+                        Data = JsonSerializer.SerializeToElement(message, McpJsonUtilities.JsonContext.Default.String),
+                        Logger = _categoryName,
+                    });
+                }
+            }
+        }
+    }
 }

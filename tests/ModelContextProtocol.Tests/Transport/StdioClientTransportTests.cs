@@ -8,7 +8,7 @@ namespace ModelContextProtocol.Tests.Transport;
 public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : LoggedTest(testOutputHelper)
 {
     public static bool IsStdErrCallbackSupported => !PlatformDetection.IsMonoRuntime;
-    
+
     [Fact]
     public async Task CreateAsync_ValidProcessInvalidServer_Throws()
     {
@@ -18,13 +18,13 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
             new(new() { Command = "cmd", Arguments = ["/C", $"echo \"{id}\" >&2"] }, LoggerFactory) :
             new(new() { Command = "ls", Arguments = [id] }, LoggerFactory);
 
-        IOException e = await Assert.ThrowsAsync<IOException>(() => McpClientFactory.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+        IOException e = await Assert.ThrowsAsync<IOException>(() => McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
         {
             Assert.Contains(id, e.ToString());
         }
     }
-    
+
     [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
     public async Task CreateAsync_ValidProcessInvalidServer_StdErrCallbackInvoked()
     {
@@ -46,7 +46,7 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
             new(new() { Command = "cmd", Arguments = ["/C", $"echo \"{id}\" >&2"], StandardErrorLines = stdErrCallback }, LoggerFactory) :
             new(new() { Command = "ls", Arguments = [id], StandardErrorLines = stdErrCallback }, LoggerFactory);
 
-        await Assert.ThrowsAsync<IOException>(() => McpClientFactory.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<IOException>(() => McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.InRange(count, 1, int.MaxValue);
         Assert.Contains(id, sb.ToString());

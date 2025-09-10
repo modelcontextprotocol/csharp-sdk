@@ -77,7 +77,7 @@ public sealed class ServerCapabilities
     /// </para>
     /// <para>
     /// Handlers provided via <see cref="NotificationHandlers"/> will be registered with the server for the lifetime of the server.
-    /// For transient handlers, <see cref="IMcpEndpoint.RegisterNotificationHandler"/> may be used to register a handler that can
+    /// For transient handlers, <see cref="McpSession.RegisterNotificationHandler"/> may be used to register a handler that can
     /// then be unregistered by disposing of the <see cref="IAsyncDisposable"/> returned from the method.
     /// </para>
     /// </remarks>

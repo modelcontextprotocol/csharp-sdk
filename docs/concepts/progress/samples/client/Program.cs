@@ -5,7 +5,7 @@ using ModelContextProtocol.Protocol;
 
 var endpoint = Environment.GetEnvironmentVariable("ENDPOINT") ?? "http://localhost:3001";
 
-var clientTransport = new SseClientTransport(new()
+var clientTransport = new HttpClientTransport(new()
 {
     Endpoint = new Uri(endpoint),
     TransportMode = HttpTransportMode.StreamableHttp,
@@ -20,7 +20,7 @@ McpClientOptions options = new()
     }
 };
 
-await using var mcpClient = await McpClientFactory.CreateAsync(clientTransport, options);
+await using var mcpClient = await McpClient.CreateAsync(clientTransport, options);
 
 var tools = await mcpClient.ListToolsAsync();
 foreach (var tool in tools)

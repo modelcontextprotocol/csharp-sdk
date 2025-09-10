@@ -126,7 +126,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     [Fact]
     public async Task Can_List_And_Call_Registered_Resources()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         Assert.NotNull(client.ServerCapabilities.Resources);
 
@@ -145,7 +145,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     [Fact]
     public async Task Can_List_And_Call_Registered_ResourceTemplates()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         var resources = await client.ListResourceTemplatesAsync(TestContext.Current.CancellationToken);
         Assert.Equal(3, resources.Count);
@@ -162,7 +162,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     [Fact]
     public async Task Can_Be_Notified_Of_Resource_Changes()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         var resources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
         Assert.Equal(5, resources.Count);
@@ -203,7 +203,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     [Fact]
     public async Task TitleAttributeProperty_PropagatedToTitle()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         var resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(resources);
@@ -221,7 +221,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     [Fact]
     public async Task Throws_When_Resource_Fails()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         await Assert.ThrowsAsync<McpException>(async () => await client.ReadResourceAsync(
             $"resource://mcp/{nameof(SimpleResources.ThrowsException)}",
@@ -231,7 +231,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     [Fact]
     public async Task Throws_Exception_On_Unknown_Resource()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         var e = await Assert.ThrowsAsync<McpException>(async () => await client.ReadResourceAsync(
             "test:///NotRegisteredResource",
@@ -265,7 +265,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
         sc.AddMcpServer().WithResources(target);
 
         McpServerResource resource = sc.BuildServiceProvider().GetServices<McpServerResource>().First(t => t.ProtocolResource?.Name == "returns_string");
-        var result = await resource.ReadAsync(new RequestContext<ReadResourceRequestParams>(new Mock<IMcpServer>().Object, new JsonRpcRequest { Method = "test", Id = new RequestId("1") })
+        var result = await resource.ReadAsync(new RequestContext<ReadResourceRequestParams>(new Mock<McpServer>().Object, new JsonRpcRequest { Method = "test", Id = new RequestId("1") })
         {
             Params = new()
             {

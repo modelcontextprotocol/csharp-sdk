@@ -53,7 +53,7 @@ internal sealed class SseHandler(
 
             try
             {
-                await using var mcpServer = McpServerFactory.Create(transport, mcpServerOptions, loggerFactory, context.RequestServices);
+                await using var mcpServer = McpServer.Create(transport, mcpServerOptions, loggerFactory, context.RequestServices);
                 context.Features.Set(mcpServer);
 
                 var runSessionAsync = httpMcpServerOptions.Value.RunSessionHandler ?? StreamableHttpHandler.RunSessionAsync;

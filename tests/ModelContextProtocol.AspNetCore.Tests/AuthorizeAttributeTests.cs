@@ -19,14 +19,14 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
 {
     private readonly MockLoggerProvider _mockLoggerProvider = new();
 
-    private async Task<IMcpClient> ConnectAsync()
+    private async Task<McpClient> ConnectAsync()
     {
-        await using var transport = new SseClientTransport(new SseClientTransportOptions
+        await using var transport = new HttpClientTransport(new HttpClientTransportOptions
         {
             Endpoint = new("http://localhost:5000"),
         }, HttpClient, LoggerFactory);
 
-        return await McpClientFactory.CreateAsync(transport, cancellationToken: TestContext.Current.CancellationToken, loggerFactory: LoggerFactory);
+        return await McpClient.CreateAsync(transport, cancellationToken: TestContext.Current.CancellationToken, loggerFactory: LoggerFactory);
     }
 
     [Fact]
@@ -447,7 +447,7 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
 
     private ClaimsPrincipal CreateUser(string name, params string[] roles)
         => new ClaimsPrincipal(new ClaimsIdentity(
-            [new Claim("name", name), new Claim(ClaimTypes.NameIdentifier, name), ..roles.Select(role => new Claim("role", role))],
+            [new Claim("name", name), new Claim(ClaimTypes.NameIdentifier, name), .. roles.Select(role => new Claim("role", role))],
             "TestAuthType", "name", "role"));
 
     [McpServerToolType]

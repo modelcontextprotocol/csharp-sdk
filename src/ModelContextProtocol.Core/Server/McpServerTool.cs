@@ -15,8 +15,8 @@ namespace ModelContextProtocol.Server;
 /// <see cref="McpServerTool"/> is an abstract base class that represents an MCP tool for use in the server (as opposed
 /// to <see cref="Tool"/>, which provides the protocol representation of a tool, and <see cref="McpClientTool"/>, which
 /// provides a client-side representation of a tool). Instances of <see cref="McpServerTool"/> can be added into a
-/// <see cref="IServiceCollection"/> to be picked up automatically when <see cref="McpServerFactory"/> is used to create
-/// an <see cref="IMcpServer"/>, or added into a <see cref="McpServerPrimitiveCollection{McpServerTool}"/>.
+/// <see cref="IServiceCollection"/> to be picked up automatically when <see cref="McpServer"/> is used to create
+/// an <see cref="McpServer"/>, or added into a <see cref="McpServerPrimitiveCollection{McpServerTool}"/>.
 /// </para>
 /// <para>
 /// Most commonly, <see cref="McpServerTool"/> instances are created using the static <see cref="M:McpServerTool.Create"/> methods.
@@ -35,7 +35,7 @@ namespace ModelContextProtocol.Server;
 ///   <item>
 ///     <description>
 ///       <see cref="CancellationToken"/> parameters are automatically bound to a <see cref="CancellationToken"/> provided by the
-///       <see cref="IMcpServer"/> and that respects any <see cref="CancelledNotificationParams"/>s sent by the client for this operation's
+///       <see cref="McpServer"/> and that respects any <see cref="CancelledNotificationParams"/>s sent by the client for this operation's
 ///       <see cref="RequestId"/>. The parameter is not included in the generated JSON schema.
 ///     </description>
 ///   </item>
@@ -47,7 +47,7 @@ namespace ModelContextProtocol.Server;
 ///   </item>
 ///   <item>
 ///     <description>
-///       <see cref="IMcpServer"/> parameters are not included in the JSON schema and are bound directly to the <see cref="IMcpServer"/>
+///       <see cref="McpServer"/> parameters are not included in the JSON schema and are bound directly to the <see cref="McpServer"/>
 ///       instance associated with this request's <see cref="RequestContext{CallToolRequestParams}"/>. Such parameters may be used to understand
 ///       what server is being used to process the request, and to interact with the client issuing the request to that server.
 ///     </description>
@@ -212,7 +212,7 @@ public abstract class McpServerTool : IMcpServerPrimitive
     /// <exception cref="ArgumentNullException"><paramref name="function"/> is <see langword="null"/>.</exception>
     /// <remarks>
     /// Unlike the other overloads of Create, the <see cref="McpServerTool"/> created by <see cref="Create(AIFunction, McpServerToolCreateOptions)"/>
-    /// does not provide all of the special parameter handling for MCP-specific concepts, like <see cref="IMcpServer"/>.
+    /// does not provide all of the special parameter handling for MCP-specific concepts, like <see cref="McpServer"/>.
     /// </remarks>
     public static McpServerTool Create(
         AIFunction function,

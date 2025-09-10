@@ -6,8 +6,8 @@ namespace ModelContextProtocol.Server;
 
 /// <summary>Augments a service provider with additional request-related services.</summary>
 internal sealed class RequestServiceProvider<TRequestParams>(RequestContext<TRequestParams> request) :
-    IServiceProvider,  IKeyedServiceProvider, IServiceProviderIsService, IServiceProviderIsKeyedService,
-    IDisposable,  IAsyncDisposable
+    IServiceProvider, IKeyedServiceProvider, IServiceProviderIsService, IServiceProviderIsKeyedService,
+    IDisposable, IAsyncDisposable
     where TRequestParams : RequestParams
 {
     private readonly IServiceProvider? _innerServices = request.Services;
@@ -18,14 +18,19 @@ internal sealed class RequestServiceProvider<TRequestParams>(RequestContext<TReq
     /// <summary>Gets whether the specified type is in the list of additional types this service provider wraps around the one in a provided request's services.</summary>
     public static bool IsAugmentedWith(Type serviceType) =>
         serviceType == typeof(RequestContext<TRequestParams>) ||
+        serviceType == typeof(McpServer) ||
+#pragma warning disable CS0618 // Type or member is obsolete
         serviceType == typeof(IMcpServer) ||
+#pragma warning restore CS0618 // Type or member is obsolete
         serviceType == typeof(IProgress<ProgressNotificationValue>) ||
         serviceType == typeof(ClaimsPrincipal);
 
     /// <inheritdoc />
     public object? GetService(Type serviceType) =>
         serviceType == typeof(RequestContext<TRequestParams>) ? request :
-        serviceType == typeof(IMcpServer) ? request.Server :
+#pragma warning disable CS0618 // Type or member is obsolete
+        serviceType == typeof(McpServer) || serviceType == typeof(IMcpServer) ? request.Server :
+#pragma warning restore CS0618 // Type or member is obsolete
         serviceType == typeof(IProgress<ProgressNotificationValue>) ?
             (request.Params?.ProgressToken is { } progressToken ? new TokenProgress(request.Server, progressToken) : NullProgress.Instance) :
         serviceType == typeof(ClaimsPrincipal) ? request.User :

@@ -3,10 +3,10 @@ using ModelContextProtocol.Protocol;
 namespace ModelContextProtocol.Client;
 
 /// <summary>
-/// Provides configuration options for creating <see cref="IMcpClient"/> instances.
+/// Provides configuration options for creating <see cref="McpClient"/> instances.
 /// </summary>
 /// <remarks>
-/// These options are typically passed to <see cref="McpClientFactory.CreateAsync"/> when creating a client.
+/// These options are typically passed to <see cref="McpClient.CreateAsync"/> when creating a client.
 /// They define client capabilities, protocol version, and other client-specific settings.
 /// </remarks>
 public sealed class McpClientOptions

@@ -14,7 +14,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
 {
     private WebApplication? _app;
 
-    private readonly SseClientTransportOptions DefaultTransportOptions = new()
+    private readonly HttpClientTransportOptions DefaultTransportOptions = new()
     {
         Endpoint = new("http://localhost:5000/"),
         Name = "In-memory Streamable HTTP Client",
@@ -58,9 +58,9 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
     }
 
-    private Task<IMcpClient> ConnectMcpClientAsync(McpClientOptions? clientOptions = null)
-        => McpClientFactory.CreateAsync(
-            new SseClientTransport(DefaultTransportOptions, HttpClient, LoggerFactory),
+    private Task<McpClient> ConnectMcpClientAsync(McpClientOptions? clientOptions = null)
+        => McpClient.CreateAsync(
+            new HttpClientTransport(DefaultTransportOptions, HttpClient, LoggerFactory),
             clientOptions, LoggerFactory, TestContext.Current.CancellationToken);
 
     public async ValueTask DisposeAsync()
@@ -194,7 +194,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     }
 
     [McpServerTool(Name = "testSamplingErrors")]
-    public static async Task<string> TestSamplingErrors(IMcpServer server)
+    public static async Task<string> TestSamplingErrors(McpServer server)
     {
         const string expectedSamplingErrorMessage = "Sampling is not supported in stateless mode.";
 
@@ -212,7 +212,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     }
 
     [McpServerTool(Name = "testRootsErrors")]
-    public static async Task<string> TestRootsErrors(IMcpServer server)
+    public static async Task<string> TestRootsErrors(McpServer server)
     {
         const string expectedRootsErrorMessage = "Roots are not supported in stateless mode.";
 
@@ -227,7 +227,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     }
 
     [McpServerTool(Name = "testElicitationErrors")]
-    public static async Task<string> TestElicitationErrors(IMcpServer server)
+    public static async Task<string> TestElicitationErrors(McpServer server)
     {
         const string expectedElicitationErrorMessage = "Elicitation is not supported in stateless mode.";
 

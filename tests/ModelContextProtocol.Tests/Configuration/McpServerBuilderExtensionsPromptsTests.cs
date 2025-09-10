@@ -98,7 +98,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
     [Fact]
     public async Task Can_List_And_Call_Registered_Prompts()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         var prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
         Assert.Equal(6, prompts.Count);
@@ -127,7 +127,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
     [Fact]
     public async Task Can_Be_Notified_Of_Prompt_Changes()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         var prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
         Assert.Equal(6, prompts.Count);
@@ -168,7 +168,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
     [Fact]
     public async Task TitleAttributeProperty_PropagatedToTitle()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         var prompts = await client.ListPromptsAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(prompts);
@@ -182,7 +182,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
     [Fact]
     public async Task Throws_When_Prompt_Fails()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         await Assert.ThrowsAsync<McpException>(async () => await client.GetPromptAsync(
             nameof(SimplePrompts.ThrowsException),
@@ -192,7 +192,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
     [Fact]
     public async Task Throws_Exception_On_Unknown_Prompt()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         var e = await Assert.ThrowsAsync<McpException>(async () => await client.GetPromptAsync(
             "NotRegisteredPrompt",
@@ -204,7 +204,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
     [Fact]
     public async Task Throws_Exception_Missing_Parameter()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         var e = await Assert.ThrowsAsync<McpException>(async () => await client.GetPromptAsync(
             "returns_chat_messages",
@@ -238,7 +238,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
         sc.AddMcpServer().WithPrompts(target);
 
         McpServerPrompt prompt = sc.BuildServiceProvider().GetServices<McpServerPrompt>().First(t => t.ProtocolPrompt.Name == "returns_string");
-        var result = await prompt.GetAsync(new RequestContext<GetPromptRequestParams>(new Mock<IMcpServer>().Object, new JsonRpcRequest { Method = "test", Id = new RequestId("1") })
+        var result = await prompt.GetAsync(new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, new JsonRpcRequest { Method = "test", Id = new RequestId("1") })
         {
             Params = new GetPromptRequestParams
             {

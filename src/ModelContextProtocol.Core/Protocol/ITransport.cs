@@ -62,8 +62,8 @@ public interface ITransport : IAsyncDisposable
     /// </para>
     /// <para>
     /// This is a core method used by higher-level abstractions in the MCP protocol implementation.
-    /// Most client code should use the higher-level methods provided by <see cref="IMcpEndpoint"/>,
-    /// <see cref="McpEndpointExtensions"/>, <see cref="McpClientExtensions"/>, or <see cref="McpServerExtensions"/>,
+    /// Most client code should use the higher-level methods provided by <see cref="McpSession"/>,
+    /// <see cref="McpClient"/>, or <see cref="McpServer"/>,
     /// rather than accessing this method directly.
     /// </para>
     /// </remarks>
