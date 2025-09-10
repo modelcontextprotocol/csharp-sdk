@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Protocol;
 
@@ -59,4 +60,10 @@ public sealed class Prompt : IBaseMetadata
     /// </remarks>
     [JsonPropertyName("_meta")]
     public JsonObject? Meta { get; set; }
+
+    /// <summary>
+    /// Gets or sets the callable server prompt corresponding to this metadata if any.
+    /// </summary>
+    [JsonIgnore]
+    public McpServerPrompt? McpServerPrompt { get; set; }
 }

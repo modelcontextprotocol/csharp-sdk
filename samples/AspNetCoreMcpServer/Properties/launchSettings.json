@@ -7,7 +7,7 @@
       "applicationUrl": "http://localhost:3001",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
-        "OTEL_SERVICE_NAME": "aspnetcore-mcp-server",
+        "OTEL_SERVICE_NAME": "aspnetcore-mcp-server"
       }
     },
     "https": {
@@ -16,7 +16,7 @@
       "applicationUrl": "https://localhost:7133;http://localhost:3001",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
-        "OTEL_SERVICE_NAME": "aspnetcore-mcp-server",
+        "OTEL_SERVICE_NAME": "aspnetcore-mcp-server"
       }
     }
   }

@@ -27,7 +27,7 @@ public class LoggingTools
 
             try
             {
-                logger.LogCritical("A critial log message");
+                logger.LogCritical("A critical log message");
                 logger.LogError("An error log message");
                 logger.LogWarning("A warning log message");
                 logger.LogInformation("An informational log message");

@@ -491,7 +491,7 @@ internal static class Program
             {"temperature", ["0", "0.5", "0.7", "1.0"]},
         };
 
-        Func<RequestContext<CompleteRequestParams>, CancellationToken, ValueTask<CompleteResult>> handler = async (request, cancellationToken) =>
+        McpRequestHandler<CompleteRequestParams, CompleteResult> handler = async (request, cancellationToken) =>
         {
             string[]? values;
             switch (request.Params?.Ref)

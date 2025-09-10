@@ -3,6 +3,7 @@ root = true
 
 # C# files
 [*.cs]
+csharp_style_namespace_declarations=file_scoped:warning
 
 # Compiler
 dotnet_diagnostic.CS1998.severity = suggestion      # CS1998: Missing awaits

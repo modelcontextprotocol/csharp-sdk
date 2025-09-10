@@ -193,14 +193,14 @@ public abstract class McpServer : McpSession, IMcpServer
         }
 
         var result = await SampleAsync(new()
-            {
-                Messages = samplingMessages,
-                MaxTokens = options?.MaxOutputTokens,
-                StopSequences = options?.StopSequences?.ToArray(),
-                SystemPrompt = systemPrompt?.ToString(),
-                Temperature = options?.Temperature,
-                ModelPreferences = modelPreferences,
-            }, cancellationToken).ConfigureAwait(false);
+        {
+            Messages = samplingMessages,
+            MaxTokens = options?.MaxOutputTokens,
+            StopSequences = options?.StopSequences?.ToArray(),
+            SystemPrompt = systemPrompt?.ToString(),
+            Temperature = options?.Temperature,
+            ModelPreferences = modelPreferences,
+        }, cancellationToken).ConfigureAwait(false);
 
         AIContent? responseContent = result.Content.ToAIContent();
 

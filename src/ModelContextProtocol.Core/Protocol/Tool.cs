@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Protocol;
 
@@ -43,7 +44,7 @@ public sealed class Tool : IBaseMetadata
     /// if an invalid schema is provided.
     /// </para>
     /// <para>
-    /// The schema typically defines the properties (parameters) that the tool accepts, 
+    /// The schema typically defines the properties (parameters) that the tool accepts,
     /// their types, and which ones are required. This helps AI models understand
     /// how to structure their calls to the tool.
     /// </para>
@@ -52,9 +53,9 @@ public sealed class Tool : IBaseMetadata
     /// </para>
     /// </remarks>
     [JsonPropertyName("inputSchema")]
-    public JsonElement InputSchema  
-    { 
-        get => field; 
+    public JsonElement InputSchema
+    {
+        get => field;
         set
         {
             if (!McpJsonUtilities.IsValidMcpToolSchema(value))
@@ -114,4 +115,10 @@ public sealed class Tool : IBaseMetadata
     /// </remarks>
     [JsonPropertyName("_meta")]
     public JsonObject? Meta { get; set; }
+
+    /// <summary>
+    /// Gets or sets the callable server tool corresponding to this metadata if any.
+    /// </summary>
+    [JsonIgnore]
+    public McpServerTool? McpServerTool { get; set; }
 }

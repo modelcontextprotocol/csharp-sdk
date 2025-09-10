@@ -133,14 +133,14 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                 LogMessageRead(EndpointName, message.GetType().Name);
 
                 // Fire and forget the message handling to avoid blocking the transport.
-                if (message.ExecutionContext is null)
+                if (message.Context?.ExecutionContext is null)
                 {
                     _ = ProcessMessageAsync();
                 }
                 else
                 {
                     // Flow the execution context from the HTTP request corresponding to this message if provided.
-                    ExecutionContext.Run(message.ExecutionContext, _ => _ = ProcessMessageAsync(), null);
+                    ExecutionContext.Run(message.Context.ExecutionContext, _ => _ = ProcessMessageAsync(), null);
                 }
 
                 async Task ProcessMessageAsync()
@@ -193,13 +193,14 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                                     Message = "An error occurred.",
                                 };
 
-                            await SendMessageAsync(new JsonRpcError
+                            var errorMessage = new JsonRpcError
                             {
                                 Id = request.Id,
                                 JsonRpc = "2.0",
                                 Error = detail,
-                                RelatedTransport = request.RelatedTransport,
-                            }, cancellationToken).ConfigureAwait(false);
+                                Context = new JsonRpcMessageContext { RelatedTransport = request.Context?.RelatedTransport },
+                            };
+                            await SendMessageAsync(errorMessage, cancellationToken).ConfigureAwait(false);
                         }
                         else if (ex is not OperationCanceledException)
                         {
@@ -346,7 +347,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         {
             Id = request.Id,
             Result = result,
-            RelatedTransport = request.RelatedTransport,
+            Context = request.Context,
         }, cancellationToken).ConfigureAwait(false);
 
         return result;
@@ -366,7 +367,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             {
                 Method = NotificationMethods.CancelledNotification,
                 Params = JsonSerializer.SerializeToNode(new CancelledNotificationParams { RequestId = state.Item2.Id }, McpJsonUtilities.JsonContext.Default.CancelledNotificationParams),
-                RelatedTransport = state.Item2.RelatedTransport,
+                Context = new JsonRpcMessageContext { RelatedTransport = state.Item2.Context?.RelatedTransport },
             });
         }, Tuple.Create(this, request));
     }
@@ -546,7 +547,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     // Streamable HTTP transport where the specification states that the server SHOULD include JSON-RPC responses in
     // the HTTP response body for the POST request containing the corresponding JSON-RPC request.
     private Task SendToRelatedTransportAsync(JsonRpcMessage message, CancellationToken cancellationToken)
-        => (message.RelatedTransport ?? _transport).SendMessageAsync(message, cancellationToken);
+        => (message.Context?.RelatedTransport ?? _transport).SendMessageAsync(message, cancellationToken);
 
     private static CancelledNotificationParams? GetCancelledNotificationParams(JsonNode? notificationParams)
     {

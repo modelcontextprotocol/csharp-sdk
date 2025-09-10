@@ -245,7 +245,7 @@ public abstract class McpSession : IMcpEndpoint, IAsyncDisposable
     /// </remarks>
     public Task NotifyProgressAsync(
         ProgressToken progressToken,
-        ProgressNotificationValue progress, 
+        ProgressNotificationValue progress,
         CancellationToken cancellationToken = default)
     {
         return SendNotificationAsync(
