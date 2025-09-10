@@ -53,8 +53,10 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         Assert.NotNull(client.ServerCapabilities);
         Assert.NotNull(client.ServerInfo);
 
-        if (ClientTransportOptions.Endpoint.AbsolutePath.EndsWith("/sse"))
+        if (ClientTransportOptions.Endpoint.AbsolutePath.EndsWith("/sse") ||
+            ClientTransportOptions.Endpoint.AbsolutePath.EndsWith("/stateless"))
         {
+            // In SSE and in Streamable HTTP's stateless mode, no protocol-defined session IDs are used.:w
             Assert.Null(client.SessionId);
         }
         else
