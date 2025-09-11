@@ -63,17 +63,6 @@ public class McpClientFactoryTests
         // Arrange
         var clientOptions = new McpClientOptions
         {
-            Handlers = new()
-            {
-                SamplingHandler = async (c, p, t) => new CreateMessageResult 
-                { 
-                    Content = new TextContentBlock { Text = "result" }, 
-                    Model = "test-model", 
-                    Role = Role.User, 
-                    StopReason = "endTurn" 
-                },
-                RootsHandler = async (t, r) => new ListRootsResult { Roots = [] }
-            },
             Capabilities = new ClientCapabilities
             {
                 Roots = new RootsCapability
@@ -82,6 +71,15 @@ public class McpClientFactoryTests
                 }
             }
         };
+        
+        clientOptions.Handlers.SamplingHandler = async (c, p, t) => new CreateMessageResult 
+        { 
+            Content = new TextContentBlock { Text = "result" }, 
+            Model = "test-model", 
+            Role = Role.User, 
+            StopReason = "endTurn" 
+        };
+        clientOptions.Handlers.RootsHandler = async (t, r) => new ListRootsResult { Roots = [] };
 
         var clientTransport = (IClientTransport)Activator.CreateInstance(transportType)!;
         IMcpClient? client = null;

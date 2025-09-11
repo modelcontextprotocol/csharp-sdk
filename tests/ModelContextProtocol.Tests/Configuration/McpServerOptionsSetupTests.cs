@@ -17,7 +17,7 @@ public class McpServerOptionsSetupTests
 
         var options = services.BuildServiceProvider().GetRequiredService<IOptions<McpServerOptions>>().Value;
         
-        Assert.NotNull(options.Handlers?.ListPromptsHandler);
+        Assert.NotNull(options.Handlers.ListPromptsHandler);
         Assert.NotNull(options.Capabilities?.Prompts);
     }
 
@@ -30,7 +30,7 @@ public class McpServerOptionsSetupTests
 
         var options = services.BuildServiceProvider().GetRequiredService<IOptions<McpServerOptions>>().Value;
         
-        Assert.NotNull(options.Handlers?.GetPromptHandler);
+        Assert.NotNull(options.Handlers.GetPromptHandler);
         Assert.NotNull(options.Capabilities?.Prompts);
     }
     #endregion
@@ -45,7 +45,7 @@ public class McpServerOptionsSetupTests
 
         var options = services.BuildServiceProvider().GetRequiredService<IOptions<McpServerOptions>>().Value;
         
-        Assert.NotNull(options.Handlers?.ListResourceTemplatesHandler);
+        Assert.NotNull(options.Handlers.ListResourceTemplatesHandler);
         Assert.NotNull(options.Capabilities?.Resources);
     }
 
@@ -58,7 +58,7 @@ public class McpServerOptionsSetupTests
 
         var options = services.BuildServiceProvider().GetRequiredService<IOptions<McpServerOptions>>().Value;
         
-        Assert.NotNull(options.Handlers?.ListResourcesHandler);
+        Assert.NotNull(options.Handlers.ListResourcesHandler);
         Assert.NotNull(options.Capabilities?.Resources);
     }
 
@@ -71,7 +71,7 @@ public class McpServerOptionsSetupTests
 
         var options = services.BuildServiceProvider().GetRequiredService<IOptions<McpServerOptions>>().Value;
         
-        Assert.NotNull(options.Handlers?.ReadResourceHandler);
+        Assert.NotNull(options.Handlers.ReadResourceHandler);
         Assert.NotNull(options.Capabilities?.Resources);
     }
 
@@ -85,8 +85,8 @@ public class McpServerOptionsSetupTests
 
         var options = services.BuildServiceProvider().GetRequiredService<IOptions<McpServerOptions>>().Value;
         
-        Assert.NotNull(options.Handlers?.ListResourcesHandler);
-        Assert.NotNull(options.Handlers?.SubscribeToResourcesHandler);
+        Assert.NotNull(options.Handlers.ListResourcesHandler);
+        Assert.NotNull(options.Handlers.SubscribeToResourcesHandler);
         Assert.NotNull(options.Capabilities?.Resources);
         Assert.True(options.Capabilities.Resources.Subscribe);
     }
@@ -101,8 +101,8 @@ public class McpServerOptionsSetupTests
 
         var options = services.BuildServiceProvider().GetRequiredService<IOptions<McpServerOptions>>().Value;
         
-        Assert.NotNull(options.Handlers?.ListResourcesHandler);
-        Assert.NotNull(options.Handlers?.UnsubscribeFromResourcesHandler);
+        Assert.NotNull(options.Handlers.ListResourcesHandler);
+        Assert.NotNull(options.Handlers.UnsubscribeFromResourcesHandler);
         Assert.NotNull(options.Capabilities?.Resources);
         Assert.True(options.Capabilities.Resources.Subscribe);
     }
@@ -116,7 +116,7 @@ public class McpServerOptionsSetupTests
 
         var options = services.BuildServiceProvider().GetRequiredService<IOptions<McpServerOptions>>().Value;
         
-        Assert.Null(options.Handlers?.SubscribeToResourcesHandler);
+        Assert.Null(options.Handlers.SubscribeToResourcesHandler);
         Assert.Null(options.Capabilities?.Resources);
     }
 
@@ -129,7 +129,7 @@ public class McpServerOptionsSetupTests
 
         var options = services.BuildServiceProvider().GetRequiredService<IOptions<McpServerOptions>>().Value;
         
-        Assert.Null(options.Handlers?.UnsubscribeFromResourcesHandler);
+        Assert.Null(options.Handlers.UnsubscribeFromResourcesHandler);
         Assert.Null(options.Capabilities?.Resources);
     }
     #endregion
@@ -144,7 +144,7 @@ public class McpServerOptionsSetupTests
 
         var options = services.BuildServiceProvider().GetRequiredService<IOptions<McpServerOptions>>().Value;
         
-        Assert.NotNull(options.Handlers?.ListToolsHandler);
+        Assert.NotNull(options.Handlers.ListToolsHandler);
         Assert.NotNull(options.Capabilities?.Tools);
     }
 
@@ -157,7 +157,7 @@ public class McpServerOptionsSetupTests
 
         var options = services.BuildServiceProvider().GetRequiredService<IOptions<McpServerOptions>>().Value;
         
-        Assert.NotNull(options.Handlers?.CallToolHandler);
+        Assert.NotNull(options.Handlers.CallToolHandler);
         Assert.NotNull(options.Capabilities?.Tools);
     }
     #endregion
@@ -172,7 +172,7 @@ public class McpServerOptionsSetupTests
 
         var options = services.BuildServiceProvider().GetRequiredService<IOptions<McpServerOptions>>().Value;
         
-        Assert.NotNull(options.Handlers?.SetLoggingLevelHandler);
+        Assert.NotNull(options.Handlers.SetLoggingLevelHandler);
         Assert.NotNull(options.Capabilities?.Logging);
     }
     #endregion
@@ -187,7 +187,7 @@ public class McpServerOptionsSetupTests
 
         var options = services.BuildServiceProvider().GetRequiredService<IOptions<McpServerOptions>>().Value;
         
-        Assert.NotNull(options.Handlers?.CompleteHandler);
+        Assert.NotNull(options.Handlers.CompleteHandler);
         Assert.NotNull(options.Capabilities?.Completions);
     }
     #endregion

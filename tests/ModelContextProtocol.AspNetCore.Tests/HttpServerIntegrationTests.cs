@@ -249,21 +249,16 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         // Set up the sampling handler
         int samplingHandlerCalls = 0;
 #pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
-        McpClientOptions options = new()
+        McpClientOptions options = new();
+        options.Handlers.SamplingHandler = async (_, _, _) =>
         {
-            Handlers = new()
+            samplingHandlerCalls++;
+            return new CreateMessageResult
             {
-                SamplingHandler = async (_, _, _) =>
-                {
-                    samplingHandlerCalls++;
-                    return new CreateMessageResult
-                    {
-                        Model = "test-model",
-                        Role = Role.Assistant,
-                        Content = new TextContentBlock { Text = "Test response" },
-                    };
-                }
-            }
+                Model = "test-model",
+                Role = Role.Assistant,
+                Content = new TextContentBlock { Text = "Test response" },
+            };
         };
         await using var client = await GetClientAsync(options);
 #pragma warning restore CS1998 // Async method lacks 'await' operators and will run synchronously

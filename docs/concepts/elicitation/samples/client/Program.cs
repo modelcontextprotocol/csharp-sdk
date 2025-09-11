@@ -17,12 +17,9 @@ McpClientOptions options = new()
     {
         Name = "ElicitationClient",
         Version = "1.0.0"
-    },
-    Handlers = new()
-    {
-        ElicitationHandler = HandleElicitationAsync
     }
 };
+options.Handlers.ElicitationHandler = HandleElicitationAsync;
 
 await using var mcpClient = await McpClientFactory.CreateAsync(clientTransport, options);
 // </snippet_McpInitialize>

@@ -242,8 +242,7 @@ public class McpServerTests : LoggedTest
             method: RequestMethods.CompletionComplete,
             configureOptions: options =>
             {
-                var handlers = options.Handlers ??= new();
-                handlers.CompleteHandler = async (request, ct) =>
+                options.Handlers.CompleteHandler = async (request, ct) =>
                     new CompleteResult
                     {
                         Completion = new()
@@ -275,22 +274,21 @@ public class McpServerTests : LoggedTest
             RequestMethods.ResourcesTemplatesList,
             configureOptions: options =>
             {
-                var handlers = options.Handlers ??= new();
-                handlers.ListResourceTemplatesHandler = async (request, ct) =>
+                options.Handlers.ListResourceTemplatesHandler = async (request, ct) =>
                 {
                     return new ListResourceTemplatesResult
                     {
                         ResourceTemplates = [new() { UriTemplate = "test", Name = "Test Resource" }]
                     };
                 };
-                handlers.ListResourcesHandler = async (request, ct) =>
+                options.Handlers.ListResourcesHandler = async (request, ct) =>
                 {
                     return new ListResourcesResult
                     {
                         Resources = [new() { Uri = "test", Name = "Test Resource" }]
                     };
                 };
-                handlers.ReadResourceHandler = (request, ct) => throw new NotImplementedException();
+                options.Handlers.ReadResourceHandler = (request, ct) => throw new NotImplementedException();
             },
             assertResult: response =>
             {
@@ -312,15 +310,14 @@ public class McpServerTests : LoggedTest
             RequestMethods.ResourcesList,
             configureOptions: options =>
             {
-                var handlers = options.Handlers ??= new();
-                handlers.ListResourcesHandler = async (request, ct) =>
+                options.Handlers.ListResourcesHandler = async (request, ct) =>
                 {
                     return new ListResourcesResult
                     {
                         Resources = [new() { Uri = "test", Name = "Test Resource" }]
                     };
                 };
-                handlers.ReadResourceHandler = (request, ct) => throw new NotImplementedException();
+                options.Handlers.ReadResourceHandler = (request, ct) => throw new NotImplementedException();
             },
             assertResult: response =>
             {
@@ -348,15 +345,14 @@ public class McpServerTests : LoggedTest
             method: RequestMethods.ResourcesRead,
             configureOptions: options =>
             {
-                var handlers = options.Handlers ??= new();
-                handlers.ReadResourceHandler = async (request, ct) =>
+                options.Handlers.ReadResourceHandler = async (request, ct) =>
                 {
                     return new ReadResourceResult
                     {
                         Contents = [new TextResourceContents { Text = "test" }]
                     };
                 };
-                handlers.ListResourcesHandler = (request, ct) => throw new NotImplementedException();
+                options.Handlers.ListResourcesHandler = (request, ct) => throw new NotImplementedException();
             },
             assertResult: response =>
             {
@@ -386,15 +382,14 @@ public class McpServerTests : LoggedTest
             method: RequestMethods.PromptsList,
             configureOptions: options =>
             {
-                var handlers = options.Handlers ??= new();
-                handlers.ListPromptsHandler = async (request, ct) =>
+                options.Handlers.ListPromptsHandler = async (request, ct) =>
                 {
                     return new ListPromptsResult
                     {
                         Prompts = [new() { Name = "test" }]
                     };
                 };
-                handlers.GetPromptHandler = (request, ct) => throw new NotImplementedException();
+                options.Handlers.GetPromptHandler = (request, ct) => throw new NotImplementedException();
             },
             assertResult: response =>
             {
@@ -422,9 +417,8 @@ public class McpServerTests : LoggedTest
             method: RequestMethods.PromptsGet,
             configureOptions: options =>
             {
-                var handlers = options.Handlers ??= new();
-                handlers.GetPromptHandler = async (request, ct) => new GetPromptResult { Description = "test" };
-                handlers.ListPromptsHandler = (request, ct) => throw new NotImplementedException();
+                options.Handlers.GetPromptHandler = async (request, ct) => new GetPromptResult { Description = "test" };
+                options.Handlers.ListPromptsHandler = (request, ct) => throw new NotImplementedException();
             },
             assertResult: response =>
             {
@@ -451,15 +445,14 @@ public class McpServerTests : LoggedTest
             method: RequestMethods.ToolsList,
             configureOptions: options =>
             {
-                var handlers = options.Handlers ??= new();
-                handlers.ListToolsHandler = async (request, ct) =>
+                options.Handlers.ListToolsHandler = async (request, ct) =>
                 {
                     return new ListToolsResult
                     {
                         Tools = [new() { Name = "test" }]
                     };
                 };
-                handlers.CallToolHandler = (request, ct) => throw new NotImplementedException();
+                options.Handlers.CallToolHandler = (request, ct) => throw new NotImplementedException();
             },
             assertResult: response =>
             {
@@ -487,15 +480,14 @@ public class McpServerTests : LoggedTest
             method: RequestMethods.ToolsCall,
             configureOptions: options =>
             {
-                var handlers = options.Handlers ??= new();
-                handlers.CallToolHandler = async (request, ct) =>
+                options.Handlers.CallToolHandler = async (request, ct) =>
                 {
                     return new CallToolResult
                     {
                         Content = [new TextContentBlock { Text = "test" }]
                     };
                 };
-                handlers.ListToolsHandler = (request, ct) => throw new NotImplementedException();
+                options.Handlers.ListToolsHandler = (request, ct) => throw new NotImplementedException();
             },
             assertResult: response =>
             {
@@ -682,8 +674,7 @@ public class McpServerTests : LoggedTest
         var options = CreateOptions();
 
         var notificationReceived = new TaskCompletionSource<JsonRpcNotification>();
-        var handlers = options.Handlers ??= new();
-        handlers.NotificationHandlers =
+        options.Handlers.NotificationHandlers =
             [new(NotificationMethods.ProgressNotification, (notification, cancellationToken) =>
             {
                 notificationReceived.TrySetResult(notification);

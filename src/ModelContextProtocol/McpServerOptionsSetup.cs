@@ -80,7 +80,7 @@ internal sealed class McpServerOptionsSetup(
     /// </summary>
     private static void OverwriteWithSetHandlers(McpServerHandlers handlers, McpServerOptions options)
     {
-        McpServerHandlers optionsHandlers = options.Handlers ??= new();
+        McpServerHandlers optionsHandlers = options.Handlers;
 
         PromptsCapability? promptsCapability = options.Capabilities?.Prompts;
         if (handlers.ListPromptsHandler is not null || handlers.GetPromptHandler is not null)

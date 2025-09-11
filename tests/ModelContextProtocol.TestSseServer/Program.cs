@@ -95,8 +95,7 @@ public class Program
         }
 
         const int pageSize = 10;
-        var handlers = options.Handlers ??= new();
-        handlers.ListToolsHandler = async (request, cancellationToken) =>
+        options.Handlers.ListToolsHandler = async (request, cancellationToken) =>
         {
             return new ListToolsResult
             {
@@ -153,7 +152,7 @@ public class Program
                 ]
             };
         };
-        handlers.CallToolHandler = async (request, cancellationToken) =>
+        options.Handlers.CallToolHandler = async (request, cancellationToken) =>
         {
             if (request.Params is null)
             {
@@ -198,7 +197,7 @@ public class Program
                 throw new McpException($"Unknown tool: '{request.Params.Name}'", McpErrorCode.InvalidParams);
             }
         };
-        handlers.ListResourceTemplatesHandler = async (request, cancellationToken) =>
+        options.Handlers.ListResourceTemplatesHandler = async (request, cancellationToken) =>
         {
 
             return new ListResourceTemplatesResult
@@ -213,7 +212,7 @@ public class Program
             };
         };
 
-        handlers.ListResourcesHandler = async (request, cancellationToken) =>
+        options.Handlers.ListResourcesHandler = async (request, cancellationToken) =>
         {
             int startIndex = 0;
             var requestParams = request.Params ?? new();
@@ -244,7 +243,7 @@ public class Program
                 Resources = resources.GetRange(startIndex, endIndex - startIndex)
             };
         };
-        handlers.ReadResourceHandler = async (request, cancellationToken) =>
+        options.Handlers.ReadResourceHandler = async (request, cancellationToken) =>
         {
             if (request.Params?.Uri is null)
             {
@@ -280,7 +279,7 @@ public class Program
                 Contents = [contents]
             };
         };
-        handlers.ListPromptsHandler = async (request, cancellationToken) =>
+        options.Handlers.ListPromptsHandler = async (request, cancellationToken) =>
         {
             return new ListPromptsResult
             {
@@ -313,7 +312,7 @@ public class Program
                 ]
             };
         };
-        handlers.GetPromptHandler = async (request, cancellationToken) =>
+        options.Handlers.GetPromptHandler = async (request, cancellationToken) =>
         {
             if (request.Params is null)
             {

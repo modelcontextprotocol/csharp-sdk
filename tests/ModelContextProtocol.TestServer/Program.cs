@@ -106,8 +106,7 @@ internal static class Program
 
     private static void ConfigureTools(McpServerOptions options)
     {
-        var handlers = options.Handlers ??= new();
-        handlers.ListToolsHandler = async (request, cancellationToken) =>
+        options.Handlers.ListToolsHandler = async (request, cancellationToken) =>
         {
             return new ListToolsResult
             {
@@ -164,7 +163,7 @@ internal static class Program
                 ]
             };
         };
-        handlers.CallToolHandler = async (request, cancellationToken) =>
+        options.Handlers.CallToolHandler = async (request, cancellationToken) =>
         {
             if (request.Params?.Name == "echo")
             {
@@ -209,8 +208,7 @@ internal static class Program
 
     private static void ConfigurePrompts(McpServerOptions options)
     {
-        var handlers = options.Handlers ??= new();
-        handlers.ListPromptsHandler = async (request, cancellationToken) =>
+        options.Handlers.ListPromptsHandler = async (request, cancellationToken) =>
         {
             return new ListPromptsResult
             {
@@ -244,7 +242,7 @@ internal static class Program
             };
         };
 
-        handlers.GetPromptHandler = async (request, cancellationToken) =>
+        options.Handlers.GetPromptHandler = async (request, cancellationToken) =>
         {
             List<PromptMessage> messages = [];
             if (request.Params?.Name == "simple_prompt")
@@ -295,8 +293,7 @@ internal static class Program
 
     private static void ConfigureLogging(McpServerOptions options)
     {
-        var handlers = options.Handlers ??= new();
-        handlers.SetLoggingLevelHandler = async (request, cancellationToken) =>
+        options.Handlers.SetLoggingLevelHandler = async (request, cancellationToken) =>
         {
             if (request.Params?.Level is null)
             {
@@ -356,8 +353,7 @@ internal static class Program
 
         const int pageSize = 10;
 
-        var handlers = options.Handlers ??= new();
-        handlers.ListResourceTemplatesHandler = async (request, cancellationToken) =>
+        options.Handlers.ListResourceTemplatesHandler = async (request, cancellationToken) =>
         {
             return new ListResourceTemplatesResult
             {
@@ -371,7 +367,7 @@ internal static class Program
             };
         };
 
-        handlers.ListResourcesHandler = async (request, cancellationToken) =>
+        options.Handlers.ListResourcesHandler = async (request, cancellationToken) =>
         {
             int startIndex = 0;
             if (request.Params?.Cursor is not null)
@@ -401,7 +397,7 @@ internal static class Program
             };
         };
 
-        handlers.ReadResourceHandler = async (request, cancellationToken) =>
+        options.Handlers.ReadResourceHandler = async (request, cancellationToken) =>
         {
             if (request.Params?.Uri is null)
             {
@@ -438,7 +434,7 @@ internal static class Program
             };
         };
 
-        handlers.SubscribeToResourcesHandler = async (request, cancellationToken) =>
+        options.Handlers.SubscribeToResourcesHandler = async (request, cancellationToken) =>
         {
             if (request?.Params?.Uri is null)
             {
@@ -455,7 +451,7 @@ internal static class Program
             return new EmptyResult();
         };
 
-        handlers.UnsubscribeFromResourcesHandler = async (request, cancellationToken) =>
+        options.Handlers.UnsubscribeFromResourcesHandler = async (request, cancellationToken) =>
         {
             if (request?.Params?.Uri is null)
             {
@@ -482,8 +478,7 @@ internal static class Program
             {"temperature", ["0", "0.5", "0.7", "1.0"]},
         };
 
-        var handlers = options.Handlers ??= new();
-        handlers.CompleteHandler = async (request, cancellationToken) =>
+        options.Handlers.CompleteHandler = async (request, cancellationToken) =>
         {
             string[]? values;
             switch (request.Params?.Ref)

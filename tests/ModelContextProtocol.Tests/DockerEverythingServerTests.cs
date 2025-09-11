@@ -70,21 +70,16 @@ public class DockerEverythingServerTests(ITestOutputHelper testOutputHelper) : L
         };
 
         int samplingHandlerCalls = 0;
-        var defaultOptions = new McpClientOptions
+        var defaultOptions = new McpClientOptions();
+        defaultOptions.Handlers.SamplingHandler = async (_, _, _) =>
         {
-            Handlers = new()
+            samplingHandlerCalls++;
+            return new CreateMessageResult
             {
-                SamplingHandler = async (_, _, _) =>
-                {
-                    samplingHandlerCalls++;
-                    return new CreateMessageResult
-                    {
-                        Model = "test-model",
-                        Role = Role.Assistant,
-                        Content = new TextContentBlock { Text = "Test response" },
-                    };
-                }
-            }
+                Model = "test-model",
+                Role = Role.Assistant,
+                Content = new TextContentBlock { Text = "Test response" },
+            };
         };
 
         await using var client = await McpClientFactory.CreateAsync(

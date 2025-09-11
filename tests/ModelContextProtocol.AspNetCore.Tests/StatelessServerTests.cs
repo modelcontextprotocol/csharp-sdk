@@ -101,15 +101,10 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     {
         await StartAsync();
 
-        var mcpClientOptions = new McpClientOptions
+        var mcpClientOptions = new McpClientOptions();
+        mcpClientOptions.Handlers.SamplingHandler = (_, _, _) =>
         {
-            Handlers = new()
-            {
-                SamplingHandler = (_, _, _) =>
-                {
-                    throw new UnreachableException();
-                }
-            }
+            throw new UnreachableException();
         };
 
         await using var client = await ConnectMcpClientAsync(mcpClientOptions);
@@ -124,15 +119,10 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     {
         await StartAsync();
 
-        var mcpClientOptions = new McpClientOptions
+        var mcpClientOptions = new McpClientOptions();
+        mcpClientOptions.Handlers.RootsHandler = (_, _) =>
         {
-            Handlers = new()
-            {
-                RootsHandler = (_, _) =>
-                {
-                    throw new UnreachableException();
-                }
-            }
+            throw new UnreachableException();
         };
 
         await using var client = await ConnectMcpClientAsync(mcpClientOptions);
@@ -147,15 +137,10 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     {
         await StartAsync();
 
-        var mcpClientOptions = new McpClientOptions
+        var mcpClientOptions = new McpClientOptions();
+        mcpClientOptions.Handlers.ElicitationHandler = (_, _) =>
         {
-            Handlers = new()
-            {
-                ElicitationHandler = (_, _) =>
-                {
-                    throw new UnreachableException();
-                }
-            }
+            throw new UnreachableException();
         };
 
         await using var client = await ConnectMcpClientAsync(mcpClientOptions);

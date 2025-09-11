@@ -91,6 +91,11 @@ public sealed class McpServerOptions
     public McpServerFilters Filters { get; } = new();
 
     /// <summary>
+    /// Gets or sets the container of handlers used by the server for processing protocol messages.
+    /// </summary>
+    public McpServerHandlers Handlers { get; } = new();
+
+    /// <summary>
     /// Gets or sets a collection of tools served by the server.
     /// </summary>
     /// <remarks>
@@ -139,9 +144,4 @@ public sealed class McpServerOptions
     /// </para>
     /// </remarks>
     public McpServerPrimitiveCollection<McpServerPrompt>? PromptCollection { get; set; }
-
-    /// <summary>
-    /// Gets or sets the container of handlers used by the server for processing protocol messages.
-    /// </summary>
-    public McpServerHandlers? Handlers { get; set; }
 }

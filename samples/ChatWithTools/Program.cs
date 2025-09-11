@@ -32,6 +32,9 @@ using IChatClient samplingClient = openAIClient.AsIChatClient()
     .UseOpenTelemetry(loggerFactory: loggerFactory, configure: o => o.EnableSensitiveData = true)
     .Build();
 
+var clientOptions = new McpClientOptions();
+clientOptions.Handlers.SamplingHandler = samplingClient.CreateSamplingHandler();
+
 var mcpClient = await McpClientFactory.CreateAsync(
     new StdioClientTransport(new()
     {
@@ -39,13 +42,7 @@ var mcpClient = await McpClientFactory.CreateAsync(
         Arguments = ["-y", "--verbose", "@modelcontextprotocol/server-everything"],
         Name = "Everything",
     }),
-    clientOptions: new()
-    {
-        Handlers = new()
-        {
-            SamplingHandler = samplingClient.CreateSamplingHandler()
-        }
-    },
+    clientOptions: clientOptions,
     loggerFactory: loggerFactory);
 
 // Get all available tools

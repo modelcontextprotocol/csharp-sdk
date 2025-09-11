@@ -39,12 +39,12 @@ internal sealed partial class McpClient : McpEndpoint, IMcpClient
 
         EndpointName = clientTransport.Name;
 
-        if (options.Handlers?.NotificationHandlers is { } notificationHandlers)
+        if (options.Handlers.NotificationHandlers is { } notificationHandlers)
         {
             NotificationHandlers.RegisterRange(notificationHandlers);
         }
 
-        if (options.Handlers?.SamplingHandler is { } samplingHandler)
+        if (options.Handlers.SamplingHandler is { } samplingHandler)
         {
             RequestHandlers.Set(
                 RequestMethods.SamplingCreateMessage,
@@ -59,7 +59,7 @@ internal sealed partial class McpClient : McpEndpoint, IMcpClient
             _options.Capabilities.Sampling ??= new();
         }
 
-        if (options.Handlers?.RootsHandler is { } rootsHandler)
+        if (options.Handlers.RootsHandler is { } rootsHandler)
         {
             RequestHandlers.Set(
                 RequestMethods.RootsList,
@@ -71,7 +71,7 @@ internal sealed partial class McpClient : McpEndpoint, IMcpClient
             _options.Capabilities.Roots ??= new();
         }
 
-        if (options.Handlers?.ElicitationHandler is { } elicitationHandler)
+        if (options.Handlers.ElicitationHandler is { } elicitationHandler)
         {
             RequestHandlers.Set(
                 RequestMethods.ElicitationCreate,

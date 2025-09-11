@@ -67,5 +67,5 @@ public sealed class McpClientOptions
     /// <summary>
     /// Gets or sets the container of handlers used by the client for processing protocol messages.
     /// </summary>
-    public McpClientHandlers? Handlers { get; set; }
+    public McpClientHandlers Handlers { get; } = new();
 }
