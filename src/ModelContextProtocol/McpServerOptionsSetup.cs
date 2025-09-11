@@ -91,7 +91,7 @@ internal sealed class McpServerOptionsSetup(
         }
 
         ResourcesCapability? resourcesCapability = options.Capabilities?.Resources;
-        if (handlers.ListResourcesHandler is not null || handlers.ReadResourceHandler is not null)
+        if (handlers.ListResourceTemplatesHandler is not null || handlers.ListResourcesHandler is not null || handlers.ReadResourceHandler is not null)
         {
             resourcesCapability ??= new();
             optionsHandlers.ListResourceTemplatesHandler = handlers.ListResourceTemplatesHandler ?? optionsHandlers.ListResourceTemplatesHandler;
