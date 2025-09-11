@@ -63,4 +63,9 @@ public sealed class McpClientOptions
     /// <para>The default value is 60 seconds.</para>
     /// </remarks>
     public TimeSpan InitializationTimeout { get; set; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// Gets or sets the container of handlers used by the client for processing protocol messages.
+    /// </summary>
+    public McpClientHandlers? Handlers { get; set; }
 }

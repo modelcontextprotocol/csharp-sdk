@@ -119,7 +119,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     public void Adds_Tools_To_Server()
     {
         var serverOptions = ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
-        var tools = serverOptions.Capabilities?.Tools?.ToolCollection;
+        var tools = serverOptions.ToolCollection;
         Assert.NotNull(tools);
         Assert.NotEmpty(tools);
     }
@@ -201,7 +201,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         Assert.False(notificationRead.IsCompleted);
 
         var serverOptions = ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
-        var serverTools = serverOptions.Capabilities?.Tools?.ToolCollection;
+        var serverTools = serverOptions.ToolCollection;
         Assert.NotNull(serverTools);
 
         var newTool = McpServerTool.Create([McpServerTool(Name = "NewTool")] () => "42");

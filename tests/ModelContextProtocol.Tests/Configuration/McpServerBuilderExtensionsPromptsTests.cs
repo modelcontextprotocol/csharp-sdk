@@ -90,7 +90,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
     public void Adds_Prompts_To_Server()
     {
         var serverOptions = ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
-        var prompts = serverOptions?.Capabilities?.Prompts?.PromptCollection;
+        var prompts = serverOptions.PromptCollection;
         Assert.NotNull(prompts);
         Assert.NotEmpty(prompts);
     }
@@ -137,7 +137,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
         Assert.False(notificationRead.IsCompleted);
 
         var serverOptions = ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
-        var serverPrompts = serverOptions.Capabilities?.Prompts?.PromptCollection;
+        var serverPrompts = serverOptions.PromptCollection;
         Assert.NotNull(serverPrompts);
 
         var newPrompt = McpServerPrompt.Create([McpServerPrompt(Name = "NewPrompt")] () => "42");

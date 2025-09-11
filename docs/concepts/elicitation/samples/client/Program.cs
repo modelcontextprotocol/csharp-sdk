@@ -18,12 +18,9 @@ McpClientOptions options = new()
         Name = "ElicitationClient",
         Version = "1.0.0"
     },
-    Capabilities = new()
+    Handlers = new()
     {
-        Elicitation = new()
-        {
-            ElicitationHandler = HandleElicitationAsync
-        }
+        ElicitationHandler = HandleElicitationAsync
     }
 };
 

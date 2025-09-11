@@ -101,12 +101,15 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     {
         await StartAsync();
 
-        var mcpClientOptions = new McpClientOptions();
-        mcpClientOptions.Capabilities = new();
-        mcpClientOptions.Capabilities.Sampling ??= new();
-        mcpClientOptions.Capabilities.Sampling.SamplingHandler = (_, _, _) =>
+        var mcpClientOptions = new McpClientOptions
         {
-            throw new UnreachableException();
+            Handlers = new()
+            {
+                SamplingHandler = (_, _, _) =>
+                {
+                    throw new UnreachableException();
+                }
+            }
         };
 
         await using var client = await ConnectMcpClientAsync(mcpClientOptions);
@@ -121,12 +124,15 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     {
         await StartAsync();
 
-        var mcpClientOptions = new McpClientOptions();
-        mcpClientOptions.Capabilities = new();
-        mcpClientOptions.Capabilities.Roots ??= new();
-        mcpClientOptions.Capabilities.Roots.RootsHandler = (_, _) =>
+        var mcpClientOptions = new McpClientOptions
         {
-            throw new UnreachableException();
+            Handlers = new()
+            {
+                RootsHandler = (_, _) =>
+                {
+                    throw new UnreachableException();
+                }
+            }
         };
 
         await using var client = await ConnectMcpClientAsync(mcpClientOptions);
@@ -141,12 +147,15 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     {
         await StartAsync();
 
-        var mcpClientOptions = new McpClientOptions();
-        mcpClientOptions.Capabilities = new();
-        mcpClientOptions.Capabilities.Elicitation ??= new();
-        mcpClientOptions.Capabilities.Elicitation.ElicitationHandler = (_, _) =>
+        var mcpClientOptions = new McpClientOptions
         {
-            throw new UnreachableException();
+            Handlers = new()
+            {
+                ElicitationHandler = (_, _) =>
+                {
+                    throw new UnreachableException();
+                }
+            }
         };
 
         await using var client = await ConnectMcpClientAsync(mcpClientOptions);
