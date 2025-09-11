@@ -34,12 +34,6 @@ public sealed class ElicitResult : Result
     public string Action { get; set; } = "cancel";
 
     /// <summary>
-    /// Convenience indicator for whether the elicitation was accepted by the user.
-    /// </summary>
-    [JsonIgnore]
-    public bool IsAccepted => string.Equals(Action, "accept", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>
     /// Gets or sets the submitted form data.
     /// </summary>
     /// <remarks>
