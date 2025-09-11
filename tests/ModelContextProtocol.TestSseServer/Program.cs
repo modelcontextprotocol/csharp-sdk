@@ -95,284 +95,271 @@ public class Program
         }
 
         const int pageSize = 10;
-
-        options.Capabilities = new()
+        options.Handlers.ListToolsHandler = async (request, cancellationToken) =>
         {
-            Tools = new()
+            return new ListToolsResult
             {
-                ListToolsHandler = async (request, cancellationToken) =>
-                {
-                    return new ListToolsResult
+                Tools =
+                [
+                    new Tool
                     {
-                        Tools =
-                        [
-                            new Tool
+                        Name = "echo",
+                        Description = "Echoes the input back to the client.",
+                        InputSchema = JsonSerializer.Deserialize<JsonElement>("""
                             {
-                                Name = "echo",
-                                Description = "Echoes the input back to the client.",
-                                InputSchema = JsonSerializer.Deserialize<JsonElement>("""
-                                    {
-                                        "type": "object",
-                                        "properties": {
-                                            "message": {
-                                                "type": "string",
-                                                "description": "The input to echo back."
-                                            }
-                                        },
-                                        "required": ["message"]
+                                "type": "object",
+                                "properties": {
+                                    "message": {
+                                        "type": "string",
+                                        "description": "The input to echo back."
                                     }
-                                    """, McpJsonUtilities.DefaultOptions),
-                            },
-                            new Tool
-                            {
-                                Name = "echoSessionId",
-                                Description = "Echoes the session id back to the client.",
-                                InputSchema = JsonSerializer.Deserialize<JsonElement>("""
-                                    {
-                                        "type": "object"
-                                    }
-                                    """, McpJsonUtilities.DefaultOptions),
-                            },
-                            new Tool
-                            {
-                                Name = "sampleLLM",
-                                Description = "Samples from an LLM using MCP's sampling feature.",
-                                InputSchema = JsonSerializer.Deserialize<JsonElement>("""
-                                    {
-                                        "type": "object",
-                                        "properties": {
-                                            "prompt": {
-                                                "type": "string",
-                                                "description": "The prompt to send to the LLM"
-                                            },
-                                            "maxTokens": {
-                                                "type": "number",
-                                                "description": "Maximum number of tokens to generate"
-                                            }
-                                        },
-                                        "required": ["prompt", "maxTokens"]
-                                    }
-                                    """, McpJsonUtilities.DefaultOptions),
+                                },
+                                "required": ["message"]
                             }
-                        ]
-                    };
-                },
-                CallToolHandler = async (request, cancellationToken) =>
+                            """, McpJsonUtilities.DefaultOptions),
+                    },
+                    new Tool
+                    {
+                        Name = "echoSessionId",
+                        Description = "Echoes the session id back to the client.",
+                        InputSchema = JsonSerializer.Deserialize<JsonElement>("""
+                            {
+                                "type": "object"
+                            }
+                            """, McpJsonUtilities.DefaultOptions),
+                    },
+                    new Tool
+                    {
+                        Name = "sampleLLM",
+                        Description = "Samples from an LLM using MCP's sampling feature.",
+                        InputSchema = JsonSerializer.Deserialize<JsonElement>("""
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "prompt": {
+                                        "type": "string",
+                                        "description": "The prompt to send to the LLM"
+                                    },
+                                    "maxTokens": {
+                                        "type": "number",
+                                        "description": "Maximum number of tokens to generate"
+                                    }
+                                },
+                                "required": ["prompt", "maxTokens"]
+                            }
+                            """, McpJsonUtilities.DefaultOptions),
+                    }
+                ]
+            };
+        };
+        options.Handlers.CallToolHandler = async (request, cancellationToken) =>
+        {
+            if (request.Params is null)
+            {
+                throw new McpException("Missing required parameter 'name'", McpErrorCode.InvalidParams);
+            }
+            if (request.Params.Name == "echo")
+            {
+                if (request.Params.Arguments is null || !request.Params.Arguments.TryGetValue("message", out var message))
                 {
-                    if (request.Params is null)
-                    {
-                        throw new McpException("Missing required parameter 'name'", McpErrorCode.InvalidParams);
-                    }
-                    if (request.Params.Name == "echo")
-                    {
-                        if (request.Params.Arguments is null || !request.Params.Arguments.TryGetValue("message", out var message))
-                        {
-                            throw new McpException("Missing required argument 'message'", McpErrorCode.InvalidParams);
-                        }
-                        return new CallToolResult
-                        {
-                            Content = [new TextContentBlock { Text = $"Echo: {message}" }]
-                        };
-                    }
-                    else if (request.Params.Name == "echoSessionId")
-                    {
-                        return new CallToolResult
-                        {
-                            Content = [new TextContentBlock { Text = request.Server.SessionId ?? string.Empty }]
-                        };
-                    }
-                    else if (request.Params.Name == "sampleLLM")
-                    {
-                        if (request.Params.Arguments is null ||
-                            !request.Params.Arguments.TryGetValue("prompt", out var prompt) ||
-                            !request.Params.Arguments.TryGetValue("maxTokens", out var maxTokens))
-                        {
-                            throw new McpException("Missing required arguments 'prompt' and 'maxTokens'", McpErrorCode.InvalidParams);
-                        }
-                        var sampleResult = await request.Server.SampleAsync(CreateRequestSamplingParams(prompt.ToString(), "sampleLLM", Convert.ToInt32(maxTokens.ToString())),
-                            cancellationToken);
-
-                        return new CallToolResult
-                        {
-                            Content = [new TextContentBlock { Text = $"LLM sampling result: {(sampleResult.Content as TextContentBlock)?.Text}" }]
-                        };
-                    }
-                    else
-                    {
-                        throw new McpException($"Unknown tool: '{request.Params.Name}'", McpErrorCode.InvalidParams);
-                    }
+                    throw new McpException("Missing required argument 'message'", McpErrorCode.InvalidParams);
                 }
-            },
-            Resources = new()
+                return new CallToolResult
+                {
+                    Content = [new TextContentBlock { Text = $"Echo: {message}" }]
+                };
+            }
+            else if (request.Params.Name == "echoSessionId")
             {
-                ListResourceTemplatesHandler = async (request, cancellationToken) =>
+                return new CallToolResult
                 {
-
-                    return new ListResourceTemplatesResult
-                    {
-                        ResourceTemplates = [
-                            new ResourceTemplate
-                            {
-                                UriTemplate = "test://dynamic/resource/{id}",
-                                Name = "Dynamic Resource",
-                            }
-                        ]
-                    };
-                },
-
-                ListResourcesHandler = async (request, cancellationToken) =>
+                    Content = [new TextContentBlock { Text = request.Server.SessionId ?? string.Empty }]
+                };
+            }
+            else if (request.Params.Name == "sampleLLM")
+            {
+                if (request.Params.Arguments is null ||
+                    !request.Params.Arguments.TryGetValue("prompt", out var prompt) ||
+                    !request.Params.Arguments.TryGetValue("maxTokens", out var maxTokens))
                 {
-                    int startIndex = 0;
-                    var requestParams = request.Params ?? new();
-                    if (requestParams.Cursor is not null)
-                    {
-                        try
-                        {
-                            var startIndexAsString = Encoding.UTF8.GetString(Convert.FromBase64String(requestParams.Cursor));
-                            startIndex = Convert.ToInt32(startIndexAsString);
-                        }
-                        catch (Exception e)
-                        {
-                            throw new McpException($"Invalid cursor: '{requestParams.Cursor}'", e, McpErrorCode.InvalidParams);
-                        }
-                    }
+                    throw new McpException("Missing required arguments 'prompt' and 'maxTokens'", McpErrorCode.InvalidParams);
+                }
+                var sampleResult = await request.Server.SampleAsync(CreateRequestSamplingParams(prompt.ToString(), "sampleLLM", Convert.ToInt32(maxTokens.ToString())),
+                    cancellationToken);
 
-                    int endIndex = Math.Min(startIndex + pageSize, resources.Count);
-                    string? nextCursor = null;
-
-                    if (endIndex < resources.Count)
-                    {
-                        nextCursor = Convert.ToBase64String(Encoding.UTF8.GetBytes(endIndex.ToString()));
-                    }
-
-                    return new ListResourcesResult
-                    {
-                        NextCursor = nextCursor,
-                        Resources = resources.GetRange(startIndex, endIndex - startIndex)
-                    };
-                },
-                ReadResourceHandler = async (request, cancellationToken) =>
+                return new CallToolResult
                 {
-                    if (request.Params?.Uri is null)
+                    Content = [new TextContentBlock { Text = $"LLM sampling result: {(sampleResult.Content as TextContentBlock)?.Text}" }]
+                };
+            }
+            else
+            {
+                throw new McpException($"Unknown tool: '{request.Params.Name}'", McpErrorCode.InvalidParams);
+            }
+        };
+        options.Handlers.ListResourceTemplatesHandler = async (request, cancellationToken) =>
+        {
+
+            return new ListResourceTemplatesResult
+            {
+                ResourceTemplates = [
+                    new ResourceTemplate
                     {
-                        throw new McpException("Missing required argument 'uri'", McpErrorCode.InvalidParams);
+                        UriTemplate = "test://dynamic/resource/{id}",
+                        Name = "Dynamic Resource",
                     }
+                ]
+            };
+        };
 
-                    if (request.Params.Uri.StartsWith("test://dynamic/resource/"))
-                    {
-                        var id = request.Params.Uri.Split('/').LastOrDefault();
-                        if (string.IsNullOrEmpty(id))
-                        {
-                            throw new McpException($"Invalid resource URI: '{request.Params.Uri}'", McpErrorCode.InvalidParams);
-                        }
+        options.Handlers.ListResourcesHandler = async (request, cancellationToken) =>
+        {
+            int startIndex = 0;
+            var requestParams = request.Params ?? new();
+            if (requestParams.Cursor is not null)
+            {
+                try
+                {
+                    var startIndexAsString = Encoding.UTF8.GetString(Convert.FromBase64String(requestParams.Cursor));
+                    startIndex = Convert.ToInt32(startIndexAsString);
+                }
+                catch (Exception e)
+                {
+                    throw new McpException($"Invalid cursor: '{requestParams.Cursor}'", e, McpErrorCode.InvalidParams);
+                }
+            }
 
-                        return new ReadResourceResult
-                        {
-                            Contents = [
-                                new TextResourceContents
+            int endIndex = Math.Min(startIndex + pageSize, resources.Count);
+            string? nextCursor = null;
+
+            if (endIndex < resources.Count)
+            {
+                nextCursor = Convert.ToBase64String(Encoding.UTF8.GetBytes(endIndex.ToString()));
+            }
+
+            return new ListResourcesResult
+            {
+                NextCursor = nextCursor,
+                Resources = resources.GetRange(startIndex, endIndex - startIndex)
+            };
+        };
+        options.Handlers.ReadResourceHandler = async (request, cancellationToken) =>
+        {
+            if (request.Params?.Uri is null)
+            {
+                throw new McpException("Missing required argument 'uri'", McpErrorCode.InvalidParams);
+            }
+
+            if (request.Params.Uri.StartsWith("test://dynamic/resource/"))
+            {
+                var id = request.Params.Uri.Split('/').LastOrDefault();
+                if (string.IsNullOrEmpty(id))
+                {
+                    throw new McpException($"Invalid resource URI: '{request.Params.Uri}'", McpErrorCode.InvalidParams);
+                }
+
+                return new ReadResourceResult
+                {
+                    Contents = [
+                        new TextResourceContents
                                 {
                                     Uri = request.Params.Uri,
                                     MimeType = "text/plain",
                                     Text = $"Dynamic resource {id}: This is a plaintext resource"
                                 }
-                            ]
-                        };
-                    }
+                    ]
+                };
+            }
 
-                    ResourceContents? contents = resourceContents.FirstOrDefault(r => r.Uri == request.Params.Uri) ??
-                        throw new McpException($"Resource not found: '{request.Params.Uri}'", McpErrorCode.InvalidParams);
+            ResourceContents? contents = resourceContents.FirstOrDefault(r => r.Uri == request.Params.Uri) ??
+                throw new McpException($"Resource not found: '{request.Params.Uri}'", McpErrorCode.InvalidParams);
 
-                    return new ReadResourceResult
-                    {
-                        Contents = [contents]
-                    };
-                }
-            },
-            Prompts = new()
+            return new ReadResourceResult
             {
-                ListPromptsHandler = async (request, cancellationToken) =>
-                {
-                    return new ListPromptsResult
+                Contents = [contents]
+            };
+        };
+        options.Handlers.ListPromptsHandler = async (request, cancellationToken) =>
+        {
+            return new ListPromptsResult
+            {
+                Prompts = [
+                    new Prompt
                     {
-                        Prompts = [
-                            new Prompt
+                        Name = "simple_prompt",
+                        Description = "A prompt without arguments"
+                    },
+                    new Prompt
+                    {
+                        Name = "complex_prompt",
+                        Description = "A prompt with arguments",
+                        Arguments =
+                        [
+                            new PromptArgument
                             {
-                                Name = "simple_prompt",
-                                Description = "A prompt without arguments"
+                                Name = "temperature",
+                                Description = "Temperature setting",
+                                Required = true
                             },
-                            new Prompt
+                            new PromptArgument
                             {
-                                Name = "complex_prompt",
-                                Description = "A prompt with arguments",
-                                Arguments =
-                                [
-                                    new PromptArgument
-                                    {
-                                        Name = "temperature",
-                                        Description = "Temperature setting",
-                                        Required = true
-                                    },
-                                    new PromptArgument
-                                    {
-                                        Name = "style",
-                                        Description = "Output style",
-                                        Required = false
-                                    }
-                                ],
+                                Name = "style",
+                                Description = "Output style",
+                                Required = false
                             }
-                        ]
-                    };
-                },
-                GetPromptHandler = async (request, cancellationToken) =>
+                        ],
+                    }
+                ]
+            };
+        };
+        options.Handlers.GetPromptHandler = async (request, cancellationToken) =>
+        {
+            if (request.Params is null)
+            {
+                throw new McpException("Missing required parameter 'name'", McpErrorCode.InvalidParams);
+            }
+            List<PromptMessage> messages = new();
+            if (request.Params.Name == "simple_prompt")
+            {
+                messages.Add(new PromptMessage
                 {
-                    if (request.Params is null)
+                    Role = Role.User,
+                    Content = new TextContentBlock { Text = "This is a simple prompt without arguments." },
+                });
+            }
+            else if (request.Params.Name == "complex_prompt")
+            {
+                string temperature = request.Params.Arguments?["temperature"].ToString() ?? "unknown";
+                string style = request.Params.Arguments?["style"].ToString() ?? "unknown";
+                messages.Add(new PromptMessage
+                {
+                    Role = Role.User,
+                    Content = new TextContentBlock { Text = $"This is a complex prompt with arguments: temperature={temperature}, style={style}" },
+                });
+                messages.Add(new PromptMessage
+                {
+                    Role = Role.Assistant,
+                    Content = new TextContentBlock { Text = "I understand. You've provided a complex prompt with temperature and style arguments. How would you like me to proceed?" },
+                });
+                messages.Add(new PromptMessage
+                {
+                    Role = Role.User,
+                    Content = new ImageContentBlock
                     {
-                        throw new McpException("Missing required parameter 'name'", McpErrorCode.InvalidParams);
+                        Data = MCP_TINY_IMAGE,
+                        MimeType = "image/png"
                     }
-                    List<PromptMessage> messages = new();
-                    if (request.Params.Name == "simple_prompt")
-                    {
-                        messages.Add(new PromptMessage
-                        {
-                            Role = Role.User,
-                            Content = new TextContentBlock { Text = "This is a simple prompt without arguments." },
-                        });
-                    }
-                    else if (request.Params.Name == "complex_prompt")
-                    {
-                        string temperature = request.Params.Arguments?["temperature"].ToString() ?? "unknown";
-                        string style = request.Params.Arguments?["style"].ToString() ?? "unknown";
-                        messages.Add(new PromptMessage
-                        {
-                            Role = Role.User,
-                            Content = new TextContentBlock { Text = $"This is a complex prompt with arguments: temperature={temperature}, style={style}" },
-                        });
-                        messages.Add(new PromptMessage
-                        {
-                            Role = Role.Assistant,
-                            Content = new TextContentBlock { Text = "I understand. You've provided a complex prompt with temperature and style arguments. How would you like me to proceed?" },
-                        });
-                        messages.Add(new PromptMessage
-                        {
-                            Role = Role.User,
-                            Content = new ImageContentBlock
-                            {
-                                Data = MCP_TINY_IMAGE,
-                                MimeType = "image/png"
-                            }
-                        });
-                    }
-                    else
-                    {
-                        throw new McpException($"Unknown prompt: {request.Params.Name}", McpErrorCode.InvalidParams);
-                    }
+                });
+            }
+            else
+            {
+                throw new McpException($"Unknown prompt: {request.Params.Name}", McpErrorCode.InvalidParams);
+            }
 
-                    return new GetPromptResult
-                    {
-                        Messages = messages
-                    };
-                }
-            },
+            return new GetPromptResult
+            {
+                Messages = messages
+            };
         };
     }
 

@@ -270,21 +270,18 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
 
         // act
         TaskCompletionSource<bool> tcs = new();
-        await using var client = await _fixture.CreateClientAsync(clientId, new()
-        {
-            Capabilities = new()
+        var clientOptions = new McpClientOptions();
+        clientOptions.Handlers.NotificationHandlers =
+        [
+            new(NotificationMethods.ResourceUpdatedNotification, (notification, cancellationToken) =>
             {
-                NotificationHandlers =
-                [
-                    new(NotificationMethods.ResourceUpdatedNotification, (notification, cancellationToken) =>
-                    {
-                        var notificationParams = JsonSerializer.Deserialize<ResourceUpdatedNotificationParams>(notification.Params, McpJsonUtilities.DefaultOptions);
-                        tcs.TrySetResult(true);
-                        return default;
-                    })
-                ]
-            }
-        });
+                var notificationParams = JsonSerializer.Deserialize<ResourceUpdatedNotificationParams>(notification.Params, McpJsonUtilities.DefaultOptions);
+                tcs.TrySetResult(true);
+                return default;
+            })
+        ];
+        
+        await using var client = await _fixture.CreateClientAsync(clientId, clientOptions);
 
         await client.SubscribeToResourceAsync("test://static/resource/1", TestContext.Current.CancellationToken);
 
@@ -300,21 +297,18 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
 
         // act
         TaskCompletionSource<bool> receivedNotification = new();
-        await using var client = await _fixture.CreateClientAsync(clientId, new()
-        {
-            Capabilities = new()
+        var clientOptions = new McpClientOptions();
+        clientOptions.Handlers.NotificationHandlers =
+        [
+            new(NotificationMethods.ResourceUpdatedNotification, (notification, cancellationToken) =>
             {
-                NotificationHandlers =
-                [
-                    new(NotificationMethods.ResourceUpdatedNotification, (notification, cancellationToken) =>
-                    {
-                        var notificationParams = JsonSerializer.Deserialize<ResourceUpdatedNotificationParams>(notification.Params, McpJsonUtilities.DefaultOptions);
-                        receivedNotification.TrySetResult(true);
-                        return default;
-                    })
-                ]
-            }
-        });
+                var notificationParams = JsonSerializer.Deserialize<ResourceUpdatedNotificationParams>(notification.Params, McpJsonUtilities.DefaultOptions);
+                receivedNotification.TrySetResult(true);
+                return default;
+            })
+        ];
+        
+        await using var client = await _fixture.CreateClientAsync(clientId, clientOptions);
         await client.SubscribeToResourceAsync("test://static/resource/1", TestContext.Current.CancellationToken);
 
         // wait until we received a notification
@@ -368,25 +362,19 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
     {
         // Set up the sampling handler
         int samplingHandlerCalls = 0;
-        await using var client = await _fixture.CreateClientAsync(clientId, new()
+        var clientOptions = new McpClientOptions();
+        clientOptions.Handlers.SamplingHandler = async (_, _, _) =>
         {
-            Capabilities = new()
+            samplingHandlerCalls++;
+            return new CreateMessageResult
             {
-                Sampling = new()
-                {
-                    SamplingHandler = async (_, _, _) =>
-                    {
-                        samplingHandlerCalls++;
-                        return new CreateMessageResult
-                        {
-                            Model = "test-model",
-                            Role = Role.Assistant,
-                            Content = new TextContentBlock { Text = "Test response" },
-                        };
-                    },
-                },
-            },
-        });
+                Model = "test-model",
+                Role = Role.Assistant,
+                Content = new TextContentBlock { Text = "Test response" },
+            };
+        };
+        
+        await using var client = await _fixture.CreateClientAsync(clientId, clientOptions);
 
         // Call the server's sampleLLM tool which should trigger our sampling handler
         var result = await client.CallToolAsync(
@@ -527,16 +515,10 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         var samplingHandler = new OpenAIClient(s_openAIKey).GetChatClient("gpt-4o-mini")
             .AsIChatClient()
             .CreateSamplingHandler();
-        await using var client = await McpClientFactory.CreateAsync(new StdioClientTransport(_fixture.EverythingServerTransportOptions), new()
-        {
-            Capabilities = new()
-            {
-                Sampling = new()
-                {
-                    SamplingHandler = samplingHandler,
-                },
-            },
-        }, cancellationToken: TestContext.Current.CancellationToken);
+        var clientOptions = new McpClientOptions();
+        clientOptions.Handlers.SamplingHandler = samplingHandler;
+        
+        await using var client = await McpClientFactory.CreateAsync(new StdioClientTransport(_fixture.EverythingServerTransportOptions), clientOptions, cancellationToken: TestContext.Current.CancellationToken);
 
         var result = await client.CallToolAsync("sampleLLM", new Dictionary<string, object?>()
         {
@@ -555,24 +537,21 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
     public async Task SetLoggingLevel_ReceivesLoggingMessages(string clientId)
     {
         TaskCompletionSource<bool> receivedNotification = new();
-        await using var client = await _fixture.CreateClientAsync(clientId, new()
-        {
-            Capabilities = new()
+        var clientOptions = new McpClientOptions();
+        clientOptions.Handlers.NotificationHandlers =
+        [
+            new(NotificationMethods.LoggingMessageNotification, (notification, cancellationToken) =>
             {
-                NotificationHandlers =
-                [
-                    new(NotificationMethods.LoggingMessageNotification, (notification, cancellationToken) =>
-                    {
-                        var loggingMessageNotificationParameters = JsonSerializer.Deserialize<LoggingMessageNotificationParams>(notification.Params, McpJsonUtilities.DefaultOptions);
-                        if (loggingMessageNotificationParameters is not null)
-                        {
-                            receivedNotification.TrySetResult(true);
-                        }
-                        return default;
-                    })
-                ]
-            }
-        });
+                var loggingMessageNotificationParameters = JsonSerializer.Deserialize<LoggingMessageNotificationParams>(notification.Params, McpJsonUtilities.DefaultOptions);
+                if (loggingMessageNotificationParameters is not null)
+                {
+                    receivedNotification.TrySetResult(true);
+                }
+                return default;
+            })
+        ];
+        
+        await using var client = await _fixture.CreateClientAsync(clientId, clientOptions);
 
         // act
         await client.SetLoggingLevel(LoggingLevel.Debug, TestContext.Current.CancellationToken);

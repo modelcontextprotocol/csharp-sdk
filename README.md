@@ -176,52 +176,51 @@ McpServerOptions options = new()
     ServerInfo = new Implementation { Name = "MyServer", Version = "1.0.0" },
     Capabilities = new ServerCapabilities
     {
-        Tools = new ToolsCapability
-        {
-            ListToolsHandler = (request, cancellationToken) =>
-                ValueTask.FromResult(new ListToolsResult
-                {
-                    Tools =
-                    [
-                        new Tool
-                        {
-                            Name = "echo",
-                            Description = "Echoes the input back to the client.",
-                            InputSchema = JsonSerializer.Deserialize<JsonElement>("""
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                      "message": {
-                                        "type": "string",
-                                        "description": "The input to echo back"
-                                      }
-                                    },
-                                    "required": ["message"]
-                                }
-                                """),
-                        }
-                    ]
-                }),
-
-            CallToolHandler = (request, cancellationToken) =>
-            {
-                if (request.Params?.Name == "echo")
-                {
-                    if (request.Params.Arguments?.TryGetValue("message", out var message) is not true)
-                    {
-                        throw new McpException("Missing required argument 'message'");
-                    }
-
-                    return ValueTask.FromResult(new CallToolResult
-                    {
-                        Content = [new TextContentBlock { Text = $"Echo: {message}", Type = "text" }]
-                    });
-                }
-
-                throw new McpException($"Unknown tool: '{request.Params?.Name}'");
-            },
-        }
+        Tools = new ToolsCapability(),
     },
+};
+
+options.Handlers.ListToolsHandler = (request, cancellationToken) =>
+    ValueTask.FromResult(new ListToolsResult
+    {
+        Tools =
+        [
+            new Tool
+            {
+                Name = "echo",
+                Description = "Echoes the input back to the client.",
+                InputSchema = JsonSerializer.Deserialize<JsonElement>("""
+                    {
+                        "type": "object",
+                        "properties": {
+                          "message": {
+                            "type": "string",
+                            "description": "The input to echo back"
+                          }
+                        },
+                        "required": ["message"]
+                    }
+                    """),
+            }
+        ]
+    });
+
+options.Handlers.CallToolHandler = (request, cancellationToken) =>
+{
+    if (request.Params?.Name == "echo")
+    {
+        if (request.Params.Arguments?.TryGetValue("message", out var message) is not true)
+        {
+            throw new McpException("Missing required argument 'message'");
+        }
+
+        return ValueTask.FromResult(new CallToolResult
+        {
+            Content = [new TextContentBlock { Text = $"Echo: {message}", Type = "text" }]
+        });
+    }
+
+    throw new McpException($"Unknown tool: '{request.Params?.Name}'");
 };
 
 await using IMcpServer server = McpServerFactory.Create(new StdioServerTransport("MyServer"), options);
