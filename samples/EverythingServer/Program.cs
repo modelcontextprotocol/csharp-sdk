@@ -3,9 +3,6 @@ using EverythingServer.Prompts;
 using EverythingServer.Resources;
 using EverythingServer.Tools;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -14,20 +11,28 @@ using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using System.Collections.Concurrent;
 
-var builder = Host.CreateApplicationBuilder(args);
-builder.Logging.AddConsole(consoleLogOptions =>
-{
-    // Configure all logs to go to stderr
-    consoleLogOptions.LogToStandardErrorThreshold = LogLevel.Trace;
-});
-
-HashSet<string> subscriptions = [];
-var _minimumLoggingLevel = LoggingLevel.Debug;
+var builder = WebApplication.CreateBuilder(args);
 
 builder.Services
     .AddMcpServer()
-    .WithStdioServerTransport()
+    .WithHttpTransport(options =>
+    {
+        // Add a RunSessionHandler to remove all subscriptions for the session when it ends
+        options.RunSessionHandler = async (httpContext, mcpServer, token) =>
+        {
+            try
+            {
+                await mcpServer.RunAsync(token);
+            }
+            finally
+            {
+                // This code runs when the session ends
+                SubscriptionManager.RemoveAllSubscriptions(mcpServer);
+            }
+        };
+    })
     .WithTools<AddTool>()
     .WithTools<AnnotatedMessageTool>()
     .WithTools<EchoTool>()
@@ -40,11 +45,13 @@ builder.Services
     .WithResources<SimpleResourceType>()
     .WithSubscribeToResourcesHandler(async (ctx, ct) =>
     {
-        var uri = ctx.Params?.Uri;
-
-        if (uri is not null)
+        if (ctx.Server.SessionId == null)
         {
-            subscriptions.Add(uri);
+            throw new McpException("Cannot add subscription for server with null SessionId");
+        }
+        if (ctx.Params?.Uri is { } uri)
+        {
+            SubscriptionManager.AddSubscription(uri, ctx.Server);
 
             await ctx.Server.SampleAsync([
                 new ChatMessage(ChatRole.System, "You are a helpful test server"),
@@ -62,10 +69,13 @@ builder.Services
     })
     .WithUnsubscribeFromResourcesHandler(async (ctx, ct) =>
     {
-        var uri = ctx.Params?.Uri;
-        if (uri is not null)
+        if (ctx.Server.SessionId == null)
         {
-            subscriptions.Remove(uri);
+            throw new McpException("Cannot remove subscription for server with null SessionId");
+        }
+        if (ctx.Params?.Uri is { } uri)
+        {
+            SubscriptionManager.RemoveSubscription(uri, ctx.Server);
         }
         return new EmptyResult();
     })
@@ -126,13 +136,13 @@ builder.Services
             throw new McpException("Missing required argument 'level'", McpErrorCode.InvalidParams);
         }
 
-        _minimumLoggingLevel = ctx.Params.Level;
+        // The SDK updates the LoggingLevel field of the IMcpServer
 
         await ctx.Server.SendNotificationAsync("notifications/message", new
         {
             Level = "debug",
             Logger = "test-server",
-            Data = $"Logging level set to {_minimumLoggingLevel}",
+            Data = $"Logging level set to {ctx.Params.Level}",
         }, cancellationToken: ct);
 
         return new EmptyResult();
@@ -145,10 +155,13 @@ builder.Services.AddOpenTelemetry()
     .WithLogging(b => b.SetResourceBuilder(resource))
     .UseOtlpExporter();
 
-builder.Services.AddSingleton(subscriptions);
 builder.Services.AddHostedService<SubscriptionMessageSender>();
 builder.Services.AddHostedService<LoggingUpdateMessageSender>();
 
-builder.Services.AddSingleton<Func<LoggingLevel>>(_ => () => _minimumLoggingLevel);
+var app = builder.Build();
 
-await builder.Build().RunAsync();
+app.UseHttpsRedirection();
+
+app.MapMcp();
+
+app.Run();
