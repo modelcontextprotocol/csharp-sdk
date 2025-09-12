@@ -287,7 +287,7 @@ public static class McpServerExtensions
 
         var raw = await server.ElicitAsync(request, cancellationToken).ConfigureAwait(false);
 
-        if (!string.Equals(raw.Action, "accept", StringComparison.OrdinalIgnoreCase) || raw.Content is null)
+        if (!raw.IsAccepted || raw.Content is null)
         {
             return new ElicitResult<T> { Action = raw.Action, Content = default };
         }
