@@ -34,6 +34,15 @@ public sealed class ElicitResult : Result
     public string Action { get; set; } = "cancel";
 
     /// <summary>
+    /// Convenience indicator for whether the elicitation was accepted by the user.
+    /// </summary>
+    /// <remarks>
+    ///  Indicates that the elicitation request completed successfully and value of <see cref="Content"/> has been populated with a value.
+    /// </remarks>
+    [JsonIgnore]
+    public bool IsAccepted => string.Equals(Action, "accept", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Gets or sets the submitted form data.
     /// </summary>
     /// <remarks>
@@ -47,4 +56,29 @@ public sealed class ElicitResult : Result
     /// </remarks>
     [JsonPropertyName("content")]
     public IDictionary<string, JsonElement>? Content { get; set; }
+}
+
+/// <summary>
+/// Represents the client's response to an elicitation request, with typed content payload.
+/// </summary>
+/// <typeparam name="T">The type of the expected content payload.</typeparam>
+public sealed class ElicitResult<T> : Result
+{
+    /// <summary>
+    /// Gets or sets the user action in response to the elicitation.
+    /// </summary>
+    public string Action { get; set; } = "cancel";
+
+    /// <summary>
+    /// Convenience indicator for whether the elicitation was accepted by the user.
+    /// </summary>
+    /// <remarks>
+    ///  Indicates that the elicitation request completed successfully and value of <see cref="Content"/> has been populated with a value.
+    /// </remarks>
+    public bool IsAccepted => string.Equals(Action, "accept", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Gets or sets the submitted form data as a typed value.
+    /// </summary>
+    public T? Content { get; set; }
 }
