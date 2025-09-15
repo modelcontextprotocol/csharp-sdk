@@ -9,7 +9,7 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// Requests are messages that require a response from the receiver. Each request includes a unique ID
 /// that will be included in the corresponding response message (either a success response or an error).
-/// 
+///
 /// The receiver of a request message is expected to execute the specified method with the provided parameters
 /// and return either a <see cref="JsonRpcResponse"/> with the result, or a <see cref="JsonRpcError"/>
 /// if the method execution fails.
@@ -36,7 +36,7 @@ public sealed class JsonRpcRequest : JsonRpcMessageWithId
             Id = id,
             Method = Method,
             Params = Params,
-            RelatedTransport = RelatedTransport,
+            Context = Context,
         };
     }
 }

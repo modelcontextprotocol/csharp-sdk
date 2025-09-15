@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
 using Moq;
 using System.Collections;
 using System.Collections.Concurrent;
@@ -23,6 +24,8 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         : base(testOutputHelper)
     {
     }
+
+    private MockLoggerProvider _mockLoggerProvider = new();
 
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
@@ -109,6 +112,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
             .WithTools<EchoTool>(serializerOptions: BuilderToolsJsonContext.Default.Options);
 
         services.AddSingleton(new ObjectWithId());
+        services.AddSingleton<ILoggerProvider>(_mockLoggerProvider);
     }
 
     [Fact]
@@ -157,8 +161,8 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
 
             await using (var client = await McpClientFactory.CreateAsync(
                  new StreamClientTransport(
-                    serverInput: stdinPipe.Writer.AsStream(), 
-                    serverOutput: stdoutPipe.Reader.AsStream(), 
+                    serverInput: stdinPipe.Writer.AsStream(),
+                    serverOutput: stdoutPipe.Reader.AsStream(),
                     LoggerFactory),
                 loggerFactory: LoggerFactory,
                 cancellationToken: TestContext.Current.CancellationToken))
@@ -232,7 +236,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
 
         var result = await client.CallToolAsync(
             "echo",
-            new Dictionary<string, object?>() { ["message"] = "Peter" }, 
+            new Dictionary<string, object?>() { ["message"] = "Peter" },
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
@@ -353,14 +357,14 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         string random1 = parts[0][0];
         string random2 = parts[1][0];
         Assert.NotEqual(random1, random2);
-        
+
         string id1 = parts[0][1];
         string id2 = parts[1][1];
         Assert.Equal(id1, id2);
     }
 
     [Fact]
-    public async Task Returns_IsError_Content_When_Tool_Fails()
+    public async Task Returns_IsError_Content_And_Logs_Error_When_Tool_Fails()
     {
         await using IMcpClient client = await CreateMcpClientForServer();
 
@@ -372,6 +376,11 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         Assert.NotNull(result.Content);
         Assert.NotEmpty(result.Content);
         Assert.Contains("An error occurred", (result.Content[0] as TextContentBlock)?.Text);
+
+        var errorLog = Assert.Single(_mockLoggerProvider.LogMessages, m => m.LogLevel == LogLevel.Error);
+        Assert.Equal($"\"throw_exception\" threw an unhandled exception.", errorLog.Message);
+        Assert.IsType<InvalidOperationException>(errorLog.Exception);
+        Assert.Equal("Test error", errorLog.Exception.Message);
     }
 
     [Fact]
@@ -516,7 +525,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         sc.AddMcpServer().WithTools(target, BuilderToolsJsonContext.Default.Options);
 
         McpServerTool tool = sc.BuildServiceProvider().GetServices<McpServerTool>().First(t => t.ProtocolTool.Name == "get_ctor_parameter");
-        var result = await tool.InvokeAsync(new RequestContext<CallToolRequestParams>(new Mock<IMcpServer>().Object), TestContext.Current.CancellationToken);
+        var result = await tool.InvokeAsync(new RequestContext<CallToolRequestParams>(new Mock<IMcpServer>().Object, new JsonRpcRequest { Method = "test", Id = new RequestId("1") }), TestContext.Current.CancellationToken);
 
         Assert.Equal(target.GetCtorParameter(), (result.Content[0] as TextContentBlock)?.Text);
     }

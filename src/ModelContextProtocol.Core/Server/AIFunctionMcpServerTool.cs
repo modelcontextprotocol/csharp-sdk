@@ -1,7 +1,5 @@
 ﻿using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -15,8 +13,8 @@ namespace ModelContextProtocol.Server;
 /// <summary>Provides an <see cref="McpServerTool"/> that's implemented via an <see cref="AIFunction"/>.</summary>
 internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 {
-    private readonly ILogger _logger;
     private readonly bool _structuredOutputRequiresWrapping;
+    private readonly IReadOnlyList<object> _metadata;
 
     /// <summary>
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
@@ -26,7 +24,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         McpServerToolCreateOptions? options)
     {
         Throw.IfNull(method);
-        
+
         options = DeriveOptions(method.Method, options);
 
         return Create(method.Method, method.Target, options);
@@ -146,7 +144,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             }
         }
 
-        return new AIFunctionMcpServerTool(function, tool, options?.Services, structuredOutputRequiresWrapping);
+        return new AIFunctionMcpServerTool(function, tool, options?.Services, structuredOutputRequiresWrapping, options?.Metadata ?? []);
     }
 
     private static McpServerToolCreateOptions DeriveOptions(MethodInfo method, McpServerToolCreateOptions? options)
@@ -186,6 +184,9 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             newOptions.Description ??= descAttr.Description;
         }
 
+        // Set metadata if not already provided
+        newOptions.Metadata ??= CreateMetadata(method);
+
         return newOptions;
     }
 
@@ -193,16 +194,21 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     internal AIFunction AIFunction { get; }
 
     /// <summary>Initializes a new instance of the <see cref="McpServerTool"/> class.</summary>
-    private AIFunctionMcpServerTool(AIFunction function, Tool tool, IServiceProvider? serviceProvider, bool structuredOutputRequiresWrapping)
+    private AIFunctionMcpServerTool(AIFunction function, Tool tool, IServiceProvider? serviceProvider, bool structuredOutputRequiresWrapping, IReadOnlyList<object> metadata)
     {
         AIFunction = function;
         ProtocolTool = tool;
-        _logger = serviceProvider?.GetService<ILoggerFactory>()?.CreateLogger<McpServerTool>() ?? (ILogger)NullLogger.Instance;
+        ProtocolTool.McpServerTool = this;
+
         _structuredOutputRequiresWrapping = structuredOutputRequiresWrapping;
+        _metadata = metadata;
     }
 
     /// <inheritdoc />
     public override Tool ProtocolTool { get; }
+
+    /// <inheritdoc />
+    public override IReadOnlyList<object> Metadata => _metadata;
 
     /// <inheritdoc />
     public override async ValueTask<CallToolResult> InvokeAsync(
@@ -211,7 +217,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         Throw.IfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
-        request.Services = new RequestServiceProvider<CallToolRequestParams>(request, request.Services);
+        request.Services = new RequestServiceProvider<CallToolRequestParams>(request);
         AIFunctionArguments arguments = new() { Services = request.Services };
 
         if (request.Params?.Arguments is { } argDict)
@@ -223,24 +229,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
 
         object? result;
-        try
-        {
-            result = await AIFunction.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception e) when (e is not OperationCanceledException)
-        {
-            ToolCallError(request.Params?.Name ?? string.Empty, e);
-
-            string errorMessage = e is McpException ?
-                $"An error occurred invoking '{request.Params?.Name}': {e.Message}" :
-                $"An error occurred invoking '{request.Params?.Name}'.";
-
-            return new()
-            {
-                IsError = true,
-                Content = [new TextContentBlock { Text = errorMessage }],
-            };
-        }
+        result = await AIFunction.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false);
 
         JsonNode? structuredContent = CreateStructuredResponse(result);
         return result switch
@@ -257,27 +246,27 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 Content = [],
                 StructuredContent = structuredContent,
             },
-            
+
             string text => new()
             {
                 Content = [new TextContentBlock { Text = text }],
                 StructuredContent = structuredContent,
             },
-            
+
             ContentBlock content => new()
             {
                 Content = [content],
                 StructuredContent = structuredContent,
             },
-            
+
             IEnumerable<AIContent> contentItems => ConvertAIContentEnumerableToCallToolResult(contentItems, structuredContent),
-            
+
             IEnumerable<ContentBlock> contents => new()
             {
                 Content = [.. contents],
                 StructuredContent = structuredContent,
             },
-            
+
             CallToolResult callToolResponse => callToolResponse,
 
             _ => new()
@@ -334,6 +323,26 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
             return false;
         }
+    }
+
+    /// <summary>Creates metadata from attributes on the specified method and its declaring class, with the MethodInfo as the first item.</summary>
+    internal static IReadOnlyList<object> CreateMetadata(MethodInfo method)
+    {
+        // Add the MethodInfo to the start of the metadata similar to what RouteEndpointDataSource does for minimal endpoints.
+        List<object> metadata = [method];
+
+        // Add class-level attributes first, since those are less specific.
+        if (method.DeclaringType is not null)
+        {
+            metadata.AddRange(method.DeclaringType.GetCustomAttributes());
+        }
+
+        // Add method-level attributes second, since those are more specific.
+        // When metadata conflicts, later metadata usually takes precedence with exceptions for metadata like
+        // IAllowAnonymous which always take precedence over IAuthorizeData no matter the order.
+        metadata.AddRange(method.GetCustomAttributes());
+
+        return metadata.AsReadOnly();
     }
 
     /// <summary>Regex that flags runs of characters other than ASCII digits or letters.</summary>
@@ -446,7 +455,4 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             IsError = allErrorContent && hasAny
         };
     }
-
-    [LoggerMessage(Level = LogLevel.Error, Message = "\"{ToolName}\" threw an unhandled exception.")]
-    private partial void ToolCallError(string toolName, Exception exception);
 }

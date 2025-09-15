@@ -18,5 +18,5 @@ public sealed class LoggingCapability
     /// Gets or sets the handler for set logging level requests from clients.
     /// </summary>
     [JsonIgnore]
-    public Func<RequestContext<SetLevelRequestParams>, CancellationToken, ValueTask<EmptyResult>>? SetLoggingLevelHandler { get; set; }
+    public McpRequestHandler<SetLevelRequestParams, EmptyResult>? SetLoggingLevelHandler { get; set; }
 }

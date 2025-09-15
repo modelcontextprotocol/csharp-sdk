@@ -11,13 +11,13 @@ namespace ModelContextProtocol.Server;
 /// <remarks>
 /// <para>
 /// <see cref="McpServerResource"/> is an abstract base class that represents an MCP resource for use in the server (as opposed
-/// to <see cref="Resource"/> or <see cref="ResourceTemplate"/>, which provide the protocol representations of a resource). Instances of 
+/// to <see cref="Resource"/> or <see cref="ResourceTemplate"/>, which provide the protocol representations of a resource). Instances of
 /// <see cref="McpServerResource"/> can be added into a <see cref="IServiceCollection"/> to be picked up automatically when
 /// <see cref="McpServerFactory"/> is used to create an <see cref="IMcpServer"/>, or added into a <see cref="McpServerPrimitiveCollection{McpServerResource}"/>.
 /// </para>
 /// <para>
 /// Most commonly, <see cref="McpServerResource"/> instances are created using the static <see cref="M:McpServerResource.Create"/> methods.
-/// These methods enable creating an <see cref="McpServerResource"/> for a method, specified via a <see cref="Delegate"/> or 
+/// These methods enable creating an <see cref="McpServerResource"/> for a method, specified via a <see cref="Delegate"/> or
 /// <see cref="MethodInfo"/>, and are what are used implicitly by WithResourcesFromAssembly and
 /// <see cref="M:McpServerBuilderExtensions.WithResources"/>. The <see cref="M:McpServerResource.Create"/> methods
 /// create <see cref="McpServerResource"/> instances capable of working with a large variety of .NET method signatures, automatically handling
@@ -62,15 +62,15 @@ namespace ModelContextProtocol.Server;
 ///   </item>
 ///   <item>
 ///     <description>
-///       When the <see cref="McpServerResource"/> is constructed, it may be passed an <see cref="IServiceProvider"/> via 
+///       When the <see cref="McpServerResource"/> is constructed, it may be passed an <see cref="IServiceProvider"/> via
 ///       <see cref="McpServerResourceCreateOptions.Services"/>. Any parameter that can be satisfied by that <see cref="IServiceProvider"/>
-///       according to <see cref="IServiceProviderIsService"/> will be resolved from the <see cref="IServiceProvider"/> provided to the 
+///       according to <see cref="IServiceProviderIsService"/> will be resolved from the <see cref="IServiceProvider"/> provided to the
 ///       resource invocation rather than from the argument collection.
 ///     </description>
 ///   </item>
 ///   <item>
 ///     <description>
-///       Any parameter attributed with <see cref="FromKeyedServicesAttribute"/> will similarly be resolved from the 
+///       Any parameter attributed with <see cref="FromKeyedServicesAttribute"/> will similarly be resolved from the
 ///       <see cref="IServiceProvider"/> provided to the resource invocation rather than from the argument collection.
 ///     </description>
 ///   </item>
@@ -150,6 +150,15 @@ public abstract class McpServerResource : IMcpServerPrimitive
     public virtual Resource? ProtocolResource => ProtocolResourceTemplate.AsResource();
 
     /// <summary>
+    /// Gets the metadata for this resource instance.
+    /// </summary>
+    /// <remarks>
+    /// Contains attributes from the associated MethodInfo and declaring class (if any),
+    /// with class-level attributes appearing before method-level attributes.
+    /// </remarks>
+    public abstract IReadOnlyList<object> Metadata { get; }
+
+    /// <summary>
     /// Gets the resource, rendering it with the provided request parameters and returning the resource result.
     /// </summary>
     /// <param name="request">
@@ -192,7 +201,7 @@ public abstract class McpServerResource : IMcpServerPrimitive
     /// <exception cref="ArgumentNullException"><paramref name="method"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="method"/> is an instance method but <paramref name="target"/> is <see langword="null"/>.</exception>
     public static McpServerResource Create(
-        MethodInfo method, 
+        MethodInfo method,
         object? target = null,
         McpServerResourceCreateOptions? options = null) =>
         AIFunctionMcpServerResource.Create(method, target, options);

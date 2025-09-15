@@ -8,7 +8,6 @@ using Microsoft.Net.Http.Headers;
 using ModelContextProtocol.AspNetCore.Stateless;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using System.IO.Pipelines;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -26,6 +25,8 @@ internal sealed class StreamableHttpHandler(
     IServiceProvider applicationServices)
 {
     private const string McpSessionIdHeaderName = "Mcp-Session-Id";
+
+    private static readonly JsonTypeInfo<JsonRpcMessage> s_messageTypeInfo = GetRequiredJsonTypeInfo<JsonRpcMessage>();
     private static readonly JsonTypeInfo<JsonRpcError> s_errorTypeInfo = GetRequiredJsonTypeInfo<JsonRpcError>();
 
     public HttpServerTransportOptions HttpServerTransportOptions => httpServerTransportOptions.Value;
@@ -55,8 +56,17 @@ internal sealed class StreamableHttpHandler(
 
         await using var _ = await session.AcquireReferenceAsync(context.RequestAborted);
 
+        var message = await ReadJsonRpcMessageAsync(context);
+        if (message is null)
+        {
+            await WriteJsonRpcErrorAsync(context,
+                "Bad Request: The POST body did not contain a valid JSON-RPC message.",
+                StatusCodes.Status400BadRequest);
+            return;
+        }
+
         InitializeSseResponse(context);
-        var wroteResponse = await session.Transport.HandlePostRequest(new HttpDuplexPipe(context), context.RequestAborted);
+        var wroteResponse = await session.Transport.HandlePostRequest(message, context.Response.Body, context.RequestAborted);
         if (!wroteResponse)
         {
             // We wound up writing nothing, so there should be no Content-Type response header.
@@ -264,6 +274,22 @@ internal sealed class StreamableHttpHandler(
         return WebEncoders.Base64UrlEncode(buffer);
     }
 
+    internal static async Task<JsonRpcMessage?> ReadJsonRpcMessageAsync(HttpContext context)
+    {
+        // Implementation for reading a JSON-RPC message from the request body
+        var message = await context.Request.ReadFromJsonAsync(s_messageTypeInfo, context.RequestAborted);
+
+        if (context.User?.Identity?.IsAuthenticated == true && message is not null)
+        {
+            message.Context = new()
+            {
+                User = context.User,
+            };
+        }
+
+        return message;
+    }
+
     private void ScheduleStatelessSessionIdWrite(HttpContext context, StreamableHttpServerTransport transport)
     {
         transport.OnInitRequestReceived = initRequestParams =>
@@ -304,17 +330,11 @@ internal sealed class StreamableHttpHandler(
         return null;
     }
 
-    private static JsonTypeInfo<T> GetRequiredJsonTypeInfo<T>() => (JsonTypeInfo<T>)McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(T));
+    internal static JsonTypeInfo<T> GetRequiredJsonTypeInfo<T>() => (JsonTypeInfo<T>)McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(T));
 
     private static bool MatchesApplicationJsonMediaType(MediaTypeHeaderValue acceptHeaderValue)
         => acceptHeaderValue.MatchesMediaType("application/json");
 
     private static bool MatchesTextEventStreamMediaType(MediaTypeHeaderValue acceptHeaderValue)
         => acceptHeaderValue.MatchesMediaType("text/event-stream");
-
-    private sealed class HttpDuplexPipe(HttpContext context) : IDuplexPipe
-    {
-        public PipeReader Input => context.Request.BodyReader;
-        public PipeWriter Output => context.Response.BodyWriter;
-    }
 }
