@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 
 namespace ModelContextProtocol.Server;
 
@@ -45,7 +46,7 @@ public static class McpServerExtensions
     /// This method converts the provided chat messages into a format suitable for the sampling API,
     /// handling different content types such as text, images, and audio.
     /// </remarks>
-    [Obsolete($"Use {nameof(McpServer)}.{nameof(McpServer.SampleAsync)} instead.") // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774]
+    [Obsolete($"Use {nameof(McpServer)}.{nameof(McpServer.SampleAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774]
     public static Task<ChatResponse> SampleAsync(
         this IMcpServer server,
         IEnumerable<ChatMessage> messages, ChatOptions? options = default, CancellationToken cancellationToken = default)
@@ -113,14 +114,14 @@ public static class McpServerExtensions
     {
         if (server is not McpServer mcpServer)
         {
-            ThrowInvalidEndpointType(memberName);
+            ThrowInvalidSessionType(memberName);
         }
 
         return mcpServer;
 
         [DoesNotReturn]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static void ThrowInvalidEndpointType(string memberName)
+        static void ThrowInvalidSessionType(string memberName)
             => throw new InvalidOperationException(
                 $"Only arguments assignable to '{nameof(McpServer)}' are supported. " +
                 $"Prefer using '{nameof(McpServer)}.{memberName}' instead, as " +

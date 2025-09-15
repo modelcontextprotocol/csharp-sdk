@@ -1,9 +1,13 @@
 ﻿using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
+using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Server;
 
@@ -14,6 +18,13 @@ namespace ModelContextProtocol.Server;
 public abstract partial class McpServer : McpSession, IMcpServer
 #pragma warning restore CS0618 // Type or member is obsolete
 {
+    /// <summary>
+    /// Caches request schemas for elicitation requests based on the type and serializer options.
+    /// </summary>
+    private static readonly ConditionalWeakTable<JsonSerializerOptions, ConcurrentDictionary<Type, ElicitRequestParams.RequestSchema>> s_elicitResultSchemaCache = new();
+
+    private static Dictionary<string, HashSet<string>>? s_elicitAllowedProperties = null;
+
     /// <summary>
     /// Creates a new instance of an <see cref="McpServer"/>.
     /// </summary>
@@ -218,6 +229,187 @@ public abstract partial class McpServer : McpSession, IMcpServer
             McpJsonUtilities.JsonContext.Default.ElicitRequestParams,
             McpJsonUtilities.JsonContext.Default.ElicitResult,
             cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// Requests additional information from the user via the client, constructing a request schema from the
+    /// public serializable properties of <typeparamref name="T"/> and deserializing the response into <typeparamref name="T"/>.
+    /// </summary>
+    /// <typeparam name="T">The type describing the expected input shape. Only primitive members are supported (string, number, boolean, enum).</typeparam>
+    /// <param name="message">The message to present to the user.</param>
+    /// <param name="serializerOptions">Serializer options that influence property naming and deserialization.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
+    /// <returns>An <see cref="ElicitResult{T}"/> with the user's response, if accepted.</returns>
+    /// <remarks>
+    /// Elicitation uses a constrained subset of JSON Schema and only supports strings, numbers/integers, booleans and string enums.
+    /// Unsupported member types are ignored when constructing the schema.
+    /// </remarks>
+    public async ValueTask<ElicitResult<T>> ElicitAsync<T>(
+        string message,
+        JsonSerializerOptions? serializerOptions = null,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfElicitationUnsupported();
+
+        serializerOptions ??= McpJsonUtilities.DefaultOptions;
+        serializerOptions.MakeReadOnly();
+
+        var dict = s_elicitResultSchemaCache.GetValue(serializerOptions, _ => new());
+
+#if NET
+        var schema = dict.GetOrAdd(typeof(T), static (t, s) => BuildRequestSchema(t, s), serializerOptions);
+#else
+        var schema = dict.GetOrAdd(typeof(T), type => BuildRequestSchema(type, serializerOptions));
+#endif
+
+        var request = new ElicitRequestParams
+        {
+            Message = message,
+            RequestedSchema = schema,
+        };
+
+        var raw = await ElicitAsync(request, cancellationToken).ConfigureAwait(false);
+
+        if (!raw.IsAccepted || raw.Content is null)
+        {
+            return new ElicitResult<T> { Action = raw.Action, Content = default };
+        }
+
+        var obj = new JsonObject();
+        foreach (var kvp in raw.Content)
+        {
+            obj[kvp.Key] = JsonNode.Parse(kvp.Value.GetRawText());
+        }
+
+        T? typed = JsonSerializer.Deserialize(obj, serializerOptions.GetTypeInfo<T>());
+        return new ElicitResult<T> { Action = raw.Action, Content = typed };
+    }
+
+    /// <summary>
+    /// Builds a request schema for elicitation based on the public serializable properties of <paramref name="type"/>.
+    /// </summary>
+    /// <param name="type">The type of the schema being built.</param>
+    /// <param name="serializerOptions">The serializer options to use.</param>
+    /// <returns>The built request schema.</returns>
+    /// <exception cref="McpException"></exception>
+    private static ElicitRequestParams.RequestSchema BuildRequestSchema(Type type, JsonSerializerOptions serializerOptions)
+    {
+        var schema = new ElicitRequestParams.RequestSchema();
+        var props = schema.Properties;
+
+        JsonTypeInfo typeInfo = serializerOptions.GetTypeInfo(type);
+
+        if (typeInfo.Kind != JsonTypeInfoKind.Object)
+        {
+            throw new McpException($"Type '{type.FullName}' is not supported for elicitation requests.");
+        }
+
+        foreach (JsonPropertyInfo pi in typeInfo.Properties)
+        {
+            var def = CreatePrimitiveSchema(pi.PropertyType, serializerOptions);
+            props[pi.Name] = def;
+        }
+
+        return schema;
+    }
+
+    /// <summary>
+    /// Creates a primitive schema definition for the specified type, if supported.
+    /// </summary>
+    /// <param name="type">The type to create the schema for.</param>
+    /// <param name="serializerOptions">The serializer options to use.</param>
+    /// <returns>The created primitive schema definition.</returns>
+    /// <exception cref="McpException">Thrown when the type is not supported.</exception>
+    private static ElicitRequestParams.PrimitiveSchemaDefinition CreatePrimitiveSchema(Type type, JsonSerializerOptions serializerOptions)
+    {
+        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
+        {
+            throw new McpException($"Type '{type.FullName}' is not a supported property type for elicitation requests. Nullable types are not supported.");
+        }
+
+        var typeInfo = serializerOptions.GetTypeInfo(type);
+
+        if (typeInfo.Kind != JsonTypeInfoKind.None)
+        {
+            throw new McpException($"Type '{type.FullName}' is not a supported property type for elicitation requests.");
+        }
+
+        var jsonElement = AIJsonUtilities.CreateJsonSchema(type, serializerOptions: serializerOptions);
+
+        if (!TryValidateElicitationPrimitiveSchema(jsonElement, type, out var error))
+        {
+            throw new McpException(error);
+        }
+
+        var primitiveSchemaDefinition =
+            jsonElement.Deserialize(McpJsonUtilities.JsonContext.Default.PrimitiveSchemaDefinition);
+
+        if (primitiveSchemaDefinition is null)
+            throw new McpException($"Type '{type.FullName}' is not a supported property type for elicitation requests.");
+
+        return primitiveSchemaDefinition;
+    }
+
+    /// <summary>
+    /// Validate the produced schema strictly to the subset we support. We only accept an object schema
+    /// with a supported primitive type keyword and no additional unsupported keywords.Reject things like
+    /// {}, 'true', or schemas that include unrelated keywords(e.g.items, properties, patternProperties, etc.).
+    /// </summary>
+    /// <param name="schema">The schema to validate.</param>
+    /// <param name="type">The type of the schema being validated, just for reporting errors.</param>
+    /// <param name="error">The error message, if validation fails.</param>
+    /// <returns></returns>
+    private static bool TryValidateElicitationPrimitiveSchema(JsonElement schema, Type type,
+        [NotNullWhen(false)] out string? error)
+    {
+        if (schema.ValueKind is not JsonValueKind.Object)
+        {
+            error = $"Schema generated for type '{type.FullName}' is invalid: expected an object schema.";
+            return false;
+        }
+
+        if (!schema.TryGetProperty("type", out JsonElement typeProperty)
+            || typeProperty.ValueKind is not JsonValueKind.String)
+        {
+            error = $"Schema generated for type '{type.FullName}' is invalid: missing or invalid 'type' keyword.";
+            return false;
+        }
+
+        var typeKeyword = typeProperty.GetString();
+
+        if (string.IsNullOrEmpty(typeKeyword))
+        {
+            error = $"Schema generated for type '{type.FullName}' is invalid: empty 'type' value.";
+            return false;
+        }
+
+        if (typeKeyword is not ("string" or "number" or "integer" or "boolean"))
+        {
+            error = $"Schema generated for type '{type.FullName}' is invalid: unsupported primitive type '{typeKeyword}'.";
+            return false;
+        }
+
+        s_elicitAllowedProperties ??= new()
+        {
+            ["string"] = ["type", "title", "description", "minLength", "maxLength", "format", "enum", "enumNames"],
+            ["number"] = ["type", "title", "description", "minimum", "maximum"],
+            ["integer"] = ["type", "title", "description", "minimum", "maximum"],
+            ["boolean"] = ["type", "title", "description", "default"]
+        };
+
+        var allowed = s_elicitAllowedProperties[typeKeyword];
+
+        foreach (JsonProperty prop in schema.EnumerateObject())
+        {
+            if (!allowed.Contains(prop.Name))
+            {
+                error = $"The property '{type.FullName}.{prop.Name}' is not supported for elicitation.";
+                return false;
+            }
+        }
+
+        error = string.Empty;
+        return true;
     }
 
     private void ThrowIfSamplingUnsupported()
