@@ -15,7 +15,5 @@ items:
     uid: logging
   - name: HTTP Context
     uid: httpcontext
-- name: Server Features
-  items:
   - name: Filters
     uid: filters

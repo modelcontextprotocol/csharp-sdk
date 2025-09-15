@@ -31,11 +31,3 @@ A method of `ContextTools` can then access the current [HttpContext] as follows:
 
 <!-- highlight the last 5 lines -->
 [!code-csharp[](samples/Tools/ContextTools.cs?name=snippet_AccessHttpContext)]
-
-### Complete example
-
-A complete example of an MCP Server that uses this method to access the [HttpContext] within tool methods is available
-in [this sample project](https://github.com/mikekistler/mcp-howto/tree/main/HttpContext).
-
-You can run the project and then use the [TryItOut notebook](./samples/TryItOut.ipynb) to call one of the tools
-that access the HTTP context and returns the HTTP headers as a JSON object.
