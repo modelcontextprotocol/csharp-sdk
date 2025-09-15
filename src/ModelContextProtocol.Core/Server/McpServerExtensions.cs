@@ -25,7 +25,7 @@ public static class McpServerExtensions
     /// It allows detailed control over sampling parameters including messages, system prompt, temperature, 
     /// and token limits.
     /// </remarks>
-    [Obsolete($"Use {nameof(McpServer)}.{nameof(McpServer.SampleAsync)} instead.")]
+    [Obsolete($"Use {nameof(McpServer)}.{nameof(McpServer.SampleAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     public static ValueTask<CreateMessageResult> SampleAsync(
         this IMcpServer server, CreateMessageRequestParams request, CancellationToken cancellationToken = default)
         => AsServerOrThrow(server).SampleAsync(request, cancellationToken);
@@ -45,7 +45,7 @@ public static class McpServerExtensions
     /// This method converts the provided chat messages into a format suitable for the sampling API,
     /// handling different content types such as text, images, and audio.
     /// </remarks>
-    [Obsolete($"Use {nameof(McpServer)}.{nameof(McpServer.SampleAsync)} instead.")]
+    [Obsolete($"Use {nameof(McpServer)}.{nameof(McpServer.SampleAsync)} instead.") // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774]
     public static Task<ChatResponse> SampleAsync(
         this IMcpServer server,
         IEnumerable<ChatMessage> messages, ChatOptions? options = default, CancellationToken cancellationToken = default)
@@ -58,14 +58,14 @@ public static class McpServerExtensions
     /// <returns>The <see cref="IChatClient"/> that can be used to issue sampling requests to the client.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="server"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
-    [Obsolete($"Use {nameof(McpServer)}.{nameof(McpServer.AsSamplingChatClient)} instead.")]
+    [Obsolete($"Use {nameof(McpServer)}.{nameof(McpServer.AsSamplingChatClient)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     public static IChatClient AsSamplingChatClient(this IMcpServer server)
         => AsServerOrThrow(server).AsSamplingChatClient();
 
     /// <summary>Gets an <see cref="ILogger"/> on which logged messages will be sent as notifications to the client.</summary>
     /// <param name="server">The server to wrap as an <see cref="ILogger"/>.</param>
     /// <returns>An <see cref="ILogger"/> that can be used to log to the client..</returns>
-    [Obsolete($"Use {nameof(McpServer)}.{nameof(McpServer.AsSamplingChatClient)} instead.")]
+    [Obsolete($"Use {nameof(McpServer)}.{nameof(McpServer.AsSamplingChatClient)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     public static ILoggerProvider AsClientLoggerProvider(this IMcpServer server)
         => AsServerOrThrow(server).AsClientLoggerProvider();
 
@@ -84,7 +84,7 @@ public static class McpServerExtensions
     /// navigated and accessed by the server. These resources might include file systems, databases,
     /// or other structured data sources that the client makes available through the protocol.
     /// </remarks>
-    [Obsolete($"Use {nameof(McpServer)}.{nameof(McpServer.RequestRootsAsync)} instead.")]
+    [Obsolete($"Use {nameof(McpServer)}.{nameof(McpServer.RequestRootsAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     public static ValueTask<ListRootsResult> RequestRootsAsync(
         this IMcpServer server, ListRootsRequestParams request, CancellationToken cancellationToken = default)
         => AsServerOrThrow(server).RequestRootsAsync(request, cancellationToken);
@@ -101,7 +101,7 @@ public static class McpServerExtensions
     /// <remarks>
     /// This method requires the client to support the elicitation capability.
     /// </remarks>
-    [Obsolete($"Use {nameof(McpServer)}.{nameof(McpServer.ElicitAsync)} instead.")]
+    [Obsolete($"Use {nameof(McpServer)}.{nameof(McpServer.ElicitAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     public static ValueTask<ElicitResult> ElicitAsync(
         this IMcpServer server, ElicitRequestParams request, CancellationToken cancellationToken = default)
         => AsServerOrThrow(server).ElicitAsync(request, cancellationToken);

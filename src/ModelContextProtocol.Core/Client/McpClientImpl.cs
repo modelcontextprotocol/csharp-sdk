@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
-using System.Runtime.InteropServices;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Client;

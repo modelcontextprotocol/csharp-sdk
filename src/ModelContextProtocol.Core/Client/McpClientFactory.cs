@@ -10,7 +10,7 @@ namespace ModelContextProtocol.Client;
 /// that connect to MCP servers. It handles the creation and connection
 /// of appropriate implementations through the supplied transport.
 /// </remarks>
-[Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.CreateAsync)} instead.")]
+[Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.CreateAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
 public static partial class McpClientFactory
 {
     /// <summary>Creates an <see cref="IMcpClient"/>, connecting it to the specified server.</summary>

@@ -122,14 +122,14 @@ public static class EchoTool
 }
 ```
 
-Tools can have the `IMcpServer` representing the server injected via a parameter to the method, and can use that for interaction with 
+Tools can have the `McpServer` representing the server injected via a parameter to the method, and can use that for interaction with 
 the connected client. Similarly, arguments may be injected via dependency injection. For example, this tool will use the supplied 
-`IMcpServer` to make sampling requests back to the client in order to summarize content it downloads from the specified url via
+`McpServer` to make sampling requests back to the client in order to summarize content it downloads from the specified url via
 an `HttpClient` injected via dependency injection.
 ```csharp
 [McpServerTool(Name = "SummarizeContentFromUrl"), Description("Summarizes content downloaded from a specific URI")]
 public static async Task<string> SummarizeDownloadedContent(
-    IMcpServer thisServer,
+    McpServer thisServer,
     HttpClient httpClient,
     [Description("The url from which to download the content to summarize")] string url,
     CancellationToken cancellationToken)
@@ -224,7 +224,7 @@ McpServerOptions options = new()
     },
 };
 
-await using IMcpServer server = McpServer.Create(new StdioServerTransport("MyServer"), options);
+await using McpServer server = McpServer.Create(new StdioServerTransport("MyServer"), options);
 await server.RunAsync();
 ```
 

@@ -26,7 +26,7 @@ namespace ModelContextProtocol;
 /// All MCP endpoints should be properly disposed after use as they implement <see cref="IAsyncDisposable"/>.
 /// </para>
 /// </remarks>
-[Obsolete($"Use {nameof(McpSession)} instead.")]
+[Obsolete($"Use {nameof(McpSession)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
 public interface IMcpEndpoint : IAsyncDisposable
 {
     /// <summary>Gets an identifier associated with the current MCP session.</summary>

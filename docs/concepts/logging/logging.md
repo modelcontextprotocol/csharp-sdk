@@ -54,10 +54,10 @@ server to perform any special logic it wants to perform when a client sets the l
 SDK already takes care of setting the [LoggingLevel] in the [McpServer], so most servers will not need to
 implement this.
 
-[McpServer]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.Server.IMcpServer.html
+[McpServer]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.Server.McpServer.html
 [IMcpServerBuilder]: https://modelcontextprotocol.github.io/csharp-sdk/api/Microsoft.Extensions.DependencyInjection.IMcpServerBuilder.html
 [WithSetLoggingLevelHandler]: https://modelcontextprotocol.github.io/csharp-sdk/api/Microsoft.Extensions.DependencyInjection.McpServerBuilderExtensions.html#Microsoft_Extensions_DependencyInjection_McpServerBuilderExtensions_WithSetLoggingLevelHandler_Microsoft_Extensions_DependencyInjection_IMcpServerBuilder_System_Func_ModelContextProtocol_Server_RequestContext_ModelContextProtocol_Protocol_SetLevelRequestParams__System_Threading_CancellationToken_System_Threading_Tasks_ValueTask_ModelContextProtocol_Protocol_EmptyResult___
-[LoggingLevel]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.Server.IMcpServer.html#ModelContextProtocol_Server_IMcpServer_LoggingLevel
+[LoggingLevel]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.Server.McpServer.html#ModelContextProtocol_Server_IMcpServer_LoggingLevel
 
 MCP Servers using the MCP C# SDK can obtain an [ILoggerProvider] from the McpServer [AsClientLoggerProvider] extension method,
 and from that can create an [ILogger] instance for logging messages that should be sent to the MCP client.
@@ -73,10 +73,10 @@ and from that can create an [ILogger] instance for logging messages that should 
 When the server indicates that it supports logging, clients should configure
 the logging level to specify which messages the server should send to the client.
 
-Clients should check if the server supports logging by checking the [Logging] property of the [ServerCapabilities] field of [IMcpClient].
+Clients should check if the server supports logging by checking the [Logging] property of the [ServerCapabilities] field of [McpClient].
 
-[McpClient]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.Client.IMcpClient.html
-[ServerCapabilities]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.Client.IMcpClient.html#ModelContextProtocol_Client_IMcpClient_ServerCapabilities
+[McpClient]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.Client.McpClient.html
+[ServerCapabilities]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.Client.McpClient.html#ModelContextProtocol_Client_McpClient_ServerCapabilities
 [Logging]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.Protocol.ServerCapabilities.html#ModelContextProtocol_Protocol_ServerCapabilities_Logging
 
 [!code-csharp[](samples/client/Program.cs?name=snippet_LoggingCapabilities)]
@@ -89,7 +89,7 @@ sets a logging level to ensure it receives the desired log messages and only tho
 The `loggingLevel` set by the client is an MCP logging level.
 See the [Logging Levels](#logging-levels) section above for the mapping between MCP and .NET logging levels.
 
-[SetLoggingLevel]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.Client.McpClientExtensions.html#ModelContextProtocol_Client_McpClientExtensions_SetLoggingLevel_ModelContextProtocol_Client_IMcpClient_Microsoft_Extensions_Logging_LogLevel_System_Threading_CancellationToken_
+[SetLoggingLevel]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.Client.McpClientExtensions.html#ModelContextProtocol_Client_McpClientExtensions_SetLoggingLevel_ModelContextProtocol_Client_McpClient_Microsoft_Extensions_Logging_LogLevel_System_Threading_CancellationToken_
 
 [!code-csharp[](samples/client/Program.cs?name=snippet_LoggingLevel)]
 

@@ -29,7 +29,7 @@ public class JsonRpcMessageContext
     /// </summary>
     /// <remarks>
     /// This is used to support the Streamable HTTP transport in its default stateful mode. In this mode,
-    /// the <see cref="IMcpServer"/> outlives the initial HTTP request context it was created on, and new
+    /// the <see cref="McpServer"/> outlives the initial HTTP request context it was created on, and new
     /// JSON-RPC messages can originate from future HTTP requests. This allows the transport to flow the
     /// context with the JSON-RPC message. This is particularly useful for enabling IHttpContextAccessor
     /// in tool calls.
