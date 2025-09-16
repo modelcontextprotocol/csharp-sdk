@@ -118,7 +118,7 @@ public static class McpClientExtensions
 
             cursor = toolResults.NextCursor;
         }
-        while (cursor is not null);
+        while (!string.IsNullOrEmpty(cursor));
 
         return tools;
     }
