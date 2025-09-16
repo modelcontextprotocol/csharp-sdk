@@ -12,8 +12,11 @@
 			"extensions": [
 				"ms-dotnettools.csharp",
 				"ms-dotnettools.csdevkit"
-			]
+			],
+			"settings": {
+				"dotnet.defaultSolution": "ModelContextProtocol.slnx"
+			}
 		}
 	},
-	"postCreateCommand": "dotnet --list-sdks"
+	"postCreateCommand": "dotnet --list-sdks && echo 'Available .NET SDKs installed successfully!'"
 }
