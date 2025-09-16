@@ -45,7 +45,7 @@ public sealed class ClientCapabilities
     /// </para>
     /// <para>
     /// The server can use <see cref="McpServerExtensions.RequestRootsAsync"/> to request the list of
-    /// available roots from the client, which will trigger the client's <see cref="RootsCapability.RootsHandler"/>.
+    /// available roots from the client, which will trigger the client's <see cref="ModelContextProtocol.Client.McpClientHandlers.RootsHandler"/>.
     /// </para>
     /// </remarks>
     [JsonPropertyName("roots")]
@@ -64,24 +64,4 @@ public sealed class ClientCapabilities
     /// </summary>
     [JsonPropertyName("elicitation")]
     public ElicitationCapability? Elicitation { get; set; }
-
-    /// <summary>Gets or sets notification handlers to register with the client.</summary>
-    /// <remarks>
-    /// <para>
-    /// When constructed, the client will enumerate these handlers once, which may contain multiple handlers per notification method key.
-    /// The client will not re-enumerate the sequence after initialization.
-    /// </para>
-    /// <para>
-    /// Notification handlers allow the client to respond to server-sent notifications for specific methods.
-    /// Each key in the collection is a notification method name, and each value is a callback that will be invoked
-    /// when a notification with that method is received.
-    /// </para>
-    /// <para>
-    /// Handlers provided via <see cref="NotificationHandlers"/> will be registered with the client for the lifetime of the client.
-    /// For transient handlers, <see cref="IMcpEndpoint.RegisterNotificationHandler"/> may be used to register a handler that can
-    /// then be unregistered by disposing of the <see cref="IAsyncDisposable"/> returned from the method.
-    /// </para>
-    /// </remarks>
-    [JsonIgnore]
-    public IEnumerable<KeyValuePair<string, Func<JsonRpcNotification, CancellationToken, ValueTask>>>? NotificationHandlers { get; set; }
 }

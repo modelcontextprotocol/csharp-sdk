@@ -118,7 +118,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     public void Adds_Resources_To_Server()
     {
         var serverOptions = ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
-        var resources = serverOptions?.Capabilities?.Resources?.ResourceCollection;
+        var resources = serverOptions.ResourceCollection;
         Assert.NotNull(resources);
         Assert.NotEmpty(resources);
     }
@@ -172,7 +172,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
         Assert.False(notificationRead.IsCompleted);
 
         var serverOptions = ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
-        var serverResources = serverOptions.Capabilities?.Resources?.ResourceCollection;
+        var serverResources = serverOptions.ResourceCollection;
         Assert.NotNull(serverResources);
 
         var newResource = McpServerResource.Create([McpServerResource(Name = "NewResource")] () => "42");
