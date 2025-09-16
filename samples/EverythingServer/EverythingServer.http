@@ -1,0 +1,77 @@
+@HostAddress = http://localhost:3001
+
+POST {{HostAddress}}/
+Accept: application/json, text/event-stream
+Content-Type: application/json
+
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+        "clientInfo": {
+            "name": "RestClient",
+            "version": "0.1.0"
+        },
+        "capabilities": {},
+        "protocolVersion": "2025-06-18"
+    }
+}
+
+###
+
+@SessionId = ZwwM0VFEtKNOMBsP8D2VzQ
+
+POST {{HostAddress}}/
+Accept: application/json, text/event-stream
+Content-Type: application/json
+MCP-Protocol-Version: 2025-06-18
+Mcp-Session-Id: {{SessionId}}
+
+{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "resources/list"
+}
+
+###
+
+@resource_uri = test://direct/text/resource
+
+POST {{HostAddress}}/
+Accept: application/json, text/event-stream
+Content-Type: application/json
+MCP-Protocol-Version: 2025-06-18
+Mcp-Session-Id: {{SessionId}}
+
+{
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "resources/subscribe",
+    "params": {
+        "uri": "{{resource_uri}}"
+    }
+}
+
+###
+
+POST {{HostAddress}}/
+Accept: application/json, text/event-stream
+Content-Type: application/json
+MCP-Protocol-Version: 2025-06-18
+Mcp-Session-Id: {{SessionId}}
+
+{
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "resources/unsubscribe",
+    "params": {
+        "uri": "{{resource_uri}}"
+    }
+}
+
+###
+
+DELETE {{HostAddress}}/
+MCP-Protocol-Version: 2025-06-18
+Mcp-Session-Id: {{SessionId}}
