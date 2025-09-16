@@ -11,12 +11,12 @@ The **elicitation** feature allows servers to request additional information fro
 
 ### Server Support for Elicitation
 
-Servers request structured data from users with the [ElicitAsync] extension method on [McpServer].
-The C# SDK registers an instance of [McpServer] with the dependency injection container,
-so tools can simply add a parameter of type [McpServer] to their method signature to access it.
+Servers request structured data from users with the [ElicitAsync] extension method on [IMcpServer].
+The C# SDK registers an instance of [IMcpServer] with the dependency injection container,
+so tools can simply add a parameter of type [IMcpServer] to their method signature to access it.
 
 [ElicitAsync]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.Server.McpServerExtensions.html#ModelContextProtocol_Server_McpServerExtensions_ElicitAsync_ModelContextProtocol_Server_IMcpServer_ModelContextProtocol_Protocol_ElicitRequestParams_System_Threading_CancellationToken_
-[McpServer]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.Server.McpServer.html
+[IMcpServer]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.Server.IMcpServer.html
 
 The MCP Server must specify the schema of each input value it is requesting from the user.
 Only primitive types (string, number, boolean) are supported for elicitation requests.

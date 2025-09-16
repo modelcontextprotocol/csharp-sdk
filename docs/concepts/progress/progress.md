@@ -17,14 +17,14 @@ This project illustrates the common case of a server tool that performs a long-r
 
 ### Server Implementation
 
-When processing a request, the server can use the [sendNotificationAsync] extension method of [McpServer] to send progress updates,
+When processing a request, the server can use the [sendNotificationAsync] extension method of [IMcpServer] to send progress updates,
 specifying `"notifications/progress"` as the notification method name.
-The C# SDK registers an instance of [McpServer] with the dependency injection container,
-so tools can simply add a parameter of type [McpServer] to their method signature to access it.
+The C# SDK registers an instance of [IMcpServer] with the dependency injection container,
+so tools can simply add a parameter of type [IMcpServer] to their method signature to access it.
 The parameters passed to [sendNotificationAsync] should be an instance of [ProgressNotificationParams], which includes the current progress, total steps, and an optional message.
 
-[sendNotificationAsync]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.McpEndpointExtensions.html#ModelContextProtocol_McpEndpointExtensions_SendNotificationAsync_ModelContextProtocol_McpSession_System_String_System_Threading_CancellationToken_
-[McpServer]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.Server.McpServer.html
+[sendNotificationAsync]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.McpEndpointExtensions.html#ModelContextProtocol_McpEndpointExtensions_SendNotificationAsync_ModelContextProtocol_IMcpEndpoint_System_String_System_Threading_CancellationToken_
+[IMcpServer]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.Server.IMcpServer.html
 [ProgressNotificationParams]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.Protocol.ProgressNotificationParams.html
 
 The server must verify that the caller provided a `progressToken` in the request and include it in the call to [sendNotificationAsync]. The following example demonstrates how a server can send a progress notification:
@@ -38,10 +38,10 @@ Note that servers are not required to support progress tracking, so clients shou
 
 In the MCP C# SDK, clients can specify a `progressToken` in the request parameters when calling a tool method.
 The client should also provide a notification handler to process "notifications/progress" notifications.
-There are two way to do this. The first is to register a notification handler using the [RegisterNotificationHandler] method on the [McpClient] instance. A handler registered this way will receive all progress notifications sent by the server.
+There are two way to do this. The first is to register a notification handler using the [RegisterNotificationHandler] method on the [IMcpClient] instance. A handler registered this way will receive all progress notifications sent by the server.
 
-[McpClient]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.Client.McpClient.html
-[RegisterNotificationHandler]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.McpSession.html#ModelContextProtocol_McpSession_RegisterNotificationHandler_System_String_System_Func_ModelContextProtocol_Protocol_JsonRpcNotification_System_Threading_CancellationToken_System_Threading_Tasks_ValueTask__
+[IMcpClient]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.Client.IMcpClient.html
+[RegisterNotificationHandler]: https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.IMcpEndpoint.html#ModelContextProtocol_IMcpEndpoint_RegisterNotificationHandler_System_String_System_Func_ModelContextProtocol_Protocol_JsonRpcNotification_System_Threading_CancellationToken_System_Threading_Tasks_ValueTask__
 
 ```csharp
 mcpClient.RegisterNotificationHandler(NotificationMethods.ProgressNotification,
