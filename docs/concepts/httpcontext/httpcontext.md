@@ -1,7 +1,7 @@
 ---
 title: HTTP Context
 author: mikekistler
-description: How to use the logging feature in the MCP C# SDK.
+description: How to access the HttpContext in the MCP C# SDK.
 uid: httpcontext
 ---
 
