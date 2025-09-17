@@ -1,9 +1,9 @@
-using ModelContextProtocol.Client;
+﻿using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
-using System.Text.Json.Nodes;
-using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol;
 
@@ -34,6 +34,7 @@ public static class McpEndpointExtensions
     /// <param name="serializerOptions">The options governing request serialization.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous operation. The task result contains the deserialized result.</returns>
+    [Obsolete($"Use {nameof(McpSession)}.{nameof(McpSession.SendRequestAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     public static ValueTask<TResult> SendRequestAsync<TParameters, TResult>(
         this IMcpEndpoint endpoint,
         string method,
@@ -42,53 +43,7 @@ public static class McpEndpointExtensions
         RequestId requestId = default,
         CancellationToken cancellationToken = default)
         where TResult : notnull
-    {
-        serializerOptions ??= McpJsonUtilities.DefaultOptions;
-        serializerOptions.MakeReadOnly();
-
-        JsonTypeInfo<TParameters> paramsTypeInfo = serializerOptions.GetTypeInfo<TParameters>();
-        JsonTypeInfo<TResult> resultTypeInfo = serializerOptions.GetTypeInfo<TResult>();
-        return SendRequestAsync(endpoint, method, parameters, paramsTypeInfo, resultTypeInfo, requestId, cancellationToken);
-    }
-
-    /// <summary>
-    /// Sends a JSON-RPC request and attempts to deserialize the result to <typeparamref name="TResult"/>.
-    /// </summary>
-    /// <typeparam name="TParameters">The type of the request parameters to serialize from.</typeparam>
-    /// <typeparam name="TResult">The type of the result to deserialize to.</typeparam>
-    /// <param name="endpoint">The MCP client or server instance.</param>
-    /// <param name="method">The JSON-RPC method name to invoke.</param>
-    /// <param name="parameters">Object representing the request parameters.</param>
-    /// <param name="parametersTypeInfo">The type information for request parameter serialization.</param>
-    /// <param name="resultTypeInfo">The type information for request parameter deserialization.</param>
-    /// <param name="requestId">The request id for the request.</param>
-    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result contains the deserialized result.</returns>
-    internal static async ValueTask<TResult> SendRequestAsync<TParameters, TResult>(
-        this IMcpEndpoint endpoint,
-        string method,
-        TParameters parameters,
-        JsonTypeInfo<TParameters> parametersTypeInfo,
-        JsonTypeInfo<TResult> resultTypeInfo,
-        RequestId requestId = default,
-        CancellationToken cancellationToken = default)
-        where TResult : notnull
-    {
-        Throw.IfNull(endpoint);
-        Throw.IfNullOrWhiteSpace(method);
-        Throw.IfNull(parametersTypeInfo);
-        Throw.IfNull(resultTypeInfo);
-
-        JsonRpcRequest jsonRpcRequest = new()
-        {
-            Id = requestId,
-            Method = method,
-            Params = JsonSerializer.SerializeToNode(parameters, parametersTypeInfo),
-        };
-
-        JsonRpcResponse response = await endpoint.SendRequestAsync(jsonRpcRequest, cancellationToken).ConfigureAwait(false);
-        return JsonSerializer.Deserialize(response.Result, resultTypeInfo) ?? throw new JsonException("Unexpected JSON result in response.");
-    }
+        => AsSessionOrThrow(endpoint).SendRequestAsync<TParameters, TResult>(method, parameters, serializerOptions, requestId, cancellationToken);
 
     /// <summary>
     /// Sends a parameterless notification to the connected endpoint.
@@ -104,12 +59,9 @@ public static class McpEndpointExtensions
     /// changes in state.
     /// </para>
     /// </remarks>
+    [Obsolete($"Use {nameof(McpSession)}.{nameof(McpSession.SendNotificationAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     public static Task SendNotificationAsync(this IMcpEndpoint client, string method, CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(client);
-        Throw.IfNullOrWhiteSpace(method);
-        return client.SendMessageAsync(new JsonRpcNotification { Method = method }, cancellationToken);
-    }
+        => AsSessionOrThrow(client).SendNotificationAsync(method, cancellationToken);
 
     /// <summary>
     /// Sends a notification with parameters to the connected endpoint.
@@ -135,42 +87,14 @@ public static class McpEndpointExtensions
     /// but custom methods can also be used for application-specific notifications.
     /// </para>
     /// </remarks>
+    [Obsolete($"Use {nameof(McpSession)}.{nameof(McpSession.SendNotificationAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     public static Task SendNotificationAsync<TParameters>(
         this IMcpEndpoint endpoint,
         string method,
         TParameters parameters,
         JsonSerializerOptions? serializerOptions = null,
         CancellationToken cancellationToken = default)
-    {
-        serializerOptions ??= McpJsonUtilities.DefaultOptions;
-        serializerOptions.MakeReadOnly();
-
-        JsonTypeInfo<TParameters> parametersTypeInfo = serializerOptions.GetTypeInfo<TParameters>();
-        return SendNotificationAsync(endpoint, method, parameters, parametersTypeInfo, cancellationToken);
-    }
-
-    /// <summary>
-    /// Sends a notification to the server with parameters.
-    /// </summary>
-    /// <param name="endpoint">The MCP client or server instance.</param>
-    /// <param name="method">The JSON-RPC method name to invoke.</param>
-    /// <param name="parameters">Object representing the request parameters.</param>
-    /// <param name="parametersTypeInfo">The type information for request parameter serialization.</param>
-    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    internal static Task SendNotificationAsync<TParameters>(
-        this IMcpEndpoint endpoint,
-        string method,
-        TParameters parameters,
-        JsonTypeInfo<TParameters> parametersTypeInfo,
-        CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(endpoint);
-        Throw.IfNullOrWhiteSpace(method);
-        Throw.IfNull(parametersTypeInfo);
-
-        JsonNode? parametersJson = JsonSerializer.SerializeToNode(parameters, parametersTypeInfo);
-        return endpoint.SendMessageAsync(new JsonRpcNotification { Method = method, Params = parametersJson }, cancellationToken);
-    }
+        => AsSessionOrThrow(endpoint).SendNotificationAsync(method, parameters, serializerOptions, cancellationToken);
 
     /// <summary>
     /// Notifies the connected endpoint of progress for a long-running operation.
@@ -191,22 +115,33 @@ public static class McpEndpointExtensions
     /// Progress notifications are sent asynchronously and don't block the operation from continuing.
     /// </para>
     /// </remarks>
+    [Obsolete($"Use {nameof(McpSession)}.{nameof(McpSession.NotifyProgressAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     public static Task NotifyProgressAsync(
         this IMcpEndpoint endpoint,
         ProgressToken progressToken,
-        ProgressNotificationValue progress, 
+        ProgressNotificationValue progress,
         CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(endpoint);
+        => AsSessionOrThrow(endpoint).NotifyProgressAsync(progressToken, progress, cancellationToken);
 
-        return endpoint.SendNotificationAsync(
-            NotificationMethods.ProgressNotification,
-            new ProgressNotificationParams
-            {
-                ProgressToken = progressToken,
-                Progress = progress,
-            },
-            McpJsonUtilities.JsonContext.Default.ProgressNotificationParams,
-            cancellationToken);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+#pragma warning disable CS0618 // Type or member is obsolete
+    private static McpSession AsSessionOrThrow(IMcpEndpoint endpoint, [CallerMemberName] string memberName = "")
+#pragma warning restore CS0618 // Type or member is obsolete
+    {
+        if (endpoint is not McpSession session)
+        {
+            ThrowInvalidEndpointType(memberName);
+        }
+
+        return session;
+
+        [DoesNotReturn]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void ThrowInvalidEndpointType(string memberName)
+            => throw new InvalidOperationException(
+                $"Only arguments assignable to '{nameof(McpSession)}' are supported. " +
+                $"Prefer using '{nameof(McpServer)}.{memberName}' instead, as " +
+                $"'{nameof(McpEndpointExtensions)}.{memberName}' is obsolete and will be " +
+                $"removed in the future.");
     }
 }

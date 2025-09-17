@@ -292,7 +292,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
         if (requestServices is null)
         {
             // The IAuthorizationPolicyProvider service must be non-null to get to this line, so it's very unexpected for RequestContext.Services to not be set.
-            throw new InvalidOperationException("RequestContext.Services is not set! The IMcpServer must be initialized with a non-null IServiceProvider.");
+            throw new InvalidOperationException("RequestContext.Services is not set! The McpServer must be initialized with a non-null IServiceProvider.");
         }
 
         // ASP.NET Core's AuthorizationMiddleware resolves the IAuthorizationService from scoped request services, so we do the same.

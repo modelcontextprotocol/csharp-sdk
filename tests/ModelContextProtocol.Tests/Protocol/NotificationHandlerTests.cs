@@ -13,7 +13,7 @@ public class NotificationHandlerTests : ClientServerTestBase
     public async Task RegistrationsAreRemovedWhenDisposed()
     {
         const string NotificationName = "somethingsomething";
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         const int Iterations = 10;
 
@@ -40,7 +40,7 @@ public class NotificationHandlerTests : ClientServerTestBase
     public async Task MultipleRegistrationsResultInMultipleCallbacks()
     {
         const string NotificationName = "somethingsomething";
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         const int RegistrationCount = 10;
 
@@ -80,7 +80,7 @@ public class NotificationHandlerTests : ClientServerTestBase
     public async Task MultipleHandlersRunEvenIfOneThrows()
     {
         const string NotificationName = "somethingsomething";
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         const int RegistrationCount = 10;
 
@@ -122,7 +122,7 @@ public class NotificationHandlerTests : ClientServerTestBase
     public async Task DisposeAsyncDoesNotCompleteWhileNotificationHandlerRuns(int numberOfDisposals)
     {
         const string NotificationName = "somethingsomething";
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         var handlerRunning = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseHandler = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -163,7 +163,7 @@ public class NotificationHandlerTests : ClientServerTestBase
     public async Task DisposeAsyncCompletesImmediatelyWhenInvokedFromHandler(int numberOfDisposals)
     {
         const string NotificationName = "somethingsomething";
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         var handlerRunning = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseHandler = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);

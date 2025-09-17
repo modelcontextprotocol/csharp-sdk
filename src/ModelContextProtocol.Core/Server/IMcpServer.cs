@@ -1,10 +1,11 @@
-using ModelContextProtocol.Protocol;
+﻿using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.Server;
 
 /// <summary>
 /// Represents an instance of a Model Context Protocol (MCP) server that connects to and communicates with an MCP client.
 /// </summary>
+[Obsolete($"Use {nameof(McpServer)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
 public interface IMcpServer : IMcpEndpoint
 {
     /// <summary>

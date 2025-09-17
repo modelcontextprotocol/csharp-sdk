@@ -34,7 +34,7 @@ public sealed class SamplingCapability
     /// generated content.
     /// </para>
     /// <para>
-    /// You can create a handler using the <see cref="McpClientExtensions.CreateSamplingHandler"/> extension
+    /// You can create a handler using the <see cref="McpClient.CreateSamplingHandler"/> extension
     /// method with any implementation of <see cref="IChatClient"/>.
     /// </para>
     /// </remarks>

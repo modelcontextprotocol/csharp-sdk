@@ -1,14 +1,13 @@
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Client;
 
 /// <summary>
-/// Provides extension methods for interacting with an <see cref="IMcpClient"/>.
+/// Provides extension methods for interacting with an <see cref="McpClient"/>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -19,6 +18,53 @@ namespace ModelContextProtocol.Client;
 /// </remarks>
 public static class McpClientExtensions
 {
+    /// <summary>
+    /// Creates a sampling handler for use with <see cref="SamplingCapability.SamplingHandler"/> that will
+    /// satisfy sampling requests using the specified <see cref="IChatClient"/>.
+    /// </summary>
+    /// <param name="chatClient">The <see cref="IChatClient"/> with which to satisfy sampling requests.</param>
+    /// <returns>The created handler delegate that can be assigned to <see cref="SamplingCapability.SamplingHandler"/>.</returns>
+    /// <remarks>
+    /// <para>
+    /// This method creates a function that converts MCP message requests into chat client calls, enabling
+    /// an MCP client to generate text or other content using an actual AI model via the provided chat client.
+    /// </para>
+    /// <para>
+    /// The handler can process text messages, image messages, and resource messages as defined in the
+    /// Model Context Protocol.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="chatClient"/> is <see langword="null"/>.</exception>
+    public static Func<CreateMessageRequestParams?, IProgress<ProgressNotificationValue>, CancellationToken, ValueTask<CreateMessageResult>> CreateSamplingHandler(
+        this IChatClient chatClient)
+    {
+        Throw.IfNull(chatClient);
+
+        return async (requestParams, progress, cancellationToken) =>
+        {
+            Throw.IfNull(requestParams);
+
+            var (messages, options) = requestParams.ToChatClientArguments();
+            var progressToken = requestParams.ProgressToken;
+
+            List<ChatResponseUpdate> updates = [];
+            await foreach (var update in chatClient.GetStreamingResponseAsync(messages, options, cancellationToken).ConfigureAwait(false))
+            {
+                updates.Add(update);
+
+                if (progressToken is not null)
+                {
+                    progress.Report(new()
+                    {
+                        Progress = updates.Count,
+                    });
+                }
+            }
+
+            return updates.ToChatResponse().ToCreateMessageResult();
+        };
+    }
+
     /// <summary>
     /// Sends a ping request to verify server connectivity.
     /// </summary>
@@ -38,17 +84,9 @@ public static class McpClientExtensions
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     /// <exception cref="McpException">Thrown when the server cannot be reached or returns an error response.</exception>
+    [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.PingAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     public static Task PingAsync(this IMcpClient client, CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(client);
-
-        return client.SendRequestAsync(
-            RequestMethods.Ping,
-            parameters: null,
-            McpJsonUtilities.JsonContext.Default.Object!,
-            McpJsonUtilities.JsonContext.Default.Object,
-            cancellationToken: cancellationToken).AsTask();
-    }
+        => AsClientOrThrow(client).PingAsync(cancellationToken);
 
     /// <summary>
     /// Retrieves a list of available tools from the server.
@@ -89,39 +127,12 @@ public static class McpClientExtensions
     /// </code>
     /// </example>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
-    public static async ValueTask<IList<McpClientTool>> ListToolsAsync(
+    [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.ListToolsAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    public static ValueTask<IList<McpClientTool>> ListToolsAsync(
         this IMcpClient client,
         JsonSerializerOptions? serializerOptions = null,
         CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(client);
-
-        serializerOptions ??= McpJsonUtilities.DefaultOptions;
-        serializerOptions.MakeReadOnly();
-
-        List<McpClientTool>? tools = null;
-        string? cursor = null;
-        do
-        {
-            var toolResults = await client.SendRequestAsync(
-                RequestMethods.ToolsList,
-                new() { Cursor = cursor },
-                McpJsonUtilities.JsonContext.Default.ListToolsRequestParams,
-                McpJsonUtilities.JsonContext.Default.ListToolsResult,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            tools ??= new List<McpClientTool>(toolResults.Tools.Count);
-            foreach (var tool in toolResults.Tools)
-            {
-                tools.Add(new McpClientTool(client, tool, serializerOptions));
-            }
-
-            cursor = toolResults.NextCursor;
-        }
-        while (cursor is not null);
-
-        return tools;
-    }
+        => AsClientOrThrow(client).ListToolsAsync(serializerOptions, cancellationToken);
 
     /// <summary>
     /// Creates an enumerable for asynchronously enumerating all available tools from the server.
@@ -155,35 +166,12 @@ public static class McpClientExtensions
     /// </code>
     /// </example>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
-    public static async IAsyncEnumerable<McpClientTool> EnumerateToolsAsync(
+    [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.EnumerateToolsAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    public static IAsyncEnumerable<McpClientTool> EnumerateToolsAsync(
         this IMcpClient client,
         JsonSerializerOptions? serializerOptions = null,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(client);
-
-        serializerOptions ??= McpJsonUtilities.DefaultOptions;
-        serializerOptions.MakeReadOnly();
-
-        string? cursor = null;
-        do
-        {
-            var toolResults = await client.SendRequestAsync(
-                RequestMethods.ToolsList,
-                new() { Cursor = cursor },
-                McpJsonUtilities.JsonContext.Default.ListToolsRequestParams,
-                McpJsonUtilities.JsonContext.Default.ListToolsResult,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            foreach (var tool in toolResults.Tools)
-            {
-                yield return new McpClientTool(client, tool, serializerOptions);
-            }
-
-            cursor = toolResults.NextCursor;
-        }
-        while (cursor is not null);
-    }
+        CancellationToken cancellationToken = default)
+        => AsClientOrThrow(client).EnumerateToolsAsync(serializerOptions, cancellationToken);
 
     /// <summary>
     /// Retrieves a list of available prompts from the server.
@@ -202,34 +190,10 @@ public static class McpClientExtensions
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
-    public static async ValueTask<IList<McpClientPrompt>> ListPromptsAsync(
+    [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.ListPromptsAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    public static ValueTask<IList<McpClientPrompt>> ListPromptsAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(client);
-
-        List<McpClientPrompt>? prompts = null;
-        string? cursor = null;
-        do
-        {
-            var promptResults = await client.SendRequestAsync(
-                RequestMethods.PromptsList,
-                new() { Cursor = cursor },
-                McpJsonUtilities.JsonContext.Default.ListPromptsRequestParams,
-                McpJsonUtilities.JsonContext.Default.ListPromptsResult,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            prompts ??= new List<McpClientPrompt>(promptResults.Prompts.Count);
-            foreach (var prompt in promptResults.Prompts)
-            {
-                prompts.Add(new McpClientPrompt(client, prompt));
-            }
-
-            cursor = promptResults.NextCursor;
-        }
-        while (cursor is not null);
-
-        return prompts;
-    }
+        => AsClientOrThrow(client).ListPromptsAsync(cancellationToken);
 
     /// <summary>
     /// Creates an enumerable for asynchronously enumerating all available prompts from the server.
@@ -258,30 +222,10 @@ public static class McpClientExtensions
     /// </code>
     /// </example>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
-    public static async IAsyncEnumerable<McpClientPrompt> EnumeratePromptsAsync(
-        this IMcpClient client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(client);
-
-        string? cursor = null;
-        do
-        {
-            var promptResults = await client.SendRequestAsync(
-                RequestMethods.PromptsList,
-                new() { Cursor = cursor },
-                McpJsonUtilities.JsonContext.Default.ListPromptsRequestParams,
-                McpJsonUtilities.JsonContext.Default.ListPromptsResult,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            foreach (var prompt in promptResults.Prompts)
-            {
-                yield return new(client, prompt);
-            }
-
-            cursor = promptResults.NextCursor;
-        }
-        while (cursor is not null);
-    }
+    [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.EnumeratePromptsAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    public static IAsyncEnumerable<McpClientPrompt> EnumeratePromptsAsync(
+        this IMcpClient client, CancellationToken cancellationToken = default)
+        => AsClientOrThrow(client).EnumeratePromptsAsync(cancellationToken);
 
     /// <summary>
     /// Retrieves a specific prompt from the MCP server.
@@ -308,26 +252,14 @@ public static class McpClientExtensions
     /// </remarks>
     /// <exception cref="McpException">Thrown when the prompt does not exist, when required arguments are missing, or when the server encounters an error processing the prompt.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
+    [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.GetPromptAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     public static ValueTask<GetPromptResult> GetPromptAsync(
         this IMcpClient client,
         string name,
         IReadOnlyDictionary<string, object?>? arguments = null,
         JsonSerializerOptions? serializerOptions = null,
         CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(client);
-        Throw.IfNullOrWhiteSpace(name);
-
-        serializerOptions ??= McpJsonUtilities.DefaultOptions;
-        serializerOptions.MakeReadOnly();
-
-        return client.SendRequestAsync(
-            RequestMethods.PromptsGet,
-            new() { Name = name, Arguments = ToArgumentsDictionary(arguments, serializerOptions) },
-            McpJsonUtilities.JsonContext.Default.GetPromptRequestParams,
-            McpJsonUtilities.JsonContext.Default.GetPromptResult,
-            cancellationToken: cancellationToken);
-    }
+        => AsClientOrThrow(client).GetPromptAsync(name, arguments, serializerOptions, cancellationToken);
 
     /// <summary>
     /// Retrieves a list of available resource templates from the server.
@@ -346,35 +278,10 @@ public static class McpClientExtensions
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
-    public static async ValueTask<IList<McpClientResourceTemplate>> ListResourceTemplatesAsync(
+    [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.ListResourceTemplatesAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    public static ValueTask<IList<McpClientResourceTemplate>> ListResourceTemplatesAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(client);
-
-        List<McpClientResourceTemplate>? resourceTemplates = null;
-
-        string? cursor = null;
-        do
-        {
-            var templateResults = await client.SendRequestAsync(
-                RequestMethods.ResourcesTemplatesList,
-                new() { Cursor = cursor },
-                McpJsonUtilities.JsonContext.Default.ListResourceTemplatesRequestParams,
-                McpJsonUtilities.JsonContext.Default.ListResourceTemplatesResult,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            resourceTemplates ??= new List<McpClientResourceTemplate>(templateResults.ResourceTemplates.Count);
-            foreach (var template in templateResults.ResourceTemplates)
-            {
-                resourceTemplates.Add(new McpClientResourceTemplate(client, template));
-            }
-
-            cursor = templateResults.NextCursor;
-        }
-        while (cursor is not null);
-
-        return resourceTemplates;
-    }
+        => AsClientOrThrow(client).ListResourceTemplatesAsync(cancellationToken);
 
     /// <summary>
     /// Creates an enumerable for asynchronously enumerating all available resource templates from the server.
@@ -403,30 +310,10 @@ public static class McpClientExtensions
     /// </code>
     /// </example>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
-    public static async IAsyncEnumerable<McpClientResourceTemplate> EnumerateResourceTemplatesAsync(
-        this IMcpClient client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(client);
-
-        string? cursor = null;
-        do
-        {
-            var templateResults = await client.SendRequestAsync(
-                RequestMethods.ResourcesTemplatesList,
-                new() { Cursor = cursor },
-                McpJsonUtilities.JsonContext.Default.ListResourceTemplatesRequestParams,
-                McpJsonUtilities.JsonContext.Default.ListResourceTemplatesResult,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            foreach (var templateResult in templateResults.ResourceTemplates)
-            {
-                yield return new McpClientResourceTemplate(client, templateResult);
-            }
-
-            cursor = templateResults.NextCursor;
-        }
-        while (cursor is not null);
-    }
+    [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.EnumerateResourceTemplatesAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    public static IAsyncEnumerable<McpClientResourceTemplate> EnumerateResourceTemplatesAsync(
+        this IMcpClient client, CancellationToken cancellationToken = default)
+        => AsClientOrThrow(client).EnumerateResourceTemplatesAsync(cancellationToken);
 
     /// <summary>
     /// Retrieves a list of available resources from the server.
@@ -457,35 +344,10 @@ public static class McpClientExtensions
     /// </code>
     /// </example>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
-    public static async ValueTask<IList<McpClientResource>> ListResourcesAsync(
+    [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.ListResourcesAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    public static ValueTask<IList<McpClientResource>> ListResourcesAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(client);
-
-        List<McpClientResource>? resources = null;
-
-        string? cursor = null;
-        do
-        {
-            var resourceResults = await client.SendRequestAsync(
-                RequestMethods.ResourcesList,
-                new() { Cursor = cursor },
-                McpJsonUtilities.JsonContext.Default.ListResourcesRequestParams,
-                McpJsonUtilities.JsonContext.Default.ListResourcesResult,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            resources ??= new List<McpClientResource>(resourceResults.Resources.Count);
-            foreach (var resource in resourceResults.Resources)
-            {
-                resources.Add(new McpClientResource(client, resource));
-            }
-
-            cursor = resourceResults.NextCursor;
-        }
-        while (cursor is not null);
-
-        return resources;
-    }
+        => AsClientOrThrow(client).ListResourcesAsync(cancellationToken);
 
     /// <summary>
     /// Creates an enumerable for asynchronously enumerating all available resources from the server.
@@ -514,30 +376,10 @@ public static class McpClientExtensions
     /// </code>
     /// </example>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
-    public static async IAsyncEnumerable<McpClientResource> EnumerateResourcesAsync(
-        this IMcpClient client, [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(client);
-
-        string? cursor = null;
-        do
-        {
-            var resourceResults = await client.SendRequestAsync(
-                RequestMethods.ResourcesList,
-                new() { Cursor = cursor },
-                McpJsonUtilities.JsonContext.Default.ListResourcesRequestParams,
-                McpJsonUtilities.JsonContext.Default.ListResourcesResult,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            foreach (var resource in resourceResults.Resources)
-            {
-                yield return new McpClientResource(client, resource);
-            }
-
-            cursor = resourceResults.NextCursor;
-        }
-        while (cursor is not null);
-    }
+    [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.EnumerateResourcesAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    public static IAsyncEnumerable<McpClientResource> EnumerateResourcesAsync(
+        this IMcpClient client, CancellationToken cancellationToken = default)
+        => AsClientOrThrow(client).EnumerateResourcesAsync(cancellationToken);
 
     /// <summary>
     /// Reads a resource from the server.
@@ -548,19 +390,10 @@ public static class McpClientExtensions
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="uri"/> is empty or composed entirely of whitespace.</exception>
+    [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.ReadResourceAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     public static ValueTask<ReadResourceResult> ReadResourceAsync(
         this IMcpClient client, string uri, CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(client);
-        Throw.IfNullOrWhiteSpace(uri);
-
-        return client.SendRequestAsync(
-            RequestMethods.ResourcesRead,
-            new() { Uri = uri },
-            McpJsonUtilities.JsonContext.Default.ReadResourceRequestParams,
-            McpJsonUtilities.JsonContext.Default.ReadResourceResult,
-            cancellationToken: cancellationToken);
-    }
+        => AsClientOrThrow(client).ReadResourceAsync(uri, cancellationToken);
 
     /// <summary>
     /// Reads a resource from the server.
@@ -570,14 +403,10 @@ public static class McpClientExtensions
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
+    [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.ReadResourceAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     public static ValueTask<ReadResourceResult> ReadResourceAsync(
         this IMcpClient client, Uri uri, CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(client);
-        Throw.IfNull(uri);
-
-        return ReadResourceAsync(client, uri.ToString(), cancellationToken);
-    }
+        => AsClientOrThrow(client).ReadResourceAsync(uri, cancellationToken);
 
     /// <summary>
     /// Reads a resource from the server.
@@ -589,20 +418,10 @@ public static class McpClientExtensions
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="uriTemplate"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="uriTemplate"/> is empty or composed entirely of whitespace.</exception>
+    [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.ReadResourceAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     public static ValueTask<ReadResourceResult> ReadResourceAsync(
         this IMcpClient client, string uriTemplate, IReadOnlyDictionary<string, object?> arguments, CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(client);
-        Throw.IfNullOrWhiteSpace(uriTemplate);
-        Throw.IfNull(arguments);
-
-        return client.SendRequestAsync(
-            RequestMethods.ResourcesRead,
-            new() { Uri = UriTemplate.FormatUri(uriTemplate, arguments) },
-            McpJsonUtilities.JsonContext.Default.ReadResourceRequestParams,
-            McpJsonUtilities.JsonContext.Default.ReadResourceResult,
-            cancellationToken: cancellationToken);
-    }
+        => AsClientOrThrow(client).ReadResourceAsync(uriTemplate, arguments, cancellationToken);
 
     /// <summary>
     /// Requests completion suggestions for a prompt argument or resource reference.
@@ -633,23 +452,9 @@ public static class McpClientExtensions
     /// <exception cref="ArgumentNullException"><paramref name="argumentName"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="argumentName"/> is empty or composed entirely of whitespace.</exception>
     /// <exception cref="McpException">The server returned an error response.</exception>
+    [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.CompleteAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     public static ValueTask<CompleteResult> CompleteAsync(this IMcpClient client, Reference reference, string argumentName, string argumentValue, CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(client);
-        Throw.IfNull(reference);
-        Throw.IfNullOrWhiteSpace(argumentName);
-
-        return client.SendRequestAsync(
-            RequestMethods.CompletionComplete,
-            new()
-            {
-                Ref = reference,
-                Argument = new Argument { Name = argumentName, Value = argumentValue }
-            },
-            McpJsonUtilities.JsonContext.Default.CompleteRequestParams,
-            McpJsonUtilities.JsonContext.Default.CompleteResult,
-            cancellationToken: cancellationToken);
-    }
+        => AsClientOrThrow(client).CompleteAsync(reference, argumentName, argumentValue, cancellationToken);
 
     /// <summary>
     /// Subscribes to a resource on the server to receive notifications when it changes.
@@ -676,18 +481,9 @@ public static class McpClientExtensions
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="uri"/> is empty or composed entirely of whitespace.</exception>
+    [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.SubscribeToResourceAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     public static Task SubscribeToResourceAsync(this IMcpClient client, string uri, CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(client);
-        Throw.IfNullOrWhiteSpace(uri);
-
-        return client.SendRequestAsync(
-            RequestMethods.ResourcesSubscribe,
-            new() { Uri = uri },
-            McpJsonUtilities.JsonContext.Default.SubscribeRequestParams,
-            McpJsonUtilities.JsonContext.Default.EmptyResult,
-            cancellationToken: cancellationToken).AsTask();
-    }
+        => AsClientOrThrow(client).SubscribeToResourceAsync(uri, cancellationToken);
 
     /// <summary>
     /// Subscribes to a resource on the server to receive notifications when it changes.
@@ -713,13 +509,9 @@ public static class McpClientExtensions
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
+    [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.SubscribeToResourceAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     public static Task SubscribeToResourceAsync(this IMcpClient client, Uri uri, CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(client);
-        Throw.IfNull(uri);
-
-        return SubscribeToResourceAsync(client, uri.ToString(), cancellationToken);
-    }
+        => AsClientOrThrow(client).SubscribeToResourceAsync(uri, cancellationToken);
 
     /// <summary>
     /// Unsubscribes from a resource on the server to stop receiving notifications about its changes.
@@ -745,18 +537,9 @@ public static class McpClientExtensions
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="uri"/> is empty or composed entirely of whitespace.</exception>
+    [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.UnsubscribeFromResourceAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     public static Task UnsubscribeFromResourceAsync(this IMcpClient client, string uri, CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(client);
-        Throw.IfNullOrWhiteSpace(uri);
-
-        return client.SendRequestAsync(
-            RequestMethods.ResourcesUnsubscribe,
-            new() { Uri = uri },
-            McpJsonUtilities.JsonContext.Default.UnsubscribeRequestParams,
-            McpJsonUtilities.JsonContext.Default.EmptyResult,
-            cancellationToken: cancellationToken).AsTask();
-    }
+        => AsClientOrThrow(client).UnsubscribeFromResourceAsync(uri, cancellationToken);
 
     /// <summary>
     /// Unsubscribes from a resource on the server to stop receiving notifications about its changes.
@@ -781,13 +564,9 @@ public static class McpClientExtensions
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
+    [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.UnsubscribeFromResourceAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     public static Task UnsubscribeFromResourceAsync(this IMcpClient client, Uri uri, CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(client);
-        Throw.IfNull(uri);
-
-        return UnsubscribeFromResourceAsync(client, uri.ToString(), cancellationToken);
-    }
+        => AsClientOrThrow(client).UnsubscribeFromResourceAsync(uri, cancellationToken);
 
     /// <summary>
     /// Invokes a tool on the server.
@@ -824,6 +603,7 @@ public static class McpClientExtensions
     ///     });
     /// </code>
     /// </example>
+    [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.CallToolAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     public static ValueTask<CallToolResult> CallToolAsync(
         this IMcpClient client,
         string toolName,
@@ -831,62 +611,28 @@ public static class McpClientExtensions
         IProgress<ProgressNotificationValue>? progress = null,
         JsonSerializerOptions? serializerOptions = null,
         CancellationToken cancellationToken = default)
+        => AsClientOrThrow(client).CallToolAsync(toolName, arguments, progress, serializerOptions, cancellationToken);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+#pragma warning disable CS0618 // Type or member is obsolete
+    private static McpClient AsClientOrThrow(IMcpClient client, [CallerMemberName] string memberName = "")
+#pragma warning restore CS0618 // Type or member is obsolete
     {
-        Throw.IfNull(client);
-        Throw.IfNull(toolName);
-        serializerOptions ??= McpJsonUtilities.DefaultOptions;
-        serializerOptions.MakeReadOnly();
-
-        if (progress is not null)
+        if (client is not McpClient mcpClient)
         {
-            return SendRequestWithProgressAsync(client, toolName, arguments, progress, serializerOptions, cancellationToken);
+            ThrowInvalidEndpointType(memberName);
         }
 
-        return client.SendRequestAsync(
-            RequestMethods.ToolsCall,
-            new()
-            {
-                Name = toolName,
-                Arguments = ToArgumentsDictionary(arguments, serializerOptions),
-            },
-            McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
-            McpJsonUtilities.JsonContext.Default.CallToolResult,
-            cancellationToken: cancellationToken);
+        return mcpClient;
 
-        static async ValueTask<CallToolResult> SendRequestWithProgressAsync(
-            IMcpClient client,
-            string toolName,
-            IReadOnlyDictionary<string, object?>? arguments,
-            IProgress<ProgressNotificationValue> progress,
-            JsonSerializerOptions serializerOptions,
-            CancellationToken cancellationToken)
-        {
-            ProgressToken progressToken = new(Guid.NewGuid().ToString("N"));
-
-            await using var _ = client.RegisterNotificationHandler(NotificationMethods.ProgressNotification,
-                (notification, cancellationToken) =>
-                {
-                    if (JsonSerializer.Deserialize(notification.Params, McpJsonUtilities.JsonContext.Default.ProgressNotificationParams) is { } pn &&
-                        pn.ProgressToken == progressToken)
-                    {
-                        progress.Report(pn.Progress);
-                    }
-
-                    return default;
-                }).ConfigureAwait(false);
-
-            return await client.SendRequestAsync(
-                RequestMethods.ToolsCall,
-                new()
-                {
-                    Name = toolName,
-                    Arguments = ToArgumentsDictionary(arguments, serializerOptions),
-                    ProgressToken = progressToken,
-                },
-                McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
-                McpJsonUtilities.JsonContext.Default.CallToolResult,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-        }
+        [DoesNotReturn]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void ThrowInvalidEndpointType(string memberName)
+            => throw new InvalidOperationException(
+                $"Only arguments assignable to '{nameof(McpClient)}' are supported. " +
+                $"Prefer using '{nameof(McpClient)}.{memberName}' instead, as " +
+                $"'{nameof(McpClientExtensions)}.{memberName}' is obsolete and will be " +
+                $"removed in the future.");
     }
 
     /// <summary>
@@ -962,133 +708,5 @@ public static class McpClientExtensions
             Role = lastMessage?.Role == ChatRole.User ? Role.User : Role.Assistant,
             StopReason = chatResponse.FinishReason == ChatFinishReason.Length ? "maxTokens" : "endTurn",
         };
-    }
-
-    /// <summary>
-    /// Creates a sampling handler for use with <see cref="SamplingCapability.SamplingHandler"/> that will
-    /// satisfy sampling requests using the specified <see cref="IChatClient"/>.
-    /// </summary>
-    /// <param name="chatClient">The <see cref="IChatClient"/> with which to satisfy sampling requests.</param>
-    /// <returns>The created handler delegate that can be assigned to <see cref="SamplingCapability.SamplingHandler"/>.</returns>
-    /// <remarks>
-    /// <para>
-    /// This method creates a function that converts MCP message requests into chat client calls, enabling
-    /// an MCP client to generate text or other content using an actual AI model via the provided chat client.
-    /// </para>
-    /// <para>
-    /// The handler can process text messages, image messages, and resource messages as defined in the
-    /// Model Context Protocol.
-    /// </para>
-    /// </remarks>
-    /// <exception cref="ArgumentNullException"><paramref name="chatClient"/> is <see langword="null"/>.</exception>
-    public static Func<CreateMessageRequestParams?, IProgress<ProgressNotificationValue>, CancellationToken, ValueTask<CreateMessageResult>> CreateSamplingHandler(
-        this IChatClient chatClient)
-    {
-        Throw.IfNull(chatClient);
-
-        return async (requestParams, progress, cancellationToken) =>
-        {
-            Throw.IfNull(requestParams);
-
-            var (messages, options) = requestParams.ToChatClientArguments();
-            var progressToken = requestParams.ProgressToken;
-
-            List<ChatResponseUpdate> updates = [];
-            await foreach (var update in chatClient.GetStreamingResponseAsync(messages, options, cancellationToken).ConfigureAwait(false))
-            {
-                updates.Add(update);
-
-                if (progressToken is not null)
-                {
-                    progress.Report(new()
-                    {
-                        Progress = updates.Count,
-                    });
-                }
-            }
-
-            return updates.ToChatResponse().ToCreateMessageResult();
-        };
-    }
-
-    /// <summary>
-    /// Sets the logging level for the server to control which log messages are sent to the client.
-    /// </summary>
-    /// <param name="client">The client instance used to communicate with the MCP server.</param>
-    /// <param name="level">The minimum severity level of log messages to receive from the server.</param>
-    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>A task representing the asynchronous operation.</returns>
-    /// <remarks>
-    /// <para>
-    /// After this request is processed, the server will send log messages at or above the specified
-    /// logging level as notifications to the client. For example, if <see cref="LoggingLevel.Warning"/> is set,
-    /// the client will receive <see cref="LoggingLevel.Warning"/>, <see cref="LoggingLevel.Error"/>, 
-    /// <see cref="LoggingLevel.Critical"/>, <see cref="LoggingLevel.Alert"/>, and <see cref="LoggingLevel.Emergency"/>
-    /// level messages.
-    /// </para>
-    /// <para>
-    /// To receive all log messages, set the level to <see cref="LoggingLevel.Debug"/>.
-    /// </para>
-    /// <para>
-    /// Log messages are delivered as notifications to the client and can be captured by registering
-    /// appropriate event handlers with the client implementation, such as with <see cref="IMcpEndpoint.RegisterNotificationHandler"/>.
-    /// </para>
-    /// </remarks>
-    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
-    public static Task SetLoggingLevel(this IMcpClient client, LoggingLevel level, CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(client);
-
-        return client.SendRequestAsync(
-            RequestMethods.LoggingSetLevel,
-            new() { Level = level },
-            McpJsonUtilities.JsonContext.Default.SetLevelRequestParams,
-            McpJsonUtilities.JsonContext.Default.EmptyResult,
-            cancellationToken: cancellationToken).AsTask();
-    }
-
-    /// <summary>
-    /// Sets the logging level for the server to control which log messages are sent to the client.
-    /// </summary>
-    /// <param name="client">The client instance used to communicate with the MCP server.</param>
-    /// <param name="level">The minimum severity level of log messages to receive from the server.</param>
-    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>A task representing the asynchronous operation.</returns>
-    /// <remarks>
-    /// <para>
-    /// After this request is processed, the server will send log messages at or above the specified
-    /// logging level as notifications to the client. For example, if <see cref="LogLevel.Warning"/> is set,
-    /// the client will receive <see cref="LogLevel.Warning"/>, <see cref="LogLevel.Error"/>, 
-    /// and <see cref="LogLevel.Critical"/> level messages.
-    /// </para>
-    /// <para>
-    /// To receive all log messages, set the level to <see cref="LogLevel.Trace"/>.
-    /// </para>
-    /// <para>
-    /// Log messages are delivered as notifications to the client and can be captured by registering
-    /// appropriate event handlers with the client implementation, such as with <see cref="IMcpEndpoint.RegisterNotificationHandler"/>.
-    /// </para>
-    /// </remarks>
-    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
-    public static Task SetLoggingLevel(this IMcpClient client, LogLevel level, CancellationToken cancellationToken = default) =>
-        SetLoggingLevel(client, McpServer.ToLoggingLevel(level), cancellationToken);
-
-    /// <summary>Convers a dictionary with <see cref="object"/> values to a dictionary with <see cref="JsonElement"/> values.</summary>
-    private static Dictionary<string, JsonElement>? ToArgumentsDictionary(
-        IReadOnlyDictionary<string, object?>? arguments, JsonSerializerOptions options)
-    {
-        var typeInfo = options.GetTypeInfo<object?>();
-
-        Dictionary<string, JsonElement>? result = null;
-        if (arguments is not null)
-        {
-            result = new(arguments.Count);
-            foreach (var kvp in arguments)
-            {
-                result.Add(kvp.Key, kvp.Value is JsonElement je ? je : JsonSerializer.SerializeToElement(kvp.Value, typeInfo));
-            }
-        }
-
-        return result;
     }
 }

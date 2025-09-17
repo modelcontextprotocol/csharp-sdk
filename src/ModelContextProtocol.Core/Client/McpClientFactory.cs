@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 
 namespace ModelContextProtocol.Client;
 
@@ -10,6 +10,7 @@ namespace ModelContextProtocol.Client;
 /// that connect to MCP servers. It handles the creation and connection
 /// of appropriate implementations through the supplied transport.
 /// </remarks>
+[Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.CreateAsync)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
 public static partial class McpClientFactory
 {
     /// <summary>Creates an <see cref="IMcpClient"/>, connecting it to the specified server.</summary>
@@ -28,27 +29,5 @@ public static partial class McpClientFactory
         McpClientOptions? clientOptions = null,
         ILoggerFactory? loggerFactory = null,
         CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(clientTransport);
-
-        McpClient client = new(clientTransport, clientOptions, loggerFactory);
-        try
-        {
-            await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
-            if (loggerFactory?.CreateLogger(typeof(McpClientFactory)) is ILogger logger)
-            {
-                logger.LogClientCreated(client.EndpointName);
-            }
-        }
-        catch
-        {
-            await client.DisposeAsync().ConfigureAwait(false);
-            throw;
-        }
-
-        return client;
-    }
-
-    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} client created and connected.")]
-    private static partial void LogClientCreated(this ILogger logger, string endpointName);
+        => await McpClient.CreateAsync(clientTransport, clientOptions, loggerFactory, cancellationToken);
 }

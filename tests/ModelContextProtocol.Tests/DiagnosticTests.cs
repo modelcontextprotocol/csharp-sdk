@@ -128,7 +128,7 @@ public class DiagnosticTests
         Assert.Equal("-32602", doesNotExistToolClient.Tags.Single(t => t.Key == "rpc.jsonrpc.error_code").Value);
     }
 
-    private static async Task RunConnected(Func<IMcpClient, IMcpServer, Task> action, List<string> clientToServerLog)
+    private static async Task RunConnected(Func<McpClient, McpServer, Task> action, List<string> clientToServerLog)
     {
         Pipe clientToServerPipe = new(), serverToClientPipe = new();
         StreamServerTransport serverTransport = new(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream());
@@ -137,7 +137,7 @@ public class DiagnosticTests
 
         Task serverTask;
 
-        await using (IMcpServer server = McpServerFactory.Create(serverTransport, new()
+        await using (McpServer server = McpServer.Create(serverTransport, new()
             {
                 Capabilities = new()
                 {
@@ -153,7 +153,7 @@ public class DiagnosticTests
         {
             serverTask = server.RunAsync(TestContext.Current.CancellationToken);
 
-            await using (IMcpClient client = await McpClientFactory.CreateAsync(
+            await using (McpClient client = await McpClient.CreateAsync(
                 clientTransport,
                 cancellationToken: TestContext.Current.CancellationToken))
             {

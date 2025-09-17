@@ -20,7 +20,7 @@ public class HttpServerTransportOptions
     /// Gets or sets an optional asynchronous callback for running new MCP sessions manually.
     /// This is useful for running logic before a sessions starts and after it completes.
     /// </summary>
-    public Func<HttpContext, IMcpServer, CancellationToken, Task>? RunSessionHandler { get; set; }
+    public Func<HttpContext, McpServer, CancellationToken, Task>? RunSessionHandler { get; set; }
 
     /// <summary>
     /// Gets or sets whether the server should run in a stateless mode that does not require all requests for a given session

@@ -15,8 +15,8 @@ namespace ModelContextProtocol.Server;
 /// <see cref="McpServerPrompt"/> is an abstract base class that represents an MCP prompt for use in the server (as opposed
 /// to <see cref="Prompt"/>, which provides the protocol representation of a prompt, and <see cref="McpClientPrompt"/>, which
 /// provides a client-side representation of a prompt). Instances of <see cref="McpServerPrompt"/> can be added into a
-/// <see cref="IServiceCollection"/> to be picked up automatically when <see cref="McpServerFactory"/> is used to create
-/// an <see cref="IMcpServer"/>, or added into a <see cref="McpServerPrimitiveCollection{McpServerPrompt}"/>.
+/// <see cref="IServiceCollection"/> to be picked up automatically when <see cref="McpServer"/> is used to create
+/// an <see cref="McpServer"/>, or added into a <see cref="McpServerPrimitiveCollection{McpServerPrompt}"/>.
 /// </para>
 /// <para>
 /// Most commonly, <see cref="McpServerPrompt"/> instances are created using the static <see cref="M:McpServerPrompt.Create"/> methods.
@@ -34,7 +34,7 @@ namespace ModelContextProtocol.Server;
 ///   <item>
 ///     <description>
 ///       <see cref="CancellationToken"/> parameters are automatically bound to a <see cref="CancellationToken"/> provided by the
-///       <see cref="IMcpServer"/> and that respects any <see cref="CancelledNotificationParams"/>s sent by the client for this operation's
+///       <see cref="McpServer"/> and that respects any <see cref="CancelledNotificationParams"/>s sent by the client for this operation's
 ///       <see cref="RequestId"/>.
 ///     </description>
 ///   </item>
@@ -45,7 +45,7 @@ namespace ModelContextProtocol.Server;
 ///   </item>
 ///   <item>
 ///     <description>
-///       <see cref="IMcpServer"/> parameters are bound directly to the <see cref="IMcpServer"/> instance associated
+///       <see cref="McpServer"/> parameters are bound directly to the <see cref="McpServer"/> instance associated
 ///       with this request's <see cref="RequestContext{CallPromptRequestParams}"/>. Such parameters may be used to understand
 ///       what server is being used to process the request, and to interact with the client issuing the request to that server.
 ///     </description>
@@ -210,7 +210,7 @@ public abstract class McpServerPrompt : IMcpServerPrimitive
     /// <exception cref="ArgumentNullException"><paramref name="function"/> is <see langword="null"/>.</exception>
     /// <remarks>
     /// Unlike the other overloads of Create, the <see cref="McpServerPrompt"/> created by <see cref="Create(AIFunction, McpServerPromptCreateOptions)"/>
-    /// does not provide all of the special parameter handling for MCP-specific concepts, like <see cref="IMcpServer"/>.
+    /// does not provide all of the special parameter handling for MCP-specific concepts, like <see cref="McpServer"/>.
     /// </remarks>
     public static McpServerPrompt Create(
         AIFunction function,

@@ -36,15 +36,15 @@ public class DockerEverythingServerTests(ITestOutputHelper testOutputHelper) : L
             ClientInfo = new() { Name = "IntegrationTestClient", Version = "1.0.0" }
         };
 
-        var defaultConfig = new SseClientTransportOptions
+        var defaultConfig = new HttpClientTransportOptions
         {
             Endpoint = new Uri($"http://localhost:{port}/sse"),
             Name = "Everything",
         };
 
         // Create client and run tests
-        await using var client = await McpClientFactory.CreateAsync(
-            new SseClientTransport(defaultConfig),
+        await using var client = await McpClient.CreateAsync(
+            new HttpClientTransport(defaultConfig),
             defaultOptions, 
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
@@ -63,7 +63,7 @@ public class DockerEverythingServerTests(ITestOutputHelper testOutputHelper) : L
         await using var fixture = new EverythingSseServerFixture(port);
         await fixture.StartAsync();
 
-        var defaultConfig = new SseClientTransportOptions
+        var defaultConfig = new HttpClientTransportOptions
         {
             Endpoint = new Uri($"http://localhost:{port}/sse"),
             Name = "Everything",
@@ -90,8 +90,8 @@ public class DockerEverythingServerTests(ITestOutputHelper testOutputHelper) : L
             },
         };
 
-        await using var client = await McpClientFactory.CreateAsync(
-            new SseClientTransport(defaultConfig),
+        await using var client = await McpClient.CreateAsync(
+            new HttpClientTransport(defaultConfig),
             defaultOptions,
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);

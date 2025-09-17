@@ -12,7 +12,7 @@ namespace ModelContextProtocol.Protocol;
 /// </summary>
 /// <remarks>
 /// <para>
-/// References are commonly used with <see cref="McpClientExtensions.CompleteAsync"/> to request completion suggestions for arguments,
+/// References are commonly used with <see cref="McpClient.CompleteAsync"/> to request completion suggestions for arguments,
 /// and with other methods that need to reference resources or prompts.
 /// </para>
 /// <para>

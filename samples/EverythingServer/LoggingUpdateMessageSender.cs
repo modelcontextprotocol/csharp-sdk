@@ -5,7 +5,7 @@ using ModelContextProtocol.Server;
 
 namespace EverythingServer;
 
-public class LoggingUpdateMessageSender(IMcpServer server, Func<LoggingLevel> getMinLevel) : BackgroundService
+public class LoggingUpdateMessageSender(McpServer server, Func<LoggingLevel> getMinLevel) : BackgroundService
 {
     readonly Dictionary<LoggingLevel, string> _loggingLevelMap = new()
     {

@@ -23,7 +23,7 @@ namespace ModelContextProtocol.Server;
 ///   <item>
 ///     <description>
 ///       <see cref="CancellationToken"/> parameters are automatically bound to a <see cref="CancellationToken"/> provided by the
-///       <see cref="IMcpServer"/> and that respects any <see cref="CancelledNotificationParams"/>s sent by the client for this operation's
+///       <see cref="McpServer"/> and that respects any <see cref="CancelledNotificationParams"/>s sent by the client for this operation's
 ///       <see cref="RequestId"/>.
 ///     </description>
 ///   </item>
@@ -34,7 +34,7 @@ namespace ModelContextProtocol.Server;
 ///   </item>
 ///   <item>
 ///     <description>
-///       <see cref="IMcpServer"/> parameters are bound directly to the <see cref="IMcpServer"/> instance associated
+///       <see cref="McpServer"/> parameters are bound directly to the <see cref="McpServer"/> instance associated
 ///       with this request's <see cref="RequestContext{ReadResourceRequestParams}"/>. Such parameters may be used to understand
 ///       what server is being used to process the request, and to interact with the client issuing the request to that server.
 ///     </description>

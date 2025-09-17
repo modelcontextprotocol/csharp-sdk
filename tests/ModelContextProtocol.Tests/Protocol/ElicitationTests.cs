@@ -67,7 +67,7 @@ public partial class ElicitationTests : ClientServerTestBase
     [Fact]
     public async Task Can_Elicit_Information()
     {
-        await using IMcpClient client = await CreateMcpClientForServer(new McpClientOptions
+        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
         {
             Capabilities = new()
             {

@@ -129,7 +129,7 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
     [Fact]
     public async Task AddListResourceTemplatesFilter_Logs_When_ListResourceTemplates_Called()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         await client.ListResourceTemplatesAsync(cancellationToken: TestContext.Current.CancellationToken);
 
@@ -141,7 +141,7 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
     [Fact]
     public async Task AddListToolsFilter_Logs_When_ListTools_Called()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
@@ -153,7 +153,7 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
     [Fact]
     public async Task AddCallToolFilter_Logs_When_CallTool_Called()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         await client.CallToolAsync("test_tool_method", cancellationToken: TestContext.Current.CancellationToken);
 
@@ -165,7 +165,7 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
     [Fact]
     public async Task AddListPromptsFilter_Logs_When_ListPrompts_Called()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         await client.ListPromptsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
@@ -177,7 +177,7 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
     [Fact]
     public async Task AddGetPromptFilter_Logs_When_GetPrompt_Called()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         await client.GetPromptAsync("test_prompt_method", cancellationToken: TestContext.Current.CancellationToken);
 
@@ -189,7 +189,7 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
     [Fact]
     public async Task AddListResourcesFilter_Logs_When_ListResources_Called()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
 
@@ -201,7 +201,7 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
     [Fact]
     public async Task AddReadResourceFilter_Logs_When_ReadResource_Called()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         await client.ReadResourceAsync("test://resource/123", cancellationToken: TestContext.Current.CancellationToken);
 
@@ -213,7 +213,7 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
     [Fact]
     public async Task AddCompleteFilter_Logs_When_Complete_Called()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         var reference = new PromptReference { Name = "test_prompt_method" };
         await client.CompleteAsync(reference, "argument", "value", cancellationToken: TestContext.Current.CancellationToken);
@@ -226,7 +226,7 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
     [Fact]
     public async Task AddSubscribeToResourcesFilter_Logs_When_SubscribeToResources_Called()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         await client.SubscribeToResourceAsync("test://resource/123", cancellationToken: TestContext.Current.CancellationToken);
 
@@ -238,7 +238,7 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
     [Fact]
     public async Task AddUnsubscribeFromResourcesFilter_Logs_When_UnsubscribeFromResources_Called()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         await client.UnsubscribeFromResourceAsync("test://resource/123", cancellationToken: TestContext.Current.CancellationToken);
 
@@ -250,7 +250,7 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
     [Fact]
     public async Task AddSetLoggingLevelFilter_Logs_When_SetLoggingLevel_Called()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         await client.SetLoggingLevel(LoggingLevel.Info, cancellationToken: TestContext.Current.CancellationToken);
 
@@ -262,7 +262,7 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
     [Fact]
     public async Task AddListToolsFilter_Multiple_Filters_Log_In_Expected_Order()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 

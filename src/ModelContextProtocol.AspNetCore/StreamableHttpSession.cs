@@ -7,7 +7,7 @@ namespace ModelContextProtocol.AspNetCore;
 internal sealed class StreamableHttpSession(
     string sessionId,
     StreamableHttpServerTransport transport,
-    IMcpServer server,
+    McpServer server,
     UserIdClaim? userId,
     StatefulSessionManager sessionManager) : IAsyncDisposable
 {
@@ -20,7 +20,7 @@ internal sealed class StreamableHttpSession(
 
     public string Id => sessionId;
     public StreamableHttpServerTransport Transport => transport;
-    public IMcpServer Server => server;
+    public McpServer Server => server;
     private StatefulSessionManager SessionManager => sessionManager;
 
     public CancellationToken SessionClosed => _disposeCts.Token;

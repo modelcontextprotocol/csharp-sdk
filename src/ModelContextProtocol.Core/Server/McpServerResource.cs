@@ -13,7 +13,7 @@ namespace ModelContextProtocol.Server;
 /// <see cref="McpServerResource"/> is an abstract base class that represents an MCP resource for use in the server (as opposed
 /// to <see cref="Resource"/> or <see cref="ResourceTemplate"/>, which provide the protocol representations of a resource). Instances of
 /// <see cref="McpServerResource"/> can be added into a <see cref="IServiceCollection"/> to be picked up automatically when
-/// <see cref="McpServerFactory"/> is used to create an <see cref="IMcpServer"/>, or added into a <see cref="McpServerPrimitiveCollection{McpServerResource}"/>.
+/// <see cref="McpServer"/> is used to create an <see cref="McpServer"/>, or added into a <see cref="McpServerPrimitiveCollection{McpServerResource}"/>.
 /// </para>
 /// <para>
 /// Most commonly, <see cref="McpServerResource"/> instances are created using the static <see cref="M:McpServerResource.Create"/> methods.
@@ -35,7 +35,7 @@ namespace ModelContextProtocol.Server;
 ///   <item>
 ///     <description>
 ///       <see cref="CancellationToken"/> parameters are automatically bound to a <see cref="CancellationToken"/> provided by the
-///       <see cref="IMcpServer"/> and that respects any <see cref="CancelledNotificationParams"/>s sent by the client for this operation's
+///       <see cref="McpServer"/> and that respects any <see cref="CancelledNotificationParams"/>s sent by the client for this operation's
 ///       <see cref="RequestId"/>.
 ///     </description>
 ///   </item>
@@ -46,7 +46,7 @@ namespace ModelContextProtocol.Server;
 ///   </item>
 ///   <item>
 ///     <description>
-///       <see cref="IMcpServer"/> parameters are bound directly to the <see cref="IMcpServer"/> instance associated
+///       <see cref="McpServer"/> parameters are bound directly to the <see cref="McpServer"/> instance associated
 ///       with this request's <see cref="RequestContext{ReadResourceRequestParams}"/>. Such parameters may be used to understand
 ///       what server is being used to process the request, and to interact with the client issuing the request to that server.
 ///     </description>
@@ -232,7 +232,7 @@ public abstract class McpServerResource : IMcpServerPrimitive
     /// <exception cref="ArgumentNullException"><paramref name="function"/> is <see langword="null"/>.</exception>
     /// <remarks>
     /// Unlike the other overloads of Create, the <see cref="McpServerResource"/> created by <see cref="Create(AIFunction, McpServerResourceCreateOptions)"/>
-    /// does not provide all of the special parameter handling for MCP-specific concepts, like <see cref="IMcpServer"/>.
+    /// does not provide all of the special parameter handling for MCP-specific concepts, like <see cref="McpServer"/>.
     /// </remarks>
     public static McpServerResource Create(
         AIFunction function,

@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -102,7 +101,7 @@ public partial class ElicitationTypedTests : ClientServerTestBase
     [Fact]
     public async Task Can_Elicit_Typed_Information()
     {
-        await using IMcpClient client = await CreateMcpClientForServer(new McpClientOptions
+        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
         {
             Capabilities = new()
             {
@@ -198,7 +197,7 @@ public partial class ElicitationTypedTests : ClientServerTestBase
     [Fact]
     public async Task Elicit_Typed_Respects_NamingPolicy()
     {
-        await using IMcpClient client = await CreateMcpClientForServer(new McpClientOptions
+        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
         {
             Capabilities = new()
             {
@@ -242,7 +241,7 @@ public partial class ElicitationTypedTests : ClientServerTestBase
     [Fact]
     public async Task Elicit_Typed_With_Unsupported_Property_Type_Throws()
     {
-        await using IMcpClient client = await CreateMcpClientForServer(new McpClientOptions
+        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
         {
             Capabilities = new()
             {
@@ -267,7 +266,7 @@ public partial class ElicitationTypedTests : ClientServerTestBase
     [Fact]
     public async Task Elicit_Typed_With_Nullable_Property_Type_Throws()
     {
-        await using IMcpClient client = await CreateMcpClientForServer(new McpClientOptions
+        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
         {
             Capabilities = new()
             {
@@ -290,7 +289,7 @@ public partial class ElicitationTypedTests : ClientServerTestBase
     [Fact]
     public async Task Elicit_Typed_With_NonObject_Generic_Type_Throws()
     {
-        await using IMcpClient client = await CreateMcpClientForServer(new McpClientOptions
+        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
         {
             Capabilities = new()
             {

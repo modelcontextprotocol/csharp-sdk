@@ -37,8 +37,8 @@ dotnet add package ModelContextProtocol --prerelease
 
 ## Getting Started (Client)
 
-To get started writing a client, the `McpClientFactory.CreateAsync` method is used to instantiate and connect an `IMcpClient`
-to a server. Once you have an `IMcpClient`, you can interact with it, such as to enumerate all available tools and invoke tools.
+To get started writing a client, the `McpClient.CreateAsync` method is used to instantiate and connect an `McpClient`
+to a server. Once you have an `McpClient`, you can interact with it, such as to enumerate all available tools and invoke tools.
 
 ```csharp
 var clientTransport = new StdioClientTransport(new StdioClientTransportOptions
@@ -48,7 +48,7 @@ var clientTransport = new StdioClientTransport(new StdioClientTransportOptions
     Arguments = ["-y", "@modelcontextprotocol/server-everything"],
 });
 
-var client = await McpClientFactory.CreateAsync(clientTransport);
+var client = await McpClient.CreateAsync(clientTransport);
 
 // Print the list of tools available from the server.
 foreach (var tool in await client.ListToolsAsync())
@@ -122,14 +122,14 @@ public static class EchoTool
 }
 ```
 
-Tools can have the `IMcpServer` representing the server injected via a parameter to the method, and can use that for interaction with 
+Tools can have the `McpServer` representing the server injected via a parameter to the method, and can use that for interaction with 
 the connected client. Similarly, arguments may be injected via dependency injection. For example, this tool will use the supplied 
-`IMcpServer` to make sampling requests back to the client in order to summarize content it downloads from the specified url via
+`McpServer` to make sampling requests back to the client in order to summarize content it downloads from the specified url via
 an `HttpClient` injected via dependency injection.
 ```csharp
 [McpServerTool(Name = "SummarizeContentFromUrl"), Description("Summarizes content downloaded from a specific URI")]
 public static async Task<string> SummarizeDownloadedContent(
-    IMcpServer thisServer,
+    McpServer thisServer,
     HttpClient httpClient,
     [Description("The url from which to download the content to summarize")] string url,
     CancellationToken cancellationToken)
@@ -224,7 +224,7 @@ McpServerOptions options = new()
     },
 };
 
-await using IMcpServer server = McpServerFactory.Create(new StdioServerTransport("MyServer"), options);
+await using McpServer server = McpServer.Create(new StdioServerTransport("MyServer"), options);
 await server.RunAsync();
 ```
 

@@ -1,26 +1,24 @@
-using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
-using Moq;
 using System.IO.Pipelines;
 using System.Text.Json;
 using System.Threading.Channels;
 
 namespace ModelContextProtocol.Tests.Client;
 
-public class McpClientFactoryTests
+public class McpClientCreationTests
 {
     [Fact]
     public async Task CreateAsync_WithInvalidArgs_Throws()
     {
-        await Assert.ThrowsAsync<ArgumentNullException>("clientTransport", () => McpClientFactory.CreateAsync(null!, cancellationToken: TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<ArgumentNullException>("clientTransport", () => McpClient.CreateAsync(null!, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
     public async Task CreateAsync_NopTransport_ReturnsClient()
     {
         // Act
-        await using var client = await McpClientFactory.CreateAsync(
+        await using var client = await McpClient.CreateAsync(
             new NopTransport(),
             cancellationToken: TestContext.Current.CancellationToken);
 
@@ -39,7 +37,7 @@ public class McpClientFactoryTests
             cts.Cancel();
         }
 
-        Task t = McpClientFactory.CreateAsync(
+        Task t = McpClient.CreateAsync(
             new StreamClientTransport(new Pipe().Writer.AsStream(), new Pipe().Reader.AsStream()),
             cancellationToken: cts.Token);
         if (!preCanceled)
@@ -85,9 +83,9 @@ public class McpClientFactoryTests
         };
 
         var clientTransport = (IClientTransport)Activator.CreateInstance(transportType)!;
-        IMcpClient? client = null;
+        McpClient? client = null;
 
-        var actionTask = McpClientFactory.CreateAsync(clientTransport, clientOptions, new Mock<ILoggerFactory>().Object, CancellationToken.None);
+        var actionTask = McpClient.CreateAsync(clientTransport, clientOptions, loggerFactory: null, CancellationToken.None);
 
         // Act
         if (clientTransport is FailureTransport)

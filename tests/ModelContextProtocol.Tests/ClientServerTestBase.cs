@@ -29,11 +29,11 @@ public abstract class ClientServerTestBase : LoggedTest, IAsyncDisposable
         ServiceProvider = sc.BuildServiceProvider(validateScopes: true);
 
         _cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-        Server = ServiceProvider.GetRequiredService<IMcpServer>();
+        Server = ServiceProvider.GetRequiredService<McpServer>();
         _serverTask = Server.RunAsync(_cts.Token);
     }
 
-    protected IMcpServer Server { get; }
+    protected McpServer Server { get; }
 
     protected IServiceProvider ServiceProvider { get; }
 
@@ -63,9 +63,9 @@ public abstract class ClientServerTestBase : LoggedTest, IAsyncDisposable
         Dispose();
     }
 
-    protected async Task<IMcpClient> CreateMcpClientForServer(McpClientOptions? clientOptions = null)
+    protected async Task<McpClient> CreateMcpClientForServer(McpClientOptions? clientOptions = null)
     {
-        return await McpClientFactory.CreateAsync(
+        return await McpClient.CreateAsync(
             new StreamClientTransport(
                 serverInput: _clientToServerPipe.Writer.AsStream(),
                 _serverToClientPipe.Reader.AsStream(),
