@@ -46,7 +46,7 @@ updates:
           - "JsonSchema.Net"
     # Ignore product dependencies - only allow testing dependencies in groups above
     ignore:
-      # Ignore all Microsoft product dependencies except those explicitly in testing groups
+      # Ignore all Microsoft product dependencies except those explicitly defined in groups.
       - dependency-name: "Microsoft.Extensions.Hosting.Abstractions"
       - dependency-name: "Microsoft.Extensions.Logging.Abstractions" 
       - dependency-name: "Microsoft.AspNetCore.*"
