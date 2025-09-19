@@ -23,10 +23,10 @@ public static class ImplementationTests
         };
 
         // Act - Serialize to JSON
-        string json = JsonSerializer.Serialize(original);
+        string json = JsonSerializer.Serialize(original, McpJsonUtilities.DefaultOptions);
         
         // Act - Deserialize back from JSON  
-        var deserialized = JsonSerializer.Deserialize<Implementation>(json);
+        var deserialized = JsonSerializer.Deserialize<Implementation>(json, McpJsonUtilities.DefaultOptions);
 
         // Assert
         Assert.NotNull(deserialized);
@@ -56,10 +56,10 @@ public static class ImplementationTests
         };
 
         // Act - Serialize to JSON
-        string json = JsonSerializer.Serialize(original);
+        string json = JsonSerializer.Serialize(original, McpJsonUtilities.DefaultOptions);
         
         // Act - Deserialize back from JSON
-        var deserialized = JsonSerializer.Deserialize<Implementation>(json);
+        var deserialized = JsonSerializer.Deserialize<Implementation>(json, McpJsonUtilities.DefaultOptions);
 
         // Assert
         Assert.NotNull(deserialized);
@@ -82,7 +82,7 @@ public static class ImplementationTests
             WebsiteUrl = "https://example.com"
         };
 
-        string json = JsonSerializer.Serialize(implementation);
+        string json = JsonSerializer.Serialize(implementation, McpJsonUtilities.DefaultOptions);
 
         Assert.Contains("\"name\":", json);
         Assert.Contains("\"title\":", json);
@@ -100,6 +100,6 @@ public static class ImplementationTests
     [InlineData("""{"name":"test-server","title":"Test Server"}""")]
     public static void Implementation_DeserializationWithMissingRequiredProperties_ThrowsJsonException(string invalidJson)
     {
-        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<Implementation>(invalidJson));
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<Implementation>(invalidJson, McpJsonUtilities.DefaultOptions));
     }
 }

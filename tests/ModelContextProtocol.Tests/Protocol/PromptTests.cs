@@ -25,10 +25,10 @@ public static class PromptTests
         };
 
         // Act - Serialize to JSON
-        string json = JsonSerializer.Serialize(original);
+        string json = JsonSerializer.Serialize(original, McpJsonUtilities.DefaultOptions);
         
         // Act - Deserialize back from JSON
-        var deserialized = JsonSerializer.Deserialize<Prompt>(json);
+        var deserialized = JsonSerializer.Deserialize<Prompt>(json, McpJsonUtilities.DefaultOptions);
 
         // Assert
         Assert.NotNull(deserialized);
@@ -57,10 +57,10 @@ public static class PromptTests
         };
 
         // Act - Serialize to JSON
-        string json = JsonSerializer.Serialize(original);
+        string json = JsonSerializer.Serialize(original, McpJsonUtilities.DefaultOptions);
         
         // Act - Deserialize back from JSON
-        var deserialized = JsonSerializer.Deserialize<Prompt>(json);
+        var deserialized = JsonSerializer.Deserialize<Prompt>(json, McpJsonUtilities.DefaultOptions);
 
         // Assert
         Assert.NotNull(deserialized);
@@ -86,7 +86,7 @@ public static class PromptTests
             }
         };
 
-        string json = JsonSerializer.Serialize(prompt);
+        string json = JsonSerializer.Serialize(prompt, McpJsonUtilities.DefaultOptions);
 
         Assert.Contains("\"name\":", json);
         Assert.Contains("\"title\":", json);

@@ -25,10 +25,10 @@ public static class ResourceTests
         };
 
         // Act - Serialize to JSON
-        string json = JsonSerializer.Serialize(original);
+        string json = JsonSerializer.Serialize(original, McpJsonUtilities.DefaultOptions);
         
         // Act - Deserialize back from JSON
-        var deserialized = JsonSerializer.Deserialize<Resource>(json);
+        var deserialized = JsonSerializer.Deserialize<Resource>(json, McpJsonUtilities.DefaultOptions);
 
         // Assert
         Assert.NotNull(deserialized);
@@ -58,10 +58,10 @@ public static class ResourceTests
         };
 
         // Act - Serialize to JSON
-        string json = JsonSerializer.Serialize(original);
+        string json = JsonSerializer.Serialize(original, McpJsonUtilities.DefaultOptions);
         
         // Act - Deserialize back from JSON
-        var deserialized = JsonSerializer.Deserialize<Resource>(json);
+        var deserialized = JsonSerializer.Deserialize<Resource>(json, McpJsonUtilities.DefaultOptions);
 
         // Assert
         Assert.NotNull(deserialized);
@@ -90,7 +90,7 @@ public static class ResourceTests
             Annotations = new Annotations { Audience = new[] { Role.User } }
         };
 
-        string json = JsonSerializer.Serialize(resource);
+        string json = JsonSerializer.Serialize(resource, McpJsonUtilities.DefaultOptions);
 
         Assert.Contains("\"name\":", json);
         Assert.Contains("\"title\":", json);

@@ -26,10 +26,10 @@ public static class ToolTests
         };
 
         // Act - Serialize to JSON
-        string json = JsonSerializer.Serialize(original);
+        string json = JsonSerializer.Serialize(original, McpJsonUtilities.DefaultOptions);
         
         // Act - Deserialize back from JSON
-        var deserialized = JsonSerializer.Deserialize<Tool>(json);
+        var deserialized = JsonSerializer.Deserialize<Tool>(json, McpJsonUtilities.DefaultOptions);
 
         // Assert
         Assert.NotNull(deserialized);
@@ -56,10 +56,10 @@ public static class ToolTests
         };
 
         // Act - Serialize to JSON
-        string json = JsonSerializer.Serialize(original);
+        string json = JsonSerializer.Serialize(original, McpJsonUtilities.DefaultOptions);
         
         // Act - Deserialize back from JSON
-        var deserialized = JsonSerializer.Deserialize<Tool>(json);
+        var deserialized = JsonSerializer.Deserialize<Tool>(json, McpJsonUtilities.DefaultOptions);
 
         // Assert
         Assert.NotNull(deserialized);
@@ -82,7 +82,7 @@ public static class ToolTests
             Annotations = new ToolAnnotations { Title = "Annotation Title" }
         };
 
-        string json = JsonSerializer.Serialize(tool);
+        string json = JsonSerializer.Serialize(tool, McpJsonUtilities.DefaultOptions);
 
         Assert.Contains("\"name\":", json);
         Assert.Contains("\"title\":", json);

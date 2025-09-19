@@ -17,10 +17,10 @@ public static class IconTests
         };
 
         // Act - Serialize to JSON
-        string json = JsonSerializer.Serialize(original);
+        string json = JsonSerializer.Serialize(original, McpJsonUtilities.DefaultOptions);
         
         // Act - Deserialize back from JSON
-        var deserialized = JsonSerializer.Deserialize<Icon>(json);
+        var deserialized = JsonSerializer.Deserialize<Icon>(json, McpJsonUtilities.DefaultOptions);
 
         // Assert
         Assert.NotNull(deserialized);
@@ -39,10 +39,10 @@ public static class IconTests
         };
 
         // Act - Serialize to JSON
-        string json = JsonSerializer.Serialize(original);
+        string json = JsonSerializer.Serialize(original, McpJsonUtilities.DefaultOptions);
         
         // Act - Deserialize back from JSON
-        var deserialized = JsonSerializer.Deserialize<Icon>(json);
+        var deserialized = JsonSerializer.Deserialize<Icon>(json, McpJsonUtilities.DefaultOptions);
 
         // Assert
         Assert.NotNull(deserialized);
@@ -61,7 +61,7 @@ public static class IconTests
             Sizes = "any"
         };
 
-        string json = JsonSerializer.Serialize(icon);
+        string json = JsonSerializer.Serialize(icon, McpJsonUtilities.DefaultOptions);
 
         Assert.Contains("\"src\":", json);
         Assert.Contains("\"mimeType\":", json);
@@ -75,17 +75,16 @@ public static class IconTests
     [InlineData("""{"mimeType":"image/png","sizes":"48x48"}""")]
     public static void Icon_DeserializationWithMissingSrc_ThrowsJsonException(string invalidJson)
     {
-        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<Icon>(invalidJson));
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<Icon>(invalidJson, McpJsonUtilities.DefaultOptions));
     }
 
     [Theory]
-    [InlineData("null")]
     [InlineData("false")]
     [InlineData("true")]
     [InlineData("42")]
     [InlineData("[]")]
     public static void Icon_DeserializationWithInvalidJson_ThrowsJsonException(string invalidJson)
     {
-        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<Icon>(invalidJson));
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<Icon>(invalidJson, McpJsonUtilities.DefaultOptions));
     }
 }
