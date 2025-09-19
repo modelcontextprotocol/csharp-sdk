@@ -6,9 +6,10 @@ namespace ModelContextProtocol.Tests.Protocol;
 public static class ImplementationTests
 {
     [Fact]
-    public static void Implementation_SerializesToJson_WithAllProperties()
+    public static void Implementation_SerializationRoundTrip_PreservesAllProperties()
     {
-        var implementation = new Implementation
+        // Arrange
+        var original = new Implementation
         {
             Name = "test-server",
             Title = "Test MCP Server",
@@ -21,36 +22,52 @@ public static class ImplementationTests
             WebsiteUrl = "https://example.com"
         };
 
-        string json = JsonSerializer.Serialize(implementation);
-        var result = JsonSerializer.Deserialize<Implementation>(json);
+        // Act - Serialize to JSON
+        string json = JsonSerializer.Serialize(original);
+        
+        // Act - Deserialize back from JSON  
+        var deserialized = JsonSerializer.Deserialize<Implementation>(json);
 
-        Assert.Equal("test-server", result!.Name);
-        Assert.Equal("Test MCP Server", result.Title);
-        Assert.Equal("1.0.0", result.Version);
-        Assert.Equal("https://example.com", result.WebsiteUrl);
-        Assert.NotNull(result.Icons);
-        Assert.Equal(2, result.Icons.Count);
-        Assert.Equal("https://example.com/icon.png", result.Icons[0].Src);
-        Assert.Equal("https://example.com/icon.svg", result.Icons[1].Src);
+        // Assert
+        Assert.NotNull(deserialized);
+        Assert.Equal(original.Name, deserialized.Name);
+        Assert.Equal(original.Title, deserialized.Title);
+        Assert.Equal(original.Version, deserialized.Version);
+        Assert.Equal(original.WebsiteUrl, deserialized.WebsiteUrl);
+        Assert.NotNull(deserialized.Icons);
+        Assert.Equal(original.Icons.Count, deserialized.Icons.Count);
+        
+        for (int i = 0; i < original.Icons.Count; i++)
+        {
+            Assert.Equal(original.Icons[i].Src, deserialized.Icons[i].Src);
+            Assert.Equal(original.Icons[i].MimeType, deserialized.Icons[i].MimeType);
+            Assert.Equal(original.Icons[i].Sizes, deserialized.Icons[i].Sizes);
+        }
     }
 
     [Fact]
-    public static void Implementation_SerializesToJson_WithoutOptionalProperties()
+    public static void Implementation_SerializationRoundTrip_WithoutOptionalProperties()
     {
-        var implementation = new Implementation
+        // Arrange
+        var original = new Implementation
         {
             Name = "simple-server",
             Version = "1.0.0"
         };
 
-        string json = JsonSerializer.Serialize(implementation);
-        var result = JsonSerializer.Deserialize<Implementation>(json);
+        // Act - Serialize to JSON
+        string json = JsonSerializer.Serialize(original);
+        
+        // Act - Deserialize back from JSON
+        var deserialized = JsonSerializer.Deserialize<Implementation>(json);
 
-        Assert.Equal("simple-server", result!.Name);
-        Assert.Null(result.Title);
-        Assert.Equal("1.0.0", result.Version);
-        Assert.Null(result.Icons);
-        Assert.Null(result.WebsiteUrl);
+        // Assert
+        Assert.NotNull(deserialized);
+        Assert.Equal(original.Name, deserialized.Name);
+        Assert.Equal(original.Title, deserialized.Title);
+        Assert.Equal(original.Version, deserialized.Version);
+        Assert.Equal(original.Icons, deserialized.Icons);
+        Assert.Equal(original.WebsiteUrl, deserialized.WebsiteUrl);
     }
 
     [Fact]
@@ -74,20 +91,15 @@ public static class ImplementationTests
         Assert.Contains("\"websiteUrl\":", json);
     }
 
-    [Fact]
-    public static void Implementation_EmptyIconsList_SerializesAsEmptyArray()
+    [Theory]
+    [InlineData("""{}""")]
+    [InlineData("""{"title":"Test Server"}""")]
+    [InlineData("""{"name":"test-server"}""")]
+    [InlineData("""{"version":"1.0.0"}""")]
+    [InlineData("""{"title":"Test Server","version":"1.0.0"}""")]
+    [InlineData("""{"name":"test-server","title":"Test Server"}""")]
+    public static void Implementation_DeserializationWithMissingRequiredProperties_ThrowsJsonException(string invalidJson)
     {
-        var implementation = new Implementation
-        {
-            Name = "test-server",
-            Version = "1.0.0",
-            Icons = new List<Icon>()
-        };
-
-        string json = JsonSerializer.Serialize(implementation);
-        var result = JsonSerializer.Deserialize<Implementation>(json);
-
-        Assert.NotNull(result!.Icons);
-        Assert.Empty(result.Icons);
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<Implementation>(invalidJson));
     }
 }

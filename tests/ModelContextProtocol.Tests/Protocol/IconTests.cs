@@ -6,37 +6,49 @@ namespace ModelContextProtocol.Tests.Protocol;
 public static class IconTests
 {
     [Fact]
-    public static void Icon_SerializesToJson_WithAllProperties()
+    public static void Icon_SerializationRoundTrip_PreservesAllProperties()
     {
-        var icon = new Icon
+        // Arrange
+        var original = new Icon
         {
             Src = "https://example.com/icon.png",
             MimeType = "image/png",
             Sizes = "48x48"
         };
 
-        string json = JsonSerializer.Serialize(icon);
-        var result = JsonSerializer.Deserialize<Icon>(json);
+        // Act - Serialize to JSON
+        string json = JsonSerializer.Serialize(original);
+        
+        // Act - Deserialize back from JSON
+        var deserialized = JsonSerializer.Deserialize<Icon>(json);
 
-        Assert.Equal("https://example.com/icon.png", result!.Src);
-        Assert.Equal("image/png", result.MimeType);
-        Assert.Equal("48x48", result.Sizes);
+        // Assert
+        Assert.NotNull(deserialized);
+        Assert.Equal(original.Src, deserialized.Src);
+        Assert.Equal(original.MimeType, deserialized.MimeType);
+        Assert.Equal(original.Sizes, deserialized.Sizes);
     }
 
     [Fact]
-    public static void Icon_SerializesToJson_WithOnlyRequiredProperties()
+    public static void Icon_SerializationRoundTrip_WithOnlyRequiredProperties()
     {
-        var icon = new Icon
+        // Arrange
+        var original = new Icon
         {
             Src = "data:image/svg+xml;base64,PHN2Zy4uLjwvc3ZnPg=="
         };
 
-        string json = JsonSerializer.Serialize(icon);
-        var result = JsonSerializer.Deserialize<Icon>(json);
+        // Act - Serialize to JSON
+        string json = JsonSerializer.Serialize(original);
+        
+        // Act - Deserialize back from JSON
+        var deserialized = JsonSerializer.Deserialize<Icon>(json);
 
-        Assert.Equal("data:image/svg+xml;base64,PHN2Zy4uLjwvc3ZnPg==", result!.Src);
-        Assert.Null(result.MimeType);
-        Assert.Null(result.Sizes);
+        // Assert
+        Assert.NotNull(deserialized);
+        Assert.Equal(original.Src, deserialized.Src);
+        Assert.Equal(original.MimeType, deserialized.MimeType);
+        Assert.Equal(original.Sizes, deserialized.Sizes);
     }
 
     [Fact]
@@ -57,13 +69,23 @@ public static class IconTests
     }
 
     [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    public static void Icon_DoesNotValidateEmptyOrWhitespaceSrc(string src)
+    [InlineData("""{}""")]
+    [InlineData("""{"mimeType":"image/png"}""")]
+    [InlineData("""{"sizes":"48x48"}""")]
+    [InlineData("""{"mimeType":"image/png","sizes":"48x48"}""")]
+    public static void Icon_DeserializationWithMissingSrc_ThrowsJsonException(string invalidJson)
     {
-        // The Icon class doesn't enforce validation in the constructor
-        // It's up to consumers to validate the URI format
-        var icon = new Icon { Src = src };
-        Assert.Equal(src, icon.Src);
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<Icon>(invalidJson));
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("false")]
+    [InlineData("true")]
+    [InlineData("42")]
+    [InlineData("[]")]
+    public static void Icon_DeserializationWithInvalidJson_ThrowsJsonException(string invalidJson)
+    {
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<Icon>(invalidJson));
     }
 }
