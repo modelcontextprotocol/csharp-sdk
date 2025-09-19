@@ -3,50 +3,74 @@
 
 version: 2
 updates:
-  # Monitor NuGet packages
+  # Monitor testing dependencies only
   - package-ecosystem: "nuget"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
       time: "06:00"
-    # Group Microsoft packages together to reduce PR noise
+    # Only update testing dependencies, not product dependencies
+    allow:
+      - dependency-name: "Anthropic.SDK"
+      - dependency-name: "coverlet.collector"
+      - dependency-name: "GitHubActionsTestLogger"
+      - dependency-name: "Microsoft.Extensions.AI.OpenAI"
+      - dependency-name: "Microsoft.Extensions.DependencyInjection"
+      - dependency-name: "Microsoft.Extensions.Hosting"
+      - dependency-name: "Microsoft.Extensions.Logging"
+      - dependency-name: "Microsoft.Extensions.Logging.Console"
+      - dependency-name: "Microsoft.Extensions.Options"
+      - dependency-name: "Microsoft.Extensions.TimeProvider.Testing"
+      - dependency-name: "Microsoft.NET.Test.Sdk"
+      - dependency-name: "Moq"
+      - dependency-name: "OpenTelemetry"
+      - dependency-name: "OpenTelemetry.Exporter.InMemory"
+      - dependency-name: "OpenTelemetry.Exporter.OpenTelemetryProtocol"
+      - dependency-name: "OpenTelemetry.Instrumentation.Http"
+      - dependency-name: "OpenTelemetry.Extensions.Hosting"
+      - dependency-name: "OpenTelemetry.Instrumentation.AspNetCore"
+      - dependency-name: "Serilog.Extensions.Hosting"
+      - dependency-name: "Serilog.Extensions.Logging"
+      - dependency-name: "Serilog.Sinks.Console"
+      - dependency-name: "Serilog.Sinks.Debug"
+      - dependency-name: "Serilog.Sinks.File"
+      - dependency-name: "Serilog"
+      - dependency-name: "System.Linq.AsyncEnumerable"
+      - dependency-name: "xunit.v3"
+      - dependency-name: "xunit.runner.visualstudio"
+      - dependency-name: "System.Net.Http"
+      - dependency-name: "JsonSchema.Net"
+    # Group testing dependencies to reduce PR noise
     groups:
-      microsoft-extensions:
-        patterns:
-          - "Microsoft.Extensions.*"
-      microsoft-aspnetcore:
-        patterns:
-          - "Microsoft.AspNetCore.*"
-      microsoft-identity:
-        patterns:
-          - "Microsoft.IdentityModel.*"
-      microsoft-build-tools:
-        patterns:
-          - "Microsoft.SourceLink.*"
-          - "Microsoft.NET.Test.Sdk"
-          - "Microsoft.Bcl.*"
-      system-packages:
-        patterns:
-          - "System.*"
-      opentelemetry:
-        patterns:
-          - "OpenTelemetry.*"
-      serilog:
-        patterns:
-          - "Serilog.*"
-      testing:
+      testing-frameworks:
         patterns:
           - "xunit.*"
+          - "Microsoft.NET.Test.Sdk"
           - "coverlet.*"
           - "GitHubActionsTestLogger"
           - "Moq"
-    # Limit the number of open pull requests for NuGet to 10
-    open-pull-requests-limit: 10
+      microsoft-extensions-testing:
+        patterns:
+          - "Microsoft.Extensions.DependencyInjection"
+          - "Microsoft.Extensions.Hosting"
+          - "Microsoft.Extensions.Logging"
+          - "Microsoft.Extensions.Logging.Console"
+          - "Microsoft.Extensions.Options"
+          - "Microsoft.Extensions.TimeProvider.Testing"
+          - "Microsoft.Extensions.AI.OpenAI"
+      opentelemetry-testing:
+        patterns:
+          - "OpenTelemetry*"
+      serilog-testing:
+        patterns:
+          - "Serilog*"
+    # Limit the number of open pull requests for testing dependencies
+    open-pull-requests-limit: 5
     # Add labels to dependency update PRs
     labels:
       - "dependencies"
-      - "nuget"
+      - "testing"
 
   # Monitor GitHub Actions
   - package-ecosystem: "github-actions"
