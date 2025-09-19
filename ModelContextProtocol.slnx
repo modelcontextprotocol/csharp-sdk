@@ -18,6 +18,10 @@
   <Folder Name="/docs/concepts/elicitation/samples/server/">
     <Project Path="docs/concepts/elicitation/samples/server/Elicitation.csproj" />
   </Folder>
+  <Folder Name="/docs/concepts/httpcontext/" />
+  <Folder Name="/docs/concepts/httpcontext/samples/">
+    <Project Path="docs/concepts/httpcontext/samples/HttpContext.csproj" />
+  </Folder>
   <Folder Name="/docs/concepts/logging/" />
   <Folder Name="/docs/concepts/logging/samples/" />
   <Folder Name="/docs/concepts/logging/samples/client/">
