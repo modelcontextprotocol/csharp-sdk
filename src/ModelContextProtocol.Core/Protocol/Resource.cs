@@ -95,7 +95,7 @@ public sealed class Resource : IBaseMetadata
     /// </para>
     /// </remarks>
     [JsonPropertyName("icons")]
-    public IList<Icon>? Icons { get; init; }
+    public IList<Icon>? Icons { get; set; }
 
     /// <summary>
     /// Gets or sets metadata reserved by MCP for protocol-level metadata.
