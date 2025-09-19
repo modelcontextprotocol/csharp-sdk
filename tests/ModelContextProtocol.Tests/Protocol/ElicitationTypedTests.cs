@@ -34,6 +34,20 @@ public partial class ElicitationTypedTests : ClientServerTestBase
                 Assert.Equal(SampleRole.Admin, result.Content!.Role);
                 Assert.Equal(99.5, result.Content!.Score);
             }
+            else if (request.Params!.Name == "TestElicitationTypedNoSerializationOptions")
+            {
+                var result = await request.Server.ElicitAsync<SampleForm>(
+                    message: "Please provide more information.",
+                    cancellationToken: CancellationToken.None);
+
+                Assert.Equal("accept", result.Action);
+                Assert.NotNull(result.Content);
+                Assert.Equal("Alice", result.Content!.Name);
+                Assert.Equal(30, result.Content!.Age);
+                Assert.True(result.Content!.Active);
+                Assert.Equal(SampleRole.Admin, result.Content!.Role);
+                Assert.Equal(99.5, result.Content!.Score);
+            }
             else if (request.Params!.Name == "TestElicitationCamelForm")
             {
                 var result = await request.Server.ElicitAsync<CamelForm>(
@@ -190,6 +204,102 @@ public partial class ElicitationTypedTests : ClientServerTestBase
         });
 
         var result = await client.CallToolAsync("TestElicitationTyped", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("success", (result.Content[0] as TextContentBlock)?.Text);
+    }
+
+    [Fact]
+    public async Task Can_Elicit_Typed_Information_No_SerializationOptions()
+    {
+        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
+        {
+            Capabilities = new()
+            {
+                Elicitation = new()
+                {
+                    ElicitationHandler = async (request, cancellationToken) =>
+                    {
+                        Assert.NotNull(request);
+                        Assert.Equal("Please provide more information.", request.Message);
+
+                        Assert.Equal(6, request.RequestedSchema.Properties.Count);
+
+                        foreach (var entry in request.RequestedSchema.Properties)
+                        {
+                            var key = entry.Key;
+                            var value = entry.Value;
+                            switch (key)
+                            {
+                                case nameof(SampleForm.Name):
+                                    var stringSchema = Assert.IsType<ElicitRequestParams.StringSchema>(value);
+                                    Assert.Equal("string", stringSchema.Type);
+                                    break;
+
+                                case nameof(SampleForm.Age):
+                                    var intSchema = Assert.IsType<ElicitRequestParams.NumberSchema>(value);
+                                    Assert.Equal("integer", intSchema.Type);
+                                    break;
+
+                                case nameof(SampleForm.Active):
+                                    var boolSchema = Assert.IsType<ElicitRequestParams.BooleanSchema>(value);
+                                    Assert.Equal("boolean", boolSchema.Type);
+                                    break;
+
+                                case nameof(SampleForm.Role):
+                                    var enumSchema = Assert.IsType<ElicitRequestParams.EnumSchema>(value);
+                                    Assert.Equal("string", enumSchema.Type);
+                                    Assert.Equal([nameof(SampleRole.User), nameof(SampleRole.Admin)], enumSchema.Enum);
+                                    break;
+
+                                case nameof(SampleForm.Score):
+                                    var numSchema = Assert.IsType<ElicitRequestParams.NumberSchema>(value);
+                                    Assert.Equal("number", numSchema.Type);
+                                    break;
+
+                                case nameof(SampleForm.Created):
+                                    var dateTimeSchema = Assert.IsType<ElicitRequestParams.StringSchema>(value);
+                                    Assert.Equal("string", dateTimeSchema.Type);
+                                    Assert.Equal("date-time", dateTimeSchema.Format);
+
+                                    break;
+
+                                default:
+                                    Assert.Fail($"Unexpected property in schema: {key}");
+                                    break;
+                            }
+                        }
+
+                        return new ElicitResult
+                        {
+                            Action = "accept",
+                            Content = new Dictionary<string, JsonElement>
+                            {
+                                [nameof(SampleForm.Name)] = (JsonElement)JsonSerializer.Deserialize("""
+                                    "Alice"
+                                    """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
+                                [nameof(SampleForm.Age)] = (JsonElement)JsonSerializer.Deserialize("""
+                                    30
+                                    """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
+                                [nameof(SampleForm.Active)] = (JsonElement)JsonSerializer.Deserialize("""
+                                    true
+                                    """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
+                                [nameof(SampleForm.Role)] = (JsonElement)JsonSerializer.Deserialize("""
+                                    "Admin"
+                                    """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
+                                [nameof(SampleForm.Score)] = (JsonElement)JsonSerializer.Deserialize("""
+                                    99.5
+                                    """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
+                                [nameof(SampleForm.Created)] = (JsonElement)JsonSerializer.Deserialize("""
+                                    "2023-08-27T03:05:00"
+                                    """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
+                            },
+                        };
+                    },
+                },
+            },
+        });
+
+        var result = await client.CallToolAsync("TestElicitationTypedNoSerializationOptions", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal("success", (result.Content[0] as TextContentBlock)?.Text);
     }
