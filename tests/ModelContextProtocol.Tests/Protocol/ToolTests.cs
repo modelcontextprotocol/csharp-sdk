@@ -14,10 +14,10 @@ public static class ToolTests
             Name = "get_weather",
             Title = "Get Weather",
             Description = "Get current weather information",
-            Icons = new List<Icon>
-            {
+            Icons =
+            [
                 new() { Src = "https://example.com/weather.png", MimeType = "image/png", Sizes = "48x48" }
-            },
+            ],
             Annotations = new ToolAnnotations
             {
                 Title = "Weather Tool",
@@ -78,7 +78,7 @@ public static class ToolTests
             Name = "test_tool",
             Title = "Test Tool",
             Description = "A test tool",
-            Icons = new List<Icon> { new() { Src = "https://example.com/icon.png" } },
+            Icons = [new() { Src = "https://example.com/icon.png" }],
             Annotations = new ToolAnnotations { Title = "Annotation Title" }
         };
 

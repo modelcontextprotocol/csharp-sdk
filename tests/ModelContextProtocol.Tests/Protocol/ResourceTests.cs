@@ -17,11 +17,11 @@ public static class ResourceTests
             Description = "An important document",
             MimeType = "application/pdf",
             Size = 1024,
-            Icons = new List<Icon>
-            {
+            Icons =
+            [
                 new() { Src = "https://example.com/pdf-icon.png", MimeType = "image/png", Sizes = "32x32" }
-            },
-            Annotations = new Annotations { Audience = new[] { Role.User } }
+            ],
+            Annotations = new Annotations { Audience = [Role.User] }
         };
 
         // Act - Serialize to JSON
@@ -87,7 +87,7 @@ public static class ResourceTests
             MimeType = "text/plain",
             Size = 512,
             Icons = new List<Icon> { new() { Src = "https://example.com/icon.svg" } },
-            Annotations = new Annotations { Audience = new[] { Role.User } }
+            Annotations = new Annotations { Audience = [Role.User] }
         };
 
         string json = JsonSerializer.Serialize(resource, McpJsonUtilities.DefaultOptions);

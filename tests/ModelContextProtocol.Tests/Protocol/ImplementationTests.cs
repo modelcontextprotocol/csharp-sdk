@@ -14,11 +14,11 @@ public static class ImplementationTests
             Name = "test-server",
             Title = "Test MCP Server",
             Version = "1.0.0",
-            Icons = new List<Icon>
-            {
+            Icons =
+            [
                 new() { Src = "https://example.com/icon.png", MimeType = "image/png", Sizes = "48x48" },
                 new() { Src = "https://example.com/icon.svg", MimeType = "image/svg+xml", Sizes = "any" }
-            },
+            ],
             WebsiteUrl = "https://example.com"
         };
 
@@ -78,7 +78,7 @@ public static class ImplementationTests
             Name = "test-server",
             Title = "Test Server",
             Version = "1.0.0",
-            Icons = new List<Icon> { new() { Src = "https://example.com/icon.png" } },
+            Icons = [new() { Src = "https://example.com/icon.png" }],
             WebsiteUrl = "https://example.com"
         };
 

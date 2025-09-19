@@ -14,14 +14,14 @@ public static class PromptTests
             Name = "code_review",
             Title = "Code Review Prompt",
             Description = "Review the provided code",
-            Icons = new List<Icon>
-            {
+            Icons =
+            [
                 new() { Src = "https://example.com/review-icon.svg", MimeType = "image/svg+xml", Sizes = "any" }
-            },
-            Arguments = new List<PromptArgument>
-            {
+            ],
+            Arguments =
+            [
                 new() { Name = "code", Description = "The code to review", Required = true }
-            }
+            ]
         };
 
         // Act - Serialize to JSON
@@ -79,11 +79,11 @@ public static class PromptTests
             Name = "test_prompt",
             Title = "Test Prompt",
             Description = "A test prompt",
-            Icons = new List<Icon> { new() { Src = "https://example.com/icon.webp" } },
-            Arguments = new List<PromptArgument>
-            {
+            Icons = [new() { Src = "https://example.com/icon.webp" }],
+            Arguments =
+            [
                 new() { Name = "input", Description = "Input parameter" }
-            }
+            ]
         };
 
         string json = JsonSerializer.Serialize(prompt, McpJsonUtilities.DefaultOptions);
