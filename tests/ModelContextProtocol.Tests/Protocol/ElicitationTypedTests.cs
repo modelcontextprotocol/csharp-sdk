@@ -211,6 +211,11 @@ public partial class ElicitationTypedTests : ClientServerTestBase
     [Fact]
     public async Task Can_Elicit_Typed_Information_No_SerializationOptions()
     {
+        if (JsonSerializer.IsReflectionEnabledByDefault is false)
+        {
+            Assert.Skip("Reflection is disabled by default. This test requires reflection to be enabled.");
+        }
+
         await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
         {
             Capabilities = new()
@@ -230,33 +235,33 @@ public partial class ElicitationTypedTests : ClientServerTestBase
                             var value = entry.Value;
                             switch (key)
                             {
-                                case nameof(SampleForm.Name):
+                                case "name":
                                     var stringSchema = Assert.IsType<ElicitRequestParams.StringSchema>(value);
                                     Assert.Equal("string", stringSchema.Type);
                                     break;
 
-                                case nameof(SampleForm.Age):
+                                case "age":
                                     var intSchema = Assert.IsType<ElicitRequestParams.NumberSchema>(value);
                                     Assert.Equal("integer", intSchema.Type);
                                     break;
 
-                                case nameof(SampleForm.Active):
+                                case "active":
                                     var boolSchema = Assert.IsType<ElicitRequestParams.BooleanSchema>(value);
                                     Assert.Equal("boolean", boolSchema.Type);
                                     break;
 
-                                case nameof(SampleForm.Role):
+                                case "role":
                                     var enumSchema = Assert.IsType<ElicitRequestParams.EnumSchema>(value);
                                     Assert.Equal("string", enumSchema.Type);
                                     Assert.Equal([nameof(SampleRole.User), nameof(SampleRole.Admin)], enumSchema.Enum);
                                     break;
 
-                                case nameof(SampleForm.Score):
+                                case "score":
                                     var numSchema = Assert.IsType<ElicitRequestParams.NumberSchema>(value);
                                     Assert.Equal("number", numSchema.Type);
                                     break;
 
-                                case nameof(SampleForm.Created):
+                                case "created":
                                     var dateTimeSchema = Assert.IsType<ElicitRequestParams.StringSchema>(value);
                                     Assert.Equal("string", dateTimeSchema.Type);
                                     Assert.Equal("date-time", dateTimeSchema.Format);
