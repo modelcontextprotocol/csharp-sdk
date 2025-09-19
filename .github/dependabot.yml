@@ -42,21 +42,23 @@ updates:
           - "System.Linq.AsyncEnumerable"
           - "System.Net.Http"
           - "JsonSchema.Net"
-    # Ignore all product dependencies to only update testing dependencies
+    # Ignore product dependencies - only allow testing dependencies in groups above
     ignore:
-      - dependency-name: "Microsoft.Bcl.Memory"
+      # Ignore all Microsoft product dependencies except those explicitly in testing groups
       - dependency-name: "Microsoft.Extensions.Hosting.Abstractions"
-      - dependency-name: "Microsoft.Extensions.Logging.Abstractions"
-      - dependency-name: "System.Diagnostics.DiagnosticSource"
-      - dependency-name: "System.IO.Pipelines"
-      - dependency-name: "System.Text.Json"
-      - dependency-name: "System.Threading.Channels"
-      - dependency-name: "Microsoft.AspNetCore.Authentication.JwtBearer"
-      - dependency-name: "Microsoft.IdentityModel.Tokens"
+      - dependency-name: "Microsoft.Extensions.Logging.Abstractions" 
       - dependency-name: "Microsoft.Extensions.AI.Abstractions"
       - dependency-name: "Microsoft.Extensions.AI"
+      - dependency-name: "Microsoft.AspNetCore.*"
+      - dependency-name: "Microsoft.IdentityModel.*"
+      - dependency-name: "Microsoft.Bcl.*"
+      - dependency-name: "Microsoft.SourceLink.*"
+      # Ignore all System product dependencies except those explicitly in testing groups
+      - dependency-name: "System.Diagnostics.*"
+      - dependency-name: "System.IO.*"
+      - dependency-name: "System.Text.*"
+      - dependency-name: "System.Threading.*"
       - dependency-name: "System.Net.ServerSentEvents"
-      - dependency-name: "Microsoft.SourceLink.GitHub"
     # Limit the number of open pull requests for testing dependencies
     open-pull-requests-limit: 5
     # Add labels to dependency update PRs
