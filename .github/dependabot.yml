@@ -1,0 +1,63 @@
+# Configuration for Dependabot automatic dependency updates
+# See https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  # Monitor NuGet packages
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    # Group Microsoft packages together to reduce PR noise
+    groups:
+      microsoft-extensions:
+        patterns:
+          - "Microsoft.Extensions.*"
+      microsoft-aspnetcore:
+        patterns:
+          - "Microsoft.AspNetCore.*"
+      microsoft-identity:
+        patterns:
+          - "Microsoft.IdentityModel.*"
+      microsoft-build-tools:
+        patterns:
+          - "Microsoft.SourceLink.*"
+          - "Microsoft.NET.Test.Sdk"
+          - "Microsoft.Bcl.*"
+      system-packages:
+        patterns:
+          - "System.*"
+      opentelemetry:
+        patterns:
+          - "OpenTelemetry.*"
+      serilog:
+        patterns:
+          - "Serilog.*"
+      testing:
+        patterns:
+          - "xunit.*"
+          - "coverlet.*"
+          - "GitHubActionsTestLogger"
+          - "Moq"
+    # Limit the number of open pull requests for NuGet to 10
+    open-pull-requests-limit: 10
+    # Add labels to dependency update PRs
+    labels:
+      - "dependencies"
+      - "nuget"
+
+  # Monitor GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    # Limit the number of open pull requests for GitHub Actions to 5
+    open-pull-requests-limit: 5
+    # Add labels to GitHub Actions update PRs
+    labels:
+      - "dependencies"
+      - "github-actions"
