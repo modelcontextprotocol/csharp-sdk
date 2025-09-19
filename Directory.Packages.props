@@ -3,7 +3,7 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <System9Version>9.0.5</System9Version>
     <System10Version>10.0.0-preview.4.25258.110</System10Version>
-    <MicrosoftExtensionsAIVersion>9.8.0</MicrosoftExtensionsAIVersion>
+    <MicrosoftExtensionsAIVersion>9.9.0</MicrosoftExtensionsAIVersion>
   </PropertyGroup>
 
   <!-- Product dependencies netstandard -->
@@ -53,7 +53,7 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageVersion>
     <PackageVersion Include="GitHubActionsTestLogger" Version="2.4.1" />
-    <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="9.8.0-preview.1.25412.6" />
+    <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="9.9.0-preview.1.25458.4" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="$(System9Version)" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="$(System9Version)" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="$(System9Version)" />
