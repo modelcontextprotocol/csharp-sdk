@@ -11,36 +11,7 @@ updates:
       day: "monday"
       time: "06:00"
     # Only update testing dependencies, not product dependencies
-    allow:
-      - dependency-name: "Anthropic.SDK"
-      - dependency-name: "coverlet.collector"
-      - dependency-name: "GitHubActionsTestLogger"
-      - dependency-name: "Microsoft.Extensions.AI.OpenAI"
-      - dependency-name: "Microsoft.Extensions.DependencyInjection"
-      - dependency-name: "Microsoft.Extensions.Hosting"
-      - dependency-name: "Microsoft.Extensions.Logging"
-      - dependency-name: "Microsoft.Extensions.Logging.Console"
-      - dependency-name: "Microsoft.Extensions.Options"
-      - dependency-name: "Microsoft.Extensions.TimeProvider.Testing"
-      - dependency-name: "Microsoft.NET.Test.Sdk"
-      - dependency-name: "Moq"
-      - dependency-name: "OpenTelemetry"
-      - dependency-name: "OpenTelemetry.Exporter.InMemory"
-      - dependency-name: "OpenTelemetry.Exporter.OpenTelemetryProtocol"
-      - dependency-name: "OpenTelemetry.Instrumentation.Http"
-      - dependency-name: "OpenTelemetry.Extensions.Hosting"
-      - dependency-name: "OpenTelemetry.Instrumentation.AspNetCore"
-      - dependency-name: "Serilog.Extensions.Hosting"
-      - dependency-name: "Serilog.Extensions.Logging"
-      - dependency-name: "Serilog.Sinks.Console"
-      - dependency-name: "Serilog.Sinks.Debug"
-      - dependency-name: "Serilog.Sinks.File"
-      - dependency-name: "Serilog"
-      - dependency-name: "System.Linq.AsyncEnumerable"
-      - dependency-name: "xunit.v3"
-      - dependency-name: "xunit.runner.visualstudio"
-      - dependency-name: "System.Net.Http"
-      - dependency-name: "JsonSchema.Net"
+    # Dependencies are controlled via the groups below
     # Group testing dependencies to reduce PR noise
     groups:
       testing-frameworks:
@@ -65,6 +36,27 @@ updates:
       serilog-testing:
         patterns:
           - "Serilog*"
+      other-testing:
+        patterns:
+          - "Anthropic.SDK"
+          - "System.Linq.AsyncEnumerable"
+          - "System.Net.Http"
+          - "JsonSchema.Net"
+    # Ignore all product dependencies to only update testing dependencies
+    ignore:
+      - dependency-name: "Microsoft.Bcl.Memory"
+      - dependency-name: "Microsoft.Extensions.Hosting.Abstractions"
+      - dependency-name: "Microsoft.Extensions.Logging.Abstractions"
+      - dependency-name: "System.Diagnostics.DiagnosticSource"
+      - dependency-name: "System.IO.Pipelines"
+      - dependency-name: "System.Text.Json"
+      - dependency-name: "System.Threading.Channels"
+      - dependency-name: "Microsoft.AspNetCore.Authentication.JwtBearer"
+      - dependency-name: "Microsoft.IdentityModel.Tokens"
+      - dependency-name: "Microsoft.Extensions.AI.Abstractions"
+      - dependency-name: "Microsoft.Extensions.AI"
+      - dependency-name: "System.Net.ServerSentEvents"
+      - dependency-name: "Microsoft.SourceLink.GitHub"
     # Limit the number of open pull requests for testing dependencies
     open-pull-requests-limit: 5
     # Add labels to dependency update PRs
