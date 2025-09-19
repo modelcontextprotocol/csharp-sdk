@@ -23,7 +23,7 @@ updates:
           - "Moq"
       microsoft-extensions-ai:
         patterns:
-          - "Microsoft.Extensions.AI*"
+          - "Microsoft.Extensions.AI.*"
       microsoft-extensions-testing:
         patterns:
           - "Microsoft.Extensions.DependencyInjection"
