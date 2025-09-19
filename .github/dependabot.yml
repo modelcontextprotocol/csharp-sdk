@@ -10,9 +10,8 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "06:00"
-    # Only update testing dependencies, not product dependencies
     # Dependencies are controlled via the groups below
-    # Group testing dependencies to reduce PR noise
+    # Group dependencies to reduce PR noise
     groups:
       microsoft-extensions-ai:
         patterns:
