@@ -16,7 +16,7 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         string id = Guid.NewGuid().ToString("N");
 
         StdioClientTransport transport = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
-            new(new() { Command = "cmd", Arguments = ["/C", $"echo \"{id}\" >&2"] }, LoggerFactory) :
+            new(new() { Command = "cmd", Arguments = ["/c", id] }, LoggerFactory) :
             new(new() { Command = "ls", Arguments = [id] }, LoggerFactory);
 
         IOException e = await Assert.ThrowsAsync<IOException>(() => McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
@@ -44,7 +44,7 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         };
 
         StdioClientTransport transport = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
-            new(new() { Command = "cmd", Arguments = ["/C", $"echo \"{id}\" >&2"], StandardErrorLines = stdErrCallback }, LoggerFactory) :
+            new(new() { Command = "cmd", Arguments = ["/c", id], StandardErrorLines = stdErrCallback }, LoggerFactory) :
             new(new() { Command = "ls", Arguments = [id], StandardErrorLines = stdErrCallback }, LoggerFactory);
 
         await Assert.ThrowsAsync<IOException>(() => McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
