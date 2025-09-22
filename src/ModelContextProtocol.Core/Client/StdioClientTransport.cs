@@ -90,13 +90,13 @@ public sealed partial class StdioClientTransport : IClientTransport
 #if NET
                 foreach (string arg in arguments)
                 {
-                    startInfo.ArgumentList.Add(arg);
+                    startInfo.ArgumentList.Add(EscapeArgumentString(arg));
                 }
 #else
                 StringBuilder argsBuilder = new();
                 foreach (string arg in arguments)
                 {
-                    PasteArguments.AppendArgument(argsBuilder, arg);
+                    PasteArguments.AppendArgument(argsBuilder, EscapeArgumentString(arg));
                 }
 
                 startInfo.Arguments = argsBuilder.ToString();
@@ -235,6 +235,20 @@ public sealed partial class StdioClientTransport : IClientTransport
             return true;
         }
     }
+
+    private static string EscapeArgumentString(string argument) =>
+        RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
+        WindowsCliSpecialArgumentsRegex.Replace(argument, static match => "^" + match.Value) :
+        argument;
+
+    private const string WindowsCliSpecialArgumentsRegexString = "[&^><|]";
+#if NET
+    private static Regex WindowsCliSpecialArgumentsRegex => GetWindowsCliSpecialArgumentsRegex();
+    [GeneratedRegex(WindowsCliSpecialArgumentsRegexString, RegexOptions.CultureInvariant)]
+    private static partial Regex GetWindowsCliSpecialArgumentsRegex();
+#else
+    private static Regex WindowsCliSpecialArgumentsRegex { get; } = new(WindowsCliSpecialArgumentsRegexString, RegexOptions.Compiled | RegexOptions.CultureInvariant);
+#endif
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} connecting.")]
     private static partial void LogTransportConnecting(ILogger logger, string endpointName);

@@ -36,13 +36,14 @@ internal static class Program
     {
         Log.Logger.Information("Starting server...");
 
+        string? cliArg = ParseCliArgument(args);
         McpServerOptions options = new()
         {
             Capabilities = new ServerCapabilities(),
             ServerInstructions = "This is a test server with only stub functionality",
         };
 
-        ConfigureTools(options);
+        ConfigureTools(options, cliArg);
         ConfigureResources(options);
         ConfigurePrompts(options);
         ConfigureLogging(options);
@@ -104,7 +105,7 @@ internal static class Program
         }
     }
 
-    private static void ConfigureTools(McpServerOptions options)
+    private static void ConfigureTools(McpServerOptions options, string? cliArg)
     {
         options.Handlers.ListToolsHandler = async (request, cancellationToken) =>
         {
@@ -197,6 +198,13 @@ internal static class Program
                 return new CallToolResult
                 {
                     Content = [new TextContentBlock { Text = $"LLM sampling result: {(sampleResult.Content as TextContentBlock)?.Text}" }]
+                };
+            }
+            else if (request.Params?.Name == "echoCliArg")
+            {
+                return new CallToolResult
+                {
+                    Content = [new TextContentBlock { Text = cliArg ?? "null" }]
                 };
             }
             else
@@ -520,6 +528,19 @@ internal static class Program
             Temperature = 0.7f,
             IncludeContext = ContextInclusion.ThisServer
         };
+    }
+
+    private static string? ParseCliArgument(string[] args)
+    {
+        foreach (var arg in args)
+        {
+            if (arg.StartsWith("--cli-arg="))
+            {
+                return arg["--cli-arg=".Length..];
+            }
+        }
+
+        return null;
     }
 
     const string MCP_TINY_IMAGE =
