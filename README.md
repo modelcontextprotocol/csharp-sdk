@@ -37,7 +37,7 @@ dotnet add package ModelContextProtocol --prerelease
 
 ## Getting Started (Client)
 
-To get started writing a client, the `McpClient.CreateAsync` method is used to instantiate and connect an `McpClient`
+To get started writing a client, the `McpClientFactory.CreateAsync` method is used to instantiate and connect an `McpClient`
 to a server. Once you have an `McpClient`, you can interact with it, such as to enumerate all available tools and invoke tools.
 
 ```csharp
@@ -48,7 +48,7 @@ var clientTransport = new StdioClientTransport(new StdioClientTransportOptions
     Arguments = ["-y", "@modelcontextprotocol/server-everything"],
 });
 
-var client = await McpClient.CreateAsync(clientTransport);
+var client = await McpClientFactory.CreateAsync(clientTransport);
 
 // Print the list of tools available from the server.
 foreach (var tool in await client.ListToolsAsync())
@@ -63,7 +63,8 @@ var result = await client.CallToolAsync(
     cancellationToken:CancellationToken.None);
 
 // echo always returns one and only one text content object
-Console.WriteLine(result.Content.First(c => c.Type == "text").Text);
+var textContentBlock = result.Content.First(c => c.Type == "text") as TextContentBlock;
+Console.WriteLine(textContentBlock?.Text);
 ```
 
 You can find samples demonstrating how to use ModelContextProtocol with an LLM SDK in the [samples](samples) directory, and also refer to the [tests](tests/ModelContextProtocol.Tests) project for more examples. Additional examples and documentation will be added as in the near future.
