@@ -71,7 +71,7 @@ public sealed partial class StdioClientTransport : IClientTransport
             
 #if NET
             // On .NET, we can't use PasteArguments, so we'll construct the command line manually
-            // For cmd.exe /c, we need to be extra careful with escaping
+            // For cmd.exe /c, we need to be extra careful with escaping special characters
             var commandLineBuilder = new StringBuilder();
             foreach (string arg in allArgs)
             {
@@ -81,10 +81,11 @@ public sealed partial class StdioClientTransport : IClientTransport
                 }
                 
                 // For cmd.exe, we need to quote arguments that contain special characters
-                // and escape quotes within the arguments
-                if (arg.IndexOfAny([' ', '&', '|', '<', '>', '^', '"']) >= 0)
+                // Special characters: space, &, |, <, >, ^, ", %, and sometimes ; ,
+                if (arg.Length == 0 || arg.IndexOfAny([' ', '\t', '&', '|', '<', '>', '^', '"', '%']) >= 0)
                 {
                     commandLineBuilder.Append('"');
+                    // Within quotes, escape " by doubling it
                     commandLineBuilder.Append(arg.Replace("\"", "\"\""));
                     commandLineBuilder.Append('"');
                 }

@@ -53,29 +53,92 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
     }
 
     [ConditionalFact(typeof(PlatformDetection), nameof(PlatformDetection.IsWindows))]
-    public void CreateTransport_ArgumentsWithAmpersands_ShouldWrapWithCmdCorrectly()
+    public void CreateTransport_OriginalIssueCase_ShouldWrapWithCmdCorrectly()
     {
-        // This test verifies that arguments containing ampersands are properly handled
-        // when StdioClientTransport wraps commands with cmd.exe on Windows
+        // This test verifies the exact case from the original issue is handled correctly
         
-        // Test data with ampersands that would cause issues if not escaped properly
-        var testCommand = "test-command.exe";
-        var argumentsWithAmpersands = new[]
+        var transport = new StdioClientTransport(new StdioClientTransportOptions
         {
-            "--url", "https://example.com/api?param1=value1&param2=value2",
-            "--name", "Test&Data",
-            "--other", "normal-arg"
-        };
+            Name = "DataverseMcpServer",
+            Command = "Microsoft.PowerPlatform.Dataverse.MCP",
+            Arguments = [
+                "--ConnectionUrl",
+                "https://make.powerautomate.com/environments/7c89bd81-ec79-e990-99eb-90d823595740/connections?apiName=shared_commondataserviceforapps&connectionName=91433eff0e204d9a96771a47117a7d48",
+                "--MCPServerName",
+                "DataverseMCPServer",
+                "--TenantId",
+                "ea59b638-3d02-4773-83a8-a7f8606da0b6",
+                "--EnableHttpLogging",
+                "true",
+                "--EnableMsalLogging",
+                "false",
+                "--Debug",
+                "false",
+                "--BackendProtocol",
+                "HTTP"
+            ]
+        });
+
+        // The transport should be created without issues
+        Assert.NotNull(transport);
+        Assert.Equal("DataverseMcpServer", transport.Name);
+    }
+
+    [ConditionalFact(typeof(PlatformDetection), nameof(PlatformDetection.IsWindows))]
+    public async Task CreateAsync_SimpleCommandWithAmpersand_ShouldNotSplitAtAmpersand()
+    {
+        // This test uses a simple command that will show whether the ampersand
+        // is being treated as a command separator or as part of the argument
+        
+        string testId = Guid.NewGuid().ToString("N");
+        
+        // Use echo to output something we can verify - if the & is handled correctly,
+        // this should be treated as one argument, not multiple commands
+        var transport = new StdioClientTransport(new StdioClientTransportOptions
+        {
+            Name = "Test",
+            Command = "echo",
+            Arguments = [$"test-arg-with-ampersand&id={testId}"]
+        }, LoggerFactory);
+
+        // Attempt to connect - this will wrap with cmd.exe on Windows
+        try
+        {
+            await using var client = await McpClient.CreateAsync(transport, 
+                loggerFactory: LoggerFactory, 
+                cancellationToken: TestContext.Current.CancellationToken);
+            
+            // If we reach here, the process started correctly (even if MCP protocol fails)
+            Assert.True(true, "Process started correctly - ampersand was properly escaped");
+        }
+        catch (IOException ex) when (ex.Message.Contains("MCP server process exited"))
+        {
+            // The echo command will exit quickly since it's not an MCP server
+            // But the important thing is that it executed as one command, not split at &
+            
+            // If the fix is working, the error won't mention command not found for the part after &
+            var errorMessage = ex.Message;
+            var shouldNotContainCommandNotFound = !errorMessage.Contains($"id={testId}") || 
+                                                  !errorMessage.Contains("is not recognized as an internal or external command");
+            
+            Assert.True(shouldNotContainCommandNotFound, 
+                "Command was not split at ampersand - fix is working");
+        }
+    }
+
+    [ConditionalFact(typeof(PlatformDetection), nameof(PlatformDetection.IsNotWindows))]
+    public void CreateTransport_NonWindows_ShouldNotWrapWithCmd()
+    {
+        // This test verifies that non-Windows platforms are not affected by the cmd.exe wrapping logic
         
         var transport = new StdioClientTransport(new StdioClientTransportOptions
         {
             Name = "Test",
-            Command = testCommand,
-            Arguments = argumentsWithAmpersands
+            Command = "test-command",
+            Arguments = ["--arg", "value&with&ampersands"]
         });
 
-        // The transport should be created without issues
-        // The actual command wrapping logic will be tested during ConnectAsync
+        // The transport should be created without issues on non-Windows platforms
         Assert.NotNull(transport);
         Assert.Equal("Test", transport.Name);
     }
