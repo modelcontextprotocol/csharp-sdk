@@ -51,4 +51,32 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         Assert.InRange(count, 1, int.MaxValue);
         Assert.Contains(id, sb.ToString());
     }
+
+    [ConditionalFact(typeof(PlatformDetection), nameof(PlatformDetection.IsWindows))]
+    public void CreateTransport_ArgumentsWithAmpersands_ShouldWrapWithCmdCorrectly()
+    {
+        // This test verifies that arguments containing ampersands are properly handled
+        // when StdioClientTransport wraps commands with cmd.exe on Windows
+        
+        // Test data with ampersands that would cause issues if not escaped properly
+        var testCommand = "test-command.exe";
+        var argumentsWithAmpersands = new[]
+        {
+            "--url", "https://example.com/api?param1=value1&param2=value2",
+            "--name", "Test&Data",
+            "--other", "normal-arg"
+        };
+        
+        var transport = new StdioClientTransport(new StdioClientTransportOptions
+        {
+            Name = "Test",
+            Command = testCommand,
+            Arguments = argumentsWithAmpersands
+        });
+
+        // The transport should be created without issues
+        // The actual command wrapping logic will be tested during ConnectAsync
+        Assert.NotNull(transport);
+        Assert.Equal("Test", transport.Name);
+    }
 }

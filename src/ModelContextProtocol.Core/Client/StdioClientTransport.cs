@@ -60,7 +60,49 @@ public sealed partial class StdioClientTransport : IClientTransport
         {
             // On Windows, for stdio, we need to wrap non-shell commands with cmd.exe /c {command} (usually npx or uvicorn).
             // The stdio transport will not work correctly if the command is not run in a shell.
-            arguments = arguments is null or [] ? ["/c", command] : ["/c", command, ..arguments];
+            // We need to construct a single properly escaped command line for cmd.exe
+            
+            // Build the complete command line that will be passed to cmd.exe /c
+            var allArgs = new List<string> { command };
+            if (arguments is not null)
+            {
+                allArgs.AddRange(arguments);
+            }
+            
+#if NET
+            // On .NET, we can't use PasteArguments, so we'll construct the command line manually
+            // For cmd.exe /c, we need to be extra careful with escaping
+            var commandLineBuilder = new StringBuilder();
+            foreach (string arg in allArgs)
+            {
+                if (commandLineBuilder.Length > 0)
+                {
+                    commandLineBuilder.Append(' ');
+                }
+                
+                // For cmd.exe, we need to quote arguments that contain special characters
+                // and escape quotes within the arguments
+                if (arg.IndexOfAny([' ', '&', '|', '<', '>', '^', '"']) >= 0)
+                {
+                    commandLineBuilder.Append('"');
+                    commandLineBuilder.Append(arg.Replace("\"", "\"\""));
+                    commandLineBuilder.Append('"');
+                }
+                else
+                {
+                    commandLineBuilder.Append(arg);
+                }
+            }
+            arguments = ["/c", commandLineBuilder.ToString()];
+#else
+            // On .NET Framework/.NET Standard, use PasteArguments for proper escaping
+            StringBuilder commandLineBuilder = new();
+            foreach (string arg in allArgs)
+            {
+                PasteArguments.AppendArgument(commandLineBuilder, arg);
+            }
+            arguments = ["/c", commandLineBuilder.ToString()];
+#endif
             command = "cmd.exe";
         }
 
