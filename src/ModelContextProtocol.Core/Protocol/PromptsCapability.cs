@@ -41,7 +41,7 @@ public sealed class PromptsCapability
     /// along with any prompts defined in <see cref="PromptCollection"/>.
     /// </remarks>
     [JsonIgnore]
-    [Obsolete($"Use {nameof(McpServerOptions.Handlers.ListPromptsHandler)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [Obsolete($"Use {nameof(McpServerOptions.Handlers.ListPromptsHandler)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     [EditorBrowsable(EditorBrowsableState.Never)]
     public McpRequestHandler<ListPromptsRequestParams, ListPromptsResult>? ListPromptsHandler { get; set; }
 
@@ -60,7 +60,7 @@ public sealed class PromptsCapability
     /// </para>
     /// </remarks>
     [JsonIgnore]
-    [Obsolete($"Use {nameof(McpServerOptions.Handlers.GetPromptHandler)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [Obsolete($"Use {nameof(McpServerOptions.Handlers.GetPromptHandler)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     [EditorBrowsable(EditorBrowsableState.Never)]
     public McpRequestHandler<GetPromptRequestParams, GetPromptResult>? GetPromptHandler { get; set; }
 
@@ -83,7 +83,7 @@ public sealed class PromptsCapability
     /// </para>
     /// </remarks>
     [JsonIgnore]
-    [Obsolete($"Use {nameof(McpServerOptions.PromptCollection)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [Obsolete($"Use {nameof(McpServerOptions.PromptCollection)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     [EditorBrowsable(EditorBrowsableState.Never)]
     public McpServerPrimitiveCollection<McpServerPrompt>? PromptCollection { get; set; }
 }

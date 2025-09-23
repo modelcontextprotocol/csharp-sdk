@@ -24,7 +24,7 @@ public sealed class LoggingCapability
     /// Gets or sets the handler for set logging level requests from clients.
     /// </summary>
     [JsonIgnore]
-    [Obsolete($"Use {nameof(McpServerOptions.Handlers.SetLoggingLevelHandler)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [Obsolete($"Use {nameof(McpServerOptions.Handlers.SetLoggingLevelHandler)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     [EditorBrowsable(EditorBrowsableState.Never)]
     public McpRequestHandler<SetLevelRequestParams, EmptyResult>? SetLoggingLevelHandler { get; set; }
 }

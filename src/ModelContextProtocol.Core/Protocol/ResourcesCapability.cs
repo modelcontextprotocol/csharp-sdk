@@ -40,7 +40,7 @@ public sealed class ResourcesCapability
     /// allowing clients to discover available resource types and their access patterns.
     /// </remarks>
     [JsonIgnore]
-    [Obsolete($"Use {nameof(McpServerOptions.Handlers.ListResourceTemplatesHandler)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [Obsolete($"Use {nameof(McpServerOptions.Handlers.ListResourceTemplatesHandler)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     [EditorBrowsable(EditorBrowsableState.Never)]
     public McpRequestHandler<ListResourceTemplatesRequestParams, ListResourceTemplatesResult>? ListResourceTemplatesHandler { get; set; }
 
@@ -52,7 +52,7 @@ public sealed class ResourcesCapability
     /// The implementation should return a <see cref="ListResourcesResult"/> with the matching resources.
     /// </remarks>
     [JsonIgnore]
-    [Obsolete($"Use {nameof(McpServerOptions.Handlers.ListResourcesHandler)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [Obsolete($"Use {nameof(McpServerOptions.Handlers.ListResourcesHandler)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     [EditorBrowsable(EditorBrowsableState.Never)]
     public McpRequestHandler<ListResourcesRequestParams, ListResourcesResult>? ListResourcesHandler { get; set; }
 
@@ -66,7 +66,7 @@ public sealed class ResourcesCapability
     /// its contents in a ReadResourceResult object.
     /// </remarks>
     [JsonIgnore]
-    [Obsolete($"Use {nameof(McpServerOptions.Handlers.ReadResourceHandler)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [Obsolete($"Use {nameof(McpServerOptions.Handlers.ReadResourceHandler)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     [EditorBrowsable(EditorBrowsableState.Never)]
     public McpRequestHandler<ReadResourceRequestParams, ReadResourceResult>? ReadResourceHandler { get; set; }
 
@@ -81,7 +81,7 @@ public sealed class ResourcesCapability
     /// requiring polling.
     /// </remarks>
     [JsonIgnore]
-    [Obsolete($"Use {nameof(McpServerOptions.Handlers.SubscribeToResourcesHandler)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [Obsolete($"Use {nameof(McpServerOptions.Handlers.SubscribeToResourcesHandler)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     [EditorBrowsable(EditorBrowsableState.Never)]
     public McpRequestHandler<SubscribeRequestParams, EmptyResult>? SubscribeToResourcesHandler { get; set; }
 
@@ -94,7 +94,7 @@ public sealed class ResourcesCapability
     /// about the specified resource.
     /// </remarks>
     [JsonIgnore]
-    [Obsolete($"Use {nameof(McpServerOptions.Handlers.UnsubscribeFromResourcesHandler)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [Obsolete($"Use {nameof(McpServerOptions.Handlers.UnsubscribeFromResourcesHandler)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     [EditorBrowsable(EditorBrowsableState.Never)]
     public McpRequestHandler<UnsubscribeRequestParams, EmptyResult>? UnsubscribeFromResourcesHandler { get; set; }
 
@@ -114,7 +114,7 @@ public sealed class ResourcesCapability
     /// </para>
     /// </remarks>
     [JsonIgnore]
-    [Obsolete($"Use {nameof(McpServerOptions.ResourceCollection)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [Obsolete($"Use {nameof(McpServerOptions.ResourceCollection)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     [EditorBrowsable(EditorBrowsableState.Never)]
     public McpServerResourceCollection? ResourceCollection { get; set; }
 }
