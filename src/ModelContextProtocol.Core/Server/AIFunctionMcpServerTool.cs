@@ -177,16 +177,12 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 newOptions.ReadOnly ??= readOnly;
             }
 
-            newOptions.UseStructuredContent = toolAttr.UseStructuredContent;
-
-            // Handle icon from attribute if not already specified in options
-            if (newOptions.Icons is null && !string.IsNullOrEmpty(toolAttr.IconSource))
+            if (toolAttr.IconSource is { Length: > 0 } iconSource)
             {
-                newOptions.Icons = new List<Icon>
-                {
-                    new() { Source = toolAttr.IconSource }
-                };
+                newOptions.Icons ??= [new() { Source  = iconSource }];
             }
+
+            newOptions.UseStructuredContent = toolAttr.UseStructuredContent;
         }
 
         if (method.GetCustomAttribute<DescriptionAttribute>() is { } descAttr)
