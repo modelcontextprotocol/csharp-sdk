@@ -1,6 +1,7 @@
 ﻿using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -35,6 +36,7 @@ public static class McpEndpointExtensions
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous operation. The task result contains the deserialized result.</returns>
     [Obsolete($"Use {nameof(McpSession)}.{nameof(McpSession.SendRequestAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static ValueTask<TResult> SendRequestAsync<TParameters, TResult>(
         this IMcpEndpoint endpoint,
         string method,
@@ -60,6 +62,7 @@ public static class McpEndpointExtensions
     /// </para>
     /// </remarks>
     [Obsolete($"Use {nameof(McpSession)}.{nameof(McpSession.SendNotificationAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static Task SendNotificationAsync(this IMcpEndpoint client, string method, CancellationToken cancellationToken = default)
         => AsSessionOrThrow(client).SendNotificationAsync(method, cancellationToken);
 
@@ -88,6 +91,7 @@ public static class McpEndpointExtensions
     /// </para>
     /// </remarks>
     [Obsolete($"Use {nameof(McpSession)}.{nameof(McpSession.SendNotificationAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static Task SendNotificationAsync<TParameters>(
         this IMcpEndpoint endpoint,
         string method,
@@ -116,6 +120,7 @@ public static class McpEndpointExtensions
     /// </para>
     /// </remarks>
     [Obsolete($"Use {nameof(McpSession)}.{nameof(McpSession.NotifyProgressAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static Task NotifyProgressAsync(
         this IMcpEndpoint endpoint,
         ProgressToken progressToken,

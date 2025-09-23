@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol;
+using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -85,6 +86,7 @@ public static class McpClientExtensions
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     /// <exception cref="McpException">Thrown when the server cannot be reached or returns an error response.</exception>
     [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.PingAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static Task PingAsync(this IMcpClient client, CancellationToken cancellationToken = default)
         => AsClientOrThrow(client).PingAsync(cancellationToken);
 
@@ -128,6 +130,7 @@ public static class McpClientExtensions
     /// </example>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.ListToolsAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static ValueTask<IList<McpClientTool>> ListToolsAsync(
         this IMcpClient client,
         JsonSerializerOptions? serializerOptions = null,
@@ -167,6 +170,7 @@ public static class McpClientExtensions
     /// </example>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.EnumerateToolsAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static IAsyncEnumerable<McpClientTool> EnumerateToolsAsync(
         this IMcpClient client,
         JsonSerializerOptions? serializerOptions = null,
@@ -191,6 +195,7 @@ public static class McpClientExtensions
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.ListPromptsAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static ValueTask<IList<McpClientPrompt>> ListPromptsAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
         => AsClientOrThrow(client).ListPromptsAsync(cancellationToken);
@@ -223,6 +228,7 @@ public static class McpClientExtensions
     /// </example>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.EnumeratePromptsAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static IAsyncEnumerable<McpClientPrompt> EnumeratePromptsAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
         => AsClientOrThrow(client).EnumeratePromptsAsync(cancellationToken);
@@ -253,6 +259,7 @@ public static class McpClientExtensions
     /// <exception cref="McpException">Thrown when the prompt does not exist, when required arguments are missing, or when the server encounters an error processing the prompt.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.GetPromptAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static ValueTask<GetPromptResult> GetPromptAsync(
         this IMcpClient client,
         string name,
@@ -279,6 +286,7 @@ public static class McpClientExtensions
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.ListResourceTemplatesAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static ValueTask<IList<McpClientResourceTemplate>> ListResourceTemplatesAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
         => AsClientOrThrow(client).ListResourceTemplatesAsync(cancellationToken);
@@ -311,6 +319,7 @@ public static class McpClientExtensions
     /// </example>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.EnumerateResourceTemplatesAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static IAsyncEnumerable<McpClientResourceTemplate> EnumerateResourceTemplatesAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
         => AsClientOrThrow(client).EnumerateResourceTemplatesAsync(cancellationToken);
@@ -345,6 +354,7 @@ public static class McpClientExtensions
     /// </example>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.ListResourcesAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static ValueTask<IList<McpClientResource>> ListResourcesAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
         => AsClientOrThrow(client).ListResourcesAsync(cancellationToken);
@@ -377,6 +387,7 @@ public static class McpClientExtensions
     /// </example>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.EnumerateResourcesAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static IAsyncEnumerable<McpClientResource> EnumerateResourcesAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
         => AsClientOrThrow(client).EnumerateResourcesAsync(cancellationToken);
@@ -391,6 +402,7 @@ public static class McpClientExtensions
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="uri"/> is empty or composed entirely of whitespace.</exception>
     [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.ReadResourceAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static ValueTask<ReadResourceResult> ReadResourceAsync(
         this IMcpClient client, string uri, CancellationToken cancellationToken = default)
         => AsClientOrThrow(client).ReadResourceAsync(uri, cancellationToken);
@@ -404,6 +416,7 @@ public static class McpClientExtensions
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
     [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.ReadResourceAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static ValueTask<ReadResourceResult> ReadResourceAsync(
         this IMcpClient client, Uri uri, CancellationToken cancellationToken = default)
         => AsClientOrThrow(client).ReadResourceAsync(uri, cancellationToken);
@@ -419,6 +432,7 @@ public static class McpClientExtensions
     /// <exception cref="ArgumentNullException"><paramref name="uriTemplate"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="uriTemplate"/> is empty or composed entirely of whitespace.</exception>
     [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.ReadResourceAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static ValueTask<ReadResourceResult> ReadResourceAsync(
         this IMcpClient client, string uriTemplate, IReadOnlyDictionary<string, object?> arguments, CancellationToken cancellationToken = default)
         => AsClientOrThrow(client).ReadResourceAsync(uriTemplate, arguments, cancellationToken);
@@ -453,6 +467,7 @@ public static class McpClientExtensions
     /// <exception cref="ArgumentException"><paramref name="argumentName"/> is empty or composed entirely of whitespace.</exception>
     /// <exception cref="McpException">The server returned an error response.</exception>
     [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.CompleteAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static ValueTask<CompleteResult> CompleteAsync(this IMcpClient client, Reference reference, string argumentName, string argumentValue, CancellationToken cancellationToken = default)
         => AsClientOrThrow(client).CompleteAsync(reference, argumentName, argumentValue, cancellationToken);
 
@@ -482,6 +497,7 @@ public static class McpClientExtensions
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="uri"/> is empty or composed entirely of whitespace.</exception>
     [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.SubscribeToResourceAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static Task SubscribeToResourceAsync(this IMcpClient client, string uri, CancellationToken cancellationToken = default)
         => AsClientOrThrow(client).SubscribeToResourceAsync(uri, cancellationToken);
 
@@ -510,6 +526,7 @@ public static class McpClientExtensions
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
     [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.SubscribeToResourceAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static Task SubscribeToResourceAsync(this IMcpClient client, Uri uri, CancellationToken cancellationToken = default)
         => AsClientOrThrow(client).SubscribeToResourceAsync(uri, cancellationToken);
 
@@ -538,6 +555,7 @@ public static class McpClientExtensions
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="uri"/> is empty or composed entirely of whitespace.</exception>
     [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.UnsubscribeFromResourceAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static Task UnsubscribeFromResourceAsync(this IMcpClient client, string uri, CancellationToken cancellationToken = default)
         => AsClientOrThrow(client).UnsubscribeFromResourceAsync(uri, cancellationToken);
 
@@ -565,6 +583,7 @@ public static class McpClientExtensions
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
     [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.UnsubscribeFromResourceAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static Task UnsubscribeFromResourceAsync(this IMcpClient client, Uri uri, CancellationToken cancellationToken = default)
         => AsClientOrThrow(client).UnsubscribeFromResourceAsync(uri, cancellationToken);
 
@@ -604,6 +623,7 @@ public static class McpClientExtensions
     /// </code>
     /// </example>
     [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.CallToolAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static ValueTask<CallToolResult> CallToolAsync(
         this IMcpClient client,
         string toolName,
