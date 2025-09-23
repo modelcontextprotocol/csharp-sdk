@@ -103,90 +103,87 @@ public partial class ElicitationTypedTests : ClientServerTestBase
     {
         await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
         {
-            Capabilities = new()
+            Handlers = new()
             {
-                Elicitation = new()
+                ElicitationHandler = async (request, cancellationToken) =>
                 {
-                    ElicitationHandler = async (request, cancellationToken) =>
+                    Assert.NotNull(request);
+                    Assert.Equal("Please provide more information.", request.Message);
+
+                    Assert.Equal(6, request.RequestedSchema.Properties.Count);
+
+                    foreach (var entry in request.RequestedSchema.Properties)
                     {
-                        Assert.NotNull(request);
-                        Assert.Equal("Please provide more information.", request.Message);
-
-                        Assert.Equal(6, request.RequestedSchema.Properties.Count);
-
-                        foreach (var entry in request.RequestedSchema.Properties)
+                        var key = entry.Key;
+                        var value = entry.Value;
+                        switch (key)
                         {
-                            var key = entry.Key;
-                            var value = entry.Value;
-                            switch (key)
-                            {
-                                case nameof(SampleForm.Name):
-                                    var stringSchema = Assert.IsType<ElicitRequestParams.StringSchema>(value);
-                                    Assert.Equal("string", stringSchema.Type);
-                                    break;
+                            case nameof(SampleForm.Name):
+                                var stringSchema = Assert.IsType<ElicitRequestParams.StringSchema>(value);
+                                Assert.Equal("string", stringSchema.Type);
+                                break;
 
-                                case nameof(SampleForm.Age):
-                                    var intSchema = Assert.IsType<ElicitRequestParams.NumberSchema>(value);
-                                    Assert.Equal("integer", intSchema.Type);
-                                    break;
+                            case nameof(SampleForm.Age):
+                                var intSchema = Assert.IsType<ElicitRequestParams.NumberSchema>(value);
+                                Assert.Equal("integer", intSchema.Type);
+                                break;
 
-                                case nameof(SampleForm.Active):
-                                    var boolSchema = Assert.IsType<ElicitRequestParams.BooleanSchema>(value);
-                                    Assert.Equal("boolean", boolSchema.Type);
-                                    break;
+                            case nameof(SampleForm.Active):
+                                var boolSchema = Assert.IsType<ElicitRequestParams.BooleanSchema>(value);
+                                Assert.Equal("boolean", boolSchema.Type);
+                                break;
 
-                                case nameof(SampleForm.Role):
-                                    var enumSchema = Assert.IsType<ElicitRequestParams.EnumSchema>(value);
-                                    Assert.Equal("string", enumSchema.Type);
-                                    Assert.Equal([nameof(SampleRole.User), nameof(SampleRole.Admin)], enumSchema.Enum);
-                                    break;
+                            case nameof(SampleForm.Role):
+                                var enumSchema = Assert.IsType<ElicitRequestParams.EnumSchema>(value);
+                                Assert.Equal("string", enumSchema.Type);
+                                Assert.Equal([nameof(SampleRole.User), nameof(SampleRole.Admin)], enumSchema.Enum);
+                                break;
 
-                                case nameof(SampleForm.Score):
-                                    var numSchema = Assert.IsType<ElicitRequestParams.NumberSchema>(value);
-                                    Assert.Equal("number", numSchema.Type);
-                                    break;
+                            case nameof(SampleForm.Score):
+                                var numSchema = Assert.IsType<ElicitRequestParams.NumberSchema>(value);
+                                Assert.Equal("number", numSchema.Type);
+                                break;
 
-                                case nameof(SampleForm.Created):
-                                    var dateTimeSchema = Assert.IsType<ElicitRequestParams.StringSchema>(value);
-                                    Assert.Equal("string", dateTimeSchema.Type);
-                                    Assert.Equal("date-time", dateTimeSchema.Format);
+                            case nameof(SampleForm.Created):
+                                var dateTimeSchema = Assert.IsType<ElicitRequestParams.StringSchema>(value);
+                                Assert.Equal("string", dateTimeSchema.Type);
+                                Assert.Equal("date-time", dateTimeSchema.Format);
 
-                                    break;
+                                break;
 
-                                default:
-                                    Assert.Fail($"Unexpected property in schema: {key}");
-                                    break;
-                            }
+                            default:
+                                Assert.Fail($"Unexpected property in schema: {key}");
+                                break;
                         }
+                    }
 
-                        return new ElicitResult
+                    return new ElicitResult
+                    {
+                        Action = "accept",
+                        Content = new Dictionary<string, JsonElement>
                         {
-                            Action = "accept",
-                            Content = new Dictionary<string, JsonElement>
-                            {
-                                [nameof(SampleForm.Name)] = (JsonElement)JsonSerializer.Deserialize("""
-                                    "Alice"
-                                    """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
-                                [nameof(SampleForm.Age)] = (JsonElement)JsonSerializer.Deserialize("""
-                                    30
-                                    """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
-                                [nameof(SampleForm.Active)] = (JsonElement)JsonSerializer.Deserialize("""
-                                    true
-                                    """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
-                                [nameof(SampleForm.Role)] = (JsonElement)JsonSerializer.Deserialize("""
-                                    "Admin"
-                                    """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
-                                [nameof(SampleForm.Score)] = (JsonElement)JsonSerializer.Deserialize("""
-                                    99.5
-                                    """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
-                                [nameof(SampleForm.Created)] = (JsonElement)JsonSerializer.Deserialize("""
-                                    "2023-08-27T03:05:00"
-                                    """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
-                            },
-                        };
-                    },
+                            [nameof(SampleForm.Name)] = (JsonElement)JsonSerializer.Deserialize("""
+                                "Alice"
+                                """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
+                            [nameof(SampleForm.Age)] = (JsonElement)JsonSerializer.Deserialize("""
+                                30
+                                """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
+                            [nameof(SampleForm.Active)] = (JsonElement)JsonSerializer.Deserialize("""
+                                true
+                                """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
+                            [nameof(SampleForm.Role)] = (JsonElement)JsonSerializer.Deserialize("""
+                                "Admin"
+                                """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
+                            [nameof(SampleForm.Score)] = (JsonElement)JsonSerializer.Deserialize("""
+                                99.5
+                                """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
+                            [nameof(SampleForm.Created)] = (JsonElement)JsonSerializer.Deserialize("""
+                                "2023-08-27T03:05:00"
+                                """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
+                        },
+                    };
                 },
-            },
+            }
         });
 
         var result = await client.CallToolAsync("TestElicitationTyped", cancellationToken: TestContext.Current.CancellationToken);
@@ -199,37 +196,34 @@ public partial class ElicitationTypedTests : ClientServerTestBase
     {
         await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
         {
-            Capabilities = new()
+            Handlers = new()
             {
-                Elicitation = new()
+                ElicitationHandler = async (request, cancellationToken) =>
                 {
-                    ElicitationHandler = async (request, cancellationToken) =>
+                    Assert.NotNull(request);
+                    Assert.Equal("Please provide more information.", request.Message);
+
+                    // Expect camelCase names based on serializer options
+                    Assert.Contains("firstName", request.RequestedSchema.Properties.Keys);
+                    Assert.Contains("zipCode", request.RequestedSchema.Properties.Keys);
+                    Assert.Contains("isAdmin", request.RequestedSchema.Properties.Keys);
+
+                    return new ElicitResult
                     {
-                        Assert.NotNull(request);
-                        Assert.Equal("Please provide more information.", request.Message);
-
-                        // Expect camelCase names based on serializer options
-                        Assert.Contains("firstName", request.RequestedSchema.Properties.Keys);
-                        Assert.Contains("zipCode", request.RequestedSchema.Properties.Keys);
-                        Assert.Contains("isAdmin", request.RequestedSchema.Properties.Keys);
-
-                        return new ElicitResult
+                        Action = "accept",
+                        Content = new Dictionary<string, JsonElement>
                         {
-                            Action = "accept",
-                            Content = new Dictionary<string, JsonElement>
-                            {
-                                ["firstName"] = (JsonElement)JsonSerializer.Deserialize("""
-                                    "Bob"
-                                    """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
-                                ["zipCode"] = (JsonElement)JsonSerializer.Deserialize("""
-                                    90210
-                                    """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
-                                ["isAdmin"] = (JsonElement)JsonSerializer.Deserialize("""
-                                    false
-                                    """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
-                            },
-                        };
-                    },
+                            ["firstName"] = (JsonElement)JsonSerializer.Deserialize("""
+                                "Bob"
+                                """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
+                            ["zipCode"] = (JsonElement)JsonSerializer.Deserialize("""
+                                90210
+                                """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
+                            ["isAdmin"] = (JsonElement)JsonSerializer.Deserialize("""
+                                false
+                                """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
+                        },
+                    };
                 },
             },
         });
@@ -243,16 +237,13 @@ public partial class ElicitationTypedTests : ClientServerTestBase
     {
         await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
         {
-            Capabilities = new()
+            Handlers = new()
             {
-                Elicitation = new()
+                // Handler should never be invoked because the exception occurs before the request is sent.
+                ElicitationHandler = async (req, ct) =>
                 {
-                    // Handler should never be invoked because the exception occurs before the request is sent.
-                    ElicitationHandler = async (req, ct) =>
-                    {
-                        Assert.Fail("Elicitation handler should not be called for unsupported schema test.");
-                        return new ElicitResult { Action = "cancel" };
-                    },
+                    Assert.Fail("Elicitation handler should not be called for unsupported schema test.");
+                    return new ElicitResult { Action = "cancel" };
                 },
             },
         });
@@ -268,18 +259,15 @@ public partial class ElicitationTypedTests : ClientServerTestBase
     {
         await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
         {
-            Capabilities = new()
+            Handlers = new()
             {
-                Elicitation = new()
+                // Handler should never be invoked because the exception occurs before the request is sent.
+                ElicitationHandler = async (req, ct) =>
                 {
-                    // Handler should never be invoked because the exception occurs before the request is sent.
-                    ElicitationHandler = async (req, ct) =>
-                    {
-                        Assert.Fail("Elicitation handler should not be called for unsupported schema test.");
-                        return new ElicitResult { Action = "cancel" };
-                    },
+                    Assert.Fail("Elicitation handler should not be called for unsupported schema test.");
+                    return new ElicitResult { Action = "cancel" };
                 },
-            },
+            }
         });
 
         var ex = await Assert.ThrowsAsync<McpException>(async () =>
@@ -291,18 +279,15 @@ public partial class ElicitationTypedTests : ClientServerTestBase
     {
         await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
         {
-            Capabilities = new()
+            Handlers = new()
             {
-                Elicitation = new()
+                // Should not be invoked
+                ElicitationHandler = async (req, ct) =>
                 {
-                    // Should not be invoked
-                    ElicitationHandler = async (req, ct) =>
-                    {
-                        Assert.Fail("Elicitation handler should not be called for non-object generic type test.");
-                        return new ElicitResult { Action = "cancel" };
-                    },
+                    Assert.Fail("Elicitation handler should not be called for non-object generic type test.");
+                    return new ElicitResult { Action = "cancel" };
                 },
-            },
+            }
         });
 
         var ex = await Assert.ThrowsAsync<McpException>(async () =>

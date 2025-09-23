@@ -276,7 +276,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         TaskCompletionSource<bool> tcs = new();
         await using var client = await _fixture.CreateClientAsync(clientId, new()
         {
-            Capabilities = new()
+            Handlers = new()
             {
                 NotificationHandlers =
                 [
@@ -306,7 +306,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         TaskCompletionSource<bool> receivedNotification = new();
         await using var client = await _fixture.CreateClientAsync(clientId, new()
         {
-            Capabilities = new()
+            Handlers = new()
             {
                 NotificationHandlers =
                 [
@@ -374,22 +374,19 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         int samplingHandlerCalls = 0;
         await using var client = await _fixture.CreateClientAsync(clientId, new()
         {
-            Capabilities = new()
+            Handlers = new()
             {
-                Sampling = new()
+                SamplingHandler = async (_, _, _) =>
                 {
-                    SamplingHandler = async (_, _, _) =>
+                    samplingHandlerCalls++;
+                    return new CreateMessageResult
                     {
-                        samplingHandlerCalls++;
-                        return new CreateMessageResult
-                        {
-                            Model = "test-model",
-                            Role = Role.Assistant,
-                            Content = new TextContentBlock { Text = "Test response" },
-                        };
-                    },
-                },
-            },
+                        Model = "test-model",
+                        Role = Role.Assistant,
+                        Content = new TextContentBlock { Text = "Test response" },
+                    };
+                }
+            }
         });
 
         // Call the server's sampleLLM tool which should trigger our sampling handler
@@ -477,8 +474,8 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
 
         await using var client = await McpClient.CreateAsync(
             new StdioClientTransport(stdioOptions),
-            clientOptions, 
-            loggerFactory: LoggerFactory, 
+            clientOptions,
+            loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
 
         // act
@@ -533,13 +530,10 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
             .CreateSamplingHandler();
         await using var client = await McpClient.CreateAsync(new StdioClientTransport(_fixture.EverythingServerTransportOptions), new()
         {
-            Capabilities = new()
+            Handlers = new()
             {
-                Sampling = new()
-                {
-                    SamplingHandler = samplingHandler,
-                },
-            },
+                SamplingHandler = samplingHandler
+            }
         }, cancellationToken: TestContext.Current.CancellationToken);
 
         var result = await client.CallToolAsync("sampleLLM", new Dictionary<string, object?>()
@@ -561,7 +555,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         TaskCompletionSource<bool> receivedNotification = new();
         await using var client = await _fixture.CreateClientAsync(clientId, new()
         {
-            Capabilities = new()
+            Handlers = new()
             {
                 NotificationHandlers =
                 [

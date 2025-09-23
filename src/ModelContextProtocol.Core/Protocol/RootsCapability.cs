@@ -31,14 +31,4 @@ public sealed class RootsCapability
     /// </remarks>
     [JsonPropertyName("listChanged")]
     public bool? ListChanged { get; set; }
-
-    /// <summary>
-    /// Gets or sets the handler for <see cref="RequestMethods.RootsList"/> requests.
-    /// </summary>
-    /// <remarks>
-    /// This handler is invoked when a client sends a <see cref="RequestMethods.RootsList"/> request to retrieve available roots.
-    /// The handler receives request parameters and should return a <see cref="ListRootsResult"/> containing the collection of available roots.
-    /// </remarks>
-    [JsonIgnore]
-    public Func<ListRootsRequestParams?, CancellationToken, ValueTask<ListRootsResult>>? RootsHandler { get; set; }
 }

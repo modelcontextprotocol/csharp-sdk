@@ -45,7 +45,7 @@ public sealed class ClientCapabilities
     /// </para>
     /// <para>
     /// The server can use <see cref="McpServer.RequestRootsAsync"/> to request the list of
-    /// available roots from the client, which will trigger the client's <see cref="RootsCapability.RootsHandler"/>.
+    /// available roots from the client, which will trigger the client's <see cref="ModelContextProtocol.Client.McpClientHandlers.RootsHandler"/>.
     /// </para>
     /// </remarks>
     [JsonPropertyName("roots")]

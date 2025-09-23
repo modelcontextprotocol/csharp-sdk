@@ -19,11 +19,11 @@ namespace ModelContextProtocol.Client;
 public static class McpClientExtensions
 {
     /// <summary>
-    /// Creates a sampling handler for use with <see cref="SamplingCapability.SamplingHandler"/> that will
+    /// Creates a sampling handler for use with <see cref="McpClientHandlers.SamplingHandler"/> that will
     /// satisfy sampling requests using the specified <see cref="IChatClient"/>.
     /// </summary>
     /// <param name="chatClient">The <see cref="IChatClient"/> with which to satisfy sampling requests.</param>
-    /// <returns>The created handler delegate that can be assigned to <see cref="SamplingCapability.SamplingHandler"/>.</returns>
+    /// <returns>The created handler delegate that can be assigned to <see cref="McpClientHandlers.SamplingHandler"/>.</returns>
     /// <remarks>
     /// <para>
     /// This method creates a function that converts MCP message requests into chat client calls, enabling

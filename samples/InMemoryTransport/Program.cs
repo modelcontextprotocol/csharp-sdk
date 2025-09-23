@@ -10,13 +10,7 @@ await using McpServer server = McpServer.Create(
     new StreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream()),
     new McpServerOptions()
     {
-        Capabilities = new()
-        {
-            Tools = new()
-            {
-                ToolCollection = [McpServerTool.Create((string arg) => $"Echo: {arg}", new() { Name = "Echo" })]
-            }
-        }
+        ToolCollection = [McpServerTool.Create((string arg) => $"Echo: {arg}", new() { Name = "Echo" })]
     });
 _ = server.RunAsync();
 

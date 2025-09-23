@@ -331,7 +331,7 @@ public class McpClientTests : ClientServerTestBase
         int remainingProgress = TotalNotifications;
         TaskCompletionSource<bool> allProgressReceived = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        Server.ServerOptions.Capabilities?.Tools?.ToolCollection?.Add(McpServerTool.Create(async (IProgress<ProgressNotificationValue> progress) =>
+        Server.ServerOptions.ToolCollection?.Add(McpServerTool.Create(async (IProgress<ProgressNotificationValue> progress) =>
         {
             for (int i = 0; i < TotalNotifications; i++)
             {

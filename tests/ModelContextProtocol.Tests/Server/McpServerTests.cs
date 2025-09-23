@@ -263,24 +263,24 @@ public class McpServerTests : LoggedTest
     public async Task Can_Handle_Completion_Requests()
     {
         await Can_Handle_Requests(
-            new()
+            new ServerCapabilities
             {
                 Completions = new()
-                {
-                    CompleteHandler = async (request, ct) =>
-                        new CompleteResult
-                        {
-                            Completion = new()
-                            {
-                                Values = ["test"],
-                                Total = 2,
-                                HasMore = true
-                            }
-                        }
-                }
             },
             method: RequestMethods.CompletionComplete,
-            configureOptions: null,
+            configureOptions: options =>
+            {
+                options.Handlers.CompleteHandler = async (request, ct) =>
+                    new CompleteResult
+                    {
+                        Completion = new()
+                        {
+                            Values = ["test"],
+                            Total = 2,
+                            HasMore = true
+                        }
+                    };
+            },
             assertResult: (_, response) =>
             {
                 var result = JsonSerializer.Deserialize<CompleteResult>(response, McpJsonUtilities.DefaultOptions);
@@ -298,26 +298,26 @@ public class McpServerTests : LoggedTest
             new ServerCapabilities
             {
                 Resources = new()
-                {
-                    ListResourceTemplatesHandler = async (request, ct) =>
-                    {
-                        return new ListResourceTemplatesResult
-                        {
-                            ResourceTemplates = [new() { UriTemplate = "test", Name = "Test Resource" }]
-                        };
-                    },
-                    ListResourcesHandler = async (request, ct) =>
-                    {
-                        return new ListResourcesResult
-                        {
-                            Resources = [new() { Uri = "test", Name = "Test Resource" }]
-                        };
-                    },
-                    ReadResourceHandler = (request, ct) => throw new NotImplementedException(),
-                }
             },
             RequestMethods.ResourcesTemplatesList,
-            configureOptions: null,
+            configureOptions: options =>
+            {
+                options.Handlers.ListResourceTemplatesHandler = async (request, ct) =>
+                {
+                    return new ListResourceTemplatesResult
+                    {
+                        ResourceTemplates = [new() { UriTemplate = "test", Name = "Test Resource" }]
+                    };
+                };
+                options.Handlers.ListResourcesHandler = async (request, ct) =>
+                {
+                    return new ListResourcesResult
+                    {
+                        Resources = [new() { Uri = "test", Name = "Test Resource" }]
+                    };
+                };
+                options.Handlers.ReadResourceHandler = (request, ct) => throw new NotImplementedException();
+            },
             assertResult: (_, response) =>
             {
                 var result = JsonSerializer.Deserialize<ListResourceTemplatesResult>(response, McpJsonUtilities.DefaultOptions);
@@ -334,19 +334,19 @@ public class McpServerTests : LoggedTest
             new ServerCapabilities
             {
                 Resources = new()
-                {
-                    ListResourcesHandler = async (request, ct) =>
-                    {
-                        return new ListResourcesResult
-                        {
-                            Resources = [new() { Uri = "test", Name = "Test Resource" }]
-                        };
-                    },
-                    ReadResourceHandler = (request, ct) => throw new NotImplementedException(),
-                }
             },
             RequestMethods.ResourcesList,
-            configureOptions: null,
+            configureOptions: options =>
+            {
+                options.Handlers.ListResourcesHandler = async (request, ct) =>
+                {
+                    return new ListResourcesResult
+                    {
+                        Resources = [new() { Uri = "test", Name = "Test Resource" }]
+                    };
+                };
+                options.Handlers.ReadResourceHandler = (request, ct) => throw new NotImplementedException();
+            },
             assertResult: (_, response) =>
             {
                 var result = JsonSerializer.Deserialize<ListResourcesResult>(response, McpJsonUtilities.DefaultOptions);
@@ -369,19 +369,19 @@ public class McpServerTests : LoggedTest
             new ServerCapabilities
             {
                 Resources = new()
-                {
-                    ReadResourceHandler = async (request, ct) =>
-                    {
-                        return new ReadResourceResult
-                        {
-                            Contents = [new TextResourceContents { Text = "test" }]
-                        };
-                    },
-                    ListResourcesHandler = (request, ct) => throw new NotImplementedException(),
-                }
             }, 
             method: RequestMethods.ResourcesRead,
-            configureOptions: null,
+            configureOptions: options =>
+            {
+                options.Handlers.ReadResourceHandler = async (request, ct) =>
+                {
+                    return new ReadResourceResult
+                    {
+                        Contents = [new TextResourceContents { Text = "test" }]
+                    };
+                };
+                options.Handlers.ListResourcesHandler = (request, ct) => throw new NotImplementedException();
+            },
             assertResult: (_, response) =>
             {
                 var result = JsonSerializer.Deserialize<ReadResourceResult>(response, McpJsonUtilities.DefaultOptions);
@@ -406,19 +406,19 @@ public class McpServerTests : LoggedTest
             new ServerCapabilities
             {
                 Prompts = new()
-                {
-                    ListPromptsHandler = async (request, ct) =>
-                    {
-                        return new ListPromptsResult
-                        {
-                            Prompts = [new() { Name = "test" }]
-                        };
-                    },
-                    GetPromptHandler = (request, ct) => throw new NotImplementedException(),
-                },
             },
             method: RequestMethods.PromptsList,
-            configureOptions: null,
+            configureOptions: options =>
+            {
+                options.Handlers.ListPromptsHandler = async (request, ct) =>
+                {
+                    return new ListPromptsResult
+                    {
+                        Prompts = [new() { Name = "test" }]
+                    };
+                };
+                options.Handlers.GetPromptHandler = (request, ct) => throw new NotImplementedException();
+            },
             assertResult: (_, response) =>
             {
                 var result = JsonSerializer.Deserialize<ListPromptsResult>(response, McpJsonUtilities.DefaultOptions);
@@ -441,13 +441,13 @@ public class McpServerTests : LoggedTest
             new ServerCapabilities 
             {
                 Prompts = new()
-                {
-                    GetPromptHandler = async (request, ct) => new GetPromptResult { Description = "test" },
-                    ListPromptsHandler = (request, ct) => throw new NotImplementedException(),
-                }
             },
             method: RequestMethods.PromptsGet,
-            configureOptions: null,
+            configureOptions: options =>
+            {
+                options.Handlers.GetPromptHandler = async (request, ct) => new GetPromptResult { Description = "test" };
+                options.Handlers.ListPromptsHandler = (request, ct) => throw new NotImplementedException();
+            },
             assertResult: (_, response) =>
             {
                 var result = JsonSerializer.Deserialize<GetPromptResult>(response, McpJsonUtilities.DefaultOptions);
@@ -469,19 +469,19 @@ public class McpServerTests : LoggedTest
             new ServerCapabilities 
             {
                 Tools = new()
-                {
-                    ListToolsHandler = async (request, ct) =>
-                    {
-                        return new ListToolsResult
-                        {
-                            Tools = [new() { Name = "test" }]
-                        };
-                    },
-                    CallToolHandler = (request, ct) => throw new NotImplementedException(),
-                }
             },
             method: RequestMethods.ToolsList,
-            configureOptions: null,
+            configureOptions: options =>
+            {
+                options.Handlers.ListToolsHandler = async (request, ct) =>
+                {
+                    return new ListToolsResult
+                    {
+                        Tools = [new() { Name = "test" }]
+                    };
+                };
+                options.Handlers.CallToolHandler = (request, ct) => throw new NotImplementedException();
+            },
             assertResult: (_, response) =>
             {
                 var result = JsonSerializer.Deserialize<ListToolsResult>(response, McpJsonUtilities.DefaultOptions);
@@ -504,19 +504,19 @@ public class McpServerTests : LoggedTest
             new ServerCapabilities
             {
                 Tools = new()
-                {
-                    CallToolHandler = async (request, ct) =>
-                    {
-                        return new CallToolResult
-                        {
-                            Content = [new TextContentBlock { Text = "test" }]
-                        };
-                    },
-                    ListToolsHandler = (request, ct) => throw new NotImplementedException(),
-                }
             }, 
             method: RequestMethods.ToolsCall,
-            configureOptions: null,
+            configureOptions: options =>
+            {
+                options.Handlers.CallToolHandler = async (request, ct) =>
+                {
+                    return new CallToolResult
+                    {
+                        Content = [new TextContentBlock { Text = "test" }]
+                    };
+                };
+                options.Handlers.ListToolsHandler = (request, ct) => throw new NotImplementedException();
+            },
             assertResult: (_, response) =>
             {
                 var result = JsonSerializer.Deserialize<CallToolResult>(response, McpJsonUtilities.DefaultOptions);
@@ -703,14 +703,12 @@ public class McpServerTests : LoggedTest
         var options = CreateOptions();
 
         var notificationReceived = new TaskCompletionSource<JsonRpcNotification>();
-        options.Capabilities = new()
-        {
-            NotificationHandlers = [new(NotificationMethods.ProgressNotification, (notification, cancellationToken) =>
+        options.Handlers.NotificationHandlers =
+            [new(NotificationMethods.ProgressNotification, (notification, cancellationToken) =>
             {
                 notificationReceived.TrySetResult(notification);
                 return default;
-            })],
-        };
+            })];
 
         var server = McpServer.Create(transport, options, LoggerFactory);
 
