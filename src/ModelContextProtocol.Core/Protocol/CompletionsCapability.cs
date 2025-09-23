@@ -16,8 +16,12 @@ namespace ModelContextProtocol.Protocol;
 /// <para>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
+/// <para>
+/// This class is intentionally empty as the Model Context Protocol specification does not
+/// currently define additional properties for sampling capabilities. Future versions of the
+/// specification may extend this capability with additional configuration options.
+/// </para>
 /// </remarks>
 public sealed class CompletionsCapability
 {
-    // Currently empty in the spec, but may be extended in the future.
 }
