@@ -49,19 +49,28 @@ internal sealed partial class McpClientImpl : McpClient
         var notificationHandlers = new NotificationHandlers();
         var requestHandlers = new RequestHandlers();
 
-        RegisterHandlers(options.Handlers, notificationHandlers, requestHandlers);
+        RegisterHandlers(options, notificationHandlers, requestHandlers);
 
         _sessionHandler = new McpSessionHandler(isServer: false, transport, endpointName, requestHandlers, notificationHandlers, _logger);
     }
 
-    private void RegisterHandlers(McpClientHandlers handlers, NotificationHandlers notificationHandlers, RequestHandlers requestHandlers)
+    private void RegisterHandlers(McpClientOptions options, NotificationHandlers notificationHandlers, RequestHandlers requestHandlers)
     {
-        if (handlers.NotificationHandlers is { } notificationHandlersFromOptions)
+        McpClientHandlers handlers = options.Handlers;
+
+#pragma warning disable CS0618 // Type or member is obsolete
+        var notificationHandlersFromOptions = handlers.NotificationHandlers ?? options.Capabilities?.NotificationHandlers;
+        var samplingHandler = handlers.SamplingHandler ?? options.Capabilities?.Sampling?.SamplingHandler;
+        var rootsHandler = handlers.RootsHandler ?? options.Capabilities?.Roots?.RootsHandler;
+        var elicitationHandler = handlers.ElicitationHandler ?? options.Capabilities?.Elicitation?.ElicitationHandler;
+#pragma warning restore CS0618 // Type or member is obsolete
+
+        if (notificationHandlersFromOptions is not null)
         {
             notificationHandlers.RegisterRange(notificationHandlersFromOptions);
         }
 
-        if (handlers.SamplingHandler is { } samplingHandler)
+        if (samplingHandler is not null)
         {
             requestHandlers.Set(
                 RequestMethods.SamplingCreateMessage,
@@ -76,7 +85,7 @@ internal sealed partial class McpClientImpl : McpClient
             _options.Capabilities.Sampling ??= new();
         }
 
-        if (handlers.RootsHandler is { } rootsHandler)
+        if (rootsHandler is not null)
         {
             requestHandlers.Set(
                 RequestMethods.RootsList,
@@ -88,7 +97,7 @@ internal sealed partial class McpClientImpl : McpClient
             _options.Capabilities.Roots ??= new();
         }
 
-        if (handlers.ElicitationHandler is { } elicitationHandler)
+        if (elicitationHandler is not null)
         {
             requestHandlers.Set(
                 RequestMethods.ElicitationCreate,

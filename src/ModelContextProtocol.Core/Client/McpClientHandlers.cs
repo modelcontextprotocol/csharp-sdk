@@ -23,7 +23,6 @@ namespace ModelContextProtocol.Client;
 /// </remarks>
 public class McpClientHandlers
 {
-
     /// <summary>Gets or sets notification handlers to register with the client.</summary>
     /// <remarks>
     /// <para>

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Text.Json.Serialization;
 using ModelContextProtocol.Server;
 
@@ -33,12 +34,9 @@ public sealed class ToolsCapability
     /// and the tools from the collection will be combined to form the complete list of available tools.
     /// </remarks>
     [JsonIgnore]
-    [Obsolete($"Use {nameof(McpServerHandlers.ListToolsHandler)} instead.")]
-    public McpRequestHandler<ListToolsRequestParams, ListToolsResult>? ListToolsHandler
-    {
-        get => throw new NotSupportedException($"Use {nameof(McpServerHandlers.ListToolsHandler)} instead.");
-        set => throw new NotSupportedException($"Use {nameof(McpServerHandlers.ListToolsHandler)} instead.");
-    }
+    [Obsolete($"Use {nameof(McpServerOptions.Handlers.ListToolsHandler)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public McpRequestHandler<ListToolsRequestParams, ListToolsResult>? ListToolsHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.ToolsCall"/> requests.
@@ -50,12 +48,9 @@ public sealed class ToolsCapability
     /// being called and its arguments, and should return a <see cref="CallToolResult"/> with the execution results.
     /// </remarks>
     [JsonIgnore]
-    [Obsolete($"Use {nameof(McpServerHandlers.CallToolHandler)} instead.")]
-    public McpRequestHandler<CallToolRequestParams, CallToolResult>? CallToolHandler
-    {
-        get => throw new NotSupportedException($"Use {nameof(McpServerHandlers.CallToolHandler)} instead.");
-        set => throw new NotSupportedException($"Use {nameof(McpServerHandlers.CallToolHandler)} instead.");
-    }
+    [Obsolete($"Use {nameof(McpServerOptions.Handlers.CallToolHandler)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public McpRequestHandler<CallToolRequestParams, CallToolResult>? CallToolHandler { get; set; }
 
     /// <summary>
     /// Gets or sets a collection of tools served by the server.
@@ -69,10 +64,7 @@ public sealed class ToolsCapability
     /// will be invoked as a fallback.
     /// </remarks>
     [JsonIgnore]
-    [Obsolete($"Use {nameof(McpServerOptions.ToolCollection)} instead.")]
-    public McpServerPrimitiveCollection<McpServerTool>? ToolCollection
-    {
-        get => throw new NotSupportedException($"Use {nameof(McpServerOptions.ToolCollection)} instead.");
-        set => throw new NotSupportedException($"Use {nameof(McpServerOptions.ToolCollection)} instead.");
-    }
+    [Obsolete($"Use {nameof(McpServerOptions.ToolCollection)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public McpServerPrimitiveCollection<McpServerTool>? ToolCollection { get; set; }
 }

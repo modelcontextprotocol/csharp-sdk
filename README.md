@@ -177,29 +177,30 @@ McpServerOptions options = new()
     Handlers = new McpServerHandlers()
     {
         ListToolsHandler = (request, cancellationToken) =>
-        ValueTask.FromResult(new ListToolsResult
-        {
-            Tools =
-            [
-                new Tool
-                {
-                    Name = "echo",
-                    Description = "Echoes the input back to the client.",
-                    InputSchema = JsonSerializer.Deserialize<JsonElement>("""
-                        {
-                            "type": "object",
-                            "properties": {
-                              "message": {
-                                "type": "string",
-                                "description": "The input to echo back"
-                              }
-                            },
-                            "required": ["message"]
-                        }
-                        """),
-                }
-            ]
-        }),
+            ValueTask.FromResult(new ListToolsResult
+            {
+                Tools =
+                [
+                    new Tool
+                    {
+                        Name = "echo",
+                        Description = "Echoes the input back to the client.",
+                        InputSchema = JsonSerializer.Deserialize<JsonElement>("""
+                            {
+                                "type": "object",
+                                "properties": {
+                                  "message": {
+                                    "type": "string",
+                                    "description": "The input to echo back"
+                                  }
+                                },
+                                "required": ["message"]
+                            }
+                            """),
+                    }
+                ]
+            }),
+
         CallToolHandler = (request, cancellationToken) =>
         {
             if (request.Params?.Name == "echo")

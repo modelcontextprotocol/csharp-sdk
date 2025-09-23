@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Text.Json.Serialization;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Server;
@@ -84,10 +85,7 @@ public sealed class ClientCapabilities
     /// </para>
     /// </remarks>
     [JsonIgnore]
-    [Obsolete($"Use {nameof(McpClientHandlers.NotificationHandlers)} instead.")]
-    public IEnumerable<KeyValuePair<string, Func<JsonRpcNotification, CancellationToken, ValueTask>>>? NotificationHandlers
-    {
-        get => throw new NotSupportedException($"Use {nameof(McpClientHandlers.NotificationHandlers)} instead.");
-        set => throw new NotSupportedException($"Use {nameof(McpClientHandlers.NotificationHandlers)} instead.");
-    }
+    [Obsolete($"Use {nameof(McpClientOptions.Handlers.NotificationHandlers)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public IEnumerable<KeyValuePair<string, Func<JsonRpcNotification, CancellationToken, ValueTask>>>? NotificationHandlers { get; set; }
 }

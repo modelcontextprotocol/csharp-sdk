@@ -1,4 +1,5 @@
 using ModelContextProtocol.Server;
+using System.ComponentModel;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -40,12 +41,9 @@ public sealed class PromptsCapability
     /// along with any prompts defined in <see cref="PromptCollection"/>.
     /// </remarks>
     [JsonIgnore]
-    [Obsolete($"Use {nameof(McpServerHandlers.ListPromptsHandler)} instead.")]
-    public McpRequestHandler<ListPromptsRequestParams, ListPromptsResult>? ListPromptsHandler
-    {
-        get => throw new NotSupportedException($"Use {nameof(McpServerHandlers.ListPromptsHandler)} instead.");
-        set => throw new NotSupportedException($"Use {nameof(McpServerHandlers.ListPromptsHandler)} instead.");
-    }
+    [Obsolete($"Use {nameof(McpServerOptions.Handlers.ListPromptsHandler)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public McpRequestHandler<ListPromptsRequestParams, ListPromptsResult>? ListPromptsHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.PromptsGet"/> requests.
@@ -62,12 +60,9 @@ public sealed class PromptsCapability
     /// </para>
     /// </remarks>
     [JsonIgnore]
-    [Obsolete($"Use {nameof(McpServerHandlers.GetPromptHandler)} instead.")]
-    public McpRequestHandler<GetPromptRequestParams, GetPromptResult>? GetPromptHandler
-    {
-        get => throw new NotSupportedException($"Use {nameof(McpServerHandlers.GetPromptHandler)} instead.");
-        set => throw new NotSupportedException($"Use {nameof(McpServerHandlers.GetPromptHandler)} instead.");
-    }
+    [Obsolete($"Use {nameof(McpServerOptions.Handlers.GetPromptHandler)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public McpRequestHandler<GetPromptRequestParams, GetPromptResult>? GetPromptHandler { get; set; }
 
     /// <summary>
     /// Gets or sets a collection of prompts that will be served by the server.
@@ -88,10 +83,7 @@ public sealed class PromptsCapability
     /// </para>
     /// </remarks>
     [JsonIgnore]
-    [Obsolete($"Use {nameof(McpServerOptions.PromptCollection)} instead.")]
-    public McpServerPrimitiveCollection<McpServerPrompt>? PromptCollection
-    {
-        get => throw new NotSupportedException($"Use {nameof(McpServerOptions.PromptCollection)} instead.");
-        set => throw new NotSupportedException($"Use {nameof(McpServerOptions.PromptCollection)} instead.");
-    }
+    [Obsolete($"Use {nameof(McpServerOptions.PromptCollection)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public McpServerPrimitiveCollection<McpServerPrompt>? PromptCollection { get; set; }
 }

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Text.Json.Serialization;
 using ModelContextProtocol.Client;
 
@@ -36,10 +37,7 @@ public sealed class ElicitationCapability
     /// </para>
     /// </remarks>
     [JsonIgnore]
-    [Obsolete($"Use {nameof(McpClientHandlers.ElicitationHandler)} instead.")]
-    public Func<ElicitRequestParams?, CancellationToken, ValueTask<ElicitResult>>? ElicitationHandler
-    {
-        get => throw new NotSupportedException($"Use {nameof(McpClientHandlers.ElicitationHandler)} instead.");
-        set => throw new NotSupportedException($"Use {nameof(McpClientHandlers.ElicitationHandler)} instead.");
-    }
+    [Obsolete($"Use {nameof(McpClientOptions.Handlers.ElicitationHandler)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public Func<ElicitRequestParams?, CancellationToken, ValueTask<ElicitResult>>? ElicitationHandler { get; set; }
 }

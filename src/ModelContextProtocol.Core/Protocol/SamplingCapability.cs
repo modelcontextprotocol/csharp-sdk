@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Client;
@@ -42,10 +43,7 @@ public sealed class SamplingCapability
     /// </para>
     /// </remarks>
     [JsonIgnore]
-    [Obsolete($"Use {nameof(McpClientHandlers.SamplingHandler)} instead.")]
-    public Func<CreateMessageRequestParams?, IProgress<ProgressNotificationValue>, CancellationToken, ValueTask<CreateMessageResult>>? SamplingHandler
-    {
-        get => throw new NotSupportedException($"Use {nameof(McpClientHandlers.SamplingHandler)} instead.");
-        set => throw new NotSupportedException($"Use {nameof(McpClientHandlers.SamplingHandler)} instead.");
-    }
+    [Obsolete($"Use {nameof(McpClientOptions.Handlers.SamplingHandler)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public Func<CreateMessageRequestParams?, IProgress<ProgressNotificationValue>, CancellationToken, ValueTask<CreateMessageResult>>? SamplingHandler { get; set; }
 }

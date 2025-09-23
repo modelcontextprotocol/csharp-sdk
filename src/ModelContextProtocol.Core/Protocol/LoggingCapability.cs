@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Text.Json.Serialization;
 using ModelContextProtocol.Server;
 
@@ -23,10 +24,7 @@ public sealed class LoggingCapability
     /// Gets or sets the handler for set logging level requests from clients.
     /// </summary>
     [JsonIgnore]
-    [Obsolete($"Use {nameof(McpServerHandlers.SetLoggingLevelHandler)} instead.")]
-    public McpRequestHandler<SetLevelRequestParams, EmptyResult>? SetLoggingLevelHandler
-    {
-        get => throw new NotSupportedException($"Use {nameof(McpServerHandlers.SetLoggingLevelHandler)} instead.");
-        set => throw new NotSupportedException($"Use {nameof(McpServerHandlers.SetLoggingLevelHandler)} instead.");
-    }
+    [Obsolete($"Use {nameof(McpServerOptions.Handlers.SetLoggingLevelHandler)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public McpRequestHandler<SetLevelRequestParams, EmptyResult>? SetLoggingLevelHandler { get; set; }
 }

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Text.Json.Serialization;
 using ModelContextProtocol.Client;
 
@@ -41,10 +42,7 @@ public sealed class RootsCapability
     /// The handler receives request parameters and should return a <see cref="ListRootsResult"/> containing the collection of available roots.
     /// </remarks>
     [JsonIgnore]
-    [Obsolete($"Use {nameof(McpClientHandlers.RootsHandler)} instead.")]
-    public Func<ListRootsRequestParams?, CancellationToken, ValueTask<ListRootsResult>>? RootsHandler
-    {
-        get => throw new NotSupportedException($"Use {nameof(McpClientHandlers.RootsHandler)} instead.");
-        set => throw new NotSupportedException($"Use {nameof(McpClientHandlers.RootsHandler)} instead.");
-    }
+    [Obsolete($"Use {nameof(McpClientOptions.Handlers.RootsHandler)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public Func<ListRootsRequestParams?, CancellationToken, ValueTask<ListRootsResult>>? RootsHandler { get; set; }
 }

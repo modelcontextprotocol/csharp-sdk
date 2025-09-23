@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Text.Json.Serialization;
 using ModelContextProtocol.Server;
 
@@ -36,10 +37,7 @@ public sealed class CompletionsCapability
     /// and should return appropriate completion suggestions.
     /// </remarks>
     [JsonIgnore]
-    [Obsolete($"Use {nameof(McpServerHandlers.CompleteHandler)} instead.")]
-    public McpRequestHandler<CompleteRequestParams, CompleteResult>? CompleteHandler
-    {
-        get => throw new NotSupportedException($"Use {nameof(McpServerHandlers.CompleteHandler)} instead.");
-        set => throw new NotSupportedException($"Use {nameof(McpServerHandlers.CompleteHandler)} instead.");
-    }
+    [Obsolete($"Use {nameof(McpServerOptions.Handlers.CompleteHandler)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public McpRequestHandler<CompleteRequestParams, CompleteResult>? CompleteHandler { get; set; }
 }
