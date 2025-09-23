@@ -705,10 +705,7 @@ public partial class McpServerToolTests
     [Fact]
     public void SupportsIconSourceInAttribute()
     {
-        MethodInfo? method = typeof(IconTestClass).GetMethod(nameof(IconTestClass.ToolWithIconSource));
-        Assert.NotNull(method);
-
-        McpServerTool tool = McpServerTool.Create(method, new IconTestClass());
+        McpServerTool tool = McpServerTool.Create([McpServerTool(IconSource = "https://example.com/tool-icon.png")] () => "result");
 
         Assert.NotNull(tool.ProtocolTool.Icons);
         Assert.Single(tool.ProtocolTool.Icons);
@@ -720,15 +717,12 @@ public partial class McpServerToolTests
     [Fact]
     public void CreateOptionsIconsOverrideAttributeIconSource()
     {
-        MethodInfo? method = typeof(IconTestClass).GetMethod(nameof(IconTestClass.ToolWithIconSource));
-        Assert.NotNull(method);
-
         var optionsIcons = new List<Icon>
         {
             new() { Source = "https://example.com/override-icon.svg", MimeType = "image/svg+xml" }
         };
 
-        McpServerTool tool = McpServerTool.Create(method, new IconTestClass(), new McpServerToolCreateOptions
+        McpServerTool tool = McpServerTool.Create([McpServerTool(IconSource = "https://example.com/tool-icon.png")] () => "result", new McpServerToolCreateOptions
         {
             Icons = optionsIcons
         });
@@ -742,21 +736,9 @@ public partial class McpServerToolTests
     [Fact]
     public void SupportsToolWithoutIcons()
     {
-        MethodInfo? method = typeof(IconTestClass).GetMethod(nameof(IconTestClass.ToolWithoutIcon));
-        Assert.NotNull(method);
-
-        McpServerTool tool = McpServerTool.Create(method, new IconTestClass());
+        McpServerTool tool = McpServerTool.Create([McpServerTool] () => "result");
 
         Assert.Null(tool.ProtocolTool.Icons);
-    }
-
-    private class IconTestClass
-    {
-        [McpServerTool(IconSource = "https://example.com/tool-icon.png")]
-        public string ToolWithIconSource() => "result";
-
-        [McpServerTool]
-        public string ToolWithoutIcon() => "result";
     }
 
     [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
