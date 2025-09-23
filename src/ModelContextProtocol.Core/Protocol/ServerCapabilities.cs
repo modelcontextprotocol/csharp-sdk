@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Protocol;
 
@@ -21,13 +22,13 @@ public sealed class ServerCapabilities
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The <see cref="Experimental"/> dictionary allows servers to advertise support for features that are not yet 
-    /// standardized in the Model Context Protocol specification. This extension mechanism enables 
+    /// The <see cref="Experimental"/> dictionary allows servers to advertise support for features that are not yet
+    /// standardized in the Model Context Protocol specification. This extension mechanism enables
     /// future protocol enhancements while maintaining backward compatibility.
     /// </para>
     /// <para>
-    /// Values in this dictionary are implementation-specific and should be coordinated between client 
-    /// and server implementations. Clients should not assume the presence of any experimental capability 
+    /// Values in this dictionary are implementation-specific and should be coordinated between client
+    /// and server implementations. Clients should not assume the presence of any experimental capability
     /// without checking for it first.
     /// </para>
     /// </remarks>
@@ -63,4 +64,29 @@ public sealed class ServerCapabilities
     /// </summary>
     [JsonPropertyName("completions")]
     public CompletionsCapability? Completions { get; set; }
+
+    /// <summary>Gets or sets notification handlers to register with the server.</summary>
+    /// <remarks>
+    /// <para>
+    /// When constructed, the server will enumerate these handlers once, which may contain multiple handlers per notification method key.
+    /// The server will not re-enumerate the sequence after initialization.
+    /// </para>
+    /// <para>
+    /// Notification handlers allow the server to respond to client-sent notifications for specific methods.
+    /// Each key in the collection is a notification method name, and each value is a callback that will be invoked
+    /// when a notification with that method is received.
+    /// </para>
+    /// <para>
+    /// Handlers provided via <see cref="NotificationHandlers"/> will be registered with the server for the lifetime of the server.
+    /// For transient handlers, <see cref="McpSession.RegisterNotificationHandler"/> may be used to register a handler that can
+    /// then be unregistered by disposing of the <see cref="IAsyncDisposable"/> returned from the method.
+    /// </para>
+    /// </remarks>
+    [JsonIgnore]
+    [Obsolete($"Use {nameof(McpServerHandlers.NotificationHandlers)} instead.")]
+    public IEnumerable<KeyValuePair<string, Func<JsonRpcNotification, CancellationToken, ValueTask>>>? NotificationHandlers
+    {
+        get => throw new NotSupportedException($"Use {nameof(McpServerHandlers.NotificationHandlers)} instead.");
+        set => throw new NotSupportedException($"Use {nameof(McpServerHandlers.NotificationHandlers)} instead.");
+    }
 }

@@ -30,4 +30,68 @@ public sealed class PromptsCapability
     /// </remarks>
     [JsonPropertyName("listChanged")]
     public bool? ListChanged { get; set; }
+
+    /// <summary>
+    /// Gets or sets the handler for <see cref="RequestMethods.PromptsList"/> requests.
+    /// </summary>
+    /// <remarks>
+    /// This handler is invoked when a client requests a list of available prompts from the server
+    /// via a <see cref="RequestMethods.PromptsList"/> request. Results from this handler are returned
+    /// along with any prompts defined in <see cref="PromptCollection"/>.
+    /// </remarks>
+    [JsonIgnore]
+    [Obsolete($"Use {nameof(McpServerHandlers.ListPromptsHandler)} instead.")]
+    public McpRequestHandler<ListPromptsRequestParams, ListPromptsResult>? ListPromptsHandler
+    {
+        get => throw new NotSupportedException($"Use {nameof(McpServerHandlers.ListPromptsHandler)} instead.");
+        set => throw new NotSupportedException($"Use {nameof(McpServerHandlers.ListPromptsHandler)} instead.");
+    }
+
+    /// <summary>
+    /// Gets or sets the handler for <see cref="RequestMethods.PromptsGet"/> requests.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This handler is invoked when a client requests details for a specific prompt by name and provides arguments
+    /// for the prompt if needed. The handler receives the request context containing the prompt name and any arguments,
+    /// and should return a <see cref="GetPromptResult"/> with the prompt messages and other details.
+    /// </para>
+    /// <para>
+    /// This handler will be invoked if the requested prompt name is not found in the <see cref="PromptCollection"/>,
+    /// allowing for dynamic prompt generation or retrieval from external sources.
+    /// </para>
+    /// </remarks>
+    [JsonIgnore]
+    [Obsolete($"Use {nameof(McpServerHandlers.GetPromptHandler)} instead.")]
+    public McpRequestHandler<GetPromptRequestParams, GetPromptResult>? GetPromptHandler
+    {
+        get => throw new NotSupportedException($"Use {nameof(McpServerHandlers.GetPromptHandler)} instead.");
+        set => throw new NotSupportedException($"Use {nameof(McpServerHandlers.GetPromptHandler)} instead.");
+    }
+
+    /// <summary>
+    /// Gets or sets a collection of prompts that will be served by the server.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The <see cref="PromptCollection"/> contains the predefined prompts that clients can request from the server.
+    /// This collection works in conjunction with <see cref="ListPromptsHandler"/> and <see cref="GetPromptHandler"/>
+    /// when those are provided:
+    /// </para>
+    /// <para>
+    /// - For <see cref="RequestMethods.PromptsList"/> requests: The server returns all prompts from this collection
+    ///   plus any additional prompts provided by the <see cref="ListPromptsHandler"/> if it's set.
+    /// </para>
+    /// <para>
+    /// - For <see cref="RequestMethods.PromptsGet"/> requests: The server first checks this collection for the requested prompt.
+    ///   If not found, it will invoke the <see cref="GetPromptHandler"/> as a fallback if one is set.
+    /// </para>
+    /// </remarks>
+    [JsonIgnore]
+    [Obsolete($"Use {nameof(McpServerOptions.PromptCollection)} instead.")]
+    public McpServerPrimitiveCollection<McpServerPrompt>? PromptCollection
+    {
+        get => throw new NotSupportedException($"Use {nameof(McpServerOptions.PromptCollection)} instead.");
+        set => throw new NotSupportedException($"Use {nameof(McpServerOptions.PromptCollection)} instead.");
+    }
 }

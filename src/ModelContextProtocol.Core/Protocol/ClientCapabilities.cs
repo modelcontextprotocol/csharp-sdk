@@ -1,5 +1,6 @@
-using ModelContextProtocol.Server;
 using System.Text.Json.Serialization;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Protocol;
 
@@ -83,5 +84,10 @@ public sealed class ClientCapabilities
     /// </para>
     /// </remarks>
     [JsonIgnore]
-    public IEnumerable<KeyValuePair<string, Func<JsonRpcNotification, CancellationToken, ValueTask>>>? NotificationHandlers { get; set; }
+    [Obsolete($"Use {nameof(McpClientHandlers.NotificationHandlers)} instead.")]
+    public IEnumerable<KeyValuePair<string, Func<JsonRpcNotification, CancellationToken, ValueTask>>>? NotificationHandlers
+    {
+        get => throw new NotSupportedException($"Use {nameof(McpClientHandlers.NotificationHandlers)} instead.");
+        set => throw new NotSupportedException($"Use {nameof(McpClientHandlers.NotificationHandlers)} instead.");
+    }
 }

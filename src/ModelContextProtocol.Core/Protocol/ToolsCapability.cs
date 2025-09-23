@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Protocol;
 
@@ -20,4 +21,58 @@ public sealed class ToolsCapability
     /// </remarks>
     [JsonPropertyName("listChanged")]
     public bool? ListChanged { get; set; }
+
+    /// <summary>
+    /// Gets or sets the handler for <see cref="RequestMethods.ToolsList"/> requests.
+    /// </summary>
+    /// <remarks>
+    /// The handler should return a list of available tools when requested by a client.
+    /// It supports pagination through the cursor mechanism, where the client can make
+    /// repeated calls with the cursor returned by the previous call to retrieve more tools.
+    /// When used in conjunction with <see cref="ToolCollection"/>, both the tools from this handler
+    /// and the tools from the collection will be combined to form the complete list of available tools.
+    /// </remarks>
+    [JsonIgnore]
+    [Obsolete($"Use {nameof(McpServerHandlers.ListToolsHandler)} instead.")]
+    public McpRequestHandler<ListToolsRequestParams, ListToolsResult>? ListToolsHandler
+    {
+        get => throw new NotSupportedException($"Use {nameof(McpServerHandlers.ListToolsHandler)} instead.");
+        set => throw new NotSupportedException($"Use {nameof(McpServerHandlers.ListToolsHandler)} instead.");
+    }
+
+    /// <summary>
+    /// Gets or sets the handler for <see cref="RequestMethods.ToolsCall"/> requests.
+    /// </summary>
+    /// <remarks>
+    /// This handler is invoked when a client makes a call to a tool that isn't found in the <see cref="ToolCollection"/>.
+    /// The handler should implement logic to execute the requested tool and return appropriate results.
+    /// It receives a <see cref="RequestContext{CallToolRequestParams}"/> containing information about the tool
+    /// being called and its arguments, and should return a <see cref="CallToolResult"/> with the execution results.
+    /// </remarks>
+    [JsonIgnore]
+    [Obsolete($"Use {nameof(McpServerHandlers.CallToolHandler)} instead.")]
+    public McpRequestHandler<CallToolRequestParams, CallToolResult>? CallToolHandler
+    {
+        get => throw new NotSupportedException($"Use {nameof(McpServerHandlers.CallToolHandler)} instead.");
+        set => throw new NotSupportedException($"Use {nameof(McpServerHandlers.CallToolHandler)} instead.");
+    }
+
+    /// <summary>
+    /// Gets or sets a collection of tools served by the server.
+    /// </summary>
+    /// <remarks>
+    /// Tools will specified via <see cref="ToolCollection"/> augment the <see cref="ListToolsHandler"/> and
+    /// <see cref="CallToolHandler"/>, if provided. ListTools requests will output information about every tool
+    /// in <see cref="ToolCollection"/> and then also any tools output by <see cref="ListToolsHandler"/>, if it's
+    /// non-<see langword="null"/>. CallTool requests will first check <see cref="ToolCollection"/> for the tool
+    /// being requested, and if the tool is not found in the <see cref="ToolCollection"/>, any specified <see cref="CallToolHandler"/>
+    /// will be invoked as a fallback.
+    /// </remarks>
+    [JsonIgnore]
+    [Obsolete($"Use {nameof(McpServerOptions.ToolCollection)} instead.")]
+    public McpServerPrimitiveCollection<McpServerTool>? ToolCollection
+    {
+        get => throw new NotSupportedException($"Use {nameof(McpServerOptions.ToolCollection)} instead.");
+        set => throw new NotSupportedException($"Use {nameof(McpServerOptions.ToolCollection)} instead.");
+    }
 }

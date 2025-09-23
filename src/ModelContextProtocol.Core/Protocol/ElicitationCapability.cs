@@ -1,3 +1,6 @@
+using System.Text.Json.Serialization;
+using ModelContextProtocol.Client;
+
 namespace ModelContextProtocol.Protocol;
 
 /// <summary>
@@ -19,4 +22,24 @@ namespace ModelContextProtocol.Protocol;
 /// </remarks>
 public sealed class ElicitationCapability
 {
+    /// <summary>
+    /// Gets or sets the handler for processing <see cref="RequestMethods.ElicitationCreate"/> requests.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This handler function is called when an MCP server requests the client to provide additional
+    /// information during interactions. The client must set this property for the elicitation capability to work.
+    /// </para>
+    /// <para>
+    /// The handler receives message parameters and a cancellation token.
+    /// It should return a <see cref="ElicitResult"/> containing the response to the elicitation request.
+    /// </para>
+    /// </remarks>
+    [JsonIgnore]
+    [Obsolete($"Use {nameof(McpClientHandlers.ElicitationHandler)} instead.")]
+    public Func<ElicitRequestParams?, CancellationToken, ValueTask<ElicitResult>>? ElicitationHandler
+    {
+        get => throw new NotSupportedException($"Use {nameof(McpClientHandlers.ElicitationHandler)} instead.");
+        set => throw new NotSupportedException($"Use {nameof(McpClientHandlers.ElicitationHandler)} instead.");
+    }
 }

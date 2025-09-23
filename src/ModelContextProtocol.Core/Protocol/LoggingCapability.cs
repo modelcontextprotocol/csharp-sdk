@@ -1,3 +1,6 @@
+using System.Text.Json.Serialization;
+using ModelContextProtocol.Server;
+
 namespace ModelContextProtocol.Protocol;
 
 /// <summary>
@@ -16,4 +19,14 @@ namespace ModelContextProtocol.Protocol;
 /// </remarks>
 public sealed class LoggingCapability
 {
+    /// <summary>
+    /// Gets or sets the handler for set logging level requests from clients.
+    /// </summary>
+    [JsonIgnore]
+    [Obsolete($"Use {nameof(McpServerHandlers.SetLoggingLevelHandler)} instead.")]
+    public McpRequestHandler<SetLevelRequestParams, EmptyResult>? SetLoggingLevelHandler
+    {
+        get => throw new NotSupportedException($"Use {nameof(McpServerHandlers.SetLoggingLevelHandler)} instead.");
+        set => throw new NotSupportedException($"Use {nameof(McpServerHandlers.SetLoggingLevelHandler)} instead.");
+    }
 }
