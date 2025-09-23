@@ -121,6 +121,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             Description = options?.Description ?? function.Description,
             InputSchema = function.JsonSchema,
             OutputSchema = CreateOutputSchema(function, options, out bool structuredOutputRequiresWrapping),
+            Icons = options?.Icons,
         };
 
         if (options is not null)
@@ -177,6 +178,15 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             }
 
             newOptions.UseStructuredContent = toolAttr.UseStructuredContent;
+
+            // Handle icon from attribute if not already specified in options
+            if (newOptions.Icons is null && !string.IsNullOrEmpty(toolAttr.IconSource))
+            {
+                newOptions.Icons = new List<Icon>
+                {
+                    new() { Source = toolAttr.IconSource }
+                };
+            }
         }
 
         if (method.GetCustomAttribute<DescriptionAttribute>() is { } descAttr)

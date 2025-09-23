@@ -165,6 +165,14 @@ public sealed class McpServerToolCreateOptions
     public IReadOnlyList<object>? Metadata { get; set; }
 
     /// <summary>
+    /// Gets or sets the icons for this tool.
+    /// </summary>
+    /// <remarks>
+    /// This can be used by clients to display the tool's icon in a user interface.
+    /// </remarks>
+    public IList<Icon>? Icons { get; set; }
+
+    /// <summary>
     /// Creates a shallow clone of the current <see cref="McpServerToolCreateOptions"/> instance.
     /// </summary>
     internal McpServerToolCreateOptions Clone() =>
@@ -182,5 +190,6 @@ public sealed class McpServerToolCreateOptions
             SerializerOptions = SerializerOptions,
             SchemaCreateOptions = SchemaCreateOptions,
             Metadata = Metadata,
+            Icons = Icons,
         };
 }
