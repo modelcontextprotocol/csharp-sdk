@@ -46,7 +46,7 @@ public sealed class Icon
     /// </para>
     /// </remarks>
     [JsonPropertyName("src")]
-    public required string Src { get; init; }
+    public required string Source { get; init; }
 
     /// <summary>
     /// Gets or sets the optional MIME type of the icon.

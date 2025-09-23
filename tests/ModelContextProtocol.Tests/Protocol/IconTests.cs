@@ -11,7 +11,7 @@ public static class IconTests
         // Arrange
         var original = new Icon
         {
-            Src = "https://example.com/icon.png",
+            Source = "https://example.com/icon.png",
             MimeType = "image/png",
             Sizes = "48x48"
         };
@@ -24,7 +24,7 @@ public static class IconTests
 
         // Assert
         Assert.NotNull(deserialized);
-        Assert.Equal(original.Src, deserialized.Src);
+        Assert.Equal(original.Source, deserialized.Source);
         Assert.Equal(original.MimeType, deserialized.MimeType);
         Assert.Equal(original.Sizes, deserialized.Sizes);
     }
@@ -35,7 +35,7 @@ public static class IconTests
         // Arrange
         var original = new Icon
         {
-            Src = "data:image/svg+xml;base64,PHN2Zy4uLjwvc3ZnPg=="
+            Source = "data:image/svg+xml;base64,PHN2Zy4uLjwvc3ZnPg=="
         };
 
         // Act - Serialize to JSON
@@ -46,7 +46,7 @@ public static class IconTests
 
         // Assert
         Assert.NotNull(deserialized);
-        Assert.Equal(original.Src, deserialized.Src);
+        Assert.Equal(original.Source, deserialized.Source);
         Assert.Equal(original.MimeType, deserialized.MimeType);
         Assert.Equal(original.Sizes, deserialized.Sizes);
     }
@@ -56,7 +56,7 @@ public static class IconTests
     {
         var icon = new Icon
         {
-            Src = "https://example.com/icon.svg",
+            Source = "https://example.com/icon.svg",
             MimeType = "image/svg+xml",
             Sizes = "any"
         };

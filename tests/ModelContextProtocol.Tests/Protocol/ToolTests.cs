@@ -16,7 +16,7 @@ public static class ToolTests
             Description = "Get current weather information",
             Icons =
             [
-                new() { Src = "https://example.com/weather.png", MimeType = "image/png", Sizes = "48x48" }
+                new() { Source = "https://example.com/weather.png", MimeType = "image/png", Sizes = "48x48" }
             ],
             Annotations = new ToolAnnotations
             {
@@ -38,7 +38,7 @@ public static class ToolTests
         Assert.Equal(original.Description, deserialized.Description);
         Assert.NotNull(deserialized.Icons);
         Assert.Equal(original.Icons.Count, deserialized.Icons.Count);
-        Assert.Equal(original.Icons[0].Src, deserialized.Icons[0].Src);
+        Assert.Equal(original.Icons[0].Source, deserialized.Icons[0].Source);
         Assert.Equal(original.Icons[0].MimeType, deserialized.Icons[0].MimeType);
         Assert.Equal(original.Icons[0].Sizes, deserialized.Icons[0].Sizes);
         Assert.NotNull(deserialized.Annotations);
@@ -78,7 +78,7 @@ public static class ToolTests
             Name = "test_tool",
             Title = "Test Tool",
             Description = "A test tool",
-            Icons = [new() { Src = "https://example.com/icon.png" }],
+            Icons = [new() { Source = "https://example.com/icon.png" }],
             Annotations = new ToolAnnotations { Title = "Annotation Title" }
         };
 

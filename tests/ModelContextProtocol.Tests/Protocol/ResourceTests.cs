@@ -19,7 +19,7 @@ public static class ResourceTests
             Size = 1024,
             Icons =
             [
-                new() { Src = "https://example.com/pdf-icon.png", MimeType = "image/png", Sizes = "32x32" }
+                new() { Source = "https://example.com/pdf-icon.png", MimeType = "image/png", Sizes = "32x32" }
             ],
             Annotations = new Annotations { Audience = [Role.User] }
         };
@@ -40,7 +40,7 @@ public static class ResourceTests
         Assert.Equal(original.Size, deserialized.Size);
         Assert.NotNull(deserialized.Icons);
         Assert.Equal(original.Icons.Count, deserialized.Icons.Count);
-        Assert.Equal(original.Icons[0].Src, deserialized.Icons[0].Src);
+        Assert.Equal(original.Icons[0].Source, deserialized.Icons[0].Source);
         Assert.Equal(original.Icons[0].MimeType, deserialized.Icons[0].MimeType);
         Assert.Equal(original.Icons[0].Sizes, deserialized.Icons[0].Sizes);
         Assert.NotNull(deserialized.Annotations);
@@ -86,7 +86,7 @@ public static class ResourceTests
             Description = "A test resource",
             MimeType = "text/plain",
             Size = 512,
-            Icons = new List<Icon> { new() { Src = "https://example.com/icon.svg" } },
+            Icons = new List<Icon> { new() { Source = "https://example.com/icon.svg" } },
             Annotations = new Annotations { Audience = [Role.User] }
         };
 

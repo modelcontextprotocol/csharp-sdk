@@ -16,8 +16,8 @@ public static class ImplementationTests
             Version = "1.0.0",
             Icons =
             [
-                new() { Src = "https://example.com/icon.png", MimeType = "image/png", Sizes = "48x48" },
-                new() { Src = "https://example.com/icon.svg", MimeType = "image/svg+xml", Sizes = "any" }
+                new() { Source = "https://example.com/icon.png", MimeType = "image/png", Sizes = "48x48" },
+                new() { Source = "https://example.com/icon.svg", MimeType = "image/svg+xml", Sizes = "any" }
             ],
             WebsiteUrl = "https://example.com"
         };
@@ -39,7 +39,7 @@ public static class ImplementationTests
         
         for (int i = 0; i < original.Icons.Count; i++)
         {
-            Assert.Equal(original.Icons[i].Src, deserialized.Icons[i].Src);
+            Assert.Equal(original.Icons[i].Source, deserialized.Icons[i].Source);
             Assert.Equal(original.Icons[i].MimeType, deserialized.Icons[i].MimeType);
             Assert.Equal(original.Icons[i].Sizes, deserialized.Icons[i].Sizes);
         }
@@ -78,7 +78,7 @@ public static class ImplementationTests
             Name = "test-server",
             Title = "Test Server",
             Version = "1.0.0",
-            Icons = [new() { Src = "https://example.com/icon.png" }],
+            Icons = [new() { Source = "https://example.com/icon.png" }],
             WebsiteUrl = "https://example.com"
         };
 

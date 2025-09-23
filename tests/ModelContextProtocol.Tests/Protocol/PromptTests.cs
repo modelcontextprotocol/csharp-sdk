@@ -16,7 +16,7 @@ public static class PromptTests
             Description = "Review the provided code",
             Icons =
             [
-                new() { Src = "https://example.com/review-icon.svg", MimeType = "image/svg+xml", Sizes = "any" }
+                new() { Source = "https://example.com/review-icon.svg", MimeType = "image/svg+xml", Sizes = "any" }
             ],
             Arguments =
             [
@@ -37,7 +37,7 @@ public static class PromptTests
         Assert.Equal(original.Description, deserialized.Description);
         Assert.NotNull(deserialized.Icons);
         Assert.Equal(original.Icons.Count, deserialized.Icons.Count);
-        Assert.Equal(original.Icons[0].Src, deserialized.Icons[0].Src);
+        Assert.Equal(original.Icons[0].Source, deserialized.Icons[0].Source);
         Assert.Equal(original.Icons[0].MimeType, deserialized.Icons[0].MimeType);
         Assert.Equal(original.Icons[0].Sizes, deserialized.Icons[0].Sizes);
         Assert.NotNull(deserialized.Arguments);
@@ -79,7 +79,7 @@ public static class PromptTests
             Name = "test_prompt",
             Title = "Test Prompt",
             Description = "A test prompt",
-            Icons = [new() { Src = "https://example.com/icon.webp" }],
+            Icons = [new() { Source = "https://example.com/icon.webp" }],
             Arguments =
             [
                 new() { Name = "input", Description = "Input parameter" }
