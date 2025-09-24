@@ -22,12 +22,10 @@ The following code snippet illustrates how to add the [IHttpContextAccessor] ser
 
 [!code-csharp[](samples/Program.cs?name=snippet_AddHttpContextAccessor)]
 
-If `ContextTools` is a class whose methods need access to the [HttpContext], the following snippet shows how it can accept
-an [IHttpContextAccessor] in its constructor and store it for later use:
+Any class that needs access to the [HttpContext] can accept an [IHttpContextAccessor] in its constructor and store it for later use.
+Methods of the class can then access the current [HttpContext] using the stored accessor.
 
-[!code-csharp[](samples/Tools/ContextTools.cs?name=snippet_ConstructorParameter)]
+The following code snippet shows the `ContextTools` class accepting an [IHttpContextAccessor] in its primary constructor
+and the `GetHttpHeaders` method accessing the current [HttpContext] to retrieve the HTTP headers from the current request.
 
-A method of `ContextTools` can then access the current [HttpContext] as follows:
-
-<!-- highlight the last 5 lines -->
 [!code-csharp[](samples/Tools/ContextTools.cs?name=snippet_AccessHttpContext)]

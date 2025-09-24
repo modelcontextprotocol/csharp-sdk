@@ -5,20 +5,10 @@ using System.Text.Json;
 
 namespace HttpContext.Tools;
 
-// <snippet_ConstructorParameter>
-public class ContextTools
+
+// <snippet_AccessHttpContext>
+public class ContextTools(IHttpContextAccessor _httpContextAccessor)
 {
-    private readonly IHttpContextAccessor _httpContextAccessor;
-
-    public ContextTools(IHttpContextAccessor httpContextAccessor)
-    {
-        _httpContextAccessor = httpContextAccessor;
-    }
-
-    // remainder of ContextTools follows
-    // </snippet_ConstructorParameter>
-
-    // <snippet_AccessHttpContext>
     [McpServerTool(UseStructuredContent = true)]
     [Description("Retrieves the HTTP headers from the current request and returns them as a JSON object.")]
     public object GetHttpHeaders()
@@ -39,48 +29,5 @@ public class ContextTools
         }
 
         return headers;
-    }
-
-    [McpServerTool(UseStructuredContent = true)]
-    [Description("Retrieves the request information from the current HTTP context and returns it as structured content.")]
-    public object GetRequestInfo()
-    {
-        var context = _httpContextAccessor.HttpContext;
-        if (context == null)
-        {
-            return new { Error = "No HTTP context available" };
-        }
-
-        var requestInfo = new
-        {
-            context.Request.Method,
-            Path = context.Request.Path.Value,
-            QueryString = context.Request.QueryString.Value,
-            context.Request.ContentType,
-            UserAgent = context.Request.Headers.UserAgent.ToString(),
-            RemoteIpAddress = context.Connection.RemoteIpAddress?.ToString(),
-            context.Request.IsHttps
-        };
-
-        return requestInfo;
-    }
-
-    [McpServerTool(UseStructuredContent = true)]
-    [Description("Retrieves the user claims from the current HTTP context and returns them as a JSON object.")]
-    public object GetUserClaims()
-    {
-        var context = _httpContextAccessor.HttpContext;
-        if (context == null)
-        {
-            return "No HTTP context available";
-        }
-
-        var claims = context.User.Claims.Select(c => new
-        {
-            c.Type,
-            c.Value
-        }).ToList();
-
-        return claims;
     }
 }
