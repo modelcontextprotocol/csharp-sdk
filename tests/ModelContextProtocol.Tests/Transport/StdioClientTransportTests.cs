@@ -94,7 +94,7 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
     [InlineData("http://localhost:1234/callback?foo=1&bar=2")]
     public async Task EscapesCliArgumentsCorrectly(string? cliArgumentValue)
     {
-        if (PlatformDetection.IsMonoRuntime && cliArgumentValue is not null && cliArgumentValue.EndsWith("\\"))
+        if (PlatformDetection.IsMonoRuntime && cliArgumentValue?.EndsWith("\\") is true)
         {
             Assert.Skip("mono runtime does not handle arguments ending with backslash correctly.");
         }
