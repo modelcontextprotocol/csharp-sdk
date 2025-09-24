@@ -237,17 +237,23 @@ public sealed partial class StdioClientTransport : IClientTransport
     }
 
     private static string EscapeArgumentString(string argument) =>
-        RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
+        RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && !ContainsWhitespaceRegex.IsMatch(argument) ?
         WindowsCliSpecialArgumentsRegex.Replace(argument, static match => "^" + match.Value) :
         argument;
 
     private const string WindowsCliSpecialArgumentsRegexString = "[&^><|]";
+
 #if NET
     private static Regex WindowsCliSpecialArgumentsRegex => GetWindowsCliSpecialArgumentsRegex();
+    private static Regex ContainsWhitespaceRegex => GetContainsWhitespaceRegex();
+
     [GeneratedRegex(WindowsCliSpecialArgumentsRegexString, RegexOptions.CultureInvariant)]
     private static partial Regex GetWindowsCliSpecialArgumentsRegex();
+    [GeneratedRegex(@"\s", RegexOptions.CultureInvariant)]
+    private static partial Regex GetContainsWhitespaceRegex();
 #else
     private static Regex WindowsCliSpecialArgumentsRegex { get; } = new(WindowsCliSpecialArgumentsRegexString, RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static Regex ContainsWhitespaceRegex { get; } = new(@"\s", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 #endif
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} connecting.")]

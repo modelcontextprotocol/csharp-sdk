@@ -56,9 +56,33 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
     [Theory]
     [InlineData(null)]
     [InlineData("argument with spaces")]
-    [InlineData("let rec Y f x = f (Y f) x")]
     [InlineData("&")]
+    [InlineData("|")]
+    [InlineData(">")]
+    [InlineData("<")]
+    [InlineData("^")]
+    [InlineData(" & ")]
+    [InlineData(" | ")]
+    [InlineData(" > ")]
+    [InlineData(" < ")]
+    [InlineData(" ^ ")]
+    [InlineData("& ")]
+    [InlineData("| ")]
+    [InlineData("> ")]
+    [InlineData("< ")]
+    [InlineData("^ ")]
+    [InlineData(" &")]
+    [InlineData(" |")]
+    [InlineData(" >")]
+    [InlineData(" <")]
+    [InlineData(" ^")]
     [InlineData("^&<>|")]
+    [InlineData("^&<>| ")]
+    [InlineData(" ^&<>|")]
+    [InlineData("\t^&<>")]
+    [InlineData("^&\t<>")]
+    [InlineData("ls /tmp | grep foo.txt > /dev/null")]
+    [InlineData("let rec Y f x = f (Y f) x")]
     [InlineData("value with \"quotes\" and spaces")]
     [InlineData("C:\\Program Files\\Test App\\app.dll")]
     [InlineData("C:\\EndsWithBackslash\\")]
@@ -78,13 +102,13 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
             Command = (PlatformDetection.IsMonoRuntime, PlatformDetection.IsWindows) switch
             {
                 (true, _) => "mono",
-                (false, true) => "TestServer.exe",
+                (_, true) => "TestServer.exe",
                 _ => "dotnet",
             },
             Arguments = (PlatformDetection.IsMonoRuntime, PlatformDetection.IsWindows) switch
             {
                 (true, _) => ["TestServer.exe", cliArgument],
-                (false, true) => [cliArgument],
+                (_, true) => [cliArgument],
                 _ => ["TestServer.dll", cliArgument],
             },
         };
