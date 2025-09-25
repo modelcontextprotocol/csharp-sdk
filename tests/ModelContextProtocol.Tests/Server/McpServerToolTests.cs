@@ -678,6 +678,69 @@ public partial class McpServerToolTests
 
     record Person(string Name, int Age);
 
+    [Fact]
+    public void SupportsIconsInCreateOptions()
+    {
+        var icons = new List<Icon>
+        {
+            new() { Source = "https://example.com/icon.png", MimeType = "image/png", Sizes = "48x48" },
+            new() { Source = "https://example.com/icon.svg", MimeType = "image/svg+xml", Sizes = "any" }
+        };
+
+        McpServerTool tool = McpServerTool.Create(() => "test", new McpServerToolCreateOptions
+        {
+            Icons = icons
+        });
+
+        Assert.NotNull(tool.ProtocolTool.Icons);
+        Assert.Equal(2, tool.ProtocolTool.Icons.Count);
+        Assert.Equal("https://example.com/icon.png", tool.ProtocolTool.Icons[0].Source);
+        Assert.Equal("image/png", tool.ProtocolTool.Icons[0].MimeType);
+        Assert.Equal("48x48", tool.ProtocolTool.Icons[0].Sizes);
+        Assert.Equal("https://example.com/icon.svg", tool.ProtocolTool.Icons[1].Source);
+        Assert.Equal("image/svg+xml", tool.ProtocolTool.Icons[1].MimeType);
+        Assert.Equal("any", tool.ProtocolTool.Icons[1].Sizes);
+    }
+
+    [Fact]
+    public void SupportsIconSourceInAttribute()
+    {
+        McpServerTool tool = McpServerTool.Create([McpServerTool(IconSource = "https://example.com/tool-icon.png")] () => "result");
+
+        Assert.NotNull(tool.ProtocolTool.Icons);
+        Assert.Single(tool.ProtocolTool.Icons);
+        Assert.Equal("https://example.com/tool-icon.png", tool.ProtocolTool.Icons[0].Source);
+        Assert.Null(tool.ProtocolTool.Icons[0].MimeType);
+        Assert.Null(tool.ProtocolTool.Icons[0].Sizes);
+    }
+
+    [Fact]
+    public void CreateOptionsIconsOverrideAttributeIconSource()
+    {
+        var optionsIcons = new List<Icon>
+        {
+            new() { Source = "https://example.com/override-icon.svg", MimeType = "image/svg+xml" }
+        };
+
+        McpServerTool tool = McpServerTool.Create([McpServerTool(IconSource = "https://example.com/tool-icon.png")] () => "result", new McpServerToolCreateOptions
+        {
+            Icons = optionsIcons
+        });
+
+        Assert.NotNull(tool.ProtocolTool.Icons);
+        Assert.Single(tool.ProtocolTool.Icons);
+        Assert.Equal("https://example.com/override-icon.svg", tool.ProtocolTool.Icons[0].Source);
+        Assert.Equal("image/svg+xml", tool.ProtocolTool.Icons[0].MimeType);
+    }
+
+    [Fact]
+    public void SupportsToolWithoutIcons()
+    {
+        McpServerTool tool = McpServerTool.Create([McpServerTool] () => "result");
+
+        Assert.Null(tool.ProtocolTool.Icons);
+    }
+
     [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
     [JsonSerializable(typeof(DisposableToolType))]
     [JsonSerializable(typeof(AsyncDisposableToolType))]

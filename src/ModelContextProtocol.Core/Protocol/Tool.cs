@@ -108,6 +108,15 @@ public sealed class Tool : IBaseMetadata
     public ToolAnnotations? Annotations { get; set; }
 
     /// <summary>
+    /// Gets or sets an optional list of icons for this tool.
+    /// </summary>
+    /// <remarks>
+    /// This can be used by clients to display the tool's icon in a user interface.
+    /// </remarks>
+    [JsonPropertyName("icons")]
+    public IList<Icon>? Icons { get; set; }
+
+    /// <summary>
     /// Gets or sets metadata reserved by MCP for protocol-level metadata.
     /// </summary>
     /// <remarks>
