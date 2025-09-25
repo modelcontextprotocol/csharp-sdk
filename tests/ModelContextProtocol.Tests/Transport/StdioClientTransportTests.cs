@@ -16,14 +16,11 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         string id = Guid.NewGuid().ToString("N");
 
         StdioClientTransport transport = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
-            new(new() { Command = "cmd", Arguments = ["/c", id] }, LoggerFactory) :
-            new(new() { Command = "ls", Arguments = [id] }, LoggerFactory);
+            new(new() { Command = "cmd", Arguments = ["/c", $"timeout /t 2 /nobreak >nul & echo {id} >&2 & exit /b 1"] }, LoggerFactory) :
+            new(new() { Command = "sh", Arguments = ["-c", $"sleep 2s; echo {id} >&2; exit 1"] }, LoggerFactory);
 
         IOException e = await Assert.ThrowsAsync<IOException>(() => McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-        {
-            Assert.Contains(id, e.ToString());
-        }
+        Assert.Contains(id, e.ToString());
     }
 
     [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
@@ -44,8 +41,8 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         };
 
         StdioClientTransport transport = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
-            new(new() { Command = "cmd", Arguments = ["/c", id], StandardErrorLines = stdErrCallback }, LoggerFactory) :
-            new(new() { Command = "ls", Arguments = [id], StandardErrorLines = stdErrCallback }, LoggerFactory);
+            new(new() { Command = "cmd", Arguments = ["/c", $"timeout /t 2 /nobreak >nul & echo {id} >&2 & exit /b 1"], StandardErrorLines = stdErrCallback }, LoggerFactory) :
+            new(new() { Command = "sh", Arguments = ["-c", $"sleep 2s; echo {id} >&2; exit 1"], StandardErrorLines = stdErrCallback }, LoggerFactory);
 
         await Assert.ThrowsAsync<IOException>(() => McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
