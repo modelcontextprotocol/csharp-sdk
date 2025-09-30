@@ -45,7 +45,6 @@ jobs:
         dotnet-version: |
           10.0.x
           9.0.x
-        include-prerelease: true
 
     # NetFX testing on non-Windows requires mono
     - name: Setup Mono

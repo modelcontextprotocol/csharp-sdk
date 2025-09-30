@@ -56,8 +56,6 @@ jobs:
           10.0.x
           9.0.x
 
-        include-prerelease: true
-
     - name: Build
       run: dotnet build --configuration ${{ matrix.configuration }}
 
