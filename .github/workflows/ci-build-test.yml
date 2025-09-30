@@ -78,7 +78,6 @@ jobs:
         --filter '(Execution!=Manual)'
         --no-build
         --configuration ${{ matrix.configuration }}
-        --logger "console;verbosity=normal"
         --logger "trx"
         --logger "GitHubActions;summary.includePassedTests=true;summary.includeSkippedTests=true"
         --blame
