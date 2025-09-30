@@ -19,7 +19,7 @@ public static class ResourceTests
             Size = 1024,
             Icons =
             [
-                new() { Source = "https://example.com/pdf-icon.png", MimeType = "image/png", Sizes = "32x32" }
+                new() { Source = "https://example.com/pdf-icon.png", MimeType = "image/png", Sizes = new List<string> { "32x32" } }
             ],
             Annotations = new Annotations { Audience = [Role.User] }
         };

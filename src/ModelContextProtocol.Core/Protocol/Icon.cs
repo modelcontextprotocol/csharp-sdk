@@ -59,17 +59,17 @@ public sealed class Icon
     public string? MimeType { get; init; }
 
     /// <summary>
-    /// Gets or sets the optional size specification for the icon.
+    /// Gets or sets the optional size specifications for the icon.
     /// </summary>
     /// <remarks>
     /// <para>
     /// This can specify one or more sizes at which the icon file can be used.
-    /// Examples include "48x48", "any" for scalable formats like SVG, or "48x48 96x96" for multiple sizes.
+    /// Examples include "48x48", "any" for scalable formats like SVG.
     /// </para>
     /// <para>
     /// If not provided, clients should assume that the icon can be used at any size.
     /// </para>
     /// </remarks>
     [JsonPropertyName("sizes")]
-    public string? Sizes { get; init; }
+    public IList<string>? Sizes { get; init; }
 }

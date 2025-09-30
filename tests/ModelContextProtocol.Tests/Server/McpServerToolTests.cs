@@ -683,8 +683,8 @@ public partial class McpServerToolTests
     {
         var icons = new List<Icon>
         {
-            new() { Source = "https://example.com/icon.png", MimeType = "image/png", Sizes = "48x48" },
-            new() { Source = "https://example.com/icon.svg", MimeType = "image/svg+xml", Sizes = "any" }
+            new() { Source = "https://example.com/icon.png", MimeType = "image/png", Sizes = new List<string> { "48x48" } },
+            new() { Source = "https://example.com/icon.svg", MimeType = "image/svg+xml", Sizes = new List<string> { "any" } }
         };
 
         McpServerTool tool = McpServerTool.Create(() => "test", new McpServerToolCreateOptions
@@ -696,10 +696,14 @@ public partial class McpServerToolTests
         Assert.Equal(2, tool.ProtocolTool.Icons.Count);
         Assert.Equal("https://example.com/icon.png", tool.ProtocolTool.Icons[0].Source);
         Assert.Equal("image/png", tool.ProtocolTool.Icons[0].MimeType);
-        Assert.Equal("48x48", tool.ProtocolTool.Icons[0].Sizes);
+        Assert.NotNull(tool.ProtocolTool.Icons[0].Sizes);
+        Assert.Single(tool.ProtocolTool.Icons[0].Sizes);
+        Assert.Equal("48x48", tool.ProtocolTool.Icons[0].Sizes[0]);
         Assert.Equal("https://example.com/icon.svg", tool.ProtocolTool.Icons[1].Source);
         Assert.Equal("image/svg+xml", tool.ProtocolTool.Icons[1].MimeType);
-        Assert.Equal("any", tool.ProtocolTool.Icons[1].Sizes);
+        Assert.NotNull(tool.ProtocolTool.Icons[1].Sizes);
+        Assert.Single(tool.ProtocolTool.Icons[1].Sizes);
+        Assert.Equal("any", tool.ProtocolTool.Icons[1].Sizes[0]);
     }
 
     [Fact]
