@@ -34,6 +34,15 @@
     <PackageVersion Include="System.IO.Pipelines" Version="$(System9Version)" />
   </ItemGroup>
 
+  <!-- Product dependencies .NET 10 -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="$(System10Version)" />
+    <PackageVersion Include="Microsoft.IdentityModel.Tokens" Version="8.9.0" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="$(System10Version)" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="$(System10Version)" />
+    <PackageVersion Include="System.IO.Pipelines" Version="$(System10Version)" />
+  </ItemGroup>
+
   <!-- Product dependencies shared -->
   <ItemGroup>
     <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="$(MicrosoftExtensionsAIVersion)" />
