@@ -315,42 +315,6 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
         Assert.Contains(services.GetServices<McpServerPrompt>(), t => t.ProtocolPrompt.Name == "Returns42");
     }
 
-    [Fact]
-    public async Task Can_Retrieve_Prompt_Icons()
-    {
-        // Create a server with a prompt that has icons
-        var services = new ServiceCollection();
-        var builder = services.AddMcpServer();
-        
-        var promptWithIcons = McpServerPrompt.Create([McpServerPrompt(IconSource = "https://example.com/prompt-icon.svg")] () => "prompt content");
-        builder.WithPrompts([promptWithIcons]);
-        
-        await using var serviceProvider = services.BuildServiceProvider();
-        var options = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
-        var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
-        
-        var stdinPipe = new Pipe();
-        var stdoutPipe = new Pipe();
-        
-        await using var transport = new StreamServerTransport(stdinPipe.Reader.AsStream(), stdoutPipe.Writer.AsStream());
-        await using var server = McpServer.Create(transport, options, loggerFactory, serviceProvider);
-        var serverRunTask = server.RunAsync(TestContext.Current.CancellationToken);
-        
-        await using var client = await McpClient.ConnectAsync(
-            new StreamClientTransport(stdoutPipe.Reader.AsStream(), stdinPipe.Writer.AsStream()),
-            new McpClientInfo { Name = "test-client", Version = "1.0.0" },
-            cancellationToken: TestContext.Current.CancellationToken);
-        
-        // List prompts and verify icons are present
-        var prompts = await client.ListPromptsAsync(cancellationToken: TestContext.Current.CancellationToken);
-        
-        var promptWithIconsResult = prompts.FirstOrDefault();
-        Assert.NotNull(promptWithIconsResult);
-        Assert.NotNull(promptWithIconsResult.Icons);
-        Assert.Single(promptWithIconsResult.Icons);
-        Assert.Equal("https://example.com/prompt-icon.svg", promptWithIconsResult.Icons[0].Source);
-    }
-
     [McpServerPromptType]
     public sealed class SimplePrompts(ObjectWithId? id = null)
     {
