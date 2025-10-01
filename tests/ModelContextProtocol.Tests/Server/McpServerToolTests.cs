@@ -697,13 +697,13 @@ public partial class McpServerToolTests
         Assert.Equal("https://example.com/icon.png", tool.ProtocolTool.Icons[0].Source);
         Assert.Equal("image/png", tool.ProtocolTool.Icons[0].MimeType);
         Assert.NotNull(tool.ProtocolTool.Icons[0].Sizes);
-        Assert.Single(tool.ProtocolTool.Icons[0].Sizes);
-        Assert.Equal("48x48", tool.ProtocolTool.Icons[0].Sizes[0]);
+        Assert.Single(tool.ProtocolTool.Icons[0].Sizes!);
+        Assert.Equal("48x48", tool.ProtocolTool.Icons[0].Sizes![0]);
         Assert.Equal("https://example.com/icon.svg", tool.ProtocolTool.Icons[1].Source);
         Assert.Equal("image/svg+xml", tool.ProtocolTool.Icons[1].MimeType);
         Assert.NotNull(tool.ProtocolTool.Icons[1].Sizes);
-        Assert.Single(tool.ProtocolTool.Icons[1].Sizes);
-        Assert.Equal("any", tool.ProtocolTool.Icons[1].Sizes[0]);
+        Assert.Single(tool.ProtocolTool.Icons[1].Sizes!);
+        Assert.Equal("any", tool.ProtocolTool.Icons[1].Sizes![0]);
     }
 
     [Fact]
