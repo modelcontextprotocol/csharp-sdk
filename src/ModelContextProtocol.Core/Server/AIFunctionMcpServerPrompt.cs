@@ -151,12 +151,9 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
             newOptions.Title ??= promptAttr.Title;
 
             // Handle icon from attribute if not already specified in options
-            if (newOptions.Icons is null && !string.IsNullOrEmpty(promptAttr.IconSource))
+            if (newOptions.Icons is null && promptAttr.IconSource is { Length: > 0 } iconSource)
             {
-                newOptions.Icons = new List<Icon>
-                {
-                    new() { Source = promptAttr.IconSource }
-                };
+                newOptions.Icons = [new() { Source = iconSource }];
             }
         }
 

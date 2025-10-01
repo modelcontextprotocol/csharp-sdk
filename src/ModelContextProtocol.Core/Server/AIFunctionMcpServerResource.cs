@@ -236,12 +236,9 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
             newOptions.MimeType ??= resourceAttr.MimeType;
 
             // Handle icon from attribute if not already specified in options
-            if (newOptions.Icons is null && !string.IsNullOrEmpty(resourceAttr.IconSource))
+            if (newOptions.Icons is null && resourceAttr.IconSource is { Length: > 0 } iconSource)
             {
-                newOptions.Icons = new List<Icon>
-                {
-                    new() { Source = resourceAttr.IconSource }
-                };
+                newOptions.Icons = [new() { Source = iconSource }];
             }
         }
 
