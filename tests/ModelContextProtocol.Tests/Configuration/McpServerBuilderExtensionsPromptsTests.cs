@@ -180,6 +180,22 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
     }
 
     [Fact]
+    public async Task IconSourceAttributeProperty_PropagatedToIcons()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var prompts = await client.ListPromptsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(prompts);
+        Assert.NotEmpty(prompts);
+
+        McpClientPrompt prompt = prompts.First(t => t.Name == "returns_string");
+
+        Assert.NotNull(prompt.ProtocolPrompt.Icons);
+        Assert.NotEmpty(prompt.ProtocolPrompt.Icons);
+        Assert.Equal("https://example.com/prompt-icon.svg", prompt.ProtocolPrompt.Icons[0].Source);
+    }
+
+    [Fact]
     public async Task Throws_When_Prompt_Fails()
     {
         await using McpClient client = await CreateMcpClientForServer();
@@ -325,12 +341,11 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
                 new(ChatRole.User, "Summarize."),
             ];
 
-
         [McpServerPrompt, Description("Returns chat messages")]
         public static ChatMessage[] ThrowsException([Description("The first parameter")] string message) =>
             throw new FormatException("uh oh");
 
-        [McpServerPrompt(Title = "This is a title"), Description("Returns chat messages")]
+        [McpServerPrompt(Title = "This is a title", IconSource = "https://example.com/prompt-icon.svg"), Description("Returns chat messages")]
         public string ReturnsString([Description("The first parameter")] string message) =>
             $"The prompt is: {message}. The id is {id}.";
     }
