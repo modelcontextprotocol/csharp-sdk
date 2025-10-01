@@ -120,4 +120,19 @@ public sealed class McpServerPromptAttribute : Attribute
 
     /// <summary>Gets or sets the title of the prompt.</summary>
     public string? Title { get; set; }
+
+    /// <summary>
+    /// Gets or sets the source URI for the prompt's icon.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This can be an HTTP/HTTPS URL pointing to an image file or a data URI with base64-encoded image data.
+    /// When specified, a single icon will be added to the prompt.
+    /// </para>
+    /// <para>
+    /// For more advanced icon configuration (multiple icons, MIME type specification, size characteristics),
+    /// use <see cref="McpServerPromptCreateOptions.Icons"/> when creating the prompt programmatically.
+    /// </para>
+    /// </remarks>
+    public string? IconSource { get; set; }
 }

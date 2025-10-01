@@ -73,6 +73,15 @@ public sealed class ResourceTemplate : IBaseMetadata
     public Annotations? Annotations { get; init; }
 
     /// <summary>
+    /// Gets or sets the icons for this resource template.
+    /// </summary>
+    /// <remarks>
+    /// This can be used by clients to display the resource's icon in a user interface.
+    /// </remarks>
+    [JsonPropertyName("icons")]
+    public IList<Icon>? Icons { get; set; }
+
+    /// <summary>
     /// Gets or sets metadata reserved by MCP for protocol-level metadata.
     /// </summary>
     /// <remarks>
@@ -108,6 +117,7 @@ public sealed class ResourceTemplate : IBaseMetadata
             Description = Description,
             MimeType = MimeType,
             Annotations = Annotations,
+            Icons = Icons,
             Meta = Meta,
             McpServerResource = McpServerResource,
         };

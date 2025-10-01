@@ -218,6 +218,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
             Title = options?.Title,
             Description = options?.Description,
             MimeType = options?.MimeType ?? "application/octet-stream",
+            Icons = options?.Icons,
         };
 
         return new AIFunctionMcpServerResource(function, resource, options?.Metadata ?? []);
@@ -233,6 +234,15 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
             newOptions.Name ??= resourceAttr.Name;
             newOptions.Title ??= resourceAttr.Title;
             newOptions.MimeType ??= resourceAttr.MimeType;
+
+            // Handle icon from attribute if not already specified in options
+            if (newOptions.Icons is null && !string.IsNullOrEmpty(resourceAttr.IconSource))
+            {
+                newOptions.Icons = new List<Icon>
+                {
+                    new() { Source = resourceAttr.IconSource }
+                };
+            }
         }
 
         if (member.GetCustomAttribute<DescriptionAttribute>() is { } descAttr)

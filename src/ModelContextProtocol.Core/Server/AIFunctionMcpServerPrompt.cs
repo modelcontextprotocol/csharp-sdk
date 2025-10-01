@@ -135,6 +135,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
             Title = options?.Title,
             Description = options?.Description ?? function.Description,
             Arguments = args,
+            Icons = options?.Icons,
         };
 
         return new AIFunctionMcpServerPrompt(function, prompt, options?.Metadata ?? []);
@@ -148,6 +149,15 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
         {
             newOptions.Name ??= promptAttr.Name;
             newOptions.Title ??= promptAttr.Title;
+
+            // Handle icon from attribute if not already specified in options
+            if (newOptions.Icons is null && !string.IsNullOrEmpty(promptAttr.IconSource))
+            {
+                newOptions.Icons = new List<Icon>
+                {
+                    new() { Source = promptAttr.IconSource }
+                };
+            }
         }
 
         if (method.GetCustomAttribute<DescriptionAttribute>() is { } descAttr)
