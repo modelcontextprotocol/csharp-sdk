@@ -338,6 +338,44 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
         Assert.Contains(services.GetServices<McpServerResource>(), t => t.ProtocolResourceTemplate.UriTemplate == "myResources:///returns42/{something}");
     }
 
+    [Fact]
+    public async Task Can_Retrieve_Resource_Icons()
+    {
+        // Create a server with a resource that has icons
+        var services = new ServiceCollection();
+        var builder = services.AddMcpServer();
+        
+        var resourceWithIcons = McpServerResource.Create(
+            [McpServerResource(UriTemplate = "resource://test", IconSource = "https://example.com/resource-icon.png")] 
+            () => "resource content");
+        builder.WithResources([resourceWithIcons]);
+        
+        await using var serviceProvider = services.BuildServiceProvider();
+        var options = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+        var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
+        
+        var stdinPipe = new Pipe();
+        var stdoutPipe = new Pipe();
+        
+        await using var transport = new StreamServerTransport(stdinPipe.Reader.AsStream(), stdoutPipe.Writer.AsStream());
+        await using var server = McpServer.Create(transport, options, loggerFactory, serviceProvider);
+        var serverRunTask = server.RunAsync(TestContext.Current.CancellationToken);
+        
+        await using var client = await McpClient.ConnectAsync(
+            new StreamClientTransport(stdoutPipe.Reader.AsStream(), stdinPipe.Writer.AsStream()),
+            new McpClientInfo { Name = "test-client", Version = "1.0.0" },
+            cancellationToken: TestContext.Current.CancellationToken);
+        
+        // List resources and verify icons are present
+        var resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
+        
+        var resourceWithIconsResult = resources.FirstOrDefault();
+        Assert.NotNull(resourceWithIconsResult);
+        Assert.NotNull(resourceWithIconsResult.Icons);
+        Assert.Single(resourceWithIconsResult.Icons);
+        Assert.Equal("https://example.com/resource-icon.png", resourceWithIconsResult.Icons[0].Source);
+    }
+
     [McpServerResourceType]
     public sealed class SimpleResources
     {

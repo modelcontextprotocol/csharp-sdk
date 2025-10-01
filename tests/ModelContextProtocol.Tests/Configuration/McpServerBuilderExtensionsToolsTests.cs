@@ -727,6 +727,92 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await invokeTask);
     }
 
+    [Fact]
+    public async Task Can_Retrieve_Tool_Icons()
+    {
+        // Create a server with a tool that has icons
+        var services = new ServiceCollection();
+        var builder = services.AddMcpServer();
+        
+        var toolWithIcons = McpServerTool.Create([McpServerTool(IconSource = "https://example.com/tool-icon.png")] () => "result");
+        builder.WithTools([toolWithIcons]);
+        
+        await using var serviceProvider = services.BuildServiceProvider();
+        var options = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+        var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
+        
+        var stdinPipe = new Pipe();
+        var stdoutPipe = new Pipe();
+        
+        await using var transport = new StreamServerTransport(stdinPipe.Reader.AsStream(), stdoutPipe.Writer.AsStream());
+        await using var server = McpServer.Create(transport, options, loggerFactory, serviceProvider);
+        var serverRunTask = server.RunAsync(TestContext.Current.CancellationToken);
+        
+        await using var client = await McpClient.ConnectAsync(
+            new StreamClientTransport(stdoutPipe.Reader.AsStream(), stdinPipe.Writer.AsStream()),
+            new McpClientInfo { Name = "test-client", Version = "1.0.0" },
+            cancellationToken: TestContext.Current.CancellationToken);
+        
+        // List tools and verify icons are present
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        
+        var toolWithIconsResult = tools.FirstOrDefault();
+        Assert.NotNull(toolWithIconsResult);
+        Assert.NotNull(toolWithIconsResult.Icons);
+        Assert.Single(toolWithIconsResult.Icons);
+        Assert.Equal("https://example.com/tool-icon.png", toolWithIconsResult.Icons[0].Source);
+    }
+
+    [Fact]
+    public async Task Can_Retrieve_Implementation_Icons_And_WebsiteUrl()
+    {
+        // Create a server with implementation icons and website URL
+        var services = new ServiceCollection();
+        var builder = services.AddMcpServer(options =>
+        {
+            options.ServerInfo = new Implementation
+            {
+                Name = "test-server",
+                Version = "1.0.0",
+                Icons = new List<Icon>
+                {
+                    new() { Source = "https://example.com/server-icon.png", MimeType = "image/png", Sizes = new List<string> { "64x64" } }
+                },
+                WebsiteUrl = "https://example.com/docs"
+            };
+        });
+        
+        await using var serviceProvider = services.BuildServiceProvider();
+        var options = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+        var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
+        
+        var stdinPipe = new Pipe();
+        var stdoutPipe = new Pipe();
+        
+        await using var transport = new StreamServerTransport(stdinPipe.Reader.AsStream(), stdoutPipe.Writer.AsStream());
+        await using var server = McpServer.Create(transport, options, loggerFactory, serviceProvider);
+        var serverRunTask = server.RunAsync(TestContext.Current.CancellationToken);
+        
+        await using var client = await McpClient.ConnectAsync(
+            new StreamClientTransport(stdoutPipe.Reader.AsStream(), stdinPipe.Writer.AsStream()),
+            new McpClientInfo { Name = "test-client", Version = "1.0.0" },
+            cancellationToken: TestContext.Current.CancellationToken);
+        
+        // Verify server info contains icons and website URL
+        var serverInfo = client.ServerInfo;
+        Assert.NotNull(serverInfo);
+        Assert.Equal("test-server", serverInfo.Name);
+        Assert.Equal("1.0.0", serverInfo.Version);
+        Assert.NotNull(serverInfo.Icons);
+        Assert.Single(serverInfo.Icons);
+        Assert.Equal("https://example.com/server-icon.png", serverInfo.Icons[0].Source);
+        Assert.Equal("image/png", serverInfo.Icons[0].MimeType);
+        Assert.NotNull(serverInfo.Icons[0].Sizes);
+        Assert.Single(serverInfo.Icons[0].Sizes);
+        Assert.Equal("64x64", serverInfo.Icons[0].Sizes[0]);
+        Assert.Equal("https://example.com/docs", serverInfo.WebsiteUrl);
+    }
+
     [McpServerToolType]
     public sealed class EchoTool(ObjectWithId objectFromDI)
     {
