@@ -134,6 +134,13 @@ static async Task<string?> HandleAuthorizationUrlAsync(Uri authorizationUrl, Uri
 /// <param name="url">The URL to open.</param>
 static void OpenBrowser(Uri url)
 {
+    // Validate the URI scheme - only allow safe protocols
+    if (url.Scheme != Uri.UriSchemeHttp && url.Scheme != Uri.UriSchemeHttps)
+    {
+        Console.WriteLine($"Error: Only HTTP and HTTPS URLs are allowed.");
+        return;
+    }
+
     try
     {
         var psi = new ProcessStartInfo
@@ -145,7 +152,7 @@ static void OpenBrowser(Uri url)
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"Error opening browser. {ex.Message}");
+        Console.WriteLine($"Error opening browser: {ex.Message}");
         Console.WriteLine($"Please manually open this URL: {url}");
     }
 }
