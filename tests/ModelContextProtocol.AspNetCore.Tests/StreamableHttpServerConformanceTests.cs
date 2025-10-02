@@ -57,11 +57,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         base.Dispose();
     }
 
-#if !NET10_0
     [Fact]
-#else
-    [Fact(Skip = "https://github.com/modelcontextprotocol/csharp-sdk/issues/823")]
-#endif
     public async Task NegativeNonInfiniteIdleTimeout_Throws_ArgumentOutOfRangeException()
     {
         Builder.Services.AddMcpServer().WithHttpTransport(options =>
@@ -73,11 +69,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         Assert.Contains("IdleTimeout", ex.Message);
     }
 
-#if !NET10_0
     [Fact]
-#else
-    [Fact(Skip = "https://github.com/modelcontextprotocol/csharp-sdk/issues/823")]
-#endif
     public async Task NegativeMaxIdleSessionCount_Throws_ArgumentOutOfRangeException()
     {
         Builder.Services.AddMcpServer().WithHttpTransport(options =>
