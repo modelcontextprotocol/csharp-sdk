@@ -80,7 +80,7 @@ public sealed class McpServerToolCreateOptions
     public bool? Destructive { get; set; }
 
     /// <summary>
-    /// Gets or sets whether calling the tool repeatedly with the same arguments 
+    /// Gets or sets whether calling the tool repeatedly with the same arguments
     /// will have no additional effect on its environment.
     /// </summary>
     /// <remarks>
@@ -156,6 +156,15 @@ public sealed class McpServerToolCreateOptions
     public AIJsonSchemaCreateOptions? SchemaCreateOptions { get; set; }
 
     /// <summary>
+    /// Gets or sets the metadata associated with the tool.
+    /// </summary>
+    /// <remarks>
+    /// Metadata includes information such as attributes extracted from the method and its declaring class.
+    /// If not provided, metadata will be automatically generated for methods created via reflection.
+    /// </remarks>
+    public IReadOnlyList<object>? Metadata { get; set; }
+
+    /// <summary>
     /// Creates a shallow clone of the current <see cref="McpServerToolCreateOptions"/> instance.
     /// </summary>
     internal McpServerToolCreateOptions Clone() =>
@@ -172,5 +181,6 @@ public sealed class McpServerToolCreateOptions
             UseStructuredContent = UseStructuredContent,
             SerializerOptions = SerializerOptions,
             SchemaCreateOptions = SchemaCreateOptions,
+            Metadata = Metadata,
         };
 }

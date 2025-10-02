@@ -171,13 +171,15 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using (var mcpClient = await ConnectAsync(clientOptions: new()
+        await using var mcpClient = await ConnectAsync(clientOptions: new()
         {
             ProtocolVersion = "2025-03-26",
-        }))
-        {
-            await mcpClient.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
-        }
+        });
+
+        Assert.Equal("2025-03-26", mcpClient.NegotiatedProtocolVersion);
+        await mcpClient.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        await mcpClient.DisposeAsync();
 
         // The header should be included in the GET request, the initialized notification, the tools/list call, and the delete request.
         // The DELETE request won't be sent for Stateless mode due to the lack of an Mcp-Session-Id.

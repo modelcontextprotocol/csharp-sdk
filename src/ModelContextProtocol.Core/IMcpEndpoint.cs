@@ -1,3 +1,4 @@
+﻿using System.ComponentModel;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -26,6 +27,8 @@ namespace ModelContextProtocol;
 /// All MCP endpoints should be properly disposed after use as they implement <see cref="IAsyncDisposable"/>.
 /// </para>
 /// </remarks>
+[Obsolete($"Use {nameof(McpSession)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+[EditorBrowsable(EditorBrowsableState.Never)]
 public interface IMcpEndpoint : IAsyncDisposable
 {
     /// <summary>Gets an identifier associated with the current MCP session.</summary>

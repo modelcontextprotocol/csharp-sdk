@@ -1,4 +1,5 @@
 using ModelContextProtocol.Server;
+using System.ComponentModel;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -21,8 +22,8 @@ public sealed class ResourcesCapability
     /// Gets or sets whether this server supports notifications for changes to the resource list.
     /// </summary>
     /// <remarks>
-    /// When set to <see langword="true"/>, the server will send notifications using 
-    /// <see cref="NotificationMethods.ResourceListChangedNotification"/> when resources are added, 
+    /// When set to <see langword="true"/>, the server will send notifications using
+    /// <see cref="NotificationMethods.ResourceListChangedNotification"/> when resources are added,
     /// removed, or modified. Clients can register handlers for these notifications to
     /// refresh their resource cache.
     /// </remarks>
@@ -39,7 +40,9 @@ public sealed class ResourcesCapability
     /// allowing clients to discover available resource types and their access patterns.
     /// </remarks>
     [JsonIgnore]
-    public Func<RequestContext<ListResourceTemplatesRequestParams>, CancellationToken, ValueTask<ListResourceTemplatesResult>>? ListResourceTemplatesHandler { get; set; }
+    [Obsolete($"Use {nameof(McpServerOptions.Handlers.ListResourceTemplatesHandler)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public McpRequestHandler<ListResourceTemplatesRequestParams, ListResourceTemplatesResult>? ListResourceTemplatesHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.ResourcesList"/> requests.
@@ -49,7 +52,9 @@ public sealed class ResourcesCapability
     /// The implementation should return a <see cref="ListResourcesResult"/> with the matching resources.
     /// </remarks>
     [JsonIgnore]
-    public Func<RequestContext<ListResourcesRequestParams>, CancellationToken, ValueTask<ListResourcesResult>>? ListResourcesHandler { get; set; }
+    [Obsolete($"Use {nameof(McpServerOptions.Handlers.ListResourcesHandler)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public McpRequestHandler<ListResourcesRequestParams, ListResourcesResult>? ListResourcesHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.ResourcesRead"/> requests.
@@ -61,7 +66,9 @@ public sealed class ResourcesCapability
     /// its contents in a ReadResourceResult object.
     /// </remarks>
     [JsonIgnore]
-    public Func<RequestContext<ReadResourceRequestParams>, CancellationToken, ValueTask<ReadResourceResult>>? ReadResourceHandler { get; set; }
+    [Obsolete($"Use {nameof(McpServerOptions.Handlers.ReadResourceHandler)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public McpRequestHandler<ReadResourceRequestParams, ReadResourceResult>? ReadResourceHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.ResourcesSubscribe"/> requests.
@@ -74,7 +81,9 @@ public sealed class ResourcesCapability
     /// requiring polling.
     /// </remarks>
     [JsonIgnore]
-    public Func<RequestContext<SubscribeRequestParams>, CancellationToken, ValueTask<EmptyResult>>? SubscribeToResourcesHandler { get; set; }
+    [Obsolete($"Use {nameof(McpServerOptions.Handlers.SubscribeToResourcesHandler)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public McpRequestHandler<SubscribeRequestParams, EmptyResult>? SubscribeToResourcesHandler { get; set; }
 
     /// <summary>
     /// Gets or sets the handler for <see cref="RequestMethods.ResourcesUnsubscribe"/> requests.
@@ -85,7 +94,9 @@ public sealed class ResourcesCapability
     /// about the specified resource.
     /// </remarks>
     [JsonIgnore]
-    public Func<RequestContext<UnsubscribeRequestParams>, CancellationToken, ValueTask<EmptyResult>>? UnsubscribeFromResourcesHandler { get; set; }
+    [Obsolete($"Use {nameof(McpServerOptions.Handlers.UnsubscribeFromResourcesHandler)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public McpRequestHandler<UnsubscribeRequestParams, EmptyResult>? UnsubscribeFromResourcesHandler { get; set; }
 
     /// <summary>
     /// Gets or sets a collection of resources served by the server.
@@ -103,5 +114,7 @@ public sealed class ResourcesCapability
     /// </para>
     /// </remarks>
     [JsonIgnore]
+    [Obsolete($"Use {nameof(McpServerOptions.ResourceCollection)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public McpServerResourceCollection? ResourceCollection { get; set; }
 }

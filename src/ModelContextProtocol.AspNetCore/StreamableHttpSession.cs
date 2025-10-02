@@ -7,7 +7,7 @@ namespace ModelContextProtocol.AspNetCore;
 internal sealed class StreamableHttpSession(
     string sessionId,
     StreamableHttpServerTransport transport,
-    IMcpServer server,
+    McpServer server,
     UserIdClaim? userId,
     StatefulSessionManager sessionManager) : IAsyncDisposable
 {
@@ -20,7 +20,7 @@ internal sealed class StreamableHttpSession(
 
     public string Id => sessionId;
     public StreamableHttpServerTransport Transport => transport;
-    public IMcpServer Server => server;
+    public McpServer Server => server;
     private StatefulSessionManager SessionManager => sessionManager;
 
     public CancellationToken SessionClosed => _disposeCts.Token;
@@ -100,15 +100,17 @@ internal sealed class StreamableHttpSession(
 
         try
         {
-            await _disposeCts.CancelAsync();
-
             try
             {
+                // Dispose transport first to complete the incoming MessageReader gracefully and avoid a potentially unnecessary OCE.
+                await transport.DisposeAsync();
+                await _disposeCts.CancelAsync();
+
                 await ServerRunTask;
             }
             finally
             {
-                await DisposeServerThenTransportAsync();
+                await server.DisposeAsync();
             }
         }
         catch (OperationCanceledException)
@@ -121,18 +123,6 @@ internal sealed class StreamableHttpSession(
                 sessionManager.DecrementIdleSessionCount();
             }
             _disposeCts.Dispose();
-        }
-    }
-
-    private async ValueTask DisposeServerThenTransportAsync()
-    {
-        try
-        {
-            await server.DisposeAsync();
-        }
-        finally
-        {
-            await transport.DisposeAsync();
         }
     }
 

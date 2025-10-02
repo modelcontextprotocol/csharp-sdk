@@ -19,7 +19,7 @@ var (command, arguments) = GetCommandAndArguments(args);
 if (command == "http")
 {
     // make sure AspNetCoreMcpServer is running
-    clientTransport = new SseClientTransport(new()
+    clientTransport = new HttpClientTransport(new()
     {
         Endpoint = new Uri("http://localhost:3001")
     });
@@ -33,7 +33,7 @@ else
         Arguments = arguments,
     });
 }
-await using var mcpClient = await McpClientFactory.CreateAsync(clientTransport!);
+await using var mcpClient = await McpClient.CreateAsync(clientTransport!);
 
 var tools = await mcpClient.ListToolsAsync();
 foreach (var tool in tools)
@@ -62,7 +62,7 @@ var messages = new List<ChatMessage>();
 var sb = new StringBuilder();
 
 PromptForInput();
-while(Console.ReadLine() is string query && !"exit".Equals(query, StringComparison.OrdinalIgnoreCase))
+while (Console.ReadLine() is string query && !"exit".Equals(query, StringComparison.OrdinalIgnoreCase))
 {
     if (string.IsNullOrWhiteSpace(query))
     {

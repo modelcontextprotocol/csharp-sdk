@@ -11,7 +11,7 @@ namespace ModelContextProtocol.Client;
 /// and servers, allowing different transport protocols to be used interchangeably.
 /// </para>
 /// <para>
-/// When creating an <see cref="IMcpClient"/>, <see cref="McpClientFactory"/> is typically used, and is
+/// When creating an <see cref="McpClient"/>, <see cref="McpClient"/> is typically used, and is
 /// provided with the <see cref="IClientTransport"/> based on expected server configuration.
 /// </para>
 /// </remarks>
@@ -39,7 +39,7 @@ public interface IClientTransport
     /// the transport session as well.
     /// </para>
     /// <para>
-    /// This method is used by <see cref="McpClientFactory"/> to initialize the connection.
+    /// This method is used by <see cref="McpClient"/> to initialize the connection.
     /// </para>
     /// </remarks>
     /// <exception cref="InvalidOperationException">The transport connection could not be established.</exception>

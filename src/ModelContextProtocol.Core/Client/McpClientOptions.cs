@@ -3,14 +3,16 @@ using ModelContextProtocol.Protocol;
 namespace ModelContextProtocol.Client;
 
 /// <summary>
-/// Provides configuration options for creating <see cref="IMcpClient"/> instances.
+/// Provides configuration options for creating <see cref="McpClient"/> instances.
 /// </summary>
 /// <remarks>
-/// These options are typically passed to <see cref="McpClientFactory.CreateAsync"/> when creating a client.
+/// These options are typically passed to <see cref="McpClient.CreateAsync"/> when creating a client.
 /// They define client capabilities, protocol version, and other client-specific settings.
 /// </remarks>
 public sealed class McpClientOptions
 {
+    private McpClientHandlers? _handlers;
+
     /// <summary>
     /// Gets or sets information about this client implementation, including its name and version.
     /// </summary>
@@ -63,4 +65,17 @@ public sealed class McpClientOptions
     /// <para>The default value is 60 seconds.</para>
     /// </remarks>
     public TimeSpan InitializationTimeout { get; set; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// Gets or sets the container of handlers used by the client for processing protocol messages.
+    /// </summary>
+    public McpClientHandlers Handlers 
+    { 
+        get => _handlers ??= new();
+        set
+        {
+            Throw.IfNull(value);
+            _handlers = value;
+        }
+    }
 }

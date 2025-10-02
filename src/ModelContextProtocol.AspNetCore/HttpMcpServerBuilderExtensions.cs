@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Server;
 
@@ -28,10 +30,35 @@ public static class HttpMcpServerBuilderExtensions
         builder.Services.TryAddSingleton<SseHandler>();
         builder.Services.AddHostedService<IdleTrackingBackgroundService>();
 
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IPostConfigureOptions<McpServerOptions>, AuthorizationFilterSetup>());
+
         if (configureOptions is not null)
         {
             builder.Services.Configure(configureOptions);
         }
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds authorization filters to support <see cref="AuthorizeAttribute"/>
+    /// on MCP server tools, prompts, and resources. This method should always be called when using
+    /// ASP.NET Core integration to ensure proper authorization support.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// This method automatically configures authorization filters for all MCP server handlers. These filters respect
+    /// authorization attributes such as <see cref="AuthorizeAttribute"/>
+    /// and <see cref="AllowAnonymousAttribute"/>.
+    /// </remarks>
+    public static IMcpServerBuilder AddAuthorizationFilters(this IMcpServerBuilder builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        // Allow the authorization filters to get added multiple times in case other middleware changes the matched primitive.
+        builder.Services.AddTransient<IConfigureOptions<McpServerOptions>, AuthorizationFilterSetup>();
 
         return builder;
     }

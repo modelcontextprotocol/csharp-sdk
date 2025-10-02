@@ -4,12 +4,12 @@ using System.Net;
 
 namespace ModelContextProtocol.Tests.Transport;
 
-public class SseClientTransportAutoDetectTests(ITestOutputHelper testOutputHelper) : LoggedTest(testOutputHelper)
+public class HttpClientTransportAutoDetectTests(ITestOutputHelper testOutputHelper) : LoggedTest(testOutputHelper)
 {
     [Fact]
     public async Task AutoDetectMode_UsesStreamableHttp_WhenServerSupportsIt()
     {
-        var options = new SseClientTransportOptions
+        var options = new HttpClientTransportOptions
         {
             Endpoint = new Uri("http://localhost"),
             TransportMode = HttpTransportMode.AutoDetect,
@@ -18,7 +18,7 @@ public class SseClientTransportAutoDetectTests(ITestOutputHelper testOutputHelpe
 
         using var mockHttpHandler = new MockHttpHandler();
         using var httpClient = new HttpClient(mockHttpHandler);
-        await using var transport = new SseClientTransport(options, httpClient, LoggerFactory);
+        await using var transport = new HttpClientTransport(options, httpClient, LoggerFactory);
 
         // Simulate successful Streamable HTTP response for initialize
         mockHttpHandler.RequestHandler = (request) =>
@@ -50,7 +50,7 @@ public class SseClientTransportAutoDetectTests(ITestOutputHelper testOutputHelpe
     [Fact] 
     public async Task AutoDetectMode_FallsBackToSse_WhenStreamableHttpFails()
     {
-        var options = new SseClientTransportOptions
+        var options = new HttpClientTransportOptions
         {
             Endpoint = new Uri("http://localhost"),
             TransportMode = HttpTransportMode.AutoDetect,
@@ -59,7 +59,7 @@ public class SseClientTransportAutoDetectTests(ITestOutputHelper testOutputHelpe
 
         using var mockHttpHandler = new MockHttpHandler();
         using var httpClient = new HttpClient(mockHttpHandler);
-        await using var transport = new SseClientTransport(options, httpClient, LoggerFactory);
+        await using var transport = new HttpClientTransport(options, httpClient, LoggerFactory);
 
         var requestCount = 0;
 

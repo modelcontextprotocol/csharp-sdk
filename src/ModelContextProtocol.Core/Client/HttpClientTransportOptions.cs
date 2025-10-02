@@ -3,9 +3,9 @@ using ModelContextProtocol.Authentication;
 namespace ModelContextProtocol.Client;
 
 /// <summary>
-/// Provides options for configuring <see cref="SseClientTransport"/> instances.
+/// Provides options for configuring <see cref="HttpClientTransport"/> instances.
 /// </summary>
-public sealed class SseClientTransportOptions
+public sealed class HttpClientTransportOptions
 {
     /// <summary>
     /// Gets or sets the base address of the server for SSE connections.

@@ -15,12 +15,12 @@ namespace ModelContextProtocol.Server;
 /// <see cref="McpServerTool"/> is an abstract base class that represents an MCP tool for use in the server (as opposed
 /// to <see cref="Tool"/>, which provides the protocol representation of a tool, and <see cref="McpClientTool"/>, which
 /// provides a client-side representation of a tool). Instances of <see cref="McpServerTool"/> can be added into a
-/// <see cref="IServiceCollection"/> to be picked up automatically when <see cref="McpServerFactory"/> is used to create
-/// an <see cref="IMcpServer"/>, or added into a <see cref="McpServerPrimitiveCollection{McpServerTool}"/>.
+/// <see cref="IServiceCollection"/> to be picked up automatically when <see cref="McpServer"/> is used to create
+/// an <see cref="McpServer"/>, or added into a <see cref="McpServerPrimitiveCollection{McpServerTool}"/>.
 /// </para>
 /// <para>
 /// Most commonly, <see cref="McpServerTool"/> instances are created using the static <see cref="M:McpServerTool.Create"/> methods.
-/// These methods enable creating an <see cref="McpServerTool"/> for a method, specified via a <see cref="Delegate"/> or 
+/// These methods enable creating an <see cref="McpServerTool"/> for a method, specified via a <see cref="Delegate"/> or
 /// <see cref="MethodInfo"/>, and are what are used implicitly by WithToolsFromAssembly and WithTools. The <see cref="M:McpServerTool.Create"/> methods
 /// create <see cref="McpServerTool"/> instances capable of working with a large variety of .NET method signatures, automatically handling
 /// how parameters are marshaled into the method from the JSON received from the MCP client, and how the return value is marshaled back
@@ -35,7 +35,7 @@ namespace ModelContextProtocol.Server;
 ///   <item>
 ///     <description>
 ///       <see cref="CancellationToken"/> parameters are automatically bound to a <see cref="CancellationToken"/> provided by the
-///       <see cref="IMcpServer"/> and that respects any <see cref="CancelledNotificationParams"/>s sent by the client for this operation's
+///       <see cref="McpServer"/> and that respects any <see cref="CancelledNotificationParams"/>s sent by the client for this operation's
 ///       <see cref="RequestId"/>. The parameter is not included in the generated JSON schema.
 ///     </description>
 ///   </item>
@@ -47,7 +47,7 @@ namespace ModelContextProtocol.Server;
 ///   </item>
 ///   <item>
 ///     <description>
-///       <see cref="IMcpServer"/> parameters are not included in the JSON schema and are bound directly to the <see cref="IMcpServer"/>
+///       <see cref="McpServer"/> parameters are not included in the JSON schema and are bound directly to the <see cref="McpServer"/>
 ///       instance associated with this request's <see cref="RequestContext{CallToolRequestParams}"/>. Such parameters may be used to understand
 ///       what server is being used to process the request, and to interact with the client issuing the request to that server.
 ///     </description>
@@ -56,22 +56,22 @@ namespace ModelContextProtocol.Server;
 ///     <description>
 ///       <see cref="IProgress{ProgressNotificationValue}"/> parameters accepting <see cref="ProgressNotificationValue"/> values
 ///       are not included in the JSON schema and are bound to an <see cref="IProgress{ProgressNotificationValue}"/> instance manufactured
-///       to forward progress notifications from the tool to the client. If the client included a <see cref="ProgressToken"/> in their request, 
+///       to forward progress notifications from the tool to the client. If the client included a <see cref="ProgressToken"/> in their request,
 ///       progress reports issued to this instance will propagate to the client as <see cref="NotificationMethods.ProgressNotification"/> notifications with
 ///       that token. If the client did not include a <see cref="ProgressToken"/>, the instance will ignore any progress reports issued to it.
 ///     </description>
 ///   </item>
 ///   <item>
 ///     <description>
-///       When the <see cref="McpServerTool"/> is constructed, it may be passed an <see cref="IServiceProvider"/> via 
+///       When the <see cref="McpServerTool"/> is constructed, it may be passed an <see cref="IServiceProvider"/> via
 ///       <see cref="McpServerToolCreateOptions.Services"/>. Any parameter that can be satisfied by that <see cref="IServiceProvider"/>
-///       according to <see cref="IServiceProviderIsService"/> will not be included in the generated JSON schema and will be resolved 
+///       according to <see cref="IServiceProviderIsService"/> will not be included in the generated JSON schema and will be resolved
 ///       from the <see cref="IServiceProvider"/> provided to <see cref="InvokeAsync"/> rather than from the argument collection.
 ///     </description>
 ///   </item>
 ///   <item>
 ///     <description>
-///       Any parameter attributed with <see cref="FromKeyedServicesAttribute"/> will similarly be resolved from the 
+///       Any parameter attributed with <see cref="FromKeyedServicesAttribute"/> will similarly be resolved from the
 ///       <see cref="IServiceProvider"/> provided to <see cref="InvokeAsync"/> rather than from the argument
 ///       collection, and will not be included in the generated JSON schema.
 ///     </description>
@@ -79,13 +79,13 @@ namespace ModelContextProtocol.Server;
 /// </list>
 /// </para>
 /// <para>
-/// All other parameters are deserialized from the <see cref="JsonElement"/>s in the <see cref="CallToolRequestParams.Arguments"/> dictionary, 
-/// using the <see cref="JsonSerializerOptions"/> supplied in <see cref="McpServerToolCreateOptions.SerializerOptions"/>, or if none was provided, 
+/// All other parameters are deserialized from the <see cref="JsonElement"/>s in the <see cref="CallToolRequestParams.Arguments"/> dictionary,
+/// using the <see cref="JsonSerializerOptions"/> supplied in <see cref="McpServerToolCreateOptions.SerializerOptions"/>, or if none was provided,
 /// using <see cref="McpJsonUtilities.DefaultOptions"/>.
 /// </para>
 /// <para>
 /// In general, the data supplied via the <see cref="CallToolRequestParams.Arguments"/>'s dictionary is passed along from the caller and
-/// should thus be considered unvalidated and untrusted. To provide validated and trusted data to the invocation of the tool, consider having 
+/// should thus be considered unvalidated and untrusted. To provide validated and trusted data to the invocation of the tool, consider having
 /// the tool be an instance method, referring to data stored in the instance, or using an instance or parameters resolved from the <see cref="IServiceProvider"/>
 /// to provide data to the method.
 /// </para>
@@ -141,6 +141,15 @@ public abstract class McpServerTool : IMcpServerPrimitive
     /// <summary>Gets the protocol <see cref="Tool"/> type for this instance.</summary>
     public abstract Tool ProtocolTool { get; }
 
+    /// <summary>
+    /// Gets the metadata for this tool instance.
+    /// </summary>
+    /// <remarks>
+    /// Contains attributes from the associated MethodInfo and declaring class (if any),
+    /// with class-level attributes appearing before method-level attributes.
+    /// </remarks>
+    public abstract IReadOnlyList<object> Metadata { get; }
+
     /// <summary>Invokes the <see cref="McpServerTool"/>.</summary>
     /// <param name="request">The request information resulting in the invocation of this tool.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
@@ -172,7 +181,7 @@ public abstract class McpServerTool : IMcpServerPrimitive
     /// <exception cref="ArgumentNullException"><paramref name="method"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="method"/> is an instance method but <paramref name="target"/> is <see langword="null"/>.</exception>
     public static McpServerTool Create(
-        MethodInfo method, 
+        MethodInfo method,
         object? target = null,
         McpServerToolCreateOptions? options = null) =>
         AIFunctionMcpServerTool.Create(method, target, options);
@@ -203,7 +212,7 @@ public abstract class McpServerTool : IMcpServerPrimitive
     /// <exception cref="ArgumentNullException"><paramref name="function"/> is <see langword="null"/>.</exception>
     /// <remarks>
     /// Unlike the other overloads of Create, the <see cref="McpServerTool"/> created by <see cref="Create(AIFunction, McpServerToolCreateOptions)"/>
-    /// does not provide all of the special parameter handling for MCP-specific concepts, like <see cref="IMcpServer"/>.
+    /// does not provide all of the special parameter handling for MCP-specific concepts, like <see cref="McpServer"/>.
     /// </remarks>
     public static McpServerTool Create(
         AIFunction function,

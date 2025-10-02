@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol;
@@ -29,7 +30,7 @@ internal sealed class McpServerOptionsSetup(
         // a collection, add to it, otherwise create a new one. We want to maintain the identity
         // of an existing collection in case someone has provided their own derived type, wants
         // change notifications, etc.
-        McpServerPrimitiveCollection<McpServerTool> toolCollection = options.Capabilities?.Tools?.ToolCollection ?? [];
+        McpServerPrimitiveCollection<McpServerTool> toolCollection = options.ToolCollection ?? [];
         foreach (var tool in serverTools)
         {
             toolCollection.TryAdd(tool);
@@ -37,16 +38,14 @@ internal sealed class McpServerOptionsSetup(
 
         if (!toolCollection.IsEmpty)
         {
-            options.Capabilities ??= new();
-            options.Capabilities.Tools ??= new();
-            options.Capabilities.Tools.ToolCollection = toolCollection;
+            options.ToolCollection = toolCollection;
         }
 
         // Collect all of the provided prompts into a prompts collection. If the options already has
         // a collection, add to it, otherwise create a new one. We want to maintain the identity
         // of an existing collection in case someone has provided their own derived type, wants
         // change notifications, etc.
-        McpServerPrimitiveCollection<McpServerPrompt> promptCollection = options.Capabilities?.Prompts?.PromptCollection ?? [];
+        McpServerPrimitiveCollection<McpServerPrompt> promptCollection = options.PromptCollection ?? [];
         foreach (var prompt in serverPrompts)
         {
             promptCollection.TryAdd(prompt);
@@ -54,16 +53,14 @@ internal sealed class McpServerOptionsSetup(
 
         if (!promptCollection.IsEmpty)
         {
-            options.Capabilities ??= new();
-            options.Capabilities.Prompts ??= new();
-            options.Capabilities.Prompts.PromptCollection = promptCollection;
+            options.PromptCollection = promptCollection;
         }
 
         // Collect all of the provided resources into a resources collection. If the options already has
         // a collection, add to it, otherwise create a new one. We want to maintain the identity
         // of an existing collection in case someone has provided their own derived type, wants
         // change notifications, etc.
-        McpServerResourceCollection resourceCollection = options.Capabilities?.Resources?.ResourceCollection ?? [];
+        McpServerResourceCollection resourceCollection = options.ResourceCollection ?? [];
         foreach (var resource in serverResources)
         {
             resourceCollection.TryAdd(resource);
@@ -71,12 +68,71 @@ internal sealed class McpServerOptionsSetup(
 
         if (!resourceCollection.IsEmpty)
         {
-            options.Capabilities ??= new();
-            options.Capabilities.Resources ??= new();
-            options.Capabilities.Resources.ResourceCollection = resourceCollection;
+            options.ResourceCollection = resourceCollection;
         }
 
         // Apply custom server handlers.
-        serverHandlers.Value.OverwriteWithSetHandlers(options);
+        OverwriteWithSetHandlers(serverHandlers.Value, options);
+    }
+
+    /// <summary>
+    /// Overwrite any handlers in McpServerOptions with non-null handlers from this instance.
+    /// </summary>
+    private static void OverwriteWithSetHandlers(McpServerHandlers handlers, McpServerOptions options)
+    {
+        McpServerHandlers optionsHandlers = options.Handlers;
+
+        PromptsCapability? promptsCapability = options.Capabilities?.Prompts;
+        if (handlers.ListPromptsHandler is not null || handlers.GetPromptHandler is not null)
+        {
+            promptsCapability ??= new();
+            optionsHandlers.ListPromptsHandler = handlers.ListPromptsHandler ?? optionsHandlers.ListPromptsHandler;
+            optionsHandlers.GetPromptHandler = handlers.GetPromptHandler ?? optionsHandlers.GetPromptHandler;
+        }
+
+        ResourcesCapability? resourcesCapability = options.Capabilities?.Resources;
+        if (handlers.ListResourceTemplatesHandler is not null || handlers.ListResourcesHandler is not null || handlers.ReadResourceHandler is not null)
+        {
+            resourcesCapability ??= new();
+            optionsHandlers.ListResourceTemplatesHandler = handlers.ListResourceTemplatesHandler ?? optionsHandlers.ListResourceTemplatesHandler;
+            optionsHandlers.ListResourcesHandler = handlers.ListResourcesHandler ?? optionsHandlers.ListResourcesHandler;
+            optionsHandlers.ReadResourceHandler = handlers.ReadResourceHandler ?? optionsHandlers.ReadResourceHandler;
+
+            if (handlers.SubscribeToResourcesHandler is not null || handlers.UnsubscribeFromResourcesHandler is not null)
+            {
+                optionsHandlers.SubscribeToResourcesHandler = handlers.SubscribeToResourcesHandler ?? optionsHandlers.SubscribeToResourcesHandler;
+                optionsHandlers.UnsubscribeFromResourcesHandler = handlers.UnsubscribeFromResourcesHandler ?? optionsHandlers.UnsubscribeFromResourcesHandler;
+                resourcesCapability.Subscribe = true;
+            }
+        }
+
+        ToolsCapability? toolsCapability = options.Capabilities?.Tools;
+        if (handlers.ListToolsHandler is not null || handlers.CallToolHandler is not null)
+        {
+            toolsCapability ??= new();
+            optionsHandlers.ListToolsHandler = handlers.ListToolsHandler ?? optionsHandlers.ListToolsHandler;
+            optionsHandlers.CallToolHandler = handlers.CallToolHandler ?? optionsHandlers.CallToolHandler;
+        }
+
+        LoggingCapability? loggingCapability = options.Capabilities?.Logging;
+        if (handlers.SetLoggingLevelHandler is not null)
+        {
+            loggingCapability ??= new();
+            optionsHandlers.SetLoggingLevelHandler = handlers.SetLoggingLevelHandler;
+        }
+
+        CompletionsCapability? completionsCapability = options.Capabilities?.Completions;
+        if (handlers.CompleteHandler is not null)
+        {
+            completionsCapability ??= new();
+            optionsHandlers.CompleteHandler = handlers.CompleteHandler;
+        }
+
+        options.Capabilities ??= new();
+        options.Capabilities.Prompts = promptsCapability;
+        options.Capabilities.Resources = resourcesCapability;
+        options.Capabilities.Tools = toolsCapability;
+        options.Capabilities.Logging = loggingCapability;
+        options.Capabilities.Completions = completionsCapability;
     }
 }

@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Protocol;
 
@@ -87,4 +88,10 @@ public sealed class Resource : IBaseMetadata
     /// </remarks>
     [JsonPropertyName("_meta")]
     public JsonObject? Meta { get; init; }
+
+    /// <summary>
+    /// Gets or sets the callable server resource corresponding to this metadata if any.
+    /// </summary>
+    [JsonIgnore]
+    public McpServerResource? McpServerResource { get; set; }
 }

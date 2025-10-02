@@ -37,7 +37,7 @@ public sealed class StdioServerTransport : StreamServerTransport
     {
         Throw.IfNull(serverOptions);
 
-        return serverOptions.ServerInfo?.Name ?? McpServer.DefaultImplementation.Name;
+        return serverOptions.ServerInfo?.Name ?? McpServerImpl.DefaultImplementation.Name;
     }
 
     // Neither WindowsConsoleStream nor UnixConsoleStream respect CancellationTokens or cancel any I/O on Dispose.

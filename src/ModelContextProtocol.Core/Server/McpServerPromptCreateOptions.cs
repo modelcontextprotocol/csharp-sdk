@@ -69,6 +69,15 @@ public sealed class McpServerPromptCreateOptions
     public AIJsonSchemaCreateOptions? SchemaCreateOptions { get; set; }
 
     /// <summary>
+    /// Gets or sets the metadata associated with the prompt.
+    /// </summary>
+    /// <remarks>
+    /// Metadata includes information such as the attributes extracted from the method and its declaring class.
+    /// If not provided, metadata will be automatically generated for methods created via reflection.
+    /// </remarks>
+    public IReadOnlyList<object>? Metadata { get; set; }
+
+    /// <summary>
     /// Creates a shallow clone of the current <see cref="McpServerPromptCreateOptions"/> instance.
     /// </summary>
     internal McpServerPromptCreateOptions Clone() =>
@@ -80,5 +89,6 @@ public sealed class McpServerPromptCreateOptions
             Description = Description,
             SerializerOptions = SerializerOptions,
             SchemaCreateOptions = SchemaCreateOptions,
+            Metadata = Metadata,
         };
 }

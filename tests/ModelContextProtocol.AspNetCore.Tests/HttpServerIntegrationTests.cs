@@ -21,9 +21,9 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         base.Dispose();
     }
 
-    protected abstract SseClientTransportOptions ClientTransportOptions { get; }
+    protected abstract HttpClientTransportOptions ClientTransportOptions { get; }
 
-    private Task<IMcpClient> GetClientAsync(McpClientOptions? options = null)
+    private Task<McpClient> GetClientAsync(McpClientOptions? options = null)
     {
         return _fixture.ConnectMcpClientAsync(options, LoggerFactory);
     }
@@ -52,6 +52,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         // Assert
         Assert.NotNull(client.ServerCapabilities);
         Assert.NotNull(client.ServerInfo);
+        Assert.NotNull(client.NegotiatedProtocolVersion);
 
         if (ClientTransportOptions.Endpoint.AbsolutePath.EndsWith("/sse") ||
             ClientTransportOptions.Endpoint.AbsolutePath.EndsWith("/stateless"))
@@ -252,9 +253,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         int samplingHandlerCalls = 0;
 #pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
         McpClientOptions options = new();
-        options.Capabilities = new();
-        options.Capabilities.Sampling ??= new();
-        options.Capabilities.Sampling.SamplingHandler = async (_, _, _) =>
+        options.Handlers.SamplingHandler = async (_, _, _) =>
         {
             samplingHandlerCalls++;
             return new CreateMessageResult

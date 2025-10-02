@@ -2,7 +2,7 @@
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
-internal class SubscriptionMessageSender(IMcpServer server, HashSet<string> subscriptions) : BackgroundService
+internal class SubscriptionMessageSender(McpServer server, HashSet<string> subscriptions) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {

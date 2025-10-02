@@ -252,7 +252,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     [Fact]
     public async Task GetRequest_Receives_UnsolicitedNotifications()
     {
-        IMcpServer? server = null;
+        McpServer? server = null;
 
         Builder.Services.AddMcpServer()
             .WithHttpTransport(options =>

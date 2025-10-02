@@ -26,6 +26,8 @@ internal sealed class SseWriter(string? messageEndpoint = null, BoundedChannelOp
 
     public Task WriteAllAsync(Stream sseResponseStream, CancellationToken cancellationToken)
     {
+        Throw.IfNull(sseResponseStream);
+
         // When messageEndpoint is set, the very first SSE event isn't really an IJsonRpcMessage, but there's no API to write a single
         // item of a different type, so we fib and special-case the "endpoint" event type in the formatter.
         if (messageEndpoint is not null && !_messages.Writer.TryWrite(new SseItem<JsonRpcMessage?>(null, "endpoint")))

@@ -2,13 +2,15 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFrameworks>net9.0;net8.0;net472</TargetFrameworks>
+    <TargetFrameworks>net10.0;net9.0;net8.0;net472</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <RootNamespace>ModelContextProtocol.Tests</RootNamespace>
+    <!-- https://github.com/dotnet/sdk/issues/51060 -->
+    <NoWarn>$(NoWarn);NU1903;NU1902</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' == 'net9.0'">

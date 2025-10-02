@@ -73,7 +73,7 @@ public partial class McpClientResourceTemplateTests : ClientServerTestBase
     public async Task UriTemplate_InputsProduceExpectedOutputs(
         IReadOnlyDictionary<string, object?> variables, string uriTemplate, object expected)
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         var result = await client.ReadResourceAsync(uriTemplate, variables, TestContext.Current.CancellationToken);
         Assert.NotNull(result);

@@ -106,7 +106,7 @@ public class AuthEventTests : KestrelInMemoryTest, IAsyncDisposable
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using var transport = new SseClientTransport(
+        await using var transport = new HttpClientTransport(
             new()
             {
                 Endpoint = new(McpServerUrl),
@@ -122,7 +122,7 @@ public class AuthEventTests : KestrelInMemoryTest, IAsyncDisposable
             LoggerFactory
         );
 
-        await using var client = await McpClientFactory.CreateAsync(
+        await using var client = await McpClient.CreateAsync(
             transport,
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken
@@ -142,7 +142,7 @@ public class AuthEventTests : KestrelInMemoryTest, IAsyncDisposable
 
         DynamicClientRegistrationResponse? dcrResponse = null;
 
-        await using var transport = new SseClientTransport(
+        await using var transport = new HttpClientTransport(
             new()
             {
                 Endpoint = new(McpServerUrl),
@@ -167,7 +167,7 @@ public class AuthEventTests : KestrelInMemoryTest, IAsyncDisposable
             LoggerFactory
         );
 
-        await using var client = await McpClientFactory.CreateAsync(
+        await using var client = await McpClient.CreateAsync(
             transport,
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken

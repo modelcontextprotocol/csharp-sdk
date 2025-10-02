@@ -4,16 +4,18 @@ using Microsoft.Extensions.Options;
 
 namespace ModelContextProtocol.AspNetCore;
 
-internal sealed partial class IdleTrackingBackgroundService(
-    StatefulSessionManager sessions,
-    IOptions<HttpServerTransportOptions> options,
-    IHostApplicationLifetime appLifetime,
-    ILogger<IdleTrackingBackgroundService> logger) : BackgroundService
+internal sealed partial class IdleTrackingBackgroundService : BackgroundService
 {
-    // Workaround for https://github.com/dotnet/runtime/issues/91121. This is fixed in .NET 9 and later.
-    private readonly ILogger _logger = logger;
+    private readonly StatefulSessionManager _sessions;
+    private readonly IOptions<HttpServerTransportOptions> _options;
+    private readonly IHostApplicationLifetime _appLifetime;
+    private readonly ILogger _logger;
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    public IdleTrackingBackgroundService(
+        StatefulSessionManager sessions,
+        IOptions<HttpServerTransportOptions> options,
+        IHostApplicationLifetime appLifetime,
+        ILogger<IdleTrackingBackgroundService> logger)
     {
         // Still run loop given infinite IdleTimeout to enforce the MaxIdleSessionCount and assist graceful shutdown.
         if (options.Value.IdleTimeout != Timeout.InfiniteTimeSpan)
@@ -23,14 +25,22 @@ internal sealed partial class IdleTrackingBackgroundService(
 
         ArgumentOutOfRangeException.ThrowIfLessThan(options.Value.MaxIdleSessionCount, 0);
 
+        _sessions = sessions;
+        _options = options;
+        _appLifetime = appLifetime;
+        _logger = logger;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
         try
         {
-            var timeProvider = options.Value.TimeProvider;
+            var timeProvider = _options.Value.TimeProvider;
             using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5), timeProvider);
 
             while (!stoppingToken.IsCancellationRequested && await timer.WaitForNextTickAsync(stoppingToken))
             {
-                await sessions.PruneIdleSessionsAsync(stoppingToken);
+                await _sessions.PruneIdleSessionsAsync(stoppingToken);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -40,7 +50,7 @@ internal sealed partial class IdleTrackingBackgroundService(
         {
             try
             {
-                await sessions.DisposeAllSessionsAsync();
+                await _sessions.DisposeAllSessionsAsync();
             }
             finally
             {
@@ -48,7 +58,7 @@ internal sealed partial class IdleTrackingBackgroundService(
                 {
                     // Something went terribly wrong. A very unexpected exception must be bubbling up, but let's ensure we also stop the application,
                     // so that it hopefully gets looked at and restarted. This shouldn't really be reachable.
-                    appLifetime.StopApplication();
+                    _appLifetime.StopApplication();
                     IdleTrackingBackgroundServiceStoppedUnexpectedly();
                 }
             }
