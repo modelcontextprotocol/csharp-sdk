@@ -27,6 +27,42 @@ public class McpClientTests : ClientServerTestBase
         }
         mcpServerBuilder.WithTools([McpServerTool.Create([McpServerTool(Destructive = false, OpenWorld = true)] (string i) => $"{i} Result", new() { Name = "ValuesSetViaAttr" })]);
         mcpServerBuilder.WithTools([McpServerTool.Create([McpServerTool(Destructive = false, OpenWorld = true)] (string i) => $"{i} Result", new() { Name = "ValuesSetViaOptions", Destructive = true, OpenWorld = false, ReadOnly = true })]);
+
+        services.Configure<McpServerOptions>(o =>
+        {
+            o.ServerInfo = new Implementation
+            {
+                Name = "test-server",
+                Version = "1.0.0",
+                WebsiteUrl = "https://example.com",
+                Icons =
+                [
+                    new Icon { Source = "https://example.com/icon-48.png", MimeType = "image/png", Sizes = ["48x48"] },
+                    new Icon { Source = "https://example.com/icon.svg", MimeType = "image/svg+xml", Sizes = ["any"] }
+                ]
+            };
+        });
+    }
+
+    [Fact]
+    public async Task CanReadServerInfo()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var serverInfo = client.ServerInfo;
+        Assert.Equal("test-server", serverInfo.Name);
+        Assert.Equal("1.0.0", serverInfo.Version);
+        Assert.Equal("https://example.com", serverInfo.WebsiteUrl);
+        Assert.NotNull(serverInfo.Icons);
+        Assert.Equal(2, serverInfo.Icons.Count);
+
+        Assert.Equal("https://example.com/icon-48.png", serverInfo.Icons[0].Source);
+        Assert.Equal("image/png", serverInfo.Icons[0].MimeType);
+        var icon0Sizes = serverInfo.Icons[0].Sizes; Assert.NotNull(icon0Sizes); Assert.Contains("48x48", icon0Sizes);
+
+        Assert.Equal("https://example.com/icon.svg", serverInfo.Icons[1].Source);
+        Assert.Equal("image/svg+xml", serverInfo.Icons[1].MimeType);
+        var icon1Sizes = serverInfo.Icons[1].Sizes; Assert.NotNull(icon1Sizes); Assert.Contains("any", icon1Sizes);
     }
 
     [Theory]

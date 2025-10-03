@@ -53,6 +53,15 @@ public sealed class Prompt : IBaseMetadata
     public IList<PromptArgument>? Arguments { get; set; }
 
     /// <summary>
+    /// Gets or sets an optional list of icons for this prompt.
+    /// </summary>
+    /// <remarks>
+    /// This can be used by clients to display the prompt's icon in a user interface.
+    /// </remarks>
+    [JsonPropertyName("icons")]
+    public IList<Icon>? Icons { get; set; }
+
+    /// <summary>
     /// Gets or sets metadata reserved by MCP for protocol-level metadata.
     /// </summary>
     /// <remarks>

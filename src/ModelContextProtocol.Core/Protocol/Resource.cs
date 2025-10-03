@@ -81,6 +81,15 @@ public sealed class Resource : IBaseMetadata
     public long? Size { get; init; }
 
     /// <summary>
+    /// Gets or sets an optional list of icons for this resource.
+    /// </summary>
+    /// <remarks>
+    /// This can be used by clients to display the resource's icon in a user interface.
+    /// </remarks>
+    [JsonPropertyName("icons")]
+    public IList<Icon>? Icons { get; set; }
+
+    /// <summary>
     /// Gets or sets metadata reserved by MCP for protocol-level metadata.
     /// </summary>
     /// <remarks>

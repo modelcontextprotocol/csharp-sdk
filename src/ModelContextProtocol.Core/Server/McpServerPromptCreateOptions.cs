@@ -1,4 +1,5 @@
 using Microsoft.Extensions.AI;
+using ModelContextProtocol.Protocol;
 using System.ComponentModel;
 using System.Text.Json;
 
@@ -78,6 +79,14 @@ public sealed class McpServerPromptCreateOptions
     public IReadOnlyList<object>? Metadata { get; set; }
 
     /// <summary>
+    /// Gets or sets the icons for this prompt.
+    /// </summary>
+    /// <remarks>
+    /// This can be used by clients to display the prompt's icon in a user interface.
+    /// </remarks>
+    public IList<Icon>? Icons { get; set; }
+
+    /// <summary>
     /// Creates a shallow clone of the current <see cref="McpServerPromptCreateOptions"/> instance.
     /// </summary>
     internal McpServerPromptCreateOptions Clone() =>
@@ -90,5 +99,6 @@ public sealed class McpServerPromptCreateOptions
             SerializerOptions = SerializerOptions,
             SchemaCreateOptions = SchemaCreateOptions,
             Metadata = Metadata,
+            Icons = Icons,
         };
 }

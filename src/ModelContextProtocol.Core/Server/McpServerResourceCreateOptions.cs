@@ -1,4 +1,5 @@
 using Microsoft.Extensions.AI;
+using ModelContextProtocol.Protocol;
 using System.ComponentModel;
 using System.Text.Json;
 
@@ -93,6 +94,14 @@ public sealed class McpServerResourceCreateOptions
     public IReadOnlyList<object>? Metadata { get; set; }
 
     /// <summary>
+    /// Gets or sets the icons for this resource.
+    /// </summary>
+    /// <remarks>
+    /// This can be used by clients to display the resource's icon in a user interface.
+    /// </remarks>
+    public IList<Icon>? Icons { get; set; }
+
+    /// <summary>
     /// Creates a shallow clone of the current <see cref="McpServerResourceCreateOptions"/> instance.
     /// </summary>
     internal McpServerResourceCreateOptions Clone() =>
@@ -107,5 +116,6 @@ public sealed class McpServerResourceCreateOptions
             SerializerOptions = SerializerOptions,
             SchemaCreateOptions = SchemaCreateOptions,
             Metadata = Metadata,
+            Icons = Icons,
         };
 }

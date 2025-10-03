@@ -492,4 +492,62 @@ public class McpServerPromptTests
             return _message;
         }
     }
+
+    [Fact]
+    public void SupportsIconsInCreateOptions()
+    {
+        var icons = new List<Icon>
+        {
+            new() { Source = "https://example.com/prompt-icon.png", MimeType = "image/png", Sizes = new List<string> { "48x48" } }
+        };
+
+        McpServerPrompt prompt = McpServerPrompt.Create(() => "test prompt", new McpServerPromptCreateOptions
+        {
+            Icons = icons
+        });
+
+        Assert.NotNull(prompt.ProtocolPrompt.Icons);
+        Assert.Single(prompt.ProtocolPrompt.Icons);
+        Assert.Equal("https://example.com/prompt-icon.png", prompt.ProtocolPrompt.Icons[0].Source);
+        Assert.Equal("image/png", prompt.ProtocolPrompt.Icons[0].MimeType);
+    }
+
+    [Fact]
+    public void SupportsIconSourceInAttribute()
+    {
+        McpServerPrompt prompt = McpServerPrompt.Create([McpServerPrompt(IconSource = "https://example.com/prompt-icon.svg")] () => "test prompt");
+
+        Assert.NotNull(prompt.ProtocolPrompt.Icons);
+        Assert.Single(prompt.ProtocolPrompt.Icons);
+        Assert.Equal("https://example.com/prompt-icon.svg", prompt.ProtocolPrompt.Icons[0].Source);
+        Assert.Null(prompt.ProtocolPrompt.Icons[0].MimeType);
+        Assert.Null(prompt.ProtocolPrompt.Icons[0].Sizes);
+    }
+
+    [Fact]
+    public void CreateOptionsIconsOverrideAttributeIconSource_Prompt()
+    {
+        var optionsIcons = new List<Icon>
+        {
+            new() { Source = "https://example.com/override-icon.svg", MimeType = "image/svg+xml" }
+        };
+
+        McpServerPrompt prompt = McpServerPrompt.Create([McpServerPrompt(IconSource = "https://example.com/prompt-icon.png")] () => "test prompt", new McpServerPromptCreateOptions
+        {
+            Icons = optionsIcons
+        });
+
+        Assert.NotNull(prompt.ProtocolPrompt.Icons);
+        Assert.Single(prompt.ProtocolPrompt.Icons);
+        Assert.Equal("https://example.com/override-icon.svg", prompt.ProtocolPrompt.Icons[0].Source);
+        Assert.Equal("image/svg+xml", prompt.ProtocolPrompt.Icons[0].MimeType);
+    }
+
+    [Fact]
+    public void SupportsPromptWithoutIcons()
+    {
+        McpServerPrompt prompt = McpServerPrompt.Create([McpServerPrompt] () => "test prompt");
+
+        Assert.Null(prompt.ProtocolPrompt.Icons);
+    }
 }

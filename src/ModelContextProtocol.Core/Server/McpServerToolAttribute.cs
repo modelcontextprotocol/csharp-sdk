@@ -254,4 +254,19 @@ public sealed class McpServerToolAttribute : Attribute
     /// </para>
     /// </remarks>
     public bool UseStructuredContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets the source URI for the tool's icon.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This can be an HTTP/HTTPS URL pointing to an image file or a data URI with base64-encoded image data.
+    /// When specified, a single icon will be added to the tool.
+    /// </para>
+    /// <para>
+    /// For more advanced icon configuration (multiple icons, MIME type specification, size characteristics),
+    /// use <see cref="McpServerToolCreateOptions.Icons"/> when creating the tool programmatically.
+    /// </para>
+    /// </remarks>
+    public string? IconSource { get; set; }
 }

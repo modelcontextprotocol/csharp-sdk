@@ -646,6 +646,22 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     }
 
     [Fact]
+    public async Task IconSourceAttributeProperty_PropagatedToIcons()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(tools);
+        Assert.NotEmpty(tools);
+
+        McpClientTool tool = tools.First(t => t.Name == "echo_complex");
+
+        Assert.NotNull(tool.ProtocolTool.Icons);
+        Assert.NotEmpty(tool.ProtocolTool.Icons);
+        Assert.Equal("https://example.com/tool-icon.svg", tool.ProtocolTool.Icons[0].Source);
+    }
+
+    [Fact]
     public async Task HandlesIProgressParameter()
     {
         await using McpClient client = await CreateMcpClientForServer();
@@ -786,7 +802,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
             return cancellationToken.GetHashCode();
         }
 
-        [McpServerTool(Title = "This is a title")]
+        [McpServerTool(Title = "This is a title", IconSource = "https://example.com/tool-icon.svg")]
         public static string EchoComplex(ComplexObject complex)
         {
             return complex.Name!;
