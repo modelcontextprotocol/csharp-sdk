@@ -56,7 +56,7 @@ internal sealed class SseWriter(string? messageEndpoint = null, BoundedChannelOp
         if (_disposed)
         {
             // Don't throw ObjectDisposedException here; just return false to indicate the message wasn't sent.
-            // The calling tranport can determine what to do in this case (drop the message, or fallback to another transport).
+            // The calling transport can determine what to do in this case (drop the message, or fallback to another transport).
             return false;
         }
 

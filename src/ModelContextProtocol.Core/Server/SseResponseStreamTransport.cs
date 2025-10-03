@@ -66,6 +66,7 @@ public sealed class SseResponseStreamTransport(Stream sseResponseStream, string?
     public async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(message);
+        // If the underlying writer has been disposed, just drop the message.
         await _sseWriter.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
     }
 
