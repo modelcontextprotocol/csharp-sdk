@@ -72,7 +72,13 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
             throw new InvalidOperationException("Server to client requests are not supported in stateless mode.");
         }
 
-        await _sseWriter.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
+        bool isAccepted = await _sseWriter.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
+        if (!isAccepted)
+        {
+            // The underlying writer didn't accept the message because the underlying request has completed.
+            // Rather than drop the message, fall back to sending it via the parent transport.
+            await parentTransport.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public async ValueTask DisposeAsync()

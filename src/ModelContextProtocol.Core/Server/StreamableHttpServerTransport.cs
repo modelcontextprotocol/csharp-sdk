@@ -131,6 +131,7 @@ public sealed class StreamableHttpServerTransport : ITransport
             throw new InvalidOperationException("Unsolicited server to client messages are not supported in stateless mode.");
         }
 
+        // If the underlying writer has been disposed, just drop the message.
         await _sseWriter.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
     }
 

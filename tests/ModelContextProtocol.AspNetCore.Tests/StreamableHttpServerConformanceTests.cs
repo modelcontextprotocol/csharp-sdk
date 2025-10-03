@@ -521,6 +521,41 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         Assert.StartsWith("MaxIdleSessionCount of 2 exceeded. Closing idle session", idleLimitLogMessage.Message);
     }
 
+    [Fact]
+    public async Task McpServer_UsedOutOfScope_CanSendNotifications()
+    {
+        McpServer? capturedServer = null;
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport()
+            .WithListResourcesHandler((_, _) => ValueTask.FromResult(new ListResourcesResult()))
+            .WithSubscribeToResourcesHandler((context, token) =>
+            {
+                capturedServer = context.Server;
+                return ValueTask.FromResult(new EmptyResult());
+            });
+
+        await StartAsync();
+
+        string sessionId = await CallInitializeAndValidateAsync();
+        SetSessionId(sessionId);
+
+        // Call the subscribe method to capture the McpServer instance.
+        using var response = await HttpClient.PostAsync("", JsonContent(Request("resources/subscribe")), TestContext.Current.CancellationToken);
+        var rpcResponse = await AssertSingleSseResponseAsync(response);
+        AssertType<EmptyResult>(rpcResponse.Result);
+        Assert.NotNull(capturedServer);
+
+        // Check the captured McpServer instance can send a notification.
+        await capturedServer.SendNotificationAsync(NotificationMethods.ResourceUpdatedNotification, TestContext.Current.CancellationToken);
+        using var getResponse = await HttpClient.GetAsync("", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+        JsonRpcMessage? firstSseMessage = await ReadSseAsync(getResponse.Content)
+            .Select(data => JsonSerializer.Deserialize<JsonRpcMessage>(data, McpJsonUtilities.DefaultOptions))
+            .FirstOrDefaultAsync(TestContext.Current.CancellationToken);
+
+        var notification = Assert.IsType<JsonRpcNotification>(firstSseMessage);
+        Assert.Equal(NotificationMethods.ResourceUpdatedNotification, notification.Method);
+    }
+
     private static StringContent JsonContent(string json) => new StringContent(json, Encoding.UTF8, "application/json");
     private static JsonTypeInfo<T> GetJsonTypeInfo<T>() => (JsonTypeInfo<T>)McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(T));
 
