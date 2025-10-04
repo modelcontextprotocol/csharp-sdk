@@ -43,7 +43,7 @@ internal sealed partial class ClientOAuthProvider
     private string? _clientId;
     private string? _clientSecret;
 
-    private TokenContainer? _token;
+    private ITokenCache _tokenCache;
     private AuthorizationServerMetadata? _authServerMetadata;
 
     /// <summary>
@@ -85,6 +85,7 @@ internal sealed partial class ClientOAuthProvider
         _dcrClientUri = options.DynamicClientRegistration?.ClientUri;
         _dcrInitialAccessToken = options.DynamicClientRegistration?.InitialAccessToken;
         _dcrResponseDelegate = options.DynamicClientRegistration?.ResponseDelegate;
+        _tokenCache = options.TokenCache ?? new InMemoryTokenCache();
     }
 
     /// <summary>
@@ -138,20 +139,22 @@ internal sealed partial class ClientOAuthProvider
     {
         ThrowIfNotBearerScheme(scheme);
 
+        var token = await _tokenCache.GetTokenAsync(cancellationToken).ConfigureAwait(false);
+
         // Return the token if it's valid
-        if (_token != null && _token.ExpiresAt > DateTimeOffset.UtcNow.AddMinutes(5))
+        if (token != null && token.ExpiresAt > DateTimeOffset.UtcNow.AddMinutes(5))
         {
-            return _token.AccessToken;
+            return token.AccessToken;
         }
 
         // Try to refresh the token if we have a refresh token
-        if (_token?.RefreshToken != null && _authServerMetadata != null)
+        if (token?.RefreshToken != null && _authServerMetadata != null)
         {
-            var newToken = await RefreshTokenAsync(_token.RefreshToken, resourceUri, _authServerMetadata, cancellationToken).ConfigureAwait(false);
+            var newToken = await RefreshTokenAsync(token.RefreshToken, resourceUri, _authServerMetadata, cancellationToken).ConfigureAwait(false);
             if (newToken != null)
             {
-                _token = newToken;
-                return _token.AccessToken;
+                await _tokenCache.StoreTokenAsync(newToken, cancellationToken).ConfigureAwait(false);
+                return newToken.AccessToken;
             }
         }
 
@@ -237,7 +240,7 @@ internal sealed partial class ClientOAuthProvider
             ThrowFailedToHandleUnauthorizedResponse($"The {nameof(AuthorizationRedirectDelegate)} returned a null or empty token.");
         }
 
-        _token = token;
+        await _tokenCache.StoreTokenAsync(token, cancellationToken).ConfigureAwait(false);
         LogOAuthAuthorizationCompleted();
     }
 
