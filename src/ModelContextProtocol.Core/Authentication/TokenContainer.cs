@@ -5,7 +5,7 @@ namespace ModelContextProtocol.Authentication;
 /// <summary>
 /// Represents a token response from the OAuth server.
 /// </summary>
-internal sealed class TokenContainer
+public sealed class TokenContainer
 {
     /// <summary>
     /// Gets or sets the access token.
@@ -46,7 +46,7 @@ internal sealed class TokenContainer
     /// <summary>
     /// Gets or sets the timestamp when the token was obtained.
     /// </summary>
-    [JsonIgnore]
+    [JsonPropertyName("obtained_at")]
     public DateTimeOffset ObtainedAt { get; set; }
 
     /// <summary>
