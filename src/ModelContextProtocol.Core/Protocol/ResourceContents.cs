@@ -41,6 +41,18 @@ public abstract class ResourceContents
     public string Uri { get; set; } = string.Empty;
 
     /// <summary>
+    /// Gets or sets the name of the resource.
+    /// </summary>
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the human-readable name of the resource for display purposes.
+    /// </summary>
+    [JsonPropertyName("title")]
+    public string? Title { get; set; }
+
+    /// <summary>
     /// Gets or sets the MIME type of the resource content.
     /// </summary>
     [JsonPropertyName("mimeType")]
@@ -75,6 +87,8 @@ public abstract class ResourceContents
             }
 
             string? uri = null;
+            string? name = null;
+            string? title = null;
             string? mimeType = null;
             string? blob = null;
             string? text = null;
@@ -95,6 +109,14 @@ public abstract class ResourceContents
                 {
                     case "uri":
                         uri = reader.GetString();
+                        break;
+
+                    case "name":
+                        name = reader.GetString();
+                        break;
+
+                    case "title":
+                        title = reader.GetString();
                         break;
 
                     case "mimeType":
@@ -123,6 +145,8 @@ public abstract class ResourceContents
                 return new BlobResourceContents
                 {
                     Uri = uri ?? string.Empty,
+                    Name = name ?? string.Empty,
+                    Title = title,
                     MimeType = mimeType,
                     Blob = blob,
                     Meta = meta,
@@ -134,6 +158,8 @@ public abstract class ResourceContents
                 return new TextResourceContents
                 {
                     Uri = uri ?? string.Empty,
+                    Name = name ?? string.Empty,
+                    Title = title,
                     MimeType = mimeType,
                     Text = text,
                     Meta = meta,
@@ -154,6 +180,8 @@ public abstract class ResourceContents
 
             writer.WriteStartObject();
             writer.WriteString("uri", value.Uri);
+            writer.WriteString("name", value.Name);
+            writer.WriteString("title", value.Title);
             writer.WriteString("mimeType", value.MimeType);
             
             Debug.Assert(value is BlobResourceContents or TextResourceContents);
