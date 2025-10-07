@@ -180,7 +180,9 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
 
         Assert.NotNull(prompt.ProtocolPrompt.Icons);
         Assert.NotEmpty(prompt.ProtocolPrompt.Icons);
-        Assert.Equal("https://example.com/prompt-icon.svg", prompt.ProtocolPrompt.Icons[0].Source);
+        var icon = Assert.Single(prompt.ProtocolPrompt.Icons);
+        Assert.Equal("https://example.com/prompt-icon.svg", icon.Source);
+        Assert.Null(icon.Theme);
     }
 
     [Fact]

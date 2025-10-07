@@ -37,8 +37,8 @@ public class McpClientTests : ClientServerTestBase
                 WebsiteUrl = "https://example.com",
                 Icons =
                 [
-                    new Icon { Source = "https://example.com/icon-48.png", MimeType = "image/png", Sizes = ["48x48"] },
-                    new Icon { Source = "https://example.com/icon.svg", MimeType = "image/svg+xml", Sizes = ["any"] }
+                    new Icon { Source = "https://example.com/icon-48.png", MimeType = "image/png", Sizes = ["48x48"], Theme = "light" },
+                    new Icon { Source = "https://example.com/icon.svg", MimeType = "image/svg+xml", Sizes = ["any"], Theme = "dark" }
                 ]
             };
         });
@@ -59,10 +59,12 @@ public class McpClientTests : ClientServerTestBase
         Assert.Equal("https://example.com/icon-48.png", serverInfo.Icons[0].Source);
         Assert.Equal("image/png", serverInfo.Icons[0].MimeType);
         Assert.Single(serverInfo.Icons[0].Sizes, "48x48");
+        Assert.Equal("light", serverInfo.Icons[0].Theme);
 
         Assert.Equal("https://example.com/icon.svg", serverInfo.Icons[1].Source);
         Assert.Equal("image/svg+xml", serverInfo.Icons[1].MimeType);
         Assert.Single(serverInfo.Icons[1].Sizes, "any");
+        Assert.Equal("dark", serverInfo.Icons[1].Theme);
     }
 
     [Theory]

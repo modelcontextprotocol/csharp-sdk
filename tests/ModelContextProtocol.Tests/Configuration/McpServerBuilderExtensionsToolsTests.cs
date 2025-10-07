@@ -646,7 +646,9 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
 
         Assert.NotNull(tool.ProtocolTool.Icons);
         Assert.NotEmpty(tool.ProtocolTool.Icons);
-        Assert.Equal("https://example.com/tool-icon.svg", tool.ProtocolTool.Icons[0].Source);
+        var icon = Assert.Single(tool.ProtocolTool.Icons);
+        Assert.Equal("https://example.com/tool-icon.svg", icon.Source);
+        Assert.Null(icon.Theme);
     }
 
     [Fact]

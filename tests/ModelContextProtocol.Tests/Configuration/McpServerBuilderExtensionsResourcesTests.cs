@@ -213,7 +213,9 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
 
         Assert.NotNull(resource.ProtocolResource.Icons);
         Assert.NotEmpty(resource.ProtocolResource.Icons);
-        Assert.Equal("https://example.com/direct-resource-icon.svg", resource.ProtocolResource.Icons[0].Source);
+        var resourceIcon = Assert.Single(resource.ProtocolResource.Icons);
+        Assert.Equal("https://example.com/direct-resource-icon.svg", resourceIcon.Source);
+        Assert.Null(resourceIcon.Theme);
 
         var resourceTemplates = await client.ListResourceTemplatesAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(resourceTemplates);
@@ -223,7 +225,9 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
 
         Assert.NotNull(resourceTemplate.ProtocolResourceTemplate.Icons);
         Assert.NotEmpty(resourceTemplate.ProtocolResourceTemplate.Icons);
-        Assert.Equal("https://example.com/templated-resource-icon.svg", resourceTemplate.ProtocolResourceTemplate.Icons[0].Source);
+        var templateIcon = Assert.Single(resourceTemplate.ProtocolResourceTemplate.Icons);
+        Assert.Equal("https://example.com/templated-resource-icon.svg", templateIcon.Source);
+        Assert.Null(templateIcon.Theme);
     }
 
     [Fact]
