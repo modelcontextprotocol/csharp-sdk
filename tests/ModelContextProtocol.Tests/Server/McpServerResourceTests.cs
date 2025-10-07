@@ -691,10 +691,9 @@ public partial class McpServerResourceTests
             Icons = icons
         });
 
-        Assert.NotNull(resource.ProtocolResourceTemplate.Icons);
-        Assert.Single(resource.ProtocolResourceTemplate.Icons);
-        Assert.Equal("https://example.com/resource-icon.png", resource.ProtocolResourceTemplate.Icons[0].Source);
-        Assert.Equal("image/png", resource.ProtocolResourceTemplate.Icons[0].MimeType);
+        var icon = Assert.Single(resource.ProtocolResourceTemplate.Icons);
+        Assert.Equal("https://example.com/resource-icon.png", icon.Source);
+        Assert.Equal("image/png", icon.MimeType);
     }
 
     [Fact]
@@ -702,11 +701,10 @@ public partial class McpServerResourceTests
     {
         McpServerResource resource = McpServerResource.Create([McpServerResource(UriTemplate = "test://resource", IconSource = "https://example.com/resource-icon.svg")] () => "test content");
 
-        Assert.NotNull(resource.ProtocolResourceTemplate.Icons);
-        Assert.Single(resource.ProtocolResourceTemplate.Icons);
-        Assert.Equal("https://example.com/resource-icon.svg", resource.ProtocolResourceTemplate.Icons[0].Source);
-        Assert.Null(resource.ProtocolResourceTemplate.Icons[0].MimeType);
-        Assert.Null(resource.ProtocolResourceTemplate.Icons[0].Sizes);
+        var icon = Assert.Single(resource.ProtocolResourceTemplate.Icons);
+        Assert.Equal("https://example.com/resource-icon.svg", icon.Source);
+        Assert.Null(icon.MimeType);
+        Assert.Null(icon.Sizes);
     }
 
     [Fact]
@@ -722,10 +720,9 @@ public partial class McpServerResourceTests
             Icons = optionsIcons
         });
 
-        Assert.NotNull(resource.ProtocolResourceTemplate.Icons);
-        Assert.Single(resource.ProtocolResourceTemplate.Icons);
-        Assert.Equal("https://example.com/override-icon.svg", resource.ProtocolResourceTemplate.Icons[0].Source);
-        Assert.Equal("image/svg+xml", resource.ProtocolResourceTemplate.Icons[0].MimeType);
+        var icon = Assert.Single(resource.ProtocolResourceTemplate.Icons);
+        Assert.Equal("https://example.com/override-icon.svg", icon.Source);
+        Assert.Equal("image/svg+xml", icon.MimeType);
     }
 
     [Fact]

@@ -201,7 +201,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     }
 
     [Fact]
-    public async Task TitleAttributeProperty_PropagatedToTitle()
+    public async Task AttributeProperties_Propagated()
     {
         await using McpClient client = await CreateMcpClientForServer();
 
@@ -211,22 +211,6 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
         McpClientResource resource = resources.First(t => t.Name == "some_neat_direct_resource");
         Assert.Equal("This is a title", resource.Title);
 
-        var resourceTemplates = await client.ListResourceTemplatesAsync(cancellationToken: TestContext.Current.CancellationToken);
-        Assert.NotNull(resourceTemplates);
-        Assert.NotEmpty(resourceTemplates);
-        McpClientResourceTemplate resourceTemplate = resourceTemplates.First(t => t.Name == "some_neat_templated_resource");
-        Assert.Equal("This is another title", resourceTemplate.Title);
-    }
-
-    [Fact]
-    public async Task IconSourceAttributeProperty_PropagatedToIcons()
-    {
-        await using McpClient client = await CreateMcpClientForServer();
-
-        var resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
-        Assert.NotNull(resources);
-        Assert.NotEmpty(resources);
-        McpClientResource resource = resources.First(t => t.Name == "some_neat_direct_resource");
         Assert.NotNull(resource.ProtocolResource.Icons);
         Assert.NotEmpty(resource.ProtocolResource.Icons);
         Assert.Equal("https://example.com/direct-resource-icon.svg", resource.ProtocolResource.Icons[0].Source);
@@ -235,6 +219,8 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
         Assert.NotNull(resourceTemplates);
         Assert.NotEmpty(resourceTemplates);
         McpClientResourceTemplate resourceTemplate = resourceTemplates.First(t => t.Name == "some_neat_templated_resource");
+        Assert.Equal("This is another title", resourceTemplate.Title);
+
         Assert.NotNull(resourceTemplate.ProtocolResourceTemplate.Icons);
         Assert.NotEmpty(resourceTemplate.ProtocolResourceTemplate.Icons);
         Assert.Equal("https://example.com/templated-resource-icon.svg", resourceTemplate.ProtocolResourceTemplate.Icons[0].Source);

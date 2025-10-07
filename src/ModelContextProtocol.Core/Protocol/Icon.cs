@@ -72,4 +72,14 @@ public sealed class Icon
     /// </remarks>
     [JsonPropertyName("sizes")]
     public IList<string>? Sizes { get; init; }
+
+    /// <summary>
+    /// Gets or sets the optional theme for this icon.
+    /// </summary>
+    /// <remarks>
+    /// Can be "light", "dark", or a custom theme identifier.
+    /// Used to specify which UI theme the icon is designed for.
+    /// </remarks>
+    [JsonPropertyName("theme")]
+    public string? Theme { get; init; }
 }

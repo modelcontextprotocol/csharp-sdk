@@ -630,7 +630,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task TitleAttributeProperty_PropagatedToTitle()
+    public async Task AttributeProperties_Propagated()
     {
         await using McpClient client = await CreateMcpClientForServer();
 
@@ -643,18 +643,6 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         Assert.Equal("This is a title", tool.Title);
         Assert.Equal("This is a title", tool.ProtocolTool.Title);
         Assert.Equal("This is a title", tool.ProtocolTool.Annotations?.Title);
-    }
-
-    [Fact]
-    public async Task IconSourceAttributeProperty_PropagatedToIcons()
-    {
-        await using McpClient client = await CreateMcpClientForServer();
-
-        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
-        Assert.NotNull(tools);
-        Assert.NotEmpty(tools);
-
-        McpClientTool tool = tools.First(t => t.Name == "echo_complex");
 
         Assert.NotNull(tool.ProtocolTool.Icons);
         Assert.NotEmpty(tool.ProtocolTool.Icons);

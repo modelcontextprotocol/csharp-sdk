@@ -177,9 +177,9 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 newOptions.ReadOnly ??= readOnly;
             }
 
-            if (toolAttr.IconSource is { Length: > 0 } iconSource)
+            if (newOptions.Icons is null && toolAttr.IconSource is { Length: > 0 } iconSource)
             {
-                newOptions.Icons ??= [new() { Source  = iconSource }];
+                newOptions.Icons = [new() { Source = iconSource }];
             }
 
             newOptions.UseStructuredContent = toolAttr.UseStructuredContent;

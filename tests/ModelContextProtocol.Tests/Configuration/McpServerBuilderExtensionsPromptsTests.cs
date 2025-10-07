@@ -166,7 +166,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
     }
 
     [Fact]
-    public async Task TitleAttributeProperty_PropagatedToTitle()
+    public async Task AttributeProperties_Propagated()
     {
         await using McpClient client = await CreateMcpClientForServer();
 
@@ -177,18 +177,6 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
         McpClientPrompt prompt = prompts.First(t => t.Name == "returns_string");
 
         Assert.Equal("This is a title", prompt.Title);
-    }
-
-    [Fact]
-    public async Task IconSourceAttributeProperty_PropagatedToIcons()
-    {
-        await using McpClient client = await CreateMcpClientForServer();
-
-        var prompts = await client.ListPromptsAsync(cancellationToken: TestContext.Current.CancellationToken);
-        Assert.NotNull(prompts);
-        Assert.NotEmpty(prompts);
-
-        McpClientPrompt prompt = prompts.First(t => t.Name == "returns_string");
 
         Assert.NotNull(prompt.ProtocolPrompt.Icons);
         Assert.NotEmpty(prompt.ProtocolPrompt.Icons);

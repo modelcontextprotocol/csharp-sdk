@@ -73,10 +73,10 @@ public sealed class ResourceTemplate : IBaseMetadata
     public Annotations? Annotations { get; init; }
 
     /// <summary>
-    /// Gets or sets the icons for this resource template.
+    /// Gets or sets an optional list of icons for this resource template.
     /// </summary>
     /// <remarks>
-    /// This can be used by clients to display the resource's icon in a user interface.
+    /// This can be used by clients to display the resource template's icon in a user interface.
     /// </remarks>
     [JsonPropertyName("icons")]
     public IList<Icon>? Icons { get; set; }
