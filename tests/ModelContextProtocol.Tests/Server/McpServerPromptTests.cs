@@ -506,7 +506,7 @@ public class McpServerPromptTests
             Icons = icons
         });
 
-        var icon = Assert.Single(prompt.ProtocolPrompt.Icons);
+        var icon = Assert.Single(prompt.ProtocolPrompt.Icons!);
         Assert.Equal("https://example.com/prompt-icon.png", icon.Source);
         Assert.Equal("image/png", icon.MimeType);
     }
@@ -516,7 +516,7 @@ public class McpServerPromptTests
     {
         McpServerPrompt prompt = McpServerPrompt.Create([McpServerPrompt(IconSource = "https://example.com/prompt-icon.svg")] () => "test prompt");
 
-        var icon = Assert.Single(prompt.ProtocolPrompt.Icons);
+        var icon = Assert.Single(prompt.ProtocolPrompt.Icons!);
         Assert.Equal("https://example.com/prompt-icon.svg", icon.Source);
         Assert.Null(icon.MimeType);
         Assert.Null(icon.Sizes);
@@ -535,7 +535,7 @@ public class McpServerPromptTests
             Icons = optionsIcons
         });
 
-        var icon = Assert.Single(prompt.ProtocolPrompt.Icons);
+        var icon = Assert.Single(prompt.ProtocolPrompt.Icons!);
         Assert.Equal("https://example.com/override-icon.svg", icon.Source);
         Assert.Equal("image/svg+xml", icon.MimeType);
     }

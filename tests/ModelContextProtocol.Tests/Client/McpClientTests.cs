@@ -56,15 +56,17 @@ public class McpClientTests : ClientServerTestBase
         Assert.NotNull(serverInfo.Icons);
         Assert.Equal(2, serverInfo.Icons.Count);
 
-        Assert.Equal("https://example.com/icon-48.png", serverInfo.Icons[0].Source);
-        Assert.Equal("image/png", serverInfo.Icons[0].MimeType);
-        Assert.Single(serverInfo.Icons[0].Sizes, "48x48");
-        Assert.Equal("light", serverInfo.Icons[0].Theme);
+        var icon0 = serverInfo.Icons[0];
+        Assert.Equal("https://example.com/icon-48.png", icon0.Source);
+        Assert.Equal("image/png", icon0.MimeType);
+        Assert.Single(icon0.Sizes!, "48x48");
+        Assert.Equal("light", icon0.Theme);
 
-        Assert.Equal("https://example.com/icon.svg", serverInfo.Icons[1].Source);
-        Assert.Equal("image/svg+xml", serverInfo.Icons[1].MimeType);
-        Assert.Single(serverInfo.Icons[1].Sizes, "any");
-        Assert.Equal("dark", serverInfo.Icons[1].Theme);
+        var icon1 = serverInfo.Icons[1];
+        Assert.Equal("https://example.com/icon.svg", icon1.Source);
+        Assert.Equal("image/svg+xml", icon1.MimeType);
+        Assert.Single(icon1.Sizes!, "any");
+        Assert.Equal("dark", icon1.Theme);
     }
 
     [Theory]

@@ -711,7 +711,7 @@ public partial class McpServerToolTests
     {
         McpServerTool tool = McpServerTool.Create([McpServerTool(IconSource = "https://example.com/tool-icon.png")] () => "result");
 
-        var icon = Assert.Single(tool.ProtocolTool.Icons);
+        var icon = Assert.Single(tool.ProtocolTool.Icons!);
         Assert.Equal("https://example.com/tool-icon.png", icon.Source);
         Assert.Null(icon.MimeType);
         Assert.Null(icon.Sizes);
@@ -730,7 +730,7 @@ public partial class McpServerToolTests
             Icons = optionsIcons
         });
 
-        var icon = Assert.Single(tool.ProtocolTool.Icons);
+        var icon = Assert.Single(tool.ProtocolTool.Icons!);
         Assert.Equal("https://example.com/override-icon.svg", icon.Source);
         Assert.Equal("image/svg+xml", icon.MimeType);
     }

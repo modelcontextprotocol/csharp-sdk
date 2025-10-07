@@ -691,7 +691,7 @@ public partial class McpServerResourceTests
             Icons = icons
         });
 
-        var icon = Assert.Single(resource.ProtocolResourceTemplate.Icons);
+        var icon = Assert.Single(resource.ProtocolResourceTemplate.Icons!);
         Assert.Equal("https://example.com/resource-icon.png", icon.Source);
         Assert.Equal("image/png", icon.MimeType);
     }
@@ -701,7 +701,7 @@ public partial class McpServerResourceTests
     {
         McpServerResource resource = McpServerResource.Create([McpServerResource(UriTemplate = "test://resource", IconSource = "https://example.com/resource-icon.svg")] () => "test content");
 
-        var icon = Assert.Single(resource.ProtocolResourceTemplate.Icons);
+        var icon = Assert.Single(resource.ProtocolResourceTemplate.Icons!);
         Assert.Equal("https://example.com/resource-icon.svg", icon.Source);
         Assert.Null(icon.MimeType);
         Assert.Null(icon.Sizes);
@@ -720,7 +720,7 @@ public partial class McpServerResourceTests
             Icons = optionsIcons
         });
 
-        var icon = Assert.Single(resource.ProtocolResourceTemplate.Icons);
+        var icon = Assert.Single(resource.ProtocolResourceTemplate.Icons!);
         Assert.Equal("https://example.com/override-icon.svg", icon.Source);
         Assert.Equal("image/svg+xml", icon.MimeType);
     }
