@@ -49,28 +49,29 @@ internal sealed partial class McpClientImpl : McpClient
         var notificationHandlers = new NotificationHandlers();
         var requestHandlers = new RequestHandlers();
 
-        if (options.Capabilities is { } capabilities)
-        {
-            RegisterHandlers(capabilities, notificationHandlers, requestHandlers);
-        }
+        RegisterHandlers(options, notificationHandlers, requestHandlers);
 
         _sessionHandler = new McpSessionHandler(isServer: false, transport, endpointName, requestHandlers, notificationHandlers, _logger);
     }
 
-    private void RegisterHandlers(ClientCapabilities capabilities, NotificationHandlers notificationHandlers, RequestHandlers requestHandlers)
+    private void RegisterHandlers(McpClientOptions options, NotificationHandlers notificationHandlers, RequestHandlers requestHandlers)
     {
-        if (capabilities.NotificationHandlers is { } notificationHandlersFromCapabilities)
+        McpClientHandlers handlers = options.Handlers;
+
+#pragma warning disable CS0618 // Type or member is obsolete
+        var notificationHandlersFromOptions = handlers.NotificationHandlers ?? options.Capabilities?.NotificationHandlers;
+        var samplingHandler = handlers.SamplingHandler ?? options.Capabilities?.Sampling?.SamplingHandler;
+        var rootsHandler = handlers.RootsHandler ?? options.Capabilities?.Roots?.RootsHandler;
+        var elicitationHandler = handlers.ElicitationHandler ?? options.Capabilities?.Elicitation?.ElicitationHandler;
+#pragma warning restore CS0618 // Type or member is obsolete
+
+        if (notificationHandlersFromOptions is not null)
         {
-            notificationHandlers.RegisterRange(notificationHandlersFromCapabilities);
+            notificationHandlers.RegisterRange(notificationHandlersFromOptions);
         }
 
-        if (capabilities.Sampling is { } samplingCapability)
+        if (samplingHandler is not null)
         {
-            if (samplingCapability.SamplingHandler is not { } samplingHandler)
-            {
-                throw new InvalidOperationException("Sampling capability was set but it did not provide a handler.");
-            }
-
             requestHandlers.Set(
                 RequestMethods.SamplingCreateMessage,
                 (request, _, cancellationToken) => samplingHandler(
@@ -79,34 +80,33 @@ internal sealed partial class McpClientImpl : McpClient
                     cancellationToken),
                 McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams,
                 McpJsonUtilities.JsonContext.Default.CreateMessageResult);
+            
+            _options.Capabilities ??= new();
+            _options.Capabilities.Sampling ??= new();
         }
 
-        if (capabilities.Roots is { } rootsCapability)
+        if (rootsHandler is not null)
         {
-            if (rootsCapability.RootsHandler is not { } rootsHandler)
-            {
-                throw new InvalidOperationException("Roots capability was set but it did not provide a handler.");
-            }
-
             requestHandlers.Set(
                 RequestMethods.RootsList,
                 (request, _, cancellationToken) => rootsHandler(request, cancellationToken),
                 McpJsonUtilities.JsonContext.Default.ListRootsRequestParams,
                 McpJsonUtilities.JsonContext.Default.ListRootsResult);
+
+            _options.Capabilities ??= new();
+            _options.Capabilities.Roots ??= new();
         }
 
-        if (capabilities.Elicitation is { } elicitationCapability)
+        if (elicitationHandler is not null)
         {
-            if (elicitationCapability.ElicitationHandler is not { } elicitationHandler)
-            {
-                throw new InvalidOperationException("Elicitation capability was set but it did not provide a handler.");
-            }
-
             requestHandlers.Set(
                 RequestMethods.ElicitationCreate,
                 (request, _, cancellationToken) => elicitationHandler(request, cancellationToken),
                 McpJsonUtilities.JsonContext.Default.ElicitRequestParams,
                 McpJsonUtilities.JsonContext.Default.ElicitResult);
+
+            _options.Capabilities ??= new();
+            _options.Capabilities.Elicitation ??= new();
         }
     }
 

@@ -1,4 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
 
 namespace ModelContextProtocol.Server;
@@ -10,17 +9,12 @@ namespace ModelContextProtocol.Server;
 /// <para>
 /// This class provides a centralized collection of delegates that implement various capabilities of the Model Context Protocol.
 /// Each handler in this class corresponds to a specific endpoint in the Model Context Protocol and
-/// is responsible for processing a particular type of request. The handlers are used to customize
+/// is responsible for processing a particular type of message. The handlers are used to customize
 /// the behavior of the MCP server by providing implementations for the various protocol operations.
 /// </para>
 /// <para>
-/// Handlers can be configured individually using the extension methods in <see cref="McpServerBuilderExtensions"/>
-/// such as <see cref="McpServerBuilderExtensions.WithListToolsHandler"/> and
-/// <see cref="McpServerBuilderExtensions.WithCallToolHandler"/>.
-/// </para>
-/// <para>
-/// When a client sends a request to the server, the appropriate handler is invoked to process the
-/// request and produce a response according to the protocol specification. Which handler is selected
+/// When a client sends a message to the server, the appropriate handler is invoked to process it
+/// according to the protocol specification. Which handler is selected
 /// is done based on an ordinal, case-sensitive string comparison.
 /// </para>
 /// </remarks>
@@ -162,65 +156,22 @@ public sealed class McpServerHandlers
     /// </remarks>
     public McpRequestHandler<SetLevelRequestParams, EmptyResult>? SetLoggingLevelHandler { get; set; }
 
-    /// <summary>
-    /// Overwrite any handlers in McpServerOptions with non-null handlers from this instance.
-    /// </summary>
-    /// <param name="options"></param>
-    /// <returns></returns>
-    internal void OverwriteWithSetHandlers(McpServerOptions options)
-    {
-        PromptsCapability? promptsCapability = options.Capabilities?.Prompts;
-        if (ListPromptsHandler is not null || GetPromptHandler is not null)
-        {
-            promptsCapability ??= new();
-            promptsCapability.ListPromptsHandler = ListPromptsHandler ?? promptsCapability.ListPromptsHandler;
-            promptsCapability.GetPromptHandler = GetPromptHandler ?? promptsCapability.GetPromptHandler;
-        }
-
-        ResourcesCapability? resourcesCapability = options.Capabilities?.Resources;
-        if (ListResourcesHandler is not null ||
-            ReadResourceHandler is not null)
-        {
-            resourcesCapability ??= new();
-            resourcesCapability.ListResourceTemplatesHandler = ListResourceTemplatesHandler ?? resourcesCapability.ListResourceTemplatesHandler;
-            resourcesCapability.ListResourcesHandler = ListResourcesHandler ?? resourcesCapability.ListResourcesHandler;
-            resourcesCapability.ReadResourceHandler = ReadResourceHandler ?? resourcesCapability.ReadResourceHandler;
-
-            if (SubscribeToResourcesHandler is not null || UnsubscribeFromResourcesHandler is not null)
-            {
-                resourcesCapability.SubscribeToResourcesHandler = SubscribeToResourcesHandler ?? resourcesCapability.SubscribeToResourcesHandler;
-                resourcesCapability.UnsubscribeFromResourcesHandler = UnsubscribeFromResourcesHandler ?? resourcesCapability.UnsubscribeFromResourcesHandler;
-                resourcesCapability.Subscribe = true;
-            }
-        }
-
-        ToolsCapability? toolsCapability = options.Capabilities?.Tools;
-        if (ListToolsHandler is not null || CallToolHandler is not null)
-        {
-            toolsCapability ??= new();
-            toolsCapability.ListToolsHandler = ListToolsHandler ?? toolsCapability.ListToolsHandler;
-            toolsCapability.CallToolHandler = CallToolHandler ?? toolsCapability.CallToolHandler;
-        }
-
-        LoggingCapability? loggingCapability = options.Capabilities?.Logging;
-        if (SetLoggingLevelHandler is not null)
-        {
-            loggingCapability ??= new();
-            loggingCapability.SetLoggingLevelHandler = SetLoggingLevelHandler;
-        }
-
-        CompletionsCapability? completionsCapability = options.Capabilities?.Completions;
-        if (CompleteHandler is not null)
-        {
-            completionsCapability ??= new();
-            completionsCapability.CompleteHandler = CompleteHandler;
-        }
-
-        options.Capabilities ??= new();
-        options.Capabilities.Prompts = promptsCapability;
-        options.Capabilities.Resources = resourcesCapability;
-        options.Capabilities.Tools = toolsCapability;
-        options.Capabilities.Logging = loggingCapability;
-        options.Capabilities.Completions = completionsCapability;
-    }
+    /// <summary>Gets or sets notification handlers to register with the server.</summary>
+    /// <remarks>
+    /// <para>
+    /// When constructed, the server will enumerate these handlers once, which may contain multiple handlers per notification method key.
+    /// The server will not re-enumerate the sequence after initialization.
+    /// </para>
+    /// <para>
+    /// Notification handlers allow the server to respond to client-sent notifications for specific methods.
+    /// Each key in the collection is a notification method name, and each value is a callback that will be invoked
+    /// when a notification with that method is received.
+    /// </para>
+    /// <para>
+    /// Handlers provided via <see cref="NotificationHandlers"/> will be registered with the server for the lifetime of the server.
+    /// For transient handlers, <see cref="IMcpEndpoint.RegisterNotificationHandler"/> may be used to register a handler that can
+    /// then be unregistered by disposing of the <see cref="IAsyncDisposable"/> returned from the method.
+    /// </para>
+    /// </remarks>
+    public IEnumerable<KeyValuePair<string, Func<JsonRpcNotification, CancellationToken, ValueTask>>>? NotificationHandlers { get; set; }
 }

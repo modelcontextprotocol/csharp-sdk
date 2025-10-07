@@ -1,5 +1,7 @@
-using ModelContextProtocol.Server;
+using System.ComponentModel;
 using System.Text.Json.Serialization;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Protocol;
 
@@ -45,7 +47,7 @@ public sealed class ClientCapabilities
     /// </para>
     /// <para>
     /// The server can use <see cref="McpServer.RequestRootsAsync"/> to request the list of
-    /// available roots from the client, which will trigger the client's <see cref="RootsCapability.RootsHandler"/>.
+    /// available roots from the client, which will trigger the client's <see cref="ModelContextProtocol.Client.McpClientHandlers.RootsHandler"/>.
     /// </para>
     /// </remarks>
     [JsonPropertyName("roots")]
@@ -83,5 +85,7 @@ public sealed class ClientCapabilities
     /// </para>
     /// </remarks>
     [JsonIgnore]
+    [Obsolete($"Use {nameof(McpClientOptions.Handlers.NotificationHandlers)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public IEnumerable<KeyValuePair<string, Func<JsonRpcNotification, CancellationToken, ValueTask>>>? NotificationHandlers { get; set; }
 }

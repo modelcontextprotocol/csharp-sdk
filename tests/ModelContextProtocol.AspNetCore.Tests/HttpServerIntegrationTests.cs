@@ -54,8 +54,10 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         Assert.NotNull(client.ServerInfo);
         Assert.NotNull(client.NegotiatedProtocolVersion);
 
-        if (ClientTransportOptions.Endpoint.AbsolutePath.EndsWith("/sse"))
+        if (ClientTransportOptions.Endpoint.AbsolutePath.EndsWith("/sse") ||
+            ClientTransportOptions.Endpoint.AbsolutePath.EndsWith("/stateless"))
         {
+            // In SSE and in Streamable HTTP's stateless mode, no protocol-defined session IDs are used.:w
             Assert.Null(client.SessionId);
         }
         else
@@ -251,9 +253,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         int samplingHandlerCalls = 0;
 #pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
         McpClientOptions options = new();
-        options.Capabilities = new();
-        options.Capabilities.Sampling ??= new();
-        options.Capabilities.Sampling.SamplingHandler = async (_, _, _) =>
+        options.Handlers.SamplingHandler = async (_, _, _) =>
         {
             samplingHandlerCalls++;
             return new CreateMessageResult

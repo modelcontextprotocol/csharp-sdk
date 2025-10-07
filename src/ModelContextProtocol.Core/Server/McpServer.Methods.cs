@@ -416,7 +416,7 @@ public abstract partial class McpServer : McpSession, IMcpServer
     {
         if (ClientCapabilities?.Sampling is null)
         {
-            if (ServerOptions.KnownClientInfo is not null)
+            if (ClientCapabilities is null)
             {
                 throw new InvalidOperationException("Sampling is not supported in stateless mode.");
             }
@@ -429,7 +429,7 @@ public abstract partial class McpServer : McpSession, IMcpServer
     {
         if (ClientCapabilities?.Roots is null)
         {
-            if (ServerOptions.KnownClientInfo is not null)
+            if (ClientCapabilities is null)
             {
                 throw new InvalidOperationException("Roots are not supported in stateless mode.");
             }
@@ -442,7 +442,7 @@ public abstract partial class McpServer : McpSession, IMcpServer
     {
         if (ClientCapabilities?.Elicitation is null)
         {
-            if (ServerOptions.KnownClientInfo is not null)
+            if (ClientCapabilities is null)
             {
                 throw new InvalidOperationException("Elicitation is not supported in stateless mode.");
             }

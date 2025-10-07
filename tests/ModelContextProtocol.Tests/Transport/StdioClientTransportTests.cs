@@ -1,4 +1,5 @@
 ﻿using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Tests.Utils;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -15,17 +16,14 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         string id = Guid.NewGuid().ToString("N");
 
         StdioClientTransport transport = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
-            new(new() { Command = "cmd", Arguments = ["/C", $"echo \"{id}\" >&2"] }, LoggerFactory) :
-            new(new() { Command = "ls", Arguments = [id] }, LoggerFactory);
+            new(new() { Command = "cmd", Arguments = ["/c", $"echo {id} >&2 & exit /b 1"] }, LoggerFactory) :
+            new(new() { Command = "sh", Arguments = ["-c", $"echo {id} >&2; exit 1"] }, LoggerFactory);
 
-        IOException e = await Assert.ThrowsAsync<IOException>(() => McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-        {
-            Assert.Contains(id, e.ToString());
-        }
+        await Assert.ThrowsAsync<IOException>(() => McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
     }
 
-    [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
+    // [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
+    [Fact]
     public async Task CreateAsync_ValidProcessInvalidServer_StdErrCallbackInvoked()
     {
         string id = Guid.NewGuid().ToString("N");
@@ -43,12 +41,92 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         };
 
         StdioClientTransport transport = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
-            new(new() { Command = "cmd", Arguments = ["/C", $"echo \"{id}\" >&2"], StandardErrorLines = stdErrCallback }, LoggerFactory) :
-            new(new() { Command = "ls", Arguments = [id], StandardErrorLines = stdErrCallback }, LoggerFactory);
+            new(new() { Command = "cmd", Arguments = ["/c", $"echo {id} >&2 & exit /b 1"], StandardErrorLines = stdErrCallback }, LoggerFactory) :
+            new(new() { Command = "sh", Arguments = ["-c", $"echo {id} >&2; exit 1"], StandardErrorLines = stdErrCallback }, LoggerFactory);
 
         await Assert.ThrowsAsync<IOException>(() => McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.InRange(count, 1, int.MaxValue);
         Assert.Contains(id, sb.ToString());
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("argument with spaces")]
+    [InlineData("&")]
+    [InlineData("|")]
+    [InlineData(">")]
+    [InlineData("<")]
+    [InlineData("^")]
+    [InlineData(" & ")]
+    [InlineData(" | ")]
+    [InlineData(" > ")]
+    [InlineData(" < ")]
+    [InlineData(" ^ ")]
+    [InlineData("& ")]
+    [InlineData("| ")]
+    [InlineData("> ")]
+    [InlineData("< ")]
+    [InlineData("^ ")]
+    [InlineData(" &")]
+    [InlineData(" |")]
+    [InlineData(" >")]
+    [InlineData(" <")]
+    [InlineData(" ^")]
+    [InlineData("^&<>|")]
+    [InlineData("^&<>| ")]
+    [InlineData(" ^&<>|")]
+    [InlineData("\t^&<>")]
+    [InlineData("^&\t<>")]
+    [InlineData("ls /tmp | grep foo.txt > /dev/null")]
+    [InlineData("let rec Y f x = f (Y f) x")]
+    [InlineData("value with \"quotes\" and spaces")]
+    [InlineData("C:\\Program Files\\Test App\\app.dll")]
+    [InlineData("C:\\EndsWithBackslash\\")]
+    [InlineData("--already-looks-like-flag")]
+    [InlineData("-starts-with-dash")]
+    [InlineData("name=value=another")]
+    [InlineData("$(echo injected)")]
+    [InlineData("value-with-\"quotes\"-and-\\backslashes\\")]
+    [InlineData("http://localhost:1234/callback?foo=1&bar=2")]
+    public async Task EscapesCliArgumentsCorrectly(string? cliArgumentValue)
+    {
+        if (PlatformDetection.IsMonoRuntime && cliArgumentValue?.EndsWith("\\") is true)
+        {
+            Assert.Skip("mono runtime does not handle arguments ending with backslash correctly.");
+        }
+        
+        string cliArgument = $"--cli-arg={cliArgumentValue}";
+
+        StdioClientTransportOptions options = new()
+        {
+            Name = "TestServer",
+            Command = (PlatformDetection.IsMonoRuntime, PlatformDetection.IsWindows) switch
+            {
+                (true, _) => "mono",
+                (_, true) => "TestServer.exe",
+                _ => "dotnet",
+            },
+            Arguments = (PlatformDetection.IsMonoRuntime, PlatformDetection.IsWindows) switch
+            {
+                (true, _) => ["TestServer.exe", cliArgument],
+                (_, true) => [cliArgument],
+                _ => ["TestServer.dll", cliArgument],
+            },
+        };
+
+        var transport = new StdioClientTransport(options, LoggerFactory);
+
+        // Act: Create client (handshake) and list tools to ensure full round trip works with the argument present.
+        await using var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.NotNull(tools);
+        Assert.NotEmpty(tools);
+
+        var result = await client.CallToolAsync("echoCliArg", cancellationToken: TestContext.Current.CancellationToken);
+        var content = Assert.IsType<TextContentBlock>(Assert.Single(result.Content));
+        Assert.Equal(cliArgumentValue ?? "", content.Text);
     }
 }

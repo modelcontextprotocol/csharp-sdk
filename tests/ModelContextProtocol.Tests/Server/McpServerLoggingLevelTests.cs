@@ -42,7 +42,7 @@ public class McpServerLoggingLevelTests
         var server = provider.GetRequiredService<McpServer>();
 
         Assert.NotNull(server.ServerOptions.Capabilities?.Logging);
-        Assert.NotNull(server.ServerOptions.Capabilities.Logging.SetLoggingLevelHandler);
+        Assert.NotNull(server.ServerOptions.Handlers.SetLoggingLevelHandler);
     }
 
     [Fact]

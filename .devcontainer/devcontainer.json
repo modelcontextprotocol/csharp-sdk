@@ -1,0 +1,22 @@
+{
+	"name": "C# (.NET SDK)",
+	"image": "mcr.microsoft.com/devcontainers/dotnet:1-8.0-jammy",
+	"features": {
+		"ghcr.io/devcontainers/features/dotnet:2": {
+			"version": "10.0"
+		},
+		"ghcr.io/devcontainers/features/node:1": {}
+	},
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-dotnettools.csharp",
+				"ms-dotnettools.csdevkit"
+			],
+			"settings": {
+				"dotnet.defaultSolution": "ModelContextProtocol.slnx"
+			}
+		}
+	},
+	"postCreateCommand": "dotnet --list-sdks && echo 'Available .NET SDKs installed successfully!'"
+}

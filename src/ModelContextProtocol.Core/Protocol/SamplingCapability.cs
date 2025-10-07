@@ -1,6 +1,7 @@
+using System.ComponentModel;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Client;
-using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
 
@@ -13,13 +14,16 @@ namespace ModelContextProtocol.Protocol;
 /// </para>
 /// <para>
 /// When this capability is enabled, an MCP server can request the client to generate content
-/// using an AI model. The client must set a <see cref="SamplingHandler"/> to process these requests.
+/// using an AI model. The client must set a <see cref="ModelContextProtocol.Client.McpClientHandlers.SamplingHandler"/> to process these requests.
+/// </para>
+/// <para>
+/// This class is intentionally empty as the Model Context Protocol specification does not
+/// currently define additional properties for sampling capabilities. Future versions of the
+/// specification may extend this capability with additional configuration options.
 /// </para>
 /// </remarks>
 public sealed class SamplingCapability
 {
-    // Currently empty in the spec, but may be extended in the future
-
     /// <summary>
     /// Gets or sets the handler for processing <see cref="RequestMethods.SamplingCreateMessage"/> requests.
     /// </summary>
@@ -39,5 +43,7 @@ public sealed class SamplingCapability
     /// </para>
     /// </remarks>
     [JsonIgnore]
+    [Obsolete($"Use {nameof(McpClientOptions.Handlers.SamplingHandler)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public Func<CreateMessageRequestParams?, IProgress<ProgressNotificationValue>, CancellationToken, ValueTask<CreateMessageResult>>? SamplingHandler { get; set; }
 }

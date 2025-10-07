@@ -139,16 +139,10 @@ public class DiagnosticTests
 
         await using (McpServer server = McpServer.Create(serverTransport, new()
             {
-                Capabilities = new()
-                {
-                    Tools = new()
-                    {
-                        ToolCollection = [
-                            McpServerTool.Create((int amount) => amount * 2, new() { Name = "DoubleValue", Description = "Doubles the value." }),
-                            McpServerTool.Create(() => { throw new Exception("boom"); }, new() { Name = "Throw", Description = "Throws error." }),
-                        ],
-                    }
-                }
+                ToolCollection = [
+                    McpServerTool.Create((int amount) => amount * 2, new() { Name = "DoubleValue", Description = "Doubles the value." }),
+                    McpServerTool.Create(() => { throw new Exception("boom"); }, new() { Name = "Throw", Description = "Throws error." }),
+                ]
             }))
         {
             serverTask = server.RunAsync(TestContext.Current.CancellationToken);

@@ -1,5 +1,6 @@
-using ModelContextProtocol.Server;
+using System.ComponentModel;
 using System.Text.Json.Serialization;
+using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Protocol;
 
@@ -33,6 +34,8 @@ public sealed class ToolsCapability
     /// and the tools from the collection will be combined to form the complete list of available tools.
     /// </remarks>
     [JsonIgnore]
+    [Obsolete($"Use {nameof(McpServerOptions.Handlers.ListToolsHandler)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public McpRequestHandler<ListToolsRequestParams, ListToolsResult>? ListToolsHandler { get; set; }
 
     /// <summary>
@@ -45,6 +48,8 @@ public sealed class ToolsCapability
     /// being called and its arguments, and should return a <see cref="CallToolResult"/> with the execution results.
     /// </remarks>
     [JsonIgnore]
+    [Obsolete($"Use {nameof(McpServerOptions.Handlers.CallToolHandler)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public McpRequestHandler<CallToolRequestParams, CallToolResult>? CallToolHandler { get; set; }
 
     /// <summary>
@@ -59,5 +64,7 @@ public sealed class ToolsCapability
     /// will be invoked as a fallback.
     /// </remarks>
     [JsonIgnore]
+    [Obsolete($"Use {nameof(McpServerOptions.ToolCollection)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public McpServerPrimitiveCollection<McpServerTool>? ToolCollection { get; set; }
 }

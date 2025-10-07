@@ -1,4 +1,5 @@
 using ModelContextProtocol.Server;
+using System.ComponentModel;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -9,7 +10,7 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// <para>
 /// The prompts capability allows a server to expose a collection of predefined prompt templates that clients
-/// can discover and use. These prompts can be static (defined in the <see cref="PromptCollection"/>) or
+/// can discover and use. These prompts can be static (defined in the <see cref="McpServerOptions.PromptCollection"/>) or
 /// dynamically generated through handlers.
 /// </para>
 /// <para>
@@ -40,6 +41,8 @@ public sealed class PromptsCapability
     /// along with any prompts defined in <see cref="PromptCollection"/>.
     /// </remarks>
     [JsonIgnore]
+    [Obsolete($"Use {nameof(McpServerOptions.Handlers.ListPromptsHandler)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public McpRequestHandler<ListPromptsRequestParams, ListPromptsResult>? ListPromptsHandler { get; set; }
 
     /// <summary>
@@ -57,6 +60,8 @@ public sealed class PromptsCapability
     /// </para>
     /// </remarks>
     [JsonIgnore]
+    [Obsolete($"Use {nameof(McpServerOptions.Handlers.GetPromptHandler)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public McpRequestHandler<GetPromptRequestParams, GetPromptResult>? GetPromptHandler { get; set; }
 
     /// <summary>
@@ -78,5 +83,7 @@ public sealed class PromptsCapability
     /// </para>
     /// </remarks>
     [JsonIgnore]
+    [Obsolete($"Use {nameof(McpServerOptions.PromptCollection)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public McpServerPrimitiveCollection<McpServerPrompt>? PromptCollection { get; set; }
 }

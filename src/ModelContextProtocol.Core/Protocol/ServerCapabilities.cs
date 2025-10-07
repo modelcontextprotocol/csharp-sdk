@@ -1,4 +1,6 @@
+using System.ComponentModel;
 using System.Text.Json.Serialization;
+using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Protocol;
 
@@ -21,13 +23,13 @@ public sealed class ServerCapabilities
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The <see cref="Experimental"/> dictionary allows servers to advertise support for features that are not yet 
-    /// standardized in the Model Context Protocol specification. This extension mechanism enables 
+    /// The <see cref="Experimental"/> dictionary allows servers to advertise support for features that are not yet
+    /// standardized in the Model Context Protocol specification. This extension mechanism enables
     /// future protocol enhancements while maintaining backward compatibility.
     /// </para>
     /// <para>
-    /// Values in this dictionary are implementation-specific and should be coordinated between client 
-    /// and server implementations. Clients should not assume the presence of any experimental capability 
+    /// Values in this dictionary are implementation-specific and should be coordinated between client
+    /// and server implementations. Clients should not assume the presence of any experimental capability
     /// without checking for it first.
     /// </para>
     /// </remarks>
@@ -82,5 +84,7 @@ public sealed class ServerCapabilities
     /// </para>
     /// </remarks>
     [JsonIgnore]
+    [Obsolete($"Use {nameof(McpServerOptions.Handlers.NotificationHandlers)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public IEnumerable<KeyValuePair<string, Func<JsonRpcNotification, CancellationToken, ValueTask>>>? NotificationHandlers { get; set; }
 }

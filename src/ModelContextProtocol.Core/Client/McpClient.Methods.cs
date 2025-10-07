@@ -631,11 +631,11 @@ public abstract partial class McpClient : McpSession, IMcpClient
     }
 
     /// <summary>
-    /// Creates a sampling handler for use with <see cref="SamplingCapability.SamplingHandler"/> that will
+    /// Creates a sampling handler for use with <see cref="McpClientHandlers.SamplingHandler"/> that will
     /// satisfy sampling requests using the specified <see cref="IChatClient"/>.
     /// </summary>
     /// <param name="chatClient">The <see cref="IChatClient"/> with which to satisfy sampling requests.</param>
-    /// <returns>The created handler delegate that can be assigned to <see cref="SamplingCapability.SamplingHandler"/>.</returns>
+    /// <returns>The created handler delegate that can be assigned to <see cref="McpClientHandlers.SamplingHandler"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="chatClient"/> is <see langword="null"/>.</exception>
     public static Func<CreateMessageRequestParams?, IProgress<ProgressNotificationValue>, CancellationToken, ValueTask<CreateMessageResult>> CreateSamplingHandler(
         IChatClient chatClient)

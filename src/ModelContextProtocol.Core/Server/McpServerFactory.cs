@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
+using System.ComponentModel;
 
 namespace ModelContextProtocol.Server;
 
@@ -10,7 +11,8 @@ namespace ModelContextProtocol.Server;
 /// This is the recommended way to create <see cref="IMcpServer"/> instances.
 /// The factory handles proper initialization of server instances with the required dependencies.
 /// </remarks>
-[Obsolete($"Use {nameof(McpServer)}.{nameof(McpServer.Create)} instead.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+[Obsolete($"Use {nameof(McpServer)}.{nameof(McpServer.Create)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+[EditorBrowsable(EditorBrowsableState.Never)]
 public static class McpServerFactory
 {
     /// <summary>

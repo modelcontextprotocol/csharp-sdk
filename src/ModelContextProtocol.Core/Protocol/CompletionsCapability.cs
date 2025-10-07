@@ -1,5 +1,6 @@
-using ModelContextProtocol.Server;
+using System.ComponentModel;
 using System.Text.Json.Serialization;
+using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Protocol;
 
@@ -19,11 +20,14 @@ namespace ModelContextProtocol.Protocol;
 /// <para>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
+/// <para>
+/// This class is intentionally empty as the Model Context Protocol specification does not
+/// currently define additional properties for sampling capabilities. Future versions of the
+/// specification may extend this capability with additional configuration options.
+/// </para>
 /// </remarks>
 public sealed class CompletionsCapability
 {
-    // Currently empty in the spec, but may be extended in the future.
-
     /// <summary>
     /// Gets or sets the handler for completion requests.
     /// </summary>
@@ -33,5 +37,7 @@ public sealed class CompletionsCapability
     /// and should return appropriate completion suggestions.
     /// </remarks>
     [JsonIgnore]
+    [Obsolete($"Use {nameof(McpServerOptions.Handlers.CompleteHandler)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public McpRequestHandler<CompleteRequestParams, CompleteResult>? CompleteHandler { get; set; }
 }

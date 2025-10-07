@@ -1,4 +1,6 @@
+using System.ComponentModel;
 using System.Text.Json.Serialization;
+using ModelContextProtocol.Client;
 
 namespace ModelContextProtocol.Protocol;
 
@@ -11,13 +13,16 @@ namespace ModelContextProtocol.Protocol;
 /// </para>
 /// <para>
 /// When this capability is enabled, an MCP server can request the client to provide additional information
-/// during interactions. The client must set a <see cref="ElicitationHandler"/> to process these requests.
+/// during interactions. The client must set a <see cref="ModelContextProtocol.Client.McpClientHandlers.ElicitationHandler"/> to process these requests.
+/// </para>
+/// <para>
+/// This class is intentionally empty as the Model Context Protocol specification does not
+/// currently define additional properties for sampling capabilities. Future versions of the
+/// specification may extend this capability with additional configuration options.
 /// </para>
 /// </remarks>
 public sealed class ElicitationCapability
 {
-    // Currently empty in the spec, but may be extended in the future.
-
     /// <summary>
     /// Gets or sets the handler for processing <see cref="RequestMethods.ElicitationCreate"/> requests.
     /// </summary>
@@ -32,5 +37,7 @@ public sealed class ElicitationCapability
     /// </para>
     /// </remarks>
     [JsonIgnore]
+    [Obsolete($"Use {nameof(McpClientOptions.Handlers.ElicitationHandler)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public Func<ElicitRequestParams?, CancellationToken, ValueTask<ElicitResult>>? ElicitationHandler { get; set; }
 }

@@ -158,7 +158,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         {
             return async context =>
             {
-                if (!StringValues.IsNullOrEmpty(context.Request.Headers["mcp-session-id"]))
+                if (!StringValues.IsNullOrEmpty(context.Request.Headers["mcp-protocol-version"]))
                 {
                     protocolVersionHeaderValues.Add(context.Request.Headers["mcp-protocol-version"]);
                 }
@@ -179,8 +179,11 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         Assert.Equal("2025-03-26", mcpClient.NegotiatedProtocolVersion);
         await mcpClient.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
+        await mcpClient.DisposeAsync();
+
         // The header should be included in the GET request, the initialized notification, the tools/list call, and the delete request.
-        Assert.NotEmpty(protocolVersionHeaderValues);
+        // The DELETE request won't be sent for Stateless mode due to the lack of an Mcp-Session-Id.
+        Assert.Equal(Stateless ? 3 : 4, protocolVersionHeaderValues.Count);
         Assert.All(protocolVersionHeaderValues, v => Assert.Equal("2025-03-26", v));
     }
 }

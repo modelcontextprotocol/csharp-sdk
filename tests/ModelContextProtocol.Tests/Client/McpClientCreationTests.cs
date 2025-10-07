@@ -63,21 +63,20 @@ public class McpClientCreationTests
         {
             Capabilities = new ClientCapabilities
             {
-                Sampling = new SamplingCapability
-                {
-                    SamplingHandler = async (c, p, t) =>
-                        new CreateMessageResult 
-                        { 
-                            Content = new TextContentBlock { Text = "result" }, 
-                            Model = "test-model", 
-                            Role = Role.User, 
-                            StopReason = "endTurn" 
-                        },
-                },
                 Roots = new RootsCapability
                 {
                     ListChanged = true,
-                    RootsHandler = async (t, r) => new ListRootsResult { Roots = [] },
+                }
+            },
+            Handlers = new()
+            {
+                RootsHandler = async (t, r) => new ListRootsResult { Roots = [] },
+                SamplingHandler = async (c, p, t) => new CreateMessageResult
+                {
+                    Content = new TextContentBlock { Text = "result" },
+                    Model = "test-model",
+                    Role = Role.User,
+                    StopReason = "endTurn"
                 }
             }
         };

@@ -11,6 +11,8 @@ namespace ModelContextProtocol.Client;
 /// </remarks>
 public sealed class McpClientOptions
 {
+    private McpClientHandlers? _handlers;
+
     /// <summary>
     /// Gets or sets information about this client implementation, including its name and version.
     /// </summary>
@@ -63,4 +65,17 @@ public sealed class McpClientOptions
     /// <para>The default value is 60 seconds.</para>
     /// </remarks>
     public TimeSpan InitializationTimeout { get; set; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// Gets or sets the container of handlers used by the client for processing protocol messages.
+    /// </summary>
+    public McpClientHandlers Handlers 
+    { 
+        get => _handlers ??= new();
+        set
+        {
+            Throw.IfNull(value);
+            _handlers = value;
+        }
+    }
 }

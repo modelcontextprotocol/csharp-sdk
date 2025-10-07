@@ -174,54 +174,51 @@ using System.Text.Json;
 McpServerOptions options = new()
 {
     ServerInfo = new Implementation { Name = "MyServer", Version = "1.0.0" },
-    Capabilities = new ServerCapabilities
+    Handlers = new McpServerHandlers()
     {
-        Tools = new ToolsCapability
-        {
-            ListToolsHandler = (request, cancellationToken) =>
-                ValueTask.FromResult(new ListToolsResult
-                {
-                    Tools =
-                    [
-                        new Tool
-                        {
-                            Name = "echo",
-                            Description = "Echoes the input back to the client.",
-                            InputSchema = JsonSerializer.Deserialize<JsonElement>("""
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                      "message": {
-                                        "type": "string",
-                                        "description": "The input to echo back"
-                                      }
-                                    },
-                                    "required": ["message"]
-                                }
-                                """),
-                        }
-                    ]
-                }),
-
-            CallToolHandler = (request, cancellationToken) =>
+        ListToolsHandler = (request, cancellationToken) =>
+            ValueTask.FromResult(new ListToolsResult
             {
-                if (request.Params?.Name == "echo")
-                {
-                    if (request.Params.Arguments?.TryGetValue("message", out var message) is not true)
+                Tools =
+                [
+                    new Tool
                     {
-                        throw new McpException("Missing required argument 'message'");
+                        Name = "echo",
+                        Description = "Echoes the input back to the client.",
+                        InputSchema = JsonSerializer.Deserialize<JsonElement>("""
+                            {
+                                "type": "object",
+                                "properties": {
+                                  "message": {
+                                    "type": "string",
+                                    "description": "The input to echo back"
+                                  }
+                                },
+                                "required": ["message"]
+                            }
+                            """),
                     }
+                ]
+            }),
 
-                    return ValueTask.FromResult(new CallToolResult
-                    {
-                        Content = [new TextContentBlock { Text = $"Echo: {message}", Type = "text" }]
-                    });
+        CallToolHandler = (request, cancellationToken) =>
+        {
+            if (request.Params?.Name == "echo")
+            {
+                if (request.Params.Arguments?.TryGetValue("message", out var message) is not true)
+                {
+                    throw new McpException("Missing required argument 'message'");
                 }
 
-                throw new McpException($"Unknown tool: '{request.Params?.Name}'");
-            },
+                return ValueTask.FromResult(new CallToolResult
+                {
+                    Content = [new TextContentBlock { Text = $"Echo: {message}", Type = "text" }]
+                });
+            }
+
+            throw new McpException($"Unknown tool: '{request.Params?.Name}'");
         }
-    },
+    }
 };
 
 await using McpServer server = McpServer.Create(new StdioServerTransport("MyServer"), options);
