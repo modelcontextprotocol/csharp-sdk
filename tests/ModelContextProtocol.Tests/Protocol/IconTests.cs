@@ -13,7 +13,8 @@ public static class IconTests
         {
             Source = "https://example.com/icon.png",
             MimeType = "image/png",
-            Sizes = new List<string> { "48x48" }
+            Sizes = new List<string> { "48x48" },
+            Theme = "light"
         };
 
         // Act - Serialize to JSON
@@ -27,6 +28,7 @@ public static class IconTests
         Assert.Equal(original.Source, deserialized.Source);
         Assert.Equal(original.MimeType, deserialized.MimeType);
         Assert.Equal(original.Sizes, deserialized.Sizes);
+        Assert.Equal(original.Theme, deserialized.Theme);
     }
 
     [Fact]
@@ -49,6 +51,7 @@ public static class IconTests
         Assert.Equal(original.Source, deserialized.Source);
         Assert.Equal(original.MimeType, deserialized.MimeType);
         Assert.Equal(original.Sizes, deserialized.Sizes);
+        Assert.Null(deserialized.Theme);
     }
 
     [Fact]
@@ -58,7 +61,8 @@ public static class IconTests
         {
             Source = "https://example.com/icon.svg",
             MimeType = "image/svg+xml",
-            Sizes = new List<string> { "any" }
+            Sizes = new List<string> { "any" },
+            Theme = "dark"
         };
 
         string json = JsonSerializer.Serialize(icon, McpJsonUtilities.DefaultOptions);
@@ -66,6 +70,7 @@ public static class IconTests
         Assert.Contains("\"src\":", json);
         Assert.Contains("\"mimeType\":", json);
         Assert.Contains("\"sizes\":", json);
+        Assert.Contains("\"theme\":", json);
     }
 
     [Theory]
