@@ -43,14 +43,14 @@ public sealed class StreamableHttpServerTransport : ITransport
     /// <summary>
     /// Configures whether the transport should be in stateless mode that does not require all requests for a given session
     /// to arrive to the same ASP.NET Core application process. Unsolicited server-to-client messages are not supported in this mode,
-    /// so calling <see cref="HandleGetRequest(Stream, CancellationToken)"/> results in an <see cref="InvalidOperationException"/>.
+    /// so calling <see cref="HandleGetRequestAsync(Stream, CancellationToken)"/> results in an <see cref="InvalidOperationException"/>.
     /// Server-to-client requests are also unsupported, because the responses may arrive at another ASP.NET Core application process.
     /// Client sampling and roots capabilities are also disabled in stateless mode, because the server cannot make requests.
     /// </summary>
     public bool Stateless { get; init; }
 
     /// <summary>
-    /// Gets a value indicating whether the execution context should flow from the calls to <see cref="HandlePostRequest(JsonRpcMessage, Stream, CancellationToken)"/>
+    /// Gets a value indicating whether the execution context should flow from the calls to <see cref="HandlePostRequestAsync(JsonRpcMessage, Stream, CancellationToken)"/>
     /// to the corresponding <see cref="JsonRpcMessageContext.ExecutionContext"/> property contained in the <see cref="JsonRpcMessage"/> instances returned by the <see cref="MessageReader"/>.
     /// </summary>
     /// <remarks>
@@ -76,7 +76,7 @@ public sealed class StreamableHttpServerTransport : ITransport
     /// <param name="sseResponseStream">The response stream to write MCP JSON-RPC messages as SSE events to.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task representing the send loop that writes JSON-RPC messages to the SSE response stream.</returns>
-    public async Task HandleGetRequest(Stream sseResponseStream, CancellationToken cancellationToken = default)
+    public async Task HandleGetRequestAsync(Stream sseResponseStream, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(sseResponseStream);
 
@@ -111,7 +111,7 @@ public sealed class StreamableHttpServerTransport : ITransport
     /// If 's an authenticated <see cref="ClaimsPrincipal"/> sent the message, that can be included in the <see cref="JsonRpcMessage.Context"/>.
     /// No other part of the context should be set.
     /// </para>
-    public async Task<bool> HandlePostRequest(JsonRpcMessage message, Stream responseStream, CancellationToken cancellationToken = default)
+    public async Task<bool> HandlePostRequestAsync(JsonRpcMessage message, Stream responseStream, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(message);
         Throw.IfNull(responseStream);

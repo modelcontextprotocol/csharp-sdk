@@ -60,7 +60,7 @@ internal sealed class StreamableHttpHandler(
         }
 
         InitializeSseResponse(context);
-        var wroteResponse = await session.Transport.HandlePostRequest(message, context.Response.Body, context.RequestAborted);
+        var wroteResponse = await session.Transport.HandlePostRequestAsync(message, context.Response.Body, context.RequestAborted);
         if (!wroteResponse)
         {
             // We wound up writing nothing, so there should be no Content-Type response header.
@@ -101,7 +101,7 @@ internal sealed class StreamableHttpHandler(
         // will be sent in response to a different POST request. It might be a while before we send a message
         // over this response body.
         await context.Response.Body.FlushAsync(context.RequestAborted);
-        await session.Transport.HandleGetRequest(context.Response.Body, context.RequestAborted);
+        await session.Transport.HandleGetRequestAsync(context.Response.Body, context.RequestAborted);
     }
 
     public async Task HandleDeleteRequestAsync(HttpContext context)
