@@ -532,6 +532,110 @@ public class McpServerTests : LoggedTest
         await Succeeds_Even_If_No_Handler_Assigned(new ServerCapabilities { Tools = new() }, RequestMethods.ToolsCall, "CallTool handler not configured");
     }
 
+    [Fact]
+    public async Task Can_Handle_Call_Tool_Requests_With_McpServerToolException()
+    {
+        const string errorMessage = "Tool execution failed with detailed error";
+        await Can_Handle_Requests(
+            new ServerCapabilities
+            {
+                Tools = new()
+            },
+            method: RequestMethods.ToolsCall,
+            configureOptions: options =>
+            {
+                options.Handlers.CallToolHandler = async (request, ct) =>
+                {
+                    throw new McpServerToolException(errorMessage);
+                };
+                options.Handlers.ListToolsHandler = (request, ct) => throw new NotImplementedException();
+            },
+            assertResult: (_, response) =>
+            {
+                var result = JsonSerializer.Deserialize<CallToolResult>(response, McpJsonUtilities.DefaultOptions);
+                Assert.NotNull(result);
+                Assert.True(result.IsError);
+                Assert.NotEmpty(result.Content);
+                var textContent = Assert.IsType<TextContentBlock>(result.Content[0]);
+                Assert.Contains(errorMessage, textContent.Text);
+            });
+    }
+
+    [Fact]
+    public async Task Can_Handle_Call_Tool_Requests_With_Plain_Exception()
+    {
+        await Can_Handle_Requests(
+            new ServerCapabilities
+            {
+                Tools = new()
+            },
+            method: RequestMethods.ToolsCall,
+            configureOptions: options =>
+            {
+                options.Handlers.CallToolHandler = async (request, ct) =>
+                {
+                    throw new InvalidOperationException("This sensitive message should not be exposed");
+                };
+                options.Handlers.ListToolsHandler = (request, ct) => throw new NotImplementedException();
+            },
+            assertResult: (_, response) =>
+            {
+                var result = JsonSerializer.Deserialize<CallToolResult>(response, McpJsonUtilities.DefaultOptions);
+                Assert.NotNull(result);
+                Assert.True(result.IsError);
+                Assert.NotEmpty(result.Content);
+                var textContent = Assert.IsType<TextContentBlock>(result.Content[0]);
+                // Should be a generic error message, not the actual exception message
+                Assert.DoesNotContain("sensitive", textContent.Text, StringComparison.OrdinalIgnoreCase);
+                Assert.Contains("An error occurred", textContent.Text);
+            });
+    }
+
+    [Fact]
+    public async Task Can_Handle_Call_Tool_Requests_With_McpException()
+    {
+        const string errorMessage = "Invalid tool parameters";
+        const McpErrorCode errorCode = McpErrorCode.InvalidParams;
+
+        await using var transport = new TestServerTransport();
+        var options = CreateOptions(new ServerCapabilities { Tools = new() });
+        options.Handlers.CallToolHandler = async (request, ct) =>
+        {
+            throw new McpException(errorMessage, errorCode);
+        };
+        options.Handlers.ListToolsHandler = (request, ct) => throw new NotImplementedException();
+
+        await using var server = McpServer.Create(transport, options, LoggerFactory);
+
+        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+
+        var receivedMessage = new TaskCompletionSource<JsonRpcError>();
+
+        transport.OnMessageSent = (message) =>
+        {
+            if (message is JsonRpcError error && error.Id.ToString() == "55")
+                receivedMessage.SetResult(error);
+        };
+
+        await transport.SendMessageAsync(
+            new JsonRpcRequest
+            {
+                Method = RequestMethods.ToolsCall,
+                Id = new RequestId(55)
+            },
+            TestContext.Current.CancellationToken
+        );
+
+        var error = await receivedMessage.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.NotNull(error);
+        Assert.NotNull(error.Error);
+        Assert.Equal((int)errorCode, error.Error.Code);
+        Assert.Equal(errorMessage, error.Error.Message);
+
+        await transport.DisposeAsync();
+        await runTask;
+    }
+
     private async Task Can_Handle_Requests(ServerCapabilities? serverCapabilities, string method, Action<McpServerOptions>? configureOptions, Action<McpServer, JsonNode?> assertResult)
     {
         await using var transport = new TestServerTransport();

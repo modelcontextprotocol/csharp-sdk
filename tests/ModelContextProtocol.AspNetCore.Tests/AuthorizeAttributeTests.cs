@@ -289,21 +289,23 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
     }
 
     [Fact]
-    public async Task CallTool_WithoutAuthFilters_ThrowsInvalidOperationException()
+    public async Task CallTool_WithoutAuthFilters_ReturnsError()
     {
         _mockLoggerProvider.LogMessages.Clear();
         await using var app = await StartServerWithoutAuthFilters(builder => builder.WithTools<AuthorizationTestTools>());
         var client = await ConnectAsync();
 
-        var exception = await Assert.ThrowsAsync<McpException>(async () =>
-            await client.CallToolAsync(
+        var toolResult = await client.CallToolAsync(
                 "authorized_tool",
                 new Dictionary<string, object?> { ["message"] = "test" },
-                cancellationToken: TestContext.Current.CancellationToken));
+                cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal("Request failed (remote): An error occurred.", exception.Message);
+        Assert.True(toolResult.IsError);
+
+        var errorContent = Assert.IsType<TextContentBlock>(Assert.Single(toolResult.Content));
+        Assert.Equal("An error occurred invoking 'authorized_tool'.", errorContent.Text);
         Assert.Contains(_mockLoggerProvider.LogMessages, log =>
-            log.LogLevel == LogLevel.Warning &&
+            log.LogLevel == LogLevel.Error &&
             log.Exception is InvalidOperationException &&
             log.Exception.Message.Contains("Authorization filter was not invoked for tools/call operation") &&
             log.Exception.Message.Contains("Ensure that AddAuthorizationFilters() is called"));

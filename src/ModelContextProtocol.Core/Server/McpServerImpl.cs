@@ -580,7 +580,7 @@ internal sealed partial class McpServerImpl : McpServer
 
         listToolsHandler = BuildFilterPipeline(listToolsHandler, options.Filters.ListToolsFilters);
         callToolHandler = BuildFilterPipeline(callToolHandler, options.Filters.CallToolFilters, handler =>
-            (request, cancellationToken) =>
+            async (request, cancellationToken) =>
             {
                 // Initial handler that sets MatchedPrimitive
                 if (request.Params?.Name is { } toolName && tools is not null &&
@@ -589,37 +589,23 @@ internal sealed partial class McpServerImpl : McpServer
                     request.MatchedPrimitive = tool;
                 }
 
-                return handler(request, cancellationToken);
-            }, handler =>
-            async (request, cancellationToken) =>
-            {
-                // Final handler that provides exception handling only for tool execution
-                // Only wrap tool execution in try-catch, not tool resolution
-                if (request.MatchedPrimitive is McpServerTool)
+                try
                 {
-                    try
-                    {
-                        return await handler(request, cancellationToken).ConfigureAwait(false);
-                    }
-                    catch (Exception e) when (e is not OperationCanceledException)
-                    {
-                        ToolCallError(request.Params?.Name ?? string.Empty, e);
-
-                        string errorMessage = e is McpException ?
-                            $"An error occurred invoking '{request.Params?.Name}': {e.Message}" :
-                            $"An error occurred invoking '{request.Params?.Name}'.";
-
-                        return new()
-                        {
-                            IsError = true,
-                            Content = [new TextContentBlock { Text = errorMessage }],
-                        };
-                    }
+                    return await handler(request, cancellationToken);
                 }
-                else
+                catch (Exception e) when (e is not OperationCanceledException and not McpException)
                 {
-                    // For unmatched tools, let exceptions bubble up as protocol errors
-                    return await handler(request, cancellationToken).ConfigureAwait(false);
+                    ToolCallError(request.Params?.Name ?? string.Empty, e);
+
+                    string errorMessage = e is McpServerToolException ?
+                        $"An error occurred invoking '{request.Params?.Name}': {e.Message}" :
+                        $"An error occurred invoking '{request.Params?.Name}'.";
+
+                    return new()
+                    {
+                        IsError = true,
+                        Content = [new TextContentBlock { Text = errorMessage }],
+                    };
                 }
             });
 
@@ -735,15 +721,9 @@ internal sealed partial class McpServerImpl : McpServer
     private static McpRequestHandler<TParams, TResult> BuildFilterPipeline<TParams, TResult>(
         McpRequestHandler<TParams, TResult> baseHandler,
         List<McpRequestFilter<TParams, TResult>> filters,
-        McpRequestFilter<TParams, TResult>? initialHandler = null,
-        McpRequestFilter<TParams, TResult>? finalHandler = null)
+        McpRequestFilter<TParams, TResult>? initialHandler = null)
     {
         var current = baseHandler;
-
-        if (finalHandler is not null)
-        {
-            current = finalHandler(current);
-        }
 
         for (int i = filters.Count - 1; i >= 0; i--)
         {
