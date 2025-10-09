@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
@@ -17,8 +18,9 @@ internal sealed class StreamableHttpHandler(
     IOptionsFactory<McpServerOptions> mcpServerOptionsFactory,
     IOptions<HttpServerTransportOptions> httpServerTransportOptions,
     StatefulSessionManager sessionManager,
-    ILoggerFactory loggerFactory,
-    IServiceProvider applicationServices)
+    IHostApplicationLifetime hostApplicationLifetime,
+    IServiceProvider applicationServices,
+    ILoggerFactory loggerFactory)
 {
     private const string McpSessionIdHeaderName = "Mcp-Session-Id";
 
@@ -94,14 +96,28 @@ internal sealed class StreamableHttpHandler(
             return;
         }
 
-        await using var _ = await session.AcquireReferenceAsync(context.RequestAborted);
-        InitializeSseResponse(context);
+        // Link the GET request to both RequestAborted and ApplicationStopping.
+        // The GET request should complete immediately during graceful shutdown without waiting for
+        // in-flight POST requests to complete. This prevents slow shutdown when clients are still connected.
+        using var sseCts = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, hostApplicationLifetime.ApplicationStopping);
+        var cancellationToken = sseCts.Token;
 
-        // We should flush headers to indicate a 200 success quickly, because the initialization response
-        // will be sent in response to a different POST request. It might be a while before we send a message
-        // over this response body.
-        await context.Response.Body.FlushAsync(context.RequestAborted);
-        await session.Transport.HandleGetRequestAsync(context.Response.Body, context.RequestAborted);
+        try
+        {
+            await using var _ = await session.AcquireReferenceAsync(cancellationToken);
+            InitializeSseResponse(context);
+
+            // We should flush headers to indicate a 200 success quickly, because the initialization response
+            // will be sent in response to a different POST request. It might be a while before we send a message
+            // over this response body.
+            await context.Response.Body.FlushAsync(sseCts.Token);
+            await session.Transport.HandleGetRequestAsync(context.Response.Body, sseCts.Token);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // RequestAborted always triggers when the client disconnects before a complete response body is written,
+            // but this is how SSE connections are typically closed.
+        }
     }
 
     public async Task HandleDeleteRequestAsync(HttpContext context)

@@ -370,6 +370,7 @@ public class Program
         var serviceCollection = new ServiceCollection();
         serviceCollection.AddLogging();
         serviceCollection.AddSingleton(app.ApplicationServices.GetRequiredService<ILoggerFactory>());
+        serviceCollection.AddSingleton(app.ApplicationServices.GetRequiredService<IHostApplicationLifetime>());
         serviceCollection.AddSingleton(app.ApplicationServices.GetRequiredService<DiagnosticListener>());
         serviceCollection.AddRoutingCore();
 

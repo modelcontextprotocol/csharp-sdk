@@ -8,6 +8,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Net;
 using System.Security.Claims;
 
@@ -114,10 +115,9 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     }
 
     [Fact]
-    public async Task ClaimsPrincipal_CanBeInjectedIntoToolMethod()
+    public async Task ClaimsPrincipal_CanBeInjected_IntoToolMethod()
     {
         Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<ClaimsPrincipalTools>();
-        Builder.Services.AddHttpContextAccessor();
 
         await using var app = Builder.Build();
 
@@ -209,6 +209,35 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
         Assert.Single(mockLoggerProvider.LogMessages, m =>
             m.Category == "ModelContextProtocol.Server.McpServer" &&
             m.Message.Contains("request '2' for method 'sampling/createMessage'"));
+    }
+
+    [Fact]
+    public async Task Server_ShutsDownQuickly_WhenClientIsConnected()
+    {
+        Builder.Services.AddMcpServer().WithHttpTransport().WithTools<ClaimsPrincipalTools>();
+
+        await using var app = Builder.Build();
+        app.MapMcp();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        // Connect a client which will open a long-running GET request (SSE or Streamable HTTP)
+        await using var mcpClient = await ConnectAsync();
+
+        // Verify the client is connected
+        var tools = await mcpClient.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotEmpty(tools);
+
+        // Now measure how long it takes to stop the server
+        var stopwatch = Stopwatch.StartNew();
+        await app.StopAsync(TestContext.Current.CancellationToken);
+        stopwatch.Stop();
+
+        // The server should shut down quickly (within a few seconds). We use 5 seconds as a generous threshold.
+        // This is much less than the default HostOptions.ShutdownTimeout of 30 seconds.
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5),
+            $"Server took {stopwatch.Elapsed.TotalSeconds:F2} seconds to shut down with a connected client. " +
+            "This suggests the GET request is not respecting ApplicationStopping token.");
     }
 
     private ClaimsPrincipal CreateUser(string name)
