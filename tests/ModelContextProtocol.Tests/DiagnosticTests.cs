@@ -87,7 +87,7 @@ public class DiagnosticTests
             await RunConnected(async (client, server) =>
             {
                 await client.CallToolAsync("Throw", cancellationToken: TestContext.Current.CancellationToken);
-                await Assert.ThrowsAsync<McpException>(async () => await client.CallToolAsync("does-not-exist", cancellationToken: TestContext.Current.CancellationToken));
+                await Assert.ThrowsAsync<McpProtocolException>(async () => await client.CallToolAsync("does-not-exist", cancellationToken: TestContext.Current.CancellationToken));
             }, new List<string>());
         }
 

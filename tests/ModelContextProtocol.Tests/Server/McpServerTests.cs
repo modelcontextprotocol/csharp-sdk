@@ -533,7 +533,7 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
-    public async Task Can_Handle_Call_Tool_Requests_With_McpServerToolException()
+    public async Task Can_Handle_Call_Tool_Requests_With_McpException()
     {
         const string errorMessage = "Tool execution failed with detailed error";
         await Can_Handle_Requests(
@@ -546,7 +546,7 @@ public class McpServerTests : LoggedTest
             {
                 options.Handlers.CallToolHandler = async (request, ct) =>
                 {
-                    throw new McpServerToolException(errorMessage);
+                    throw new McpException(errorMessage);
                 };
                 options.Handlers.ListToolsHandler = (request, ct) => throw new NotImplementedException();
             },
@@ -592,7 +592,7 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
-    public async Task Can_Handle_Call_Tool_Requests_With_McpException()
+    public async Task Can_Handle_Call_Tool_Requests_With_McpProtocolException()
     {
         const string errorMessage = "Invalid tool parameters";
         const McpErrorCode errorCode = McpErrorCode.InvalidParams;
@@ -601,7 +601,7 @@ public class McpServerTests : LoggedTest
         var options = CreateOptions(new ServerCapabilities { Tools = new() });
         options.Handlers.CallToolHandler = async (request, ct) =>
         {
-            throw new McpException(errorMessage, errorCode);
+            throw new McpProtocolException(errorMessage, errorCode);
         };
         options.Handlers.ListToolsHandler = (request, ct) => throw new NotImplementedException();
 

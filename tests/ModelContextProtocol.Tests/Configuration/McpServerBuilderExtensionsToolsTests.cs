@@ -90,7 +90,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                         };
 
                     default:
-                        throw new McpException($"Unexpected cursor: '{cursor}'", McpErrorCode.InvalidParams);
+                        throw new McpProtocolException($"Unexpected cursor: '{cursor}'", McpErrorCode.InvalidParams);
                 }
             })
             .WithCallToolHandler(async (request, cancellationToken) =>
@@ -106,7 +106,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                         };
 
                     default:
-                        throw new McpException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams);
+                        throw new McpProtocolException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams);
                 }
             })
             .WithTools<EchoTool>(serializerOptions: BuilderToolsJsonContext.Default.Options);
@@ -388,7 +388,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
     {
         await using McpClient client = await CreateMcpClientForServer();
 
-        var e = await Assert.ThrowsAsync<McpException>(async () => await client.CallToolAsync(
+        var e = await Assert.ThrowsAsync<McpProtocolException>(async () => await client.CallToolAsync(
             "NotRegisteredTool",
             cancellationToken: TestContext.Current.CancellationToken));
 

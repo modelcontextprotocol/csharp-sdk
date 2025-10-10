@@ -288,7 +288,7 @@ internal sealed partial class McpServerImpl : McpServer
 
         listResourcesHandler ??= (static async (_, __) => new ListResourcesResult());
         listResourceTemplatesHandler ??= (static async (_, __) => new ListResourceTemplatesResult());
-        readResourceHandler ??= (static async (request, _) => throw new McpException($"Unknown resource URI: '{request.Params?.Uri}'", McpErrorCode.InvalidParams));
+        readResourceHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown resource URI: '{request.Params?.Uri}'", McpErrorCode.InvalidParams));
         subscribeHandler ??= (static async (_, __) => new EmptyResult());
         unsubscribeHandler ??= (static async (_, __) => new EmptyResult());
         var listChanged = resourcesCapability?.ListChanged;
@@ -452,7 +452,7 @@ internal sealed partial class McpServerImpl : McpServer
         ServerCapabilities.Prompts = new();
 
         listPromptsHandler ??= (static async (_, __) => new ListPromptsResult());
-        getPromptHandler ??= (static async (request, _) => throw new McpException($"Unknown prompt: '{request.Params?.Name}'", McpErrorCode.InvalidParams));
+        getPromptHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown prompt: '{request.Params?.Name}'", McpErrorCode.InvalidParams));
         var listChanged = promptsCapability?.ListChanged;
 
         // Handle tools provided via DI by augmenting the handlers to incorporate them.
@@ -540,7 +540,7 @@ internal sealed partial class McpServerImpl : McpServer
         ServerCapabilities.Tools = new();
 
         listToolsHandler ??= (static async (_, __) => new ListToolsResult());
-        callToolHandler ??= (static async (request, _) => throw new McpException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams));
+        callToolHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams));
         var listChanged = toolsCapability?.ListChanged;
 
         // Handle tools provided via DI by augmenting the handlers to incorporate them.
@@ -593,11 +593,11 @@ internal sealed partial class McpServerImpl : McpServer
                 {
                     return await handler(request, cancellationToken);
                 }
-                catch (Exception e) when (e is not OperationCanceledException and not McpException)
+                catch (Exception e) when (e is not OperationCanceledException and not McpProtocolException)
                 {
                     ToolCallError(request.Params?.Name ?? string.Empty, e);
 
-                    string errorMessage = e is McpServerToolException ?
+                    string errorMessage = e is McpException ?
                         $"An error occurred invoking '{request.Params?.Name}': {e.Message}" :
                         $"An error occurred invoking '{request.Params?.Name}'.";
 
