@@ -30,7 +30,6 @@ updates:
           - "Microsoft.Extensions.Logging"
           - "Microsoft.Extensions.Logging.Console"
           - "Microsoft.Extensions.Options"
-          - "Microsoft.Extensions.TimeProvider.Testing"
       opentelemetry-testing:
         patterns:
           - "OpenTelemetry*"
@@ -47,7 +46,9 @@ updates:
     ignore:
       # Ignore all Microsoft product dependencies except those explicitly defined in groups.
       - dependency-name: "Microsoft.Extensions.Hosting.Abstractions"
-      - dependency-name: "Microsoft.Extensions.Logging.Abstractions" 
+      - dependency-name: "Microsoft.Extensions.Logging.Abstractions"
+      - dependency-name: "Microsoft.Extensions.AI.OpenAI"
+      - dependency-name: "Microsoft.Extensions.TimeProvider.Testing" 
       - dependency-name: "Microsoft.AspNetCore.*"
       - dependency-name: "Microsoft.IdentityModel.*"
       - dependency-name: "Microsoft.Bcl.*"
