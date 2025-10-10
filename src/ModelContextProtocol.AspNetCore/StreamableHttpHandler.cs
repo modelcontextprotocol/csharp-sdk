@@ -110,8 +110,8 @@ internal sealed class StreamableHttpHandler(
             // We should flush headers to indicate a 200 success quickly, because the initialization response
             // will be sent in response to a different POST request. It might be a while before we send a message
             // over this response body.
-            await context.Response.Body.FlushAsync(sseCts.Token);
-            await session.Transport.HandleGetRequestAsync(context.Response.Body, sseCts.Token);
+            await context.Response.Body.FlushAsync(cancellationToken);
+            await session.Transport.HandleGetRequestAsync(context.Response.Body, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

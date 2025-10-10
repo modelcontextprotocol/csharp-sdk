@@ -41,12 +41,9 @@ public sealed class KestrelInMemoryTransport : IConnectionListenerFactory
 
         public async ValueTask<ConnectionContext?> AcceptAsync(CancellationToken cancellationToken = default)
         {
-            while (await acceptQueue.Reader.WaitToReadAsync(cancellationToken))
+            await foreach (var item in acceptQueue.Reader.ReadAllAsync(cancellationToken))
             {
-                while (acceptQueue.Reader.TryRead(out var item))
-                {
-                    return item;
-                }
+                return item;
             }
 
             return null;
