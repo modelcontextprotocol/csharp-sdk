@@ -13,9 +13,6 @@ updates:
     # Dependencies are controlled via the groups below
     # Group dependencies to reduce PR noise
     groups:
-      microsoft-extensions-ai:
-        patterns:
-          - "Microsoft.Extensions.AI.*"
       testing-frameworks:
         patterns:
           - "xunit.*"
@@ -23,13 +20,6 @@ updates:
           - "coverlet.*"
           - "GitHubActionsTestLogger"
           - "Moq"
-      microsoft-extensions-testing:
-        patterns:
-          - "Microsoft.Extensions.DependencyInjection"
-          - "Microsoft.Extensions.Hosting"
-          - "Microsoft.Extensions.Logging"
-          - "Microsoft.Extensions.Logging.Console"
-          - "Microsoft.Extensions.Options"
       opentelemetry-testing:
         patterns:
           - "OpenTelemetry*"
