@@ -175,16 +175,27 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         request.Headers.Accept.Add(s_textEventStreamMediaType);
         CopyAdditionalHeaders(request.Headers, _options.AdditionalHeaders, SessionId, _negotiatedProtocolVersion);
 
-        using var response = await _httpClient.SendAsync(request, message: null, _connectionCts.Token).ConfigureAwait(false);
-
-        if (!response.IsSuccessStatusCode)
+        // Server support for the GET request is optional. If it fails, we don't care. It just means we won't receive unsolicited messages.
+        HttpResponseMessage response;
+        try
         {
-            // Server support for the GET request is optional. If it fails, we don't care. It just means we won't receive unsolicited messages.
+            response = await _httpClient.SendAsync(request, message: null, _connectionCts.Token).ConfigureAwait(false);
+        }
+        catch (HttpRequestException)
+        {
             return;
         }
 
-        using var responseStream = await response.Content.ReadAsStreamAsync(_connectionCts.Token).ConfigureAwait(false);
-        await ProcessSseResponseAsync(responseStream, relatedRpcRequest: null, _connectionCts.Token).ConfigureAwait(false);
+        using (response)
+        {
+            if (!response.IsSuccessStatusCode)
+            {
+                return;
+            }
+
+            using var responseStream = await response.Content.ReadAsStreamAsync(_connectionCts.Token).ConfigureAwait(false);
+            await ProcessSseResponseAsync(responseStream, relatedRpcRequest: null, _connectionCts.Token).ConfigureAwait(false);
+        }
     }
 
     private async Task<JsonRpcMessageWithId?> ProcessSseResponseAsync(Stream responseStream, JsonRpcRequest? relatedRpcRequest, CancellationToken cancellationToken)
