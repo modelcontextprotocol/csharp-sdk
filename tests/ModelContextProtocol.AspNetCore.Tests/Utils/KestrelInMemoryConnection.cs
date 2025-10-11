@@ -6,28 +6,29 @@ namespace ModelContextProtocol.AspNetCore.Tests.Utils;
 
 public sealed class KestrelInMemoryConnection : ConnectionContext
 {
-    private readonly Pipe _clientToServerPipe = new();
-    private readonly Pipe _serverToClientPipe = new();
     private readonly CancellationTokenSource _connectionClosedCts = new();
     private readonly FeatureCollection _features = new();
 
     public KestrelInMemoryConnection()
     {
+        Pipe clientToServerPipe = new();
+        Pipe serverToClientPipe = new();
+
         ConnectionClosed = _connectionClosedCts.Token;
         Transport = new DuplexPipe
         {
-            Input = _clientToServerPipe.Reader,
-            Output = _serverToClientPipe.Writer,
+            Input = clientToServerPipe.Reader,
+            Output = serverToClientPipe.Writer,
         };
-        Application = new DuplexPipe
+        ClientPipe = new DuplexPipe
         {
-            Input = _serverToClientPipe.Reader,
-            Output = _clientToServerPipe.Writer,
+            Input = serverToClientPipe.Reader,
+            Output = clientToServerPipe.Writer,
         };
-        ClientStream = new DuplexStream(Application, _connectionClosedCts);
+        ClientStream = new DuplexStream(ClientPipe, _connectionClosedCts);
     }
 
-    public IDuplexPipe Application { get; }
+    public IDuplexPipe ClientPipe { get; }
     public Stream ClientStream { get; }
 
     public override IDuplexPipe Transport { get; set; }
@@ -41,8 +42,8 @@ public sealed class KestrelInMemoryConnection : ConnectionContext
     {
         // This is called by Kestrel. The client should dispose the DuplexStream which
         // completes the other half of these pipes.
-        await _serverToClientPipe.Writer.CompleteAsync();
-        await _serverToClientPipe.Reader.CompleteAsync();
+        await Transport.Input.CompleteAsync();
+        await Transport.Output.CompleteAsync();
 
         // Don't bother disposing the _connectionClosedCts, since this is just for testing,
         // and it's annoying to synchronize with DuplexStream.
@@ -93,9 +94,7 @@ public sealed class KestrelInMemoryConnection : ConnectionContext
         {
             // Signal to the server the the client has closed the connection, and dispose the client-half of the Pipes.
             ThreadPool.UnsafeQueueUserWorkItem(static cts => ((CancellationTokenSource)cts!).Cancel(), connectionClosedCts);
-            // We could also call duplexPipe.Input.Complete(), but it's not necessary. It can cause issues with the
-            // Server_ShutsDownQuickly_WhenClientIsConnected test where the HttpClient calls Dispose on the Stream underlying
-            // a GET SSE response while still reading from it, resulting in an InvalidOperationException from the PipeReader.
+            duplexPipe.Input.Complete();
             duplexPipe.Output.Complete();
         }
 
