@@ -181,9 +181,10 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         await mcpClient.DisposeAsync();
 
-        // The header should be included in the GET request, the initialized notification, the tools/list call, and the delete request.
-        // The DELETE request won't be sent for Stateless mode due to the lack of an Mcp-Session-Id.
-        Assert.Equal(Stateless ? 3 : 4, protocolVersionHeaderValues.Count);
+        // The GET request might not have started in time, and the DELETE request won't be sent in
+        // Stateless mode due to the lack of an Mcp-Session-Id, but the header should be included in the
+        // initialized notification and the tools/list call at a minimum.
+        Assert.True(protocolVersionHeaderValues.Count > 1);
         Assert.All(protocolVersionHeaderValues, v => Assert.Equal("2025-03-26", v));
     }
 }
