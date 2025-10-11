@@ -139,7 +139,8 @@ internal sealed partial class ClientOAuthProvider
     {
         ThrowIfNotBearerScheme(scheme);
 
-        var token = await _tokenCache.GetTokenAsync(cancellationToken).ConfigureAwait(false);
+        var cachedToken = await _tokenCache.GetTokenAsync(cancellationToken).ConfigureAwait(false);
+        var token = cachedToken?.ForUse();
 
         // Return the token if it's valid
         if (token != null && token.ExpiresAt > DateTimeOffset.UtcNow.AddMinutes(5))
@@ -153,7 +154,7 @@ internal sealed partial class ClientOAuthProvider
             var newToken = await RefreshTokenAsync(token.RefreshToken, resourceUri, _authServerMetadata, cancellationToken).ConfigureAwait(false);
             if (newToken != null)
             {
-                await _tokenCache.StoreTokenAsync(newToken, cancellationToken).ConfigureAwait(false);
+                await _tokenCache.StoreTokenAsync(newToken.ForCache(), cancellationToken).ConfigureAwait(false);
                 return newToken.AccessToken;
             }
         }
@@ -240,7 +241,7 @@ internal sealed partial class ClientOAuthProvider
             ThrowFailedToHandleUnauthorizedResponse($"The {nameof(AuthorizationRedirectDelegate)} returned a null or empty token.");
         }
 
-        await _tokenCache.StoreTokenAsync(token, cancellationToken).ConfigureAwait(false);
+        await _tokenCache.StoreTokenAsync(token.ForCache(), cancellationToken).ConfigureAwait(false);
         LogOAuthAuthorizationCompleted();
     }
 

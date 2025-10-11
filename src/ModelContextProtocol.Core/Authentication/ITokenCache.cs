@@ -6,12 +6,12 @@ namespace ModelContextProtocol.Authentication;
 public interface ITokenCache
 {
     /// <summary>
-    /// Cache the token.
+    /// Cache the token. After a new access token is acquired, this method is invoked to store it.
     /// </summary>
-    Task StoreTokenAsync(TokenContainer token, CancellationToken cancellationToken);
+    ValueTask StoreTokenAsync(TokenContainerCacheable token, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Get the cached token.
+    /// Get the cached token. This method is invoked for every request.
     /// </summary>
-    Task<TokenContainer?> GetTokenAsync(CancellationToken cancellationToken);
+    ValueTask<TokenContainerCacheable?> GetTokenAsync(CancellationToken cancellationToken);
 }
