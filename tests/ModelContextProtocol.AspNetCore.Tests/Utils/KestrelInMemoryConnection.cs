@@ -93,7 +93,9 @@ public sealed class KestrelInMemoryConnection : ConnectionContext
         {
             // Signal to the server the the client has closed the connection, and dispose the client-half of the Pipes.
             ThreadPool.UnsafeQueueUserWorkItem(static cts => ((CancellationTokenSource)cts!).Cancel(), connectionClosedCts);
-            duplexPipe.Input.Complete();
+            // We could also call duplexPipe.Input.Complete(), but it's not necessary. It can cause issues with the
+            // Server_ShutsDownQuickly_WhenClientIsConnected test where the HttpClient calls Dispose on the Stream underlying
+            // a GET SSE response while still reading from it, resulting in an InvalidOperationException from the PipeReader.
             duplexPipe.Output.Complete();
         }
 
