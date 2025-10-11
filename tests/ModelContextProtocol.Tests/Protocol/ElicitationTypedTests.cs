@@ -248,7 +248,7 @@ public partial class ElicitationTypedTests : ClientServerTestBase
             },
         });
 
-        var ex = await Assert.ThrowsAsync<McpException>(async() =>
+        var ex = await Assert.ThrowsAsync<McpProtocolException>(async() =>
             await client.CallToolAsync("TestElicitationUnsupportedType", cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains(typeof(UnsupportedForm.Nested).FullName!, ex.Message);
@@ -270,7 +270,7 @@ public partial class ElicitationTypedTests : ClientServerTestBase
             }
         });
 
-        var ex = await Assert.ThrowsAsync<McpException>(async () =>
+        var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
             await client.CallToolAsync("TestElicitationNullablePropertyForm", cancellationToken: TestContext.Current.CancellationToken));
     }
 
@@ -290,7 +290,7 @@ public partial class ElicitationTypedTests : ClientServerTestBase
             }
         });
 
-        var ex = await Assert.ThrowsAsync<McpException>(async () =>
+        var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
             await client.CallToolAsync("TestElicitationNonObjectGenericType", cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains(typeof(string).FullName!, ex.Message);

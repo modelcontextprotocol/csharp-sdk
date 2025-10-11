@@ -193,7 +193,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
 
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
-        await Assert.ThrowsAsync<McpException>(async () => 
+        await Assert.ThrowsAsync<McpProtocolException>(async () => 
             await client.GetPromptAsync("non_existent_prompt", null, cancellationToken: TestContext.Current.CancellationToken));
     }
 

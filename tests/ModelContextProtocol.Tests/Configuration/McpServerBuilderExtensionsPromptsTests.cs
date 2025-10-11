@@ -62,7 +62,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
                                 };
 
                             default:
-                                throw new McpException($"Unexpected cursor: '{cursor}'", McpErrorCode.InvalidParams);
+                                throw new McpProtocolException($"Unexpected cursor: '{cursor}'", McpErrorCode.InvalidParams);
                         }
                     })
         .WithGetPromptHandler(async (request, cancellationToken) =>
@@ -78,7 +78,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
                     };
 
                 default:
-                    throw new McpException($"Unknown prompt '{request.Params?.Name}'", McpErrorCode.InvalidParams);
+                    throw new McpProtocolException($"Unknown prompt '{request.Params?.Name}'", McpErrorCode.InvalidParams);
             }
         })
         .WithPrompts<SimplePrompts>();
@@ -190,7 +190,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
     {
         await using McpClient client = await CreateMcpClientForServer();
 
-        await Assert.ThrowsAsync<McpException>(async () => await client.GetPromptAsync(
+        await Assert.ThrowsAsync<McpProtocolException>(async () => await client.GetPromptAsync(
             nameof(SimplePrompts.ThrowsException),
             cancellationToken: TestContext.Current.CancellationToken));
     }
@@ -200,7 +200,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
     {
         await using McpClient client = await CreateMcpClientForServer();
 
-        var e = await Assert.ThrowsAsync<McpException>(async () => await client.GetPromptAsync(
+        var e = await Assert.ThrowsAsync<McpProtocolException>(async () => await client.GetPromptAsync(
             "NotRegisteredPrompt",
             cancellationToken: TestContext.Current.CancellationToken));
 
@@ -212,7 +212,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
     {
         await using McpClient client = await CreateMcpClientForServer();
 
-        var e = await Assert.ThrowsAsync<McpException>(async () => await client.GetPromptAsync(
+        var e = await Assert.ThrowsAsync<McpProtocolException>(async () => await client.GetPromptAsync(
             "returns_chat_messages",
             cancellationToken: TestContext.Current.CancellationToken));
 

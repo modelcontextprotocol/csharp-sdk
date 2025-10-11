@@ -291,7 +291,7 @@ public abstract partial class McpServer : McpSession, IMcpServer
     /// <param name="type">The type of the schema being built.</param>
     /// <param name="serializerOptions">The serializer options to use.</param>
     /// <returns>The built request schema.</returns>
-    /// <exception cref="McpException"></exception>
+    /// <exception cref="McpProtocolException"></exception>
     private static ElicitRequestParams.RequestSchema BuildRequestSchema(Type type, JsonSerializerOptions serializerOptions)
     {
         var schema = new ElicitRequestParams.RequestSchema();
@@ -301,7 +301,7 @@ public abstract partial class McpServer : McpSession, IMcpServer
 
         if (typeInfo.Kind != JsonTypeInfoKind.Object)
         {
-            throw new McpException($"Type '{type.FullName}' is not supported for elicitation requests.");
+            throw new McpProtocolException($"Type '{type.FullName}' is not supported for elicitation requests.");
         }
 
         foreach (JsonPropertyInfo pi in typeInfo.Properties)
@@ -319,33 +319,33 @@ public abstract partial class McpServer : McpSession, IMcpServer
     /// <param name="type">The type to create the schema for.</param>
     /// <param name="serializerOptions">The serializer options to use.</param>
     /// <returns>The created primitive schema definition.</returns>
-    /// <exception cref="McpException">Thrown when the type is not supported.</exception>
+    /// <exception cref="McpProtocolException">Thrown when the type is not supported.</exception>
     private static ElicitRequestParams.PrimitiveSchemaDefinition CreatePrimitiveSchema(Type type, JsonSerializerOptions serializerOptions)
     {
         if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
         {
-            throw new McpException($"Type '{type.FullName}' is not a supported property type for elicitation requests. Nullable types are not supported.");
+            throw new McpProtocolException($"Type '{type.FullName}' is not a supported property type for elicitation requests. Nullable types are not supported.");
         }
 
         var typeInfo = serializerOptions.GetTypeInfo(type);
 
         if (typeInfo.Kind != JsonTypeInfoKind.None)
         {
-            throw new McpException($"Type '{type.FullName}' is not a supported property type for elicitation requests.");
+            throw new McpProtocolException($"Type '{type.FullName}' is not a supported property type for elicitation requests.");
         }
 
         var jsonElement = AIJsonUtilities.CreateJsonSchema(type, serializerOptions: serializerOptions);
 
         if (!TryValidateElicitationPrimitiveSchema(jsonElement, type, out var error))
         {
-            throw new McpException(error);
+            throw new McpProtocolException(error);
         }
 
         var primitiveSchemaDefinition =
             jsonElement.Deserialize(McpJsonUtilities.JsonContext.Default.PrimitiveSchemaDefinition);
 
         if (primitiveSchemaDefinition is null)
-            throw new McpException($"Type '{type.FullName}' is not a supported property type for elicitation requests.");
+            throw new McpProtocolException($"Type '{type.FullName}' is not a supported property type for elicitation requests.");
 
         return primitiveSchemaDefinition;
     }

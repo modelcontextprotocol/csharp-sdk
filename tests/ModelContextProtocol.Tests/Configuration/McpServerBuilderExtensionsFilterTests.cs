@@ -58,7 +58,18 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
                 var logger = GetLogger(request.Services, "CallToolFilter");
                 var primitiveId = request.MatchedPrimitive?.Id ?? "unknown";
                 logger.LogInformation($"CallToolFilter executed for tool: {primitiveId}");
-                return await next(request, cancellationToken);
+                try
+                {
+                    return await next(request, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    return new CallToolResult
+                    {
+                        Content = [new TextContentBlock { Type = "text", Text = $"Error from filter: {ex.Message}" }],
+                        IsError = true
+                    };
+                }
             })
             .AddListPromptsFilter((next) => async (request, cancellationToken) =>
             {
@@ -160,6 +171,20 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
         var logMessage = Assert.Single(_mockLoggerProvider.LogMessages, m => m.Message == "CallToolFilter executed for tool: test_tool_method");
         Assert.Equal(LogLevel.Information, logMessage.LogLevel);
         Assert.Equal("CallToolFilter", logMessage.Category);
+    }
+
+    [Fact]
+    public async Task AddCallToolFilter_Catches_Exception_From_Tool()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var result = await client.CallToolAsync("throwing_tool_method", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsError);
+        Assert.NotNull(result.Content);
+        var textContent = Assert.Single(result.Content);
+        var textBlock = Assert.IsType<TextContentBlock>(textContent);
+        Assert.Equal("Error from filter: This tool always throws an exception", textBlock.Text);
     }
 
     [Fact]
@@ -285,6 +310,12 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
         public static string TestToolMethod()
         {
             return "test result";
+        }
+
+        [McpServerTool]
+        public static string ThrowingToolMethod()
+        {
+            throw new InvalidOperationException("This tool always throws an exception");
         }
     }
 

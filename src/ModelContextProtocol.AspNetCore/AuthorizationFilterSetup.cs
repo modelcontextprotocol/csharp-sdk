@@ -78,7 +78,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
             var authResult = await GetAuthorizationResultAsync(context.User, context.MatchedPrimitive, context.Services, context);
             if (!authResult.Succeeded)
             {
-                throw new McpException("Access forbidden: This tool requires authorization.", McpErrorCode.InvalidRequest);
+                throw new McpProtocolException("Access forbidden: This tool requires authorization.", McpErrorCode.InvalidRequest);
             }
 
             context.Items[AuthorizationFilterInvokedKey] = true;
@@ -170,7 +170,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
             var authResult = await GetAuthorizationResultAsync(context.User, context.MatchedPrimitive, context.Services, context);
             if (!authResult.Succeeded)
             {
-                throw new McpException("Access forbidden: This resource requires authorization.", McpErrorCode.InvalidRequest);
+                throw new McpProtocolException("Access forbidden: This resource requires authorization.", McpErrorCode.InvalidRequest);
             }
 
             return await next(context, cancellationToken);
@@ -230,7 +230,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
             var authResult = await GetAuthorizationResultAsync(context.User, context.MatchedPrimitive, context.Services, context);
             if (!authResult.Succeeded)
             {
-                throw new McpException("Access forbidden: This prompt requires authorization.", McpErrorCode.InvalidRequest);
+                throw new McpProtocolException("Access forbidden: This prompt requires authorization.", McpErrorCode.InvalidRequest);
             }
 
             return await next(context, cancellationToken);

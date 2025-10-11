@@ -2,6 +2,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Primitives;
 using ModelContextProtocol.Client;
+using System.Collections.Concurrent;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
 
@@ -148,7 +149,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
     [Fact]
     public async Task StreamableHttpClient_SendsMcpProtocolVersionHeader_AfterInitialization()
     {
-        var protocolVersionHeaderValues = new List<string?>();
+        var protocolVersionHeaderValues = new ConcurrentQueue<string?>();
 
         Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<EchoHttpContextUserTools>();
 
@@ -160,7 +161,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
             {
                 if (!StringValues.IsNullOrEmpty(context.Request.Headers["mcp-protocol-version"]))
                 {
-                    protocolVersionHeaderValues.Add(context.Request.Headers["mcp-protocol-version"]);
+                    protocolVersionHeaderValues.Enqueue(context.Request.Headers["mcp-protocol-version"]);
                 }
 
                 await next(context);
