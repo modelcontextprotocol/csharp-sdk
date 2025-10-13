@@ -372,13 +372,14 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         var metaAttributes = method.GetCustomAttributes<McpMetaAttribute>();
         
         JsonObject? meta = seedMeta;
+        JsonSerializerOptions options = serializerOptions ?? McpJsonUtilities.DefaultOptions;
         foreach (var attr in metaAttributes)
         {
             meta ??= new JsonObject();
             // Only add the attribute property if it doesn't already exist in the seed
             if (!meta.ContainsKey(attr.Name))
             {
-                meta[attr.Name] = JsonSerializer.SerializeToNode(attr.Value, serializerOptions ?? McpJsonUtilities.DefaultOptions);
+                meta[attr.Name] = JsonSerializer.SerializeToNode(attr.Value, options.GetTypeInfo(typeof(object)));
             }
         }
 
