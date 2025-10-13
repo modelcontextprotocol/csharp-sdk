@@ -1,22 +1,18 @@
-using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using System.Reflection;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Tests.Server;
 
-public class McpMetaAttributeTests
+public partial class McpMetaAttributeTests
 {
     [Fact]
     public void McpMetaAttribute_OnTool_PopulatesMeta()
     {
-        // Arrange
         var method = typeof(TestToolClass).GetMethod(nameof(TestToolClass.ToolWithMeta))!;
         
-        // Act
         var tool = McpServerTool.Create(method, target: null);
         
-        // Assert
         Assert.NotNull(tool.ProtocolTool.Meta);
         Assert.Equal("gpt-4o", tool.ProtocolTool.Meta["model"]?.ToString());
         Assert.Equal("1.0", tool.ProtocolTool.Meta["version"]?.ToString());
@@ -25,13 +21,10 @@ public class McpMetaAttributeTests
     [Fact]
     public void McpMetaAttribute_OnPrompt_PopulatesMeta()
     {
-        // Arrange
         var method = typeof(TestPromptClass).GetMethod(nameof(TestPromptClass.PromptWithMeta))!;
         
-        // Act
         var prompt = McpServerPrompt.Create(method, target: null);
         
-        // Assert
         Assert.NotNull(prompt.ProtocolPrompt.Meta);
         Assert.Equal("reasoning", prompt.ProtocolPrompt.Meta["type"]?.ToString());
         Assert.Equal("claude-3", prompt.ProtocolPrompt.Meta["model"]?.ToString());
@@ -40,28 +33,22 @@ public class McpMetaAttributeTests
     [Fact]
     public void McpMetaAttribute_OnResource_PopulatesMeta()
     {
-        // Arrange
         var method = typeof(TestResourceClass).GetMethod(nameof(TestResourceClass.ResourceWithMeta))!;
         
-        // Act
         var resource = McpServerResource.Create(method, target: null);
         
-        // Assert
-        Assert.NotNull(resource.ProtocolResource.Meta);
-        Assert.Equal("text/plain", resource.ProtocolResource.Meta["encoding"]?.ToString());
-        Assert.Equal("cached", resource.ProtocolResource.Meta["caching"]?.ToString());
+        Assert.NotNull(resource.ProtocolResourceTemplate?.Meta);
+        Assert.Equal("text/plain", resource.ProtocolResourceTemplate.Meta["encoding"]?.ToString());
+        Assert.Equal("cached", resource.ProtocolResourceTemplate.Meta["caching"]?.ToString());
     }
 
     [Fact]
     public void McpMetaAttribute_WithoutAttributes_ReturnsNull()
     {
-        // Arrange
         var method = typeof(TestToolClass).GetMethod(nameof(TestToolClass.ToolWithoutMeta))!;
         
-        // Act
         var tool = McpServerTool.Create(method, target: null);
         
-        // Assert
         Assert.Null(tool.ProtocolTool.Meta);
     }
 
@@ -83,7 +70,6 @@ public class McpMetaAttributeTests
     [Fact]
     public void McpMetaAttribute_OptionsMetaTakesPrecedence()
     {
-        // Arrange
         var method = typeof(TestToolClass).GetMethod(nameof(TestToolClass.ToolWithMeta))!;
         var seedMeta = new JsonObject
         {
@@ -92,34 +78,25 @@ public class McpMetaAttributeTests
         };
         var options = new McpServerToolCreateOptions { Meta = seedMeta };
         
-        // Act
         var tool = McpServerTool.Create(method, target: null, options: options);
         
-        // Assert
         Assert.NotNull(tool.ProtocolTool.Meta);
-        // Options Meta should win for "model"
         Assert.Equal("options-model", tool.ProtocolTool.Meta["model"]?.ToString());
-        // Attribute should add "version" since it's not in options
         Assert.Equal("1.0", tool.ProtocolTool.Meta["version"]?.ToString());
-        // Options Meta should include "extra"
         Assert.Equal("options-extra", tool.ProtocolTool.Meta["extra"]?.ToString());
     }
 
     [Fact]
     public void McpMetaAttribute_OptionsMetaOnly_NoAttributes()
     {
-        // Arrange
         var method = typeof(TestToolClass).GetMethod(nameof(TestToolClass.ToolWithoutMeta))!;
         var seedMeta = new JsonObject
         {
             ["custom"] = "value"
         };
         var options = new McpServerToolCreateOptions { Meta = seedMeta };
-        
-        // Act
         var tool = McpServerTool.Create(method, target: null, options: options);
         
-        // Assert
         Assert.NotNull(tool.ProtocolTool.Meta);
         Assert.Equal("value", tool.ProtocolTool.Meta["custom"]?.ToString());
         Assert.Single(tool.ProtocolTool.Meta);
@@ -128,7 +105,6 @@ public class McpMetaAttributeTests
     [Fact]
     public void McpMetaAttribute_PromptOptionsMetaTakesPrecedence()
     {
-        // Arrange
         var method = typeof(TestPromptClass).GetMethod(nameof(TestPromptClass.PromptWithMeta))!;
         var seedMeta = new JsonObject
         {
@@ -137,23 +113,17 @@ public class McpMetaAttributeTests
         };
         var options = new McpServerPromptCreateOptions { Meta = seedMeta };
         
-        // Act
         var prompt = McpServerPrompt.Create(method, target: null, options: options);
         
-        // Assert
         Assert.NotNull(prompt.ProtocolPrompt.Meta);
-        // Options Meta should win for "type"
         Assert.Equal("options-type", prompt.ProtocolPrompt.Meta["type"]?.ToString());
-        // Attribute should add "model" since it's not in options
         Assert.Equal("claude-3", prompt.ProtocolPrompt.Meta["model"]?.ToString());
-        // Options Meta should include "extra"
         Assert.Equal("options-extra", prompt.ProtocolPrompt.Meta["extra"]?.ToString());
     }
 
     [Fact]
     public void McpMetaAttribute_ResourceOptionsMetaTakesPrecedence()
     {
-        // Arrange
         var method = typeof(TestResourceClass).GetMethod(nameof(TestResourceClass.ResourceWithMeta))!;
         var seedMeta = new JsonObject
         {
@@ -162,17 +132,106 @@ public class McpMetaAttributeTests
         };
         var options = new McpServerResourceCreateOptions { Meta = seedMeta };
         
-        // Act
         var resource = McpServerResource.Create(method, target: null, options: options);
         
-        // Assert
-        Assert.NotNull(resource.ProtocolResource.Meta);
-        // Options Meta should win for "encoding"
-        Assert.Equal("options-encoding", resource.ProtocolResource.Meta["encoding"]?.ToString());
-        // Attribute should add "caching" since it's not in options
-        Assert.Equal("cached", resource.ProtocolResource.Meta["caching"]?.ToString());
-        // Options Meta should include "extra"
-        Assert.Equal("options-extra", resource.ProtocolResource.Meta["extra"]?.ToString());
+        Assert.NotNull(resource.ProtocolResourceTemplate?.Meta);
+        Assert.Equal("options-encoding", resource.ProtocolResourceTemplate.Meta["encoding"]?.ToString());
+        Assert.Equal("cached", resource.ProtocolResourceTemplate.Meta["caching"]?.ToString());
+        Assert.Equal("options-extra", resource.ProtocolResourceTemplate.Meta["extra"]?.ToString());
+    }
+
+    [Fact]
+    public void McpMetaAttribute_ResourceOptionsMetaOnly_NoAttributes()
+    {
+        var method = typeof(TestResourceNoMetaClass).GetMethod(nameof(TestResourceNoMetaClass.ResourceWithoutMeta))!;
+        var seedMeta = new JsonObject { ["only"] = "resource" };
+        var options = new McpServerResourceCreateOptions { Meta = seedMeta };
+
+        var resource = McpServerResource.Create(method, target: null, options: options);
+
+        Assert.NotNull(resource.ProtocolResourceTemplate?.Meta);
+        Assert.Equal("resource", resource.ProtocolResourceTemplate.Meta["only"]?.ToString());
+        Assert.Single(resource.ProtocolResourceTemplate.Meta!);
+    }
+
+    [Fact]
+    public void McpMetaAttribute_PromptWithoutMeta_ReturnsNull()
+    {
+        var method = typeof(TestPromptNoMetaClass).GetMethod(nameof(TestPromptNoMetaClass.PromptWithoutMeta))!;
+        var prompt = McpServerPrompt.Create(method, target: null);
+        Assert.Null(prompt.ProtocolPrompt.Meta);
+    }
+
+    [Fact]
+    public void McpMetaAttribute_DuplicateKeys_IgnoresLaterAttributes()
+    {
+        var method = typeof(TestToolDuplicateMetaClass).GetMethod(nameof(TestToolDuplicateMetaClass.ToolWithDuplicateMeta))!;
+        var tool = McpServerTool.Create(method, target: null);
+        Assert.NotNull(tool.ProtocolTool.Meta);
+        // "key" first attribute value should remain, second ignored
+        Assert.Equal("first", tool.ProtocolTool.Meta["key"]?.ToString());
+        // Ensure only two keys (key and other)
+        Assert.Equal(2, tool.ProtocolTool.Meta!.Count);
+        Assert.Equal("other-value", tool.ProtocolTool.Meta["other"]?.ToString());
+    }
+
+    [Fact]
+    public void McpMetaAttribute_DuplicateKeys_WithSeedMeta_SeedTakesPrecedence()
+    {
+        var method = typeof(TestToolDuplicateMetaClass).GetMethod(nameof(TestToolDuplicateMetaClass.ToolWithDuplicateMeta))!;
+        var seedMeta = new JsonObject { ["key"] = "seed" };
+        var options = new McpServerToolCreateOptions { Meta = seedMeta };
+        var tool = McpServerTool.Create(method, target: null, options: options);
+        Assert.NotNull(tool.ProtocolTool.Meta);
+        Assert.Equal("seed", tool.ProtocolTool.Meta["key"]?.ToString());
+        Assert.Equal("other-value", tool.ProtocolTool.Meta["other"]?.ToString());
+        Assert.Equal(2, tool.ProtocolTool.Meta!.Count);
+    }
+
+    [Fact]
+    public void McpMetaAttribute_NonStringValues_Serialized()
+    {
+        var method = typeof(TestToolNonStringMetaClass).GetMethod(nameof(TestToolNonStringMetaClass.ToolWithNonStringMeta))!;
+        var tool = McpServerTool.Create(method, target: null, options: new() { SerializerOptions = JsonContext5.Default.Options });
+        Assert.NotNull(tool.ProtocolTool.Meta);
+        Assert.Equal("42", tool.ProtocolTool.Meta["intValue"]?.ToString());
+        Assert.Equal("true", tool.ProtocolTool.Meta["boolValue"]?.ToString());
+        // Enum serialized as numeric by default
+        Assert.Equal(((int)TestEnum.Second).ToString(), tool.ProtocolTool.Meta["enumValue"]?.ToString());
+    }
+
+    [Fact]
+    public void McpMetaAttribute_NullValue_SerializedAsNull()
+    {
+        var method = typeof(TestToolNullMetaClass).GetMethod(nameof(TestToolNullMetaClass.ToolWithNullMeta))!;
+        var tool = McpServerTool.Create(method, target: null);
+        Assert.NotNull(tool.ProtocolTool.Meta);
+        Assert.True(tool.ProtocolTool.Meta.ContainsKey("nullable"));
+        Assert.Null(tool.ProtocolTool.Meta["nullable"]);
+    }
+
+    [Fact]
+    public void McpMetaAttribute_ClassLevelAttributesIgnored()
+    {
+        // Since McpMetaAttribute is only valid on methods, class-level attributes are not supported.
+        // This test simply validates method-level attributes still function as expected.
+        var method = typeof(TestToolMethodMetaOnlyClass).GetMethod(nameof(TestToolMethodMetaOnlyClass.ToolWithMethodMeta))!;
+        var tool = McpServerTool.Create(method, target: null);
+        Assert.NotNull(tool.ProtocolTool.Meta);
+        Assert.Equal("method", tool.ProtocolTool.Meta["methodKey"]?.ToString());
+        // Ensure only the method-level key exists
+        Assert.Single(tool.ProtocolTool.Meta!);
+    }
+
+    [Fact]
+    public void McpMetaAttribute_DelegateOverload_PopulatesMeta()
+    {
+        // Create tool using delegate overload instead of MethodInfo directly
+        var del = new Func<string, string>(TestToolClass.ToolWithMeta);
+        var tool = McpServerTool.Create(del);
+        Assert.NotNull(tool.ProtocolTool.Meta);
+        Assert.Equal("gpt-4o", tool.ProtocolTool.Meta!["model"]?.ToString());
+        Assert.Equal("1.0", tool.ProtocolTool.Meta["version"]?.ToString());
     }
 
     private class TestToolClass
@@ -220,4 +279,55 @@ public class McpMetaAttributeTests
             return $"Resource content for {id}";
         }
     }
+
+    private class TestResourceNoMetaClass
+    {
+        [McpServerResource(UriTemplate = "resource://test2/{id}")]
+        public static string ResourceWithoutMeta(string id) => id;
+    }
+
+    private class TestPromptNoMetaClass
+    {
+        [McpServerPrompt]
+        public static string PromptWithoutMeta(string input) => input;
+    }
+
+    private class TestToolDuplicateMetaClass
+    {
+        [McpServerTool]
+        [McpMeta("key", "first")]
+        [McpMeta("key", "second")]
+        [McpMeta("other", "other-value")]
+        public static string ToolWithDuplicateMeta(string input) => input;
+    }
+
+    private enum TestEnum { First = 0, Second = 1 }
+
+    private class TestToolNonStringMetaClass
+    {
+        [McpServerTool]
+        [McpMeta("intValue", 42)]
+        [McpMeta("boolValue", true)]
+        [McpMeta("enumValue", TestEnum.Second)]
+        public static string ToolWithNonStringMeta(string input) => input;
+    }
+
+    private class TestToolNullMetaClass
+    {
+        [McpServerTool]
+        [McpMeta("nullable", null)]
+        public static string ToolWithNullMeta(string input) => input;
+    }
+
+    private class TestToolMethodMetaOnlyClass
+    {
+        [McpServerTool]
+        [McpMeta("methodKey", "method")]
+        public static string ToolWithMethodMeta(string input) => input;
+    }
+
+    [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+    [JsonSerializable(typeof(string))]
+    [JsonSerializable(typeof(TestEnum))]
+    private partial class JsonContext5 : JsonSerializerContext;
 }

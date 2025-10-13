@@ -212,17 +212,6 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
 
         string name = options?.Name ?? function.Name;
 
-        // Populate Meta from options and/or McpMetaAttribute instances if a MethodInfo is available
-        JsonObject? meta = null;
-        if (function.UnderlyingMethod is not null)
-        {
-            meta = AIFunctionMcpServerTool.CreateMetaFromAttributes(function.UnderlyingMethod, options?.Meta, options?.SerializerOptions);
-        }
-        else if (options?.Meta is not null)
-        {
-            meta = options.Meta;
-        }
-
         ResourceTemplate resource = new()
         {
             UriTemplate = options?.UriTemplate ?? DeriveUriTemplate(name, function),
@@ -231,7 +220,9 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
             Description = options?.Description,
             MimeType = options?.MimeType ?? "application/octet-stream",
             Icons = options?.Icons,
-            Meta = meta,
+            Meta = function.UnderlyingMethod is not null ?
+                AIFunctionMcpServerTool.CreateMetaFromAttributes(function.UnderlyingMethod, options?.Meta, options?.SerializerOptions) :
+                options?.Meta,
         };
 
         return new AIFunctionMcpServerResource(function, resource, options?.Metadata ?? []);

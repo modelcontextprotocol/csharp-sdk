@@ -140,14 +140,9 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
         };
 
         // Populate Meta from options and/or McpMetaAttribute instances if a MethodInfo is available
-        if (function.UnderlyingMethod is not null)
-        {
-            prompt.Meta = AIFunctionMcpServerTool.CreateMetaFromAttributes(function.UnderlyingMethod, options?.Meta, options?.SerializerOptions);
-        }
-        else if (options?.Meta is not null)
-        {
-            prompt.Meta = options.Meta;
-        }
+        prompt.Meta = function.UnderlyingMethod is not null ?
+            AIFunctionMcpServerTool.CreateMetaFromAttributes(function.UnderlyingMethod, options?.Meta, options?.SerializerOptions) :
+            options?.Meta;
 
         return new AIFunctionMcpServerPrompt(function, prompt, options?.Metadata ?? []);
     }

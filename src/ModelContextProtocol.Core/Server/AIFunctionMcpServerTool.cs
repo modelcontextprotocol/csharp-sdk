@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization.Metadata;
 using System.Text.RegularExpressions;
 
 namespace ModelContextProtocol.Server;
@@ -145,14 +146,9 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             }
 
             // Populate Meta from options and/or McpMetaAttribute instances if a MethodInfo is available
-            if (function.UnderlyingMethod is not null)
-            {
-                tool.Meta = CreateMetaFromAttributes(function.UnderlyingMethod, options.Meta, options.SerializerOptions);
-            }
-            else if (options.Meta is not null)
-            {
-                tool.Meta = options.Meta;
-            }
+            tool.Meta = function.UnderlyingMethod is not null ?
+                CreateMetaFromAttributes(function.UnderlyingMethod, options.Meta, options.SerializerOptions) :
+                options.Meta;
         }
 
         return new AIFunctionMcpServerTool(function, tool, options?.Services, structuredOutputRequiresWrapping, options?.Metadata ?? []);
@@ -361,25 +357,35 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         return metadata.AsReadOnly();
     }
 
-    /// <summary>Creates a Meta JsonObject from McpMetaAttribute instances on the specified method.</summary>
-    /// <param name="method">The method to extract McpMetaAttribute instances from.</param>
-    /// <param name="seedMeta">Optional JsonObject to seed the Meta with. Properties from this object take precedence over attributes.</param>
-    /// <param name="serializerOptions">Optional JsonSerializerOptions to use for serialization. Defaults to McpJsonUtilities.DefaultOptions if not provided.</param>
-    /// <returns>A JsonObject with metadata, or null if no metadata is present.</returns>
-    internal static JsonObject? CreateMetaFromAttributes(MethodInfo method, JsonObject? seedMeta = null, JsonSerializerOptions? serializerOptions = null)
+    /// <summary>Creates a Meta <see cref="JsonObject"/> from <see cref="McpMetaAttribute"/> instances on the specified method.</summary>
+    /// <param name="method">The method to extract <see cref="McpMetaAttribute"/> instances from.</param>
+    /// <param name="meta">Optional <see cref="JsonObject"/> to seed the Meta with. Properties from this object take precedence over attributes.</param>
+    /// <param name="serializerOptions">Optional <see cref="JsonSerializerOptions"/> to use for serialization. Defaults to <see cref="McpJsonUtilities.DefaultOptions"/> if not provided.</param>
+    /// <returns>A <see cref="JsonObject"/> with metadata, or null if no metadata is present.</returns>
+    internal static JsonObject? CreateMetaFromAttributes(MethodInfo method, JsonObject? meta = null, JsonSerializerOptions? serializerOptions = null)
     {
-        // Get all McpMetaAttribute instances from the method
+        // Get all McpMetaAttribute instances from the method.
         var metaAttributes = method.GetCustomAttributes<McpMetaAttribute>();
         
-        JsonObject? meta = seedMeta;
-        JsonSerializerOptions options = serializerOptions ?? McpJsonUtilities.DefaultOptions;
         foreach (var attr in metaAttributes)
         {
-            meta ??= new JsonObject();
-            // Only add the attribute property if it doesn't already exist in the seed
+            meta ??= [];
             if (!meta.ContainsKey(attr.Name))
             {
-                meta[attr.Name] = JsonSerializer.SerializeToNode(attr.Value, options.GetTypeInfo(typeof(object)));
+                JsonTypeInfo? valueTypeInfo = null;
+                if (attr.Value?.GetType() is { } valueType)
+                {
+                    if (serializerOptions?.TryGetTypeInfo(valueType, out valueTypeInfo) is not true &&
+                        McpJsonUtilities.DefaultOptions.TryGetTypeInfo(valueType, out valueTypeInfo) is not true)
+                    {
+                        // Throw using GetTypeInfo in order to get a good exception message.
+                        (serializerOptions ?? McpJsonUtilities.DefaultOptions).GetTypeInfo(valueType);
+                    }
+                    
+                    Debug.Assert(valueTypeInfo is not null, "GetTypeInfo should have thrown an exception");
+                }
+
+                meta[attr.Name] = valueTypeInfo is not null ? JsonSerializer.SerializeToNode(attr.Value, valueTypeInfo) : null;
             }
         }
 
