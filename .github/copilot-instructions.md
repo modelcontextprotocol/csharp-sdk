@@ -5,9 +5,9 @@ This repository contains the official C# SDK for the Model Context Protocol (MCP
 ## Project Overview
 
 The SDK consists of three main packages:
-- **ModelContextProtocol** - The main package with hosting and dependency injection extensions
-- **ModelContextProtocol.AspNetCore** - HTTP-based MCP server implementations
 - **ModelContextProtocol.Core** - Client and low-level server APIs with minimal dependencies
+- **ModelContextProtocol** - The main package with hosting and dependency injection extensions and which references ModelContextProtocol.Core
+- **ModelContextProtocol.AspNetCore** - HTTP-based MCP server implementations for ASP.NET Core, referencing ModelContextProtocol
 
 ## C# Coding Standards
 
@@ -48,9 +48,9 @@ The SDK consists of three main packages:
 - Name parameters consistently: `cancellationToken`
 
 ### MCP Protocol
-- Follow the MCP specification at https://spec.modelcontextprotocol.io/
+- Follow the MCP specification at https://spec.modelcontextprotocol.io/ (https://github.com/modelcontextprotocol/modelcontextprotocol/tree/main/docs/specification)
 - Use JSON-RPC 2.0 for message transport
-- Support standard MCP capabilities: tools, prompts, resources, sampling
+- Support all standard MCP capabilities (e.g. tools, prompts, resources, sampling)
 - Implement proper error handling with `McpException` and `McpErrorCode`
 
 ## Testing
