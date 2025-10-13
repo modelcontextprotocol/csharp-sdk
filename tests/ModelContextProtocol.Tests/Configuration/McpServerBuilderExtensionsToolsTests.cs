@@ -755,22 +755,17 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
 
         // Verify that the tool name is captured in structured logging
         // The LogMessagesWithState should contain log entries with tool name in the state
-        var allLogs = _mockLoggerProvider.LogMessagesWithState.ToList();
-        TestOutputHelper.WriteLine($"Total logs captured: {allLogs.Count}");
-        foreach (var log in allLogs)
-        {
-            TestOutputHelper.WriteLine($"Log: Category={log.Category}, Level={log.LogLevel}, Message={log.Message}");
-        }
-        
-        var relevantLogs = allLogs
+        var relevantLogs = _mockLoggerProvider.LogMessagesWithState
             .Where(m => m.Category == "ModelContextProtocol.Client.McpClient" && 
                         m.Message.Contains("tools/call"))
             .ToList();
 
-        TestOutputHelper.WriteLine($"Relevant logs: {relevantLogs.Count}");
         Assert.NotEmpty(relevantLogs);
 
         // Check that at least one log entry has the tool name in its structured state
+        // This demonstrates how users can extract the tool name from TState in a custom ILoggerProvider
+        // The State object is IReadOnlyList<KeyValuePair<string, object?>> which contains
+        // structured logging parameters like "ToolName", "Method", "EndpointName", etc.
         bool foundToolName = relevantLogs.Any(log =>
         {
             if (log.State is IReadOnlyList<KeyValuePair<string, object?>> stateList)
