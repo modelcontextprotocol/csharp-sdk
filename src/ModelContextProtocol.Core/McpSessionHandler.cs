@@ -436,7 +436,8 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             // Now that the request has been sent, register for cancellation. If we registered before,
             // a cancellation request could arrive before the server knew about that request ID, in which
             // case the server could ignore it.
-            LogRequestSentAwaitingResponse(EndpointName, request.Method, request.Id);
+            string? target = GetRequestTarget(request);
+            LogRequestSentAwaitingResponse(EndpointName, request.Method, request.Id, toolName: target);
             JsonRpcMessage? response;
             using (var registration = RegisterCancellation(cancellationToken, request))
             {
@@ -445,7 +446,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
             if (response is JsonRpcError error)
             {
-                LogSendingRequestFailed(EndpointName, request.Method, error.Error.Message, error.Error.Code);
+                LogSendingRequestFailed(EndpointName, request.Method, error.Error.Message, error.Error.Code, toolName: target);
                 throw new McpException($"Request failed (remote): {error.Error.Message}", (McpErrorCode)error.Error.Code);
             }
 
@@ -458,11 +459,11 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
                 if (_logger.IsEnabled(LogLevel.Trace))
                 {
-                    LogRequestResponseReceivedSensitive(EndpointName, request.Method, success.Result?.ToJsonString() ?? "null");
+                    LogRequestResponseReceivedSensitive(EndpointName, request.Method, success.Result?.ToJsonString() ?? "null", toolName: target);
                 }
                 else
                 {
-                    LogRequestResponseReceived(EndpointName, request.Method);
+                    LogRequestResponseReceived(EndpointName, request.Method, toolName: target);
                 }
 
                 return success;
@@ -763,6 +764,29 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         return null;
     }
 
+    /// <summary>
+    /// Extracts the target identifier (tool name, prompt name, or resource URI) from a request.
+    /// </summary>
+    /// <param name="request">The JSON-RPC request.</param>
+    /// <returns>The target identifier if available; otherwise, null.</returns>
+    private static string? GetRequestTarget(JsonRpcRequest request)
+    {
+        if (request.Params is not JsonObject paramsObj)
+        {
+            return null;
+        }
+
+        return request.Method switch
+        {
+            RequestMethods.ToolsCall => GetStringProperty(paramsObj, "name"),
+            RequestMethods.PromptsGet => GetStringProperty(paramsObj, "name"),
+            RequestMethods.ResourcesRead => GetStringProperty(paramsObj, "uri"),
+            RequestMethods.ResourcesSubscribe => GetStringProperty(paramsObj, "uri"),
+            RequestMethods.ResourcesUnsubscribe => GetStringProperty(paramsObj, "uri"),
+            _ => null
+        };
+    }
+
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} message processing canceled.")]
     private partial void LogEndpointMessageProcessingCanceled(string endpointName);
 
@@ -778,8 +802,8 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} received request for unknown request ID '{RequestId}'.")]
     private partial void LogNoRequestFoundForMessageWithId(string endpointName, RequestId requestId);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} request failed for method '{Method}': {ErrorMessage} ({ErrorCode}).")]
-    private partial void LogSendingRequestFailed(string endpointName, string method, string errorMessage, int errorCode);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} request failed for method '{Method}' (tool: '{ToolName}'): {ErrorMessage} ({ErrorCode}).")]
+    private partial void LogSendingRequestFailed(string endpointName, string method, string errorMessage, int errorCode, string? toolName = null);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received invalid response for method '{Method}'.")]
     private partial void LogSendingRequestInvalidResponseType(string endpointName, string method);
@@ -793,11 +817,11 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} canceled request '{RequestId}' per client notification. Reason: '{Reason}'.")]
     private partial void LogRequestCanceled(string endpointName, RequestId requestId, string? reason);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "{EndpointName} Request response received for method {method}")]
-    private partial void LogRequestResponseReceived(string endpointName, string method);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "{EndpointName} Request response received for method {method} (tool: '{ToolName}')")]
+    private partial void LogRequestResponseReceived(string endpointName, string method, string? toolName = null);
 
-    [LoggerMessage(Level = LogLevel.Trace, Message = "{EndpointName} Request response received for method {method}. Response: '{Response}'.")]
-    private partial void LogRequestResponseReceivedSensitive(string endpointName, string method, string response);
+    [LoggerMessage(Level = LogLevel.Trace, Message = "{EndpointName} Request response received for method {method} (tool: '{ToolName}'). Response: '{Response}'.")]
+    private partial void LogRequestResponseReceivedSensitive(string endpointName, string method, string response, string? toolName = null);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "{EndpointName} read {MessageType} message from channel.")]
     private partial void LogMessageRead(string endpointName, string messageType);
@@ -814,8 +838,8 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received request for method '{Method}', but no handler is available.")]
     private partial void LogNoHandlerFoundForRequest(string endpointName, string method);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "{EndpointName} waiting for response to request '{RequestId}' for method '{Method}'.")]
-    private partial void LogRequestSentAwaitingResponse(string endpointName, string method, RequestId requestId);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "{EndpointName} waiting for response to request '{RequestId}' for method '{Method}' (tool: '{ToolName}').")]
+    private partial void LogRequestSentAwaitingResponse(string endpointName, string method, RequestId requestId, string? toolName = null);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "{EndpointName} sending message.")]
     private partial void LogSendingMessage(string endpointName);

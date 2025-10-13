@@ -20,12 +20,19 @@ namespace ModelContextProtocol.Tests.Configuration;
 
 public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
 {
+    private MockLoggerProvider _mockLoggerProvider = new();
+
     public McpServerBuilderExtensionsToolsTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
     {
+        // Configure LoggerFactory to use Debug level and add MockLoggerProvider
+        LoggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+        {
+            builder.AddProvider(XunitLoggerProvider);
+            builder.AddProvider(_mockLoggerProvider);
+            builder.SetMinimumLevel(LogLevel.Debug);
+        });
     }
-
-    private MockLoggerProvider _mockLoggerProvider = new();
 
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
@@ -731,6 +738,51 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
             cancellationToken: TestContext.Current.CancellationToken);
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await invokeTask);
+    }
+
+    [Fact]
+    public async Task ToolName_Captured_In_Structured_Logging()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        // Call a tool that will succeed
+        var result = await client.CallToolAsync(
+            "echo",
+            new Dictionary<string, object?> { ["message"] = "test" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+
+        // Verify that the tool name is captured in structured logging
+        // The LogMessagesWithState should contain log entries with tool name in the state
+        var allLogs = _mockLoggerProvider.LogMessagesWithState.ToList();
+        TestOutputHelper.WriteLine($"Total logs captured: {allLogs.Count}");
+        foreach (var log in allLogs)
+        {
+            TestOutputHelper.WriteLine($"Log: Category={log.Category}, Level={log.LogLevel}, Message={log.Message}");
+        }
+        
+        var relevantLogs = allLogs
+            .Where(m => m.Category == "ModelContextProtocol.Client.McpClient" && 
+                        m.Message.Contains("tools/call"))
+            .ToList();
+
+        TestOutputHelper.WriteLine($"Relevant logs: {relevantLogs.Count}");
+        Assert.NotEmpty(relevantLogs);
+
+        // Check that at least one log entry has the tool name in its structured state
+        bool foundToolName = relevantLogs.Any(log =>
+        {
+            if (log.State is IReadOnlyList<KeyValuePair<string, object?>> stateList)
+            {
+                return stateList.Any(kvp => 
+                    kvp.Key == "ToolName" && 
+                    kvp.Value?.ToString() == "echo");
+            }
+            return false;
+        });
+
+        Assert.True(foundToolName, "Tool name 'echo' was not found in structured logging state");
     }
 
     [McpServerToolType]
