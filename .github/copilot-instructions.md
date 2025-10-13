@@ -98,7 +98,7 @@ The SDK consists of three main packages:
 - **Clean**: `dotnet clean` or `make clean`
 
 ### SDK Requirements
-- The project currently uses .NET SDK 10.0 RC (this is temporary while waiting for .NET 10 to go GA)
+- The repo currently requires the .NET SDK 10.0 to build and run tests.
 - Target frameworks: .NET 10.0, .NET 9.0, .NET 8.0, .NET Standard 2.0
 - Support Native AOT compilation
 
@@ -108,6 +108,86 @@ The SDK consists of three main packages:
 - Samples: `samples/`
 - Documentation: `docs/`
 - Build artifacts: `artifacts/` (not committed)
+
+## Key Types and Architectural Layers
+
+The SDK is organized into distinct architectural layers, each with specific responsibilities:
+
+### Protocol Layer (DTO Types)
+- Located in `ModelContextProtocol.Core/Protocol/`
+- Contains Data Transfer Objects (DTOs) for the MCP specification
+- All protocol types follow JSON-RPC 2.0 conventions
+- Key types:
+  - **JsonRpcMessage** (abstract base): Represents any JSON-RPC message (request, response, notification, error)
+  - **JsonRpcRequest**, **JsonRpcResponse**, **JsonRpcNotification**: Concrete message types
+  - **Tool**, **Prompt**, **Resource**: MCP primitive definitions
+  - **CallToolRequestParams**, **GetPromptRequestParams**, **ReadResourceRequestParams**: Request parameter types
+  - **ClientCapabilities**, **ServerCapabilities**: Capability negotiation types
+  - **Implementation**: Server/client identification metadata
+
+### JSON-RPC Implementation
+- Built-in JSON-RPC 2.0 implementation for MCP communication
+- **JsonRpcMessage.Converter**: Polymorphic converter that deserializes messages into correct types based on structure
+- **JsonRpcMessageContext**: Transport-specific metadata (transport reference, execution context, authenticated user)
+- Message routing handled automatically by session implementations
+- Error responses generated via **McpException** with **McpErrorCode** enumeration
+
+### Transport Abstraction
+- **ITransport**: Core abstraction for bidirectional communication
+  - Provides `MessageReader` (ChannelReader) for incoming messages
+  - `SendMessageAsync()` for outgoing messages
+  - `SessionId` property for multi-session scenarios
+- **IClientTransport**: Client-side abstraction that establishes connections and returns ITransport
+- **TransportBase**: Base class for transport implementations with common functionality
+
+### Transport Implementations
+Two primary transport implementations with different invariants:
+
+1. **Stdio-based transports** (`StdioServerTransport`, `StdioClientTransport`):
+   - Single-session, process-bound communication
+   - Uses standard input/output streams
+   - No session IDs (returns null)
+   - Automatic lifecycle tied to process
+   
+2. **HTTP-based transports**:
+   - **SseResponseStreamTransport**: Server-Sent Events for server-to-client streaming
+     - Unidirectional (server → client) event stream
+     - Client posts messages to separate endpoint (e.g., `/message`)
+     - Supports multiple concurrent sessions via SessionId
+   - **StreamableHttpServerTransport**: Bidirectional HTTP with streaming
+     - Request/response model with streamed progress updates
+     - Session management for concurrent connections
+
+### Session Layer
+- **McpSession** (abstract base): Core bidirectional communication for clients and servers
+  - Manages JSON-RPC request/response correlation
+  - Handles notification routing
+  - Provides `SendRequestAsync<TResult>()`, `SendNotificationAsync()`, `RegisterNotificationHandler()`
+  - Properties: `SessionId`, `NegotiatedProtocolVersion`
+  
+- **McpClient** (extends McpSession): Client-side MCP implementation
+  - Connects to servers via `CreateAsync(IClientTransport)`
+  - Exposes `ServerCapabilities`, `ServerInfo`, `ServerInstructions`
+  - Methods: `ListToolsAsync()`, `CallToolAsync()`, `ListPromptsAsync()`, `GetPromptAsync()`, etc.
+  
+- **McpServer** (extends McpSession): Server-side MCP implementation
+  - Configured via `McpServerOptions` and `IMcpServerBuilder`
+  - Primitives registered as services: `McpServerTool`, `McpServerPrompt`, `McpServerResource`
+  - Handles incoming requests through `McpServer.Methods.cs`
+  - Supports filters via `McpRequestFilter` for cross-cutting concerns
+
+### Serialization Architecture
+- **McpJsonUtilities.DefaultOptions**: Singleton JsonSerializerOptions for all MCP types
+  - Hardcoded to use source-generated serialization for JSON-RPC messages (Native AOT compatible)
+  - Source generation defined in `McpJsonUtilities` via `[JsonSerializable]` attributes
+  - Includes Microsoft.Extensions.AI types via chained TypeInfoResolver
+  
+- **User-defined types** (tool parameters, return values):
+  - Accept custom `JsonSerializerOptions` via `McpServerToolCreateOptions.SerializerOptions`
+  - Default to `McpJsonUtilities.DefaultOptions` if not specified
+  - Can use reflection-based serialization or custom source generators
+  
+- **Enum handling**: `CustomizableJsonStringEnumConverter` for flexible enum serialization
 
 ## Architecture and Design Patterns
 
