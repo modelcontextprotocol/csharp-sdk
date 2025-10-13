@@ -139,10 +139,11 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
             Icons = options?.Icons,
         };
 
-        // Populate Meta from options and/or McpMetaAttribute instances if a MethodInfo is in the metadata
-        if (options?.Metadata?.FirstOrDefault(m => m is MethodInfo) is MethodInfo method)
+        // Populate Meta from options and/or McpMetaAttribute instances if a MethodInfo is available
+        MethodInfo? method = options?.Metadata?.FirstOrDefault(m => m is MethodInfo) as MethodInfo ?? function.Metadata?.UnderlyingMethod;
+        if (method is not null)
         {
-            prompt.Meta = AIFunctionMcpServerTool.CreateMetaFromAttributes(method, options.Meta);
+            prompt.Meta = AIFunctionMcpServerTool.CreateMetaFromAttributes(method, options?.Meta);
         }
         else if (options?.Meta is not null)
         {

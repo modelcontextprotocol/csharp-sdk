@@ -178,8 +178,8 @@ public class McpMetaAttributeTests
     private class TestToolClass
     {
         [McpServerTool]
-        [McpMeta(Name = "model", Value = "gpt-4o")]
-        [McpMeta(Name = "version", Value = "1.0")]
+        [McpMeta("model", "gpt-4o")]
+        [McpMeta("version", "1.0")]
         public static string ToolWithMeta(string input)
         {
             return input;
@@ -192,7 +192,7 @@ public class McpMetaAttributeTests
         }
 
         [McpServerTool]
-        [McpMeta(Name = "test-key", Value = "test-value")]
+        [McpMeta("test-key", "test-value")]
         public static string ToolWithSingleMeta(string input)
         {
             return input;
@@ -202,8 +202,8 @@ public class McpMetaAttributeTests
     private class TestPromptClass
     {
         [McpServerPrompt]
-        [McpMeta(Name = "type", Value = "reasoning")]
-        [McpMeta(Name = "model", Value = "claude-3")]
+        [McpMeta("type", "reasoning")]
+        [McpMeta("model", "claude-3")]
         public static string PromptWithMeta(string input)
         {
             return input;
@@ -213,8 +213,8 @@ public class McpMetaAttributeTests
     private class TestResourceClass
     {
         [McpServerResource(UriTemplate = "resource://test/{id}")]
-        [McpMeta(Name = "encoding", Value = "text/plain")]
-        [McpMeta(Name = "caching", Value = "cached")]
+        [McpMeta("encoding", "text/plain")]
+        [McpMeta("caching", "cached")]
         public static string ResourceWithMeta(string id)
         {
             return $"Resource content for {id}";

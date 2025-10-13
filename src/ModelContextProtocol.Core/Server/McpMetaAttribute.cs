@@ -18,8 +18,8 @@ namespace ModelContextProtocol.Server;
 /// <example>
 /// <code>
 /// [McpServerTool]
-/// [McpMeta(Name = "model", Value = "gpt-4o")]
-/// [McpMeta(Name = "version", Value = "1.0")]
+/// [McpMeta("model", "gpt-4o")]
+/// [McpMeta("version", "1.0")]
 /// public string MyTool(string input)
 /// {
 ///     return $"Processed: {input}";
@@ -33,26 +33,30 @@ public sealed class McpMetaAttribute : Attribute
     /// <summary>
     /// Initializes a new instance of the <see cref="McpMetaAttribute"/> class.
     /// </summary>
-    public McpMetaAttribute()
+    /// <param name="name">The name (key) of the metadata entry.</param>
+    /// <param name="value">The value of the metadata entry.</param>
+    public McpMetaAttribute(string name, string value)
     {
+        Name = name;
+        Value = value;
     }
 
     /// <summary>
-    /// Gets or sets the name (key) of the metadata entry.
+    /// Gets the name (key) of the metadata entry.
     /// </summary>
     /// <remarks>
     /// This value is used as the key in the metadata object. It should be a unique identifier
     /// for this piece of metadata within the context of the primitive.
     /// </remarks>
-    public required string Name { get; set; }
+    public string Name { get; }
 
     /// <summary>
-    /// Gets or sets the value of the metadata entry.
+    /// Gets the value of the metadata entry.
     /// </summary>
     /// <remarks>
     /// This value is stored as a string in the metadata object. For complex values, use the
     /// <see cref="McpServerToolCreateOptions.Meta"/>, <see cref="McpServerPromptCreateOptions.Meta"/>, 
     /// or <see cref="McpServerResourceCreateOptions.Meta"/> property to provide a JsonObject directly.
     /// </remarks>
-    public required string Value { get; set; }
+    public string Value { get; }
 }

@@ -144,8 +144,9 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 };
             }
 
-            // Populate Meta from options and/or McpMetaAttribute instances if a MethodInfo is in the metadata
-            if (options.Metadata?.FirstOrDefault(m => m is MethodInfo) is MethodInfo method)
+            // Populate Meta from options and/or McpMetaAttribute instances if a MethodInfo is available
+            MethodInfo? method = options.Metadata?.FirstOrDefault(m => m is MethodInfo) as MethodInfo ?? function.Metadata?.UnderlyingMethod;
+            if (method is not null)
             {
                 tool.Meta = CreateMetaFromAttributes(method, options.Meta);
             }
