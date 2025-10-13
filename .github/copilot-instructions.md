@@ -51,7 +51,7 @@ The SDK consists of three main packages:
 - Name parameters consistently: `cancellationToken`
 
 ### MCP Protocol
-- Follow the MCP specification at https://spec.modelcontextprotocol.io/ (https://github.com/modelcontextprotocol/modelcontextprotocol/tree/main/docs/specification)
+- Follow the MCP specification at https://spec.modelcontextprotocol.io/ ([specification docs](https://github.com/modelcontextprotocol/modelcontextprotocol/tree/main/docs/specification))
 - Use JSON-RPC 2.0 for message transport
 - Support all standard MCP capabilities (e.g. tools, prompts, resources, sampling)
 - Implement proper error handling with `McpException` and `McpErrorCode`
