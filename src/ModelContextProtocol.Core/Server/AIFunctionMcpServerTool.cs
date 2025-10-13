@@ -143,6 +143,12 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                     ReadOnlyHint = options.ReadOnly,
                 };
             }
+
+            // Populate Meta from McpMetaAttribute instances if a MethodInfo is in the metadata
+            if (options.Metadata?.FirstOrDefault(m => m is MethodInfo) is MethodInfo method)
+            {
+                tool.Meta = CreateMetaFromAttributes(method);
+            }
         }
 
         return new AIFunctionMcpServerTool(function, tool, options?.Services, structuredOutputRequiresWrapping, options?.Metadata ?? []);
@@ -349,6 +355,22 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         metadata.AddRange(method.GetCustomAttributes());
 
         return metadata.AsReadOnly();
+    }
+
+    /// <summary>Creates a Meta JsonObject from McpMetaAttribute instances on the specified method.</summary>
+    internal static JsonObject? CreateMetaFromAttributes(MethodInfo method)
+    {
+        // Get all McpMetaAttribute instances from the method
+        var metaAttributes = method.GetCustomAttributes<McpMetaAttribute>();
+        
+        JsonObject? meta = null;
+        foreach (var attr in metaAttributes)
+        {
+            meta ??= new JsonObject();
+            meta[attr.Name] = attr.Value;
+        }
+
+        return meta;
     }
 
     /// <summary>Regex that flags runs of characters other than ASCII digits or letters.</summary>
