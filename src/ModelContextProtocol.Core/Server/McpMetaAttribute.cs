@@ -50,8 +50,9 @@ public sealed class McpMetaAttribute : Attribute
     /// Gets or sets the value of the metadata entry.
     /// </summary>
     /// <remarks>
-    /// This value is stored as a string in the metadata object. Complex values should be
-    /// serialized to JSON strings if needed.
+    /// This value is stored as a string in the metadata object. For complex values, use the
+    /// <see cref="McpServerToolCreateOptions.Meta"/>, <see cref="McpServerPromptCreateOptions.Meta"/>, 
+    /// or <see cref="McpServerResourceCreateOptions.Meta"/> property to provide a JsonObject directly.
     /// </remarks>
     public required string Value { get; set; }
 }
