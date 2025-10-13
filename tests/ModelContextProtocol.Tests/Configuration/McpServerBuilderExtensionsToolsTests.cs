@@ -780,6 +780,46 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         Assert.True(foundToolName, "Tool name 'echo' was not found in structured logging state");
     }
 
+    [Fact]
+    public async Task ToolName_Captured_In_Structured_Logging_OnToolError()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        // Call a tool that will error - note that tool errors are returned as CallToolResult with IsError=true,
+        // not thrown as exceptions per the MCP spec
+        var result = await client.CallToolAsync(
+            "throw_exception",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Verify the tool error was returned properly
+        Assert.NotNull(result);
+        Assert.True(result.IsError);
+
+        // Verify that the tool name is captured in structured logging
+        // even when the tool encounters an error
+        var relevantLogs = _mockLoggerProvider.LogMessagesWithState
+            .Where(m => m.LogLevel == LogLevel.Debug &&
+                        (m.Message.Contains("waiting for response") || m.Message.Contains("response received")) &&
+                        m.Message.Contains("tools/call"))
+            .ToList();
+
+        Assert.NotEmpty(relevantLogs);
+
+        // Check that at least one log entry has the tool name in its structured state
+        bool foundToolName = relevantLogs.Any(log =>
+        {
+            if (log.State is IReadOnlyList<KeyValuePair<string, object?>> stateList)
+            {
+                return stateList.Any(kvp => 
+                    kvp.Key == "ToolName" && 
+                    kvp.Value?.ToString() == "throw_exception");
+            }
+            return false;
+        });
+
+        Assert.True(foundToolName, "Tool name 'throw_exception' was not found in structured logging state");
+    }
+
     [McpServerToolType]
     public sealed class EchoTool(ObjectWithId objectFromDI)
     {
