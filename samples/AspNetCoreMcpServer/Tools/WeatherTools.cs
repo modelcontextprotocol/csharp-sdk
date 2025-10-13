@@ -17,6 +17,8 @@ public sealed class WeatherTools
     }
 
     [McpServerTool, Description("Get weather alerts for a US state.")]
+    [McpMeta(Name = "category", Value = "weather")]
+    [McpMeta(Name = "dataSource", Value = "weather.gov")]
     public async Task<string> GetAlerts(
         [Description("The US state to get alerts for. Use the 2 letter abbreviation for the state (e.g. NY).")] string state)
     {
@@ -46,6 +48,8 @@ public sealed class WeatherTools
     }
 
     [McpServerTool, Description("Get weather forecast for a location.")]
+    [McpMeta(Name = "category", Value = "weather")]
+    [McpMeta(Name = "recommendedModel", Value = "gpt-4")]
     public async Task<string> GetForecast(
         [Description("Latitude of the location.")] double latitude,
         [Description("Longitude of the location.")] double longitude)
