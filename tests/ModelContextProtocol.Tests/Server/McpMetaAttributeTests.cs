@@ -14,7 +14,7 @@ public class McpMetaAttributeTests
         var method = typeof(TestToolClass).GetMethod(nameof(TestToolClass.ToolWithMeta))!;
         
         // Act
-        var tool = McpServerTool.Create(method, null);
+        var tool = McpServerTool.Create(method, target: null);
         
         // Assert
         Assert.NotNull(tool.ProtocolTool.Meta);
@@ -29,7 +29,7 @@ public class McpMetaAttributeTests
         var method = typeof(TestPromptClass).GetMethod(nameof(TestPromptClass.PromptWithMeta))!;
         
         // Act
-        var prompt = McpServerPrompt.Create(method, null);
+        var prompt = McpServerPrompt.Create(method, target: null);
         
         // Assert
         Assert.NotNull(prompt.ProtocolPrompt.Meta);
@@ -44,7 +44,7 @@ public class McpMetaAttributeTests
         var method = typeof(TestResourceClass).GetMethod(nameof(TestResourceClass.ResourceWithMeta))!;
         
         // Act
-        var resource = McpServerResource.Create(method, null);
+        var resource = McpServerResource.Create(method, target: null);
         
         // Assert
         Assert.NotNull(resource.ProtocolResource.Meta);
@@ -59,7 +59,7 @@ public class McpMetaAttributeTests
         var method = typeof(TestToolClass).GetMethod(nameof(TestToolClass.ToolWithoutMeta))!;
         
         // Act
-        var tool = McpServerTool.Create(method, null);
+        var tool = McpServerTool.Create(method, target: null);
         
         // Assert
         Assert.Null(tool.ProtocolTool.Meta);
@@ -72,7 +72,7 @@ public class McpMetaAttributeTests
         var method = typeof(TestToolClass).GetMethod(nameof(TestToolClass.ToolWithSingleMeta))!;
         
         // Act
-        var tool = McpServerTool.Create(method, null);
+        var tool = McpServerTool.Create(method, target: null);
         
         // Assert
         Assert.NotNull(tool.ProtocolTool.Meta);
@@ -93,7 +93,7 @@ public class McpMetaAttributeTests
         var options = new McpServerToolCreateOptions { Meta = seedMeta };
         
         // Act
-        var tool = McpServerTool.Create(method, options);
+        var tool = McpServerTool.Create(method, target: null, options: options);
         
         // Assert
         Assert.NotNull(tool.ProtocolTool.Meta);
@@ -117,7 +117,7 @@ public class McpMetaAttributeTests
         var options = new McpServerToolCreateOptions { Meta = seedMeta };
         
         // Act
-        var tool = McpServerTool.Create(method, options);
+        var tool = McpServerTool.Create(method, target: null, options: options);
         
         // Assert
         Assert.NotNull(tool.ProtocolTool.Meta);
@@ -138,7 +138,7 @@ public class McpMetaAttributeTests
         var options = new McpServerPromptCreateOptions { Meta = seedMeta };
         
         // Act
-        var prompt = McpServerPrompt.Create(method, options);
+        var prompt = McpServerPrompt.Create(method, target: null, options: options);
         
         // Assert
         Assert.NotNull(prompt.ProtocolPrompt.Meta);
@@ -163,7 +163,7 @@ public class McpMetaAttributeTests
         var options = new McpServerResourceCreateOptions { Meta = seedMeta };
         
         // Act
-        var resource = McpServerResource.Create(method, options);
+        var resource = McpServerResource.Create(method, target: null, options: options);
         
         // Assert
         Assert.NotNull(resource.ProtocolResource.Meta);

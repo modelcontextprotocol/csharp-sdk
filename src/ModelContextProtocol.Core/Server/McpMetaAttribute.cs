@@ -34,8 +34,8 @@ public sealed class McpMetaAttribute : Attribute
     /// Initializes a new instance of the <see cref="McpMetaAttribute"/> class.
     /// </summary>
     /// <param name="name">The name (key) of the metadata entry.</param>
-    /// <param name="value">The value of the metadata entry.</param>
-    public McpMetaAttribute(string name, string value)
+    /// <param name="value">The value of the metadata entry. This can be any value that can be encoded in .NET metadata.</param>
+    public McpMetaAttribute(string name, object? value)
     {
         Name = name;
         Value = value;
@@ -54,9 +54,16 @@ public sealed class McpMetaAttribute : Attribute
     /// Gets the value of the metadata entry.
     /// </summary>
     /// <remarks>
-    /// This value is stored as a string in the metadata object. For complex values, use the
+    /// <para>
+    /// This value can be any object that can be encoded in .NET metadata (strings, numbers, booleans, etc.).
+    /// The value will be serialized to JSON using <see cref="System.Text.Json.JsonSerializer"/> when
+    /// populating the metadata JsonObject.
+    /// </para>
+    /// <para>
+    /// For complex JSON structures that cannot be represented as .NET metadata, use the
     /// <see cref="McpServerToolCreateOptions.Meta"/>, <see cref="McpServerPromptCreateOptions.Meta"/>, 
     /// or <see cref="McpServerResourceCreateOptions.Meta"/> property to provide a JsonObject directly.
+    /// </para>
     /// </remarks>
-    public string Value { get; }
+    public object? Value { get; }
 }

@@ -378,7 +378,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             // Only add the attribute property if it doesn't already exist in the seed
             if (!meta.ContainsKey(attr.Name))
             {
-                meta[attr.Name] = attr.Value;
+                meta[attr.Name] = JsonSerializer.SerializeToNode(attr.Value);
             }
         }
 
