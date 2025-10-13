@@ -211,11 +211,15 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
 
         string name = options?.Name ?? function.Name;
 
-        // Populate Meta from McpMetaAttribute instances if a MethodInfo is in the metadata
+        // Populate Meta from options and/or McpMetaAttribute instances if a MethodInfo is in the metadata
         JsonObject? meta = null;
         if (options?.Metadata?.FirstOrDefault(m => m is MethodInfo) is MethodInfo method)
         {
-            meta = AIFunctionMcpServerTool.CreateMetaFromAttributes(method);
+            meta = AIFunctionMcpServerTool.CreateMetaFromAttributes(method, options.Meta);
+        }
+        else if (options?.Meta is not null)
+        {
+            meta = options.Meta;
         }
 
         ResourceTemplate resource = new()

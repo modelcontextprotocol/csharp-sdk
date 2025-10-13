@@ -144,10 +144,14 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 };
             }
 
-            // Populate Meta from McpMetaAttribute instances if a MethodInfo is in the metadata
+            // Populate Meta from options and/or McpMetaAttribute instances if a MethodInfo is in the metadata
             if (options.Metadata?.FirstOrDefault(m => m is MethodInfo) is MethodInfo method)
             {
-                tool.Meta = CreateMetaFromAttributes(method);
+                tool.Meta = CreateMetaFromAttributes(method, options.Meta);
+            }
+            else if (options.Meta is not null)
+            {
+                tool.Meta = options.Meta;
             }
         }
 
@@ -358,16 +362,23 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     }
 
     /// <summary>Creates a Meta JsonObject from McpMetaAttribute instances on the specified method.</summary>
-    internal static JsonObject? CreateMetaFromAttributes(MethodInfo method)
+    /// <param name="method">The method to extract McpMetaAttribute instances from.</param>
+    /// <param name="seedMeta">Optional JsonObject to seed the Meta with. Properties from this object take precedence over attributes.</param>
+    /// <returns>A JsonObject with metadata, or null if no metadata is present.</returns>
+    internal static JsonObject? CreateMetaFromAttributes(MethodInfo method, JsonObject? seedMeta = null)
     {
         // Get all McpMetaAttribute instances from the method
         var metaAttributes = method.GetCustomAttributes<McpMetaAttribute>();
         
-        JsonObject? meta = null;
+        JsonObject? meta = seedMeta;
         foreach (var attr in metaAttributes)
         {
             meta ??= new JsonObject();
-            meta[attr.Name] = attr.Value;
+            // Only add the attribute property if it doesn't already exist in the seed
+            if (!meta.ContainsKey(attr.Name))
+            {
+                meta[attr.Name] = attr.Value;
+            }
         }
 
         return meta;

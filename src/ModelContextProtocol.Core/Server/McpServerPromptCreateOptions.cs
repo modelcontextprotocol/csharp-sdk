@@ -87,6 +87,21 @@ public sealed class McpServerPromptCreateOptions
     public IList<Icon>? Icons { get; set; }
 
     /// <summary>
+    /// Gets or sets metadata reserved by MCP for protocol-level metadata.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This JsonObject is used to seed the <see cref="Prompt.Meta"/> property. Any metadata from
+    /// <see cref="McpMetaAttribute"/> instances on the method will be added to this object, but
+    /// properties already present in this JsonObject will not be overwritten.
+    /// </para>
+    /// <para>
+    /// Implementations must not make assumptions about its contents.
+    /// </para>
+    /// </remarks>
+    public System.Text.Json.Nodes.JsonObject? Meta { get; set; }
+
+    /// <summary>
     /// Creates a shallow clone of the current <see cref="McpServerPromptCreateOptions"/> instance.
     /// </summary>
     internal McpServerPromptCreateOptions Clone() =>
@@ -100,5 +115,6 @@ public sealed class McpServerPromptCreateOptions
             SchemaCreateOptions = SchemaCreateOptions,
             Metadata = Metadata,
             Icons = Icons,
+            Meta = Meta,
         };
 }

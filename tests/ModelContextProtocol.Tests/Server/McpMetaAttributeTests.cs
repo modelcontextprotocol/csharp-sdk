@@ -80,6 +80,101 @@ public class McpMetaAttributeTests
         Assert.Single(tool.ProtocolTool.Meta);
     }
 
+    [Fact]
+    public void McpMetaAttribute_OptionsMetaTakesPrecedence()
+    {
+        // Arrange
+        var method = typeof(TestToolClass).GetMethod(nameof(TestToolClass.ToolWithMeta))!;
+        var seedMeta = new JsonObject
+        {
+            ["model"] = "options-model",
+            ["extra"] = "options-extra"
+        };
+        var options = new McpServerToolCreateOptions { Meta = seedMeta };
+        
+        // Act
+        var tool = McpServerTool.Create(method, options);
+        
+        // Assert
+        Assert.NotNull(tool.ProtocolTool.Meta);
+        // Options Meta should win for "model"
+        Assert.Equal("options-model", tool.ProtocolTool.Meta["model"]?.ToString());
+        // Attribute should add "version" since it's not in options
+        Assert.Equal("1.0", tool.ProtocolTool.Meta["version"]?.ToString());
+        // Options Meta should include "extra"
+        Assert.Equal("options-extra", tool.ProtocolTool.Meta["extra"]?.ToString());
+    }
+
+    [Fact]
+    public void McpMetaAttribute_OptionsMetaOnly_NoAttributes()
+    {
+        // Arrange
+        var method = typeof(TestToolClass).GetMethod(nameof(TestToolClass.ToolWithoutMeta))!;
+        var seedMeta = new JsonObject
+        {
+            ["custom"] = "value"
+        };
+        var options = new McpServerToolCreateOptions { Meta = seedMeta };
+        
+        // Act
+        var tool = McpServerTool.Create(method, options);
+        
+        // Assert
+        Assert.NotNull(tool.ProtocolTool.Meta);
+        Assert.Equal("value", tool.ProtocolTool.Meta["custom"]?.ToString());
+        Assert.Single(tool.ProtocolTool.Meta);
+    }
+
+    [Fact]
+    public void McpMetaAttribute_PromptOptionsMetaTakesPrecedence()
+    {
+        // Arrange
+        var method = typeof(TestPromptClass).GetMethod(nameof(TestPromptClass.PromptWithMeta))!;
+        var seedMeta = new JsonObject
+        {
+            ["type"] = "options-type",
+            ["extra"] = "options-extra"
+        };
+        var options = new McpServerPromptCreateOptions { Meta = seedMeta };
+        
+        // Act
+        var prompt = McpServerPrompt.Create(method, options);
+        
+        // Assert
+        Assert.NotNull(prompt.ProtocolPrompt.Meta);
+        // Options Meta should win for "type"
+        Assert.Equal("options-type", prompt.ProtocolPrompt.Meta["type"]?.ToString());
+        // Attribute should add "model" since it's not in options
+        Assert.Equal("claude-3", prompt.ProtocolPrompt.Meta["model"]?.ToString());
+        // Options Meta should include "extra"
+        Assert.Equal("options-extra", prompt.ProtocolPrompt.Meta["extra"]?.ToString());
+    }
+
+    [Fact]
+    public void McpMetaAttribute_ResourceOptionsMetaTakesPrecedence()
+    {
+        // Arrange
+        var method = typeof(TestResourceClass).GetMethod(nameof(TestResourceClass.ResourceWithMeta))!;
+        var seedMeta = new JsonObject
+        {
+            ["encoding"] = "options-encoding",
+            ["extra"] = "options-extra"
+        };
+        var options = new McpServerResourceCreateOptions { Meta = seedMeta };
+        
+        // Act
+        var resource = McpServerResource.Create(method, options);
+        
+        // Assert
+        Assert.NotNull(resource.ProtocolResource.Meta);
+        // Options Meta should win for "encoding"
+        Assert.Equal("options-encoding", resource.ProtocolResource.Meta["encoding"]?.ToString());
+        // Attribute should add "caching" since it's not in options
+        Assert.Equal("cached", resource.ProtocolResource.Meta["caching"]?.ToString());
+        // Options Meta should include "extra"
+        Assert.Equal("options-extra", resource.ProtocolResource.Meta["extra"]?.ToString());
+    }
+
     private class TestToolClass
     {
         [McpServerTool]
