@@ -145,10 +145,10 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             }
 
             // Populate Meta from options and/or McpMetaAttribute instances if a MethodInfo is available
-            MethodInfo? method = options.Metadata?.FirstOrDefault(m => m is MethodInfo) as MethodInfo ?? function.Metadata?.UnderlyingMethod;
+            MethodInfo? method = options.Metadata?.FirstOrDefault(m => m is MethodInfo) as MethodInfo ?? function.UnderlyingMethod;
             if (method is not null)
             {
-                tool.Meta = CreateMetaFromAttributes(method, options.Meta);
+                tool.Meta = CreateMetaFromAttributes(method, options.Meta, options.SerializerOptions);
             }
             else if (options.Meta is not null)
             {
@@ -365,8 +365,9 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     /// <summary>Creates a Meta JsonObject from McpMetaAttribute instances on the specified method.</summary>
     /// <param name="method">The method to extract McpMetaAttribute instances from.</param>
     /// <param name="seedMeta">Optional JsonObject to seed the Meta with. Properties from this object take precedence over attributes.</param>
+    /// <param name="serializerOptions">Optional JsonSerializerOptions to use for serialization. Defaults to McpJsonUtilities.DefaultOptions if not provided.</param>
     /// <returns>A JsonObject with metadata, or null if no metadata is present.</returns>
-    internal static JsonObject? CreateMetaFromAttributes(MethodInfo method, JsonObject? seedMeta = null)
+    internal static JsonObject? CreateMetaFromAttributes(MethodInfo method, JsonObject? seedMeta = null, JsonSerializerOptions? serializerOptions = null)
     {
         // Get all McpMetaAttribute instances from the method
         var metaAttributes = method.GetCustomAttributes<McpMetaAttribute>();
@@ -378,7 +379,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             // Only add the attribute property if it doesn't already exist in the seed
             if (!meta.ContainsKey(attr.Name))
             {
-                meta[attr.Name] = JsonSerializer.SerializeToNode(attr.Value);
+                meta[attr.Name] = JsonSerializer.SerializeToNode(attr.Value, serializerOptions ?? McpJsonUtilities.DefaultOptions);
             }
         }
 

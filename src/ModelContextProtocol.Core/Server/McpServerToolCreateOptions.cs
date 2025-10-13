@@ -177,9 +177,9 @@ public sealed class McpServerToolCreateOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This JsonObject is used to seed the <see cref="Tool.Meta"/> property. Any metadata from
+    /// This <see cref="System.Text.Json.Nodes.JsonObject"/> is used to seed the <see cref="Tool.Meta"/> property. Any metadata from
     /// <see cref="McpMetaAttribute"/> instances on the method will be added to this object, but
-    /// properties already present in this JsonObject will not be overwritten.
+    /// properties already present in this <see cref="System.Text.Json.Nodes.JsonObject"/> will not be overwritten.
     /// </para>
     /// <para>
     /// Implementations must not make assumptions about its contents.
