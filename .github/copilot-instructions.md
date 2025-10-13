@@ -36,10 +36,13 @@ The SDK consists of three main packages:
 - Support both builder patterns and options configuration
 
 ### JSON Serialization
-- Use `System.Text.Json` for all JSON operations
-- Use `McpJsonUtilities.DefaultOptions` for consistent serialization
-- Support source generation for Native AOT compatibility
-- Set `JsonIgnoreCondition.WhenWritingNull` for optional properties
+- Use `System.Text.Json` exclusively for all JSON operations
+- Use `McpJsonUtilities.DefaultOptions` for consistent serialization settings across the SDK
+- Support source generation for Native AOT compatibility via `McpJsonUtilities` source generators
+- Set `JsonIgnoreCondition.WhenWritingNull` for optional properties to minimize payload size
+- Use `JsonSerializerDefaults.Web` for camelCase property naming
+- Protocol types are decorated with `[JsonSerializable]` attributes for AOT support
+- Custom converters: `CustomizableJsonStringEnumConverter` for flexible enum serialization
 
 ### Async Patterns
 - All I/O operations should be async
@@ -53,18 +56,38 @@ The SDK consists of three main packages:
 - Support all standard MCP capabilities (e.g. tools, prompts, resources, sampling)
 - Implement proper error handling with `McpException` and `McpErrorCode`
 
+### Error Handling
+- Throw `McpException` for MCP protocol-level errors with appropriate `McpErrorCode`
+- Use standard error codes: `InvalidRequest`, `MethodNotFound`, `InvalidParams`, `InternalError`
+- Let domain exceptions bubble up and convert to `InternalError` at transport boundary
+- Include detailed error messages in exception `Message` property for debugging
+- Errors are automatically converted to JSON-RPC error responses by the server infrastructure
+
 ## Testing
 
 ### Test Organization
-- Unit tests in `tests/ModelContextProtocol.Tests`
-- Integration tests in `tests/ModelContextProtocol.AspNetCore.Tests`
-- Test helpers in `tests/Common`
-- Filter manual tests with `[Trait("Execution", "Manual")]`
+- Unit tests in `tests/ModelContextProtocol.Tests` for core functionality
+- Integration tests in `tests/ModelContextProtocol.AspNetCore.Tests` for HTTP/SSE transports
+- Shared test utilities in `tests/Common/Utils/`
+- Test servers in `tests/ModelContextProtocol.Test*Server/` for integration scenarios
+- Filter manual tests with `[Trait("Execution", "Manual")]` - these require external dependencies
 
-### Test Infrastructure
-- Use xUnit for all tests
+### Test Infrastructure and Helpers
+- **LoggedTest**: Base class for tests that need logging output captured to xUnit test output
+  - Provides `ILoggerFactory` and `ITestOutputHelper` for test logging
+  - Use when debugging or when tests need to verify log output
+- **TestServerTransport**: In-memory transport for testing client-server interactions without network I/O
+- **MockLoggerProvider**: For capturing and asserting on log messages
+- **XunitLoggerProvider**: Routes `ILogger` output to xUnit's `ITestOutputHelper`
+- **KestrelInMemoryTransport** (AspNetCore.Tests): In-memory Kestrel connection for HTTP transport testing without network stack
+
+### Test Best Practices
+- Inherit from `LoggedTest` for tests needing logging infrastructure
+- Use `TestServerTransport` for in-memory client-server testing
+- Mock external dependencies (filesystem, HTTP clients) rather than calling real services
+- Use `CancellationTokenSource` with timeouts to prevent hanging tests
+- Dispose resources properly (servers, clients, transports) using `IDisposable` or `await using`
 - Run tests with: `dotnet test --filter '(Execution!=Manual)'`
-- Tests should be isolated and not depend on external services (except manual tests)
 
 ## Build and Development
 
@@ -75,8 +98,8 @@ The SDK consists of three main packages:
 - **Clean**: `dotnet clean` or `make clean`
 
 ### SDK Requirements
-- The project uses .NET SDK preview versions
-- Target frameworks: .NET 8.0, .NET 9.0, .NET Standard 2.0
+- The project currently uses .NET SDK 10.0 RC (this is temporary while waiting for .NET 10 to go GA)
+- Target frameworks: .NET 10.0, .NET 9.0, .NET 8.0, .NET Standard 2.0
 - Support Native AOT compilation
 
 ### Project Structure
@@ -86,10 +109,40 @@ The SDK consists of three main packages:
 - Documentation: `docs/`
 - Build artifacts: `artifacts/` (not committed)
 
-## Common Patterns
+## Architecture and Design Patterns
 
-### MCP Server Tools
-Tools are exposed using attributes:
+### Server Implementation Architecture
+- **McpServer** is the core server implementation in `ModelContextProtocol.Core/Server/`
+- **IMcpServerBuilder** pattern provides fluent API for configuring servers via DI
+- Server primitives (tools, prompts, resources) are discovered via reflection using attributes
+- Support both attribute-based registration (`WithTools<T>()`) and instance-based (`WithTools(target)`)
+- Use `McpServerFactory` to create server instances with configured options
+
+### Tool/Prompt/Resource Discovery
+- Tools, prompts, and resources use attribute-based discovery: `[McpServerTool]`, `[McpServerPrompt]`, `[McpServerResource]`
+- Type-level attributes (`[McpServerToolType]`, etc.) mark classes containing server primitives
+- Discovery supports both static and instance methods (public and non-public)
+- For Native AOT compatibility, use generic `WithTools<T>()` methods instead of reflection-based variants
+- `AIFunctionMcpServerTool`, `AIFunctionMcpServerPrompt`, and `AIFunctionMcpServerResource` wrap `AIFunction` for integration with Microsoft.Extensions.AI
+
+### Request Processing Pipeline
+- Requests flow through `McpServer.Methods.cs` which handles JSON-RPC message routing
+- Use `McpRequestFilter` for cross-cutting concerns (logging, auth, validation)
+- `RequestContext` provides access to current request state and services
+- `RequestServiceProvider` enables scoped dependency injection per request
+- Filters can short-circuit request processing or transform requests/responses
+
+### Transport Layer Abstraction
+- Transport implementations handle message serialization and connection management
+- Core transports: `StdioServerTransport`, `StreamServerTransport`, `SseResponseStreamTransport`, `StreamableHttpServerTransport`
+- Transports must implement bidirectional JSON-RPC message exchange
+- SSE (Server-Sent Events) transport for unidirectional server→client streaming
+- Streamable HTTP for request/response with streamed progress updates
+
+## Implementation Patterns
+
+### Tool Implementation
+Tools are methods marked with `[McpServerTool]`:
 ```csharp
 [McpServerToolType]
 public class MyTools
@@ -99,13 +152,18 @@ public class MyTools
         [Description("Parameter description")] string param,
         CancellationToken cancellationToken)
     {
-        // Implementation
+        // Implementation - use Description attributes for parameter documentation
+        // Return string, TextContent, ImageContent, EmbeddedResource, or arrays of these
     }
 }
 ```
+- Tools support dependency injection in constructors for instance methods
+- Parameters are automatically deserialized from JSON using `System.Text.Json`
+- Use `[Description]` attributes on parameters to generate tool schemas
+- Return types: `string`, `TextContent`, `ImageContent`, `EmbeddedResource`, or collections of content types
 
-### MCP Server Prompts
-Prompts are exposed similarly:
+### Prompt Implementation
+Prompts return `ChatMessage` or arrays thereof:
 ```csharp
 [McpServerPromptType]
 public static class MyPrompts
@@ -115,17 +173,45 @@ public static class MyPrompts
         new(ChatRole.User, $"Prompt template: {content}");
 }
 ```
+- Prompts can accept arguments to customize generated messages
+- Return single `ChatMessage` or `ChatMessage[]` for multi-turn prompts
+- Use `ChatRole.User`, `ChatRole.Assistant`, or `ChatRole.System` appropriately
 
-### Client Usage
+### Resource Implementation
+Resources provide access to data with URI templates:
 ```csharp
-var client = await McpClient.CreateAsync(
-    new StdioClientTransport(new() { Command = "...", Arguments = [...] }),
-    clientOptions: new() { /* ... */ },
-    loggerFactory: loggerFactory);
-
-var tools = await client.ListToolsAsync();
-var result = await client.CallToolAsync("tool-name", arguments, cancellationToken);
+[McpServerResourceType]
+public class MyResources
+{
+    [McpServerResource("file:///{path}"), Description("Reads file content")]
+    public static async Task<string> ReadFile(string path, CancellationToken cancellationToken)
+    {
+        // Resource URI matching uses UriTemplate syntax
+        // Extract parameters from URI and return content
+    }
+}
 ```
+- Use URI templates to define resource paths with parameters
+- Resources support subscription for dynamic content updates
+- Return content types similar to tools
+
+### Filters and Middleware
+Implement `McpRequestFilter` for request/response interception:
+```csharp
+public class LoggingFilter : McpRequestFilter
+{
+    public override async ValueTask InvokeAsync(RequestContext context, Func<ValueTask> next)
+    {
+        // Pre-processing
+        await next(); // Call next filter or handler
+        // Post-processing
+    }
+}
+```
+- Filters execute in registration order
+- Can short-circuit by not calling `next()`
+- Access request context, services, and can modify responses
+- Use for cross-cutting concerns: logging, auth, validation, caching
 
 ## OpenTelemetry Integration
 
