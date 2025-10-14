@@ -66,25 +66,15 @@ jobs:
     - name: Install dependencies for tests
       run: npm install @modelcontextprotocol/server-memory
 
-    - name: Build
-      run: dotnet build --configuration ${{ matrix.configuration }}
+    - name: Build & Test
+      run: make build test CONFIGURATION=${{ matrix.configuration }}
 
     - name: Pack
-      run: dotnet pack --configuration ${{ matrix.configuration }}
+      if: matrix.configuration == 'Release'
+      run: make pack CONFIGURATION=${{ matrix.configuration }}
 
-    - name: Test
-      run: >-
-        dotnet test
-        --filter '(Execution!=Manual)'
-        --no-build
-        --configuration ${{ matrix.configuration }}
-        --logger "trx"
-        --logger "GitHubActions;summary.includePassedTests=true;summary.includeSkippedTests=true"
-        --blame
-        --blame-hang-timeout 7m
-        --blame-crash
-        --results-directory testresults
-        --collect "XPlat Code Coverage" -- RunConfiguration.CollectSourceInformation=true
+    - name: Generate docs
+      run: make generate-docs CONFIGURATION=${{ matrix.configuration }}
 
     - name: Upload test results artifact
       if: always()

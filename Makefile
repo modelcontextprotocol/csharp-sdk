@@ -21,14 +21,20 @@ test: build
 		--configuration $(CONFIGURATION) \
 		--filter '(Execution!=Manual)' \
 		--blame \
+		--blame-crash \
+		--blame-hang-timeout 7m \
 		--diag "$(ARTIFACT_PATH)/diag.txt" \
 		--logger "trx" \
+		--logger "GitHubActions;summary.includePassedTests=true;summary.includeSkippedTests=true" \
 		--collect "Code Coverage;Format=cobertura" \
-		--results-directory $(ARTIFACT_PATH)/test-results \
+		--results-directory $(ARTIFACT_PATH)/testresults \
 		-- \
 		RunConfiguration.CollectSourceInformation=true
 
-generate-docs: clean restore
+pack: restore
+	dotnet pack --no-restore --configuration $(CONFIGURATION)
+
+generate-docs: restore
 	dotnet build --no-restore --configuration Release
 	dotnet docfx $(DOCS_PATH)/docfx.json --warningsAsErrors true
 
