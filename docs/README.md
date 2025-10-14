@@ -1,6 +1,6 @@
 # Documentation Guidelines
 
-This directory contains the conceptual documentation for the MCP C# SDK, built using [DocFX](https://dotnetfoundation.github.io/docfx/).
+This directory contains the conceptual documentation for the MCP C# SDK, built using [DocFX](https://dotnet.github.io/docfx/).
 
 ## Referencing API Types
 
