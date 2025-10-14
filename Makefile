@@ -26,7 +26,7 @@ test: build
 		--diag "$(ARTIFACT_PATH)/diag.txt" \
 		--logger "trx" \
 		--logger "GitHubActions;summary.includePassedTests=true;summary.includeSkippedTests=true" \
-		--collect "Code Coverage;Format=cobertura" \
+		--collect "XPlat Code Coverage" \
 		--results-directory $(ARTIFACT_PATH)/testresults \
 		-- \
 		RunConfiguration.CollectSourceInformation=true
