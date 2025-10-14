@@ -11,9 +11,12 @@ The **elicitation** feature allows servers to request additional information fro
 
 ### Server Support for Elicitation
 
-Servers request structured data from users with the <xref:ModelContextProtocol.Server.McpServerExtensions.ElicitAsync*> extension method on <xref:ModelContextProtocol.Server.McpServer>.
-The C# SDK registers an instance of <xref:ModelContextProtocol.Server.McpServer> with the dependency injection container,
-so tools can simply add a parameter of type <xref:ModelContextProtocol.Server.McpServer> to their method signature to access it.
+Servers request structured data from users with the [ElicitAsync] extension method on [IMcpServer].
+The C# SDK registers an instance of [IMcpServer] with the dependency injection container,
+so tools can simply add a parameter of type [IMcpServer] to their method signature to access it.
+
+[ElicitAsync]: xref:ModelContextProtocol.Server.McpServerExtensions.ElicitAsync*
+[IMcpServer]: xref:ModelContextProtocol.Server.McpServer
 
 The MCP Server must specify the schema of each input value it is requesting from the user.
 Only primitive types (string, number, boolean) are supported for elicitation requests.
@@ -28,7 +31,10 @@ The following example demonstrates how a server could request a boolean response
 
 ### Client Support for Elicitation
 
-Elicitation is an optional feature so clients declare their support for it in their capabilities as part of the `initialize` request. In the MCP C# SDK, this is done by configuring an <xref:ModelContextProtocol.Protocol.ElicitationCapability.ElicitationHandler> in the <xref:ModelContextProtocol.Client.McpClientOptions>:
+Elicitation is an optional feature so clients declare their support for it in their capabilities as part of the `initialize` request. In the MCP C# SDK, this is done by configuring an [ElicitationHandler] in the [McpClientOptions]:
+
+[ElicitationHandler]: xref:ModelContextProtocol.Protocol.ElicitationCapability.ElicitationHandler
+[McpClientOptions]: xref:ModelContextProtocol.Client.McpClientOptions
 
 [!code-csharp[](samples/client/Program.cs?name=snippet_McpInitialize)]
 
@@ -36,8 +42,10 @@ The ElicitationHandler is an asynchronous method that will be called when the se
 The ElicitationHandler must request input from the user and return the data in a format that matches the requested schema.
 This will be highly dependent on the client application and how it interacts with the user.
 
-If the user provides the requested information, the ElicitationHandler should return an <xref:ModelContextProtocol.Protocol.ElicitResult> with the action set to "accept" and the content containing the user's input.
-If the user does not provide the requested information, the ElicitationHandler should return an <xref:ModelContextProtocol.Protocol.ElicitResult> with the action set to "reject" and no content.
+If the user provides the requested information, the ElicitationHandler should return an [ElicitResult] with the action set to "accept" and the content containing the user's input.
+If the user does not provide the requested information, the ElicitationHandler should return an [ElicitResult] with the action set to "reject" and no content.
+
+[ElicitResult]: xref:ModelContextProtocol.Protocol.ElicitResult
 
 Below is an example of how a console application might handle elicitation requests.
 Here's an example implementation:

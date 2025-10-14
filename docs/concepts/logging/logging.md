@@ -49,36 +49,53 @@ Servers built with the C# SDK always declare the logging capability. Doing so do
 to send log messages -- only allows it. Note that stateless MCP servers may not be capable of sending log
 messages as there may not be an open connection to the client on which the log messages could be sent.
 
-The C# SDK provides an extension method <xref:Microsoft.Extensions.DependencyInjection.McpServerBuilderExtensions.WithSetLoggingLevelHandler*> on <xref:Microsoft.Extensions.DependencyInjection.IMcpServerBuilder> to allow the
+The C# SDK provides an extension method [WithSetLoggingLevelHandler] on [IMcpServerBuilder] to allow the
 server to perform any special logic it wants to perform when a client sets the logging level. However, the
-SDK already takes care of setting the <xref:ModelContextProtocol.Server.McpServer.LoggingLevel> in the <xref:ModelContextProtocol.Server.McpServer>, so most servers will not need to
+SDK already takes care of setting the [LoggingLevel] in the [IMcpServer], so most servers will not need to
 implement this.
 
-MCP Servers using the MCP C# SDK can obtain an <xref:Microsoft.Extensions.Logging.ILoggerProvider> from the <xref:ModelContextProtocol.Server.McpServer> <xref:ModelContextProtocol.Server.McpServerExtensions.AsClientLoggerProvider*> extension method,
-and from that can create an <xref:Microsoft.Extensions.Logging.ILogger> instance for logging messages that should be sent to the MCP client.
+[IMcpServer]: xref:ModelContextProtocol.Server.McpServer
+[IMcpServerBuilder]: xref:Microsoft.Extensions.DependencyInjection.IMcpServerBuilder
+[WithSetLoggingLevelHandler]: xref:Microsoft.Extensions.DependencyInjection.McpServerBuilderExtensions.WithSetLoggingLevelHandler*
+[LoggingLevel]: xref:ModelContextProtocol.Server.McpServer.LoggingLevel
+
+MCP Servers using the MCP C# SDK can obtain an [ILoggerProvider] from the IMcpServer [AsClientLoggerProvider] extension method,
+and from that can create an [ILogger] instance for logging messages that should be sent to the MCP client.
 
 [!code-csharp[](samples/server/Tools/LoggingTools.cs?name=snippet_LoggingConfiguration)]
+
+[ILoggerProvider]: https://learn.microsoft.com/dotnet/api/microsoft.extensions.logging.iloggerprovider
+[AsClientLoggerProvider]: xref:ModelContextProtocol.Server.McpServerExtensions.AsClientLoggerProvider*
+[ILogger]: https://learn.microsoft.com/dotnet/api/microsoft.extensions.logging.ilogger
 
 ### Client support for logging
 
 When the server indicates that it supports logging, clients should configure
 the logging level to specify which messages the server should send to the client.
 
-Clients should check if the server supports logging by checking the <xref:ModelContextProtocol.Protocol.ServerCapabilities.Logging> property of the <xref:ModelContextProtocol.Client.McpClient.ServerCapabilities> field of <xref:ModelContextProtocol.Client.McpClient>.
+Clients should check if the server supports logging by checking the [Logging] property of the [ServerCapabilities] field of [IMcpClient].
+
+[IMcpClient]: xref:ModelContextProtocol.Client.McpClient
+[ServerCapabilities]: xref:ModelContextProtocol.Client.McpClient.ServerCapabilities
+[Logging]: xref:ModelContextProtocol.Protocol.ServerCapabilities.Logging
 
 [!code-csharp[](samples/client/Program.cs?name=snippet_LoggingCapabilities)]
 
 If the server supports logging, the client should set the level of log messages it wishes to receive with
-the <xref:ModelContextProtocol.Client.McpClientExtensions.SetLoggingLevel*> method on <xref:ModelContextProtocol.Client.McpClient>. If the client does not set a logging level, the server might choose
+the [SetLoggingLevel] method on [IMcpClient]. If the client does not set a logging level, the server might choose
 to send all log messages or none -- this is not specified in the protocol -- so it is important that the client
 sets a logging level to ensure it receives the desired log messages and only those messages.
 
 The `loggingLevel` set by the client is an MCP logging level.
 See the [Logging Levels](#logging-levels) section above for the mapping between MCP and .NET logging levels.
 
+[SetLoggingLevel]: xref:ModelContextProtocol.Client.McpClientExtensions.SetLoggingLevel*
+
 [!code-csharp[](samples/client/Program.cs?name=snippet_LoggingLevel)]
 
-Lastly, the client must configure a notification handler for <xref:ModelContextProtocol.Protocol.NotificationMethods.LoggingMessageNotification> notifications.
+Lastly, the client must configure a notification handler for [NotificationMethods.LoggingMessageNotification] notifications.
 The following example simply writes the log messages to the console.
+
+[NotificationMethods.LoggingMessageNotification]: xref:ModelContextProtocol.Protocol.NotificationMethods.LoggingMessageNotification
 
 [!code-csharp[](samples/client/Program.cs?name=snippet_LoggingHandler)]
