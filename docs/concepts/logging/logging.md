@@ -65,7 +65,7 @@ and from that can create an [ILogger] instance for logging messages that should 
 [!code-csharp[](samples/server/Tools/LoggingTools.cs?name=snippet_LoggingConfiguration)]
 
 [ILoggerProvider]: https://learn.microsoft.com/dotnet/api/microsoft.extensions.logging.iloggerprovider
-[AsClientLoggerProvider]: xref:ModelContextProtocol.Server.McpServerExtensions.AsClientLoggerProvider*
+[AsClientLoggerProvider]: xref:ModelContextProtocol.Server.McpServer.AsClientLoggerProvider*
 [ILogger]: https://learn.microsoft.com/dotnet/api/microsoft.extensions.logging.ilogger
 
 ### Client support for logging
@@ -89,7 +89,7 @@ sets a logging level to ensure it receives the desired log messages and only tho
 The `loggingLevel` set by the client is an MCP logging level.
 See the [Logging Levels](#logging-levels) section above for the mapping between MCP and .NET logging levels.
 
-[SetLoggingLevel]: xref:ModelContextProtocol.Client.McpClientExtensions.SetLoggingLevel*
+[SetLoggingLevel]: xref:ModelContextProtocol.Client.McpClient.SetLoggingLevel*
 
 [!code-csharp[](samples/client/Program.cs?name=snippet_LoggingLevel)]
 

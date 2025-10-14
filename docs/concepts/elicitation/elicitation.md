@@ -15,7 +15,7 @@ Servers request structured data from users with the [ElicitAsync] extension meth
 The C# SDK registers an instance of [IMcpServer] with the dependency injection container,
 so tools can simply add a parameter of type [IMcpServer] to their method signature to access it.
 
-[ElicitAsync]: xref:ModelContextProtocol.Server.McpServerExtensions.ElicitAsync*
+[ElicitAsync]: xref:ModelContextProtocol.Server.McpServer.ElicitAsync*
 [IMcpServer]: xref:ModelContextProtocol.Server.McpServer
 
 The MCP Server must specify the schema of each input value it is requesting from the user.
@@ -33,7 +33,7 @@ The following example demonstrates how a server could request a boolean response
 
 Elicitation is an optional feature so clients declare their support for it in their capabilities as part of the `initialize` request. In the MCP C# SDK, this is done by configuring an [ElicitationHandler] in the [McpClientOptions]:
 
-[ElicitationHandler]: xref:ModelContextProtocol.Protocol.ElicitationCapability.ElicitationHandler
+[ElicitationHandler]: xref:ModelContextProtocol.Client.McpClientHandlers.ElicitationHandler
 [McpClientOptions]: xref:ModelContextProtocol.Client.McpClientOptions
 
 [!code-csharp[](samples/client/Program.cs?name=snippet_McpInitialize)]
