@@ -53,7 +53,6 @@
     <PackageReference Include="OpenTelemetry.Exporter.InMemory" />
     <PackageReference Include="Serilog" />
     <PackageReference Include="System.Linq.AsyncEnumerable" />
-    <PackageReference Include="System.Net.Http" />
     <PackageReference Include="JsonSchema.Net" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio">
