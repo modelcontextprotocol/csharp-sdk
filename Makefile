@@ -30,7 +30,7 @@ test: build
 
 generate-docs: clean restore
 	dotnet build --no-restore --configuration Release
-	dotnet docfx $(DOCS_PATH)/docfx.json
+	dotnet docfx $(DOCS_PATH)/docfx.json --warningsAsErrors true
 
 serve-docs: generate-docs
 	dotnet docfx serve $(ARTIFACT_PATH)/_site --port 8080
