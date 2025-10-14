@@ -34,8 +34,7 @@ test: build
 pack: restore
 	dotnet pack --no-restore --configuration $(CONFIGURATION)
 
-generate-docs: restore
-	dotnet build --no-restore --configuration Release
+generate-docs: build
 	dotnet docfx $(DOCS_PATH)/docfx.json --warningsAsErrors true
 
 serve-docs: generate-docs
