@@ -34,12 +34,12 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-    - name: Clone the repo
+    - name: 📥 Clone the repo
       uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       with:
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
 
-    - name: Set up .NET
+    - name: 🔧 Set up .NET
       uses: actions/setup-dotnet@d4c94342e560b34958eacfc5d055d21461ed1c5d # v5.0.0
       with:
         dotnet-version: |
@@ -47,39 +47,39 @@ jobs:
           9.0.x
 
     # NetFX testing on non-Windows requires mono
-    - name: Setup Mono
+    - name: 🔧 Setup Mono
       if: runner.os == 'Linux'
       run: sudo apt-get install -y mono-devel
 
-    - name: Setup Mono on macOS
+    - name: 🔧 Setup Mono on macOS
       if: runner.os == 'macOS'
       run: brew install mono
 
-    - name: Set up Node.js
+    - name: 🔧 Set up Node.js
       uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
       with:
         node-version: '20'
 
-    - name: Install dependencies for tests
+    - name: 📦 Install dependencies for tests
       run: npm install @modelcontextprotocol/server-everything
 
-    - name: Install dependencies for tests
+    - name: 📦 Install dependencies for tests
       run: npm install @modelcontextprotocol/server-memory
 
-    - name: Build
+    - name: 🏗️ Build
       run: make build CONFIGURATION=${{ matrix.configuration }}
 
-    - name: Test
+    - name: 🧪 Test
       run: make test CONFIGURATION=${{ matrix.configuration }}
 
-    - name: Pack
+    - name: 📦 Pack
       if: matrix.configuration == 'Release'
       run: make pack CONFIGURATION=${{ matrix.configuration }}
 
-    - name: Generate docs
+    - name: 📚 Generate docs
       run: make generate-docs CONFIGURATION=${{ matrix.configuration }}
 
-    - name: Upload test results artifact
+    - name: 📤 Upload test results artifact
       if: always()
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
