@@ -63,7 +63,7 @@ The MCP C# SDK will automatically handle progress notifications and report them 
 This notification handler will only receive progress updates for the specific request that was made,
 rather than all progress notifications from the server.
 
-[Progress`<T>`]: https://learn.microsoft.com/dotnet/api/system.progress-1
+[Progress`<T>`]: [System.Progress<T>](https://learn.microsoft.com/dotnet/api/system.progress-1>
 [ProgressNotificationValue]: xref:ModelContextProtocol.ProgressNotificationValue
 
 [!code-csharp[](samples/client/Program.cs?name=snippet_ProgressHandler)]
