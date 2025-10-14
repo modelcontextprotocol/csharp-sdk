@@ -7,8 +7,8 @@ This repository contains the official C# SDK for the Model Context Protocol (MCP
 **ALWAYS build and run tests before declaring any task complete or making a pull request.**
 
 When making code changes:
-1. **Build first**: Run `dotnet build` or `make build` to ensure the code compiles without errors
-2. **Run tests**: Execute `dotnet test --filter '(Execution!=Manual)'` or `make test` to verify all tests pass
+1. **Build first**: Run `dotnet build` to ensure the code compiles without errors
+2. **Run tests**: Execute `dotnet test` to verify all tests pass
 3. **Fix issues**: Address any build errors or test failures before proceeding
 4. **Verify iteratively**: Build and test frequently during development, not just at the end
 5. **Check warnings**: Treat warnings as errors - the build is configured with `TreatWarningsAsErrors=true`
@@ -105,16 +105,16 @@ The SDK consists of three main packages:
 ## Build and Development
 
 ### Build Commands
-- **Restore**: `dotnet restore` or `make restore`
-- **Build**: `dotnet build` or `make build`
-- **Test**: `dotnet test` or `make test`
-- **Clean**: `dotnet clean` or `make clean`
+- **Restore**: `dotnet restore`
+- **Build**: `dotnet build`
+- **Test**: `dotnet test`
+- **Clean**: `dotnet clean`
 
 ### Development Workflow
 **Critical**: Always follow this workflow when making changes:
 1. Make code changes
 2. Build immediately: `dotnet build` - fix any compilation errors
-3. Run tests: `dotnet test --filter '(Execution!=Manual)'` - fix any test failures
+3. Run tests: `dotnet test` - fix any test failures
 4. Repeat steps 1-3 iteratively as you develop
 5. Only after successful build and tests should you consider the change complete
 
