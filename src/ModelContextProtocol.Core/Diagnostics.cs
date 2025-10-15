@@ -17,6 +17,8 @@ internal static class Diagnostics
 #if NET9_0_OR_GREATER
         , advice: longBuckets ? LongSecondsBucketBoundaries : ShortSecondsBucketBoundaries
 #endif
+#if DEBUG
+#endif
         );
 
 #if NET9_0_OR_GREATER
