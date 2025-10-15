@@ -15,6 +15,7 @@ on:
       - "*.sln"
       - "*.props"
       - "Makefile"
+      - "global.json"
       - "src/**"
       - "tests/**"
       - "samples/**"
