@@ -1,0 +1,19 @@
+name: Setup .NET SDK 10.0.100 RC1
+steps:
+  - name: Download and install .NET 10.0.100 RC1 SDK
+    run: |
+      # Download the .NET install script
+      curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
+      chmod +x /tmp/dotnet-install.sh
+      
+      # Install .NET SDK 10.0.100-rc.1.25451.107
+      /tmp/dotnet-install.sh --version 10.0.100-rc.1.25451.107 --install-dir $HOME/.dotnet
+      
+      # Add to PATH
+      echo "$HOME/.dotnet" >> $GITHUB_PATH
+      
+      # Cleanup
+      rm -f /tmp/dotnet-install.sh
+  - name: Verify .NET SDK installation
+    run: |
+      $HOME/.dotnet/dotnet --version
