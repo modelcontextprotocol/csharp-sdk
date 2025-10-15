@@ -13,7 +13,7 @@ namespace ModelContextProtocol.Server;
 /// Handles processing the request/response body pairs for the Streamable HTTP transport.
 /// This is typically used via <see cref="JsonRpcMessageContext.RelatedTransport"/>.
 /// </summary>
-internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport parentTransport, Stream responseStream) : ITransport
+internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport parentTransport, Stream? responseStream) : ITransport
 {
     private readonly SseWriter _sseWriter = new();
     private RequestId _pendingRequest;
@@ -23,11 +23,11 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
     string? ITransport.SessionId => parentTransport.SessionId;
 
     /// <returns>
-    /// True, if data was written to the respond body.
-    /// False, if nothing was written because the request body did not contain any <see cref="JsonRpcRequest"/> messages to respond to.
-    /// The HTTP application should typically respond with an empty "202 Accepted" response in this scenario.
+    /// An async enumerable of JSON-RPC messages to be sent back to the client.
+    /// If the request body did not contain any <see cref="JsonRpcRequest"/> messages to respond to,
+    /// the enumerable will be empty.
     /// </returns>
-    public async ValueTask<bool> HandlePostAsync(JsonRpcMessage message, CancellationToken cancellationToken)
+    public async IAsyncEnumerable<JsonRpcMessage> HandlePostAsync(JsonRpcMessage message, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         Debug.Assert(_pendingRequest.Id is null);
 
@@ -55,12 +55,27 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
 
         if (_pendingRequest.Id is null)
         {
-            return false;
+            yield break;
         }
 
-        _sseWriter.MessageFilter = StopOnFinalResponseFilter;
-        await _sseWriter.WriteAllAsync(responseStream, cancellationToken).ConfigureAwait(false);
-        return true;
+        if (responseStream is not null)
+        {
+            // Legacy path: write to stream
+            _sseWriter.MessageFilter = StopOnFinalResponseFilter;
+            await _sseWriter.WriteAllAsync(responseStream, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            // New path: yield messages directly
+            _sseWriter.MessageFilter = StopOnFinalResponseFilter;
+            await foreach (var sseItem in _sseWriter.ReadMessagesAsync(cancellationToken).ConfigureAwait(false))
+            {
+                if (sseItem.Data is not null)
+                {
+                    yield return sseItem.Data;
+                }
+            }
+        }
     }
 
     public async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)

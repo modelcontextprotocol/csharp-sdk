@@ -40,7 +40,7 @@ public abstract class JsonRpcMessage
     /// <remarks>
     /// This property should only be set when implementing a custom <see cref="ITransport"/>
     /// that needs to pass additional per-message context or to pass a <see cref="JsonRpcMessageContext.User"/>
-    /// to <see cref="StreamableHttpServerTransport.HandlePostRequest(JsonRpcMessage, Stream, CancellationToken)"/>
+    /// to <see cref="StreamableHttpServerTransport.HandlePostRequest(JsonRpcMessage, CancellationToken)"/>
     /// or <see cref="SseResponseStreamTransport.OnMessageReceivedAsync(JsonRpcMessage, CancellationToken)"/> .
     /// </remarks>
     [JsonIgnore]

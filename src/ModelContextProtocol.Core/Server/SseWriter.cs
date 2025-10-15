@@ -47,6 +47,16 @@ internal sealed class SseWriter(string? messageEndpoint = null, BoundedChannelOp
         return _writeTask;
     }
 
+    public IAsyncEnumerable<SseItem<JsonRpcMessage?>> ReadMessagesAsync(CancellationToken cancellationToken)
+    {
+        var messages = _messages.Reader.ReadAllAsync(cancellationToken);
+        if (MessageFilter is not null)
+        {
+            messages = MessageFilter(messages, cancellationToken);
+        }
+        return messages;
+    }
+
     public async Task<bool> SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(message);

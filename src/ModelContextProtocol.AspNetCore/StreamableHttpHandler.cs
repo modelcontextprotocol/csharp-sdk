@@ -6,8 +6,13 @@ using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using System.Buffers;
+using System.Diagnostics.CodeAnalysis;
+using System.Net.ServerSentEvents;
 using System.Security.Claims;
 using System.Security.Cryptography;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.AspNetCore;
@@ -60,7 +65,14 @@ internal sealed class StreamableHttpHandler(
         }
 
         InitializeSseResponse(context);
-        var wroteResponse = await session.Transport.HandlePostRequest(message, context.Response.Body, context.RequestAborted);
+
+        bool wroteResponse = false;
+        await foreach (var responseMessage in session.Transport.HandlePostRequest(message, context.RequestAborted))
+        {
+            wroteResponse = true;
+            await WriteSseMessageAsync(context.Response.Body, responseMessage, context.RequestAborted);
+        }
+
         if (!wroteResponse)
         {
             // We wound up writing nothing, so there should be no Content-Type response header.
@@ -306,4 +318,26 @@ internal sealed class StreamableHttpHandler(
 
     private static bool MatchesTextEventStreamMediaType(MediaTypeHeaderValue acceptHeaderValue)
         => acceptHeaderValue.MatchesMediaType("text/event-stream");
+
+    private static async Task WriteSseMessageAsync(Stream responseStream, JsonRpcMessage message, CancellationToken cancellationToken)
+    {
+        var sseItem = new SseItem<JsonRpcMessage>(message, SseParser.EventTypeDefault);
+        await SseFormatter.WriteAsync(
+            ToAsyncEnumerable(sseItem),
+            responseStream,
+            // Action<SseItem<T>, IBufferWriter<byte>> formatter,
+            (SseItem<JsonRpcMessage> item, IBufferWriter<byte> writer) =>
+            {
+                // Probably need to fix this
+                var tempStream = new MemoryStream();
+                JsonSerializer.Serialize(tempStream, item.Data, GetRequiredJsonTypeInfo<JsonRpcMessage>());
+                writer.Write(tempStream.ToArray());
+            },
+            cancellationToken);
+    }
+
+    private static async IAsyncEnumerable<T> ToAsyncEnumerable<T>(T item)
+    {
+        yield return item;
+    }
 }

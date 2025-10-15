@@ -1,5 +1,6 @@
 using ModelContextProtocol.Protocol;
 using System.IO.Pipelines;
+using System.Runtime.CompilerServices;
 using System.Security.Claims;
 using System.Threading.Channels;
 
@@ -95,30 +96,30 @@ public sealed class StreamableHttpServerTransport : ITransport
     }
 
     /// <summary>
-    /// Handles a Streamable HTTP POST request processing both the request body and response body ensuring that
-    /// <see cref="JsonRpcResponse"/> and other correlated messages are sent back to the client directly in response
-    /// to the <see cref="JsonRpcRequest"/> that initiated the message.
+    /// Handles a Streamable HTTP POST request processing the request body and yielding response messages
+    /// that should be sent back to the client in response to the <see cref="JsonRpcRequest"/> that initiated the message.
     /// </summary>
     /// <param name="message">The JSON-RPC message received from the client via the POST request body.</param>
     /// <param name="cancellationToken">This token allows for the operation to be canceled if needed. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <param name="responseStream">The POST response body to write MCP JSON-RPC messages to.</param>
     /// <returns>
-    /// True, if data was written to the response body.
-    /// False, if nothing was written because the request body did not contain any <see cref="JsonRpcRequest"/> messages to respond to.
-    /// The HTTP application should typically respond with an empty "202 Accepted" response in this scenario.
+    /// An async enumerable of JSON-RPC messages to be sent back to the client.
+    /// If the request body did not contain any <see cref="JsonRpcRequest"/> messages to respond to,
+    /// the enumerable will be empty.
     /// </returns>
     /// <para>
-    /// If 's an authenticated <see cref="ClaimsPrincipal"/> sent the message, that can be included in the <see cref="JsonRpcMessage.Context"/>.
+    /// If an authenticated <see cref="ClaimsPrincipal"/> sent the message, that can be included in the <see cref="JsonRpcMessage.Context"/>.
     /// No other part of the context should be set.
     /// </para>
-    public async Task<bool> HandlePostRequest(JsonRpcMessage message, Stream responseStream, CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<JsonRpcMessage> HandlePostRequest(JsonRpcMessage message, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         Throw.IfNull(message);
-        Throw.IfNull(responseStream);
 
         using var postCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token, cancellationToken);
-        await using var postTransport = new StreamableHttpPostTransport(this, responseStream);
-        return await postTransport.HandlePostAsync(message, postCts.Token).ConfigureAwait(false);
+        await using var postTransport = new StreamableHttpPostTransport(this, null);
+        await foreach (var responseMessage in postTransport.HandlePostAsync(message, postCts.Token).ConfigureAwait(false))
+        {
+            yield return responseMessage;
+        }
     }
 
     /// <inheritdoc/>
