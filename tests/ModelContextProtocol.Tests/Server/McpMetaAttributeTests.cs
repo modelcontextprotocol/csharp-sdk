@@ -1,4 +1,5 @@
 using ModelContextProtocol.Server;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Tests.Server;
@@ -193,9 +194,15 @@ public partial class McpMetaAttributeTests
         var method = typeof(TestToolNonStringMetaClass).GetMethod(nameof(TestToolNonStringMetaClass.ToolWithNonStringMeta))!;
         var tool = McpServerTool.Create(method, target: null);
         Assert.NotNull(tool.ProtocolTool.Meta);
+
         Assert.Equal("42", tool.ProtocolTool.Meta["intValue"]?.ToString());
-        Assert.Equal("True", tool.ProtocolTool.Meta["boolValue"]?.ToString());
+        Assert.Equal(JsonValueKind.Number, tool.ProtocolTool.Meta["intValue"]?.GetValueKind());
+
+        Assert.Equal("true", tool.ProtocolTool.Meta["boolValue"]?.ToString());
+        Assert.Equal(JsonValueKind.True, tool.ProtocolTool.Meta["boolValue"]?.GetValueKind());
+
         Assert.Equal("1", tool.ProtocolTool.Meta["enumValue"]?.ToString());
+        Assert.Equal(JsonValueKind.Number, tool.ProtocolTool.Meta["enumValue"]?.GetValueKind());
     }
 
     [Fact]

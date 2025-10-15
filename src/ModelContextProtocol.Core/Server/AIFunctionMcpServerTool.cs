@@ -364,16 +364,12 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     /// <returns>A <see cref="JsonObject"/> with metadata, or null if no metadata is present.</returns>
     internal static JsonObject? CreateMetaFromAttributes(MethodInfo method, JsonObject? meta = null, JsonSerializerOptions? serializerOptions = null)
     {
-        // Get all McpMetaAttribute instances from the method.
-        var metaAttributes = method.GetCustomAttributes<McpMetaAttribute>();
-        
-        foreach (var attr in metaAttributes)
+        // Transfer all McpMetaAttribute instances to the Meta JsonObject, ignoring any that would overwrite existing properties.
+        foreach (var attr in method.GetCustomAttributes<McpMetaAttribute>())
         {
-            meta ??= [];
-            if (!meta.ContainsKey(attr.Name))
+            if (meta?.ContainsKey(attr.Name) is not true)
             {
-                // Parse the JSON string value into a JsonNode
-                meta[attr.Name] = JsonNode.Parse(attr.Value);
+                (meta ??= [])[attr.Name] = JsonNode.Parse(attr.Value);
             }
         }
 

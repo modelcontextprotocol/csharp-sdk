@@ -8,9 +8,13 @@ namespace ModelContextProtocol.Server;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This attribute can be applied multiple times to a method to specify multiple key/value pairs
-/// of metadata. The metadata is used to populate the <see cref="Tool.Meta"/>, <see cref="Prompt.Meta"/>,
+/// The metadata is used to populate the <see cref="Tool.Meta"/>, <see cref="Prompt.Meta"/>,
 /// or <see cref="Resource.Meta"/> property of the corresponding primitive.
+/// </para>
+/// <para>
+/// This attribute can be applied multiple times to a method to specify multiple key/value pairs
+/// of metadata. However, the same key should not be used more than once; doing so will result
+/// in undefined behavior.
 /// </para>
 /// <para>
 /// Metadata can be used to attach additional information to primitives, such as model preferences,
@@ -22,10 +26,7 @@ namespace ModelContextProtocol.Server;
 /// [McpMeta("model", "\"gpt-4o\"")]
 /// [McpMeta("version", "\"1.0\"")]
 /// [McpMeta("priority", "5")]
-/// public string MyTool(string input)
-/// {
-///     return $"Processed: {input}";
-/// }
+/// public string MyTool(string input) => $"Processed: {input}";
 /// </code>
 /// </example>
 /// </remarks>

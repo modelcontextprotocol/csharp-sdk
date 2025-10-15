@@ -14,7 +14,7 @@ namespace ModelContextProtocol.Protocol;
 /// </para>
 /// <para>
 /// When this capability is enabled, an MCP server can request the client to generate content
-/// using an AI model. The client must set a <see cref="ModelContextProtocol.Client.McpClientHandlers.SamplingHandler"/> to process these requests.
+/// using an AI model. The client must set a <see cref="McpClientHandlers.SamplingHandler"/> to process these requests.
 /// </para>
 /// <para>
 /// This class is intentionally empty as the Model Context Protocol specification does not
