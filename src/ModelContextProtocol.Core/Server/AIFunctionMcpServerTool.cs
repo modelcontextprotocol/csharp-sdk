@@ -360,7 +360,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     /// <summary>Creates a Meta <see cref="JsonObject"/> from <see cref="McpMetaAttribute"/> instances on the specified method.</summary>
     /// <param name="method">The method to extract <see cref="McpMetaAttribute"/> instances from.</param>
     /// <param name="meta">Optional <see cref="JsonObject"/> to seed the Meta with. Properties from this object take precedence over attributes.</param>
-    /// <param name="serializerOptions">Optional <see cref="JsonSerializerOptions"/> to use for serialization. Defaults to <see cref="McpJsonUtilities.DefaultOptions"/> if not provided.</param>
+    /// <param name="serializerOptions">Optional <see cref="JsonSerializerOptions"/> to use for serialization. This parameter is ignored when parsing JSON strings from attributes.</param>
     /// <returns>A <see cref="JsonObject"/> with metadata, or null if no metadata is present.</returns>
     internal static JsonObject? CreateMetaFromAttributes(MethodInfo method, JsonObject? meta = null, JsonSerializerOptions? serializerOptions = null)
     {
@@ -372,20 +372,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             meta ??= [];
             if (!meta.ContainsKey(attr.Name))
             {
-                JsonTypeInfo? valueTypeInfo = null;
-                if (attr.Value?.GetType() is { } valueType)
-                {
-                    if (serializerOptions?.TryGetTypeInfo(valueType, out valueTypeInfo) is not true &&
-                        McpJsonUtilities.DefaultOptions.TryGetTypeInfo(valueType, out valueTypeInfo) is not true)
-                    {
-                        // Throw using GetTypeInfo in order to get a good exception message.
-                        (serializerOptions ?? McpJsonUtilities.DefaultOptions).GetTypeInfo(valueType);
-                    }
-                    
-                    Debug.Assert(valueTypeInfo is not null, "GetTypeInfo should have thrown an exception");
-                }
-
-                meta[attr.Name] = valueTypeInfo is not null ? JsonSerializer.SerializeToNode(attr.Value, valueTypeInfo) : null;
+                // Parse the JSON string value into a JsonNode
+                meta[attr.Name] = JsonNode.Parse(attr.Value);
             }
         }
 

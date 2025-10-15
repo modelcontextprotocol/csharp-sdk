@@ -1,6 +1,5 @@
 using ModelContextProtocol.Server;
 using System.Text.Json.Nodes;
-using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Tests.Server;
 
@@ -192,12 +191,11 @@ public partial class McpMetaAttributeTests
     public void McpMetaAttribute_NonStringValues_Serialized()
     {
         var method = typeof(TestToolNonStringMetaClass).GetMethod(nameof(TestToolNonStringMetaClass.ToolWithNonStringMeta))!;
-        var tool = McpServerTool.Create(method, target: null, options: new() { SerializerOptions = JsonContext5.Default.Options });
+        var tool = McpServerTool.Create(method, target: null);
         Assert.NotNull(tool.ProtocolTool.Meta);
         Assert.Equal("42", tool.ProtocolTool.Meta["intValue"]?.ToString());
-        Assert.Equal("true", tool.ProtocolTool.Meta["boolValue"]?.ToString());
-        // Enum serialized as numeric by default
-        Assert.Equal(((int)TestEnum.Second).ToString(), tool.ProtocolTool.Meta["enumValue"]?.ToString());
+        Assert.Equal("True", tool.ProtocolTool.Meta["boolValue"]?.ToString());
+        Assert.Equal("1", tool.ProtocolTool.Meta["enumValue"]?.ToString());
     }
 
     [Fact]
@@ -237,8 +235,8 @@ public partial class McpMetaAttributeTests
     private class TestToolClass
     {
         [McpServerTool]
-        [McpMeta("model", "gpt-4o")]
-        [McpMeta("version", "1.0")]
+        [McpMeta("model", "\"gpt-4o\"")]
+        [McpMeta("version", "\"1.0\"")]
         public static string ToolWithMeta(string input)
         {
             return input;
@@ -251,7 +249,7 @@ public partial class McpMetaAttributeTests
         }
 
         [McpServerTool]
-        [McpMeta("test-key", "test-value")]
+        [McpMeta("test-key", "\"test-value\"")]
         public static string ToolWithSingleMeta(string input)
         {
             return input;
@@ -261,8 +259,8 @@ public partial class McpMetaAttributeTests
     private class TestPromptClass
     {
         [McpServerPrompt]
-        [McpMeta("type", "reasoning")]
-        [McpMeta("model", "claude-3")]
+        [McpMeta("type", "\"reasoning\"")]
+        [McpMeta("model", "\"claude-3\"")]
         public static string PromptWithMeta(string input)
         {
             return input;
@@ -272,8 +270,8 @@ public partial class McpMetaAttributeTests
     private class TestResourceClass
     {
         [McpServerResource(UriTemplate = "resource://test/{id}")]
-        [McpMeta("encoding", "text/plain")]
-        [McpMeta("caching", "cached")]
+        [McpMeta("encoding", "\"text/plain\"")]
+        [McpMeta("caching", "\"cached\"")]
         public static string ResourceWithMeta(string id)
         {
             return $"Resource content for {id}";
@@ -295,39 +293,32 @@ public partial class McpMetaAttributeTests
     private class TestToolDuplicateMetaClass
     {
         [McpServerTool]
-        [McpMeta("key", "first")]
-        [McpMeta("key", "second")]
-        [McpMeta("other", "other-value")]
+        [McpMeta("key", "\"first\"")]
+        [McpMeta("key", "\"second\"")]
+        [McpMeta("other", "\"other-value\"")]
         public static string ToolWithDuplicateMeta(string input) => input;
     }
-
-    private enum TestEnum { First = 0, Second = 1 }
 
     private class TestToolNonStringMetaClass
     {
         [McpServerTool]
-        [McpMeta("intValue", 42)]
-        [McpMeta("boolValue", true)]
-        [McpMeta("enumValue", TestEnum.Second)]
+        [McpMeta("intValue", "42")]
+        [McpMeta("boolValue", "true")]
+        [McpMeta("enumValue", "1")]
         public static string ToolWithNonStringMeta(string input) => input;
     }
 
     private class TestToolNullMetaClass
     {
         [McpServerTool]
-        [McpMeta("nullable", null)]
+        [McpMeta("nullable", "null")]
         public static string ToolWithNullMeta(string input) => input;
     }
 
     private class TestToolMethodMetaOnlyClass
     {
         [McpServerTool]
-        [McpMeta("methodKey", "method")]
+        [McpMeta("methodKey", "\"method\"")]
         public static string ToolWithMethodMeta(string input) => input;
     }
-
-    [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
-    [JsonSerializable(typeof(string))]
-    [JsonSerializable(typeof(TestEnum))]
-    private partial class JsonContext5 : JsonSerializerContext;
 }

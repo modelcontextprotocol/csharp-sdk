@@ -17,8 +17,8 @@ public sealed class WeatherTools
     }
 
     [McpServerTool, Description("Get weather alerts for a US state.")]
-    [McpMeta("category", "weather")]
-    [McpMeta("dataSource", "weather.gov")]
+    [McpMeta("category", "\"weather\"")]
+    [McpMeta("dataSource", "\"weather.gov\"")]
     public async Task<string> GetAlerts(
         [Description("The US state to get alerts for. Use the 2 letter abbreviation for the state (e.g. NY).")] string state)
     {

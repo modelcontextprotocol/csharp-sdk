@@ -1,4 +1,5 @@
 using ModelContextProtocol.Protocol;
+using System.Diagnostics.CodeAnalysis;
 
 namespace ModelContextProtocol.Server;
 
@@ -18,8 +19,9 @@ namespace ModelContextProtocol.Server;
 /// <example>
 /// <code>
 /// [McpServerTool]
-/// [McpMeta("model", "gpt-4o")]
-/// [McpMeta("version", "1.0")]
+/// [McpMeta("model", "\"gpt-4o\"")]
+/// [McpMeta("version", "\"1.0\"")]
+/// [McpMeta("priority", "5")]
 /// public string MyTool(string input)
 /// {
 ///     return $"Processed: {input}";
@@ -34,8 +36,8 @@ public sealed class McpMetaAttribute : Attribute
     /// Initializes a new instance of the <see cref="McpMetaAttribute"/> class.
     /// </summary>
     /// <param name="name">The name (key) of the metadata entry.</param>
-    /// <param name="value">The value of the metadata entry. This can be any value that can be encoded in .NET metadata.</param>
-    public McpMetaAttribute(string name, object? value)
+    /// <param name="value">The value of the metadata entry as a JSON string. This must be well-formed JSON.</param>
+    public McpMetaAttribute(string name, [StringSyntax(StringSyntaxAttribute.Json)] string value)
     {
         Name = name;
         Value = value;
@@ -51,19 +53,20 @@ public sealed class McpMetaAttribute : Attribute
     public string Name { get; }
 
     /// <summary>
-    /// Gets the value of the metadata entry.
+    /// Gets the value of the metadata entry as a JSON string.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This value can be any object that can be encoded in .NET metadata (strings, numbers, booleans, etc.).
-    /// The value will be serialized to JSON using <see cref="System.Text.Json.JsonSerializer"/> when
-    /// populating the metadata JsonObject.
+    /// This value must be well-formed JSON. It will be parsed and added to the metadata JsonObject.
+    /// Simple values can be represented as JSON literals like <c>"\"my-string\""</c>, <c>"123"</c>, 
+    /// <c>"true"</c>, etc. Complex structures can be represented as JSON objects or arrays.
     /// </para>
     /// <para>
-    /// For complex JSON structures that cannot be represented as .NET metadata, use the
-    /// <see cref="McpServerToolCreateOptions.Meta"/>, <see cref="McpServerPromptCreateOptions.Meta"/>, 
-    /// or <see cref="McpServerResourceCreateOptions.Meta"/> property to provide a JsonObject directly.
+    /// For programmatic scenarios where you want to construct complex metadata without dealing with
+    /// JSON strings, use the <see cref="McpServerToolCreateOptions.Meta"/>, 
+    /// <see cref="McpServerPromptCreateOptions.Meta"/>, or <see cref="McpServerResourceCreateOptions.Meta"/> 
+    /// property to provide a JsonObject directly.
     /// </para>
     /// </remarks>
-    public object? Value { get; }
+    public string Value { get; }
 }
