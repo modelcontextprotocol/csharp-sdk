@@ -62,7 +62,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
                                 };
 
                             default:
-                                throw new McpException($"Unexpected cursor: '{cursor}'", McpErrorCode.InvalidParams);
+                                throw new McpProtocolException($"Unexpected cursor: '{cursor}'", McpErrorCode.InvalidParams);
                         }
                     })
                 .WithListResourceTemplatesHandler(async (request, cancellationToken) =>
@@ -91,7 +91,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
                                     }],
                                 };
                             default:
-                                throw new McpException($"Unexpected cursor: '{cursor}'", McpErrorCode.InvalidParams);
+                                throw new McpProtocolException($"Unexpected cursor: '{cursor}'", McpErrorCode.InvalidParams);
                         }
                     })
         .WithReadResourceHandler(async (request, cancellationToken) =>
@@ -109,7 +109,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
                     };
             }
 
-            throw new McpException($"Resource not found: {request.Params?.Uri}");
+            throw new McpProtocolException($"Resource not found: {request.Params?.Uri}");
         })
         .WithResources<SimpleResources>();
     }
@@ -235,7 +235,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     {
         await using McpClient client = await CreateMcpClientForServer();
 
-        await Assert.ThrowsAsync<McpException>(async () => await client.ReadResourceAsync(
+        await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ReadResourceAsync(
             $"resource://mcp/{nameof(SimpleResources.ThrowsException)}",
             cancellationToken: TestContext.Current.CancellationToken));
     }
@@ -245,7 +245,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     {
         await using McpClient client = await CreateMcpClientForServer();
 
-        var e = await Assert.ThrowsAsync<McpException>(async () => await client.ReadResourceAsync(
+        var e = await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ReadResourceAsync(
             "test:///NotRegisteredResource",
             cancellationToken: TestContext.Current.CancellationToken));
 

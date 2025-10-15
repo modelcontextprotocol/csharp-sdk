@@ -207,7 +207,7 @@ McpServerOptions options = new()
             {
                 if (request.Params.Arguments?.TryGetValue("message", out var message) is not true)
                 {
-                    throw new McpException("Missing required argument 'message'");
+                    throw new McpProtocolException("Missing required argument 'message'", McpErrorCode.InvalidParams);
                 }
 
                 return ValueTask.FromResult(new CallToolResult
@@ -216,7 +216,7 @@ McpServerOptions options = new()
                 });
             }
 
-            throw new McpException($"Unknown tool: '{request.Params?.Name}'");
+            throw new McpProtocolException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidRequest);
         }
     }
 };
