@@ -15,6 +15,7 @@ on:
       - "*.sln"
       - "*.props"
       - "Makefile"
+      - "global.json"
       - "src/**"
       - "tests/**"
       - "samples/**"
@@ -34,64 +35,57 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-    - name: Clone the repo
+    - name: 📥 Clone the repo
       uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       with:
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
 
-    - name: Set up .NET
+    - name: 🔧 Set up .NET
       uses: actions/setup-dotnet@d4c94342e560b34958eacfc5d055d21461ed1c5d # v5.0.0
       with:
         dotnet-version: |
-          10.0.x
+          10.0.100-rc.1.25451.107
           9.0.x
 
     # NetFX testing on non-Windows requires mono
-    - name: Setup Mono
+    - name: 🔧 Setup Mono
       if: runner.os == 'Linux'
       run: sudo apt-get install -y mono-devel
 
-    - name: Setup Mono on macOS
+    - name: 🔧 Setup Mono on macOS
       if: runner.os == 'macOS'
       run: brew install mono
 
-    - name: Set up Node.js
+    - name: 🔧 Set up Node.js
       uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
       with:
         node-version: '20'
 
-    - name: Install dependencies for tests
+    - name: 📦 Install dependencies for tests
       run: npm install @modelcontextprotocol/server-everything
 
-    - name: Install dependencies for tests
+    - name: 📦 Install dependencies for tests
       run: npm install @modelcontextprotocol/server-memory
 
-    - name: Build
-      run: dotnet build --configuration ${{ matrix.configuration }}
+    - name: 🏗️ Build
+      run: make build CONFIGURATION=${{ matrix.configuration }}
 
-    - name: Pack
-      run: dotnet pack --configuration ${{ matrix.configuration }}
+    - name: 🧪 Test
+      run: make test CONFIGURATION=${{ matrix.configuration }}
 
-    - name: Test
-      run: >-
-        dotnet test
-        --filter '(Execution!=Manual)'
-        --no-build
-        --configuration ${{ matrix.configuration }}
-        --logger "trx"
-        --logger "GitHubActions;summary.includePassedTests=true;summary.includeSkippedTests=true"
-        --blame
-        --blame-hang-timeout 7m
-        --blame-crash
-        --results-directory testresults
-        --collect "XPlat Code Coverage" -- RunConfiguration.CollectSourceInformation=true
+    - name: 📦 Pack
+      if: matrix.configuration == 'Release'
+      run: make pack CONFIGURATION=${{ matrix.configuration }}
 
-    - name: Upload test results artifact
+    - name: 📚 Generate docs
+      run: make generate-docs CONFIGURATION=${{ matrix.configuration }}
+
+    - name: 📤 Upload test results artifact
       if: always()
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: testresults-${{ matrix.os }}-${{ matrix.configuration }}
-        path: testresults/**
+        path: artifacts/testresults/**
 
   publish-coverage:
     if: github.actor != 'dependabot[bot]'

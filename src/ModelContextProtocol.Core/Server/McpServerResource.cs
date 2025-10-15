@@ -90,7 +90,7 @@ namespace ModelContextProtocol.Server;
 ///     <description>Wrapped in a list containing the single <see cref="ResourceContents"/>.</description>
 ///   </item>
 ///   <item>
-///     <term><see cref="TextContentBlock"/></term>
+///     <term><see cref="TextContent"/></term>
 ///     <description>Converted to a list containing a single <see cref="TextResourceContents"/>.</description>
 ///   </item>
 ///   <item>
@@ -112,6 +112,10 @@ namespace ModelContextProtocol.Server;
 ///   <item>
 ///     <term><see cref="IEnumerable{String}"/> of <see cref="string"/></term>
 ///     <description>Converted to a list containing a <see cref="TextResourceContents"/>, one for each <see cref="string"/>.</description>
+///   </item>
+///   <item>
+///     <term><see cref="ReadResourceResult"/></term>
+///     <description>Returned directly without modification.</description>
 ///   </item>
 /// </list>
 /// <para>

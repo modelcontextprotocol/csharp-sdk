@@ -181,11 +181,17 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                         {
                             LogRequestHandlerException(EndpointName, request.Method, ex);
 
-                            JsonRpcErrorDetail detail = ex is McpException mcpe ?
+                            JsonRpcErrorDetail detail = ex is McpProtocolException mcpProtocolException ?
                                 new()
                                 {
-                                    Code = (int)mcpe.ErrorCode,
-                                    Message = mcpe.Message,
+                                    Code = (int)mcpProtocolException.ErrorCode,
+                                    Message = mcpProtocolException.Message,
+                                } : ex is McpException mcpException ?
+                                new()
+                                {
+
+                                    Code = (int)McpErrorCode.InternalError,
+                                    Message = mcpException.Message,
                                 } :
                                 new()
                                 {
@@ -336,7 +342,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         if (!_requestHandlers.TryGetValue(request.Method, out var handler))
         {
             LogNoHandlerFoundForRequest(EndpointName, request.Method);
-            throw new McpException($"Method '{request.Method}' is not available.", McpErrorCode.MethodNotFound);
+            throw new McpProtocolException($"Method '{request.Method}' is not available.", McpErrorCode.MethodNotFound);
         }
 
         LogRequestHandlerCalled(EndpointName, request.Method);
@@ -447,7 +453,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             if (response is JsonRpcError error)
             {
                 LogSendingRequestFailed(EndpointName, request.Method, error.Error.Message, error.Error.Code, toolName: target);
-                throw new McpException($"Request failed (remote): {error.Error.Message}", (McpErrorCode)error.Error.Code);
+                throw new McpProtocolException($"Request failed (remote): {error.Error.Message}", (McpErrorCode)error.Error.Code);
             }
 
             if (response is JsonRpcResponse success)
@@ -641,7 +647,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         }
 
         int? intErrorCode =
-            (int?)((e as McpException)?.ErrorCode) is int errorCode ? errorCode :
+            (int?)((e as McpProtocolException)?.ErrorCode) is int errorCode ? errorCode :
             e is JsonException ? (int)McpErrorCode.ParseError :
             null;
 

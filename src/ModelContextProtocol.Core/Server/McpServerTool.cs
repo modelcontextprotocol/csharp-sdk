@@ -110,10 +110,6 @@ namespace ModelContextProtocol.Server;
 ///     <description>Returned as a single-item <see cref="ContentBlock"/> list.</description>
 ///   </item>
 ///   <item>
-///     <term><see cref="IEnumerable{String}"/> of <see cref="string"/></term>
-///     <description>Each <see cref="string"/> is converted to a <see cref="TextContentBlock"/> object with its text set to the string value.</description>
-///   </item>
-///   <item>
 ///     <term><see cref="IEnumerable{AIContent}"/> of <see cref="AIContent"/></term>
 ///     <description>Each <see cref="AIContent"/> is converted to a <see cref="ContentBlock"/> object using <see cref="AIContentExtensions.ToContent(AIContent)"/>.</description>
 ///   </item>
