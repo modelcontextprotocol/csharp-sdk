@@ -10,7 +10,7 @@ namespace ModelContextProtocol;
 /// endpoint; sensitive information should not be included. If sensitive details need to be included,
 /// a different exception type should be used.
 ///
-/// This exception type can be thrown by MCP tools or tool call filters to propogate detailed error messages
+/// This exception type can be thrown by MCP tools or tool call filters to propagate detailed error messages
 /// from <see cref="Exception.Message"/> when a tool execution fails via a <see cref="CallToolResult"/>.
 /// For non-tool calls, this exception controls the message propogated via a <see cref="JsonRpcError"/>.
 /// 
