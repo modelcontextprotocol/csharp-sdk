@@ -207,12 +207,9 @@ internal sealed partial class McpServerImpl : McpServer
                 // Otherwise, try to use whatever the client requested as long as it's supported.
                 // If it's not supported, fall back to the latest supported version.
                 string? protocolVersion = options.ProtocolVersion;
-                if (protocolVersion is null)
-                {
-                    protocolVersion = request?.ProtocolVersion is string clientProtocolVersion && McpSessionHandler.SupportedProtocolVersions.Contains(clientProtocolVersion) ?
-                        clientProtocolVersion :
-                        McpSessionHandler.LatestProtocolVersion;
-                }
+                protocolVersion ??= request?.ProtocolVersion is string clientProtocolVersion && McpSessionHandler.SupportedProtocolVersions.Contains(clientProtocolVersion) ?
+                    clientProtocolVersion :
+                    McpSessionHandler.LatestProtocolVersion;
 
                 _negotiatedProtocolVersion = protocolVersion;
 

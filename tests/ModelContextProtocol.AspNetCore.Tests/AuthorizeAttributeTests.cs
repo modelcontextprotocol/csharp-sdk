@@ -448,7 +448,7 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
     }
 
     private ClaimsPrincipal CreateUser(string name, params string[] roles)
-        => new ClaimsPrincipal(new ClaimsIdentity(
+        => new(new ClaimsIdentity(
             [new Claim("name", name), new Claim(ClaimTypes.NameIdentifier, name), .. roles.Select(role => new Claim("role", role))],
             "TestAuthType", "name", "role"));
 

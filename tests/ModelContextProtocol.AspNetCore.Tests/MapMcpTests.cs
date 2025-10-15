@@ -241,7 +241,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     }
 
     private ClaimsPrincipal CreateUser(string name)
-        => new ClaimsPrincipal(new ClaimsIdentity(
+        => new(new ClaimsIdentity(
             [new Claim("name", name), new Claim(ClaimTypes.NameIdentifier, name)],
             "TestAuthType", "name", "role"));
 

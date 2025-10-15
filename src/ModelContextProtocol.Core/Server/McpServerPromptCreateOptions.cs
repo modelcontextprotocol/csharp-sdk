@@ -90,7 +90,7 @@ public sealed class McpServerPromptCreateOptions
     /// Creates a shallow clone of the current <see cref="McpServerPromptCreateOptions"/> instance.
     /// </summary>
     internal McpServerPromptCreateOptions Clone() =>
-        new McpServerPromptCreateOptions
+        new()
         {
             Services = Services,
             Name = Name,

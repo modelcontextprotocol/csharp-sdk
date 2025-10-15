@@ -350,7 +350,7 @@ internal class CancellableStreamReader : TextReader
         CheckAsyncTaskInProgress();
 
         // Call ReadBuffer, then pull data out of charBuffer.
-        StringBuilder sb = new StringBuilder(_charLen - _charPos);
+        StringBuilder sb = new(_charLen - _charPos);
         do
         {
             sb.Append(_charBuffer, _charPos, _charLen - _charPos);
@@ -953,7 +953,7 @@ internal class CancellableStreamReader : TextReader
     private async Task<string> ReadToEndAsyncInternal(CancellationToken cancellationToken)
     {
         // Call ReadBuffer, then pull data out of charBuffer.
-        StringBuilder sb = new StringBuilder(_charLen - _charPos);
+        StringBuilder sb = new(_charLen - _charPos);
         do
         {
             int tmpCharPos = _charPos;

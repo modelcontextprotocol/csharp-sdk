@@ -405,7 +405,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
         long? startingTimestamp = durationMetric.Enabled ? Stopwatch.GetTimestamp() : null;
         using Activity? activity = Diagnostics.ShouldInstrumentMessage(request) ?
-            Diagnostics.ActivitySource.StartActivity(CreateActivityName(method), ActivityKind.Client) :
+            Diagnostics.ActivitySource.StartActivity(McpSessionHandler.CreateActivityName(method), ActivityKind.Client) :
             null;
 
         // Set request ID
@@ -501,7 +501,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
         long? startingTimestamp = durationMetric.Enabled ? Stopwatch.GetTimestamp() : null;
         using Activity? activity = Diagnostics.ShouldInstrumentMessage(message) ?
-            Diagnostics.ActivitySource.StartActivity(CreateActivityName(method), ActivityKind.Client) :
+            Diagnostics.ActivitySource.StartActivity(McpSessionHandler.CreateActivityName(method), ActivityKind.Client) :
             null;
 
         TagList tags = default;
@@ -567,7 +567,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         }
     }
 
-    private string CreateActivityName(string method) => method;
+    private static string CreateActivityName(string method) => method;
 
     private static string GetMethodName(JsonRpcMessage message) =>
         message switch

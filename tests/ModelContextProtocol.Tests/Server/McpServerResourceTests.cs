@@ -307,7 +307,7 @@ public partial class McpServerResourceTests
     {
         McpServerResource t1 = McpServerResource.Create(() => "resource", new() { UriTemplate = "resource://MyCoolResource" });
         McpServerResource t2 = McpServerResource.Create(() => "resource", new() { UriTemplate = "resource://MyCoolResource2" });
-        McpServerResourceCollection collection = new() { t1, t2 };
+        McpServerResourceCollection collection = [t1, t2];
         Assert.True(collection.TryGetPrimitive("resource://mycoolresource", out McpServerResource? result));
         Assert.Same(t1, result);
     }
@@ -537,7 +537,7 @@ public partial class McpServerResourceTests
         McpServerResource resource = McpServerResource.Create((McpServer server) =>
         {
             Assert.Same(mockServer.Object, server);
-            return new ReadResourceResult { Contents = new List<ResourceContents> { new TextResourceContents { Text = "hello" } } };
+            return new ReadResourceResult { Contents = [new TextResourceContents { Text = "hello" }] };
         }, new() { Name = "Test" });
         var result = await resource.ReadAsync(
             new RequestContext<ReadResourceRequestParams>(mockServer.Object, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Test" } },
@@ -682,7 +682,7 @@ public partial class McpServerResourceTests
     {
         var icons = new List<Icon>
         {
-            new() { Source = "https://example.com/resource-icon.png", MimeType = "image/png", Sizes = new List<string> { "32x32" } }
+            new() { Source = "https://example.com/resource-icon.png", MimeType = "image/png", Sizes = ["32x32"] }
         };
 
         McpServerResource resource = McpServerResource.Create(() => "test content", new McpServerResourceCreateOptions

@@ -1,5 +1,8 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+#if NET9_0_OR_GREATER
+using System.Buffers.Text;
+#endif
 using System.Diagnostics.CodeAnalysis;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
@@ -238,14 +241,17 @@ internal sealed partial class ClientOAuthProvider
         LogOAuthAuthorizationCompleted();
     }
 
+    private static readonly string[] s_wellKnownPaths = [".well-known/openid-configuration", ".well-known/oauth-authorization-server"];
+
     private async Task<AuthorizationServerMetadata> GetAuthServerMetadataAsync(Uri authServerUri, CancellationToken cancellationToken)
     {
-        if (!authServerUri.OriginalString.EndsWith("/"))
+        if (authServerUri.OriginalString.Length == 0 ||
+            authServerUri.OriginalString[authServerUri.OriginalString.Length - 1] != '/')
         {
-            authServerUri = new Uri(authServerUri.OriginalString + "/");
+            authServerUri = new Uri($"{authServerUri.OriginalString}/");
         }
 
-        foreach (var path in new[] { ".well-known/openid-configuration", ".well-known/oauth-authorization-server" })
+        foreach (var path in s_wellKnownPaths)
         {
             try
             {
@@ -540,11 +546,7 @@ internal sealed partial class ClientOAuthProvider
             Port = -1  // Always remove port
         };
 
-        if (builder.Path == "/")
-        {
-            builder.Path = string.Empty;
-        }
-        else if (builder.Path.Length > 1 && builder.Path.EndsWith("/"))
+        if (builder.Path.Length > 0 && builder.Path[builder.Path.Length - 1] == '/')
         {
             builder.Path = builder.Path.TrimEnd('/');
         }
@@ -633,18 +635,18 @@ internal sealed partial class ClientOAuthProvider
                 continue;
             }
 
-            string key = trimmedPart.Substring(0, equalsIndex).Trim();
+            ReadOnlySpan<char> key = trimmedPart.AsSpan().Slice(0, equalsIndex).Trim();
 
-            if (string.Equals(key, parameterName, StringComparison.OrdinalIgnoreCase))
+            if (key.Equals(parameterName, StringComparison.OrdinalIgnoreCase))
             {
-                string value = trimmedPart.Substring(equalsIndex + 1).Trim();
+                ReadOnlySpan<char> value = trimmedPart.AsSpan(equalsIndex + 1).Trim();
 
-                if (value.StartsWith("\"") && value.EndsWith("\""))
+                if (value.Length > 0 && value[0] == '"' && value[value.Length - 1] == '"')
                 {
-                    value = value.Substring(1, value.Length - 2);
+                    value = value.Slice(1, value.Length - 2);
                 }
 
-                return value;
+                return value.ToString();
             }
         }
 
@@ -664,12 +666,18 @@ internal sealed partial class ClientOAuthProvider
 
     private static string GenerateCodeChallenge(string codeVerifier)
     {
+#if NET9_0_OR_GREATER
+        Span<byte> hash = stackalloc byte[SHA256.HashSizeInBytes];
+        SHA256.HashData(Encoding.UTF8.GetBytes(codeVerifier), hash);
+        return Base64Url.EncodeToString(hash);
+#else
         using var sha256 = SHA256.Create();
         var challengeBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(codeVerifier));
         return Convert.ToBase64String(challengeBytes)
             .TrimEnd('=')
             .Replace('+', '-')
             .Replace('/', '_');
+#endif
     }
 
     private string GetClientIdOrThrow() => _clientId ?? throw new InvalidOperationException("Client ID is not available. This may indicate an issue with dynamic client registration.");

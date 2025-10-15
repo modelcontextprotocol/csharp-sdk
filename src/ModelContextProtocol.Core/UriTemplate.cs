@@ -243,7 +243,7 @@ internal static partial class UriTemplate
                 if (commaPos < 0)
                 {
                     name = expression;
-                    expression = ReadOnlySpan<char>.Empty;
+                    expression = [];
                 }
                 else
                 {
@@ -373,7 +373,7 @@ internal static partial class UriTemplate
         return builder.ToStringAndClear();
     }
 
-    private static void AppendJoin(ref DefaultInterpolatedStringHandler builder, string separator, IList<string> values)
+    private static void AppendJoin(ref DefaultInterpolatedStringHandler builder, string separator, List<string> values)
     {
         int count = values.Count;
         if (count > 0)
@@ -441,8 +441,8 @@ internal static partial class UriTemplate
             else
             {
 #if NET
-            Span<byte> utf8 = stackalloc byte[Encoding.UTF8.GetMaxByteCount(1)];
-            foreach (byte b in utf8.Slice(0, new Rune(c).EncodeToUtf8(utf8)))
+                Span<byte> utf8 = stackalloc byte[Encoding.UTF8.GetMaxByteCount(1)];
+                foreach (byte b in utf8.Slice(0, new Rune(c).EncodeToUtf8(utf8)))
 #else
                 foreach (byte b in Encoding.UTF8.GetBytes([c]))
 #endif

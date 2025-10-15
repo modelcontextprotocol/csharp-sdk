@@ -11,15 +11,12 @@ namespace ModelContextProtocol.Protocol;
 [JsonConverter(typeof(Converter))]
 public readonly struct ProgressToken : IEquatable<ProgressToken>
 {
-    /// <summary>The token, either a string or a boxed long or null.</summary>
-    private readonly object? _token;
-
     /// <summary>Initializes a new instance of the <see cref="ProgressToken"/> with a specified value.</summary>
     /// <param name="value">The required ID value.</param>
     public ProgressToken(string value)
     {
         Throw.IfNull(value);
-        _token = value;
+        Token = value;
     }
 
     /// <summary>Initializes a new instance of the <see cref="ProgressToken"/> with a specified value.</summary>
@@ -27,27 +24,27 @@ public readonly struct ProgressToken : IEquatable<ProgressToken>
     public ProgressToken(long value)
     {
         // Box the long. Progress tokens are almost always strings in practice, so this should be rare.
-        _token = value;
+        Token = value;
     }
 
     /// <summary>Gets the underlying object for this token.</summary>
     /// <remarks>This will either be a <see cref="string"/>, a boxed <see cref="long"/>, or <see langword="null"/>.</remarks>
-    public object? Token => _token;
+    public object? Token { get; }
 
     /// <inheritdoc />
     public override string? ToString() =>
-        _token is string stringValue ? stringValue :
-        _token is long longValue ? longValue.ToString(CultureInfo.InvariantCulture) :
+        Token is string stringValue ? stringValue :
+        Token is long longValue ? longValue.ToString(CultureInfo.InvariantCulture) :
         null;
 
     /// <inheritdoc />
-    public bool Equals(ProgressToken other) => Equals(_token, other._token);
+    public bool Equals(ProgressToken other) => Equals(Token, other.Token);
 
     /// <inheritdoc />
     public override bool Equals(object? obj) => obj is ProgressToken other && Equals(other);
 
     /// <inheritdoc />
-    public override int GetHashCode() => _token?.GetHashCode() ?? 0;
+    public override int GetHashCode() => Token?.GetHashCode() ?? 0;
 
     /// <inheritdoc />
     public static bool operator ==(ProgressToken left, ProgressToken right) => left.Equals(right);
@@ -77,7 +74,7 @@ public readonly struct ProgressToken : IEquatable<ProgressToken>
         {
             Throw.IfNull(writer);
 
-            switch (value._token)
+            switch (value.Token)
             {
                 case string str:
                     writer.WriteStringValue(str);

@@ -176,7 +176,7 @@ public sealed class McpServerToolCreateOptions
     /// Creates a shallow clone of the current <see cref="McpServerToolCreateOptions"/> instance.
     /// </summary>
     internal McpServerToolCreateOptions Clone() =>
-        new McpServerToolCreateOptions
+        new()
         {
             Services = Services,
             Name = Name,

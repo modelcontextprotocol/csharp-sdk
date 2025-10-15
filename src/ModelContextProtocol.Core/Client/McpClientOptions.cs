@@ -11,8 +11,6 @@ namespace ModelContextProtocol.Client;
 /// </remarks>
 public sealed class McpClientOptions
 {
-    private McpClientHandlers? _handlers;
-
     /// <summary>
     /// Gets or sets information about this client implementation, including its name and version.
     /// </summary>
@@ -71,11 +69,11 @@ public sealed class McpClientOptions
     /// </summary>
     public McpClientHandlers Handlers 
     { 
-        get => _handlers ??= new();
+        get => field ??= new();
         set
         {
             Throw.IfNull(value);
-            _handlers = value;
+            field = value;
         }
     }
 }

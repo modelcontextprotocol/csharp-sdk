@@ -29,7 +29,7 @@ internal sealed class AuthorizationServerMetadata
     /// Gets the introspection endpoint URL.
     /// </summary>
     [JsonPropertyName("introspection_endpoint")]
-    public Uri? IntrospectionEndpoint => new Uri($"{Issuer}/introspect");
+    public Uri? IntrospectionEndpoint => new($"{Issuer}/introspect");
 
     /// <summary>
     /// Gets or sets the response types supported by this server.

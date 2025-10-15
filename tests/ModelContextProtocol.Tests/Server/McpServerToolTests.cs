@@ -413,7 +413,7 @@ public partial class McpServerToolTests
     {
         CallToolResult response = new()
         {
-            Content = new List<ContentBlock> { new TextContentBlock { Text = "text" }, new ImageContentBlock { Data = "1234", MimeType = "image/png" } }
+            Content = [new TextContentBlock { Text = "text" }, new ImageContentBlock { Data = "1234", MimeType = "image/png" }]
         };
 
         Mock<McpServer> mockServer = new();
@@ -683,8 +683,8 @@ public partial class McpServerToolTests
     {
         var icons = new List<Icon>
         {
-            new() { Source = "https://example.com/icon.png", MimeType = "image/png", Sizes = new List<string> { "48x48" } },
-            new() { Source = "https://example.com/icon.svg", MimeType = "image/svg+xml", Sizes = new List<string> { "any" } }
+            new() { Source = "https://example.com/icon.png", MimeType = "image/png", Sizes = ["48x48"] },
+            new() { Source = "https://example.com/icon.svg", MimeType = "image/svg+xml", Sizes = ["any"] }
         };
 
         McpServerTool tool = McpServerTool.Create(() => "test", new McpServerToolCreateOptions

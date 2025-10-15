@@ -27,8 +27,11 @@ internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport
             throw new ArgumentException("Only transports can provide a JsonRpcMessageContext.");
         }
 
-        message.Context = new JsonRpcMessageContext();
-        message.Context.RelatedTransport = transport;
+        message.Context = new()
+        {
+            RelatedTransport = transport
+        };
+
         return server.SendMessageAsync(message, cancellationToken);
     }
 
@@ -39,8 +42,11 @@ internal sealed class DestinationBoundMcpServer(McpServerImpl server, ITransport
             throw new ArgumentException("Only transports can provide a JsonRpcMessageContext.");
         }
 
-        request.Context = new JsonRpcMessageContext();
-        request.Context.RelatedTransport = transport;
+        request.Context = new()
+        {
+            RelatedTransport = transport
+        };
+
         return server.SendRequestAsync(request, cancellationToken);
     }
 }

@@ -128,10 +128,7 @@ public static class AIContentExtensions
             _ => null,
         };
 
-        if (ac is not null)
-        {
-            ac.RawRepresentation = content;
-        }
+        ac?.RawRepresentation = content;
 
         return ac;
     }

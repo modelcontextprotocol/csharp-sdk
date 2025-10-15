@@ -19,7 +19,7 @@ public static class ResourceTests
             Size = 1024,
             Icons =
             [
-                new() { Source = "https://example.com/pdf-icon.png", MimeType = "image/png", Sizes = new List<string> { "32x32" } }
+                new() { Source = "https://example.com/pdf-icon.png", MimeType = "image/png", Sizes = ["32x32"] }
             ],
             Annotations = new Annotations { Audience = [Role.User] }
         };
@@ -86,7 +86,7 @@ public static class ResourceTests
             Description = "A test resource",
             MimeType = "text/plain",
             Size = 512,
-            Icons = new List<Icon> { new() { Source = "https://example.com/icon.svg" } },
+            Icons = [new() { Source = "https://example.com/icon.svg" }],
             Annotations = new Annotations { Audience = [Role.User] }
         };
 
