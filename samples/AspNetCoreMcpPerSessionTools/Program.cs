@@ -24,7 +24,7 @@ builder.Services.AddMcpServer()
             {
                 mcpOptions.Capabilities = new();
                 mcpOptions.Capabilities.Tools = new();
-                var toolCollection = mcpOptions.ToolCollection = new();
+                var toolCollection = mcpOptions.ToolCollection = [];
 
                 foreach (var tool in tools)
                 {

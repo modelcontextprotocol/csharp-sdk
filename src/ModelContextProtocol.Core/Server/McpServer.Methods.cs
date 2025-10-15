@@ -341,13 +341,9 @@ public abstract partial class McpServer : McpSession, IMcpServer
             throw new McpProtocolException(error);
         }
 
-        var primitiveSchemaDefinition =
-            jsonElement.Deserialize(McpJsonUtilities.JsonContext.Default.PrimitiveSchemaDefinition);
-
-        if (primitiveSchemaDefinition is null)
+        return
+            jsonElement.Deserialize(McpJsonUtilities.JsonContext.Default.PrimitiveSchemaDefinition) ??
             throw new McpProtocolException($"Type '{type.FullName}' is not a supported property type for elicitation requests.");
-
-        return primitiveSchemaDefinition;
     }
 
     /// <summary>
@@ -452,11 +448,9 @@ public abstract partial class McpServer : McpSession, IMcpServer
     }
 
     /// <summary>Provides an <see cref="IChatClient"/> implementation that's implemented via client sampling.</summary>
-    private sealed class SamplingChatClient : IChatClient
+    private sealed class SamplingChatClient(McpServer server) : IChatClient
     {
-        private readonly McpServer _server;
-
-        public SamplingChatClient(McpServer server) => _server = server;
+        private readonly McpServer _server = server;
 
         /// <inheritdoc/>
         public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
@@ -493,11 +487,9 @@ public abstract partial class McpServer : McpSession, IMcpServer
     /// Provides an <see cref="ILoggerProvider"/> implementation for creating loggers
     /// that send logging message notifications to the client for logged messages.
     /// </summary>
-    private sealed class ClientLoggerProvider : ILoggerProvider
+    private sealed class ClientLoggerProvider(McpServer server) : ILoggerProvider
     {
-        private readonly McpServer _server;
-
-        public ClientLoggerProvider(McpServer server) => _server = server;
+        private readonly McpServer _server = server;
 
         /// <inheritdoc />
         public ILogger CreateLogger(string categoryName)
@@ -510,16 +502,10 @@ public abstract partial class McpServer : McpSession, IMcpServer
         /// <inheritdoc />
         void IDisposable.Dispose() { }
 
-        private sealed class ClientLogger : ILogger
+        private sealed class ClientLogger(McpServer server, string categoryName) : ILogger
         {
-            private readonly McpServer _server;
-            private readonly string _categoryName;
-
-            public ClientLogger(McpServer server, string categoryName)
-            {
-                _server = server;
-                _categoryName = categoryName;
-            }
+            private readonly McpServer _server = server;
+            private readonly string _categoryName = categoryName;
 
             /// <inheritdoc />
             public IDisposable? BeginScope<TState>(TState state) where TState : notnull =>

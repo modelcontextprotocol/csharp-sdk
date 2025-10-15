@@ -13,7 +13,7 @@ public static class IconTests
         {
             Source = "https://example.com/icon.png",
             MimeType = "image/png",
-            Sizes = new List<string> { "48x48" },
+            Sizes = ["48x48"],
             Theme = "light"
         };
 
@@ -61,7 +61,7 @@ public static class IconTests
         {
             Source = "https://example.com/icon.svg",
             MimeType = "image/svg+xml",
-            Sizes = new List<string> { "any" },
+            Sizes = ["any"],
             Theme = "dark"
         };
 

@@ -7,8 +7,6 @@ namespace ModelContextProtocol.Server;
 /// </summary>
 public sealed class McpServerOptions
 {
-    private McpServerHandlers? _handlers;
-
     /// <summary>
     /// Gets or sets information about this server implementation, including its name and version.
     /// </summary>
@@ -97,11 +95,11 @@ public sealed class McpServerOptions
     /// </summary>
     public McpServerHandlers Handlers 
     { 
-        get => _handlers ??= new();
+        get => field ??= new();
         set
         { 
             Throw.IfNull(value); 
-            _handlers = value;
+            field = value;
         }
     }
 

@@ -556,7 +556,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         Assert.Equal(NotificationMethods.ResourceUpdatedNotification, notification.Method);
     }
 
-    private static StringContent JsonContent(string json) => new StringContent(json, Encoding.UTF8, "application/json");
+    private static StringContent JsonContent(string json) => new(json, Encoding.UTF8, "application/json");
     private static JsonTypeInfo<T> GetJsonTypeInfo<T>() => (JsonTypeInfo<T>)McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(T));
 
     private static T AssertType<T>(JsonNode? jsonNode)

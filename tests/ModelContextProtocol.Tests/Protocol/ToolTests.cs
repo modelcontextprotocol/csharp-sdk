@@ -16,7 +16,7 @@ public static class ToolTests
             Description = "Get current weather information",
             Icons =
             [
-                new() { Source = "https://example.com/weather.png", MimeType = "image/png", Sizes = new List<string> { "48x48" } }
+                new() { Source = "https://example.com/weather.png", MimeType = "image/png", Sizes = ["48x48"] }
             ],
             Annotations = new ToolAnnotations
             {

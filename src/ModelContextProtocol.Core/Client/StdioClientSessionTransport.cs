@@ -5,20 +5,14 @@ using System.Diagnostics;
 namespace ModelContextProtocol.Client;
 
 /// <summary>Provides the client side of a stdio-based session transport.</summary>
-internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
+internal sealed class StdioClientSessionTransport(
+    StdioClientTransportOptions options, Process process, string endpointName, Queue<string> stderrRollingLog, ILoggerFactory? loggerFactory) :
+    StreamClientSessionTransport(process.StandardInput.BaseStream, process.StandardOutput.BaseStream, encoding: null, endpointName, loggerFactory)
 {
-    private readonly StdioClientTransportOptions _options;
-    private readonly Process _process;
-    private readonly Queue<string> _stderrRollingLog;
+    private readonly StdioClientTransportOptions _options = options;
+    private readonly Process _process = process;
+    private readonly Queue<string> _stderrRollingLog = stderrRollingLog;
     private int _cleanedUp = 0;
-
-    public StdioClientSessionTransport(StdioClientTransportOptions options, Process process, string endpointName, Queue<string> stderrRollingLog, ILoggerFactory? loggerFactory)
-        : base(process.StandardInput.BaseStream, process.StandardOutput.BaseStream, encoding: null, endpointName, loggerFactory)
-    {
-        _process = process;
-        _options = options;
-        _stderrRollingLog = stderrRollingLog;
-    }
 
     /// <inheritdoc/>
     public override async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
@@ -56,7 +50,7 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
         // Now terminate the server process.
         try
         {
-            StdioClientTransport.DisposeProcess(_process, processRunning: true, _options.ShutdownTimeout, Name);
+            StdioClientTransport.DisposeProcess(_process, processRunning: true, shutdownTimeout: _options.ShutdownTimeout);
         }
         catch (Exception ex)
         {

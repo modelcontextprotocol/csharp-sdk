@@ -93,9 +93,9 @@ internal static class Diagnostics
         {
             if (jsonObject["_meta"] is not JsonObject meta)
             {
-                meta = new JsonObject();
-                jsonObject["_meta"] = meta;
+                jsonObject["_meta"] = meta = [];
             }
+
             meta[key] = value;
         }
     }

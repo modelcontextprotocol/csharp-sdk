@@ -16,7 +16,7 @@ public static class PromptTests
             Description = "Review the provided code",
             Icons =
             [
-                new() { Source = "https://example.com/review-icon.svg", MimeType = "image/svg+xml", Sizes = new List<string> { "any" } }
+                new() { Source = "https://example.com/review-icon.svg", MimeType = "image/svg+xml", Sizes = ["any"] }
             ],
             Arguments =
             [

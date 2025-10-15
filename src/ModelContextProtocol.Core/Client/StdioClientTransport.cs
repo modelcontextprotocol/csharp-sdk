@@ -39,7 +39,7 @@ public sealed partial class StdioClientTransport : IClientTransport
 
         _options = options;
         _loggerFactory = loggerFactory;
-        Name = options.Name ?? $"stdio-{Regex.Replace(Path.GetFileName(options.Command), @"[\s\.]+", "-")}";
+        Name = options.Name ?? $"stdio-{WhitespaceAndPeriods().Replace(Path.GetFileName(options.Command), "-")}";
     }
 
     /// <inheritdoc />
@@ -189,7 +189,7 @@ public sealed partial class StdioClientTransport : IClientTransport
 
             try
             {
-                DisposeProcess(process, processStarted, _options.ShutdownTimeout, endpointName);
+                DisposeProcess(process, processStarted, _options.ShutdownTimeout);
             }
             catch (Exception ex2)
             {
@@ -201,7 +201,7 @@ public sealed partial class StdioClientTransport : IClientTransport
     }
 
     internal static void DisposeProcess(
-        Process? process, bool processRunning, TimeSpan shutdownTimeout, string endpointName)
+        Process? process, bool processRunning, TimeSpan shutdownTimeout)
     {
         if (process is not null)
         {
@@ -279,4 +279,12 @@ public sealed partial class StdioClientTransport : IClientTransport
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} shutdown failed.")]
     private static partial void LogTransportShutdownFailed(ILogger logger, string endpointName, Exception exception);
+
+#if NET
+    [GeneratedRegex(@"[\s\.]+")]
+    private static partial Regex WhitespaceAndPeriods();
+#else
+    private static Regex WhitespaceAndPeriods() => s_whitespaceAndPeriods;
+    private static readonly Regex s_whitespaceAndPeriods = new(@"[\s\.]+", RegexOptions.Compiled);
+#endif
 }

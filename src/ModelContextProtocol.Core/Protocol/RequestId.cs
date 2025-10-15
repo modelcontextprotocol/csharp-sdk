@@ -11,15 +11,12 @@ namespace ModelContextProtocol.Protocol;
 [JsonConverter(typeof(Converter))]
 public readonly struct RequestId : IEquatable<RequestId>
 {
-    /// <summary>The id, either a string or a boxed long or null.</summary>
-    private readonly object? _id;
-
     /// <summary>Initializes a new instance of the <see cref="RequestId"/> with a specified value.</summary>
     /// <param name="value">The required ID value.</param>
     public RequestId(string value)
     {
         Throw.IfNull(value);
-        _id = value;
+        Id = value;
     }
 
     /// <summary>Initializes a new instance of the <see cref="RequestId"/> with a specified value.</summary>
@@ -27,27 +24,27 @@ public readonly struct RequestId : IEquatable<RequestId>
     public RequestId(long value)
     {
         // Box the long. Request IDs are almost always strings in practice, so this should be rare.
-        _id = value;
+        Id = value;
     }
 
     /// <summary>Gets the underlying object for this id.</summary>
     /// <remarks>This will either be a <see cref="string"/>, a boxed <see cref="long"/>, or <see langword="null"/>.</remarks>
-    public object? Id => _id;
+    public object? Id { get; }
 
     /// <inheritdoc />
     public override string ToString() =>
-        _id is string stringValue ? stringValue :
-        _id is long longValue ? longValue.ToString(CultureInfo.InvariantCulture) :
+        Id is string stringValue ? stringValue :
+        Id is long longValue ? longValue.ToString(CultureInfo.InvariantCulture) :
         string.Empty;
 
     /// <inheritdoc />
-    public bool Equals(RequestId other) => Equals(_id, other._id);
+    public bool Equals(RequestId other) => Equals(Id, other.Id);
 
     /// <inheritdoc />
     public override bool Equals(object? obj) => obj is RequestId other && Equals(other);
 
     /// <inheritdoc />
-    public override int GetHashCode() => _id?.GetHashCode() ?? 0;
+    public override int GetHashCode() => Id?.GetHashCode() ?? 0;
 
     /// <inheritdoc />
     public static bool operator ==(RequestId left, RequestId right) => left.Equals(right);
@@ -77,7 +74,7 @@ public readonly struct RequestId : IEquatable<RequestId>
         {
             Throw.IfNull(writer);
 
-            switch (value._id)
+            switch (value.Id)
             {
                 case string str:
                     writer.WriteStringValue(str);

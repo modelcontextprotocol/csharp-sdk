@@ -1,9 +1,9 @@
 <Project>
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
-    <System9Version>9.0.5</System9Version>
-    <System10Version>10.0.0-preview.4.25258.110</System10Version>
-    <MicrosoftExtensionsAIVersion>9.9.1</MicrosoftExtensionsAIVersion>
+    <System9Version>9.0.10</System9Version>
+    <System10Version>10.0.0-rc.2.25502.107</System10Version>
+    <MicrosoftExtensionsAIVersion>9.10.0</MicrosoftExtensionsAIVersion>
   </PropertyGroup>
 
   <!-- Product dependencies netstandard -->
@@ -28,19 +28,17 @@
   <!-- Product dependencies .NET 9 -->
   <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="$(System9Version)" />
-    <PackageVersion Include="Microsoft.IdentityModel.Tokens" Version="8.9.0" />
+    <PackageVersion Include="Microsoft.IdentityModel.Tokens" Version="8.14.0" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="$(System9Version)" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="$(System9Version)" />
-    <PackageVersion Include="System.IO.Pipelines" Version="$(System9Version)" />
   </ItemGroup>
 
   <!-- Product dependencies .NET 10 -->
   <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="$(System10Version)" />
-    <PackageVersion Include="Microsoft.IdentityModel.Tokens" Version="8.9.0" />
+    <PackageVersion Include="Microsoft.IdentityModel.Tokens" Version="8.14.0" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="$(System10Version)" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="$(System10Version)" />
-    <PackageVersion Include="System.IO.Pipelines" Version="$(System10Version)" />
   </ItemGroup>
 
   <!-- Product dependencies shared -->
@@ -56,19 +54,19 @@
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
 
     <!-- Testing dependencies -->
-    <PackageVersion Include="Anthropic.SDK" Version="5.5.1" />
+    <PackageVersion Include="Anthropic.SDK" Version="5.6.0" />
     <PackageVersion Include="coverlet.collector" Version="6.0.4">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageVersion>
     <PackageVersion Include="GitHubActionsTestLogger" Version="2.4.1" />
-    <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="9.9.1-preview.1.25474.6" />
+    <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="9.10.0-preview.1.25513.3" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="$(System9Version)" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="$(System9Version)" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="$(System9Version)" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="$(System9Version)" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="$(System9Version)" />
-    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="9.5.0" />
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="9.10.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageVersion Include="Moq" Version="4.20.72" />
     <PackageVersion Include="OpenTelemetry" Version="1.12.0" />

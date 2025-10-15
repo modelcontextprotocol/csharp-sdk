@@ -55,7 +55,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
         });
     }
 
-    private void CheckListToolsFilter(McpServerOptions options)
+    private static void CheckListToolsFilter(McpServerOptions options)
     {
         options.Filters.ListToolsFilters.Add(next => async (context, cancellationToken) =>
         {
@@ -87,7 +87,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
         });
     }
 
-    private void CheckCallToolFilter(McpServerOptions options)
+    private static void CheckCallToolFilter(McpServerOptions options)
     {
         options.Filters.CallToolFilters.Add(next => async (context, cancellationToken) =>
         {
@@ -115,7 +115,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
         });
     }
 
-    private void CheckListResourcesFilter(McpServerOptions options)
+    private static void CheckListResourcesFilter(McpServerOptions options)
     {
         options.Filters.ListResourcesFilters.Add(next => async (context, cancellationToken) =>
         {
@@ -145,7 +145,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
         });
     }
 
-    private void CheckListResourceTemplatesFilter(McpServerOptions options)
+    private static void CheckListResourceTemplatesFilter(McpServerOptions options)
     {
         options.Filters.ListResourceTemplatesFilters.Add(next => async (context, cancellationToken) =>
         {
@@ -177,7 +177,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
         });
     }
 
-    private void CheckReadResourceFilter(McpServerOptions options)
+    private static void CheckReadResourceFilter(McpServerOptions options)
     {
         options.Filters.ReadResourceFilters.Add(next => async (context, cancellationToken) =>
         {
@@ -205,7 +205,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
         });
     }
 
-    private void CheckListPromptsFilter(McpServerOptions options)
+    private static void CheckListPromptsFilter(McpServerOptions options)
     {
         options.Filters.ListPromptsFilters.Add(next => async (context, cancellationToken) =>
         {
@@ -237,7 +237,7 @@ internal sealed class AuthorizationFilterSetup(IAuthorizationPolicyProvider? pol
         });
     }
 
-    private void CheckGetPromptFilter(McpServerOptions options)
+    private static void CheckGetPromptFilter(McpServerOptions options)
     {
         options.Filters.GetPromptFilters.Add(next => async (context, cancellationToken) =>
         {

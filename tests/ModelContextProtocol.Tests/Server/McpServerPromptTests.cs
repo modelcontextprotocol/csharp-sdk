@@ -498,7 +498,7 @@ public class McpServerPromptTests
     {
         var icons = new List<Icon>
         {
-            new() { Source = "https://example.com/prompt-icon.png", MimeType = "image/png", Sizes = new List<string> { "48x48" } }
+            new() { Source = "https://example.com/prompt-icon.png", MimeType = "image/png", Sizes = ["48x48"] }
         };
 
         McpServerPrompt prompt = McpServerPrompt.Create(() => "test prompt", new McpServerPromptCreateOptions

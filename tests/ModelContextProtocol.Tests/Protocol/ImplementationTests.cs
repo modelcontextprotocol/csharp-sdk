@@ -16,8 +16,8 @@ public static class ImplementationTests
             Version = "1.0.0",
             Icons =
             [
-                new() { Source = "https://example.com/icon.png", MimeType = "image/png", Sizes = new List<string> { "48x48" } },
-                new() { Source = "https://example.com/icon.svg", MimeType = "image/svg+xml", Sizes = new List<string> { "any" } }
+                new() { Source = "https://example.com/icon.png", MimeType = "image/png", Sizes = ["48x48"] },
+                new() { Source = "https://example.com/icon.svg", MimeType = "image/svg+xml", Sizes = ["any"] }
             ],
             WebsiteUrl = "https://example.com"
         };

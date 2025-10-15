@@ -73,7 +73,7 @@ public sealed class InteractiveTools
         string? playerName = nameResponse.Content?["Name"].GetString();
 
         // Generate a random number between 1 and 10
-        Random random = new Random();
+        Random random = new();
         int targetNumber = random.Next(1, 11); // 1 to 10 inclusive
         int attempts = 0;
 

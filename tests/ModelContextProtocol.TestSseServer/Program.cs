@@ -56,8 +56,8 @@ public class Program
         }
         #endregion
 
-        List<Resource> resources = new();
-        List<ResourceContents> resourceContents = new();
+        List<Resource> resources = [];
+        List<ResourceContents> resourceContents = [];
         for (int i = 0; i < 100; ++i)
         {
             string uri = $"test://static/resource/{i + 1}";
@@ -319,7 +319,7 @@ public class Program
                 {
                     throw new McpProtocolException("Missing required parameter 'name'", McpErrorCode.InvalidParams);
                 }
-                List<PromptMessage> messages = new();
+                List<PromptMessage> messages = [];
                 if (request.Params.Name == "simple_prompt")
                 {
                     messages.Add(new PromptMessage

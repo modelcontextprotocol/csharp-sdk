@@ -105,7 +105,7 @@ public sealed class McpServerResourceCreateOptions
     /// Creates a shallow clone of the current <see cref="McpServerResourceCreateOptions"/> instance.
     /// </summary>
     internal McpServerResourceCreateOptions Clone() =>
-        new McpServerResourceCreateOptions
+        new()
         {
             Services = Services,
             UriTemplate = UriTemplate,

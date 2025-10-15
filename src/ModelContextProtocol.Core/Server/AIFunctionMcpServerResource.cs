@@ -67,7 +67,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
         return Create(
             AIFunctionFactory.Create(method, args =>
             {
-                Debug.Assert(args.Services is RequestServiceProvider<ReadResourceRequestParams>, $"The service provider should be a {nameof(RequestServiceProvider<ReadResourceRequestParams>)} for this method to work correctly.");
+                Debug.Assert(args.Services is RequestServiceProvider<ReadResourceRequestParams>, $"The service provider should be a {nameof(RequestServiceProvider<>)} for this method to work correctly.");
                 return createTargetFunc(((RequestServiceProvider<ReadResourceRequestParams>)args.Services!).Request);
             }, CreateAIFunctionFactoryOptions(method, options)),
             options);
