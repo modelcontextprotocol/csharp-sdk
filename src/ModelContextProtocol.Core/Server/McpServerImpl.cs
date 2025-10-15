@@ -295,7 +295,7 @@ internal sealed partial class McpServerImpl : McpServer
         var subscribe = resourcesCapability?.Subscribe;
 
         // Handle resources provided via DI.
-        if (resources is { IsEmpty: false })
+        if (resources is not null)
         {
             var originalListResourcesHandler = listResourcesHandler;
             listResourcesHandler = async (request, cancellationToken) =>
@@ -456,7 +456,7 @@ internal sealed partial class McpServerImpl : McpServer
         var listChanged = promptsCapability?.ListChanged;
 
         // Handle tools provided via DI by augmenting the handlers to incorporate them.
-        if (prompts is { IsEmpty: false })
+        if (prompts is not null)
         {
             var originalListPromptsHandler = listPromptsHandler;
             listPromptsHandler = async (request, cancellationToken) =>
@@ -544,7 +544,7 @@ internal sealed partial class McpServerImpl : McpServer
         var listChanged = toolsCapability?.ListChanged;
 
         // Handle tools provided via DI by augmenting the handlers to incorporate them.
-        if (tools is { IsEmpty: false })
+        if (tools is not null)
         {
             var originalListToolsHandler = listToolsHandler;
             listToolsHandler = async (request, cancellationToken) =>

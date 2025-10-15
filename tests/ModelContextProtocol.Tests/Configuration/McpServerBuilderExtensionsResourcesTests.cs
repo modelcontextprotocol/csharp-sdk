@@ -7,7 +7,6 @@ using ModelContextProtocol.Server;
 using Moq;
 using System.Collections;
 using System.ComponentModel;
-using System.Text.Json;
 using System.Threading.Channels;
 using static ModelContextProtocol.Tests.Configuration.McpServerBuilderExtensionsPromptsTests;
 
