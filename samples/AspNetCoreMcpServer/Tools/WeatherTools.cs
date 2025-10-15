@@ -48,8 +48,8 @@ public sealed class WeatherTools
     }
 
     [McpServerTool, Description("Get weather forecast for a location.")]
-    [McpMeta("category", "weather")]
-    [McpMeta("recommendedModel", "gpt-4")]
+    [McpMeta("category", "\"weather\"")]
+    [McpMeta("recommendedModel", "\"gpt-4\"")]
     public async Task<string> GetForecast(
         [Description("Latitude of the location.")] double latitude,
         [Description("Longitude of the location.")] double longitude)

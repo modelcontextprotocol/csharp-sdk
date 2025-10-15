@@ -68,5 +68,6 @@ public sealed class McpMetaAttribute : Attribute
     /// property to provide a JsonObject directly.
     /// </para>
     /// </remarks>
+    [StringSyntax(StringSyntaxAttribute.Json)]
     public string Value { get; }
 }
