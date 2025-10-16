@@ -1,7 +1,6 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Tests.Configuration;
