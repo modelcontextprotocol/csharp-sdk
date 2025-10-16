@@ -1,5 +1,6 @@
 ﻿using ModelContextProtocol.Protocol;
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Net.ServerSentEvents;
 using System.Text;
 using System.Text.Json;
@@ -7,7 +8,10 @@ using System.Threading.Channels;
 
 namespace ModelContextProtocol.Server;
 
-internal sealed class SseWriter(string? messageEndpoint = null, BoundedChannelOptions? channelOptions = null) : IAsyncDisposable
+internal sealed class SseWriter(
+    string? messageEndpoint = null,
+    BoundedChannelOptions? channelOptions = null,
+    ConcurrentDictionary<string, List<SseItem<JsonRpcMessage?>>>? inMemoryEventStore = null) : IAsyncDisposable
 {
     private readonly Channel<SseItem<JsonRpcMessage?>> _messages = Channel.CreateBounded<SseItem<JsonRpcMessage?>>(channelOptions ?? new BoundedChannelOptions(1)
     {
@@ -60,8 +64,36 @@ internal sealed class SseWriter(string? messageEndpoint = null, BoundedChannelOp
             return false;
         }
 
+        var transport = message.Context?.RelatedTransport;
+        var sseItem = new SseItem<JsonRpcMessage?>(message, SseParser.EventTypeDefault);
+
+        if (inMemoryEventStore is not null
+            && transport is StreamableHttpPostTransport postTransport
+            && !string.IsNullOrEmpty(postTransport.pendingStreamId))
+        {
+            var streamId = postTransport.pendingStreamId!;
+            sseItem = new SseItem<JsonRpcMessage?>(message, SseParser.EventTypeDefault)
+            {
+                EventId = $"{streamId}_{DateTime.UtcNow.Ticks}"
+            };
+
+            // remove ElicitationCreate method check to support resumability for other type of requests
+            if (message is JsonRpcRequest jsonRpcReq && jsonRpcReq.Method == RequestMethods.ElicitationCreate)
+            {
+                var sseItemList = inMemoryEventStore.GetOrAdd(streamId, (key) => new List<SseItem<JsonRpcMessage?>>());
+                sseItemList.Add(sseItem);
+            }
+
+            if (message is JsonRpcResponse jsonRpcResp
+                && jsonRpcResp.Id == postTransport.pendingRequestId
+                && inMemoryEventStore.TryGetValue(streamId, out var itemList))
+            {
+                itemList.Add(sseItem);
+            }
+        }
+
         // Emit redundant "event: message" lines for better compatibility with other SDKs.
-        await _messages.Writer.WriteAsync(new SseItem<JsonRpcMessage?>(message, SseParser.EventTypeDefault), cancellationToken).ConfigureAwait(false);
+        await _messages.Writer.WriteAsync(sseItem, cancellationToken).ConfigureAwait(false);
         return true;
     }
 

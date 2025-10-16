@@ -1,4 +1,5 @@
 ﻿using ModelContextProtocol.Protocol;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Net.ServerSentEvents;
@@ -13,14 +14,21 @@ namespace ModelContextProtocol.Server;
 /// Handles processing the request/response body pairs for the Streamable HTTP transport.
 /// This is typically used via <see cref="JsonRpcMessageContext.RelatedTransport"/>.
 /// </summary>
-internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport parentTransport, Stream responseStream) : ITransport
+internal sealed class StreamableHttpPostTransport(
+    StreamableHttpServerTransport parentTransport,
+    Stream responseStream,
+    ConcurrentDictionary<string, List<SseItem<JsonRpcMessage?>>>? inMemoryEventStore = null) : ITransport
 {
-    private readonly SseWriter _sseWriter = new();
+    private readonly SseWriter _sseWriter = new(inMemoryEventStore: inMemoryEventStore);
     private RequestId _pendingRequest;
+    private string? _pendingStreamId;
 
     public ChannelReader<JsonRpcMessage> MessageReader => throw new NotSupportedException("JsonRpcMessage.Context.RelatedTransport should only be used for sending messages.");
 
     string? ITransport.SessionId => parentTransport.SessionId;
+
+    public string? pendingStreamId => _pendingStreamId;
+    public RequestId pendingRequestId => _pendingRequest;
 
     /// <returns>
     /// True, if data was written to the respond body.
@@ -34,6 +42,7 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
         if (message is JsonRpcRequest request)
         {
             _pendingRequest = request.Id;
+            _pendingStreamId = Guid.NewGuid().ToString();
 
             // Invoke the initialize request callback if applicable.
             if (parentTransport.OnInitRequestReceived is { } onInitRequest && request.Method == RequestMethods.Initialize)

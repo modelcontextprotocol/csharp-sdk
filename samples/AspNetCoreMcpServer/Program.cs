@@ -1,15 +1,15 @@
+using AspNetCoreMcpServer.Resources;
+using AspNetCoreMcpServer.Tools;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
-using AspNetCoreMcpServer.Tools;
-using AspNetCoreMcpServer.Resources;
 using System.Net.Http.Headers;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddMcpServer()
     .WithHttpTransport()
     .WithTools<EchoTool>()
-    .WithTools<SampleLlmTool>()
+    .WithTools<CollectUserInformationTool>() // this tool collect user information through elicitation
     .WithTools<WeatherTools>()
     .WithResources<SimpleResourceType>();
 
@@ -32,6 +32,6 @@ builder.Services.AddHttpClient("WeatherApi", client =>
 
 var app = builder.Build();
 
-app.MapMcp();
+app.MapMcp("/mcp");
 
 app.Run();

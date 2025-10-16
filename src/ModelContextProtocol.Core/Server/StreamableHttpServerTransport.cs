@@ -1,5 +1,7 @@
 using ModelContextProtocol.Protocol;
+using System.Collections.Concurrent;
 using System.IO.Pipelines;
+using System.Net.ServerSentEvents;
 using System.Security.Claims;
 using System.Threading.Channels;
 
@@ -19,7 +21,7 @@ namespace ModelContextProtocol.Server;
 /// such as when streaming completion results or providing progress updates during long-running operations.
 /// </para>
 /// </remarks>
-public sealed class StreamableHttpServerTransport : ITransport
+public sealed class StreamableHttpServerTransport(ConcurrentDictionary<string, List<SseItem<JsonRpcMessage?>>>? inMemoryEventStore = null) : ITransport
 {
     // For JsonRpcMessages without a RelatedTransport, we don't want to block just because the client didn't make a GET request to handle unsolicited messages.
     private readonly SseWriter _sseWriter = new(channelOptions: new BoundedChannelOptions(1)
@@ -27,7 +29,7 @@ public sealed class StreamableHttpServerTransport : ITransport
         SingleReader = true,
         SingleWriter = false,
         FullMode = BoundedChannelFullMode.DropOldest,
-    });
+    }, inMemoryEventStore: inMemoryEventStore);
     private readonly Channel<JsonRpcMessage> _incomingChannel = Channel.CreateBounded<JsonRpcMessage>(new BoundedChannelOptions(1)
     {
         SingleReader = true,
@@ -117,7 +119,7 @@ public sealed class StreamableHttpServerTransport : ITransport
         Throw.IfNull(responseStream);
 
         using var postCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token, cancellationToken);
-        await using var postTransport = new StreamableHttpPostTransport(this, responseStream);
+        await using var postTransport = new StreamableHttpPostTransport(this, responseStream, inMemoryEventStore);
         return await postTransport.HandlePostAsync(message, postCts.Token).ConfigureAwait(false);
     }
 
