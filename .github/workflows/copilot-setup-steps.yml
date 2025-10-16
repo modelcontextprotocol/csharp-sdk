@@ -1,0 +1,24 @@
+name: "Copilot Setup Steps"
+
+on: workflow_dispatch
+
+jobs:
+  # The job MUST be called `copilot-setup-steps` or it will not be picked up by Copilot.
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install .NET 10.x
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: |
+            10.0.100-rc.1.25451.107
+          dotnet-quality: preview
+
+      - name: dotnet --info
+        run: dotnet --info
