@@ -7,7 +7,6 @@ using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using System.Collections.Concurrent;
 using System.Net.ServerSentEvents;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -23,14 +22,14 @@ internal sealed class StreamableHttpHandler(
     StatefulSessionManager sessionManager,
     IHostApplicationLifetime hostApplicationLifetime,
     IServiceProvider applicationServices,
-    ILoggerFactory loggerFactory)
+    ILoggerFactory loggerFactory,
+    IEventStore? eventStore = null)
 {
     private const string McpSessionIdHeaderName = "Mcp-Session-Id";
     private const string LastEventIdHeaderName = "Last-Event-Id";
 
     private static readonly JsonTypeInfo<JsonRpcMessage> s_messageTypeInfo = GetRequiredJsonTypeInfo<JsonRpcMessage>();
     private static readonly JsonTypeInfo<JsonRpcError> s_errorTypeInfo = GetRequiredJsonTypeInfo<JsonRpcError>();
-    private static ConcurrentDictionary<string, List<SseItem<JsonRpcMessage?>>> s_inMemoryEventStore = new(2, 15);
 
     public HttpServerTransportOptions HttpServerTransportOptions => httpServerTransportOptions.Value;
 
@@ -95,26 +94,15 @@ internal sealed class StreamableHttpHandler(
 
         // eventId format is <streamId:Guid>_<DateTime.UtcNow.Ticks:long>
         var lastEventId = context.Request.Headers[LastEventIdHeaderName].ToString();
-        if (!string.IsNullOrEmpty(lastEventId))
+        if (!string.IsNullOrEmpty(lastEventId) && eventStore is not null)
         {
             InitializeSseResponse(context);
-            var streamId = lastEventId.Split('_')[0];
-            var events = s_inMemoryEventStore.GetValueOrDefault(streamId, new());
-            var sortedAndFilteredEventsToSend = events
-                .Where(e => e.Data is not null && e.EventId != null)
-                .OrderBy(e => e.EventId)
-                .SkipWhile(e => string.Compare(e.EventId!, lastEventId, StringComparison.Ordinal) < 0)
-                .Select(e =>
-                    new SseItem<JsonRpcMessage>(e.Data!, e.EventType)
-                    {
-                        EventId = e.EventId,
-                        ReconnectionInterval = e.ReconnectionInterval
-                    });
-            await SseFormatter.WriteAsync<JsonRpcMessage>(
-                SseItemsAsyncEnumerable(sortedAndFilteredEventsToSend),
-                context.Response.Body,
-                (item, bufferWriter) => JsonSerializer.Serialize(new Utf8JsonWriter(bufferWriter), item.Data, s_messageTypeInfo),
-                context.RequestAborted);
+            await eventStore.replayEventsAfter(lastEventId, async (enumerableEvents) => 
+                await SseFormatter.WriteAsync<JsonRpcMessage>(enumerableEvents,
+                    context.Response.Body,
+                    (item, bufferWriter) => JsonSerializer.Serialize(new Utf8JsonWriter(bufferWriter), item.Data, s_messageTypeInfo),
+                    context.RequestAborted));
+
             return;
         }
 
@@ -220,7 +208,7 @@ internal sealed class StreamableHttpHandler(
         if (!HttpServerTransportOptions.Stateless)
         {
             sessionId = MakeNewSessionId();
-            transport = new(s_inMemoryEventStore)
+            transport = new(eventStore)
             {
                 SessionId = sessionId,
                 FlowExecutionContextFromRequests = !HttpServerTransportOptions.PerSessionExecutionContext,
@@ -352,12 +340,4 @@ internal sealed class StreamableHttpHandler(
 
     private static bool MatchesTextEventStreamMediaType(MediaTypeHeaderValue acceptHeaderValue)
         => acceptHeaderValue.MatchesMediaType("text/event-stream");
-
-    private static async IAsyncEnumerable<SseItem<JsonRpcMessage>> SseItemsAsyncEnumerable(IEnumerable<SseItem<JsonRpcMessage>> enumerableItems)
-    {
-        foreach (var sseItem in enumerableItems)
-        {
-            yield return sseItem;
-        }
-    }
 }

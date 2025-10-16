@@ -7,7 +7,7 @@ using System.Net.Http.Headers;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddMcpServer()
-    .WithHttpTransport()
+    .WithHttpTransport(withInMemoryEventStore: true)
     .WithTools<EchoTool>()
     .WithTools<CollectUserInformationTool>() // this tool collect user information through elicitation
     .WithTools<WeatherTools>()
@@ -32,6 +32,6 @@ builder.Services.AddHttpClient("WeatherApi", client =>
 
 var app = builder.Build();
 
-app.MapMcp("/mcp");
+app.MapMcp();
 
 app.Run();

@@ -18,12 +18,18 @@ public static class HttpMcpServerBuilderExtensions
     /// </summary>
     /// <param name="builder">The builder instance.</param>
     /// <param name="configureOptions">Configures options for the Streamable HTTP transport. This allows configuring per-session
+    /// <param name="withInMemoryEventStore">If <see langword="true"/>, an in-memory event store is used to retain events for clients that reconnect after a network interruption.</param>
     /// <see cref="McpServerOptions"/> and running logic before and after a session.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    public static IMcpServerBuilder WithHttpTransport(this IMcpServerBuilder builder, Action<HttpServerTransportOptions>? configureOptions = null)
+    public static IMcpServerBuilder WithHttpTransport(this IMcpServerBuilder builder, Action<HttpServerTransportOptions>? configureOptions = null, bool withInMemoryEventStore = false)
     {
         ArgumentNullException.ThrowIfNull(builder);
+
+        if ( withInMemoryEventStore )
+        {
+            builder.Services.TryAddSingleton<IEventStore, InMemoryEventStore>();
+        }
 
         builder.Services.TryAddSingleton<StatefulSessionManager>();
         builder.Services.TryAddSingleton<StreamableHttpHandler>();

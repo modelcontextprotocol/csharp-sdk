@@ -17,9 +17,9 @@ namespace ModelContextProtocol.Server;
 internal sealed class StreamableHttpPostTransport(
     StreamableHttpServerTransport parentTransport,
     Stream responseStream,
-    ConcurrentDictionary<string, List<SseItem<JsonRpcMessage?>>>? inMemoryEventStore = null) : ITransport
+    IEventStore? eventStore = null) : ITransport
 {
-    private readonly SseWriter _sseWriter = new(inMemoryEventStore: inMemoryEventStore);
+    private readonly SseWriter _sseWriter = new(eventStore: eventStore);
     private RequestId _pendingRequest;
     private string? _pendingStreamId;
 
