@@ -70,10 +70,10 @@ public class McpClientTests : ClientServerTestBase
     }
 
     [Theory]
-    [InlineData(null, null)]
+    [InlineData(null, 10)]
     [InlineData(0.7f, 50)]
     [InlineData(1.0f, 100)]
-    public async Task CreateSamplingHandler_ShouldHandleTextMessages(float? temperature, int? maxTokens)
+    public async Task CreateSamplingHandler_ShouldHandleTextMessages(float? temperature, int maxTokens)
     {
         // Arrange
         var mockChatClient = new Mock<IChatClient>();
@@ -472,7 +472,7 @@ public class McpClientTests : ClientServerTestBase
 
                 Assert.Equal("TestLogger", m.Logger);
 
-                string ? s = JsonSerializer.Deserialize<string>(m.Data.Value, McpJsonUtilities.DefaultOptions);
+                string? s = JsonSerializer.Deserialize<string>(m.Data.Value, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(s);
 
                 if (s.Contains("Information"))
@@ -505,7 +505,7 @@ public class McpClientTests : ClientServerTestBase
                 "Error message",
                 "Information message",
                 "Warning message",
-            ], 
+            ],
             data.OrderBy(s => s));
     }
 

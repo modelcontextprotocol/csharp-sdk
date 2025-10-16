@@ -16,5 +16,5 @@ public sealed class SetLevelRequestParams : RequestParams
     /// Gets or sets the level of logging that the client wants to receive from the server. 
     /// </summary>
     [JsonPropertyName("level")]
-    public required LoggingLevel Level { get; init; }
+    public required LoggingLevel Level { get; set; }
 }

@@ -29,11 +29,11 @@ public sealed class SamplingMessage
     /// Gets or sets the content of the message.
     /// </summary>
     [JsonPropertyName("content")]
-    public required ContentBlock Content { get; init; }
+    public required ContentBlock Content { get; set; }
 
     /// <summary>
     /// Gets or sets the role of the message sender, indicating whether it's from a "user" or an "assistant".
     /// </summary>
     [JsonPropertyName("role")]
-    public required Role Role { get; init; }
+    public required Role Role { get; set; }
 }

@@ -23,18 +23,18 @@ namespace ModelContextProtocol.Protocol;
 public abstract class Reference
 {
     /// <summary>Prevent external derivations.</summary>
-    private protected Reference() 
+    private protected Reference()
     {
     }
 
     /// <summary>
-    /// Gets or sets the type of content.
+    /// Gets the type of content.
     /// </summary>
     /// <remarks>
     /// This can be "ref/resource" or "ref/prompt".
     /// </remarks>
     [JsonPropertyName("type")]
-    public string Type { get; set; } = string.Empty;
+    public abstract string Type { get; }
 
     /// <summary>
     /// Provides a <see cref="JsonConverter"/> for <see cref="Reference"/>.
@@ -153,10 +153,8 @@ public abstract class Reference
 /// </summary>
 public sealed class PromptReference : Reference, IBaseMetadata
 {
-    /// <summary>
-    /// Initializes a new instance of the <see cref="PromptReference"/> class.
-    /// </summary>
-    public PromptReference() => Type = "ref/prompt";
+    /// <inheritdoc />
+    public override string Type => "ref/prompt";
 
     /// <inheritdoc />
     [JsonPropertyName("name")]
@@ -175,10 +173,8 @@ public sealed class PromptReference : Reference, IBaseMetadata
 /// </summary>
 public sealed class ResourceTemplateReference : Reference
 {
-    /// <summary>
-    /// Initializes a new instance of the <see cref="ResourceTemplateReference"/> class.
-    /// </summary>
-    public ResourceTemplateReference() => Type = "ref/resource";
+    /// <inheritdoc />
+    public override string Type => "ref/resource";
 
     /// <summary>
     /// Gets or sets the URI or URI template of the resource.

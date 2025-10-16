@@ -19,7 +19,7 @@ public sealed class CreateMessageRequestParams : RequestParams
     /// The client may ignore this request.
     /// </remarks>
     [JsonPropertyName("includeContext")]
-    public ContextInclusion? IncludeContext { get; init; }
+    public ContextInclusion? IncludeContext { get; set; }
 
     /// <summary>
     /// Gets or sets the maximum number of tokens to generate in the LLM response, as requested by the server.
@@ -29,13 +29,13 @@ public sealed class CreateMessageRequestParams : RequestParams
     /// response length and computation time. The client may choose to sample fewer tokens than requested.
     /// </remarks>
     [JsonPropertyName("maxTokens")]
-    public int? MaxTokens { get; init; }
+    public required int MaxTokens { get; set; }
 
     /// <summary>
     /// Gets or sets the messages requested by the server to be included in the prompt.
     /// </summary>
     [JsonPropertyName("messages")]
-    public required IReadOnlyList<SamplingMessage> Messages { get; init; }
+    public IList<SamplingMessage> Messages { get; set; } = [];
 
     /// <summary>
     /// Gets or sets optional metadata to pass through to the LLM provider.
@@ -46,7 +46,7 @@ public sealed class CreateMessageRequestParams : RequestParams
     /// that are specific to certain AI models or providers.
     /// </remarks>
     [JsonPropertyName("metadata")]
-    public JsonElement? Metadata { get; init; }
+    public JsonElement? Metadata { get; set; }
 
     /// <summary>
     /// Gets or sets the server's preferences for which model to select.
@@ -66,7 +66,7 @@ public sealed class CreateMessageRequestParams : RequestParams
     /// </para>
     /// </remarks>
     [JsonPropertyName("modelPreferences")]
-    public ModelPreferences? ModelPreferences { get; init; }
+    public ModelPreferences? ModelPreferences { get; set; }
 
     /// <summary>
     /// Gets or sets optional sequences of characters that signal the LLM to stop generating text when encountered.
@@ -84,7 +84,7 @@ public sealed class CreateMessageRequestParams : RequestParams
     /// </para>
     /// </remarks>
     [JsonPropertyName("stopSequences")]
-    public IReadOnlyList<string>? StopSequences { get; init; }
+    public IList<string>? StopSequences { get; set; }
 
     /// <summary>
     /// Gets or sets an optional system prompt the server wants to use for sampling.
@@ -93,11 +93,11 @@ public sealed class CreateMessageRequestParams : RequestParams
     /// The client may modify or omit this prompt.
     /// </remarks>
     [JsonPropertyName("systemPrompt")]
-    public string? SystemPrompt { get; init; }
+    public string? SystemPrompt { get; set; }
 
     /// <summary>
     /// Gets or sets the temperature to use for sampling, as requested by the server.
     /// </summary>
     [JsonPropertyName("temperature")]
-    public float? Temperature { get; init; }
+    public float? Temperature { get; set; }
 }

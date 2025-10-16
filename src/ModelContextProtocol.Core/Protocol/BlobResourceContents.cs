@@ -26,5 +26,5 @@ public sealed class BlobResourceContents : ResourceContents
     /// Gets or sets the base64-encoded string representing the binary data of the item.
     /// </summary>
     [JsonPropertyName("blob")]
-    public string Blob { get; set; } = string.Empty;
+    public required string Blob { get; set; }
 }

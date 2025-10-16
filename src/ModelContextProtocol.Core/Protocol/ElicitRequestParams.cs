@@ -15,7 +15,7 @@ public sealed class ElicitRequestParams
     /// Gets or sets the message to present to the user.
     /// </summary>
     [JsonPropertyName("message")]
-    public string Message { get; set; } = string.Empty;
+    public required string Message { get; set; }
 
     /// <summary>
     /// Gets or sets the requested schema.

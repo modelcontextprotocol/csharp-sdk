@@ -26,5 +26,5 @@ public sealed class ListRootsResult : Result
     /// Each root serves as an entry point for resource navigation in the Model Context Protocol.
     /// </remarks>
     [JsonPropertyName("roots")]
-    public required IReadOnlyList<Root> Roots { get; init; }
+    public required IList<Root> Roots { get; set; }
 }

@@ -16,7 +16,11 @@ public class McpServerExtensionsTests
         var server = new Mock<IMcpServer>(MockBehavior.Strict).Object;
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () => await server.SampleAsync(
-            new CreateMessageRequestParams { Messages = [new SamplingMessage { Role = Role.User, Content = new TextContentBlock { Text = "hi" } }] },
+            new CreateMessageRequestParams
+            {
+                Messages = [new SamplingMessage { Role = Role.User, Content = new TextContentBlock { Text = "hi" } }],
+                MaxTokens = 1000
+            },
             TestContext.Current.CancellationToken));
         Assert.Contains("Prefer using 'McpServer.SampleAsync' instead", ex.Message);
     }
@@ -90,6 +94,7 @@ public class McpServerExtensionsTests
             .Setup(s => s.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new JsonRpcResponse
             {
+                Id = default,
                 Result = JsonSerializer.SerializeToNode(resultPayload, McpJsonUtilities.DefaultOptions),
             });
 
@@ -97,7 +102,8 @@ public class McpServerExtensionsTests
 
         var result = await server.SampleAsync(new CreateMessageRequestParams
         {
-            Messages = [new SamplingMessage { Role = Role.User, Content = new TextContentBlock { Text = "hi" } }]
+            Messages = [new SamplingMessage { Role = Role.User, Content = new TextContentBlock { Text = "hi" } }],
+            MaxTokens = 1000
         }, TestContext.Current.CancellationToken);
 
         Assert.Equal("test-model", result.Model);
@@ -127,6 +133,7 @@ public class McpServerExtensionsTests
             .Setup(s => s.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new JsonRpcResponse
             {
+                Id = default,
                 Result = JsonSerializer.SerializeToNode(resultPayload, McpJsonUtilities.DefaultOptions),
             });
 
@@ -156,6 +163,7 @@ public class McpServerExtensionsTests
             .Setup(s => s.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new JsonRpcResponse
             {
+                Id = default,
                 Result = JsonSerializer.SerializeToNode(resultPayload, McpJsonUtilities.DefaultOptions),
             });
 
@@ -182,6 +190,7 @@ public class McpServerExtensionsTests
             .Setup(s => s.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new JsonRpcResponse
             {
+                Id = default,
                 Result = JsonSerializer.SerializeToNode(resultPayload, McpJsonUtilities.DefaultOptions),
             });
 
