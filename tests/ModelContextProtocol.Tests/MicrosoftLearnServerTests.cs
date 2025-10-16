@@ -6,6 +6,7 @@ namespace ModelContextProtocol.Tests;
 /// <summary>
 /// Tests for connecting to the Microsoft Learn MCP server.
 /// These tests connect to a real external server and are marked as manual execution.
+/// To run these tests, use: dotnet test --filter 'FullyQualifiedName~MicrosoftLearnServerTests'
 /// </summary>
 public class MicrosoftLearnServerTests(ITestOutputHelper testOutputHelper) : LoggedTest(testOutputHelper)
 {
