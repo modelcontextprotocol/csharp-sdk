@@ -1,5 +1,7 @@
 using AspNetCoreMcpServer.Resources;
 using AspNetCoreMcpServer.Tools;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using ModelContextProtocol.Server;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
@@ -7,7 +9,7 @@ using System.Net.Http.Headers;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddMcpServer()
-    .WithHttpTransport(withInMemoryEventStore: true)
+    .WithHttpTransport()
     .WithTools<EchoTool>()
     .WithTools<CollectUserInformationTool>() // this tool collect user information through elicitation
     .WithTools<WeatherTools>()
@@ -29,6 +31,9 @@ builder.Services.AddHttpClient("WeatherApi", client =>
     client.BaseAddress = new Uri("https://api.weather.gov");
     client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("weather-tool", "1.0"));
 });
+
+// adding InMemoryEventStore to support stream resumability
+builder.Services.TryAddSingleton<IEventStore, InMemoryEventStore>();
 
 var app = builder.Build();
 

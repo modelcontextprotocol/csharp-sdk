@@ -3,8 +3,15 @@ using ModelContextProtocol.Server;
 using System.Collections.Concurrent;
 using System.Net.ServerSentEvents;
 
-namespace ModelContextProtocol.AspNetCore;
-internal sealed class InMemoryEventStore : IEventStore
+/// <summary>
+/// Represents an in-memory implementation of an event store that stores and replays events associated with specific
+/// streams. This class is designed to handle events of type <see cref="SseItem{T}"/> where the data payload is a <see
+/// cref="JsonRpcMessage"/>.
+/// </summary>
+/// <remarks>The <see cref="InMemoryEventStore"/> provides functionality to store events for a given stream and
+/// replay events after a specified event ID. It supports resumability for specific types of requests and ensures events
+/// are replayed in the correct order.</remarks>
+public sealed class InMemoryEventStore : IEventStore
 {
     private ConcurrentDictionary<string, List<SseItem<JsonRpcMessage?>>> eventStore = new();
 
