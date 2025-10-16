@@ -12,11 +12,8 @@ public class MicrosoftLearnMcpServerTests(ITestOutputHelper testOutputHelper) : 
 {
     private const string MicrosoftLearnMcpEndpoint = "https://learn.microsoft.com/api/mcp";
 
-    [Fact]
-    [Trait("Execution", "Manual")]
-    public async Task ConnectAndInitialize_MicrosoftLearnServer_WithStreamableHttp()
+    private Task<McpClient> CreateClientAsync(CancellationToken cancellationToken = default)
     {
-        // Arrange
         var transportOptions = new HttpClientTransportOptions
         {
             Endpoint = new Uri(MicrosoftLearnMcpEndpoint),
@@ -29,12 +26,19 @@ public class MicrosoftLearnMcpServerTests(ITestOutputHelper testOutputHelper) : 
             ClientInfo = new() { Name = "CSharpSdkIntegrationTest", Version = "1.0.0" }
         };
 
-        // Act
-        await using var client = await McpClient.CreateAsync(
+        return McpClient.CreateAsync(
             new HttpClientTransport(transportOptions),
             clientOptions,
             loggerFactory: LoggerFactory,
-            cancellationToken: TestContext.Current.CancellationToken);
+            cancellationToken: cancellationToken);
+    }
+
+    [Fact]
+    [Trait("Execution", "Manual")]
+    public async Task ConnectAndInitialize_MicrosoftLearnServer_WithStreamableHttp()
+    {
+        // Act
+        await using var client = await CreateClientAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(client);
@@ -47,26 +51,8 @@ public class MicrosoftLearnMcpServerTests(ITestOutputHelper testOutputHelper) : 
     [Trait("Execution", "Manual")]
     public async Task ListTools_MicrosoftLearnServer()
     {
-        // Arrange
-        var transportOptions = new HttpClientTransportOptions
-        {
-            Endpoint = new Uri(MicrosoftLearnMcpEndpoint),
-            Name = "Microsoft Learn MCP Server",
-            TransportMode = HttpTransportMode.StreamableHttp,
-        };
-
-        var clientOptions = new McpClientOptions
-        {
-            ClientInfo = new() { Name = "CSharpSdkIntegrationTest", Version = "1.0.0" }
-        };
-
         // Act
-        await using var client = await McpClient.CreateAsync(
-            new HttpClientTransport(transportOptions),
-            clientOptions,
-            loggerFactory: LoggerFactory,
-            cancellationToken: TestContext.Current.CancellationToken);
-
+        await using var client = await CreateClientAsync(TestContext.Current.CancellationToken);
         var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
@@ -78,26 +64,8 @@ public class MicrosoftLearnMcpServerTests(ITestOutputHelper testOutputHelper) : 
     [Trait("Execution", "Manual")]
     public async Task ListResources_MicrosoftLearnServer()
     {
-        // Arrange
-        var transportOptions = new HttpClientTransportOptions
-        {
-            Endpoint = new Uri(MicrosoftLearnMcpEndpoint),
-            Name = "Microsoft Learn MCP Server",
-            TransportMode = HttpTransportMode.StreamableHttp,
-        };
-
-        var clientOptions = new McpClientOptions
-        {
-            ClientInfo = new() { Name = "CSharpSdkIntegrationTest", Version = "1.0.0" }
-        };
-
         // Act
-        await using var client = await McpClient.CreateAsync(
-            new HttpClientTransport(transportOptions),
-            clientOptions,
-            loggerFactory: LoggerFactory,
-            cancellationToken: TestContext.Current.CancellationToken);
-
+        await using var client = await CreateClientAsync(TestContext.Current.CancellationToken);
         var resources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
 
         // Assert
@@ -109,26 +77,8 @@ public class MicrosoftLearnMcpServerTests(ITestOutputHelper testOutputHelper) : 
     [Trait("Execution", "Manual")]
     public async Task ListPrompts_MicrosoftLearnServer()
     {
-        // Arrange
-        var transportOptions = new HttpClientTransportOptions
-        {
-            Endpoint = new Uri(MicrosoftLearnMcpEndpoint),
-            Name = "Microsoft Learn MCP Server",
-            TransportMode = HttpTransportMode.StreamableHttp,
-        };
-
-        var clientOptions = new McpClientOptions
-        {
-            ClientInfo = new() { Name = "CSharpSdkIntegrationTest", Version = "1.0.0" }
-        };
-
         // Act
-        await using var client = await McpClient.CreateAsync(
-            new HttpClientTransport(transportOptions),
-            clientOptions,
-            loggerFactory: LoggerFactory,
-            cancellationToken: TestContext.Current.CancellationToken);
-
+        await using var client = await CreateClientAsync(TestContext.Current.CancellationToken);
         var prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
 
         // Assert
@@ -140,26 +90,8 @@ public class MicrosoftLearnMcpServerTests(ITestOutputHelper testOutputHelper) : 
     [Trait("Execution", "Manual")]
     public async Task PingServer_MicrosoftLearnServer()
     {
-        // Arrange
-        var transportOptions = new HttpClientTransportOptions
-        {
-            Endpoint = new Uri(MicrosoftLearnMcpEndpoint),
-            Name = "Microsoft Learn MCP Server",
-            TransportMode = HttpTransportMode.StreamableHttp,
-        };
-
-        var clientOptions = new McpClientOptions
-        {
-            ClientInfo = new() { Name = "CSharpSdkIntegrationTest", Version = "1.0.0" }
-        };
-
         // Act
-        await using var client = await McpClient.CreateAsync(
-            new HttpClientTransport(transportOptions),
-            clientOptions,
-            loggerFactory: LoggerFactory,
-            cancellationToken: TestContext.Current.CancellationToken);
-
+        await using var client = await CreateClientAsync(TestContext.Current.CancellationToken);
         await client.PingAsync(TestContext.Current.CancellationToken);
 
         // Assert - if we get here without exception, ping was successful
