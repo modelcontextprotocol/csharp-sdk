@@ -1,9 +1,18 @@
 #!/bin/bash
+#
+# GitHub Copilot Agent Setup Script
+#
+# This script is automatically executed by GitHub Copilot Agent before starting work.
+# It ensures the correct .NET SDK version (as specified in global.json) is installed.
+#
+# See: https://docs.github.com/en/copilot/how-tos/use-copilot-agents/coding-agent/customize-the-agent-environment
+#
 set -e
 
 echo "=== Copilot Setup: .NET SDK Installation ==="
 
 # Parse the SDK version from global.json
+# Uses GITHUB_WORKSPACE if available, otherwise uses current directory
 GLOBAL_JSON_PATH="${GITHUB_WORKSPACE:-$(pwd)}/global.json"
 
 if [ ! -f "$GLOBAL_JSON_PATH" ]; then
