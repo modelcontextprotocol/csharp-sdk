@@ -175,8 +175,6 @@ builder.Services.AddOpenTelemetry()
 
 var app = builder.Build();
 
-app.UseHttpsRedirection();
-
 app.MapMcp();
 
 app.Run();
