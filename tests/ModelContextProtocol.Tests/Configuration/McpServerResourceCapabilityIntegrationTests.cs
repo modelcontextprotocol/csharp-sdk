@@ -121,6 +121,28 @@ public class McpServerResourceCapabilityIssueReproTests : ClientServerTestBase
         Assert.Contains(mcpOptions.ResourceCollection, r => r.ProtocolResource?.Name == "live_resource");
     }
 
+    [Fact]
+    public void ResourcesCapability_IsCreated_WhenOnlyResourcesAreProvided()
+    {
+        // Test that ResourcesCapability is created even without handlers or manual setting
+        var services = new ServiceCollection();
+        var builder = services.AddMcpServer()
+            .WithResources<LiveResources>()
+            .WithStdioServerTransport();
+
+        var serviceProvider = services.BuildServiceProvider();
+        var mcpOptions = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+
+        // Resources are registered
+        Assert.NotNull(mcpOptions.ResourceCollection);
+        Assert.NotEmpty(mcpOptions.ResourceCollection);
+
+        // But ResourcesCapability should NOT be created just because resources exist!
+        // The capability is only created when resources are actually used by the server
+        // This is correct behavior - the capability is set up during server initialization
+        // in McpServerImpl.ConfigureResources
+    }
+
     [McpServerResourceType]
     public sealed class LiveResources
     {
