@@ -97,7 +97,7 @@ internal sealed class StreamableHttpHandler(
         if (!string.IsNullOrEmpty(lastEventId) && eventStore is not null)
         {
             InitializeSseResponse(context);
-            await eventStore.replayEventsAfter(lastEventId, async (enumerableEvents) => 
+            await eventStore.ReplayEventsAfter(lastEventId, async (enumerableEvents) => 
                 await SseFormatter.WriteAsync<JsonRpcMessage>(enumerableEvents,
                     context.Response.Body,
                     (item, bufferWriter) => JsonSerializer.Serialize(new Utf8JsonWriter(bufferWriter), item.Data, s_messageTypeInfo),

@@ -1,3 +1,4 @@
+using AspNetCoreMcpServer.EventStore;
 using AspNetCoreMcpServer.Resources;
 using AspNetCoreMcpServer.Tools;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -32,8 +33,9 @@ builder.Services.AddHttpClient("WeatherApi", client =>
     client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("weather-tool", "1.0"));
 });
 
-// adding InMemoryEventStore to support stream resumability
+// adding InMemoryEventStore to support stream resumability and background cleanup service
 builder.Services.TryAddSingleton<IEventStore, InMemoryEventStore>();
+builder.Services.AddHostedService<EventStoreCleanupService>();
 
 var app = builder.Build();
 

@@ -73,14 +73,14 @@ internal sealed class SseWriter(
             var streamId = postTransport.pendingStreamId!;
             sseItem = new SseItem<JsonRpcMessage?>(message, SseParser.EventTypeDefault)
             {
-                EventId = $"{streamId}_{DateTime.UtcNow.Ticks}"
+                EventId = eventStore.GetEventId(streamId, message)
             };
 
             // store the requests and response to the pending request
             if (message is JsonRpcRequest jsonRpcReq || 
                 (message is JsonRpcResponse jsonRpcResp && jsonRpcResp.Id == postTransport.pendingRequestId))
             {
-                eventStore.storeEvent(streamId, sseItem);
+                eventStore.StoreEvent(streamId, sseItem);
             }
         }
 
