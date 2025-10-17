@@ -142,7 +142,7 @@ public partial class McpServerResourceTests
         const string Name = "Hello";
 
         McpServerResource t;
-        ReadResourceResult? result;
+        ReadResourceResult result;
         McpServer server = new Mock<McpServer>().Object;
 
         t = McpServerResource.Create(() => "42", new() { Name = Name });
@@ -282,11 +282,12 @@ public partial class McpServerResourceTests
     [InlineData("resource://mcp/Hello?arg1=42&arg2=84")]
     [InlineData("resource://mcp/Hello?arg1=42&arg2=84&arg3=123")]
     [InlineData("resource://mcp/Hello#fragment")]
-    public async Task UriTemplate_NonMatchingUri_ReturnsNull(string uri)
+    public async Task UriTemplate_NonMatchingUri_DoesNotMatch(string uri)
     {
         McpServerResource t = McpServerResource.Create((string arg1) => arg1, new() { Name = "Hello" });
         Assert.Equal("resource://mcp/Hello{?arg1}", t.ProtocolResourceTemplate.UriTemplate);
-        Assert.Null(await t.ReadAsync(
+        Assert.False(t.CanReadUri(uri));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await t.ReadAsync(
             new RequestContext<ReadResourceRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()) { Params = new() { Uri = uri } },
             TestContext.Current.CancellationToken));
     }
@@ -337,7 +338,7 @@ public partial class McpServerResourceTests
         McpServerResource t = McpServerResource.Create((string? arg1 = null, int? arg2 = null) => arg1 + arg2, new() { Name = "Hello" });
         Assert.Equal("resource://mcp/Hello{?arg1,arg2}", t.ProtocolResourceTemplate.UriTemplate);
 
-        ReadResourceResult? result;
+        ReadResourceResult result;
 
         result = await t.ReadAsync(
             new RequestContext<ReadResourceRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://mcp/Hello" } },
