@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <WarnOnPackingNonPackableProject>false</WarnOnPackingNonPackableProject>
+    <!-- Temp workaround for https://github.com/dotnet/sdk/issues/51265 -->
+    <RestoreEnablePackagePruning>false</RestoreEnablePackagePruning>
   </PropertyGroup>
 
   <PropertyGroup>
