@@ -15,5 +15,5 @@ public sealed class CompleteContext
     /// Gets or sets previously-resolved variables in a URI template or prompt.
     /// </summary>
     [JsonPropertyName("arguments")]
-    public IDictionary<string, string>? Arguments { get; init; }
+    public IDictionary<string, string>? Arguments { get; set; }
 }

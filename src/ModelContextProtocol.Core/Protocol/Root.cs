@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -18,13 +19,14 @@ public sealed class Root
     /// Gets or sets the URI of the root.
     /// </summary>
     [JsonPropertyName("uri")]
-    public required string Uri { get; init; }
+    [StringSyntax(StringSyntaxAttribute.Uri)]
+    public required string Uri { get; set; }
 
     /// <summary>
     /// Gets or sets a human-readable name for the root.
     /// </summary>
     [JsonPropertyName("name")]
-    public string? Name { get; init; }
+    public string? Name { get; set; }
 
     /// <summary>
     /// Gets or sets additional metadata for the root.
@@ -33,5 +35,5 @@ public sealed class Root
     /// This is reserved by the protocol for future use.
     /// </remarks>
     [JsonPropertyName("_meta")]
-    public JsonElement? Meta { get; init; }
+    public JsonElement? Meta { get; set; }
 }

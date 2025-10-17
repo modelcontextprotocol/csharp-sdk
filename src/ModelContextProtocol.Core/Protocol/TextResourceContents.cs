@@ -25,5 +25,5 @@ public sealed class TextResourceContents : ResourceContents
     /// Gets or sets the text of the item.
     /// </summary>
     [JsonPropertyName("text")]
-    public string Text { get; set; } = string.Empty;
+    public required string Text { get; set; }
 }

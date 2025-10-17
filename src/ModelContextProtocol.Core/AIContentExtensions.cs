@@ -226,6 +226,7 @@ public static class AIContentExtensions
                 {
                     Blob = dataContent.Base64Data.ToString(),
                     MimeType = dataContent.MediaType,
+                    Uri = string.Empty,
                 }
             },
 

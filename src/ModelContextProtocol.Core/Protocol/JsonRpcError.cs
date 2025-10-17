@@ -23,5 +23,5 @@ public sealed class JsonRpcError : JsonRpcMessageWithId
     /// message, and optional additional data
     /// </summary>
     [JsonPropertyName("error")]
-    public required JsonRpcErrorDetail Error { get; init; }
+    public required JsonRpcErrorDetail Error { get; set; }
 }

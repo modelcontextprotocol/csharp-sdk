@@ -153,7 +153,7 @@ public abstract partial class McpServer : McpSession, IMcpServer
         var result = await SampleAsync(new()
         {
             Messages = samplingMessages,
-            MaxTokens = options?.MaxOutputTokens,
+            MaxTokens = options?.MaxOutputTokens ?? int.MaxValue,
             StopSequences = options?.StopSequences?.ToArray(),
             SystemPrompt = systemPrompt?.ToString(),
             Temperature = options?.Temperature,

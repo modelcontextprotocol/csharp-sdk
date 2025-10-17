@@ -25,7 +25,7 @@ public sealed class ResourceTemplate : IBaseMetadata
     /// Gets or sets the URI template (according to RFC 6570) that can be used to construct resource URIs.
     /// </summary>
     [JsonPropertyName("uriTemplate")]
-    public required string UriTemplate { get; init; }
+    public required string UriTemplate { get; set; }
 
     /// <summary>
     /// Gets or sets a description of what this resource template represents.
@@ -42,7 +42,7 @@ public sealed class ResourceTemplate : IBaseMetadata
     /// </para>
     /// </remarks>
     [JsonPropertyName("description")]
-    public string? Description { get; init; }
+    public string? Description { get; set; }
 
     /// <summary>
     /// Gets or sets the MIME type of this resource template, if known.
@@ -59,7 +59,7 @@ public sealed class ResourceTemplate : IBaseMetadata
     /// </para>
     /// </remarks>
     [JsonPropertyName("mimeType")]
-    public string? MimeType { get; init; }
+    public string? MimeType { get; set; }
 
     /// <summary>
     /// Gets or sets optional annotations for the resource template.
@@ -70,7 +70,7 @@ public sealed class ResourceTemplate : IBaseMetadata
     /// or prioritize resource templates for different roles.
     /// </remarks>
     [JsonPropertyName("annotations")]
-    public Annotations? Annotations { get; init; }
+    public Annotations? Annotations { get; set; }
 
     /// <summary>
     /// Gets or sets an optional list of icons for this resource template.
@@ -88,7 +88,7 @@ public sealed class ResourceTemplate : IBaseMetadata
     /// Implementations must not make assumptions about its contents.
     /// </remarks>
     [JsonPropertyName("_meta")]
-    public JsonObject? Meta { get; init; }
+    public JsonObject? Meta { get; set; }
 
     /// <summary>Gets whether <see cref="UriTemplate"/> contains any template expressions.</summary>
     [JsonIgnore]

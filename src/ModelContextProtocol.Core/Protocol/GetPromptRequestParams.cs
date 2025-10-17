@@ -16,7 +16,7 @@ public sealed class GetPromptRequestParams : RequestParams
     /// Gets or sets the name of the prompt.
     /// </summary>
     [JsonPropertyName("name")]
-    public required string Name { get; init; }
+    public required string Name { get; set; }
 
     /// <summary>
     /// Gets or sets arguments to use for templating the prompt when retrieving it from the server.
@@ -27,5 +27,5 @@ public sealed class GetPromptRequestParams : RequestParams
     /// choose to use these arguments in any way it deems appropriate to generate the prompt.
     /// </remarks>
     [JsonPropertyName("arguments")]
-    public IReadOnlyDictionary<string, JsonElement>? Arguments { get; init; }
+    public IDictionary<string, JsonElement>? Arguments { get; set; }
 }

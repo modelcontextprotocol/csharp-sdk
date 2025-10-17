@@ -20,23 +20,11 @@ public sealed class JsonRpcRequest : JsonRpcMessageWithId
     /// Name of the method to invoke.
     /// </summary>
     [JsonPropertyName("method")]
-    public required string Method { get; init; }
+    public required string Method { get; set; }
 
     /// <summary>
     /// Optional parameters for the method.
     /// </summary>
     [JsonPropertyName("params")]
-    public JsonNode? Params { get; init; }
-
-    internal JsonRpcRequest WithId(RequestId id)
-    {
-        return new JsonRpcRequest
-        {
-            JsonRpc = JsonRpc,
-            Id = id,
-            Method = Method,
-            Params = Params,
-            Context = Context,
-        };
-    }
+    public JsonNode? Params { get; set; }
 }

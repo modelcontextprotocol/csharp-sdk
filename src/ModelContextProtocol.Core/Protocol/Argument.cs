@@ -15,7 +15,7 @@ public sealed class Argument
     /// Gets or sets the name of the argument being completed.
     /// </summary>
     [JsonPropertyName("name")]
-    public string Name { get; set; } = string.Empty;
+    public required string Name { get; set; }
 
     /// <summary>
     /// Gets or sets the current partial text value for which completion suggestions are requested.
@@ -25,5 +25,5 @@ public sealed class Argument
     /// options should be generated.
     /// </remarks>
     [JsonPropertyName("value")]
-    public string Value { get; set; } = string.Empty;
+    public required string Value { get; set; }
 }
