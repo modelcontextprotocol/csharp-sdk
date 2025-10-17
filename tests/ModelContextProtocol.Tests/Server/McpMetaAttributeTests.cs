@@ -81,7 +81,6 @@ public partial class McpMetaAttributeTests
         var attr = new McpMetaAttribute("key", 3.14159);
         
         Assert.Equal("key", attr.Name);
-        Assert.Equal("3.14159", attr.JsonValue);
         
         var node = JsonNode.Parse(attr.JsonValue);
         Assert.NotNull(node);

@@ -45,7 +45,7 @@ public sealed class McpMetaAttribute : Attribute
     public McpMetaAttribute(string name, string? value = null)
     {
         Name = name;
-        JsonValue = value is null ? "null" : JsonSerializer.Serialize(value, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(string)));
+        JsonValue = value is null ? "null" : JsonSerializer.Serialize(value, McpJsonUtilities.JsonContext.Default.String);
     }
 
     /// <summary>
@@ -67,7 +67,7 @@ public sealed class McpMetaAttribute : Attribute
     public McpMetaAttribute(string name, bool value)
     {
         Name = name;
-        JsonValue = value ? "true" : "false";
+        JsonValue = JsonSerializer.Serialize(value, McpJsonUtilities.JsonContext.Default.Boolean);
     }
 
     /// <summary>
