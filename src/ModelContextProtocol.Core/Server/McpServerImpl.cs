@@ -346,6 +346,22 @@ internal sealed partial class McpServerImpl : McpServer
                     {
                         return result;
                     }
+                    // If the matched primitive didn't actually match, fall through to try other resources
+                }
+
+                if (request.Params?.Uri is { } uri && resources is not null)
+                {
+                    // Try templated resources
+                    foreach (var resourceTemplate in resources)
+                    {
+                        if (resourceTemplate.IsTemplated && resourceTemplate != request.MatchedPrimitive)
+                        {
+                            if (await resourceTemplate.ReadAsync(request, cancellationToken).ConfigureAwait(false) is { } result)
+                            {
+                                return result;
+                            }
+                        }
+                    }
                 }
 
                 return await originalReadResourceHandler(request, cancellationToken).ConfigureAwait(false);
@@ -365,23 +381,19 @@ internal sealed partial class McpServerImpl : McpServer
                 // Initial handler that sets MatchedPrimitive
                 if (request.Params?.Uri is { } uri && resources is not null)
                 {
-                    // First try an O(1) lookup by exact match.
+                    // Try an O(1) lookup by exact match.
                     if (resources.TryGetPrimitive(uri, out var resource))
                     {
                         request.MatchedPrimitive = resource;
                     }
                     else
                     {
-                        // Fall back to an O(N) lookup, trying to match against each URI template.
-                        // The number of templates is controlled by the server developer, and the number is expected to be
-                        // not terribly large. If that changes, this can be tweaked to enable a more efficient lookup.
+                        // Set MatchedPrimitive to the first templated resource as a hint.
+                        // The handler will validate if it actually matches.
                         foreach (var resourceTemplate in resources)
                         {
-                            // Check if this template would handle the request by testing if ReadAsync would succeed
                             if (resourceTemplate.IsTemplated)
                             {
-                                // This is a simplified check - a more robust implementation would match the URI pattern
-                                // For now, we'll let the actual handler attempt the match
                                 request.MatchedPrimitive = resourceTemplate;
                                 break;
                             }

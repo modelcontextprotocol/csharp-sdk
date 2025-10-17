@@ -313,6 +313,45 @@ public partial class McpServerResourceTests
     }
 
     [Fact]
+    public async Task MultipleTemplatedResources_MatchesCorrectResource()
+    {
+        // Regression test for https://github.com/modelcontextprotocol/csharp-sdk/issues/XXX
+        // This test verifies that when multiple templated resources exist,
+        // the correct one is matched based on the URI pattern, not just the first one.
+
+        McpServerResource r1 = McpServerResource.Create(() => "summary", new() { UriTemplate = "test://resource/summary" });
+        McpServerResource r2 = McpServerResource.Create((string id) => $"Content: {id}", new() { UriTemplate = "test://resource/{id}" });
+
+        var services = new ServiceCollection();
+        services.AddMcpServer()
+            .WithStdioServerTransport()
+            .WithResources([r1, r2]);
+
+        var sp = services.BuildServiceProvider();
+        var server = sp.GetRequiredService<McpServer>();
+
+        // Test that the summary resource works
+        var summaryResult = await r1.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(server, CreateTestJsonRpcRequest())
+            {
+                Params = new() { Uri = "test://resource/summary" }
+            },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(summaryResult);
+        Assert.Equal("summary", ((TextResourceContents)summaryResult.Contents[0]).Text);
+
+        // Test that the id resource works with a different id
+        var idResult = await r2.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(server, CreateTestJsonRpcRequest())
+            {
+                Params = new() { Uri = "test://resource/12345" }
+            },
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(idResult);
+        Assert.Equal("Content: 12345", ((TextResourceContents)idResult.Contents[0]).Text);
+    }
+
+    [Fact]
     public void MimeType_DefaultsToOctetStream()
     {
         McpServerResource t = McpServerResource.Create(() => "resource", new() { Name = "My Cool Resource" });
