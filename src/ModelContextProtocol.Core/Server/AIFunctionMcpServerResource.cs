@@ -322,6 +322,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
 
     private bool TryMatch(string uri, out Match? match)
     {
+        // For templates, use the Regex to parse. For static resources, we can just compare the URIs.
         if (_uriParser is null)
         {
             // This resource is not templated.

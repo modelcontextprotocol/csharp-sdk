@@ -163,11 +163,11 @@ public abstract class McpServerResource : IMcpServerPrimitive
     public abstract IReadOnlyList<object> Metadata { get; }
 
     /// <summary>
-    /// Determines whether this resource can read the specified <paramref name="uri"/> if passed to <see cref="ReadAsync"/> via
-    /// <see cref="ReadResourceRequestParams.Uri"/>.
+    /// Evaluates whether the <paramref name="uri"/> matches the <see cref="ProtocolResourceTemplate"/>
+    /// and can be used as the <see cref="ReadResourceRequestParams.Uri"/> passed to <see cref="ReadAsync"/>.
     /// </summary>
     /// <param name="uri">The URI being evaluated for this resource.</param>
-    /// <returns><see langword="true"/> if the resource is able to handle the URI; otherwise, <see langword="false"/>.</returns>
+    /// <returns><see langword="true"/> if the <paramref name="uri"/> matches the <see cref="ProtocolResourceTemplate"/>; otherwise, <see langword="false"/>.</returns>
     public abstract bool CanReadUri(string uri);
 
     /// <summary>
@@ -186,8 +186,8 @@ public abstract class McpServerResource : IMcpServerPrimitive
     /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">
-    /// The requested resource URI did not match the template for this resource, the resource implementation returned <see langword="null"/>, or
-    /// the resource implementation returned an unsupported result type.
+    /// The <see cref="ReadResourceRequestParams.Uri"/> did not match the <see cref="ProtocolResourceTemplate"/> for this resource,
+    /// the resource implementation returned <see langword="null"/>, or the resource implementation returned an unsupported result type.
     /// </exception>
     public abstract ValueTask<ReadResourceResult> ReadAsync(
         RequestContext<ReadResourceRequestParams> request,
