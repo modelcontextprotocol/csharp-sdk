@@ -163,6 +163,14 @@ public abstract class McpServerResource : IMcpServerPrimitive
     public abstract IReadOnlyList<object> Metadata { get; }
 
     /// <summary>
+    /// Determines whether this resource can read the specified <paramref name="uri"/> if passed to <see cref="ReadAsync"/> via
+    /// <see cref="ReadResourceRequestParams.Uri"/>.
+    /// </summary>
+    /// <param name="uri">The URI being evaluated for this resource.</param>
+    /// <returns><see langword="true"/> if the resource is able to handle the URI; otherwise, <see langword="false"/>.</returns>
+    public abstract bool CanReadUri(string uri);
+
+    /// <summary>
     /// Gets the resource, rendering it with the provided request parameters and returning the resource result.
     /// </summary>
     /// <param name="request">
@@ -174,12 +182,14 @@ public abstract class McpServerResource : IMcpServerPrimitive
     /// </param>
     /// <returns>
     /// A <see cref="ValueTask{ReadResourceResult}"/> representing the asynchronous operation, containing a <see cref="ReadResourceResult"/> with
-    /// the resource content and messages. If and only if this <see cref="McpServerResource"/> doesn't match the <see cref="ReadResourceRequestParams.Uri"/>,
-    /// the method returns <see langword="null"/>.
+    /// the resource content and messages.
     /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is <see langword="null"/>.</exception>
-    /// <exception cref="InvalidOperationException">The resource implementation returned <see langword="null"/> or an unsupported result type.</exception>
-    public abstract ValueTask<ReadResourceResult?> ReadAsync(
+    /// <exception cref="InvalidOperationException">
+    /// The requested resource URI did not match the template for this resource, the resource implementation returned <see langword="null"/>, or
+    /// the resource implementation returned an unsupported result type.
+    /// </exception>
+    public abstract ValueTask<ReadResourceResult> ReadAsync(
         RequestContext<ReadResourceRequestParams> request,
         CancellationToken cancellationToken = default);
 

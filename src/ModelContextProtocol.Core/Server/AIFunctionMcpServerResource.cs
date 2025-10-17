@@ -314,7 +314,27 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
     public override IReadOnlyList<object> Metadata => _metadata;
 
     /// <inheritdoc />
-    public override async ValueTask<ReadResourceResult?> ReadAsync(
+    public override bool CanReadUri(string uri)
+    {
+        Throw.IfNull(uri);
+        return TryMatch(uri, out _);
+    }
+
+    private bool TryMatch(string uri, out Match? match)
+    {
+        if (_uriParser is null)
+        {
+            // This resource is not templated.
+            match = null;
+            return UriTemplate.UriTemplateComparer.Instance.Equals(uri, ProtocolResourceTemplate.UriTemplate);
+        }
+
+        match = _uriParser.Match(uri);
+        return match.Success;
+    }
+
+    /// <inheritdoc />
+    public override async ValueTask<ReadResourceResult> ReadAsync(
         RequestContext<ReadResourceRequestParams> request, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(request);
@@ -323,20 +343,9 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        // Check to see if this URI template matches the request URI. If it doesn't, return null.
-        // For templates, use the Regex to parse. For static resources, we can just compare the URIs.
-        Match? match = null;
-        if (_uriParser is not null)
+        if (!TryMatch(request.Params.Uri, out Match? match))
         {
-            match = _uriParser.Match(request.Params.Uri);
-            if (!match.Success)
-            {
-                return null;
-            }
-        }
-        else if (!UriTemplate.UriTemplateComparer.Instance.Equals(request.Params.Uri, ProtocolResource!.Uri))
-        {
-            return null;
+            throw new InvalidOperationException($"Resource '{ProtocolResourceTemplate.UriTemplate}' does not match the provided URI '{request.Params.Uri}'.");
         }
 
         // Build up the arguments for the AIFunction call, including all of the name/value pairs from the URI.
