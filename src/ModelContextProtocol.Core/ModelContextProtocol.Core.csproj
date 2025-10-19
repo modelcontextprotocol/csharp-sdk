@@ -54,4 +54,17 @@
                       ReferenceOutputAssembly="false" />
   </ItemGroup>
 
+  <!-- Direct analyzer reference for build-time source generation -->
+  <ItemGroup>
+    <Analyzer Include="$(ArtifactsDir)bin\ModelContextProtocol.SourceGenerators\netstandard2.0\ModelContextProtocol.SourceGenerators.dll" />
+  </ItemGroup>
+
+  <!-- Package the analyzer DLL into the NuGet package -->
+  <ItemGroup>
+    <None Include="$(ArtifactsDir)bin\ModelContextProtocol.SourceGenerators\netstandard2.0\ModelContextProtocol.SourceGenerators.dll" 
+          Pack="true" 
+          PackagePath="analyzers/dotnet/cs" 
+          Visible="false" />
+  </ItemGroup>
+
 </Project>
