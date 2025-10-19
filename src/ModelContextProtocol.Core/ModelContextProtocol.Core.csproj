@@ -47,4 +47,11 @@
     <None Include="README.md" pack="true" PackagePath="\" />
   </ItemGroup>
 
+  <!-- Include source generator as an analyzer -->
+  <ItemGroup>
+    <ProjectReference Include="..\ModelContextProtocol.SourceGenerators\ModelContextProtocol.SourceGenerators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
 </Project>
