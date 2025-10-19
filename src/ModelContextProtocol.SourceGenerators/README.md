@@ -65,6 +65,11 @@ public partial class MyTools
 - Your method must have the `[McpServerTool]` attribute
 - Your method must have XML documentation comments with a `<summary>` tag
 - Your method must NOT already have a `[Description]` attribute
+- Your project must reference `ModelContextProtocol.Core` directly (the source generator is distributed with this package)
+
+### Availability
+
+The source generator is distributed as part of the `ModelContextProtocol.Core` NuGet package and will be automatically available when you reference that package in your project.
 
 ### Notes
 
