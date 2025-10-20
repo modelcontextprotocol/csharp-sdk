@@ -330,7 +330,7 @@ public class XmlToDescriptionGeneratorTests
     }
 
     [Fact]
-    public void Generator_WithGenericType_GeneratesCorrectFileName()
+    public void Generator_WithGenericType_GeneratesCorrectly()
     {
         var source = """
             using ModelContextProtocol.Server;
@@ -357,9 +357,8 @@ public class XmlToDescriptionGeneratorTests
         Assert.True(result.Success);
         Assert.Single(result.GeneratedSources);
         
-        var fileName = result.GeneratedSources[0].FilePath;
-        // Should include arity for generic types
-        Assert.Contains("`1", fileName);
+        var generatedSource = result.GeneratedSources[0].SourceText.ToString();
+        Assert.Contains("[Description(\"Test generic\")]", generatedSource);
     }
 
     [Fact]
@@ -422,6 +421,267 @@ public class XmlToDescriptionGeneratorTests
         
         var generatedSource = result.GeneratedSources[0].SourceText.ToString();
         Assert.Contains("[Description(\"First line Second line Third line\")]", generatedSource);
+    }
+
+    [Fact]
+    public void Generator_WithParametersOnly_GeneratesParameterDescriptions()
+    {
+        var source = """
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <param name="input">Input parameter</param>
+                /// <param name="count">Count parameter</param>
+                [McpServerTool]
+                public static partial string TestMethod(string input, int count)
+                {
+                    return input;
+                }
+            }
+            """;
+
+        var result = RunGenerator(source);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var generatedSource = result.GeneratedSources[0].SourceText.ToString();
+        Assert.Contains("[Description(\"Input parameter\")]", generatedSource);
+        Assert.Contains("[Description(\"Count parameter\")]", generatedSource);
+    }
+
+    [Fact]
+    public void Generator_WithNestedType_GeneratesCorrectly()
+    {
+        var source = """
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            public partial class OuterClass
+            {
+                [McpServerToolType]
+                public partial class InnerClass
+                {
+                    /// <summary>
+                    /// Nested tool
+                    /// </summary>
+                    [McpServerTool]
+                    public static partial string NestedMethod(string input)
+                    {
+                        return input;
+                    }
+                }
+            }
+            """;
+
+        var result = RunGenerator(source);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var generatedSource = result.GeneratedSources[0].SourceText.ToString();
+        Assert.Contains("partial class OuterClass", generatedSource);
+        Assert.Contains("partial class InnerClass", generatedSource);
+        Assert.Contains("[Description(\"Nested tool\")]", generatedSource);
+    }
+
+    [Fact]
+    public void Generator_WithRecordClass_GeneratesCorrectly()
+    {
+        var source = """
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial record TestTools
+            {
+                /// <summary>
+                /// Record tool
+                /// </summary>
+                [McpServerTool]
+                public static partial string RecordMethod(string input)
+                {
+                    return input;
+                }
+            }
+            """;
+
+        var result = RunGenerator(source);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var generatedSource = result.GeneratedSources[0].SourceText.ToString();
+        // Records are generated with "record class" keyword
+        Assert.Contains("partial record class TestTools", generatedSource);
+        Assert.Contains("[Description(\"Record tool\")]", generatedSource);
+    }
+
+    [Fact]
+    public void Generator_WithRecordStruct_GeneratesCorrectly()
+    {
+        var source = """
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial record struct TestTools
+            {
+                /// <summary>
+                /// Record struct tool
+                /// </summary>
+                [McpServerTool]
+                public static partial string RecordStructMethod(string input)
+                {
+                    return input;
+                }
+            }
+            """;
+
+        var result = RunGenerator(source);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var generatedSource = result.GeneratedSources[0].SourceText.ToString();
+        Assert.Contains("partial record struct TestTools", generatedSource);
+        Assert.Contains("[Description(\"Record struct tool\")]", generatedSource);
+    }
+
+    [Fact]
+    public void Generator_WithVirtualMethod_GeneratesCorrectly()
+    {
+        var source = """
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>
+                /// Virtual tool
+                /// </summary>
+                [McpServerTool]
+                public virtual partial string VirtualMethod(string input)
+                {
+                    return input;
+                }
+            }
+            """;
+
+        var result = RunGenerator(source);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var generatedSource = result.GeneratedSources[0].SourceText.ToString();
+        Assert.Contains("public virtual partial string VirtualMethod", generatedSource);
+    }
+
+    [Fact]
+    public void Generator_WithAbstractMethod_GeneratesCorrectly()
+    {
+        var source = """
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public abstract partial class TestTools
+            {
+                /// <summary>
+                /// Abstract tool
+                /// </summary>
+                [McpServerTool]
+                public abstract partial string AbstractMethod(string input);
+            }
+            """;
+
+        var result = RunGenerator(source);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var generatedSource = result.GeneratedSources[0].SourceText.ToString();
+        Assert.Contains("public abstract partial string AbstractMethod", generatedSource);
+    }
+
+    [Fact]
+    public void Generator_WithMcpServerPrompt_GeneratesCorrectly()
+    {
+        var source = """
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerPromptType]
+            public partial class TestPrompts
+            {
+                /// <summary>
+                /// Test prompt
+                /// </summary>
+                [McpServerPrompt]
+                public static partial string TestPrompt(string input)
+                {
+                    return input;
+                }
+            }
+            """;
+
+        var result = RunGenerator(source);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var generatedSource = result.GeneratedSources[0].SourceText.ToString();
+        Assert.Contains("[Description(\"Test prompt\")]", generatedSource);
+    }
+
+    [Fact]
+    public void Generator_WithMcpServerResource_GeneratesCorrectly()
+    {
+        var source = """
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerResourceType]
+            public partial class TestResources
+            {
+                /// <summary>
+                /// Test resource
+                /// </summary>
+                [McpServerResource("test://resource")]
+                public static partial string TestResource(string input)
+                {
+                    return input;
+                }
+            }
+            """;
+
+        var result = RunGenerator(source);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var generatedSource = result.GeneratedSources[0].SourceText.ToString();
+        Assert.Contains("[Description(\"Test resource\")]", generatedSource);
     }
 
     private GeneratorRunResult RunGenerator(string source)
