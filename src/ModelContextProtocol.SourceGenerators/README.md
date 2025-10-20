@@ -57,12 +57,6 @@ namespace YourNamespace
 }
 ```
 
-### Benefits
-
-- **Reduces duplication**: You don't need to write both XML comments AND Description attributes
-- **Single source of truth**: XML comments are used for both documentation and runtime tool descriptions
-- **Automatic synchronization**: Changes to XML comments are automatically reflected in the Description attributes
-
 ### Requirements
 
 - Your method must be marked as `partial`
