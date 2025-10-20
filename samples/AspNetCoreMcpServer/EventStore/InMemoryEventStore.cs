@@ -50,9 +50,8 @@ public sealed class InMemoryEventStore : IEventStore
         var sortedAndFilteredEventsToSend = events
             .Where(e => e.Data is not null && e.EventId != null)
             .OrderBy(e => e.EventId)
-            // Sending events with EventId greater than or equal to lastEventId.
-            // As per MCP specs, the server should resend the events after lastEventId
-            .SkipWhile(e => string.Compare(e.EventId!, lastEventId, StringComparison.Ordinal) < 0)
+            // Sending events with EventId greater than lastEventId.
+            .SkipWhile(e => string.Compare(e.EventId!, lastEventId, StringComparison.Ordinal) <= 0)
             .Select(e =>
                 new SseItem<JsonRpcMessage>(e.Data!, e.EventType)
                 {
