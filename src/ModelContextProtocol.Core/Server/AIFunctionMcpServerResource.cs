@@ -317,15 +317,21 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
     public override bool IsMatch(string uri)
     {
         Throw.IfNull(uri);
-        return TryMatch(uri, out _);
-    }
 
-    private bool TryMatch(string uri, out Match? match)
-    {
         // For templates, use the Regex to parse. For static resources, we can just compare the URIs.
         if (_uriParser is null)
         {
             // This resource is not templated.
+            return UriTemplate.UriTemplateComparer.Instance.Equals(uri, ProtocolResourceTemplate.UriTemplate);
+        }
+
+        return _uriParser.IsMatch(uri);
+    }
+
+    private bool TryMatch(string uri, out Match? match)
+    {
+        if (_uriParser is null)
+        {
             match = null;
             return UriTemplate.UriTemplateComparer.Instance.Equals(uri, ProtocolResourceTemplate.UriTemplate);
         }
