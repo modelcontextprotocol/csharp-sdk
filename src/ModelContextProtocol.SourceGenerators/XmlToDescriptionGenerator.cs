@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Xml.Linq;
 
 namespace ModelContextProtocol.SourceGenerators;
@@ -19,34 +20,54 @@ public class XmlToDescriptionGenerator : IIncrementalGenerator
 {
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        // Filter method declarations with attributes
-        var methodDeclarations = context.SyntaxProvider
+        // Filter method declarations with attributes and transform to model
+        var methodModels = context.SyntaxProvider
             .CreateSyntaxProvider(
-                predicate: static (s, _) => s is MethodDeclarationSyntax { AttributeLists.Count: > 0 },
-                transform: static (ctx, _) => GetMethodForGeneration(ctx))
+                predicate: static (s, _) => IsCandidateMethod(s),
+                transform: static (ctx, ct) => GetMethodModel(ctx, ct))
             .Where(static m => m is not null);
 
-        // Combine with compilation to get symbols
-        var compilationAndMethods = context.CompilationProvider.Combine(methodDeclarations.Collect());
+        // Combine with compilation to get well-known type symbols
+        var compilationAndMethods = context.CompilationProvider.Combine(methodModels.Collect());
 
         context.RegisterSourceOutput(compilationAndMethods,
             static (spc, source) => Execute(source.Left, source.Right!, spc));
     }
 
-    private static MethodDeclarationSyntax? GetMethodForGeneration(GeneratorSyntaxContext context)
+    private static bool IsCandidateMethod(SyntaxNode node)
+    {
+        // Quick syntax-only filter
+        return node is MethodDeclarationSyntax 
+        { 
+            AttributeLists.Count: > 0 
+        } method && method.Modifiers.Any(SyntaxKind.PartialKeyword);
+    }
+
+    private static MethodToGenerate? GetMethodModel(GeneratorSyntaxContext context, CancellationToken cancellationToken)
     {
         var methodDeclaration = (MethodDeclarationSyntax)context.Node;
-
-        // Quick check: must be partial
-        if (!methodDeclaration.Modifiers.Any(m => m.IsKind(SyntaxKind.PartialKeyword)))
+        
+        cancellationToken.ThrowIfCancellationRequested();
+        
+        var methodSymbol = context.SemanticModel.GetDeclaredSymbol(methodDeclaration, cancellationToken);
+        if (methodSymbol == null)
         {
             return null;
         }
 
-        return methodDeclaration;
+        // Check for McpServerTool attribute early (before expensive XML parsing)
+        var hasMcpAttribute = methodSymbol.GetAttributes().Any(attr => 
+            attr.AttributeClass?.Name is "McpServerToolAttribute" or "McpServerTool");
+        
+        if (!hasMcpAttribute)
+        {
+            return null;
+        }
+
+        return new MethodToGenerate(methodDeclaration, methodSymbol);
     }
 
-    private static void Execute(Compilation compilation, ImmutableArray<MethodDeclarationSyntax> methods, SourceProductionContext context)
+    private static void Execute(Compilation compilation, ImmutableArray<MethodToGenerate?> methods, SourceProductionContext context)
     {
         if (methods.IsDefaultOrEmpty)
         {
@@ -57,23 +78,26 @@ public class XmlToDescriptionGenerator : IIncrementalGenerator
         var mcpServerToolAttribute = compilation.GetTypeByMetadataName("ModelContextProtocol.Server.McpServerToolAttribute");
         var descriptionAttribute = compilation.GetTypeByMetadataName("System.ComponentModel.DescriptionAttribute");
 
-        if (mcpServerToolAttribute == null || descriptionAttribute == null)
+        if (descriptionAttribute == null)
         {
+            // Description attribute is required - can't generate without it
             return;
         }
 
-        foreach (var methodDeclaration in methods)
+        foreach (var methodModel in methods)
         {
-            var semanticModel = compilation.GetSemanticModel(methodDeclaration.SyntaxTree);
-            var methodSymbol = semanticModel.GetDeclaredSymbol(methodDeclaration);
-
-            if (methodSymbol == null)
+            if (methodModel == null)
             {
                 continue;
             }
 
-            // Check if method has McpServerTool attribute
-            if (!HasAttribute(methodSymbol, mcpServerToolAttribute))
+            context.CancellationToken.ThrowIfCancellationRequested();
+
+            var methodSymbol = methodModel.Value.MethodSymbol;
+            var methodDeclaration = methodModel.Value.MethodDeclaration;
+
+            // Double-check McpServerTool attribute with symbol comparison if available
+            if (mcpServerToolAttribute != null && !HasAttribute(methodSymbol, mcpServerToolAttribute))
             {
                 continue;
             }
@@ -89,8 +113,8 @@ public class XmlToDescriptionGenerator : IIncrementalGenerator
             var source = GeneratePartialMethodDeclaration(methodSymbol, methodDeclaration, xmlDocs, descriptionAttribute);
             if (source != null)
             {
-                var fileName = $"{methodSymbol.ContainingType.Name}_{methodSymbol.Name}_Description.g.cs";
-                context.AddSource(fileName, SourceText.From(source, Encoding.UTF8));
+                var hintName = GetHintName(methodSymbol);
+                context.AddSource(hintName, SourceText.From(source, Encoding.UTF8));
             }
         }
     }
@@ -134,7 +158,7 @@ public class XmlToDescriptionGenerator : IIncrementalGenerator
                 return null;
             }
 
-            var paramDocs = new Dictionary<string, string>();
+            var paramDocs = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var paramElement in memberElement.Elements("param"))
             {
                 var name = paramElement.Attribute("name")?.Value;
@@ -152,8 +176,9 @@ public class XmlToDescriptionGenerator : IIncrementalGenerator
                 Parameters = paramDocs
             };
         }
-        catch
+        catch (System.Xml.XmlException)
         {
+            // Invalid XML in documentation comments - skip this method
             return null;
         }
     }
@@ -308,9 +333,53 @@ public class XmlToDescriptionGenerator : IIncrementalGenerator
 
     private static string EscapeString(string text)
     {
-        return text.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        if (string.IsNullOrEmpty(text))
+        {
+            return text;
+        }
+
+        // Escape special characters for C# string literals
+        return text
+            .Replace("\\", "\\\\")  // Backslash must be first
+            .Replace("\"", "\\\"")  // Quote
+            .Replace("\r", "\\r")   // Carriage return
+            .Replace("\n", "\\n")   // Newline
+            .Replace("\t", "\\t");  // Tab
     }
 
+    private static string GetHintName(IMethodSymbol methodSymbol)
+    {
+        var containingType = methodSymbol.ContainingType;
+        var typeName = containingType.Name;
+        
+        // Include generic arity if present to avoid collisions
+        if (containingType.IsGenericType)
+        {
+            typeName = $"{typeName}`{containingType.Arity}";
+        }
+
+        return $"{typeName}.{methodSymbol.Name}.g.cs";
+    }
+
+    /// <summary>
+    /// Represents a method that may need Description attributes generated.
+    /// Using a struct for better incremental generator caching.
+    /// </summary>
+    private readonly struct MethodToGenerate
+    {
+        public MethodToGenerate(MethodDeclarationSyntax methodDeclaration, IMethodSymbol methodSymbol)
+        {
+            MethodDeclaration = methodDeclaration;
+            MethodSymbol = methodSymbol;
+        }
+
+        public MethodDeclarationSyntax MethodDeclaration { get; }
+        public IMethodSymbol MethodSymbol { get; }
+    }
+
+    /// <summary>
+    /// Holds extracted XML documentation for a method.
+    /// </summary>
     private sealed class XmlDocumentation
     {
         public string MethodDescription { get; set; } = string.Empty;
