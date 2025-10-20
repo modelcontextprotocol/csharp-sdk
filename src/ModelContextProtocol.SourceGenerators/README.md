@@ -71,8 +71,19 @@ public partial class MyTools
 
 The source generator is distributed as part of the `ModelContextProtocol.Core` NuGet package and will be automatically available when you reference that package in your project.
 
+### Advanced Features
+
+The generator intelligently fills in missing Description attributes:
+
+- **Method Description**: Combines `<summary>` and `<remarks>` XML elements
+- **Parameter Descriptions**: Extracts from `<param>` XML elements (only for parameters without existing Description attributes)
+- **Return Description**: Extracts from `<returns>` XML element (only if not already present)
+
+The generator only generates attributes that are missing, so you can mix XML documentation with explicit Description attributes as needed.
+
 ### Notes
 
-- The generator only extracts text from the `<summary>` element
-- Multi-line summaries are combined into a single line
+- Multi-line XML comments are combined into single-line descriptions
 - Only partial methods with implementations (method bodies) are supported
+- The generator uses symbol comparison for efficient attribute detection
+- Implemented as an incremental generator for optimal performance
