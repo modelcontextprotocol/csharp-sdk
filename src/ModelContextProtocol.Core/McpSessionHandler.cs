@@ -411,7 +411,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         // Set request ID
         if (request.Id.Id is null)
         {
-            request.Id = new RequestId(Interlocked.Increment(ref _lastRequestId));
+            request = request.WithId(new RequestId(Interlocked.Increment(ref _lastRequestId)));
         }
 
         _propagator.InjectActivityContext(activity, request);

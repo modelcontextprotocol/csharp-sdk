@@ -27,4 +27,16 @@ public sealed class JsonRpcRequest : JsonRpcMessageWithId
     /// </summary>
     [JsonPropertyName("params")]
     public JsonNode? Params { get; set; }
+
+    internal JsonRpcRequest WithId(RequestId id)
+    {
+        return new JsonRpcRequest
+        {
+            JsonRpc = JsonRpc,
+            Id = id,
+            Method = Method,
+            Params = Params,
+            Context = Context,
+        };
+    }
 }

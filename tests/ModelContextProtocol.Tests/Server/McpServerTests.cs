@@ -201,7 +201,7 @@ public class McpServerTests : LoggedTest
         SetClientCapabilities(server, new ClientCapabilities());
 
         // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await server.ElicitAsync(new ElicitRequestParams { Message = string.Empty }, CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await server.ElicitAsync(new ElicitRequestParams { Message = "" }, CancellationToken.None));
     }
 
     [Fact]
@@ -214,7 +214,7 @@ public class McpServerTests : LoggedTest
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
 
         // Act
-        var result = await server.ElicitAsync(new ElicitRequestParams { Message = string.Empty }, CancellationToken.None);
+        var result = await server.ElicitAsync(new ElicitRequestParams { Message = "" }, CancellationToken.None);
 
         // Assert
         Assert.NotNull(result);
@@ -377,7 +377,7 @@ public class McpServerTests : LoggedTest
                 {
                     return new ReadResourceResult
                     {
-                        Contents = [new TextResourceContents { Text = "test", Uri = string.Empty }]
+                        Contents = [new TextResourceContents { Text = "test", Uri = "" }]
                     };
                 };
                 options.Handlers.ListResourcesHandler = (request, ct) => throw new NotImplementedException();

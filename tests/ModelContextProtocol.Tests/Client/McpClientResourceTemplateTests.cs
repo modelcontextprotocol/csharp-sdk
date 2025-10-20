@@ -17,7 +17,7 @@ public partial class McpClientResourceTemplateTests : ClientServerTestBase
         mcpServerBuilder.WithReadResourceHandler((request, cancellationToken) =>
             new ValueTask<ReadResourceResult>(new ReadResourceResult
             {
-                Contents = [new TextResourceContents { Text = request.Params?.Uri ?? string.Empty, Uri = request.Params?.Uri ?? string.Empty }]
+                Contents = [new TextResourceContents { Text = request.Params?.Uri ?? "", Uri = request.Params?.Uri ?? "" }]
             }));
     }
 
