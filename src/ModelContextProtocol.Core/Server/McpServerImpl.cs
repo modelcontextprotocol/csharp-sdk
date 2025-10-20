@@ -372,7 +372,7 @@ internal sealed partial class McpServerImpl : McpServer
                         // Fall back to an O(N) lookup, trying to match against each URI template.
                         foreach (var resourceTemplate in resources)
                         {
-                            if (resourceTemplate.CanReadUri(uri))
+                            if (resourceTemplate.IsMatch(uri))
                             {
                                 request.MatchedPrimitive = resourceTemplate;
                                 break;

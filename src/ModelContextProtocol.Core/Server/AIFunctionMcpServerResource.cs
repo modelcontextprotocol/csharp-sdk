@@ -314,7 +314,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
     public override IReadOnlyList<object> Metadata => _metadata;
 
     /// <inheritdoc />
-    public override bool CanReadUri(string uri)
+    public override bool IsMatch(string uri)
     {
         Throw.IfNull(uri);
         return TryMatch(uri, out _);

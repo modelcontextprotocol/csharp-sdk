@@ -286,7 +286,7 @@ public partial class McpServerResourceTests
     {
         McpServerResource t = McpServerResource.Create((string arg1) => arg1, new() { Name = "Hello" });
         Assert.Equal("resource://mcp/Hello{?arg1}", t.ProtocolResourceTemplate.UriTemplate);
-        Assert.False(t.CanReadUri(uri));
+        Assert.False(t.IsMatch(uri));
         await Assert.ThrowsAsync<InvalidOperationException>(async () => await t.ReadAsync(
             new RequestContext<ReadResourceRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()) { Params = new() { Uri = uri } },
             TestContext.Current.CancellationToken));

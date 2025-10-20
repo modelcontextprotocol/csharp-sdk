@@ -167,8 +167,10 @@ public abstract class McpServerResource : IMcpServerPrimitive
     /// and can be used as the <see cref="ReadResourceRequestParams.Uri"/> passed to <see cref="ReadAsync"/>.
     /// </summary>
     /// <param name="uri">The URI being evaluated for this resource.</param>
-    /// <returns><see langword="true"/> if the <paramref name="uri"/> matches the <see cref="ProtocolResourceTemplate"/>; otherwise, <see langword="false"/>.</returns>
-    public abstract bool CanReadUri(string uri);
+    /// <returns>
+    /// <see langword="true"/> if the <paramref name="uri"/> matches the <see cref="ProtocolResourceTemplate"/>; otherwise, <see langword="false"/>.
+    /// </returns>
+    public abstract bool IsMatch(string uri);
 
     /// <summary>
     /// Gets the resource, rendering it with the provided request parameters and returning the resource result.
