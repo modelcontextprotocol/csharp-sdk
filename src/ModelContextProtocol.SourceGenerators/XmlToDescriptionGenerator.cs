@@ -266,13 +266,22 @@ public class XmlToDescriptionGenerator : IIncrementalGenerator
                     continue;
                 }
 
+                // Calculate nesting depth for proper indentation
+                var nestingDepth = 1;
+                var temp = containingType;
+                while (temp is not null)
+                {
+                    nestingDepth++;
+                    temp = temp.ContainingType;
+                }
+
                 // Handle nested types by building the full type hierarchy
                 AppendNestedTypeDeclarations(sb, containingType, 1, () =>
                 {
                     // Generate methods for this type
                     foreach (var (methodSymbol, methodDeclaration, xmlDocs) in typeGroup)
                     {
-                        AppendMethodDeclaration(sb, methodSymbol, methodDeclaration, xmlDocs, descriptionAttribute, 2);
+                        AppendMethodDeclaration(sb, methodSymbol, methodDeclaration, xmlDocs, descriptionAttribute, nestingDepth);
                     }
                 });
 
@@ -287,16 +296,18 @@ public class XmlToDescriptionGenerator : IIncrementalGenerator
 
     private static void AppendNestedTypeDeclarations(StringBuilder sb, INamedTypeSymbol typeSymbol, int indentLevel, System.Action appendBody)
     {
-        var indent = new string(' ', indentLevel * 4);
         var types = new Stack<INamedTypeSymbol>();
 
-        // Build stack of nested types
+        // Build stack of nested types from innermost to outermost
         var current = typeSymbol;
         while (current is not null)
         {
             types.Push(current);
             current = current.ContainingType;
         }
+
+        var startIndentLevel = indentLevel;
+        var nestingCount = types.Count;
 
         // Generate type declarations from outermost to innermost
         while (types.Count > 0)
@@ -353,8 +364,7 @@ public class XmlToDescriptionGenerator : IIncrementalGenerator
         appendBody();
 
         // Close all type declarations
-        indentLevel = types.Count + 1;
-        while (indentLevel > 1)
+        for (int i = 0; i < nestingCount; i++)
         {
             indentLevel--;
             var typeIndent = new string(' ', indentLevel * 4);
