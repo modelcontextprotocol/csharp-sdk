@@ -262,6 +262,168 @@ public class XmlToDescriptionGeneratorTests
         Assert.Empty(result.GeneratedSources);
     }
 
+    [Fact]
+    public void Generator_WithSpecialCharacters_EscapesCorrectly()
+    {
+        var source = """
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>
+                /// Test with "quotes", \backslash, newline
+                /// and tab characters.
+                /// </summary>
+                /// <param name="input">Parameter with "quotes"</param>
+                [McpServerTool]
+                public static partial string TestEscaping(string input)
+                {
+                    return input;
+                }
+            }
+            """;
+
+        var result = RunGenerator(source);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var generatedSource = result.GeneratedSources[0].SourceText.ToString();
+        // Verify quotes are escaped
+        Assert.Contains("\\\"quotes\\\"", generatedSource);
+        // Verify backslashes are escaped
+        Assert.Contains("\\\\backslash", generatedSource);
+    }
+
+    [Fact]
+    public void Generator_WithInvalidXml_DoesNotThrow()
+    {
+        var source = """
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>
+                /// Test with <unclosed tag
+                /// </summary>
+                [McpServerTool]
+                public static partial string TestInvalidXml(string input)
+                {
+                    return input;
+                }
+            }
+            """;
+
+        var result = RunGenerator(source);
+
+        // Should not throw, just skip generation
+        Assert.True(result.Success);
+        Assert.Empty(result.GeneratedSources);
+    }
+
+    [Fact]
+    public void Generator_WithGenericType_GeneratesCorrectFileName()
+    {
+        var source = """
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools<T>
+            {
+                /// <summary>
+                /// Test generic
+                /// </summary>
+                [McpServerTool]
+                public static partial string TestGeneric(string input)
+                {
+                    return input;
+                }
+            }
+            """;
+
+        var result = RunGenerator(source);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var fileName = result.GeneratedSources[0].FilePath;
+        // Should include arity for generic types
+        Assert.Contains("`1", fileName);
+    }
+
+    [Fact]
+    public void Generator_WithEmptyXmlComments_DoesNotGenerate()
+    {
+        var source = """
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>
+                /// </summary>
+                [McpServerTool]
+                public static partial string TestEmpty(string input)
+                {
+                    return input;
+                }
+            }
+            """;
+
+        var result = RunGenerator(source);
+
+        Assert.True(result.Success);
+        Assert.Empty(result.GeneratedSources);
+    }
+
+    [Fact]
+    public void Generator_WithMultilineComments_CombinesIntoSingleLine()
+    {
+        var source = """
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>
+                /// First line
+                /// Second line
+                /// Third line
+                /// </summary>
+                [McpServerTool]
+                public static partial string TestMultiline(string input)
+                {
+                    return input;
+                }
+            }
+            """;
+
+        var result = RunGenerator(source);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var generatedSource = result.GeneratedSources[0].SourceText.ToString();
+        Assert.Contains("[Description(\"First line Second line Third line\")]", generatedSource);
+    }
+
     private GeneratorRunResult RunGenerator(string source)
     {
         var syntaxTree = CSharpSyntaxTree.ParseText(source);
