@@ -71,7 +71,7 @@ public class XmlToDescriptionGeneratorTests
 
         Assert.True(result.Success);
         var generatedSource = result.GeneratedSources[0].SourceText.ToString();
-        Assert.Contains("[Description(\"Test tool summary Additional remarks\")]", generatedSource);
+        Assert.Contains("[Description(\"Test tool summary\\nAdditional remarks\")]", generatedSource);
     }
 
     [Fact]

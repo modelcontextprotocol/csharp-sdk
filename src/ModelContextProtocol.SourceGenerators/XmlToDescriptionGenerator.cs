@@ -71,15 +71,9 @@ public class XmlToDescriptionGenerator : IIncrementalGenerator
         var mcpServerResourceAttribute = compilation.GetTypeByMetadataName("ModelContextProtocol.Server.McpServerResourceAttribute");
         var descriptionAttribute = compilation.GetTypeByMetadataName("System.ComponentModel.DescriptionAttribute");
 
-        if (descriptionAttribute is null)
+        if (descriptionAttribute is null || mcpServerToolAttribute is null || mcpServerPromptAttribute is null || mcpServerResourceAttribute is null)
         {
-            // Description attribute is required - can't generate without it
-            return;
-        }
-
-        if (mcpServerToolAttribute is null && mcpServerPromptAttribute is null && mcpServerResourceAttribute is null)
-        {
-            // No MCP attributes found - nothing to generate
+            // Required attributes not found - can't generate
             return;
         }
 
@@ -97,9 +91,9 @@ public class XmlToDescriptionGenerator : IIncrementalGenerator
 
             // Check if method has any MCP attribute with symbol comparison
             var hasMcpAttribute = 
-                (mcpServerToolAttribute is not null && HasAttribute(methodSymbol, mcpServerToolAttribute)) ||
-                (mcpServerPromptAttribute is not null && HasAttribute(methodSymbol, mcpServerPromptAttribute)) ||
-                (mcpServerResourceAttribute is not null && HasAttribute(methodSymbol, mcpServerResourceAttribute));
+                HasAttribute(methodSymbol, mcpServerToolAttribute) ||
+                HasAttribute(methodSymbol, mcpServerPromptAttribute) ||
+                HasAttribute(methodSymbol, mcpServerResourceAttribute);
 
             if (!hasMcpAttribute)
             {
@@ -182,7 +176,7 @@ public class XmlToDescriptionGenerator : IIncrementalGenerator
                 ? summary 
                 : string.IsNullOrWhiteSpace(summary) 
                     ? remarks 
-                    : $"{summary} {remarks}";
+                    : $"{summary}\n{remarks}";
 
             var paramDocs = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var paramElement in memberElement.Elements("param"))
@@ -320,41 +314,17 @@ public class XmlToDescriptionGenerator : IIncrementalGenerator
             string typeKeyword;
             if (typeDecl is RecordDeclarationSyntax rds)
             {
-                var classOrStruct = rds.ClassOrStructKeyword.IsKind(SyntaxKind.None) 
-                    ? "class" 
-                    : rds.ClassOrStructKeyword.ValueText;
-                typeKeyword = $"{typeDecl.Keyword.ValueText} {classOrStruct}";
+                var classOrStruct = rds.ClassOrStructKeyword.ValueText;
+                typeKeyword = string.IsNullOrEmpty(classOrStruct) 
+                    ? $"{typeDecl.Keyword.ValueText} class"
+                    : $"{typeDecl.Keyword.ValueText} {classOrStruct}";
             }
             else
             {
-                typeKeyword = type.TypeKind switch
-                {
-                    TypeKind.Class => "class",
-                    TypeKind.Struct => "struct",
-                    TypeKind.Interface => "interface",
-                    _ => "class"
-                };
+                typeKeyword = typeDecl?.Keyword.ValueText ?? "class";
             }
 
-            // Build modifiers
-            var modifiers = new List<string>();
-            if (type.DeclaredAccessibility == Accessibility.Public)
-            {
-                modifiers.Add("public");
-            }
-            else if (type.DeclaredAccessibility == Accessibility.Internal)
-            {
-                modifiers.Add("internal");
-            }
-
-            if (type.IsStatic)
-            {
-                modifiers.Add("static");
-            }
-
-            modifiers.Add("partial");
-
-            sb.AppendLine($"{typeIndent}{string.Join(" ", modifiers)} {typeKeyword} {type.Name}");
+            sb.AppendLine($"{typeIndent}partial {typeKeyword} {type.Name}");
             sb.AppendLine($"{typeIndent}{{");
 
             indentLevel++;
