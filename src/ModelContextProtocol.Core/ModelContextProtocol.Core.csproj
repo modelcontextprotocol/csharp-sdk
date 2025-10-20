@@ -51,12 +51,8 @@
   <ItemGroup>
     <ProjectReference Include="..\ModelContextProtocol.SourceGenerators\ModelContextProtocol.SourceGenerators.csproj"
                       OutputItemType="Analyzer"
-                      ReferenceOutputAssembly="false" />
-  </ItemGroup>
-
-  <!-- Direct analyzer reference for build-time source generation -->
-  <ItemGroup>
-    <Analyzer Include="$(ArtifactsDir)bin\ModelContextProtocol.SourceGenerators\netstandard2.0\ModelContextProtocol.SourceGenerators.dll" />
+                      ReferenceOutputAssembly="false"
+                      SetTargetFramework="TargetFramework=netstandard2.0" />
   </ItemGroup>
 
   <!-- Package the analyzer DLL into the NuGet package -->
