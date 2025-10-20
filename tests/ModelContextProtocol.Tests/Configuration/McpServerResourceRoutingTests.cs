@@ -29,6 +29,9 @@ public sealed class McpServerResourceRoutingTests(ITestOutputHelper testOutputHe
         var templatedResult = await client.ReadResourceAsync("test://resource/12345", TestContext.Current.CancellationToken);
         Assert.Equal("template: 12345", ((TextResourceContents)templatedResult.Contents[0]).Text);
 
+        var exactTemplatedResult = await client.ReadResourceAsync("test://resource/{id}", TestContext.Current.CancellationToken);
+        Assert.Equal("template: {id}", ((TextResourceContents)exactTemplatedResult.Contents[0]).Text);
+
         var paramsResult = await client.ReadResourceAsync("test://params?a1=a&a2=b&a3=c", TestContext.Current.CancellationToken);
         Assert.Equal("params: a, b, c", ((TextResourceContents)paramsResult.Contents[0]).Text);
 
