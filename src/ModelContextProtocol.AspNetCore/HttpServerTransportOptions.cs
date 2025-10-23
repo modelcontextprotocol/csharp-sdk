@@ -23,11 +23,12 @@ public class HttpServerTransportOptions
     public Func<HttpContext, McpServer, CancellationToken, Task>? RunSessionHandler { get; set; }
 
     /// <summary>
-    /// Gets or sets whether the server should run in a stateless mode which allows for load balancing without session affinity.
+    /// Gets or sets whether the server should run in a stateless mode which does not track state between requests
+    /// allowing for load balancing without session affinity.
     /// </summary>
     /// <remarks>
-    /// If <see langword="true"/>, <see cref="RunSessionHandler"/> is called once for every request for each request,
-    /// the "/sse" endpoint will be disabled, and  the "MCP-Session-Id" header will not be used.
+    /// If <see langword="true"/>, <see cref="McpSession.SessionId"/> will be null, and the "MCP-Session-Id" header will not be used,
+    /// the <see cref="RunSessionHandler"/> will be called once for for each request, and the "/sse" endpoint will be disabled.
     /// Unsolicited server-to-client messages and all server-to-client requests are also unsupported, because any responses
     /// may arrive at another ASP.NET Core application process.
     /// Client sampling and roots capabilities are also disabled in stateless mode, because the server cannot make requests.

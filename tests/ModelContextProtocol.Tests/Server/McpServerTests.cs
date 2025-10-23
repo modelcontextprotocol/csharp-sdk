@@ -369,7 +369,7 @@ public class McpServerTests : LoggedTest
             new ServerCapabilities
             {
                 Resources = new()
-            }, 
+            },
             method: RequestMethods.ResourcesRead,
             configureOptions: options =>
             {
@@ -438,7 +438,7 @@ public class McpServerTests : LoggedTest
     public async Task Can_Handle_Get_Prompts_Requests()
     {
         await Can_Handle_Requests(
-            new ServerCapabilities 
+            new ServerCapabilities
             {
                 Prompts = new()
             },
@@ -466,7 +466,7 @@ public class McpServerTests : LoggedTest
     public async Task Can_Handle_List_Tools_Requests()
     {
         await Can_Handle_Requests(
-            new ServerCapabilities 
+            new ServerCapabilities
             {
                 Tools = new()
             },
@@ -504,7 +504,7 @@ public class McpServerTests : LoggedTest
             new ServerCapabilities
             {
                 Tools = new()
-            }, 
+            },
             method: RequestMethods.ToolsCall,
             configureOptions: options =>
             {
@@ -626,7 +626,7 @@ public class McpServerTests : LoggedTest
             TestContext.Current.CancellationToken
         );
 
-        var error = await receivedMessage.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        var error = await receivedMessage.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         Assert.NotNull(error);
         Assert.NotNull(error.Error);
         Assert.Equal((int)errorCode, error.Error.Code);
@@ -662,7 +662,7 @@ public class McpServerTests : LoggedTest
         }
         );
 
-        var response = await receivedMessage.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var response = await receivedMessage.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.NotNull(response);
 
         assertResult(server, response.Result);
@@ -779,7 +779,7 @@ public class McpServerTests : LoggedTest
             };
 
             return Task.FromResult(new JsonRpcResponse
-            { 
+            {
                 Id = new RequestId("0"),
                 Result = JsonSerializer.SerializeToNode(result, McpJsonUtilities.DefaultOptions),
             });

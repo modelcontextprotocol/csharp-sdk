@@ -12,8 +12,8 @@ namespace ModelContextProtocol;
 ///
 /// This exception type can be thrown by MCP tools or tool call filters to propagate detailed error messages
 /// from <see cref="Exception.Message"/> when a tool execution fails via a <see cref="CallToolResult"/>.
-/// For non-tool calls, this exception controls the message propogated via a <see cref="JsonRpcError"/>.
-/// 
+/// For non-tool calls, this exception controls the message propagated via a <see cref="JsonRpcError"/>.
+///
 /// <see cref="McpProtocolException"/> is a derived type that can be used to also specify the
 /// <see cref="McpErrorCode"/> that should be used for the resulting <see cref="JsonRpcError"/>.
 /// </remarks>
