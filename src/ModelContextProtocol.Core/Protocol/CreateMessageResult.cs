@@ -14,7 +14,7 @@ public sealed class CreateMessageResult : Result
     /// Gets or sets the content of the message.
     /// </summary>
     [JsonPropertyName("content")]
-    public required ContentBlock Content { get; init; }
+    public required ContentBlock Content { get; set; }
 
     /// <summary>
     /// Gets or sets the name of the model that generated the message.
@@ -29,7 +29,7 @@ public sealed class CreateMessageResult : Result
     /// </para>
     /// </remarks>
     [JsonPropertyName("model")]
-    public required string Model { get; init; }
+    public required string Model { get; set; }
 
     /// <summary>
     /// Gets or sets the reason why message generation (sampling) stopped, if known.
@@ -43,11 +43,11 @@ public sealed class CreateMessageResult : Result
     /// </list>
     /// </remarks>
     [JsonPropertyName("stopReason")]
-    public string? StopReason { get; init; }
+    public string? StopReason { get; set; }
 
     /// <summary>
     /// Gets or sets the role of the user who generated the message.
     /// </summary>
     [JsonPropertyName("role")]
-    public required Role Role { get; init; }
+    public required Role Role { get; set; }
 }

@@ -288,6 +288,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
                         Content = new TextContentBlock { Text = prompt },
                     }
                 ],
+                MaxTokens = 1000
             };
 
             await server.SampleAsync(samplingRequest, cancellationToken);

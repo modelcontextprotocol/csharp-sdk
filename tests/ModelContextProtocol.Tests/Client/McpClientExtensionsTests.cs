@@ -204,6 +204,7 @@ public class McpClientExtensionsTests
             .Setup(c => c.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new JsonRpcResponse
             {
+                Id = default,
                 Result = JsonSerializer.SerializeToNode(new object(), McpJsonUtilities.DefaultOptions),
             });
 
@@ -225,6 +226,7 @@ public class McpClientExtensionsTests
             .Setup(c => c.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new JsonRpcResponse
             {
+                Id = default,
                 Result = JsonSerializer.SerializeToNode(resultPayload, McpJsonUtilities.DefaultOptions),
             });
 
@@ -247,6 +249,7 @@ public class McpClientExtensionsTests
             .Setup(c => c.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new JsonRpcResponse
             {
+                Id = default,
                 Result = JsonSerializer.SerializeToNode(callResult, McpJsonUtilities.DefaultOptions),
             });
 
@@ -267,6 +270,7 @@ public class McpClientExtensionsTests
             .Setup(c => c.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new JsonRpcResponse
             {
+                Id = default,
                 Result = JsonSerializer.SerializeToNode(new EmptyResult(), McpJsonUtilities.DefaultOptions),
             });
 
@@ -286,6 +290,7 @@ public class McpClientExtensionsTests
             .Setup(c => c.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new JsonRpcResponse
             {
+                Id = default,
                 Result = JsonSerializer.SerializeToNode(new EmptyResult(), McpJsonUtilities.DefaultOptions),
             });
 
@@ -308,6 +313,7 @@ public class McpClientExtensionsTests
             .Setup(c => c.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new JsonRpcResponse
             {
+                Id = default,
                 Result = JsonSerializer.SerializeToNode(resultPayload, McpJsonUtilities.DefaultOptions),
             });
 
@@ -330,6 +336,7 @@ public class McpClientExtensionsTests
             .Setup(c => c.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new JsonRpcResponse
             {
+                Id = default,
                 Result = JsonSerializer.SerializeToNode(resultPayload, McpJsonUtilities.DefaultOptions),
             });
 
@@ -352,6 +359,7 @@ public class McpClientExtensionsTests
             .Setup(c => c.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new JsonRpcResponse
             {
+                Id = default,
                 Result = JsonSerializer.SerializeToNode(resultPayload, McpJsonUtilities.DefaultOptions),
             });
 
@@ -374,6 +382,7 @@ public class McpClientExtensionsTests
             .Setup(c => c.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new JsonRpcResponse
             {
+                Id = default,
                 Result = JsonSerializer.SerializeToNode(resultPayload, McpJsonUtilities.DefaultOptions),
             });
 

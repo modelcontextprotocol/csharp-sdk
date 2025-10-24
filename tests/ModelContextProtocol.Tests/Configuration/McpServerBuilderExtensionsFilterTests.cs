@@ -66,7 +66,7 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
                 {
                     return new CallToolResult
                     {
-                        Content = [new TextContentBlock { Type = "text", Text = $"Error from filter: {ex.Message}" }],
+                        Content = [new TextContentBlock { Text = $"Error from filter: {ex.Message}" }],
                         IsError = true
                     };
                 }

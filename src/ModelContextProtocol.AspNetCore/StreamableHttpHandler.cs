@@ -250,6 +250,7 @@ internal sealed class StreamableHttpHandler(
     {
         var jsonRpcError = new JsonRpcError
         {
+            Id = default,
             Error = new()
             {
                 Code = errorCode,
