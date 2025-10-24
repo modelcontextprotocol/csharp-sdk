@@ -2,6 +2,7 @@ using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol;
 using System.ComponentModel;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Server;
 
@@ -173,6 +174,21 @@ public sealed class McpServerToolCreateOptions
     public IList<Icon>? Icons { get; set; }
 
     /// <summary>
+    /// Gets or sets metadata reserved by MCP for protocol-level metadata.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This <see cref="JsonObject"/> is used to seed the <see cref="Tool.Meta"/> property. Any metadata from
+    /// <see cref="McpMetaAttribute"/> instances on the method will be added to this object, but
+    /// properties already present in this <see cref="JsonObject"/> will not be overwritten.
+    /// </para>
+    /// <para>
+    /// Implementations must not make assumptions about its contents.
+    /// </para>
+    /// </remarks>
+    public JsonObject? Meta { get; set; }
+
+    /// <summary>
     /// Creates a shallow clone of the current <see cref="McpServerToolCreateOptions"/> instance.
     /// </summary>
     internal McpServerToolCreateOptions Clone() =>
@@ -191,5 +207,6 @@ public sealed class McpServerToolCreateOptions
             SchemaCreateOptions = SchemaCreateOptions,
             Metadata = Metadata,
             Icons = Icons,
+            Meta = Meta,
         };
 }

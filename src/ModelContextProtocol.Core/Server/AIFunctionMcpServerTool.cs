@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization.Metadata;
 using System.Text.RegularExpressions;
 
 namespace ModelContextProtocol.Server;
@@ -143,6 +144,11 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                     ReadOnlyHint = options.ReadOnly,
                 };
             }
+
+            // Populate Meta from options and/or McpMetaAttribute instances if a MethodInfo is available
+            tool.Meta = function.UnderlyingMethod is not null ?
+                CreateMetaFromAttributes(function.UnderlyingMethod, options.Meta, options.SerializerOptions) :
+                options.Meta;
         }
 
         return new AIFunctionMcpServerTool(function, tool, options?.Services, structuredOutputRequiresWrapping, options?.Metadata ?? []);
@@ -349,6 +355,25 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         metadata.AddRange(method.GetCustomAttributes());
 
         return metadata.AsReadOnly();
+    }
+
+    /// <summary>Creates a Meta <see cref="JsonObject"/> from <see cref="McpMetaAttribute"/> instances on the specified method.</summary>
+    /// <param name="method">The method to extract <see cref="McpMetaAttribute"/> instances from.</param>
+    /// <param name="meta">Optional <see cref="JsonObject"/> to seed the Meta with. Properties from this object take precedence over attributes.</param>
+    /// <param name="serializerOptions">Optional <see cref="JsonSerializerOptions"/> to use for serialization. This parameter is ignored when parsing JSON strings from attributes.</param>
+    /// <returns>A <see cref="JsonObject"/> with metadata, or null if no metadata is present.</returns>
+    internal static JsonObject? CreateMetaFromAttributes(MethodInfo method, JsonObject? meta = null, JsonSerializerOptions? serializerOptions = null)
+    {
+        // Transfer all McpMetaAttribute instances to the Meta JsonObject, ignoring any that would overwrite existing properties.
+        foreach (var attr in method.GetCustomAttributes<McpMetaAttribute>())
+        {
+            if (meta?.ContainsKey(attr.Name) is not true)
+            {
+                (meta ??= [])[attr.Name] = JsonNode.Parse(attr.JsonValue);
+            }
+        }
+
+        return meta;
     }
 
     /// <summary>Regex that flags runs of characters other than ASCII digits or letters.</summary>

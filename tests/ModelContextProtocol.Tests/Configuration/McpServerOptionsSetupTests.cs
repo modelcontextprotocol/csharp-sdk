@@ -132,7 +132,97 @@ public class McpServerOptionsSetupTests
         Assert.Null(options.Handlers.UnsubscribeFromResourcesHandler);
         Assert.Null(options.Capabilities?.Resources);
     }
+
+    [Fact]
+    public void Configure_WithManualResourceSubscribeCapability_AndWithResources_PreservesCapabilityAndExposesResources()
+    {
+        var services = new ServiceCollection();
+        services.AddMcpServer(options =>
+        {
+            // User manually declares support for sending resource subscription notifications
+            options.Capabilities = new()
+            {
+                Resources = new()
+                {
+                    Subscribe = true,
+                }
+            };
+        })
+        .WithResources<SimpleResourceType>();
+
+        var options = services.BuildServiceProvider().GetRequiredService<IOptions<McpServerOptions>>().Value;
+        
+        // The manually set capability should be preserved
+        Assert.NotNull(options.Capabilities?.Resources);
+        Assert.True(options.Capabilities.Resources.Subscribe, "User's manually set Subscribe capability should be preserved");
+        
+        // Resources should still be exposed
+        Assert.NotNull(options.ResourceCollection);
+        Assert.NotEmpty(options.ResourceCollection);
+    }
+
+    [Fact]
+    public async Task ServerCapabilities_WithManualResourceSubscribeCapability_AndWithResources_ExposesSubscribeCapability()
+    {
+        // This test would require a full client-server setup, so we'll test via options validation instead
+        var services = new ServiceCollection();
+        services.AddMcpServer(options =>
+        {
+            // User manually declares support for sending resource subscription notifications
+            options.Capabilities = new()
+            {
+                Resources = new()
+                {
+                    Subscribe = true,
+                    ListChanged = false, // explicitly set to false to test preservation
+                }
+            };
+        })
+        .WithResources<SimpleResourceType>()
+        .WithStdioServerTransport();
+
+        var options = services.BuildServiceProvider().GetRequiredService<IOptions<McpServerOptions>>().Value;
+        
+        // The options should preserve the user's manually set capabilities
+        Assert.NotNull(options.Capabilities?.Resources);
+        Assert.True(options.Capabilities.Resources.Subscribe, "User's manually set Subscribe capability should be preserved in options");
+        
+        // ListChanged should be false as manually set (not overridden to true by resource collection logic in McpServerOptionsSetup)
+        Assert.False(options.Capabilities.Resources.ListChanged, "User's manually set ListChanged capability should be preserved in options");
+    }
+
+    [Fact]
+    public void Configure_WithManualResourceSubscribeCapability_WithoutWithResources_PreservesCapability()
+    {
+        var services = new ServiceCollection();
+        services.AddMcpServer(options =>
+        {
+            // User manually declares support for sending resource subscription notifications
+            options.Capabilities = new()
+            {
+                Resources = new()
+                {
+                    Subscribe = true,
+                    ListChanged = true,
+                }
+            };
+        });
+
+        var options = services.BuildServiceProvider().GetRequiredService<IOptions<McpServerOptions>>().Value;
+        
+        // The manually set capability should be preserved
+        Assert.NotNull(options.Capabilities?.Resources);
+        Assert.True(options.Capabilities.Resources.Subscribe);
+        Assert.True(options.Capabilities.Resources.ListChanged);
+    }
     #endregion
+
+    [McpServerResourceType]
+    public sealed class SimpleResourceType
+    {
+        [McpServerResource]
+        public static string TestResource() => "Test content";
+    }
 
     #region Tool Handler Tests
     [Fact]

@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Server;
 
@@ -137,6 +138,11 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
             Arguments = args,
             Icons = options?.Icons,
         };
+
+        // Populate Meta from options and/or McpMetaAttribute instances if a MethodInfo is available
+        prompt.Meta = function.UnderlyingMethod is not null ?
+            AIFunctionMcpServerTool.CreateMetaFromAttributes(function.UnderlyingMethod, options?.Meta, options?.SerializerOptions) :
+            options?.Meta;
 
         return new AIFunctionMcpServerPrompt(function, prompt, options?.Metadata ?? []);
     }
