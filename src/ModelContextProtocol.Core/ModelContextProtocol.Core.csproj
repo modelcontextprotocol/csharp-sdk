@@ -8,6 +8,8 @@
     <Description>Core .NET SDK for the Model Context Protocol (MCP)</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <!-- Disable parallel builds to avoid analyzer locking issues during multi-targeted builds -->
+    <BuildInParallel>false</BuildInParallel>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' != 'netstandard2.0'">
@@ -45,6 +47,23 @@
 
   <ItemGroup>
     <None Include="README.md" pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <!-- Include source generator as an analyzer -->
+  <ItemGroup>
+    <ProjectReference Include="..\ModelContextProtocol.SourceGenerators\ModelContextProtocol.SourceGenerators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false"
+                      SetTargetFramework="TargetFramework=netstandard2.0" />
+  </ItemGroup>
+
+  <!-- Package the analyzer DLL into the NuGet package -->
+  <!-- When using SetTargetFramework, the SourceGenerators outputs to bin/netstandard2.0 without the Configuration folder -->
+  <ItemGroup>
+    <None Include="$(ArtifactsDir)bin\ModelContextProtocol.SourceGenerators\netstandard2.0\ModelContextProtocol.SourceGenerators.dll" 
+          Pack="true" 
+          PackagePath="analyzers/dotnet/cs" 
+          Visible="false" />
   </ItemGroup>
 
 </Project>
