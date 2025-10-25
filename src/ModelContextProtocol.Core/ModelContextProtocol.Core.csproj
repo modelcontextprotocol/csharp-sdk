@@ -53,13 +53,14 @@
   <ItemGroup>
     <ProjectReference Include="..\ModelContextProtocol.SourceGenerators\ModelContextProtocol.SourceGenerators.csproj"
                       OutputItemType="Analyzer"
-                      ReferenceOutputAssembly="false" />
+                      ReferenceOutputAssembly="false"
+                      SetTargetFramework="TargetFramework=netstandard2.0" />
   </ItemGroup>
 
   <!-- Package the analyzer DLL into the NuGet package -->
-  <!-- The SourceGenerators project uses IsRoslynComponent which outputs to bin/Debug/netstandard2.0 without Configuration in the path -->
+  <!-- When using SetTargetFramework, the SourceGenerators outputs to bin/netstandard2.0 without the Configuration folder -->
   <ItemGroup>
-    <None Include="$(ArtifactsDir)bin\ModelContextProtocol.SourceGenerators\$(Configuration)\netstandard2.0\ModelContextProtocol.SourceGenerators.dll" 
+    <None Include="$(ArtifactsDir)bin\ModelContextProtocol.SourceGenerators\netstandard2.0\ModelContextProtocol.SourceGenerators.dll" 
           Pack="true" 
           PackagePath="analyzers/dotnet/cs" 
           Visible="false" />
