@@ -6,22 +6,22 @@ namespace ModelContextProtocol.Authentication;
 /// </summary>
 internal class InMemoryTokenCache : ITokenCache
 {
-    private TokenContainerCacheable? _token;
+    private TokenContainer? _tokens;
 
     /// <summary>
     /// Cache the token.
     /// </summary>
-    public ValueTask StoreTokenAsync(TokenContainerCacheable token, CancellationToken cancellationToken)
+    public ValueTask StoreTokensAsync(TokenContainer tokens, CancellationToken cancellationToken)
     {
-        _token = token;
+        _tokens = tokens;
         return default;
     }
 
     /// <summary>
     /// Get the cached token.
     /// </summary>
-    public ValueTask<TokenContainerCacheable?> GetTokenAsync(CancellationToken cancellationToken)
+    public ValueTask<TokenContainer?> GetTokensAsync(CancellationToken cancellationToken)
     {
-        return new ValueTask<TokenContainerCacheable?>(_token);
+        return new ValueTask<TokenContainer?>(_tokens);
     }
 }

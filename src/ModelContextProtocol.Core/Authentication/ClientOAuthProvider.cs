@@ -139,23 +139,22 @@ internal sealed partial class ClientOAuthProvider
     {
         ThrowIfNotBearerScheme(scheme);
 
-        var cachedToken = await _tokenCache.GetTokenAsync(cancellationToken).ConfigureAwait(false);
-        var token = cachedToken?.ForUse();
-
+        var tokens = await _tokenCache.GetTokensAsync(cancellationToken).ConfigureAwait(false);
+        
         // Return the token if it's valid
-        if (token != null && token.ExpiresAt > DateTimeOffset.UtcNow.AddMinutes(5))
+        if (tokens != null && tokens.ExpiresAt > DateTimeOffset.UtcNow.AddMinutes(5))
         {
-            return token.AccessToken;
+            return tokens.AccessToken;
         }
 
         // Try to refresh the token if we have a refresh token
-        if (token?.RefreshToken != null && _authServerMetadata != null)
+        if (tokens?.RefreshToken != null && _authServerMetadata != null)
         {
-            var newToken = await RefreshTokenAsync(token.RefreshToken, resourceUri, _authServerMetadata, cancellationToken).ConfigureAwait(false);
-            if (newToken != null)
+            var newTokens = await RefreshTokenAsync(tokens.RefreshToken, resourceUri, _authServerMetadata, cancellationToken).ConfigureAwait(false);
+            if (newTokens != null)
             {
-                await _tokenCache.StoreTokenAsync(newToken.ForCache(), cancellationToken).ConfigureAwait(false);
-                return newToken.AccessToken;
+                await _tokenCache.StoreTokensAsync(newTokens, cancellationToken).ConfigureAwait(false);
+                return newTokens.AccessToken;
             }
         }
 
@@ -234,14 +233,14 @@ internal sealed partial class ClientOAuthProvider
         }
 
         // Perform the OAuth flow
-        var token = await InitiateAuthorizationCodeFlowAsync(protectedResourceMetadata, authServerMetadata, cancellationToken).ConfigureAwait(false);
+        var tokens = await InitiateAuthorizationCodeFlowAsync(protectedResourceMetadata, authServerMetadata, cancellationToken).ConfigureAwait(false);
 
-        if (token is null)
+        if (tokens is null)
         {
             ThrowFailedToHandleUnauthorizedResponse($"The {nameof(AuthorizationRedirectDelegate)} returned a null or empty token.");
         }
 
-        await _tokenCache.StoreTokenAsync(token.ForCache(), cancellationToken).ConfigureAwait(false);
+        await _tokenCache.StoreTokensAsync(tokens, cancellationToken).ConfigureAwait(false);
         LogOAuthAuthorizationCompleted();
     }
 
@@ -413,15 +412,23 @@ internal sealed partial class ClientOAuthProvider
         httpResponse.EnsureSuccessStatusCode();
 
         using var stream = await httpResponse.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        var tokenResponse = await JsonSerializer.DeserializeAsync(stream, McpJsonUtilities.JsonContext.Default.TokenContainer, cancellationToken).ConfigureAwait(false);
+        var tokenResponse = await JsonSerializer.DeserializeAsync(stream, McpJsonUtilities.JsonContext.Default.TokenResponse, cancellationToken).ConfigureAwait(false);
 
         if (tokenResponse is null)
         {
             ThrowFailedToHandleUnauthorizedResponse($"The token endpoint '{request.RequestUri}' returned an empty response.");
         }
 
-        tokenResponse.ObtainedAt = DateTimeOffset.UtcNow;
-        return tokenResponse;
+        return new()
+        {
+            AccessToken = tokenResponse.AccessToken,
+            RefreshToken = tokenResponse.RefreshToken,
+            ExpiresIn = tokenResponse.ExpiresIn,
+            ExtExpiresIn = tokenResponse.ExtExpiresIn,
+            TokenType = tokenResponse.TokenType,
+            Scope = tokenResponse.Scope,
+            ObtainedAt = DateTimeOffset.UtcNow,
+        };
     }
 
     /// <summary>

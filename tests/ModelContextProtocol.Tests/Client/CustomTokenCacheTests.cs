@@ -2,6 +2,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Authentication;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using Moq;
 using Moq.Protected;
 using System.Net;
@@ -12,6 +13,16 @@ namespace ModelContextProtocol.Tests.Client;
 
 public class CustomTokenCacheTests
 {
+    [Fact]
+    public void TokenContainerIsAlignedWithTokenResponse()
+    {
+        var tokenResponseType = Type.GetType("ModelContextProtocol.Authentication.TokenResponse, ModelContextProtocol.Core");
+        Assert.NotNull(tokenResponseType);
+        var tokenResponseProperties = tokenResponseType.GetProperties().Select(p => p.Name);
+        var tokenContainerProperties = typeof(TokenContainer).GetProperties().Select(p => p.Name);
+        Assert.Equivalent(tokenResponseProperties, tokenContainerProperties);
+    }
+
     [Fact]
     public async Task GetTokenAsync_CachedAccessTokenIsUsedForOutgoingRequests()
     {
@@ -80,8 +91,8 @@ public class CustomTokenCacheTests
 
         // Assert
         tokenCacheMock
-            .Verify(tc => tc.StoreTokenAsync(
-                It.Is<TokenContainerCacheable>(token => token.AccessToken == newAccessToken),
+            .Verify(tc => tc.StoreTokensAsync(
+                It.Is<TokenContainer>(token => token.AccessToken == newAccessToken),
                 It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -103,8 +114,8 @@ public class CustomTokenCacheTests
     static void MockCachedAccessToken(Mock<ITokenCache> tokenCache, string cachedAccessToken)
     {
         tokenCache
-            .Setup(tc => tc.GetTokenAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new TokenContainerCacheable
+            .Setup(tc => tc.GetTokensAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TokenContainer
             {
                 AccessToken = cachedAccessToken,
                 ObtainedAt = DateTimeOffset.UtcNow,
@@ -115,8 +126,8 @@ public class CustomTokenCacheTests
     static void MockNoAccessTokenUntilStored(Mock<ITokenCache> tokenCache)
     {
         tokenCache
-            .Setup(tc => tc.StoreTokenAsync(It.IsAny<TokenContainerCacheable>(), It.IsAny<CancellationToken>()))
-            .Callback<TokenContainerCacheable, CancellationToken>((token, ct) =>
+            .Setup(tc => tc.StoreTokensAsync(It.IsAny<TokenContainer>(), It.IsAny<CancellationToken>()))
+            .Callback<TokenContainer, CancellationToken>((token, ct) =>
             {
                 // Simulate that the token is now cached
                 MockCachedAccessToken(tokenCache, token.AccessToken);
@@ -216,18 +227,23 @@ public class CustomTokenCacheTests
 
     static void MockHttpResponse(Mock<HttpMessageHandler> httpMessageHandler, Expression<Func<HttpRequestMessage, bool>>? request = null, HttpResponseMessage? response = null)
     {
-        httpMessageHandler
+        _ = httpMessageHandler
             .Protected()
             .Setup<Task<HttpResponseMessage>>("SendAsync", request != null ? ItExpr.Is(request) : ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
             .ReturnsAsync(response ?? new HttpResponseMessage());
     }
 
     static StringContent ToJsonContent<T>(T content) => new(
-        content: JsonSerializer.Serialize(content, McpJsonUtilities.DefaultOptions),
+        content: JsonSerializer.Serialize(content, GetReflectionCapableJsonOptions()),
         encoding: System.Text.Encoding.UTF8,
         mediaType: "application/json");
 
     static JsonNode? ToJson<T>(T content) => JsonSerializer.SerializeToNode(
         value: content,
-        options: McpJsonUtilities.DefaultOptions);
+        options: GetReflectionCapableJsonOptions());
+
+    static JsonSerializerOptions GetReflectionCapableJsonOptions() => new(JsonSerializerDefaults.Web)
+    {
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver()
+    };
 }
