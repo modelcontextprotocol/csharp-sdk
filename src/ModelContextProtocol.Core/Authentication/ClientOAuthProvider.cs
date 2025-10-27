@@ -43,7 +43,7 @@ internal sealed partial class ClientOAuthProvider
     private string? _clientId;
     private string? _clientSecret;
 
-    private TokenContainer? _token;
+    private ITokenCache _tokenCache;
     private AuthorizationServerMetadata? _authServerMetadata;
 
     /// <summary>
@@ -85,6 +85,7 @@ internal sealed partial class ClientOAuthProvider
         _dcrClientUri = options.DynamicClientRegistration?.ClientUri;
         _dcrInitialAccessToken = options.DynamicClientRegistration?.InitialAccessToken;
         _dcrResponseDelegate = options.DynamicClientRegistration?.ResponseDelegate;
+        _tokenCache = options.TokenCache ?? new InMemoryTokenCache();
     }
 
     /// <summary>
@@ -138,20 +139,22 @@ internal sealed partial class ClientOAuthProvider
     {
         ThrowIfNotBearerScheme(scheme);
 
+        var tokens = await _tokenCache.GetTokensAsync(cancellationToken).ConfigureAwait(false);
+        
         // Return the token if it's valid
-        if (_token != null && _token.ExpiresAt > DateTimeOffset.UtcNow.AddMinutes(5))
+        if (tokens != null && tokens.ExpiresAt > DateTimeOffset.UtcNow.AddMinutes(5))
         {
-            return _token.AccessToken;
+            return tokens.AccessToken;
         }
 
         // Try to refresh the token if we have a refresh token
-        if (_token?.RefreshToken != null && _authServerMetadata != null)
+        if (tokens?.RefreshToken != null && _authServerMetadata != null)
         {
-            var newToken = await RefreshTokenAsync(_token.RefreshToken, resourceUri, _authServerMetadata, cancellationToken).ConfigureAwait(false);
-            if (newToken != null)
+            var newTokens = await RefreshTokenAsync(tokens.RefreshToken, resourceUri, _authServerMetadata, cancellationToken).ConfigureAwait(false);
+            if (newTokens != null)
             {
-                _token = newToken;
-                return _token.AccessToken;
+                await _tokenCache.StoreTokensAsync(newTokens, cancellationToken).ConfigureAwait(false);
+                return newTokens.AccessToken;
             }
         }
 
@@ -230,14 +233,14 @@ internal sealed partial class ClientOAuthProvider
         }
 
         // Perform the OAuth flow
-        var token = await InitiateAuthorizationCodeFlowAsync(protectedResourceMetadata, authServerMetadata, cancellationToken).ConfigureAwait(false);
+        var tokens = await InitiateAuthorizationCodeFlowAsync(protectedResourceMetadata, authServerMetadata, cancellationToken).ConfigureAwait(false);
 
-        if (token is null)
+        if (tokens is null)
         {
             ThrowFailedToHandleUnauthorizedResponse($"The {nameof(AuthorizationRedirectDelegate)} returned a null or empty token.");
         }
 
-        _token = token;
+        await _tokenCache.StoreTokensAsync(tokens, cancellationToken).ConfigureAwait(false);
         LogOAuthAuthorizationCompleted();
     }
 
@@ -409,15 +412,23 @@ internal sealed partial class ClientOAuthProvider
         httpResponse.EnsureSuccessStatusCode();
 
         using var stream = await httpResponse.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        var tokenResponse = await JsonSerializer.DeserializeAsync(stream, McpJsonUtilities.JsonContext.Default.TokenContainer, cancellationToken).ConfigureAwait(false);
+        var tokenResponse = await JsonSerializer.DeserializeAsync(stream, McpJsonUtilities.JsonContext.Default.TokenResponse, cancellationToken).ConfigureAwait(false);
 
         if (tokenResponse is null)
         {
             ThrowFailedToHandleUnauthorizedResponse($"The token endpoint '{request.RequestUri}' returned an empty response.");
         }
 
-        tokenResponse.ObtainedAt = DateTimeOffset.UtcNow;
-        return tokenResponse;
+        return new()
+        {
+            AccessToken = tokenResponse.AccessToken,
+            RefreshToken = tokenResponse.RefreshToken,
+            ExpiresIn = tokenResponse.ExpiresIn,
+            ExtExpiresIn = tokenResponse.ExtExpiresIn,
+            TokenType = tokenResponse.TokenType,
+            Scope = tokenResponse.Scope,
+            ObtainedAt = DateTimeOffset.UtcNow,
+        };
     }
 
     /// <summary>
