@@ -125,46 +125,6 @@ public class McpServerExtensionsTests
             StopReason = "endTurn",
         };
 
-        mockServer
-            .Setup(s => s.ClientCapabilities)
-            .Returns(new ClientCapabilities() { Sampling = new() });
-
-        mockServer
-            .Setup(s => s.ServerOptions)
-            .Returns(new McpServerOptions());
-
-        mockServer
-            .Setup(s => s.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new JsonRpcResponse
-            {
-                Id = default,
-                Result = JsonSerializer.SerializeToNode(resultPayload, McpJsonUtilities.DefaultOptions),
-            });
-
-        IMcpServer server = mockServer.Object;
-
-        var chatResponse = await server.SampleAsync([new ChatMessage(ChatRole.User, "hi")], cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.Equal("test-model", chatResponse.ModelId);
-        var last = chatResponse.Messages.Last();
-        Assert.Equal(ChatRole.Assistant, last.Role);
-        Assert.Equal("resp", last.Text);
-        mockServer.Verify(s => s.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Fact]
-    public async Task SampleAsync_Messages_UsesDefaultSamplingMaxTokens_WhenNotSpecified()
-    {
-        var mockServer = new Mock<McpServer> { CallBase = true };
-
-        var resultPayload = new CreateMessageResult
-        {
-            Content = new TextContentBlock { Text = "resp" },
-            Model = "test-model",
-            Role = Role.Assistant,
-            StopReason = "endTurn",
-        };
-
         const int customDefaultMaxTokens = 500;
 
         mockServer
@@ -192,9 +152,14 @@ public class McpServerExtensionsTests
 
         IMcpServer server = mockServer.Object;
 
-        // Call SampleAsync without specifying MaxOutputTokens in options
-        await server.SampleAsync([new ChatMessage(ChatRole.User, "hi")], cancellationToken: TestContext.Current.CancellationToken);
+        var chatResponse = await server.SampleAsync([new ChatMessage(ChatRole.User, "hi")], cancellationToken: TestContext.Current.CancellationToken);
 
+        Assert.Equal("test-model", chatResponse.ModelId);
+        var last = chatResponse.Messages.Last();
+        Assert.Equal(ChatRole.Assistant, last.Role);
+        Assert.Equal("resp", last.Text);
+        mockServer.Verify(s => s.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+        
         // Verify that the default value was used
         Assert.NotNull(capturedRequest);
         Assert.Equal(customDefaultMaxTokens, capturedRequest.MaxTokens);
