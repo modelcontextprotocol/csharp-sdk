@@ -153,6 +153,54 @@ public class McpServerExtensionsTests
     }
 
     [Fact]
+    public async Task SampleAsync_Messages_UsesDefaultSamplingMaxTokens_WhenNotSpecified()
+    {
+        var mockServer = new Mock<McpServer> { CallBase = true };
+
+        var resultPayload = new CreateMessageResult
+        {
+            Content = new TextContentBlock { Text = "resp" },
+            Model = "test-model",
+            Role = Role.Assistant,
+            StopReason = "endTurn",
+        };
+
+        const int customDefaultMaxTokens = 500;
+
+        mockServer
+            .Setup(s => s.ClientCapabilities)
+            .Returns(new ClientCapabilities() { Sampling = new() });
+
+        mockServer
+            .Setup(s => s.ServerOptions)
+            .Returns(new McpServerOptions { DefaultSamplingMaxTokens = customDefaultMaxTokens });
+
+        CreateMessageRequestParams? capturedRequest = null;
+        mockServer
+            .Setup(s => s.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<JsonRpcRequest, CancellationToken>((request, _) =>
+            {
+                capturedRequest = JsonSerializer.Deserialize<CreateMessageRequestParams>(
+                    request.Params ?? throw new InvalidOperationException(),
+                    McpJsonUtilities.DefaultOptions);
+            })
+            .ReturnsAsync(new JsonRpcResponse
+            {
+                Id = default,
+                Result = JsonSerializer.SerializeToNode(resultPayload, McpJsonUtilities.DefaultOptions),
+            });
+
+        IMcpServer server = mockServer.Object;
+
+        // Call SampleAsync without specifying MaxOutputTokens in options
+        await server.SampleAsync([new ChatMessage(ChatRole.User, "hi")], cancellationToken: TestContext.Current.CancellationToken);
+
+        // Verify that the default value was used
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(customDefaultMaxTokens, capturedRequest.MaxTokens);
+    }
+
+    [Fact]
     public async Task RequestRootsAsync_Forwards_To_McpServer_SendRequestAsync()
     {
         var mockServer = new Mock<McpServer> { CallBase = true };
