@@ -158,14 +158,10 @@ public sealed class McpServerOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This value is used as the <c>maxTokens</c> parameter in sampling requests to the client when the 
-    /// <see cref="Microsoft.Extensions.AI.ChatOptions.MaxOutputTokens"/> property is not set in the request options.
-    /// The MCP protocol requires a <c>maxTokens</c> value for all sampling requests.
+    /// This value is used when <see cref="Microsoft.Extensions.AI.ChatOptions.MaxOutputTokens"/> is not set in the request options.
     /// </para>
     /// <para>
-    /// The default value is 1000 tokens, which provides a reasonable balance between allowing meaningful 
-    /// responses and preventing excessive token usage. This value should be set based on your application's 
-    /// requirements and the capabilities of the LLM being used by the client.
+    /// The default value is 1000 tokens.
     /// </para>
     /// </remarks>
     public int DefaultSamplingMaxTokens { get; set; } = 1000;
