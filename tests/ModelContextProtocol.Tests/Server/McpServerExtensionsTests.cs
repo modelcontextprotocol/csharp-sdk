@@ -130,6 +130,10 @@ public class McpServerExtensionsTests
             .Returns(new ClientCapabilities() { Sampling = new() });
 
         mockServer
+            .Setup(s => s.ServerOptions)
+            .Returns(new McpServerOptions());
+
+        mockServer
             .Setup(s => s.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new JsonRpcResponse
             {
