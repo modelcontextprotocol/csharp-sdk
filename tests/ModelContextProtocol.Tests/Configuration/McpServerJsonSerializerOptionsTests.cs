@@ -44,7 +44,7 @@ public class McpServerJsonSerializerOptionsTests
         var services = new ServiceCollection();
         var customOptions = new JsonSerializerOptions(McpJsonUtilities.DefaultOptions)
         {
-            NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
         };
 
         services.Configure<McpServerOptions>(options =>
@@ -54,20 +54,30 @@ public class McpServerJsonSerializerOptionsTests
 
         var builder = services.AddMcpServer();
 
-        // Act - WithTools should pick up the server-wide options
+        // Act - WithTools should pick up the server-wide options with snake_case naming policy
         builder.WithTools<TestTools>();
         var serviceProvider = services.BuildServiceProvider();
 
-        // Assert - Verify the tool was registered
+        // Assert - Verify the tool schema uses snake_case property naming
         var tools = serviceProvider.GetServices<McpServerTool>().ToList();
         Assert.Single(tools);
-        Assert.Equal("TestTool", tools[0].ProtocolTool.Name);
+        
+        var tool = tools[0];
+        Assert.Equal("ToolWithParameters", tool.ProtocolTool.Name);
+        
+        // Check that the input schema uses snake_case for property names
+        var inputSchema = tool.ProtocolTool.InputSchema;
+        
+        // The schema should have a "properties" object with snake_case property names
+        var propertiesElement = inputSchema.GetProperty("properties");
+        Assert.True(propertiesElement.TryGetProperty("my_parameter", out _), "Schema should have 'my_parameter' property (snake_case)");
+        Assert.False(propertiesElement.TryGetProperty("MyParameter", out _), "Schema should not have 'MyParameter' property (PascalCase)");
     }
 
     [McpServerToolType]
     private class TestTools
     {
         [McpServerTool]
-        public static string TestTool() => "test";
+        public static string ToolWithParameters(string myParameter) => myParameter;
     }
 }
