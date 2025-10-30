@@ -125,12 +125,25 @@ public class McpServerExtensionsTests
             StopReason = "endTurn",
         };
 
+        const int customDefaultMaxTokens = 500;
+
         mockServer
             .Setup(s => s.ClientCapabilities)
             .Returns(new ClientCapabilities() { Sampling = new() });
 
         mockServer
+            .Setup(s => s.ServerOptions)
+            .Returns(new McpServerOptions { DefaultSamplingMaxTokens = customDefaultMaxTokens });
+
+        CreateMessageRequestParams? capturedRequest = null;
+        mockServer
             .Setup(s => s.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<JsonRpcRequest, CancellationToken>((request, _) =>
+            {
+                capturedRequest = JsonSerializer.Deserialize<CreateMessageRequestParams>(
+                    request.Params ?? throw new InvalidOperationException(),
+                    McpJsonUtilities.DefaultOptions);
+            })
             .ReturnsAsync(new JsonRpcResponse
             {
                 Id = default,
@@ -146,6 +159,10 @@ public class McpServerExtensionsTests
         Assert.Equal(ChatRole.Assistant, last.Role);
         Assert.Equal("resp", last.Text);
         mockServer.Verify(s => s.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+        
+        // Verify that the default value was used
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(customDefaultMaxTokens, capturedRequest.MaxTokens);
     }
 
     [Fact]
