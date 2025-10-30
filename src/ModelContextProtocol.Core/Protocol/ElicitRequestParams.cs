@@ -301,14 +301,14 @@ public sealed class ElicitRequestParams
                         {
                             writer.WriteNumber("maximum", numberSchema.Maximum.Value);
                         }
-                        if (numberSchema.Default.HasValue)
+                        if (numberSchema.Default is not null)
                         {
                             writer.WriteNumber("default", numberSchema.Default.Value);
                         }
                         break;
 
                     case BooleanSchema booleanSchema:
-                        if (booleanSchema.Default.HasValue)
+                        if (booleanSchema.Default is not null)
                         {
                             writer.WriteBoolean("default", booleanSchema.Default.Value);
                         }
