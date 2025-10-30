@@ -165,8 +165,10 @@ public sealed class ElicitRequestParams
                             switch (reader.TokenType)
                             {
                                 case JsonTokenType.True:
+                                    defaultBool = true;
+                                    break;
                                 case JsonTokenType.False:
-                                    defaultBool = reader.GetBoolean();
+                                    defaultBool = false;
                                     break;
                                 case JsonTokenType.Number:
                                     defaultNumber = reader.GetDouble();
