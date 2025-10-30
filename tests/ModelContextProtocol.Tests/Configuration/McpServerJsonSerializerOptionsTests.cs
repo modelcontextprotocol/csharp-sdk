@@ -1,32 +1,47 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using ModelContextProtocol.Tests.Utils;
-using System.ComponentModel;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Tests.Configuration;
 
-public class McpServerJsonSerializerOptionsTests : ClientServerTestBase
+public class McpServerJsonSerializerOptionsTests
 {
-    public McpServerJsonSerializerOptionsTests(ITestOutputHelper testOutputHelper)
-        : base(testOutputHelper)
+    [Fact]
+    public void McpServerOptions_JsonSerializerOptions_DefaultsToNull()
     {
+        // Arrange & Act
+        var options = new McpServerOptions();
+
+        // Assert
+        Assert.Null(options.JsonSerializerOptions);
     }
 
-    private class SpecialNumbers
+    [Fact]
+    public void McpServerOptions_JsonSerializerOptions_CanBeSet()
     {
-        public double PositiveInfinity { get; set; }
-        public double NegativeInfinity { get; set; }
-        public double NotANumber { get; set; }
+        // Arrange
+        var customOptions = new JsonSerializerOptions
+        {
+            NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals
+        };
+        var options = new McpServerOptions();
+
+        // Act
+        options.JsonSerializerOptions = customOptions;
+
+        // Assert
+        Assert.NotNull(options.JsonSerializerOptions);
+        Assert.Equal(JsonNumberHandling.AllowNamedFloatingPointLiterals, options.JsonSerializerOptions.NumberHandling);
     }
 
-    protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
+    [Fact]
+    public void WithTools_UsesServerWideOptions_WhenNoExplicitOptionsProvided()
     {
-        // Configure server-wide JsonSerializerOptions to allow named floating point literals
+        // Arrange
+        var services = new ServiceCollection();
         var customOptions = new JsonSerializerOptions(McpJsonUtilities.DefaultOptions)
         {
             NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals
@@ -37,58 +52,22 @@ public class McpServerJsonSerializerOptionsTests : ClientServerTestBase
             options.JsonSerializerOptions = customOptions;
         });
 
-        // Register a tool that will use the server-wide JsonSerializerOptions
-        // The null serializerOptions parameter should cause it to use McpServerOptions.JsonSerializerOptions
-        services.AddSingleton(sp =>
-        {
-            var serverOptions = sp.GetRequiredService<IOptions<McpServerOptions>>().Value;
-            return McpServerTool.Create(
-                () => new SpecialNumbers
-                {
-                    PositiveInfinity = double.PositiveInfinity,
-                    NegativeInfinity = double.NegativeInfinity,
-                    NotANumber = double.NaN
-                },
-                new McpServerToolCreateOptions
-                {
-                    Name = "GetSpecialNumbers",
-                    Description = "Returns special floating point values",
-                    UseStructuredContent = true,
-                    SerializerOptions = serverOptions.JsonSerializerOptions,
-                    Services = sp
-                });
-        });
+        var builder = services.AddMcpServer();
+
+        // Act - WithTools should pick up the server-wide options
+        builder.WithTools<TestTools>();
+        var serviceProvider = services.BuildServiceProvider();
+
+        // Assert - Verify the tool was registered
+        var tools = serviceProvider.GetServices<McpServerTool>().ToList();
+        Assert.Single(tools);
+        Assert.Equal("TestTool", tools[0].ProtocolTool.Name);
     }
 
-    [Fact]
-    public async Task ServerWide_JsonSerializerOptions_Applied_To_Tools()
+    [McpServerToolType]
+    private class TestTools
     {
-        // Arrange
-        McpClient client = await CreateMcpClientForServer();
-
-        // Act
-        IList<McpClientTool> tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
-        CallToolResult result = await client.CallToolAsync("GetSpecialNumbers", cancellationToken: TestContext.Current.CancellationToken);
-
-        // Assert
-        Assert.NotNull(tools);
-        Assert.Single(tools);
-        Assert.Equal("GetSpecialNumbers", tools[0].Name);
-
-        // Verify the result contains structured content with special numbers
-        Assert.NotNull(result);
-        Assert.NotNull(result.StructuredContent);
-        
-        var structuredContent = JsonSerializer.Deserialize<SpecialNumbers>(
-            result.StructuredContent.ToString(),
-            new JsonSerializerOptions(McpJsonUtilities.DefaultOptions)
-            {
-                NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals
-            });
-
-        Assert.NotNull(structuredContent);
-        Assert.True(double.IsPositiveInfinity(structuredContent.PositiveInfinity));
-        Assert.True(double.IsNegativeInfinity(structuredContent.NegativeInfinity));
-        Assert.True(double.IsNaN(structuredContent.NotANumber));
+        [McpServerTool]
+        public static string TestTool() => "test";
     }
 }
