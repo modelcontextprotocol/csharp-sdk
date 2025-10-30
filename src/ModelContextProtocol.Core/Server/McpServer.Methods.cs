@@ -307,10 +307,50 @@ public abstract partial class McpServer : McpSession, IMcpServer
         foreach (JsonPropertyInfo pi in typeInfo.Properties)
         {
             var def = CreatePrimitiveSchema(pi.PropertyType, serializerOptions);
+            
+            // Extract default value from DefaultValueAttribute if present
+            if (pi.AttributeProvider != null)
+            {
+                var attrs = pi.AttributeProvider.GetCustomAttributes(typeof(System.ComponentModel.DefaultValueAttribute), false);
+                if (attrs.Length > 0 && attrs[0] is System.ComponentModel.DefaultValueAttribute defaultValueAttr)
+                {
+                    SetDefaultValue(def, defaultValueAttr.Value);
+                }
+            }
+            
             props[pi.Name] = def;
         }
 
         return schema;
+    }
+
+    /// <summary>
+    /// Sets the default value on a primitive schema definition based on the value type.
+    /// </summary>
+    /// <param name="schema">The schema to set the default value on.</param>
+    /// <param name="value">The default value.</param>
+    private static void SetDefaultValue(ElicitRequestParams.PrimitiveSchemaDefinition schema, object? value)
+    {
+        if (value == null)
+        {
+            return;
+        }
+
+        switch (schema)
+        {
+            case ElicitRequestParams.StringSchema stringSchema:
+                stringSchema.Default = value.ToString();
+                break;
+            case ElicitRequestParams.NumberSchema numberSchema:
+                numberSchema.Default = Convert.ToDouble(value);
+                break;
+            case ElicitRequestParams.BooleanSchema booleanSchema:
+                booleanSchema.Default = Convert.ToBoolean(value);
+                break;
+            case ElicitRequestParams.EnumSchema enumSchema:
+                enumSchema.Default = value.ToString();
+                break;
+        }
     }
 
     /// <summary>
