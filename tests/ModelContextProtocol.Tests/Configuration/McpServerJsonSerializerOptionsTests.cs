@@ -1,3 +1,4 @@
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol;
@@ -74,10 +75,90 @@ public class McpServerJsonSerializerOptionsTests
         Assert.False(propertiesElement.TryGetProperty("MyParameter", out _), "Schema should not have 'MyParameter' property (PascalCase)");
     }
 
+    [Fact]
+    public void WithPrompts_UsesServerWideOptions_WhenNoExplicitOptionsProvided()
+    {
+        // Arrange
+        var services = new ServiceCollection();
+        var customOptions = new JsonSerializerOptions(McpJsonUtilities.DefaultOptions)
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+        };
+
+        services.Configure<McpServerOptions>(options =>
+        {
+            options.JsonSerializerOptions = customOptions;
+        });
+
+        var builder = services.AddMcpServer();
+
+        // Act - WithPrompts should pick up the server-wide options with snake_case naming policy
+        builder.WithPrompts<TestPrompts>();
+        var serviceProvider = services.BuildServiceProvider();
+
+        // Assert - Verify the prompt schema uses snake_case property naming
+        var prompts = serviceProvider.GetServices<McpServerPrompt>().ToList();
+        Assert.Single(prompts);
+        
+        var prompt = prompts[0];
+        Assert.Equal("PromptWithParameters", prompt.ProtocolPrompt.Name);
+        
+        // Check that the arguments schema uses snake_case for property names
+        var arguments = prompt.ProtocolPrompt.Arguments;
+        Assert.NotNull(arguments);
+        Assert.Single(arguments);
+        Assert.Equal("my_argument", arguments[0].Name);
+    }
+
+    [Fact]
+    public void WithResources_UsesServerWideOptions_WhenNoExplicitOptionsProvided()
+    {
+        // Arrange
+        var services = new ServiceCollection();
+        var customOptions = new JsonSerializerOptions(McpJsonUtilities.DefaultOptions)
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+        };
+
+        services.Configure<McpServerOptions>(options =>
+        {
+            options.JsonSerializerOptions = customOptions;
+        });
+
+        var builder = services.AddMcpServer();
+
+        // Act - WithResources should pick up the server-wide options with snake_case naming policy
+        builder.WithResources<TestResources>();
+        var serviceProvider = services.BuildServiceProvider();
+
+        // Assert - Verify the resource was registered (resources don't expose schema in the same way)
+        var resources = serviceProvider.GetServices<McpServerResource>().ToList();
+        Assert.Single(resources);
+        
+        var resource = resources[0];
+        Assert.Equal("resource://test/{myParameter}", resource.ProtocolResourceTemplate.UriTemplate);
+    }
+
     [McpServerToolType]
     private class TestTools
     {
         [McpServerTool]
         public static string ToolWithParameters(string myParameter) => myParameter;
+    }
+
+    [McpServerPromptType]
+    private class TestPrompts
+    {
+        [McpServerPrompt]
+        public static ChatMessage PromptWithParameters(string myArgument) => 
+            new(ChatRole.User, $"Prompt with: {myArgument}");
+    }
+
+    [McpServerResourceType]
+    private class TestResources
+    {
+        [McpServerResource(UriTemplate = "resource://test/{myParameter}")]
+        public static string ResourceWithParameters(string myParameter) => 
+            $"Resource content: {myParameter}";
     }
 }
