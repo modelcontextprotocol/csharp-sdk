@@ -43,6 +43,23 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
+  <!-- Reference analyzers -->
+  <ItemGroup>
+    <ProjectReference Include="..\ModelContextProtocol.Analyzers\ModelContextProtocol.Analyzers.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- Package the analyzer/source generator assembly in the NuGet package -->
+  <ItemGroup>
+    <!-- Include the analyzer DLL directly in the package. The ProjectReference with OutputItemType="Analyzer" ensures it's built before packing. -->
+    <None Include="$(ArtifactsBinDir)ModelContextProtocol.Analyzers\$(Configuration)\netstandard2.0\ModelContextProtocol.Analyzers.dll" 
+          Pack="true" 
+          PackagePath="analyzers/dotnet/cs" 
+          Visible="false" />
+  </ItemGroup>
+
   <ItemGroup>
     <None Include="README.md" pack="true" PackagePath="\" />
   </ItemGroup>
