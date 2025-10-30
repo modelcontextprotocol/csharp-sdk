@@ -2,9 +2,7 @@
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 using System.Collections.Concurrent;
-using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -259,9 +257,9 @@ public abstract partial class McpServer : McpSession, IMcpServer
         var dict = s_elicitResultSchemaCache.GetValue(serializerOptions, _ => new());
 
 #if NET
-        var schema = dict.GetOrAdd(typeof(T), static (t, s) => BuildRequestSchemaHelper(t, s), serializerOptions);
+        var schema = dict.GetOrAdd(typeof(T), static (t, s) => BuildRequestSchema(t, s), serializerOptions);
 #else
-        var schema = dict.GetOrAdd(typeof(T), type => BuildRequestSchemaHelper(type, serializerOptions));
+        var schema = dict.GetOrAdd(typeof(T), type => BuildRequestSchema(type, serializerOptions));
 #endif
 
         var request = new ElicitRequestParams
@@ -288,20 +286,13 @@ public abstract partial class McpServer : McpSession, IMcpServer
     }
 
     /// <summary>
-    /// Helper method for BuildRequestSchema that can be called from lambdas without annotation issues.
-    /// </summary>
-    [UnconditionalSuppressMessage("Trimming", "IL2067", Justification = "Type T is preserved via JsonTypeInfo")]
-    private static ElicitRequestParams.RequestSchema BuildRequestSchemaHelper(Type type, JsonSerializerOptions serializerOptions)
-        => BuildRequestSchema(type, serializerOptions);
-
-    /// <summary>
     /// Builds a request schema for elicitation based on the public serializable properties of <paramref name="type"/>.
     /// </summary>
     /// <param name="type">The type of the schema being built.</param>
     /// <param name="serializerOptions">The serializer options to use.</param>
     /// <returns>The built request schema.</returns>
     /// <exception cref="McpProtocolException"></exception>
-    private static ElicitRequestParams.RequestSchema BuildRequestSchema([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] Type type, JsonSerializerOptions serializerOptions)
+    private static ElicitRequestParams.RequestSchema BuildRequestSchema(Type type, JsonSerializerOptions serializerOptions)
     {
         var schema = new ElicitRequestParams.RequestSchema();
         var props = schema.Properties;
@@ -316,46 +307,10 @@ public abstract partial class McpServer : McpSession, IMcpServer
         foreach (JsonPropertyInfo pi in typeInfo.Properties)
         {
             var def = CreatePrimitiveSchema(pi.PropertyType, serializerOptions);
-            
-            // Extract default value from DefaultValueAttribute if present
-            var propInfo = type.GetProperty(pi.Name);
-            if (propInfo != null)
-            {
-                var defaultValueAttr = propInfo.GetCustomAttribute<System.ComponentModel.DefaultValueAttribute>();
-                if (defaultValueAttr?.Value != null)
-                {
-                    SetDefaultValue(def, defaultValueAttr.Value);
-                }
-            }
-            
             props[pi.Name] = def;
         }
 
         return schema;
-    }
-    
-    /// <summary>
-    /// Sets the default value on a primitive schema definition based on the value type.
-    /// </summary>
-    /// <param name="schema">The schema to set the default value on.</param>
-    /// <param name="value">The default value.</param>
-    private static void SetDefaultValue(ElicitRequestParams.PrimitiveSchemaDefinition schema, object value)
-    {
-        switch (schema)
-        {
-            case ElicitRequestParams.StringSchema stringSchema:
-                stringSchema.Default = value?.ToString();
-                break;
-            case ElicitRequestParams.NumberSchema numberSchema:
-                numberSchema.Default = Convert.ToDouble(value);
-                break;
-            case ElicitRequestParams.BooleanSchema booleanSchema:
-                booleanSchema.Default = Convert.ToBoolean(value);
-                break;
-            case ElicitRequestParams.EnumSchema enumSchema:
-                enumSchema.Default = value?.ToString();
-                break;
-        }
     }
 
     /// <summary>

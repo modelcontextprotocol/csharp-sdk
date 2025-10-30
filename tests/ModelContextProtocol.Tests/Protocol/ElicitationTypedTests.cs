@@ -86,19 +86,6 @@ public partial class ElicitationTypedTests : ClientServerTestBase
                     Content = [new TextContentBlock { Text = "unexpected" }],
                 };
             }
-            else if (request.Params!.Name == "TestElicitationWithDefaults")
-            {
-                var result = await request.Server.ElicitAsync<FormWithDefaults>(
-                    message: "Please provide information.",
-                    serializerOptions: ElicitationDefaultsJsonContext.Default.Options,
-                    cancellationToken: CancellationToken.None);
-
-                // The test will validate the schema in the client handler
-                return new CallToolResult
-                {
-                    Content = [new TextContentBlock { Text = "success" }],
-                };
-            }
             else
             {
                 Assert.Fail($"Unexpected tool name: {request.Params!.Name}");
@@ -373,89 +360,4 @@ public partial class ElicitationTypedTests : ClientServerTestBase
     [JsonSerializable(typeof(UnsupportedForm.Nested))]
     [JsonSerializable(typeof(JsonElement))]
     internal partial class ElicitationUnsupportedJsonContext : JsonSerializerContext;
-
-    public sealed class FormWithDefaults
-    {
-        [System.ComponentModel.DefaultValue("John Doe")]
-        public string Name { get; set; } = "John Doe";
-        
-        [System.ComponentModel.DefaultValue(30)]
-        public int Age { get; set; } = 30;
-        
-        [System.ComponentModel.DefaultValue(85.5)]
-        public double Score { get; set; } = 85.5;
-        
-        [System.ComponentModel.DefaultValue(true)]
-        public bool IsActive { get; set; } = true;
-        
-        [System.ComponentModel.DefaultValue("active")]
-        public string Status { get; set; } = "active";
-    }
-
-    [JsonSerializable(typeof(FormWithDefaults))]
-    [JsonSerializable(typeof(JsonElement))]
-    internal partial class ElicitationDefaultsJsonContext : JsonSerializerContext;
-
-    [Fact]
-    public async Task Elicit_Typed_With_Defaults_Maps_To_Schema_Defaults()
-    {
-        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
-        {
-            Handlers = new()
-            {
-                ElicitationHandler = async (request, cancellationToken) =>
-                {
-                    Assert.NotNull(request);
-                    Assert.Equal("Please provide information.", request.Message);
-
-                    Assert.Equal(5, request.RequestedSchema.Properties.Count);
-
-                    // Verify that default values from the type are mapped to the schema
-                    foreach (var entry in request.RequestedSchema.Properties)
-                    {
-                        switch (entry.Key)
-                        {
-                            case nameof(FormWithDefaults.Name):
-                                var nameSchema = Assert.IsType<ElicitRequestParams.StringSchema>(entry.Value);
-                                Assert.Equal("John Doe", nameSchema.Default);
-                                break;
-
-                            case nameof(FormWithDefaults.Age):
-                                var ageSchema = Assert.IsType<ElicitRequestParams.NumberSchema>(entry.Value);
-                                Assert.Equal(30, ageSchema.Default);
-                                break;
-
-                            case nameof(FormWithDefaults.Score):
-                                var scoreSchema = Assert.IsType<ElicitRequestParams.NumberSchema>(entry.Value);
-                                Assert.Equal(85.5, scoreSchema.Default);
-                                break;
-
-                            case nameof(FormWithDefaults.IsActive):
-                                var activeSchema = Assert.IsType<ElicitRequestParams.BooleanSchema>(entry.Value);
-                                Assert.True(activeSchema.Default);
-                                break;
-
-                            case nameof(FormWithDefaults.Status):
-                                var statusSchema = Assert.IsType<ElicitRequestParams.StringSchema>(entry.Value);
-                                Assert.Equal("active", statusSchema.Default);
-                                break;
-
-                            default:
-                                Assert.Fail($"Unexpected property: {entry.Key}");
-                                break;
-                        }
-                    }
-
-                    return new ElicitResult
-                    {
-                        Action = "accept",
-                        Content = new Dictionary<string, JsonElement>()
-                    };
-                },
-            }
-        });
-
-        var result = await client.CallToolAsync("TestElicitationWithDefaults", cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal("success", (result.Content[0] as TextContentBlock)?.Text);
-    }
 }
