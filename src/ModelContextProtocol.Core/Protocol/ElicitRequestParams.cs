@@ -109,6 +109,8 @@ public sealed class ElicitRequestParams
                 double? minimum = null;
                 double? maximum = null;
                 bool? defaultBool = null;
+                double? defaultNumber = null;
+                string? defaultString = null;
                 IList<string>? enumValues = null;
                 IList<string>? enumNames = null;
 
@@ -158,7 +160,20 @@ public sealed class ElicitRequestParams
                             break;
 
                         case "default":
-                            defaultBool = reader.GetBoolean();
+                            // We need to handle different types for default values
+                            // Store the value based on the JSON token type
+                            if (reader.TokenType == JsonTokenType.True || reader.TokenType == JsonTokenType.False)
+                            {
+                                defaultBool = reader.GetBoolean();
+                            }
+                            else if (reader.TokenType == JsonTokenType.Number)
+                            {
+                                defaultNumber = reader.GetDouble();
+                            }
+                            else if (reader.TokenType == JsonTokenType.String)
+                            {
+                                defaultString = reader.GetString();
+                            }
                             break;
 
                         case "enum":
@@ -188,7 +203,8 @@ public sealed class ElicitRequestParams
                             psd = new EnumSchema
                             {
                                 Enum = enumValues,
-                                EnumNames = enumNames
+                                EnumNames = enumNames,
+                                Default = defaultString,
                             };
                         }
                         else
@@ -198,6 +214,7 @@ public sealed class ElicitRequestParams
                                 MinLength = minLength,
                                 MaxLength = maxLength,
                                 Format = format,
+                                Default = defaultString,
                             };
                         }
                         break;
@@ -208,6 +225,7 @@ public sealed class ElicitRequestParams
                         {
                             Minimum = minimum,
                             Maximum = maximum,
+                            Default = defaultNumber,
                         };
                         break;
 
@@ -265,6 +283,10 @@ public sealed class ElicitRequestParams
                         {
                             writer.WriteString("format", stringSchema.Format);
                         }
+                        if (stringSchema.Default is not null)
+                        {
+                            writer.WriteString("default", stringSchema.Default);
+                        }
                         break;
 
                     case NumberSchema numberSchema:
@@ -275,6 +297,10 @@ public sealed class ElicitRequestParams
                         if (numberSchema.Maximum.HasValue)
                         {
                             writer.WriteNumber("maximum", numberSchema.Maximum.Value);
+                        }
+                        if (numberSchema.Default.HasValue)
+                        {
+                            writer.WriteNumber("default", numberSchema.Default.Value);
                         }
                         break;
 
@@ -295,6 +321,10 @@ public sealed class ElicitRequestParams
                         {
                             writer.WritePropertyName("enumNames");
                             JsonSerializer.Serialize(writer, enumSchema.EnumNames, McpJsonUtilities.JsonContext.Default.IListString);
+                        }
+                        if (enumSchema.Default is not null)
+                        {
+                            writer.WriteString("default", enumSchema.Default);
                         }
                         break;
 
@@ -371,6 +401,10 @@ public sealed class ElicitRequestParams
                 field = value;
             }
         }
+
+        /// <summary>Gets or sets the default value for the string.</summary>
+        [JsonPropertyName("default")]
+        public string? Default { get; set; }
     }
 
     /// <summary>Represents a schema for a number or integer type.</summary>
@@ -399,6 +433,10 @@ public sealed class ElicitRequestParams
         /// <summary>Gets or sets the maximum allowed value.</summary>
         [JsonPropertyName("maximum")]
         public double? Maximum { get; set; }
+
+        /// <summary>Gets or sets the default value for the number.</summary>
+        [JsonPropertyName("default")]
+        public double? Default { get; set; }
     }
 
     /// <summary>Represents a schema for a Boolean type.</summary>
@@ -456,5 +494,9 @@ public sealed class ElicitRequestParams
         /// <summary>Gets or sets optional display names corresponding to the enum values.</summary>
         [JsonPropertyName("enumNames")]
         public IList<string>? EnumNames { get; set; }
+
+        /// <summary>Gets or sets the default value for the enum.</summary>
+        [JsonPropertyName("default")]
+        public string? Default { get; set; }
     }
 }
