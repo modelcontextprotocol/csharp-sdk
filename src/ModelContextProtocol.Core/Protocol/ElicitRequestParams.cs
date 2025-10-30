@@ -162,17 +162,18 @@ public sealed class ElicitRequestParams
                         case "default":
                             // We need to handle different types for default values
                             // Store the value based on the JSON token type
-                            if (reader.TokenType == JsonTokenType.True || reader.TokenType == JsonTokenType.False)
+                            switch (reader.TokenType)
                             {
-                                defaultBool = reader.GetBoolean();
-                            }
-                            else if (reader.TokenType == JsonTokenType.Number)
-                            {
-                                defaultNumber = reader.GetDouble();
-                            }
-                            else if (reader.TokenType == JsonTokenType.String)
-                            {
-                                defaultString = reader.GetString();
+                                case JsonTokenType.True:
+                                case JsonTokenType.False:
+                                    defaultBool = reader.GetBoolean();
+                                    break;
+                                case JsonTokenType.Number:
+                                    defaultNumber = reader.GetDouble();
+                                    break;
+                                case JsonTokenType.String:
+                                    defaultString = reader.GetString();
+                                    break;
                             }
                             break;
 
