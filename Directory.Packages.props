@@ -48,12 +48,19 @@
     <PackageVersion Include="System.Net.ServerSentEvents" Version="$(System10Version)" />
   </ItemGroup>
 
+  <!-- Source Generator & Analyzer dependencies -->
   <ItemGroup>
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.4" />
+  </ItemGroup>
 
-    <!-- Build Infra & Packaging -->
+  <!-- Build Infra & Packaging dependencies-->
+  <ItemGroup>
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
+  </ItemGroup>
 
-    <!-- Testing dependencies -->
+  <!-- Testing dependencies -->
+  <ItemGroup>
     <PackageVersion Include="Anthropic.SDK" Version="5.6.0" />
     <PackageVersion Include="coverlet.collector" Version="6.0.4">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

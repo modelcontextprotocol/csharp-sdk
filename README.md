@@ -225,6 +225,11 @@ await using McpServer server = McpServer.Create(new StdioServerTransport("MyServ
 await server.RunAsync();
 ```
 
+Descriptions can be added to tools, prompts, and resources in a variety of ways, including via the `[Description]` attribute from `System.ComponentModel`.
+This attribute may be placed on a method to provide for the tool, prompt, or resource, or on individual parameters to describe each's purpose.
+XML comments may also be used; if an `[McpServerTool]`, `[McpServerPrompt]`, or `[McpServerResource]`-attributed method is marked as `partial`,
+XML comments placed on the method will be used automatically to generate `[Description]` attributes for the method and its parameters.
+
 ## Acknowledgements
 
 The starting point for this library was a project called [mcpdotnet](https://github.com/PederHP/mcpdotnet), initiated by [Peder Holdgaard Pedersen](https://github.com/PederHP). We are grateful for the work done by Peder and other contributors to that repository, which created a solid foundation for this library.
