@@ -21,7 +21,7 @@ public sealed class XmlToDescriptionGenerator : IIncrementalGenerator
     {
         // Filter method declarations with attributes. We're looking for attributed partial methods.
         var methodModels = context.SyntaxProvider
-            .CreateSyntaxProvider<MethodToGenerate?>(
+            .CreateSyntaxProvider(
                 static (s, _) => s is MethodDeclarationSyntax { AttributeLists.Count: > 0 } method && method.Modifiers.Any(SyntaxKind.PartialKeyword),
                 static (ctx, ct) =>
                 {
