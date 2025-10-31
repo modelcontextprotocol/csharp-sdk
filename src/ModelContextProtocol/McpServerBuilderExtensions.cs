@@ -48,8 +48,36 @@ public static partial class McpServerBuilderExtensions
             if (toolMethod.GetCustomAttribute<McpServerToolAttribute>() is not null)
             {
                 builder.Services.AddSingleton((Func<IServiceProvider, McpServerTool>)(toolMethod.IsStatic ?
-                    services => McpServerTool.Create(toolMethod, options: new() { Services = services, SerializerOptions = serializerOptions ?? services.GetService<IOptions<McpServerOptions>>()?.Value.JsonSerializerOptions, SchemaCreateOptions = schemaCreateOptions ?? services.GetService<IOptions<McpServerOptions>>()?.Value.SchemaCreateOptions }) :
-                    services => McpServerTool.Create(toolMethod, static r => CreateTarget(r.Services, typeof(TToolType)), new() { Services = services, SerializerOptions = serializerOptions ?? services.GetService<IOptions<McpServerOptions>>()?.Value.JsonSerializerOptions, SchemaCreateOptions = schemaCreateOptions ?? services.GetService<IOptions<McpServerOptions>>()?.Value.SchemaCreateOptions })));
+                    services =>
+                    {
+                        var effectiveSerializerOptions = serializerOptions;
+                        var effectiveSchemaCreateOptions = schemaCreateOptions;
+                        
+                        // Try to get server-wide defaults if not explicitly provided
+                        if (effectiveSerializerOptions is null || effectiveSchemaCreateOptions is null)
+                        {
+                            var defaultOptions = services.GetService<McpServerDefaultOptions>();
+                            effectiveSerializerOptions ??= defaultOptions?.JsonSerializerOptions;
+                            effectiveSchemaCreateOptions ??= defaultOptions?.SchemaCreateOptions;
+                        }
+                        
+                        return McpServerTool.Create(toolMethod, options: new() { Services = services, SerializerOptions = effectiveSerializerOptions, SchemaCreateOptions = effectiveSchemaCreateOptions });
+                    } :
+                    services =>
+                    {
+                        var effectiveSerializerOptions = serializerOptions;
+                        var effectiveSchemaCreateOptions = schemaCreateOptions;
+                        
+                        // Try to get server-wide defaults if not explicitly provided
+                        if (effectiveSerializerOptions is null || effectiveSchemaCreateOptions is null)
+                        {
+                            var defaultOptions = services.GetService<McpServerDefaultOptions>();
+                            effectiveSerializerOptions ??= defaultOptions?.JsonSerializerOptions;
+                            effectiveSchemaCreateOptions ??= defaultOptions?.SchemaCreateOptions;
+                        }
+                        
+                        return McpServerTool.Create(toolMethod, static r => CreateTarget(r.Services, typeof(TToolType)), new() { Services = services, SerializerOptions = effectiveSerializerOptions, SchemaCreateOptions = effectiveSchemaCreateOptions });
+                    }));
             }
         }
 

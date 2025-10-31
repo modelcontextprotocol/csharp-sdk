@@ -48,12 +48,10 @@ public class McpServerJsonSerializerOptionsTests
             PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
         };
 
-        services.Configure<McpServerOptions>(options =>
+        var builder = services.AddMcpServer(options =>
         {
             options.JsonSerializerOptions = customOptions;
         });
-
-        var builder = services.AddMcpServer();
 
         // Act - WithTools should pick up the server-wide options with snake_case naming policy
         builder.WithTools<TestTools>();
@@ -85,12 +83,10 @@ public class McpServerJsonSerializerOptionsTests
             PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
         };
 
-        services.Configure<McpServerOptions>(options =>
+        var builder = services.AddMcpServer(options =>
         {
             options.JsonSerializerOptions = customOptions;
         });
-
-        var builder = services.AddMcpServer();
 
         // Act - WithPrompts should pick up the server-wide options with snake_case naming policy
         builder.WithPrompts<TestPrompts>();
@@ -120,12 +116,10 @@ public class McpServerJsonSerializerOptionsTests
             PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
         };
 
-        services.Configure<McpServerOptions>(options =>
+        var builder = services.AddMcpServer(options =>
         {
             options.JsonSerializerOptions = customOptions;
         });
-
-        var builder = services.AddMcpServer();
 
         // Act - WithResources should pick up the server-wide options with snake_case naming policy
         builder.WithResources<TestResources>();
