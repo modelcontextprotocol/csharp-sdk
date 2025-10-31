@@ -130,7 +130,7 @@ public class McpServerTests : LoggedTest
         await using var server = McpServer.Create(transport, _options, LoggerFactory);
         SetClientCapabilities(server, new ClientCapabilities());
 
-        var action = async () => await server.SampleAsync(new CreateMessageRequestParams { Messages = [] }, CancellationToken.None);
+        var action = async () => await server.SampleAsync(new CreateMessageRequestParams { Messages = [], MaxTokens = 1000 }, CancellationToken.None);
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(action);
@@ -147,7 +147,7 @@ public class McpServerTests : LoggedTest
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
 
         // Act
-        var result = await server.SampleAsync(new CreateMessageRequestParams { Messages = [] }, CancellationToken.None);
+        var result = await server.SampleAsync(new CreateMessageRequestParams { Messages = [], MaxTokens = 1000 }, CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.NotEmpty(transport.SentMessages);
@@ -201,7 +201,7 @@ public class McpServerTests : LoggedTest
         SetClientCapabilities(server, new ClientCapabilities());
 
         // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await server.ElicitAsync(new ElicitRequestParams(), CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await server.ElicitAsync(new ElicitRequestParams { Message = "" }, CancellationToken.None));
     }
 
     [Fact]
@@ -214,7 +214,7 @@ public class McpServerTests : LoggedTest
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
 
         // Act
-        var result = await server.ElicitAsync(new ElicitRequestParams(), CancellationToken.None);
+        var result = await server.ElicitAsync(new ElicitRequestParams { Message = "" }, CancellationToken.None);
 
         // Assert
         Assert.NotNull(result);
@@ -377,7 +377,7 @@ public class McpServerTests : LoggedTest
                 {
                     return new ReadResourceResult
                     {
-                        Contents = [new TextResourceContents { Text = "test" }]
+                        Contents = [new TextResourceContents { Text = "test", Uri = "" }]
                     };
                 };
                 options.Handlers.ListResourcesHandler = (request, ct) => throw new NotImplementedException();
@@ -659,7 +659,7 @@ public class McpServerTests : LoggedTest
             {
                 Method = method,
                 Id = new RequestId(55)
-        }
+            }
         );
 
         var response = await receivedMessage.Task.WaitAsync(TimeSpan.FromSeconds(10));

@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using ModelContextProtocol.Server;
@@ -24,7 +25,8 @@ public sealed class Resource : IBaseMetadata
     /// Gets or sets the URI of this resource.
     /// </summary>
     [JsonPropertyName("uri")]
-    public required string Uri { get; init; }
+    [StringSyntax(StringSyntaxAttribute.Uri)]
+    public required string Uri { get; set; }
 
     /// <summary>
     /// Gets or sets a description of what this resource represents.
@@ -43,7 +45,7 @@ public sealed class Resource : IBaseMetadata
     /// </para>
     /// </remarks>
     [JsonPropertyName("description")]
-    public string? Description { get; init; }
+    public string? Description { get; set; }
 
     /// <summary>
     /// Gets or sets the MIME type of this resource.
@@ -59,7 +61,7 @@ public sealed class Resource : IBaseMetadata
     /// </para>
     /// </remarks>
     [JsonPropertyName("mimeType")]
-    public string? MimeType { get; init; }
+    public string? MimeType { get; set; }
 
     /// <summary>
     /// Gets or sets optional annotations for the resource.
@@ -69,7 +71,7 @@ public sealed class Resource : IBaseMetadata
     /// and the priority level of the resource. Clients can use this information to filter or prioritize resources for different roles.
     /// </remarks>
     [JsonPropertyName("annotations")]
-    public Annotations? Annotations { get; init; }
+    public Annotations? Annotations { get; set; }
 
     /// <summary>
     /// Gets or sets the size of the raw resource content (before base64 encoding), in bytes, if known.
@@ -78,7 +80,7 @@ public sealed class Resource : IBaseMetadata
     /// This can be used by applications to display file sizes and estimate context window usage.
     /// </remarks>
     [JsonPropertyName("size")]
-    public long? Size { get; init; }
+    public long? Size { get; set; }
 
     /// <summary>
     /// Gets or sets an optional list of icons for this resource.
@@ -96,7 +98,7 @@ public sealed class Resource : IBaseMetadata
     /// Implementations must not make assumptions about its contents.
     /// </remarks>
     [JsonPropertyName("_meta")]
-    public JsonObject? Meta { get; init; }
+    public JsonObject? Meta { get; set; }
 
     /// <summary>
     /// Gets or sets the callable server resource corresponding to this metadata if any.

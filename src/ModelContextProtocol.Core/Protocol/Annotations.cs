@@ -15,7 +15,7 @@ public sealed class Annotations
     /// Gets or sets the intended audience for this content as an array of <see cref="Role"/> values.
     /// </summary>
     [JsonPropertyName("audience")]
-    public IList<Role>? Audience { get; init; }
+    public IList<Role>? Audience { get; set; }
 
     /// <summary>
     /// Gets or sets a value indicating how important this data is for operating the server.
@@ -25,7 +25,7 @@ public sealed class Annotations
     /// 1 represents highest priority.
     /// </remarks>
     [JsonPropertyName("priority")]
-    public float? Priority { get; init; }
+    public float? Priority { get; set; }
 
     /// <summary>
     /// Gets or sets the moment the resource was last modified.

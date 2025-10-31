@@ -152,4 +152,17 @@ public sealed class McpServerOptions
     /// </para>
     /// </remarks>
     public McpServerPrimitiveCollection<McpServerPrompt>? PromptCollection { get; set; }
+
+    /// <summary>
+    /// Gets or sets the default maximum number of tokens to use for sampling requests when not explicitly specified.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This value is used when <see cref="Microsoft.Extensions.AI.ChatOptions.MaxOutputTokens"/> is not set in the request options.
+    /// </para>
+    /// <para>
+    /// The default value is 1000 tokens.
+    /// </para>
+    /// </remarks>
+    public int DefaultSamplingMaxTokens { get; set; } = 1000;
 }
