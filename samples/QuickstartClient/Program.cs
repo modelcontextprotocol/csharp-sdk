@@ -50,7 +50,7 @@ using var anthropicClient = new AnthropicClient(new APIAuthentication(builder.Co
 var options = new ChatOptions
 {
     MaxOutputTokens = 1000,
-    ModelId = "claude-3-5-sonnet-20241022",
+    ModelId = "claude-haiku-4-5-20251001",
     Tools = [.. tools]
 };
 
