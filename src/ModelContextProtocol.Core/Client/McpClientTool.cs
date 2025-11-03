@@ -54,6 +54,57 @@ public sealed class McpClientTool : AIFunction
     }
 
     /// <summary>
+    /// Initializes a new instance of the <see cref="McpClientTool"/> class.
+    /// </summary>
+    /// <param name="client">The <see cref="McpClient"/> instance to use for invoking the tool.</param>
+    /// <param name="tool">The protocol <see cref="Tool"/> definition describing the tool's metadata and schema.</param>
+    /// <param name="serializerOptions">
+    /// The JSON serialization options governing argument serialization. If <see langword="null"/>, 
+    /// <see cref="McpJsonUtilities.DefaultOptions"/> will be used.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// This constructor enables reusing cached tool definitions across different <see cref="McpClient"/> instances
+    /// without needing to call <see cref="McpClient.ListToolsAsync"/> on every reconnect. This is particularly useful 
+    /// in scenarios where tool definitions are stable and network round-trips should be minimized.
+    /// </para>
+    /// <para>
+    /// The provided <paramref name="tool"/> must represent a tool that is actually available on the server 
+    /// associated with the <paramref name="client"/>. Attempting to invoke a tool that doesn't exist on the 
+    /// server will result in an <see cref="McpException"/>.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="tool"/> is <see langword="null"/>.</exception>
+    /// <example>
+    /// <code>
+    /// // Cache tool definition from first client
+    /// var tools = await client1.ListToolsAsync();
+    /// var toolDefinition = tools[0].ProtocolTool;
+    /// 
+    /// // Later, reuse with a different client instance
+    /// var client2 = await McpClient.CreateAsync(transport2);
+    /// var reusedTool = new McpClientTool(client2, toolDefinition);
+    /// var result = await reusedTool.CallAsync(new Dictionary&lt;string, object?&gt; { ["param"] = "value" });
+    /// </code>
+    /// </example>
+    public McpClientTool(
+        McpClient client,
+        Tool tool,
+        JsonSerializerOptions? serializerOptions = null)
+    {
+        Throw.IfNull(client);
+        Throw.IfNull(tool);
+
+        _client = client;
+        ProtocolTool = tool;
+        JsonSerializerOptions = serializerOptions ?? McpJsonUtilities.DefaultOptions;
+        _name = tool.Name;
+        _description = tool.Description ?? string.Empty;
+        _progress = null;
+    }
+
+    /// <summary>
     /// Gets the protocol <see cref="Tool"/> type for this instance.
     /// </summary>
     /// <remarks>
