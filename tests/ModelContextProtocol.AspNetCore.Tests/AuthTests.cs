@@ -400,8 +400,8 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
         const string fullMetadataPath = enterprisePath + metadataPath;
         
         // Configure the builder with a fresh authentication setup for this test
-        var testBuilder = new WebApplicationBuilder();
-        testBuilder.Services.AddLogging(loggingBuilder => loggingBuilder.AddProvider(XunitLoggerProvider));
+        var testBuilder = WebApplication.CreateSlimBuilder();
+        testBuilder.Services.AddSingleton(XunitLoggerProvider);
         
         testBuilder.Services.AddAuthentication(options =>
         {
