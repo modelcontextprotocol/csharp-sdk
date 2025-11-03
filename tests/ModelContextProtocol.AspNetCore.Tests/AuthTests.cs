@@ -8,6 +8,7 @@ using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
 using System.Net;
+using System.Net.Http.Json;
 using System.Reflection;
 using Xunit.Sdk;
 
@@ -389,6 +390,84 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
 
         // Ensure we've checked every property. When new properties get added, we'll have to update this test along with the CloneResourceMetadata implementation.
         Assert.Empty(propertyNames);
+    }
+
+    [Fact]
+    public async Task ResourceMetadataEndpoint_ResolvesCorrectly_WithAbsoluteUriIncludingPathComponent()
+    {
+        const string enterprisePath = "/enterprise";
+        const string metadataPath = "/.well-known/oauth-protected-resource";
+        const string fullMetadataPath = enterprisePath + metadataPath;
+        
+        // Configure the builder with a fresh authentication setup for this test
+        var testBuilder = new WebApplicationBuilder();
+        testBuilder.Services.AddLogging(loggingBuilder => loggingBuilder.AddProvider(XunitLoggerProvider));
+        
+        testBuilder.Services.AddAuthentication(options =>
+        {
+            options.DefaultChallengeScheme = McpAuthenticationDefaults.AuthenticationScheme;
+            options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        })
+        .AddJwtBearer(options =>
+        {
+            options.Backchannel = HttpClient;
+            options.Authority = OAuthServerUrl;
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidateAudience = true,
+                ValidateLifetime = true,
+                ValidateIssuerSigningKey = true,
+                ValidAudience = McpServerUrl,
+                ValidIssuer = OAuthServerUrl,
+                NameClaimType = "name",
+                RoleClaimType = "roles"
+            };
+        })
+        .AddMcp(options =>
+        {
+            // Set an absolute URI with a path component after the host
+            options.ResourceMetadataUri = new Uri($"{McpServerUrl}{fullMetadataPath}");
+            options.ResourceMetadata = new ProtectedResourceMetadata
+            {
+                Resource = new Uri(McpServerUrl),
+                AuthorizationServers = { new Uri(OAuthServerUrl) },
+                ScopesSupported = ["mcp:tools"]
+            };
+        });
+
+        testBuilder.Services.AddAuthorization();
+        testBuilder.Services.AddMcpServer().WithHttpTransport();
+
+        await using var app = testBuilder.Build();
+
+        app.MapMcp().RequireAuthorization();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        // Test that the metadata endpoint responds at the correct path with the path component
+        var metadataResponse = await HttpClient.GetAsync($"{McpServerUrl}{fullMetadataPath}", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, metadataResponse.StatusCode);
+        
+        var metadata = await metadataResponse.Content.ReadFromJsonAsync<ProtectedResourceMetadata>(
+            McpJsonUtilities.DefaultOptions, TestContext.Current.CancellationToken);
+        
+        Assert.NotNull(metadata);
+        Assert.Equal(new Uri(McpServerUrl), metadata.Resource);
+        Assert.Contains(new Uri(OAuthServerUrl), metadata.AuthorizationServers);
+        Assert.Contains("mcp:tools", metadata.ScopesSupported);
+
+        // Test that a request without the path component returns 401 (not the metadata)
+        var unauthorizedResponse = await HttpClient.GetAsync($"{McpServerUrl}/message", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Unauthorized, unauthorizedResponse.StatusCode);
+        
+        // Verify the WWW-Authenticate header includes the full absolute URI with path component
+        var wwwAuthHeader = unauthorizedResponse.Headers.WwwAuthenticate.FirstOrDefault();
+        Assert.NotNull(wwwAuthHeader);
+        Assert.Equal("Bearer", wwwAuthHeader.Scheme);
+        Assert.Contains($"resource_metadata=\"{McpServerUrl}{fullMetadataPath}\"", wwwAuthHeader.Parameter);
+
+        await app.StopAsync(TestContext.Current.CancellationToken);
     }
 
     private async Task<string?> HandleAuthorizationUrlAsync(Uri authorizationUri, Uri redirectUri, CancellationToken cancellationToken)
