@@ -34,7 +34,7 @@ public abstract class ContentBlock
     }
 
     /// <summary>
-    /// Gets or sets the type of content.
+    /// When overridden in a derived class, gets the type of content.
     /// </summary>
     /// <remarks>
     /// This determines the structure of the content object. Valid values include "image", "audio", "text", "resource", and "resource_link".
