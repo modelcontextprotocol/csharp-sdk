@@ -300,14 +300,26 @@ internal sealed partial class ClientOAuthProvider
 
     private async Task<TokenContainer> RefreshTokenAsync(string refreshToken, Uri resourceUri, AuthorizationServerMetadata authServerMetadata, CancellationToken cancellationToken)
     {
-        var requestContent = new FormUrlEncodedContent(new Dictionary<string, string>
+        var requestParams = new Dictionary<string, string>
         {
             ["grant_type"] = "refresh_token",
             ["refresh_token"] = refreshToken,
             ["client_id"] = GetClientIdOrThrow(),
             ["client_secret"] = _clientSecret ?? string.Empty,
-            ["resource"] = resourceUri.ToString(),
-        });
+        };
+
+        // For Microsoft Entra ID, use scope instead of resource
+        if (_scopes is not null && _scopes.Length > 0)
+        {
+            requestParams["scope"] = string.Join(" ", _scopes);
+        }
+        // Only add resource parameter for non-Entra servers  
+        else if (authServerMetadata.Issuer?.Host != "login.microsoftonline.com")
+        {
+            requestParams["resource"] = resourceUri.ToString();
+        }
+
+        var requestContent = new FormUrlEncodedContent(requestParams);
 
         using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.TokenEndpoint)
         {
@@ -384,7 +396,7 @@ internal sealed partial class ClientOAuthProvider
         string codeVerifier,
         CancellationToken cancellationToken)
     {
-        var requestContent = new FormUrlEncodedContent(new Dictionary<string, string>
+        var requestParams = new Dictionary<string, string>
         {
             ["grant_type"] = "authorization_code",
             ["code"] = authorizationCode,
@@ -392,8 +404,20 @@ internal sealed partial class ClientOAuthProvider
             ["client_id"] = GetClientIdOrThrow(),
             ["code_verifier"] = codeVerifier,
             ["client_secret"] = _clientSecret ?? string.Empty,
-            ["resource"] = protectedResourceMetadata.Resource.ToString(),
-        });
+        };
+
+        // For Microsoft Entra ID, use scope instead of resource
+        if (_scopes is not null && _scopes.Length > 0)
+        {
+            requestParams["scope"] = string.Join(" ", _scopes);
+        }
+        // Only add resource parameter for non-Entra servers
+        else if (authServerMetadata.Issuer?.Host != "login.microsoftonline.com")
+        {
+            requestParams["resource"] = protectedResourceMetadata.Resource.ToString();
+        }
+
+        var requestContent = new FormUrlEncodedContent(requestParams);
 
         using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.TokenEndpoint)
         {
