@@ -308,15 +308,15 @@ internal sealed partial class ClientOAuthProvider
             ["client_secret"] = _clientSecret ?? string.Empty,
         };
 
-        // For Microsoft Entra ID, use scope instead of resource
-        if (_scopes is not null && _scopes.Length > 0)
-        {
-            requestParams["scope"] = string.Join(" ", _scopes);
-        }
-        // Only add resource parameter for non-Entra servers  
-        else if (authServerMetadata.Issuer?.Host != "login.microsoftonline.com")
+        // Only add resource parameter for non-Entra servers
+        if (authServerMetadata.Issuer?.Host != "login.microsoftonline.com")
         {
             requestParams["resource"] = resourceUri.ToString();
+        }
+        // For Microsoft Entra ID, use scope instead of resource
+        else if (_scopes is not null && _scopes.Length > 0)
+        {
+            requestParams["scope"] = string.Join(" ", _scopes);
         }
 
         var requestContent = new FormUrlEncodedContent(requestParams);
@@ -406,15 +406,15 @@ internal sealed partial class ClientOAuthProvider
             ["client_secret"] = _clientSecret ?? string.Empty,
         };
 
-        // For Microsoft Entra ID, use scope instead of resource
-        if (_scopes is not null && _scopes.Length > 0)
-        {
-            requestParams["scope"] = string.Join(" ", _scopes);
-        }
         // Only add resource parameter for non-Entra servers
-        else if (authServerMetadata.Issuer?.Host != "login.microsoftonline.com")
+        if (authServerMetadata.Issuer?.Host != "login.microsoftonline.com")
         {
             requestParams["resource"] = protectedResourceMetadata.Resource.ToString();
+        }
+        // For Microsoft Entra ID, use scope instead of resource
+        else if (_scopes is not null && _scopes.Length > 0)
+        {
+            requestParams["scope"] = string.Join(" ", _scopes);
         }
 
         var requestContent = new FormUrlEncodedContent(requestParams);
