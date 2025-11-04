@@ -53,8 +53,7 @@ public class McpClientToolTests : ClientServerTestBase
             Description = "Test tool"
         };
 
-        var exception = Assert.Throws<ArgumentNullException>(() => new McpClientTool(null!, toolDefinition));
-        Assert.Equal("client", exception.ParamName);
+        Assert.Throws<ArgumentNullException>("client", () => new McpClientTool(null!, toolDefinition));
     }
 
     [Fact]
@@ -62,8 +61,7 @@ public class McpClientToolTests : ClientServerTestBase
     {
         await using McpClient client = await CreateMcpClientForServer();
 
-        var exception = Assert.Throws<ArgumentNullException>(() => new McpClientTool(client, null!));
-        Assert.Equal("tool", exception.ParamName);
+        Assert.Throws<ArgumentNullException>("tool", () => new McpClientTool(client, null!));
     }
 
     [Fact]

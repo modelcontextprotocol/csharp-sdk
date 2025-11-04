@@ -37,22 +37,6 @@ public sealed class McpClientTool : AIFunction
     private readonly string _description;
     private readonly IProgress<ProgressNotificationValue>? _progress;
 
-    internal McpClientTool(
-        McpClient client,
-        Tool tool,
-        JsonSerializerOptions serializerOptions,
-        string? name = null,
-        string? description = null,
-        IProgress<ProgressNotificationValue>? progress = null)
-    {
-        _client = client;
-        ProtocolTool = tool;
-        JsonSerializerOptions = serializerOptions;
-        _name = name ?? tool.Name;
-        _description = description ?? tool.Description ?? string.Empty;
-        _progress = progress;
-    }
-
     /// <summary>
     /// Initializes a new instance of the <see cref="McpClientTool"/> class.
     /// </summary>
@@ -76,18 +60,6 @@ public sealed class McpClientTool : AIFunction
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="tool"/> is <see langword="null"/>.</exception>
-    /// <example>
-    /// <code>
-    /// // Cache tool definition from first client
-    /// var tools = await client1.ListToolsAsync();
-    /// var toolDefinition = tools[0].ProtocolTool;
-    /// 
-    /// // Later, reuse with a different client instance
-    /// var client2 = await McpClient.CreateAsync(transport2);
-    /// var reusedTool = new McpClientTool(client2, toolDefinition);
-    /// var result = await reusedTool.CallAsync(new Dictionary&lt;string, object?&gt; { ["param"] = "value" });
-    /// </code>
-    /// </example>
     public McpClientTool(
         McpClient client,
         Tool tool,
@@ -102,6 +74,22 @@ public sealed class McpClientTool : AIFunction
         _name = tool.Name;
         _description = tool.Description ?? string.Empty;
         _progress = null;
+    }
+
+    internal McpClientTool(
+        McpClient client,
+        Tool tool,
+        JsonSerializerOptions serializerOptions,
+        string? name = null,
+        string? description = null,
+        IProgress<ProgressNotificationValue>? progress = null)
+    {
+        _client = client;
+        ProtocolTool = tool;
+        JsonSerializerOptions = serializerOptions;
+        _name = name ?? tool.Name;
+        _description = description ?? tool.Description ?? string.Empty;
+        _progress = progress;
     }
 
     /// <summary>
