@@ -28,7 +28,7 @@ public abstract class Reference
     }
 
     /// <summary>
-    /// Gets the type of content.
+    /// When overridden in a derived class, gets the type of content.
     /// </summary>
     /// <remarks>
     /// This can be "ref/resource" or "ref/prompt".
