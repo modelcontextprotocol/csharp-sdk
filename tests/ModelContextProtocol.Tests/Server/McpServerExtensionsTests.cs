@@ -125,7 +125,7 @@ public class McpServerExtensionsTests
             StopReason = "endTurn",
         };
 
-        const int customDefaultMaxTokens = 500;
+        const int CustomMaxSamplingOutputTokens = 500;
 
         mockServer
             .Setup(s => s.ClientCapabilities)
@@ -133,7 +133,7 @@ public class McpServerExtensionsTests
 
         mockServer
             .Setup(s => s.ServerOptions)
-            .Returns(new McpServerOptions { DefaultSamplingMaxTokens = customDefaultMaxTokens });
+            .Returns(new McpServerOptions { MaxSamplingOutputTokens = CustomMaxSamplingOutputTokens });
 
         CreateMessageRequestParams? capturedRequest = null;
         mockServer
@@ -162,7 +162,7 @@ public class McpServerExtensionsTests
         
         // Verify that the default value was used
         Assert.NotNull(capturedRequest);
-        Assert.Equal(customDefaultMaxTokens, capturedRequest.MaxTokens);
+        Assert.Equal(CustomMaxSamplingOutputTokens, capturedRequest.MaxTokens);
     }
 
     [Fact]

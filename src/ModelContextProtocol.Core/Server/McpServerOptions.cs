@@ -158,11 +158,12 @@ public sealed class McpServerOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This value is used when <see cref="Microsoft.Extensions.AI.ChatOptions.MaxOutputTokens"/> is not set in the request options.
+    /// This value is used in <see cref="McpServer.SampleAsync(IEnumerable{Microsoft.Extensions.AI.ChatMessage}, Microsoft.Extensions.AI.ChatOptions?, CancellationToken)"/>
+    /// when <see cref="Microsoft.Extensions.AI.ChatOptions.MaxOutputTokens"/> is not set in the request options.
     /// </para>
     /// <para>
     /// The default value is 1000 tokens.
     /// </para>
     /// </remarks>
-    public int DefaultSamplingMaxTokens { get; set; } = 1000;
+    public int MaxSamplingOutputTokens { get; set; } = 1000;
 }
