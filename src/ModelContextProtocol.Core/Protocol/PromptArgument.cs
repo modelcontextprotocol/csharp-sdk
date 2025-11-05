@@ -33,7 +33,7 @@ public sealed class PromptArgument : IBaseMetadata
     /// for this argument and how it will affect the generated prompt.
     /// </remarks>
     [JsonPropertyName("description")]
-    public string? Description { get; set; } = string.Empty;
+    public string? Description { get; set; }
 
     /// <summary>
     /// Gets or sets an indication as to whether this argument must be provided when requesting the prompt.

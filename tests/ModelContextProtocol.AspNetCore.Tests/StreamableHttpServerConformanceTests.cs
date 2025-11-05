@@ -540,7 +540,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         SetSessionId(sessionId);
 
         // Call the subscribe method to capture the McpServer instance.
-        using var response = await HttpClient.PostAsync("", JsonContent(Request("resources/subscribe")), TestContext.Current.CancellationToken);
+        using var response = await HttpClient.PostAsync("", JsonContent(SubscribeToResource("file:///test")), TestContext.Current.CancellationToken);
         var rpcResponse = await AssertSingleSseResponseAsync(response);
         AssertType<EmptyResult>(rpcResponse.Result);
         Assert.NotNull(capturedServer);
@@ -627,6 +627,11 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     private string CallToolWithProgressToken(string toolName, string arguments = "{}") =>
         Request("tools/call", $$$"""
             {"name":"{{{toolName}}}","arguments":{{{arguments}}},"_meta":{"progressToken":"abc123"}}
+            """);
+
+    private string SubscribeToResource(string uri) =>
+        Request("resources/subscribe", $$"""
+            {"uri":"{{uri}}"}
             """);
 
     private static InitializeResult AssertServerInfo(JsonRpcResponse rpcResponse)

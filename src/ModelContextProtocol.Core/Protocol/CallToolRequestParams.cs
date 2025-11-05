@@ -14,7 +14,7 @@ public sealed class CallToolRequestParams : RequestParams
 {
     /// <summary>Gets or sets the name of the tool to invoke.</summary>
     [JsonPropertyName("name")]
-    public required string Name { get; init; }
+    public required string Name { get; set; }
 
     /// <summary>
     /// Gets or sets optional arguments to pass to the tool when invoking it on the server.
@@ -24,5 +24,5 @@ public sealed class CallToolRequestParams : RequestParams
     /// a parameter name and its corresponding argument value.
     /// </remarks>
     [JsonPropertyName("arguments")]
-    public IReadOnlyDictionary<string, JsonElement>? Arguments { get; init; }
+    public IDictionary<string, JsonElement>? Arguments { get; set; }
 }

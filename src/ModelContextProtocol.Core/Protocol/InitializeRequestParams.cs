@@ -38,7 +38,7 @@ public sealed class InitializeRequestParams : RequestParams
     /// </para>
     /// </remarks>
     [JsonPropertyName("protocolVersion")]
-    public required string ProtocolVersion { get; init; }
+    public required string ProtocolVersion { get; set; }
 
     /// <summary>
     /// Gets or sets the client's capabilities.
@@ -47,7 +47,7 @@ public sealed class InitializeRequestParams : RequestParams
     /// Capabilities define the features the client supports, such as "sampling" or "roots".
     /// </remarks>
     [JsonPropertyName("capabilities")]
-    public ClientCapabilities? Capabilities { get; init; }
+    public required ClientCapabilities Capabilities { get; set; }
 
     /// <summary>
     /// Gets or sets information about the client implementation, including its name and version.
@@ -57,5 +57,5 @@ public sealed class InitializeRequestParams : RequestParams
     /// Servers may use this information for logging, debugging, or compatibility checks.
     /// </remarks>
     [JsonPropertyName("clientInfo")]
-    public required Implementation ClientInfo { get; init; }
+    public required Implementation ClientInfo { get; set; }
 }

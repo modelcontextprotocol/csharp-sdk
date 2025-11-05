@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -38,7 +39,8 @@ public abstract class ResourceContents
     /// Gets or sets the URI of the resource.
     /// </summary>
     [JsonPropertyName("uri")]
-    public string Uri { get; set; } = string.Empty;
+    [StringSyntax(StringSyntaxAttribute.Uri)]
+    public required string Uri { get; set; }
 
     /// <summary>
     /// Gets or sets the MIME type of the resource content.
@@ -155,7 +157,7 @@ public abstract class ResourceContents
             writer.WriteStartObject();
             writer.WriteString("uri", value.Uri);
             writer.WriteString("mimeType", value.MimeType);
-            
+
             Debug.Assert(value is BlobResourceContents or TextResourceContents);
             if (value is BlobResourceContents blobResource)
             {
