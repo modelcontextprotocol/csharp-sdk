@@ -75,7 +75,16 @@ public class StreamServerTransport : TransportBase
 
         try
         {
-            await JsonSerializer.SerializeAsync(_outputStream, message, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)), cancellationToken).ConfigureAwait(false);
+            // IMPORTANT: We serialize to a complete string first before writing to the stream.
+            // This is required because JsonSerializer.SerializeAsync uses an internal Utf8JsonWriter
+            // with its own ~16KB buffer. For large messages, the writer auto-flushes to the stream
+            // multiple times, but the FINAL buffer chunk is NOT flushed when SerializeAsync completes.
+            // This causes the last portion of large messages (>16KB) to be stuck in the writer's buffer,
+            // resulting in incomplete message transmission and client hangs.
+            // By using Serialize (synchronous), we get the complete JSON string, then write all bytes
+            // at once, ensuring no data is left buffered and the entire message reaches the client.
+            var json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)));
+            await _outputStream.WriteAsync(Encoding.UTF8.GetBytes(json), cancellationToken).ConfigureAwait(false);
             await _outputStream.WriteAsync(s_newlineBytes, cancellationToken).ConfigureAwait(false);
             await _outputStream.FlushAsync(cancellationToken).ConfigureAwait(false);
         }
