@@ -6,22 +6,22 @@ public class EventStoreCleanupService : BackgroundService
 {
     private readonly TimeSpan _jobRunFrequencyInMinutes;
     private readonly ILogger<EventStoreCleanupService> _logger;
-    private readonly IEventStore? _eventStore;
+    private readonly IEventStoreCleaner? _eventStoreCleaner;
 
-    public EventStoreCleanupService(ILogger<EventStoreCleanupService> logger, IConfiguration configuration, IEventStore? eventStore = null)
+    public EventStoreCleanupService(ILogger<EventStoreCleanupService> logger, IConfiguration configuration, IEventStoreCleaner? eventStoreCleaner = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         
-        _eventStore = eventStore;
+        _eventStoreCleaner = eventStoreCleaner;
         _jobRunFrequencyInMinutes = TimeSpan.FromMinutes(configuration.GetValue<int>("EventStore:CleanupJobRunFrequencyInMinutes", 30));
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
 
-        if (_eventStore is null)
+        if (_eventStoreCleaner is null)
         {
-            _logger.LogWarning("No event store implementation provided. Event store cleanup job will not run.");
+            _logger.LogWarning("No event store cleaner implementation provided. Event store cleanup job will not run.");
             return;
         }
 
@@ -32,7 +32,7 @@ public class EventStoreCleanupService : BackgroundService
             try
             {
                 _logger.LogInformation("Running event store cleanup job at {CurrentTimeInUtc}.", DateTime.UtcNow);
-                _eventStore.CleanupEventStore();
+                _eventStoreCleaner.CleanEventStore();
             }
             catch (Exception ex)
             {

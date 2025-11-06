@@ -35,11 +35,4 @@ public interface IEventStore
     /// <returns>The event identifier as a string, or <see langword="null"/> if no event identifier is associated with the
     /// message.</returns>
     string? GetEventId(string streamId, JsonRpcMessage message);
-
-    /// <summary>
-    /// Cleans up the event store by removing outdated or unnecessary events.
-    /// </summary>
-    /// <remarks>This method is typically used to maintain the event store's size and performance by clearing
-    /// events that are no longer needed.</remarks>
-    void CleanupEventStore();
 }

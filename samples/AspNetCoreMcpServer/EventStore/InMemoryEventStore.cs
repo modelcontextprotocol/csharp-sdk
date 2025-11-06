@@ -13,10 +13,10 @@ namespace AspNetCoreMcpServer.EventStore;
 /// <remarks>The <see cref="InMemoryEventStore"/> provides functionality to store events for a given stream and
 /// replay events after a specified event ID. It supports resumability for specific types of requests and ensures events
 /// are replayed in the correct order.</remarks>
-public sealed class InMemoryEventStore : IEventStore
+public sealed class InMemoryEventStore : IEventStore, IEventStoreCleaner
 {
     public const string EventIdDelimiter = "_";
-    private ConcurrentDictionary<string, List<SseItem<JsonRpcMessage?>>> _eventStore = new();
+    private static ConcurrentDictionary<string, List<SseItem<JsonRpcMessage?>>> _eventStore = new();
 
     private readonly ILogger<InMemoryEventStore> _logger;
     private readonly TimeSpan _eventsRetentionDurationInMinutes;
@@ -74,7 +74,7 @@ public sealed class InMemoryEventStore : IEventStore
         return $"{streamId}{EventIdDelimiter}{DateTime.UtcNow.Ticks}";
     }
 
-    public void CleanupEventStore()
+    public void CleanEventStore()
     {
         var cutoffTime = DateTime.UtcNow - _eventsRetentionDurationInMinutes;
         _logger.LogInformation("Cleaning up events older than {CutoffTime} from event store.",  cutoffTime);

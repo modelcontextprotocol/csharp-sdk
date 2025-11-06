@@ -35,6 +35,7 @@ builder.Services.AddHttpClient("WeatherApi", client =>
 
 // adding InMemoryEventStore to support stream resumability and background cleanup service
 builder.Services.TryAddSingleton<IEventStore, InMemoryEventStore>();
+builder.Services.TryAddSingleton<IEventStoreCleaner, InMemoryEventStore>();
 builder.Services.AddHostedService<EventStoreCleanupService>();
 
 var app = builder.Build();
