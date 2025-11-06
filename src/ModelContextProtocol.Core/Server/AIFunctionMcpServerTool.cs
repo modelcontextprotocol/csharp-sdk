@@ -6,7 +6,6 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.Json.Serialization.Metadata;
 using System.Text.RegularExpressions;
 
 namespace ModelContextProtocol.Server;
@@ -208,6 +207,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     /// <summary>Initializes a new instance of the <see cref="McpServerTool"/> class.</summary>
     private AIFunctionMcpServerTool(AIFunction function, Tool tool, IServiceProvider? serviceProvider, bool structuredOutputRequiresWrapping, IReadOnlyList<object> metadata)
     {
+        ValidateToolName(tool.Name);
+
         AIFunction = function;
         ProtocolTool = tool;
         ProtocolTool.McpServerTool = this;
@@ -376,14 +377,34 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         return meta;
     }
 
-    /// <summary>Regex that flags runs of characters other than ASCII digits or letters.</summary>
 #if NET
+    /// <summary>Regex that flags runs of characters other than ASCII digits or letters.</summary>
     [GeneratedRegex("[^0-9A-Za-z]+")]
     private static partial Regex NonAsciiLetterDigitsRegex();
+
+    /// <summary>Regex that validates tool names.</summary>
+    [GeneratedRegex(@"^[A-Za-z0-9_.-]{1,128}\z")]
+    private static partial Regex ValidateToolNameRegex();
 #else
     private static Regex NonAsciiLetterDigitsRegex() => _nonAsciiLetterDigits;
     private static readonly Regex _nonAsciiLetterDigits = new("[^0-9A-Za-z]+", RegexOptions.Compiled);
+
+    private static Regex ValidateToolNameRegex() => _validateToolName;
+    private static readonly Regex _validateToolName = new(@"^[A-Za-z0-9_.-]{1,128}\z", RegexOptions.Compiled);
 #endif
+
+    private static void ValidateToolName(string name)
+    {
+        if (name is null)
+        {
+            throw new ArgumentException("Tool name cannot be null.");
+        }
+
+        if (!ValidateToolNameRegex().IsMatch(name))
+        {
+            throw new ArgumentException($"The tool name '{name}' is invalid. Tool names must match the regular expression '{ValidateToolNameRegex()}'");
+        }
+    }
 
     private static JsonElement? CreateOutputSchema(AIFunction function, McpServerToolCreateOptions? toolCreateOptions, out bool structuredOutputRequiresWrapping)
     {
