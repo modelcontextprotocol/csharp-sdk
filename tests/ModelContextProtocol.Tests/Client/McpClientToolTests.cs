@@ -1,8 +1,11 @@
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Tests.Client;
 
@@ -15,295 +18,475 @@ public class McpClientToolTests : ClientServerTestBase
 
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
-        // Add a simple echo tool for testing
-        mcpServerBuilder.WithTools([McpServerTool.Create((string message) => $"Echo: {message}", new() { Name = "echo", Description = "Echoes back the message" })]);
-        
-        // Add a tool with parameters for testing
-        mcpServerBuilder.WithTools([McpServerTool.Create((int a, int b) => a + b, new() { Name = "add", Description = "Adds two numbers" })]);
-        
-        // Add a tool that returns complex result
-        mcpServerBuilder.WithTools([McpServerTool.Create((string name, int age) => $"Person: {name}, Age: {age}", new() { Name = "createPerson", Description = "Creates a person description" })]);
+        mcpServerBuilder.WithTools<TestTools>();
     }
 
-    [Fact]
-    public async Task Constructor_WithValidParameters_CreatesInstance()
+    private class TestTools
     {
-        await using McpClient client = await CreateMcpClientForServer();
+        // Tool that returns only text content
+        [McpServerTool]
+        public static TextContentBlock TextOnlyTool() =>
+            new TextContentBlock { Text = "Simple text result" };
 
-        // Get a tool definition from the server
-        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
-        var originalTool = tools.First(t => t.Name == "echo");
-        var toolDefinition = originalTool.ProtocolTool;
+        // Tool that returns only text content (string)
+        [McpServerTool]
+        public static string StringTool() => "Simple string result";
 
-        // Create a new McpClientTool using the public constructor
-        var newTool = new McpClientTool(client, toolDefinition);
+        // Tool that returns image content as single ContentBlock
+        [McpServerTool]
+        public static ImageContentBlock ImageTool() =>
+            new ImageContentBlock { Data = Convert.ToBase64String(Encoding.UTF8.GetBytes("fake-image-data")), MimeType = "image/png" };
 
-        Assert.NotNull(newTool);
-        Assert.Equal("echo", newTool.Name);
-        Assert.Equal("Echoes back the message", newTool.Description);
-        Assert.Same(toolDefinition, newTool.ProtocolTool);
-    }
+        // Tool that returns audio content as single ContentBlock
+        [McpServerTool]
+        public static AudioContentBlock AudioTool() =>
+            new AudioContentBlock { Data = Convert.ToBase64String(Encoding.UTF8.GetBytes("fake-audio-data")), MimeType = "audio/mp3" };
 
-    [Fact]
-    public async Task Constructor_WithNullClient_ThrowsArgumentNullException()
-    {
-        var toolDefinition = new Tool
+        // Tool that returns embedded resource
+        [McpServerTool]
+        public static EmbeddedResourceBlock EmbeddedResourceTool() =>
+            new EmbeddedResourceBlock { Resource = new TextResourceContents { Uri = "resource-uri", Text = "Resource text content", MimeType = "text/plain" } };
+
+        // Tool that returns mixed content (text + image) using IEnumerable<AIContent>
+        [McpServerTool]
+        public static IEnumerable<AIContent> MixedContentTool()
         {
-            Name = "test",
-            Description = "Test tool"
-        };
-
-        Assert.Throws<ArgumentNullException>("client", () => new McpClientTool(null!, toolDefinition));
-    }
-
-    [Fact]
-    public async Task Constructor_WithNullTool_ThrowsArgumentNullException()
-    {
-        await using McpClient client = await CreateMcpClientForServer();
-
-        Assert.Throws<ArgumentNullException>("tool", () => new McpClientTool(client, null!));
-    }
-
-    [Fact]
-    public async Task Constructor_WithNullSerializerOptions_UsesDefaultOptions()
-    {
-        await using McpClient client = await CreateMcpClientForServer();
-
-        var toolDefinition = new Tool
-        {
-            Name = "test",
-            Description = "Test tool"
-        };
-
-        var tool = new McpClientTool(client, toolDefinition, serializerOptions: null);
-
-        Assert.NotNull(tool.JsonSerializerOptions);
-        Assert.Same(McpJsonUtilities.DefaultOptions, tool.JsonSerializerOptions);
-    }
-
-    [Fact]
-    public async Task Constructor_WithCustomSerializerOptions_UsesProvidedOptions()
-    {
-        await using McpClient client = await CreateMcpClientForServer();
-
-        var toolDefinition = new Tool
-        {
-            Name = "test",
-            Description = "Test tool"
-        };
-
-        var customOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
-
-        var tool = new McpClientTool(client, toolDefinition, customOptions);
-
-        Assert.NotNull(tool.JsonSerializerOptions);
-        Assert.Same(customOptions, tool.JsonSerializerOptions);
-    }
-
-    [Fact]
-    public async Task ReuseToolDefinition_AcrossDifferentClients_InvokesSuccessfully()
-    {
-        // Create first client and get tool definition
-        Tool toolDefinition;
-        {
-            await using McpClient client1 = await CreateMcpClientForServer();
-            var tools = await client1.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
-            var echoTool = tools.First(t => t.Name == "echo");
-            toolDefinition = echoTool.ProtocolTool;
+            yield return new TextContent("Description of the image");
+            yield return new DataContent(Encoding.UTF8.GetBytes("fake-image-data"), "image/png");
         }
 
-        // Create second client (simulating reconnect)
-        await using McpClient client2 = await CreateMcpClientForServer();
-
-        // Create new McpClientTool with cached tool definition and new client
-        var reusedTool = new McpClientTool(client2, toolDefinition);
-
-        // Invoke the tool using the new client
-        var result = await reusedTool.CallAsync(
-            new Dictionary<string, object?> { ["message"] = "Hello from reused tool" },
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.NotNull(result);
-        Assert.NotNull(result.Content);
-        var textContent = result.Content.FirstOrDefault() as TextContentBlock;
-        Assert.NotNull(textContent);
-        Assert.Equal("Echo: Hello from reused tool", textContent.Text);
-    }
-
-    [Fact]
-    public async Task ReuseToolDefinition_WithComplexParameters_InvokesSuccessfully()
-    {
-        // Create first client and get tool definition
-        Tool toolDefinition;
+        // Tool that returns multiple images using IEnumerable<AIContent>
+        [McpServerTool]
+        public static IEnumerable<AIContent> MultipleImagesTool()
         {
-            await using McpClient client1 = await CreateMcpClientForServer();
-            var tools = await client1.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
-            var addTool = tools.First(t => t.Name == "add");
-            toolDefinition = addTool.ProtocolTool;
+            yield return new DataContent(Encoding.UTF8.GetBytes("image1"), "image/png");
+            yield return new DataContent(Encoding.UTF8.GetBytes("image2"), "image/jpeg");
         }
 
-        // Create second client
-        await using McpClient client2 = await CreateMcpClientForServer();
-
-        // Create new McpClientTool with cached tool definition
-        var reusedTool = new McpClientTool(client2, toolDefinition);
-
-        // Invoke the tool with integer parameters
-        var result = await reusedTool.CallAsync(
-            new Dictionary<string, object?> { ["a"] = 5, ["b"] = 7 },
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.NotNull(result);
-        Assert.NotNull(result.Content);
-        var textContent = result.Content.FirstOrDefault() as TextContentBlock;
-        Assert.NotNull(textContent);
-        Assert.Equal("12", textContent.Text);
-    }
-
-    [Fact]
-    public async Task ReuseToolDefinition_PreservesToolMetadata()
-    {
-        await using McpClient client = await CreateMcpClientForServer();
-        
-        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
-        var originalTool = tools.First(t => t.Name == "createPerson");
-        var toolDefinition = originalTool.ProtocolTool;
-
-        // Create new McpClientTool with cached tool definition
-        var reusedTool = new McpClientTool(client, toolDefinition);
-
-        // Verify metadata is preserved
-        Assert.Equal(originalTool.Name, reusedTool.Name);
-        Assert.Equal(originalTool.Description, reusedTool.Description);
-        Assert.Equal(originalTool.ProtocolTool.Name, reusedTool.ProtocolTool.Name);
-        Assert.Equal(originalTool.ProtocolTool.Description, reusedTool.ProtocolTool.Description);
-        
-        // Verify JSON schema is preserved
-        Assert.Equal(
-            JsonSerializer.Serialize(originalTool.JsonSchema, McpJsonUtilities.DefaultOptions),
-            JsonSerializer.Serialize(reusedTool.JsonSchema, McpJsonUtilities.DefaultOptions));
-    }
-
-    [Fact]
-    public async Task ManuallyConstructedTool_CanBeInvoked()
-    {
-        await using McpClient client = await CreateMcpClientForServer();
-
-        // Manually construct a Tool object matching the server's tool
-        var manualTool = new Tool
+        // Tool that returns audio + text using IEnumerable<AIContent>
+        [McpServerTool]
+        public static IEnumerable<AIContent> AudioWithTextTool()
         {
-            Name = "echo",
-            Description = "Echoes back the message",
-            InputSchema = JsonDocument.Parse("""
+            yield return new TextContent("Audio transcription");
+            yield return new DataContent(Encoding.UTF8.GetBytes("fake-audio"), "audio/wav");
+        }
+
+        // Tool that returns embedded resource + text using IEnumerable<ContentBlock>
+        [McpServerTool]
+        public static IEnumerable<ContentBlock> ResourceWithTextTool()
+        {
+            yield return new TextContentBlock { Text = "Resource description" };
+            yield return new EmbeddedResourceBlock { Resource = new TextResourceContents { Uri = "file://test.txt", Text = "File content", MimeType = "text/plain" } };
+        }
+
+        // Tool that returns all content types using IEnumerable<AIContent>
+        [McpServerTool]
+        public static IEnumerable<AIContent> AllContentTypesTool()
+        {
+            yield return new TextContent("Mixed content");
+            yield return new DataContent(Encoding.UTF8.GetBytes("image"), "image/png");
+            yield return new DataContent(Encoding.UTF8.GetBytes("audio"), "audio/mp3");
+            yield return new DataContent(Encoding.UTF8.GetBytes("blob"), "application/octet-stream");
+        }
+
+        // Tool that returns content that can't be converted to AIContent (ResourceLinkBlock)
+        [McpServerTool]
+        public static ResourceLinkBlock ResourceLinkTool() =>
+            new ResourceLinkBlock { Uri = "file://test.txt", Name = "test.txt" };
+
+        // Tool that returns mixed content where some can't be converted (ResourceLinkBlock + Image)
+        [McpServerTool]
+        public static IEnumerable<ContentBlock> MixedWithNonConvertibleTool()
+        {
+            yield return new ImageContentBlock { Data = Convert.ToBase64String(Encoding.UTF8.GetBytes("image-data")), MimeType = "image/png" };
+            yield return new ResourceLinkBlock { Uri = "file://linked.txt", Name = "linked.txt" };
+        }
+
+        // Tool that returns CallToolResult with IsError = true
+        [McpServerTool]
+        public static CallToolResult ErrorTool() =>
+            new CallToolResult
+            {
+                IsError = true,
+                Content = [new TextContentBlock { Text = "Error message" }]
+            };
+
+        // Tool that returns CallToolResult with StructuredContent
+        [McpServerTool]
+        public static CallToolResult StructuredContentTool() =>
+            new CallToolResult
+            {
+                Content = [new TextContentBlock { Text = "Regular content" }],
+                StructuredContent = JsonNode.Parse("{\"key\":\"value\"}")
+            };
+
+        // Tool that returns CallToolResult with Meta
+        [McpServerTool]
+        public static CallToolResult MetaTool() =>
+            new CallToolResult
+            {
+                Content = [new TextContentBlock { Text = "Content with meta" }],
+                Meta = new JsonObject { ["customKey"] = "customValue" }
+            };
+
+        // Tool that returns CallToolResult with multiple properties (IsError + Meta)
+        [McpServerTool]
+        public static CallToolResult ErrorWithMetaTool() =>
+            new CallToolResult
+            {
+                IsError = true,
+                Content = [new TextContentBlock { Text = "Error with metadata" }],
+                Meta = new JsonObject { ["errorCode"] = 500 }
+            };
+
+        // Tool that returns binary resource (non-text)
+        [McpServerTool]
+        public static EmbeddedResourceBlock BinaryResourceTool() =>
+            new EmbeddedResourceBlock
+            {
+                Resource = new BlobResourceContents
                 {
-                    "type": "object",
-                    "properties": {
-                        "message": { "type": "string" }
-                    }
+                    Uri = "data://blob",
+                    Blob = Convert.ToBase64String(Encoding.UTF8.GetBytes("binary-data")),
+                    MimeType = "application/octet-stream"
                 }
-                """).RootElement.Clone()
-        };
-
-        // Create McpClientTool with manually constructed tool
-        var clientTool = new McpClientTool(client, manualTool);
-
-        // Invoke the tool
-        var result = await clientTool.CallAsync(
-            new Dictionary<string, object?> { ["message"] = "Test message" },
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.NotNull(result);
-        Assert.NotNull(result.Content);
-        var textContent = result.Content.FirstOrDefault() as TextContentBlock;
-        Assert.NotNull(textContent);
-        Assert.Equal("Echo: Test message", textContent.Text);
+            };
     }
 
     [Fact]
-    public async Task ReuseToolDefinition_WithInvokeAsync_WorksCorrectly()
+    public async Task TextOnlyTool_ReturnsSingleTextContent()
     {
-        Tool toolDefinition;
-        {
-            await using McpClient client1 = await CreateMcpClientForServer();
-            var tools = await client1.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
-            var addTool = tools.First(t => t.Name == "add");
-            toolDefinition = addTool.ProtocolTool;
-        }
+        // Arrange
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "text_only_tool");
 
-        await using McpClient client2 = await CreateMcpClientForServer();
-        var reusedTool = new McpClientTool(client2, toolDefinition);
+        // Act
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        // Use AIFunction.InvokeAsync (inherited method)
-        var result = await reusedTool.InvokeAsync(
-            new() { ["a"] = 10, ["b"] = 20 },
-            TestContext.Current.CancellationToken);
-
-        Assert.NotNull(result);
-        
-        // InvokeAsync returns a JsonElement containing the serialized CallToolResult
-        var jsonElement = Assert.IsType<JsonElement>(result);
-        var callToolResult = JsonSerializer.Deserialize<CallToolResult>(jsonElement, McpJsonUtilities.DefaultOptions);
-        
-        Assert.NotNull(callToolResult);
-        Assert.NotNull(callToolResult.Content);
-        var textContent = callToolResult.Content.FirstOrDefault() as TextContentBlock;
-        Assert.NotNull(textContent);
-        Assert.Equal("30", textContent.Text);
+        // Assert - single text content should return TextContent
+        var textContent = Assert.IsType<TextContent>(result);
+        Assert.Equal("Simple text result", textContent.Text);
     }
 
     [Fact]
-    public async Task Constructor_WithToolWithoutDescription_UsesEmptyDescription()
+    public async Task StringTool_ReturnsSingleTextContent()
     {
         await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "string_tool");
 
-        var toolWithoutDescription = new Tool
-        {
-            Name = "noDescTool",
-            Description = null
-        };
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        var clientTool = new McpClientTool(client, toolWithoutDescription);
-
-        Assert.Equal("noDescTool", clientTool.Name);
-        Assert.Equal(string.Empty, clientTool.Description);
+        var textContent = Assert.IsType<TextContent>(result);
+        Assert.Equal("Simple string result", textContent.Text);
     }
 
     [Fact]
-    public async Task ReuseToolDefinition_MultipleClients_AllWorkIndependently()
+    public async Task ImageTool_ReturnsSingleDataContent()
     {
-        // Get tool definition from first client
-        Tool toolDefinition;
-        {
-            await using McpClient client1 = await CreateMcpClientForServer();
-            var tools = await client1.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
-            var echoTool = tools.First(t => t.Name == "echo");
-            toolDefinition = echoTool.ProtocolTool;
-        }
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "image_tool");
 
-        // Create and invoke on second client
-        string text2;
-        {
-            await using McpClient client2 = await CreateMcpClientForServer();
-            var tool2 = new McpClientTool(client2, toolDefinition);
-            var result2 = await tool2.CallAsync(
-                new Dictionary<string, object?> { ["message"] = "From client 2" },
-                cancellationToken: TestContext.Current.CancellationToken);
-            text2 = (result2.Content.FirstOrDefault() as TextContentBlock)?.Text ?? string.Empty;
-        }
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        // Create and invoke on third client
-        string text3;
-        {
-            await using McpClient client3 = await CreateMcpClientForServer();
-            var tool3 = new McpClientTool(client3, toolDefinition);
-            var result3 = await tool3.CallAsync(
-                new Dictionary<string, object?> { ["message"] = "From client 3" },
-                cancellationToken: TestContext.Current.CancellationToken);
-            text3 = (result3.Content.FirstOrDefault() as TextContentBlock)?.Text ?? string.Empty;
-        }
+        var dataContent = Assert.IsType<DataContent>(result);
+        Assert.Equal("image/png", dataContent.MediaType);
+        Assert.Equal("fake-image-data", Encoding.UTF8.GetString(dataContent.Data.ToArray()));
+    }
 
-        // Verify both worked
-        Assert.Equal("Echo: From client 2", text2);
-        Assert.Equal("Echo: From client 3", text3);
+    [Fact]
+    public async Task AudioTool_ReturnsSingleDataContent()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "audio_tool");
+
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        var dataContent = Assert.IsType<DataContent>(result);
+        Assert.Equal("audio/mp3", dataContent.MediaType);
+        Assert.Equal("fake-audio-data", Encoding.UTF8.GetString(dataContent.Data.ToArray()));
+    }
+
+    [Fact]
+    public async Task EmbeddedResourceTool_ReturnsSingleTextContent()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "embedded_resource_tool");
+
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        var textContent = Assert.IsType<TextContent>(result);
+        Assert.Equal("Resource text content", textContent.Text);
+    }
+
+    [Fact]
+    public async Task MixedContentTool_ReturnsAIContentArray()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "mixed_content_tool");
+
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        var aiContents = Assert.IsType<AIContent[]>(result);
+        Assert.Equal(2, aiContents.Length);
+        
+        var textContent = Assert.IsType<TextContent>(aiContents[0]);
+        Assert.Equal("Description of the image", textContent.Text);
+        
+        var dataContent = Assert.IsType<DataContent>(aiContents[1]);
+        Assert.Equal("image/png", dataContent.MediaType);
+    }
+
+    [Fact]
+    public async Task MultipleImagesTool_ReturnsAIContentArray()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "multiple_images_tool");
+
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        var aiContents = Assert.IsType<AIContent[]>(result);
+        Assert.Equal(2, aiContents.Length);
+        
+        var dataContent0 = Assert.IsType<DataContent>(aiContents[0]);
+        Assert.Equal("image/png", dataContent0.MediaType);
+        Assert.Equal("image1", Encoding.UTF8.GetString(dataContent0.Data.ToArray()));
+        
+        var dataContent1 = Assert.IsType<DataContent>(aiContents[1]);
+        Assert.Equal("image/jpeg", dataContent1.MediaType);
+        Assert.Equal("image2", Encoding.UTF8.GetString(dataContent1.Data.ToArray()));
+    }
+
+    [Fact]
+    public async Task AudioWithTextTool_ReturnsAIContentArray()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "audio_with_text_tool");
+
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        var aiContents = Assert.IsType<AIContent[]>(result);
+        Assert.Equal(2, aiContents.Length);
+        
+        var textContent = Assert.IsType<TextContent>(aiContents[0]);
+        Assert.Equal("Audio transcription", textContent.Text);
+        
+        var dataContent = Assert.IsType<DataContent>(aiContents[1]);
+        Assert.Equal("audio/wav", dataContent.MediaType);
+    }
+
+    [Fact]
+    public async Task ResourceWithTextTool_ReturnsAIContentArray()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "resource_with_text_tool");
+
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        var aiContents = Assert.IsType<AIContent[]>(result);
+        Assert.Equal(2, aiContents.Length);
+        
+        var textContent0 = Assert.IsType<TextContent>(aiContents[0]);
+        Assert.Equal("Resource description", textContent0.Text);
+        
+        var textContent1 = Assert.IsType<TextContent>(aiContents[1]);
+        Assert.Equal("File content", textContent1.Text);
+    }
+
+    [Fact]
+    public async Task AllContentTypesTool_ReturnsAIContentArray()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "all_content_types_tool");
+
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        var aiContents = Assert.IsType<AIContent[]>(result);
+        Assert.Equal(4, aiContents.Length);
+        
+        var textContent = Assert.IsType<TextContent>(aiContents[0]);
+        Assert.Equal("Mixed content", textContent.Text);
+        
+        var dataContent1 = Assert.IsType<DataContent>(aiContents[1]);
+        Assert.Equal("image/png", dataContent1.MediaType);
+        
+        var dataContent2 = Assert.IsType<DataContent>(aiContents[2]);
+        Assert.Equal("audio/mp3", dataContent2.MediaType);
+        
+        var dataContent3 = Assert.IsType<DataContent>(aiContents[3]);
+        Assert.Equal("application/octet-stream", dataContent3.MediaType);
+    }
+
+    [Fact]
+    public async Task SingleAIContent_PreservesRawRepresentation()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "image_tool");
+
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        var dataContent = Assert.IsType<DataContent>(result);
+        Assert.NotNull(dataContent.RawRepresentation);
+        var imageBlock = Assert.IsType<ImageContentBlock>(dataContent.RawRepresentation);
+        Assert.Equal("image/png", imageBlock.MimeType);
+    }
+
+    [Fact]
+    public async Task ResourceLinkTool_ReturnsJsonElement()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "resource_link_tool");
+
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.IsType<JsonElement>(result);
+        var jsonElement = (JsonElement)result!;
+        Assert.True(jsonElement.TryGetProperty("content", out var contentArray));
+        Assert.Equal(JsonValueKind.Array, contentArray.ValueKind);
+        Assert.Equal(1, contentArray.GetArrayLength());
+        
+        var firstContent = contentArray[0];
+        Assert.True(firstContent.TryGetProperty("type", out var typeProperty));
+        Assert.Equal("resource_link", typeProperty.GetString());
+    }
+
+    [Fact]
+    public async Task MixedWithNonConvertibleTool_ReturnsJsonElement()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "mixed_with_non_convertible_tool");
+
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        var jsonElement = Assert.IsType<JsonElement>(result);
+        Assert.True(jsonElement.TryGetProperty("content", out var contentArray));
+        Assert.Equal(JsonValueKind.Array, contentArray.ValueKind);
+        Assert.Equal(2, contentArray.GetArrayLength());
+        
+        var firstContent = contentArray[0];
+        Assert.True(firstContent.TryGetProperty("type", out var type1));
+        Assert.Equal("image", type1.GetString());
+        
+        var secondContent = contentArray[1];
+        Assert.True(secondContent.TryGetProperty("type", out var type2));
+        Assert.Equal("resource_link", type2.GetString());
+    }
+
+    [Fact]
+    public async Task ErrorTool_ReturnsJsonElement()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "error_tool");
+
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.IsType<JsonElement>(result);
+        var jsonElement = (JsonElement)result!;
+        Assert.True(jsonElement.TryGetProperty("isError", out var isError));
+        Assert.True(isError.GetBoolean());
+        Assert.True(jsonElement.TryGetProperty("content", out var content));
+        Assert.Equal(JsonValueKind.Array, content.ValueKind);
+    }
+
+    [Fact]
+    public async Task StructuredContentTool_ReturnsJsonElement()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "structured_content_tool");
+
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        var jsonElement = Assert.IsType<JsonElement>(result);
+        Assert.True(jsonElement.TryGetProperty("structuredContent", out var structuredContent));
+        Assert.True(structuredContent.TryGetProperty("key", out var key));
+        Assert.Equal("value", key.GetString());
+        Assert.True(jsonElement.TryGetProperty("content", out var content));
+        Assert.Equal(JsonValueKind.Array, content.ValueKind);
+    }
+
+    [Fact]
+    public async Task MetaTool_ReturnsJsonElement()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "meta_tool");
+
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        var jsonElement = Assert.IsType<JsonElement>(result);
+        Assert.True(jsonElement.TryGetProperty("_meta", out var meta));
+        Assert.True(meta.TryGetProperty("customKey", out var customKey));
+        Assert.Equal("customValue", customKey.GetString());
+        Assert.True(jsonElement.TryGetProperty("content", out var content));
+        Assert.Equal(JsonValueKind.Array, content.ValueKind);
+    }
+
+    [Fact]
+    public async Task ErrorWithMetaTool_ReturnsJsonElement()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "error_with_meta_tool");
+
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.IsType<JsonElement>(result);
+        var jsonElement = (JsonElement)result!;
+        Assert.True(jsonElement.TryGetProperty("isError", out var isError));
+        Assert.True(isError.GetBoolean());
+        Assert.True(jsonElement.TryGetProperty("_meta", out var meta));
+        Assert.True(meta.TryGetProperty("errorCode", out var errorCode));
+        Assert.Equal(500, errorCode.GetInt32());
+        Assert.True(jsonElement.TryGetProperty("content", out var content));
+        Assert.Equal(JsonValueKind.Array, content.ValueKind);
+    }
+
+    [Fact]
+    public async Task BinaryResourceTool_ReturnsSingleDataContent()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "binary_resource_tool");
+
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        var dataContent = Assert.IsType<DataContent>(result);
+        Assert.Equal("application/octet-stream", dataContent.MediaType);
+        Assert.Equal("binary-data", Encoding.UTF8.GetString(dataContent.Data.ToArray()));
+    }
+
+    [Fact]
+    public async Task MultipleAIContent_PreservesRawRepresentation()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "mixed_content_tool");
+
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        var aiContents = Assert.IsType<AIContent[]>(result);
+        Assert.Equal(2, aiContents.Length);
+
+        var textContent = Assert.IsType<TextContent>(aiContents[0]);
+        Assert.NotNull(textContent.RawRepresentation);
+        Assert.IsType<TextContentBlock>(textContent.RawRepresentation);
+
+        var dataContent = Assert.IsType<DataContent>(aiContents[1]);
+        Assert.NotNull(dataContent.RawRepresentation);
+        Assert.IsType<ImageContentBlock>(dataContent.RawRepresentation);
     }
 }

@@ -130,6 +130,26 @@ public sealed class McpClientTool : AIFunction
         AIFunctionArguments arguments, CancellationToken cancellationToken)
     {
         CallToolResult result = await CallAsync(arguments, _progress, JsonSerializerOptions, cancellationToken).ConfigureAwait(false);
+
+        // We want to translate the result content into AIContent, using AIContent as the exchange types, so
+        // that downstream IChatClients can specialize handling based on the content (e.g. sending image content
+        // back to the AI service as a multi-modal tool response). However, when there is additional information
+        // carried by the CallToolResult outside of its ContentBlocks, just returning AIContent from those ContentBlocks
+        // would lose that information. So, we only do the translation if there is no additional information to preserve.
+        if (result.IsError is not true &&
+            result.StructuredContent is null &&
+            result.Meta is not { Count: > 0 })
+        {
+            switch (result.Content.Count)
+            {
+                case 1 when result.Content[0].ToAIContent() is { } aiContent:
+                    return aiContent;
+
+                case > 1 when result.Content.Select(c => c.ToAIContent()).ToArray() is { } aiContents && aiContents.All(static c => c is not null):
+                    return aiContents;
+            }
+        }
+
         return JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.CallToolResult);
     }
 
