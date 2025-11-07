@@ -43,7 +43,7 @@
     <Project Path="samples/AspNetCoreMcpServer/AspNetCoreMcpServer.csproj" />
     <Project Path="samples/ChatWithTools/ChatWithTools.csproj" />
     <Project Path="samples/EverythingServer.Core/EverythingServer.Core.csproj" />
-    <Project Path="samples/EverythingServer.Http/EverythingServer.csproj" />
+    <Project Path="samples/EverythingServer.Http/EverythingServer.Http.csproj" />
     <Project Path="samples/EverythingServer.Stdio/EverythingServer.Stdio.csproj" />
     <Project Path="samples/InMemoryTransport/InMemoryTransport.csproj" />
     <Project Path="samples/ProtectedMcpClient/ProtectedMcpClient.csproj" />
