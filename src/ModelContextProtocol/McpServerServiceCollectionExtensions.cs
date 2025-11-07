@@ -36,8 +36,8 @@ public static class McpServerServiceCollectionExtensions
         }
         
         // Register the default options as a singleton that can be safely resolved
-        // without circular dependencies
-        services.TryAddSingleton(defaultOptions);
+        // without circular dependencies. Use AddSingleton (not TryAdd) to ensure it's registered.
+        services.AddSingleton<McpServerDefaultOptions>(defaultOptions);
 
         return new DefaultMcpServerBuilder(services);
     }

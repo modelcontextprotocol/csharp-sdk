@@ -62,7 +62,7 @@ public class McpServerJsonSerializerOptionsTests
         Assert.Single(tools);
         
         var tool = tools[0];
-        Assert.Equal("ToolWithParameters", tool.ProtocolTool.Name);
+        Assert.Equal("tool_with_parameters", tool.ProtocolTool.Name); // Tool name follows PropertyNamingPolicy
         
         // Check that the input schema uses snake_case for property names
         var inputSchema = tool.ProtocolTool.InputSchema;
@@ -97,7 +97,7 @@ public class McpServerJsonSerializerOptionsTests
         Assert.Single(prompts);
         
         var prompt = prompts[0];
-        Assert.Equal("PromptWithParameters", prompt.ProtocolPrompt.Name);
+        Assert.Equal("prompt_with_parameters", prompt.ProtocolPrompt.Name); // Prompt name follows PropertyNamingPolicy
         
         // Check that the arguments schema uses snake_case for property names
         var arguments = prompt.ProtocolPrompt.Arguments;
