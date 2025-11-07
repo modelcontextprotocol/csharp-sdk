@@ -11,6 +11,6 @@ internal sealed class TokenProgress(McpSession session, ProgressToken progressTo
     /// <inheritdoc />
     public void Report(ProgressNotificationValue value)
     {
-        _ = session.NotifyProgressAsync(progressToken, value, CancellationToken.None);
+        _ = session.NotifyProgressAsync(progressToken, value, meta: null, CancellationToken.None);
     }
 }
