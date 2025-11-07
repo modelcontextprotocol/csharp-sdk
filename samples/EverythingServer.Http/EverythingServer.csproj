@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ModelContextProtocol.AspNetCore\ModelContextProtocol.AspNetCore.csproj" />
+    <ProjectReference Include="..\EverythingServer.Core\EverythingServer.Core.csproj" />
   </ItemGroup>
 
 </Project>
