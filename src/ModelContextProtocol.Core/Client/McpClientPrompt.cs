@@ -97,6 +97,6 @@ public sealed class McpClientPrompt
             arguments as IReadOnlyDictionary<string, object?> ??
             arguments?.ToDictionary();
 
-        return await _client.GetPromptAsync(ProtocolPrompt.Name, argDict, serializerOptions, cancellationToken: cancellationToken).ConfigureAwait(false);
+        return await _client.GetPromptAsync(ProtocolPrompt.Name, argDict, new RequestOptions(){JsonSerializerOptions = serializerOptions}, cancellationToken).ConfigureAwait(false);
     }
 }

@@ -50,7 +50,7 @@ foreach (var tool in await client.ListToolsAsync())
 var result = await client.CallToolAsync(
     "echo",
     new Dictionary<string, object?>() { ["message"] = "Hello MCP!" },
-    cancellationToken:CancellationToken.None);
+    cancellationToken: CancellationToken.None);
 
 // echo always returns one and only one text content object
 Console.WriteLine(result.Content.First(c => c.Type == "text").Text);
@@ -83,13 +83,13 @@ using System.ComponentModel;
 var serverOptions = new McpServerOptions();
 
 // Add tools directly
-serverOptions.Capabilities.Tools = new() 
+serverOptions.Capabilities.Tools = new()
 {
     ListChanged = true,
     ToolCollection = [
         McpServerTool.Create((string message) => $"hello {message}", new()
         {
-            Name = "echo", 
+            Name = "echo",
             Description = "Echoes the message back to the client."
         })
     ]
