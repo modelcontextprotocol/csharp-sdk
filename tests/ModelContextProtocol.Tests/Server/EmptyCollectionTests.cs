@@ -31,7 +31,7 @@ public class EmptyCollectionTests : ClientServerTestBase
         var client = await CreateMcpClientForServer();
 
         // Initially, the resource collection is empty
-        var initialResources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
+        var initialResources = await client.ListResourcesAsync(options: null, TestContext.Current.CancellationToken);
         Assert.Empty(initialResources);
 
         // Add a resource dynamically
@@ -40,7 +40,7 @@ public class EmptyCollectionTests : ClientServerTestBase
             new() { UriTemplate = "test://resource/1" }));
 
         // The resource should now be listed
-        var updatedResources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
+        var updatedResources = await client.ListResourcesAsync(options: null, TestContext.Current.CancellationToken);
         Assert.Single(updatedResources);
         Assert.Equal("test://resource/1", updatedResources[0].Uri);
     }
@@ -71,7 +71,7 @@ public class EmptyCollectionTests : ClientServerTestBase
         var client = await CreateMcpClientForServer();
 
         // Initially, the prompt collection is empty
-        var initialPrompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
+        var initialPrompts = await client.ListPromptsAsync(options: null, TestContext.Current.CancellationToken);
         Assert.Empty(initialPrompts);
 
         // Add a prompt dynamically
@@ -80,7 +80,7 @@ public class EmptyCollectionTests : ClientServerTestBase
             new() { Name = "test_prompt", Description = "A test prompt" }));
 
         // The prompt should now be listed
-        var updatedPrompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
+        var updatedPrompts = await client.ListPromptsAsync(options: null, TestContext.Current.CancellationToken);
         Assert.Single(updatedPrompts);
         Assert.Equal("test_prompt", updatedPrompts[0].Name);
     }
@@ -96,7 +96,7 @@ public class EmptyCollectionTests : ClientServerTestBase
             new() { UriTemplate = "test://resource/dynamic" }));
 
         // Read the resource
-        var result = await client.ReadResourceAsync("test://resource/dynamic", TestContext.Current.CancellationToken);
+        var result = await client.ReadResourceAsync("test://resource/dynamic", options: null, TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.Single(result.Contents);
         Assert.IsType<TextResourceContents>(result.Contents[0]);
@@ -158,8 +158,8 @@ public class NullCollectionTests : ClientServerTestBase
 
         var client = await CreateMcpClientForServer();
 
-        await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken));
-        await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ListPromptsAsync(TestContext.Current.CancellationToken));
-        await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ListResourcesAsync(TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ListToolsAsync(options: null, cancellationToken: TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ListPromptsAsync(options: null, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ListResourcesAsync(options: null, TestContext.Current.CancellationToken));
     }
 }

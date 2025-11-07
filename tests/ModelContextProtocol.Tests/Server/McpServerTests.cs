@@ -130,7 +130,7 @@ public class McpServerTests : LoggedTest
         await using var server = McpServer.Create(transport, _options, LoggerFactory);
         SetClientCapabilities(server, new ClientCapabilities());
 
-        var action = async () => await server.SampleAsync(new CreateMessageRequestParams { Messages = [], MaxTokens = 1000 }, CancellationToken.None);
+        var action = async () => await server.SampleAsync(new CreateMessageRequestParams { Messages = [], MaxTokens = 1000 }, null, CancellationToken.None);
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(action);
@@ -147,7 +147,7 @@ public class McpServerTests : LoggedTest
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
 
         // Act
-        var result = await server.SampleAsync(new CreateMessageRequestParams { Messages = [], MaxTokens = 1000 }, CancellationToken.None);
+        var result = await server.SampleAsync(new CreateMessageRequestParams { Messages = [], MaxTokens = 1000 }, null, CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.NotEmpty(transport.SentMessages);
@@ -167,7 +167,7 @@ public class McpServerTests : LoggedTest
         SetClientCapabilities(server, new ClientCapabilities());
 
         // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await server.RequestRootsAsync(new ListRootsRequestParams(), CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await server.RequestRootsAsync(new ListRootsRequestParams(), null, CancellationToken.None));
     }
 
     [Fact]
@@ -180,7 +180,7 @@ public class McpServerTests : LoggedTest
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
 
         // Act
-        var result = await server.RequestRootsAsync(new ListRootsRequestParams(), CancellationToken.None);
+        var result = await server.RequestRootsAsync(new ListRootsRequestParams(), null, CancellationToken.None);
 
         // Assert
         Assert.NotNull(result);

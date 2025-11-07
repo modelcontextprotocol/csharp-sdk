@@ -194,7 +194,15 @@ public sealed class McpClientTool : AIFunction
         IProgress<ProgressNotificationValue>? progress = null,
         JsonSerializerOptions? serializerOptions = null,
         CancellationToken cancellationToken = default) =>
-        _client.CallToolAsync(ProtocolTool.Name, arguments, progress, null, serializerOptions, cancellationToken);
+        _client.CallToolAsync(
+            ProtocolTool.Name,
+            arguments,
+            progress,
+            new RequestOptions
+            {
+                JsonSerializerOptions = serializerOptions
+            },
+            cancellationToken);
 
     /// <summary>
     /// Creates a new instance of the tool but modified to return the specified name from its <see cref="Name"/> property.

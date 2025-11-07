@@ -291,8 +291,8 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
                 MaxTokens = 1000
             };
 
-            await server.SampleAsync(samplingRequest, cancellationToken);
-            var samplingResult = await server.SampleAsync(samplingRequest, cancellationToken);
+            await server.SampleAsync(samplingRequest, null, cancellationToken);
+            var samplingResult = await server.SampleAsync(samplingRequest, null, cancellationToken);
 
             return $"Sampling completed successfully. Client responded: {Assert.IsType<TextContentBlock>(samplingResult.Content).Text}";
         }

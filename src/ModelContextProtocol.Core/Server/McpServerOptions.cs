@@ -21,7 +21,7 @@ public sealed class McpServerOptions
     /// </summary>
     /// <remarks>
     /// These determine which features will be available when a client connects.
-    /// Capabilities can include "tools", "prompts", "resources", "logging", and other 
+    /// Capabilities can include "tools", "prompts", "resources", "logging", and other
     /// protocol-specific functionality.
     /// </remarks>
     public ServerCapabilities? Capabilities { get; set; }
@@ -84,8 +84,8 @@ public sealed class McpServerOptions
     /// Gets the filter collections for MCP server handlers.
     /// </summary>
     /// <remarks>
-    /// This property provides access to filter collections that can be used to modify the behavior 
-    /// of various MCP server handlers. Filters are applied in reverse order, so the last filter 
+    /// This property provides access to filter collections that can be used to modify the behavior
+    /// of various MCP server handlers. Filters are applied in reverse order, so the last filter
     /// added will be the outermost (first to execute).
     /// </remarks>
     public McpServerFilters Filters { get; } = new();
@@ -93,12 +93,12 @@ public sealed class McpServerOptions
     /// <summary>
     /// Gets or sets the container of handlers used by the server for processing protocol messages.
     /// </summary>
-    public McpServerHandlers Handlers 
-    { 
+    public McpServerHandlers Handlers
+    {
         get => field ??= new();
         set
-        { 
-            Throw.IfNull(value); 
+        {
+            Throw.IfNull(value);
             field = value;
         }
     }
@@ -143,7 +143,7 @@ public sealed class McpServerOptions
     /// when those are provided:
     /// </para>
     /// <para>
-    /// - For <see cref="RequestMethods.PromptsList"/> requests: The server returns all prompts from this collection 
+    /// - For <see cref="RequestMethods.PromptsList"/> requests: The server returns all prompts from this collection
     ///   plus any additional prompts provided by the <see cref="McpServerHandlers.ListPromptsHandler"/> if it's set.
     /// </para>
     /// <para>
@@ -158,7 +158,7 @@ public sealed class McpServerOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This value is used in <see cref="McpServer.SampleAsync(IEnumerable{Microsoft.Extensions.AI.ChatMessage}, Microsoft.Extensions.AI.ChatOptions?, System.Text.Json.Nodes.JsonObject?, CancellationToken)"/>
+    /// This value is used in <see cref="McpServer.SampleAsync(IEnumerable{Microsoft.Extensions.AI.ChatMessage}, Microsoft.Extensions.AI.ChatOptions?, RequestOptions?, CancellationToken)"/>
     /// when <see cref="Microsoft.Extensions.AI.ChatOptions.MaxOutputTokens"/> is not set in the request options.
     /// </para>
     /// <para>
