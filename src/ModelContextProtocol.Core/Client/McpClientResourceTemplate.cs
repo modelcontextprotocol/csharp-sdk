@@ -85,5 +85,5 @@ public sealed class McpClientResourceTemplate
     public ValueTask<ReadResourceResult> ReadAsync(
         IReadOnlyDictionary<string, object?> arguments,
         CancellationToken cancellationToken = default) =>
-        _client.ReadResourceAsync(UriTemplate, arguments, cancellationToken);
+        _client.ReadResourceAsync(UriTemplate, arguments, null, cancellationToken);
 }

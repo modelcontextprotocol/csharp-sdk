@@ -80,10 +80,10 @@ public sealed class McpClientResource
     /// <returns>A <see cref="ValueTask{ReadResourceResult}"/> containing the resource's result with content and messages.</returns>
     /// <remarks>
     /// <para>
-    /// This is a convenience method that internally calls <see cref="McpClient.ReadResourceAsync(string, CancellationToken)"/>.
+    /// This is a convenience method that internally calls <see cref="McpClient.ReadResourceAsync(string, System.Text.Json.Nodes.JsonObject, CancellationToken)"/>.
     /// </para>
     /// </remarks>
     public ValueTask<ReadResourceResult> ReadAsync(
         CancellationToken cancellationToken = default) =>
-        _client.ReadResourceAsync(Uri, cancellationToken);
+        _client.ReadResourceAsync(Uri, null, cancellationToken);
 }
