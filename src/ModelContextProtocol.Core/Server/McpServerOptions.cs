@@ -93,12 +93,12 @@ public sealed class McpServerOptions
     /// <summary>
     /// Gets or sets the container of handlers used by the server for processing protocol messages.
     /// </summary>
-    public McpServerHandlers Handlers 
-    { 
+    public McpServerHandlers Handlers
+    {
         get => field ??= new();
         set
-        { 
-            Throw.IfNull(value); 
+        {
+            Throw.IfNull(value);
             field = value;
         }
     }
@@ -166,4 +166,15 @@ public sealed class McpServerOptions
     /// </para>
     /// </remarks>
     public int MaxSamplingOutputTokens { get; set; } = 1000;
+
+    /// <summary>
+    /// Gets or sets the default timeout applied to tool invocations.
+    /// </summary>
+    /// <remarks>
+    /// When set, the server enforces this timeout for all tools that do not define
+    /// their own timeout. Tools implementing <see cref="IMcpToolWithTimeout"/> can
+    /// override this value on a per-tool basis. When <see langword="null"/>, no
+    /// server-enforced timeout is applied.
+    /// </remarks>
+    public TimeSpan? DefaultToolTimeout { get; set; }
 }

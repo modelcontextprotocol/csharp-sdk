@@ -171,6 +171,15 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                     }
                     catch (Exception ex)
                     {
+                        // Fast-path: user-initiated cancellation → emit JSON-RPC RequestCancelled and exit.
+                        if (ex is OperationCanceledException oce
+                            && message is JsonRpcRequest cancelledReq
+                            && IsUserInitiatedCancellation(oce, cancellationToken, combinedCts))
+                        {
+                            await SendRequestCancelledErrorAsync(cancelledReq, cancellationToken).ConfigureAwait(false);
+                            return;
+                        }
+
                         // Only send responses for request errors that aren't user-initiated cancellation.
                         bool isUserCancellation =
                             ex is OperationCanceledException &&
@@ -301,8 +310,35 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Handles inbound JSON-RPC notifications. Special-cases <c>$/cancelRequest</c>
+    /// to cancel the exact in-flight request, and also supports the SDK's custom
+    /// <see cref="NotificationMethods.CancelledNotification"/> for backwards compatibility.
+    /// </summary>
     private async Task HandleNotification(JsonRpcNotification notification, CancellationToken cancellationToken)
     {
+        // Handle JSON-RPC native cancellation: $/cancelRequest
+        if (notification.Method == NotificationMethods.JsonRpcCancelRequest)
+        {
+            try
+            {
+                if (TryGetJsonRpcIdFromCancelParams(notification.Params, out var reqId) &&
+                    _handlingRequests.TryGetValue(reqId, out var cts))
+                {
+                    // Request-specific CTS → cancel the in-flight handler
+                    await cts.CancelAsync().ConfigureAwait(false);
+                    LogRequestCanceled(EndpointName, reqId, reason: "jsonrpc/$/cancelRequest");
+                }
+            }
+            catch
+            {
+                // Per spec, invalid cancel messages should be ignored.
+            }
+
+            // We do not forward $/cancelRequest to user handlers.
+            return;
+        }
+
         // Special-case cancellation to cancel a pending operation. (We'll still subsequently invoke a user-specified handler if one exists.)
         if (notification.Method == NotificationMethods.CancelledNotification)
         {
@@ -565,6 +601,79 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// Parses the <c>id</c> field from a <c>$/cancelRequest</c> notification's params.
+    /// Returns <see langword="true"/> only when the id is a valid JSON-RPC request id
+    /// (string or number).
+    /// </summary>
+    private static bool TryGetJsonRpcIdFromCancelParams(JsonNode? notificationParams, out RequestId id)
+    {
+        id = default;
+
+        if (notificationParams is not JsonObject obj)
+            return false;
+
+        if (!obj.TryGetPropertyValue("id", out var idNode) || idNode is null)
+            return false;
+
+        if (idNode.GetValueKind() == System.Text.Json.JsonValueKind.String)
+        {
+            id = new RequestId(idNode.GetValue<string>());
+            return true;
+        }
+
+        if (idNode.GetValueKind() == System.Text.Json.JsonValueKind.Number)
+        {
+            try
+            {
+                var n = idNode.GetValue<long>();
+                id = new RequestId(n);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Determines whether the caught <see cref="OperationCanceledException"/> corresponds
+    /// to a user-initiated JSON-RPC cancellation (i.e., <c>$/cancelRequest</c>).
+    /// We distinguish this from global/session shutdown by checking tokens.
+    /// </summary>
+    private static bool IsUserInitiatedCancellation(
+        OperationCanceledException _,
+        CancellationToken sessionOrLoopToken,
+        CancellationTokenSource? perRequestCts)
+    {
+        // User cancellation: per-request CTS is canceled, but the outer/session token is NOT.
+        return !sessionOrLoopToken.IsCancellationRequested
+               && perRequestCts?.IsCancellationRequested == true;
+    }
+
+    /// <summary>
+    /// Sends a standard JSON-RPC <c>RequestCancelled</c> error for the given request.
+    /// </summary>
+    private Task SendRequestCancelledErrorAsync(JsonRpcRequest request, CancellationToken ct)
+    {
+        var error = new JsonRpcError
+        {
+            Id = request.Id,
+            JsonRpc = "2.0",
+            Error = new JsonRpcErrorDetail
+            {
+                Code = (int)McpErrorCode.RequestCancelled,
+                Message = "Request was cancelled."
+            },
+            Context = new JsonRpcMessageContext { RelatedTransport = request.Context?.RelatedTransport },
+        };
+
+        return SendMessageAsync(error, ct);
     }
 
     private static string CreateActivityName(string method) => method;

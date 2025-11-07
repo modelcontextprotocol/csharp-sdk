@@ -2,7 +2,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Server;
@@ -41,7 +43,7 @@ internal sealed partial class McpServerImpl : McpServer
     /// rather than a nullable to be able to manipulate it atomically.
     /// </remarks>
     private StrongBox<LoggingLevel>? _loggingLevel;
-
+    
     /// <summary>
     /// Creates a new instance of <see cref="McpServerImpl"/>.
     /// </summary>
@@ -508,6 +510,12 @@ internal sealed partial class McpServerImpl : McpServer
             McpJsonUtilities.JsonContext.Default.GetPromptResult);
     }
 
+    /// <summary>
+    /// Wires up tools capability: listing, invocation, DI-provided collections,
+    /// and the filter pipeline. Invocation enforces per-tool timeouts (when
+    /// <see cref="IMcpToolWithTimeout.Timeout"/> is set) or falls back to
+    /// <see cref="McpServerOptions.DefaultToolTimeout"/> when present.
+    /// </summary>
     private void ConfigureTools(McpServerOptions options)
     {
         var listToolsHandler = options.Handlers.ListToolsHandler;
@@ -578,12 +586,58 @@ internal sealed partial class McpServerImpl : McpServer
                     request.MatchedPrimitive = tool;
                 }
 
+                TimeSpan? effectiveTimeout = null;
+
                 try
                 {
+                    // Determine effective timeout: per-tool overrides server default
+                    effectiveTimeout = (request.MatchedPrimitive as IMcpToolWithTimeout)?.Timeout
+                                                               ?? ServerOptions.DefaultToolTimeout;
+
+                    if (effectiveTimeout is { } ts)
+                    {
+                        // Create and link cancellation tokens to enforce the timeout.
+                        // The 'using' statements ensure these disposable resources are cleaned up 
+                        // when the try block exits, regardless of success or exception.
+                        using var timeoutCts = new CancellationTokenSource(ts);
+                        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+                        // Execute the next handler in the pipeline with the linked token.
+                        return await handler(request, linked.Token);
+                    }
+
+                    // If no timeout is configured, use the original request cancellation token.
                     return await handler(request, cancellationToken);
                 }
-                catch (Exception e) when (e is not OperationCanceledException and not McpProtocolException)
+                catch (Exception e) when (e is not McpProtocolException)
                 {
+                    // Handle Cancellation Exceptions
+                    if (e is OperationCanceledException)
+                    {
+                        // Distinguishing between a server-side timeout and a client-side cancellation 
+                        // is necessary here (both use the linked token).
+
+                        if (effectiveTimeout.HasValue) // Was a server-side timeout configured?
+                        {
+                            // If a timeout was configured and cancellation occurred, report it as a timeout error.
+                            return new()
+                            {
+                                IsError = true,
+
+                                // Machine readable timeout indication in 'Meta' property.
+                                // Required structural data for robust test assertions (checking 'Meta.IsTimeout' instead of parsing the 'Content' string).
+                                Meta = new JsonObject { ["IsTimeout"] = true },
+                                
+                                Content = [new TextContentBlock { Text = $"Tool '{request.Params?.Name}' timed out after {effectiveTimeout.Value.TotalMilliseconds}ms." }],
+                            };
+                        }
+
+                        // If no server timeout was set, the cancellation must originate from the client's CancellationToken 
+                        // passed into RunAsync (or the network layer). We re-throw the exception to allow the 
+                        // JSON-RPC handler to process it into a standard protocol-level cancellation error (JsonRpcError).
+                        throw;
+                    }
+
                     ToolCallError(request.Params?.Name ?? string.Empty, e);
 
                     string errorMessage = e is McpException ?

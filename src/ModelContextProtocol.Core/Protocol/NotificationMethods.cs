@@ -131,4 +131,13 @@ public static class NotificationMethods
     /// </para>
     /// </remarks>
     public const string CancelledNotification = "notifications/cancelled";
+
+    /// <summary>
+    /// JSON-RPC core cancellation method name (<c>$/cancelRequest</c>).
+    /// </summary>
+    /// <remarks>
+    /// Carries a single <c>id</c> field (string or number) identifying the in-flight
+    /// request that should be cancelled.
+    /// </remarks>
+    public const string JsonRpcCancelRequest = "$/cancelRequest";
 }

@@ -177,10 +177,10 @@ public sealed class McpServerToolAttribute : Attribute
     /// The default is <see langword="true"/>.
     /// </para>
     /// </remarks>
-    public bool Destructive 
+    public bool Destructive
     {
-        get => _destructive ?? DestructiveDefault; 
-        set => _destructive = value; 
+        get => _destructive ?? DestructiveDefault;
+        set => _destructive = value;
     }
 
     /// <summary>
@@ -195,10 +195,10 @@ public sealed class McpServerToolAttribute : Attribute
     /// The default is <see langword="false"/>.
     /// </para>
     /// </remarks>
-    public bool Idempotent  
+    public bool Idempotent
     {
         get => _idempotent ?? IdempotentDefault;
-        set => _idempotent = value; 
+        set => _idempotent = value;
     }
 
     /// <summary>
@@ -215,8 +215,8 @@ public sealed class McpServerToolAttribute : Attribute
     /// </remarks>
     public bool OpenWorld
     {
-        get => _openWorld ?? OpenWorldDefault; 
-        set => _openWorld = value; 
+        get => _openWorld ?? OpenWorldDefault;
+        set => _openWorld = value;
     }
 
     /// <summary>
@@ -235,10 +235,10 @@ public sealed class McpServerToolAttribute : Attribute
     /// The default is <see langword="false"/>.
     /// </para>
     /// </remarks>
-    public bool ReadOnly  
+    public bool ReadOnly
     {
-        get => _readOnly ?? ReadOnlyDefault; 
-        set => _readOnly = value; 
+        get => _readOnly ?? ReadOnlyDefault;
+        set => _readOnly = value;
     }
 
     /// <summary>
@@ -269,4 +269,10 @@ public sealed class McpServerToolAttribute : Attribute
     /// </para>
     /// </remarks>
     public string? IconSource { get; set; }
+
+    /// <summary>
+    /// Optional timeout for this tool in seconds.
+    /// If null, the global default (if any) applies.
+    /// </summary>
+    public int? TimeoutSeconds { get; set; }
 }

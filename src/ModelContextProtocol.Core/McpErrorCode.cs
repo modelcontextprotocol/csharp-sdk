@@ -46,4 +46,12 @@ public enum McpErrorCode
     /// This error is used when the endpoint encounters an unexpected condition that prevents it from fulfilling the request.
     /// </remarks>
     InternalError = -32603,
+
+    /// <summary>
+    /// Indicates that the request was cancelled by the client.
+    /// </summary>
+    /// <remarks>
+    /// This error is returned when the CancellationToken passed with the request is cancelled before processing completes.
+    /// </remarks>
+    RequestCancelled = -32800,
 }
