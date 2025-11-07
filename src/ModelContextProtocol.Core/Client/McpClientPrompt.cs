@@ -57,7 +57,7 @@ public sealed class McpClientPrompt
     /// which can be useful for advanced scenarios or when implementing custom MCP client extensions.
     /// </para>
     /// <para>
-    /// For most common use cases, you can use the more convenient <see cref="Name"/> and 
+    /// For most common use cases, you can use the more convenient <see cref="Name"/> and
     /// <see cref="Description"/> properties instead of accessing the <see cref="ProtocolPrompt"/> directly.
     /// </para>
     /// </remarks>
@@ -85,7 +85,7 @@ public sealed class McpClientPrompt
     /// The server will process the request and return a result containing messages or other content.
     /// </para>
     /// <para>
-    /// This is a convenience method that internally calls <see cref="McpClient.GetPromptAsync"/> 
+    /// This is a convenience method that internally calls <see cref="McpClient.GetPromptAsync"/>
     /// with this prompt's name and arguments.
     /// </para>
     /// </remarks>

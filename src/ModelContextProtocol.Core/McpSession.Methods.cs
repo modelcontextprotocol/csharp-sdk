@@ -80,8 +80,8 @@ public abstract partial class McpSession : IMcpEndpoint, IAsyncDisposable
     /// <returns>A task that represents the asynchronous send operation.</returns>
     /// <remarks>
     /// <para>
-    /// This method sends a notification without any parameters. Notifications are one-way messages 
-    /// that don't expect a response. They are commonly used for events, status updates, or to signal 
+    /// This method sends a notification without any parameters. Notifications are one-way messages
+    /// that don't expect a response. They are commonly used for events, status updates, or to signal
     /// changes in state.
     /// </para>
     /// </remarks>
@@ -102,11 +102,11 @@ public abstract partial class McpSession : IMcpEndpoint, IAsyncDisposable
     /// <returns>A task that represents the asynchronous send operation.</returns>
     /// <remarks>
     /// <para>
-    /// This method sends a notification with parameters to the connected session. Notifications are one-way 
+    /// This method sends a notification with parameters to the connected session. Notifications are one-way
     /// messages that don't expect a response, commonly used for events, status updates, or signaling changes.
     /// </para>
     /// <para>
-    /// The parameters object is serialized to JSON according to the provided serializer options or the default 
+    /// The parameters object is serialized to JSON according to the provided serializer options or the default
     /// options if none are specified.
     /// </para>
     /// <para>

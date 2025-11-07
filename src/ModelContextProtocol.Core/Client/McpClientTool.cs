@@ -10,7 +10,7 @@ namespace ModelContextProtocol.Client;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The <see cref="McpClientTool"/> class encapsulates an <see cref="McpClient"/> along with a description of 
+/// The <see cref="McpClientTool"/> class encapsulates an <see cref="McpClient"/> along with a description of
 /// a tool available via that client, allowing it to be invoked as an <see cref="AIFunction"/>. This enables integration
 /// with AI models that support function calling capabilities.
 /// </para>
@@ -203,7 +203,7 @@ public sealed class McpClientTool : AIFunction
     /// <returns>A new instance of <see cref="McpClientTool"/> with the provided name.</returns>
     /// <remarks>
     /// <para>
-    /// This is useful for optimizing the tool name for specific models or for prefixing the tool name 
+    /// This is useful for optimizing the tool name for specific models or for prefixing the tool name
     /// with a namespace to avoid conflicts.
     /// </para>
     /// <para>
@@ -215,7 +215,7 @@ public sealed class McpClientTool : AIFunction
     ///   <item>Creating specialized versions of a general tool for specific contexts</item>
     /// </list>
     /// <para>
-    /// When invoking <see cref="AIFunction.InvokeAsync"/>, the MCP server will still be called with 
+    /// When invoking <see cref="AIFunction.InvokeAsync"/>, the MCP server will still be called with
     /// the original tool name, so no mapping is required on the server side. This new name only affects
     /// the value returned from this instance's <see cref="AITool.Name"/>.
     /// </para>
@@ -238,7 +238,7 @@ public sealed class McpClientTool : AIFunction
     ///   <item>You need to tailor the tool's description for specific model requirements</item>
     /// </list>
     /// <para>
-    /// When invoking <see cref="AIFunction.InvokeAsync"/>, the MCP server will still be called with 
+    /// When invoking <see cref="AIFunction.InvokeAsync"/>, the MCP server will still be called with
     /// the original tool description, so no mapping is required on the server side. This new description only affects
     /// the value returned from this instance's <see cref="AITool.Description"/>.
     /// </para>

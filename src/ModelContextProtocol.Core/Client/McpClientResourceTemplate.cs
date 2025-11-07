@@ -52,7 +52,7 @@ public sealed class McpClientResourceTemplate
     /// which can be useful for advanced scenarios or when implementing custom MCP client extensions.
     /// </para>
     /// <para>
-    /// For most common use cases, you can use the more convenient <see cref="UriTemplate"/> and 
+    /// For most common use cases, you can use the more convenient <see cref="UriTemplate"/> and
     /// <see cref="Description"/> properties instead of accessing the <see cref="ProtocolResourceTemplate"/> directly.
     /// </para>
     /// </remarks>
