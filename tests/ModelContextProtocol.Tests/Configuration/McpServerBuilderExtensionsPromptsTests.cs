@@ -100,7 +100,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
     {
         await using McpClient client = await CreateMcpClientForServer();
 
-        var prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
+        var prompts = await client.ListPromptsAsync(null, TestContext.Current.CancellationToken);
         Assert.Equal(6, prompts.Count);
 
         var prompt = prompts.First(t => t.Name == "returns_chat_messages");
@@ -129,7 +129,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
     {
         await using McpClient client = await CreateMcpClientForServer();
 
-        var prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
+        var prompts = await client.ListPromptsAsync(null, TestContext.Current.CancellationToken);
         Assert.Equal(6, prompts.Count);
 
         Channel<JsonRpcNotification> listChanged = Channel.CreateUnbounded<JsonRpcNotification>();
@@ -150,7 +150,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
             serverPrompts.Add(newPrompt);
             await notificationRead;
 
-            prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
+            prompts = await client.ListPromptsAsync(null, TestContext.Current.CancellationToken);
             Assert.Equal(7, prompts.Count);
             Assert.Contains(prompts, t => t.Name == "NewPrompt");
 
@@ -160,7 +160,7 @@ public partial class McpServerBuilderExtensionsPromptsTests : ClientServerTestBa
             await notificationRead;
         }
 
-        prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
+        prompts = await client.ListPromptsAsync(null, TestContext.Current.CancellationToken);
         Assert.Equal(6, prompts.Count);
         Assert.DoesNotContain(prompts, t => t.Name == "NewPrompt");
     }

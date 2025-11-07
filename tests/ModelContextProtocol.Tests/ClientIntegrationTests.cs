@@ -34,7 +34,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
 
         // Act
         await using var client = await _fixture.CreateClientAsync(clientId);
-        await client.PingAsync(TestContext.Current.CancellationToken);
+        await client.PingAsync(null, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(client);
@@ -141,7 +141,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
 
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
-        var prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
+        var prompts = await client.ListPromptsAsync(null, TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotEmpty(prompts);
@@ -193,7 +193,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
 
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
-        await Assert.ThrowsAsync<McpProtocolException>(async () => 
+        await Assert.ThrowsAsync<McpProtocolException>(async () =>
             await client.GetPromptAsync("non_existent_prompt", null, cancellationToken: TestContext.Current.CancellationToken));
     }
 
@@ -206,7 +206,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
 
-        IList<McpClientResourceTemplate> allResourceTemplates = await client.ListResourceTemplatesAsync(TestContext.Current.CancellationToken);
+        IList<McpClientResourceTemplate> allResourceTemplates = await client.ListResourceTemplatesAsync(null, TestContext.Current.CancellationToken);
 
         // The server provides a single test resource template
         Assert.Single(allResourceTemplates);
@@ -221,7 +221,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
 
-        IList<McpClientResource> allResources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
+        IList<McpClientResource> allResources = await client.ListResourcesAsync(null, TestContext.Current.CancellationToken);
 
         // The server provides 100 test resources
         Assert.Equal(100, allResources.Count);
@@ -237,7 +237,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         await using var client = await _fixture.CreateClientAsync(clientId);
         // Odd numbered resources are text in the everything server (despite the docs saying otherwise)
         // 1 is index 0, which is "even" in the 0-based index
-        var result = await client.ReadResourceAsync("test://static/resource/1", TestContext.Current.CancellationToken);
+        var result = await client.ReadResourceAsync("test://static/resource/1", null, TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
         Assert.Single(result.Contents);
@@ -256,7 +256,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         await using var client = await _fixture.CreateClientAsync(clientId);
         // Even numbered resources are binary in the everything server (despite the docs saying otherwise)
         // 2 is index 1, which is "odd" in the 0-based index
-        var result = await client.ReadResourceAsync("test://static/resource/2", TestContext.Current.CancellationToken);
+        var result = await client.ReadResourceAsync("test://static/resource/2", null, TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
         Assert.Single(result.Contents);
@@ -290,7 +290,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
             }
         });
 
-        await client.SubscribeToResourceAsync("test://static/resource/1", TestContext.Current.CancellationToken);
+        await client.SubscribeToResourceAsync("test://static/resource/1", null, TestContext.Current.CancellationToken);
 
         await tcs.Task;
     }
@@ -319,13 +319,13 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
                 ]
             }
         });
-        await client.SubscribeToResourceAsync("test://static/resource/1", TestContext.Current.CancellationToken);
+        await client.SubscribeToResourceAsync("test://static/resource/1", null, TestContext.Current.CancellationToken);
 
         // wait until we received a notification
         await receivedNotification.Task;
 
         // unsubscribe
-        await client.UnsubscribeFromResourceAsync("test://static/resource/1", TestContext.Current.CancellationToken);
+        await client.UnsubscribeFromResourceAsync("test://static/resource/1", null, TestContext.Current.CancellationToken);
     }
 
     [Theory]
@@ -408,7 +408,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
     //[Theory]
     //[MemberData(nameof(GetClients))]
     //public async Task Roots_Stdio_EverythingServer(string clientId)
-    //{       
+    //{
     //    var rootsHandlerCalls = 0;
     //    var testRoots = new List<Root>
     //    {
@@ -573,7 +573,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         });
 
         // act
-        await client.SetLoggingLevel(LoggingLevel.Debug, TestContext.Current.CancellationToken);
+        await client.SetLoggingLevel(LoggingLevel.Debug, options: null, TestContext.Current.CancellationToken);
 
         // assert
         await receivedNotification.Task;

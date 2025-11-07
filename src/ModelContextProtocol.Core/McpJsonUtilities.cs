@@ -132,6 +132,7 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(ListRootsResult))]
     [JsonSerializable(typeof(ListToolsRequestParams))]
     [JsonSerializable(typeof(ListToolsResult))]
+    [JsonSerializable(typeof(PingRequestParams))]
     [JsonSerializable(typeof(PingResult))]
     [JsonSerializable(typeof(ReadResourceRequestParams))]
     [JsonSerializable(typeof(ReadResourceResult))]

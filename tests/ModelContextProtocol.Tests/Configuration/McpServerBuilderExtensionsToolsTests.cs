@@ -12,6 +12,7 @@ using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.IO.Pipelines;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
@@ -686,7 +687,11 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                 new CallToolRequestParams
                 {
                     Name = progressTool.ProtocolTool.Name,
-                    ProgressToken = new("abc123"),
+                    // Set the progress token in Meta
+                    Meta = new JsonObject
+                    {
+                        ["progressToken"] = "abc123",
+                    }
                 },
                 cancellationToken: TestContext.Current.CancellationToken);
 
