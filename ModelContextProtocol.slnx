@@ -62,11 +62,13 @@
   </Folder>
   <Folder Name="/src/">
     <File Path="src/Directory.Build.props" />
+    <Project Path="src/ModelContextProtocol.Analyzers/ModelContextProtocol.Analyzers.csproj" />
     <Project Path="src/ModelContextProtocol.AspNetCore/ModelContextProtocol.AspNetCore.csproj" />
     <Project Path="src/ModelContextProtocol.Core/ModelContextProtocol.Core.csproj" />
     <Project Path="src/ModelContextProtocol/ModelContextProtocol.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/ModelContextProtocol.Analyzers.Tests/ModelContextProtocol.Analyzers.Tests.csproj" />
     <Project Path="tests/ModelContextProtocol.AspNetCore.Tests/ModelContextProtocol.AspNetCore.Tests.csproj" />
     <Project Path="tests/ModelContextProtocol.TestOAuthServer/ModelContextProtocol.TestOAuthServer.csproj" />
     <Project Path="tests/ModelContextProtocol.Tests/ModelContextProtocol.Tests.csproj" />
