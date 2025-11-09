@@ -188,6 +188,8 @@ public sealed class ElicitRequestParams
                             break;
 
                         default:
+                            // Skip unknown properties to handle unexpected data or future protocol extensions gracefully
+                            reader.Skip();
                             break;
                     }
                 }

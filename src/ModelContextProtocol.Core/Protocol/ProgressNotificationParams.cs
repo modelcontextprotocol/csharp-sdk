@@ -81,6 +81,11 @@ public sealed class ProgressNotificationParams : NotificationParams
                         case "_meta":
                             meta = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.JsonObject);
                             break;
+
+                        default:
+                            // Skip unknown properties to handle unexpected data or future protocol extensions gracefully
+                            reader.Skip();
+                            break;
                     }
                 }
             }
