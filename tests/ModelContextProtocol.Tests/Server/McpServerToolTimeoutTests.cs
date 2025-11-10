@@ -271,9 +271,9 @@ public class McpServerToolTimeoutTests : LoggedTest
     }
 
     [Fact]
-    public async Task CallTool_ShouldReturnJsonRpcError_WhenNoServerTimeoutButClientCancels()
+    public async Task CallTool_ShouldNotRespond_WhenClientCancelsViaJsonRpc()
     {
-        // Arrange: no server/tool timeout; we will cancel via JSON-RPC $/cancelRequest.
+        // Arrange: no server/tool timeout; user will cancel via $/cancelRequest.
         var tool = new SlowTool(TimeSpan.FromSeconds(10), toolTimeout: null);
         var options = CreateOptions(defaultTimeout: null);
         options.ToolCollection ??= [];
@@ -285,22 +285,27 @@ public class McpServerToolTimeoutTests : LoggedTest
         using var serverCts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         var runTask = server.RunAsync(serverCts.Token);
 
-        // Handshake so server is ready to accept calls
+        // handshake
         await InitializeServerAsync(transport, options.ProtocolVersion, serverCts.Token);
 
         var requestId = new RequestId(Guid.NewGuid().ToString("N"));
 
-        var receivedError = new TaskCompletionSource<JsonRpcError>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var anyReply = new TaskCompletionSource<JsonRpcMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        transport.OnMessageSent = msg =>
+        void OnAnyReply(JsonRpcMessage m)
         {
-            if (msg is JsonRpcError err && err.Id.ToString() == requestId.ToString())
-                receivedError.TrySetResult(err);
-        };
+            if ((m is JsonRpcResponse r && r.Id.ToString() == requestId.ToString()) ||
+                (m is JsonRpcError e && e.Id.ToString() == requestId.ToString()))
+            {
+                anyReply.TrySetResult(m);
+            }
+        }
+
+        transport.OnMessageSent += OnAnyReply;
 
         try
         {
-            // 1) Send the tool call (no cancellation token here, ensure it reaches the server).
+            // 1) send call
             await transport.SendMessageAsync(
                 new JsonRpcRequest
                 {
@@ -312,14 +317,11 @@ public class McpServerToolTimeoutTests : LoggedTest
                 },
                 CancellationToken.None);
 
-            // Give the event loop a chance to dispatch without arbitrary sleeps.
             await Task.Yield();
-
             await Task.Delay(200, serverCts.Token);
 
-            // 2) Send protocol-level cancellation notification for the above request.
+            // 2) send $/cancelRequest
             var cancelParams = JsonSerializer.SerializeToNode(new { id = requestId.ToString() });
-
             await transport.SendMessageAsync(
                 new JsonRpcNotification
                 {
@@ -328,33 +330,25 @@ public class McpServerToolTimeoutTests : LoggedTest
                 },
                 CancellationToken.None);
 
-            // 3) Bounded await (no infinite hang). If it times out, fail with a clear message.
-            JsonRpcError error;
+            // 3) ensure that NO response is emitted for this cancellation
             try
             {
-                error = await receivedError.Task.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
+                var _ = await anyReply.Task.WaitAsync(TimeSpan.FromSeconds(2), CancellationToken.None);
+                throw new Xunit.Sdk.XunitException("Server responded to user-initiated cancellation. Expected: no response.");
             }
             catch (TimeoutException)
             {
-                throw new Xunit.Sdk.XunitException(
-                    "Server did not emit JsonRpcError(RequestCancelled) within 5s after $/cancelRequest.");
+                // expected → silent cancel path
             }
-
-            // Assert
-            Assert.NotNull(error);
-            Assert.NotNull(error.Error);
-            Assert.Equal(McpErrorCode.RequestCancelled, (McpErrorCode)error.Error.Code);
         }
         finally
         {
-            // Deterministic shutdown
+            transport.OnMessageSent -= OnAnyReply;
             serverCts.Cancel();
-
             await transport.DisposeAsync();
-
             await Task.WhenAny(runTask, Task.Delay(TimeSpan.FromSeconds(5), CancellationToken.None));
-
             await server.DisposeAsync();
         }
     }
+
 }
