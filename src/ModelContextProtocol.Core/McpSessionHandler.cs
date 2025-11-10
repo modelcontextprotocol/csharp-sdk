@@ -630,27 +630,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         }
 
         return false;
-    }
-
-    /// <summary>
-    /// Sends a standard JSON-RPC <c>RequestCancelled</c> error for the given request.
-    /// </summary>
-    private Task SendRequestCancelledErrorAsync(JsonRpcRequest request, CancellationToken ct)
-    {
-        var error = new JsonRpcError
-        {
-            Id = request.Id,
-            JsonRpc = "2.0",
-            Error = new JsonRpcErrorDetail
-            {
-                Code = (int)McpErrorCode.RequestCancelled,
-                Message = "Request was cancelled."
-            },
-            Context = new JsonRpcMessageContext { RelatedTransport = request.Context?.RelatedTransport },
-        };
-
-        return SendMessageAsync(error, ct);
-    }
+    }    
 
     private static string CreateActivityName(string method) => method;
 
