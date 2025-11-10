@@ -170,16 +170,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                         await HandleMessageAsync(message, combinedCts?.Token ?? cancellationToken).ConfigureAwait(false);
                     }
                     catch (Exception ex)
-                    {
-                        // Fast-path: user-initiated cancellation → emit JSON-RPC RequestCancelled and exit.
-                        if (ex is OperationCanceledException oce
-                            && message is JsonRpcRequest cancelledReq
-                            && IsUserInitiatedCancellation(oce, cancellationToken, combinedCts))
-                        {
-                            await SendRequestCancelledErrorAsync(cancelledReq, cancellationToken).ConfigureAwait(false);
-                            return;
-                        }
-
+                    {                       
                         // Only send responses for request errors that aren't user-initiated cancellation.
                         bool isUserCancellation =
                             ex is OperationCanceledException &&
@@ -639,21 +630,6 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         }
 
         return false;
-    }
-
-    /// <summary>
-    /// Determines whether the caught <see cref="OperationCanceledException"/> corresponds
-    /// to a user-initiated JSON-RPC cancellation (i.e., <c>$/cancelRequest</c>).
-    /// We distinguish this from global/session shutdown by checking tokens.
-    /// </summary>
-    private static bool IsUserInitiatedCancellation(
-        OperationCanceledException _,
-        CancellationToken sessionOrLoopToken,
-        CancellationTokenSource? perRequestCts)
-    {
-        // User cancellation: per-request CTS is canceled, but the outer/session token is NOT.
-        return !sessionOrLoopToken.IsCancellationRequested
-               && perRequestCts?.IsCancellationRequested == true;
     }
 
     /// <summary>
