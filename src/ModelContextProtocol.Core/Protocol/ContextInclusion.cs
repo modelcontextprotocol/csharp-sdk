@@ -8,7 +8,7 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
-[JsonConverter(typeof(CustomizableJsonStringEnumConverter<ContextInclusion>))]
+[JsonConverter(typeof(JsonStringEnumConverter<ContextInclusion>))]
 public enum ContextInclusion
 {
     /// <summary>

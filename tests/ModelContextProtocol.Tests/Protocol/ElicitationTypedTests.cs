@@ -309,7 +309,7 @@ public partial class ElicitationTypedTests : ClientServerTestBase
         Assert.Contains(typeof(string).FullName!, ex.Message);
     }
 
-    [JsonConverter(typeof(CustomizableJsonStringEnumConverter<SampleRole>))]
+    [JsonConverter(typeof(JsonStringEnumConverter<SampleRole>))]
 
     public enum SampleRole
     {
