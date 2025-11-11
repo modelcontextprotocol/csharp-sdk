@@ -29,8 +29,9 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <VSTestLogger Condition="'$(VSTestLogger)' == ''">trx%3bLogFileName=$(MSBuildProjectName).$(TargetFramework).$(OS).trx</VSTestLogger>
-    <VSTestResultsDirectory Condition="'$(VSTestResultsDirectory)' == ''">$(ArtifactsTestResultsDir)</VSTestResultsDirectory>
+    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+    <_MTPResultsDirectory>$(ArtifactsTestResultsDir)</_MTPResultsDirectory>
+    <TestingPlatformCommandLineArguments>$(TestingPlatformCommandLineArguments) --results-directory $(_MTPResultsDirectory) --report-trx --report-trx-filename $(MSBuildProjectName).$(TargetFramework).$(OS).trx</TestingPlatformCommandLineArguments>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
