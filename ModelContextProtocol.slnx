@@ -42,6 +42,8 @@
     <Project Path="samples/AspNetCoreMcpPerSessionTools/AspNetCoreMcpPerSessionTools.csproj" />
     <Project Path="samples/AspNetCoreMcpServer/AspNetCoreMcpServer.csproj" />
     <Project Path="samples/ChatWithTools/ChatWithTools.csproj" />
+    <Project Path="samples/EntraProtectedMcpClient/EntraProtectedMcpClient.csproj" />
+    <Project Path="samples/EntraProtectedMcpServer/EntraProtectedMcpServer.csproj" />
     <Project Path="samples/EverythingServer/EverythingServer.csproj" />
     <Project Path="samples/InMemoryTransport/InMemoryTransport.csproj" />
     <Project Path="samples/ProtectedMcpClient/ProtectedMcpClient.csproj" />
