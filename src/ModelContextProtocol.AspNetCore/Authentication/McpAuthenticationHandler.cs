@@ -30,11 +30,20 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         // Check if the request is for the resource metadata endpoint
         string requestPath = Request.Path.Value ?? string.Empty;
 
-        string expectedMetadataPath = Options.ResourceMetadataUri?.ToString() ?? string.Empty;
-        if (Options.ResourceMetadataUri != null && !Options.ResourceMetadataUri.IsAbsoluteUri)
+        string expectedMetadataPath;
+        if (Options.ResourceMetadataUri == null)
+        {
+            expectedMetadataPath = string.Empty;
+        }
+        else if (!Options.ResourceMetadataUri.IsAbsoluteUri)
         {
             // For relative URIs, it's just the path component.
             expectedMetadataPath = Options.ResourceMetadataUri.OriginalString;
+        }
+        else 
+        {
+            // For absolute URIs, extract the path component
+            expectedMetadataPath = Options.ResourceMetadataUri.AbsolutePath;
         }
 
         // If the path doesn't match, let the request continue through the pipeline
