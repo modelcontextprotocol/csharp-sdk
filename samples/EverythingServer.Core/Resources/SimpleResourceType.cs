@@ -2,7 +2,7 @@
 using ModelContextProtocol.Server;
 using System.ComponentModel;
 
-namespace EverythingServer.Resources;
+namespace EverythingServer.Core.Resources;
 
 [McpServerResourceType]
 public class SimpleResourceType
