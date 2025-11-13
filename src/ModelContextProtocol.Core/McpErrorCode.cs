@@ -48,10 +48,14 @@ public enum McpErrorCode
     InternalError = -32603,
 
     /// <summary>
-    /// Indicates that the request was cancelled by the client.
-    /// </summary>
-    /// <remarks>
-    /// This error is returned when the CancellationToken passed with the request is cancelled before processing completes.
-    /// </remarks>
-    RequestCancelled = -32800,
+    /// Indicates that a request was explicitly cancelled by the caller before completion.
+    /// </summary>
+    /// <remarks>
+    /// MCP-specific error code (-32800) reserved to represent user-initiated cancellation
+    /// (for example, when a client sends a JSON-RPC <c>$/cancelRequest</c> for an in-flight call).
+    /// This value is not used by the current C# server implementation for server-side timeouts;
+    /// timeouts are surfaced as regular <see cref="ModelContextProtocol.Protocol.CallToolResult"/>
+    /// errors with timeout metadata (for example, <c>Meta["IsTimeout"] = true</c> and <c>Meta["TimeoutMs"]</c>).
+    /// </remarks>
+    RequestCancelled = -32800,
 }
