@@ -158,8 +158,8 @@ public class NullCollectionTests : ClientServerTestBase
 
         var client = await CreateMcpClientForServer();
 
-        await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ListToolsAsync(options: null, cancellationToken: TestContext.Current.CancellationToken));
-        await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ListPromptsAsync(options: null, TestContext.Current.CancellationToken));
-        await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ListResourcesAsync(options: null, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ListPromptsAsync(cancellationToken: TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 }

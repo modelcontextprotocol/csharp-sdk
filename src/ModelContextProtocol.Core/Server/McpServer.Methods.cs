@@ -467,7 +467,7 @@ public abstract partial class McpServer : McpSession, IMcpServer
 
         /// <inheritdoc/>
         public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
-            _server.SampleAsync(messages, options, requestOptions: null, cancellationToken);
+            _server.SampleAsync(messages, options: options, cancellationToken: cancellationToken);
 
         /// <inheritdoc/>
         async IAsyncEnumerable<ChatResponseUpdate> IChatClient.GetStreamingResponseAsync(

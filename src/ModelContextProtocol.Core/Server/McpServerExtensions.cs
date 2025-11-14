@@ -31,7 +31,7 @@ public static class McpServerExtensions
     [EditorBrowsable(EditorBrowsableState.Never)]
     public static ValueTask<CreateMessageResult> SampleAsync(
         this IMcpServer server, CreateMessageRequestParams request, CancellationToken cancellationToken = default)
-        => AsServerOrThrow(server).SampleAsync(request, options: null, cancellationToken);
+        => AsServerOrThrow(server).SampleAsync(request, cancellationToken: cancellationToken);
 
     /// <summary>
     /// Requests to sample an LLM via the client using the provided chat messages and options.
@@ -53,7 +53,7 @@ public static class McpServerExtensions
     public static Task<ChatResponse> SampleAsync(
         this IMcpServer server,
         IEnumerable<ChatMessage> messages, ChatOptions? options = default, CancellationToken cancellationToken = default)
-        => AsServerOrThrow(server).SampleAsync(messages, options, requestOptions: null, cancellationToken);
+        => AsServerOrThrow(server).SampleAsync(messages, options, cancellationToken: cancellationToken);
 
     /// <summary>
     /// Creates an <see cref="IChatClient"/> wrapper that can be used to send sampling requests to the client.
@@ -94,7 +94,7 @@ public static class McpServerExtensions
     [EditorBrowsable(EditorBrowsableState.Never)]
     public static ValueTask<ListRootsResult> RequestRootsAsync(
         this IMcpServer server, ListRootsRequestParams request, CancellationToken cancellationToken = default)
-        => AsServerOrThrow(server).RequestRootsAsync(request, options: null, cancellationToken);
+        => AsServerOrThrow(server).RequestRootsAsync(request, cancellationToken: cancellationToken);
 
     /// <summary>
     /// Requests additional information from the user via the client, allowing the server to elicit structured data.

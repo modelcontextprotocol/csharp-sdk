@@ -187,7 +187,7 @@ public class Program
                         throw new McpProtocolException("Missing required arguments 'prompt' and 'maxTokens'", McpErrorCode.InvalidParams);
                     }
                     var sampleResult = await request.Server.SampleAsync(CreateRequestSamplingParams(prompt.ToString(), "sampleLLM", Convert.ToInt32(maxTokens.ToString())),
-                        options: null, cancellationToken);
+                        cancellationToken: cancellationToken);
 
                     return new CallToolResult
                     {
