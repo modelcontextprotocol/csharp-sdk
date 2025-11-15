@@ -96,9 +96,6 @@ public sealed class Program
 
         var app = builder.Build();
 
-        app.UseRouting();
-        app.UseEndpoints(_ => { });
-
         // Set up the demo client
         var clientId = "demo-client";
         var clientSecret = "demo-secret";
