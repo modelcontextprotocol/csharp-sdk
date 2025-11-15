@@ -592,6 +592,41 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
+    public async Task Can_Handle_Call_Tool_Requests_With_InputValidationException()
+    {
+        // Test that input validation errors (like ArgumentException from JSON deserialization)
+        // are returned as tool execution errors (IsError=true) rather than protocol errors, per SEP-1303.
+        const string errorMessage = "Input validation failed: invalid date format";
+
+        await Can_Handle_Requests(
+            new ServerCapabilities
+            {
+                Tools = new()
+            },
+            method: RequestMethods.ToolsCall,
+            configureOptions: options =>
+            {
+                options.Handlers.CallToolHandler = async (request, ct) =>
+                {
+                    // Simulate an input validation error (like what would happen with wrong argument types)
+                    throw new ArgumentException(errorMessage);
+                };
+                options.Handlers.ListToolsHandler = (request, ct) => throw new NotImplementedException();
+            },
+            assertResult: (_, response) =>
+            {
+                var result = JsonSerializer.Deserialize<CallToolResult>(response, McpJsonUtilities.DefaultOptions);
+                Assert.NotNull(result);
+                Assert.True(result.IsError, "Input validation errors should be returned as tool execution errors (IsError=true), not protocol errors");
+                Assert.NotEmpty(result.Content);
+                var textContent = Assert.IsType<TextContentBlock>(result.Content[0]);
+                // ArgumentException should result in a generic error message that doesn't expose the exception details
+                Assert.DoesNotContain(errorMessage, textContent.Text);
+                Assert.Contains("An error occurred", textContent.Text);
+            });
+    }
+
+    [Fact]
     public async Task Can_Handle_Call_Tool_Requests_With_McpProtocolException()
     {
         const string errorMessage = "Invalid tool parameters";
