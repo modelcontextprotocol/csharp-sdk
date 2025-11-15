@@ -71,6 +71,29 @@ public class McpClientTests : ClientServerTestBase
         Assert.Equal("dark", icon1.Theme);
     }
 
+    [Fact]
+    public async Task ServerCanReadClientInfo()
+    {
+        var clientOptions = new McpClientOptions
+        {
+            ClientInfo = new Implementation
+            {
+                Name = "test-client",
+                Version = "2.0.0",
+                Description = "A test client for validating client-server communication"
+            }
+        };
+
+        await using McpClient client = await CreateMcpClientForServer(clientOptions);
+
+        // Verify the server received the client info with description
+        var clientInfo = Server.ClientInfo;
+        Assert.NotNull(clientInfo);
+        Assert.Equal("test-client", clientInfo.Name);
+        Assert.Equal("2.0.0", clientInfo.Version);
+        Assert.Equal("A test client for validating client-server communication", clientInfo.Description);
+    }
+
     [Theory]
     [InlineData(null, 10)]
     [InlineData(0.7f, 50)]
