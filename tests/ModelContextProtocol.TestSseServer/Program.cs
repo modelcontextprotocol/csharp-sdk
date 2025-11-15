@@ -424,8 +424,6 @@ public class Program
             .WithHttpTransport();
 
         var app = builder.Build();
-        app.UseRouting();
-        app.UseEndpoints(_ => { });
 
         // Handle the /stateless endpoint if no other endpoints have been matched by the call to UseRouting above.
         HandleStatelessMcp(app);
