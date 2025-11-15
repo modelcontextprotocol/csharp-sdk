@@ -34,6 +34,7 @@ public class McpClientTests : ClientServerTestBase
             {
                 Name = "test-server",
                 Version = "1.0.0",
+                Description = "A test server for unit testing",
                 WebsiteUrl = "https://example.com",
                 Icons =
                 [
@@ -52,6 +53,7 @@ public class McpClientTests : ClientServerTestBase
         var serverInfo = client.ServerInfo;
         Assert.Equal("test-server", serverInfo.Name);
         Assert.Equal("1.0.0", serverInfo.Version);
+        Assert.Equal("A test server for unit testing", serverInfo.Description);
         Assert.Equal("https://example.com", serverInfo.WebsiteUrl);
         Assert.NotNull(serverInfo.Icons);
         Assert.Equal(2, serverInfo.Icons.Count);
