@@ -1,14 +1,25 @@
 namespace ModelContextProtocol;
 
 /// <summary>
-/// Represents an exception that is thrown when an Model Context Protocol (MCP) error occurs.
+/// Represents an exception that is thrown when a Model Context Protocol (MCP) protocol-level error occurs.
 /// </summary>
 /// <remarks>
-/// This exception is used to represent failures to do with protocol-level concerns, such as invalid JSON-RPC requests,
-/// invalid parameters, or internal errors. It is not intended to be used for application-level errors.
+/// <para>
+/// This exception is used to represent failures related to protocol-level concerns, such as malformed
+/// JSON-RPC requests, unknown methods, unknown primitive names (tools/prompts/resources), or internal
+/// server errors. It is not intended to be used for tool execution errors, including input validation failures.
+/// </para>
+/// <para>
+/// Tool execution errors (including input validation errors, API failures, and business logic errors)
+/// should be returned in the result object with <c>IsError</c> set to <see langword="true"/>, allowing
+/// language models to see error details and self-correct. Only protocol-level issues should throw
+/// <see cref="McpProtocolException"/>.
+/// </para>
+/// <para>
 /// <see cref="Exception.Message"/> or <see cref="ErrorCode"/> from a <see cref="McpProtocolException"/> may be 
 /// propagated to the remote endpoint; sensitive information should not be included. If sensitive details need
 /// to be included, a different exception type should be used.
+/// </para>
 /// </remarks>
 public sealed class McpProtocolException : McpException
 {
@@ -65,7 +76,7 @@ public sealed class McpProtocolException : McpException
     /// <item><description>-32700: Parse error - Invalid JSON received</description></item>
     /// <item><description>-32600: Invalid request - The JSON is not a valid Request object</description></item>
     /// <item><description>-32601: Method not found - The method does not exist or is not available</description></item>
-    /// <item><description>-32602: Invalid params - Invalid method parameters</description></item>
+    /// <item><description>-32602: Invalid params - Malformed request or unknown primitive name (tool/prompt/resource)</description></item>
     /// <item><description>-32603: Internal error - Internal JSON-RPC error</description></item>
     /// </list>
     /// </remarks>
