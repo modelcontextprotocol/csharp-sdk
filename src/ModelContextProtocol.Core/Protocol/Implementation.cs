@@ -38,6 +38,22 @@ public sealed class Implementation : IBaseMetadata
     public required string Version { get; set; }
 
     /// <summary>
+    /// Gets or sets an optional description of the implementation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This description helps users and developers understand what the implementation provides
+    /// and its purpose. It should clearly explain the functionality and capabilities offered.
+    /// </para>
+    /// <para>
+    /// The description is typically used in documentation, UI displays, and for providing context
+    /// to users about the server or client they are interacting with.
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+
+    /// <summary>
     /// Gets or sets an optional list of icons for this implementation.
     /// </summary>
     /// <remarks>
