@@ -170,10 +170,10 @@ public sealed class InteractiveTools
                     Description = "Select the issue severity level",
                     OneOf =
                     [
-                        new EnumOption { Const = "p0", Title = "P0 - Critical (Immediate attention required)" },
-                        new EnumOption { Const = "p1", Title = "P1 - High (Urgent, within 24 hours)" },
-                        new EnumOption { Const = "p2", Title = "P2 - Medium (Within a week)" },
-                        new EnumOption { Const = "p3", Title = "P3 - Low (As time permits)" }
+                        new EnumSchemaOption { Const = "p0", Title = "P0 - Critical (Immediate attention required)" },
+                        new EnumSchemaOption { Const = "p1", Title = "P1 - High (Urgent, within 24 hours)" },
+                        new EnumSchemaOption { Const = "p2", Title = "P2 - Medium (Within a week)" },
+                        new EnumSchemaOption { Const = "p3", Title = "P3 - Low (As time permits)" }
                     ],
                     Default = "p2"
                 }
@@ -204,7 +204,7 @@ public sealed class InteractiveTools
                     Description = "Select one or more tags",
                     MinItems = 1,
                     MaxItems = 3,
-                    Items = new EnumItemsSchema
+                    Items = new UntitledEnumItemsSchema
                     {
                         Type = "string",
                         Enum = ["bug", "feature", "documentation", "enhancement", "question"]
@@ -239,14 +239,14 @@ public sealed class InteractiveTools
                 {
                     Title = "Features",
                     Description = "Select desired features",
-                    Items = new EnumItemsSchema
+                    Items = new TitledEnumItemsSchema
                     {
                         AnyOf =
                         [
-                            new EnumOption { Const = "auth", Title = "Authentication & Authorization" },
-                            new EnumOption { Const = "api", Title = "RESTful API" },
-                            new EnumOption { Const = "ui", Title = "Modern UI Components" },
-                            new EnumOption { Const = "db", Title = "Database Integration" }
+                            new EnumSchemaOption { Const = "auth", Title = "Authentication & Authorization" },
+                            new EnumSchemaOption { Const = "api", Title = "RESTful API" },
+                            new EnumSchemaOption { Const = "ui", Title = "Modern UI Components" },
+                            new EnumSchemaOption { Const = "db", Title = "Database Integration" }
                         ]
                     }
                 }

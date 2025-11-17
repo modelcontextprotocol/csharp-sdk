@@ -120,10 +120,10 @@ public sealed class ElicitRequestParams
                 IList<string>? defaultStringArray = null;
                 IList<string>? enumValues = null;
                 IList<string>? enumNames = null;
-                IList<EnumOption>? oneOf = null;
+                IList<EnumSchemaOption>? oneOf = null;
                 int? minItems = null;
                 int? maxItems = null;
-                EnumItemsSchema? items = null;
+                object? items = null; // Can be UntitledEnumItemsSchema or TitledEnumItemsSchema
 
                 while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
                 {
@@ -278,30 +278,27 @@ public sealed class ElicitRequestParams
                         break;
 
                     case "array":
-                        if (items is not null)
+                        if (items is TitledEnumItemsSchema titledItems)
                         {
-                            if (items.AnyOf is not null)
+                            // TitledMultiSelectEnumSchema
+                            psd = new TitledMultiSelectEnumSchema
                             {
-                                // TitledMultiSelectEnumSchema
-                                psd = new TitledMultiSelectEnumSchema
-                                {
-                                    MinItems = minItems,
-                                    MaxItems = maxItems,
-                                    Items = items,
-                                    Default = defaultStringArray,
-                                };
-                            }
-                            else if (items.Enum is not null)
+                                MinItems = minItems,
+                                MaxItems = maxItems,
+                                Items = titledItems,
+                                Default = defaultStringArray,
+                            };
+                        }
+                        else if (items is UntitledEnumItemsSchema untitledItems)
+                        {
+                            // UntitledMultiSelectEnumSchema
+                            psd = new UntitledMultiSelectEnumSchema
                             {
-                                // UntitledMultiSelectEnumSchema
-                                psd = new UntitledMultiSelectEnumSchema
-                                {
-                                    MinItems = minItems,
-                                    MaxItems = maxItems,
-                                    Items = items,
-                                    Default = defaultStringArray,
-                                };
-                            }
+                                MinItems = minItems,
+                                MaxItems = maxItems,
+                                Items = untitledItems,
+                                Default = defaultStringArray,
+                            };
                         }
                         break;
 
@@ -333,14 +330,14 @@ public sealed class ElicitRequestParams
                 return psd;
             }
 
-            private static IList<EnumOption> DeserializeEnumOptions(ref Utf8JsonReader reader)
+            private static IList<EnumSchemaOption> DeserializeEnumOptions(ref Utf8JsonReader reader)
             {
                 if (reader.TokenType != JsonTokenType.StartArray)
                 {
                     throw new JsonException("Expected array for oneOf property.");
                 }
 
-                var options = new List<EnumOption>();
+                var options = new List<EnumSchemaOption>();
                 while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
                 {
                     if (reader.TokenType != JsonTokenType.StartObject)
@@ -378,20 +375,23 @@ public sealed class ElicitRequestParams
                         throw new JsonException("Each option in oneOf must have both 'const' and 'title' properties.");
                     }
 
-                    options.Add(new EnumOption { Const = constValue, Title = titleValue });
+                    options.Add(new EnumSchemaOption { Const = constValue, Title = titleValue });
                 }
 
                 return options;
             }
 
-            private static EnumItemsSchema DeserializeEnumItemsSchema(ref Utf8JsonReader reader)
+            private static object DeserializeEnumItemsSchema(ref Utf8JsonReader reader)
             {
                 if (reader.TokenType != JsonTokenType.StartObject)
                 {
                     throw new JsonException("Expected object for items property.");
                 }
 
-                var itemsSchema = new EnumItemsSchema();
+                string? type = null;
+                IList<string>? enumValues = null;
+                IList<EnumSchemaOption>? anyOf = null;
+
                 while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
                 {
                     if (reader.TokenType == JsonTokenType.PropertyName)
@@ -402,13 +402,13 @@ public sealed class ElicitRequestParams
                         switch (propertyName)
                         {
                             case "type":
-                                itemsSchema.Type = reader.GetString() ?? "string";
+                                type = reader.GetString();
                                 break;
                             case "enum":
-                                itemsSchema.Enum = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.IListString);
+                                enumValues = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.IListString);
                                 break;
                             case "anyOf":
-                                itemsSchema.AnyOf = DeserializeEnumOptions(ref reader);
+                                anyOf = DeserializeEnumOptions(ref reader);
                                 break;
                             default:
                                 reader.Skip();
@@ -417,7 +417,19 @@ public sealed class ElicitRequestParams
                     }
                 }
 
-                return itemsSchema;
+                // Determine which type to create based on the properties
+                if (anyOf is not null)
+                {
+                    return new TitledEnumItemsSchema { AnyOf = anyOf };
+                }
+                else if (enumValues is not null)
+                {
+                    return new UntitledEnumItemsSchema { Type = type ?? "string", Enum = enumValues };
+                }
+                else
+                {
+                    throw new JsonException("Items schema must have either 'enum' or 'anyOf' property.");
+                }
             }
 
             /// <inheritdoc/>
@@ -517,11 +529,8 @@ public sealed class ElicitRequestParams
                         {
                             writer.WriteNumber("maxItems", untitledMultiSelect.MaxItems.Value);
                         }
-                        if (untitledMultiSelect.Items is not null)
-                        {
-                            writer.WritePropertyName("items");
-                            SerializeEnumItemsSchema(writer, untitledMultiSelect.Items);
-                        }
+                        writer.WritePropertyName("items");
+                        SerializeUntitledEnumItemsSchema(writer, untitledMultiSelect.Items);
                         if (untitledMultiSelect.Default is not null)
                         {
                             writer.WritePropertyName("default");
@@ -538,11 +547,8 @@ public sealed class ElicitRequestParams
                         {
                             writer.WriteNumber("maxItems", titledMultiSelect.MaxItems.Value);
                         }
-                        if (titledMultiSelect.Items is not null)
-                        {
-                            writer.WritePropertyName("items");
-                            SerializeEnumItemsSchema(writer, titledMultiSelect.Items);
-                        }
+                        writer.WritePropertyName("items");
+                        SerializeTitledEnumItemsSchema(writer, titledMultiSelect.Items);
                         if (titledMultiSelect.Default is not null)
                         {
                             writer.WritePropertyName("default");
@@ -576,7 +582,7 @@ public sealed class ElicitRequestParams
                 writer.WriteEndObject();
             }
 
-            private static void SerializeEnumOptions(Utf8JsonWriter writer, IList<EnumOption> options)
+            private static void SerializeEnumOptions(Utf8JsonWriter writer, IList<EnumSchemaOption> options)
             {
                 writer.WriteStartArray();
                 foreach (var option in options)
@@ -589,23 +595,20 @@ public sealed class ElicitRequestParams
                 writer.WriteEndArray();
             }
 
-            private static void SerializeEnumItemsSchema(Utf8JsonWriter writer, EnumItemsSchema itemsSchema)
+            private static void SerializeUntitledEnumItemsSchema(Utf8JsonWriter writer, UntitledEnumItemsSchema itemsSchema)
             {
                 writer.WriteStartObject();
                 writer.WriteString("type", itemsSchema.Type);
-                
-                if (itemsSchema.Enum is not null)
-                {
-                    writer.WritePropertyName("enum");
-                    JsonSerializer.Serialize(writer, itemsSchema.Enum, McpJsonUtilities.JsonContext.Default.IListString);
-                }
-                
-                if (itemsSchema.AnyOf is not null && itemsSchema.AnyOf.Count > 0)
-                {
-                    writer.WritePropertyName("anyOf");
-                    SerializeEnumOptions(writer, itemsSchema.AnyOf);
-                }
-                
+                writer.WritePropertyName("enum");
+                JsonSerializer.Serialize(writer, itemsSchema.Enum, McpJsonUtilities.JsonContext.Default.IListString);
+                writer.WriteEndObject();
+            }
+
+            private static void SerializeTitledEnumItemsSchema(Utf8JsonWriter writer, TitledEnumItemsSchema itemsSchema)
+            {
+                writer.WriteStartObject();
+                writer.WritePropertyName("anyOf");
+                SerializeEnumOptions(writer, itemsSchema.AnyOf);
                 writer.WriteEndObject();
             }
         }
@@ -816,9 +819,9 @@ public sealed class ElicitRequestParams
     }
 
     /// <summary>
-    /// Represents a single option in a titled enum schema.
+    /// Represents a single option in a titled enum schema with a constant value and display title.
     /// </summary>
-    public sealed class EnumOption
+    public sealed class EnumSchemaOption
     {
         /// <summary>Gets or sets the constant value for this option.</summary>
         [JsonPropertyName("const")]
@@ -851,7 +854,7 @@ public sealed class ElicitRequestParams
         /// <summary>Gets or sets the list of enum options with their constant values and display titles.</summary>
         [JsonPropertyName("oneOf")]
         [field: MaybeNull]
-        public IList<EnumOption> OneOf
+        public IList<EnumSchemaOption> OneOf
         {
             get => field ??= [];
             set
@@ -867,21 +870,27 @@ public sealed class ElicitRequestParams
     }
 
     /// <summary>
-    /// Represents the items schema for multi-select enum arrays.
+    /// Represents the items schema for untitled multi-select enum arrays.
     /// </summary>
-    public sealed class EnumItemsSchema
+    public sealed class UntitledEnumItemsSchema
     {
         /// <summary>Gets or sets the type of the items.</summary>
         [JsonPropertyName("type")]
         public string Type { get; set; } = "string";
 
-        /// <summary>Gets or sets the list of allowed string values for untitled multi-select enums.</summary>
+        /// <summary>Gets or sets the list of allowed string values.</summary>
         [JsonPropertyName("enum")]
-        public IList<string>? Enum { get; set; }
+        public required IList<string> Enum { get; set; }
+    }
 
-        /// <summary>Gets or sets the list of enum options for titled multi-select enums.</summary>
+    /// <summary>
+    /// Represents the items schema for titled multi-select enum arrays.
+    /// </summary>
+    public sealed class TitledEnumItemsSchema
+    {
+        /// <summary>Gets or sets the list of enum options with constant values and display titles.</summary>
         [JsonPropertyName("anyOf")]
-        public IList<EnumOption>? AnyOf { get; set; }
+        public required IList<EnumSchemaOption> AnyOf { get; set; }
     }
 
     /// <summary>
@@ -913,16 +922,7 @@ public sealed class ElicitRequestParams
 
         /// <summary>Gets or sets the schema for items in the array.</summary>
         [JsonPropertyName("items")]
-        [field: MaybeNull]
-        public EnumItemsSchema Items
-        {
-            get => field ??= new EnumItemsSchema();
-            set
-            {
-                Throw.IfNull(value);
-                field = value;
-            }
-        }
+        public required UntitledEnumItemsSchema Items { get; set; }
 
         /// <summary>Gets or sets the default values for the enum.</summary>
         [JsonPropertyName("default")]
@@ -958,16 +958,7 @@ public sealed class ElicitRequestParams
 
         /// <summary>Gets or sets the schema for items in the array.</summary>
         [JsonPropertyName("items")]
-        [field: MaybeNull]
-        public EnumItemsSchema Items
-        {
-            get => field ??= new EnumItemsSchema();
-            set
-            {
-                Throw.IfNull(value);
-                field = value;
-            }
-        }
+        public required TitledEnumItemsSchema Items { get; set; }
 
         /// <summary>Gets or sets the default values for the enum.</summary>
         [JsonPropertyName("default")]

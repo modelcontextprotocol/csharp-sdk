@@ -47,9 +47,9 @@ public class EnumSchemaTests
             Description = "Issue severity",
             OneOf =
             [
-                new ElicitRequestParams.EnumOption { Const = "critical", Title = "Critical" },
-                new ElicitRequestParams.EnumOption { Const = "high", Title = "High Priority" },
-                new ElicitRequestParams.EnumOption { Const = "low", Title = "Low Priority" }
+                new ElicitRequestParams.EnumSchemaOption { Const = "critical", Title = "Critical" },
+                new ElicitRequestParams.EnumSchemaOption { Const = "high", Title = "High Priority" },
+                new ElicitRequestParams.EnumSchemaOption { Const = "low", Title = "Low Priority" }
             ],
             Default = "high"
         };
@@ -85,7 +85,7 @@ public class EnumSchemaTests
             Description = "Select multiple tags",
             MinItems = 1,
             MaxItems = 3,
-            Items = new ElicitRequestParams.EnumItemsSchema
+            Items = new ElicitRequestParams.UntitledEnumItemsSchema
             {
                 Type = "string",
                 Enum = ["bug", "feature", "documentation", "enhancement"]
@@ -125,13 +125,13 @@ public class EnumSchemaTests
             Title = "Features",
             Description = "Select desired features",
             MinItems = 2,
-            Items = new ElicitRequestParams.EnumItemsSchema
+            Items = new ElicitRequestParams.TitledEnumItemsSchema
             {
                 AnyOf =
                 [
-                    new ElicitRequestParams.EnumOption { Const = "auth", Title = "Authentication" },
-                    new ElicitRequestParams.EnumOption { Const = "api", Title = "REST API" },
-                    new ElicitRequestParams.EnumOption { Const = "ui", Title = "User Interface" }
+                    new ElicitRequestParams.EnumSchemaOption { Const = "auth", Title = "Authentication" },
+                    new ElicitRequestParams.EnumSchemaOption { Const = "api", Title = "REST API" },
+                    new ElicitRequestParams.EnumSchemaOption { Const = "ui", Title = "User Interface" }
                 ]
             },
             Default = ["auth", "api"]
