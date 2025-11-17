@@ -18,6 +18,7 @@ build: restore
 test: build
 	dotnet test \
 		--no-build \
+		--no-progress \
 		--configuration $(CONFIGURATION) \
 		--filter-not-trait 'Execution=Manual' \
 		--crashdump \
