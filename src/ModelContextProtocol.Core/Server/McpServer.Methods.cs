@@ -62,7 +62,21 @@ public abstract partial class McpServer : McpSession, IMcpServer
 
         if (options?.Meta is not null)
         {
-            request.Meta = options.Meta;
+            if (request.Meta is not null)
+            {
+                // Merge existing request.Meta and options.Meta, with options.Meta taking precedence
+                var mergedMeta = new Dictionary<string, object?>(request.Meta);
+                foreach (var kvp in options.Meta)
+                {
+                    mergedMeta[kvp.Key] = kvp.Value;
+                }
+                request.Meta = mergedMeta;
+            }
+            else
+            {
+                // Only options.Meta is present
+                request.Meta = new Dictionary<string, object?>(options.Meta);
+            }
         }
 
         return SendRequestAsync(
@@ -213,7 +227,25 @@ public abstract partial class McpServer : McpSession, IMcpServer
 
         if (options?.Meta is not null)
         {
-            request.Meta = options.Meta;
+            if (request.Meta is null)
+            {
+                // No existing meta, just assign
+                request.Meta = options.Meta;
+            }
+            else
+            {
+                // Merge existing and options.Meta, options.Meta takes precedence
+                var merged = new JsonObject();
+                foreach (var kvp in request.Meta)
+                {
+                    merged[kvp.Key] = kvp.Value;
+                }
+                foreach (var kvp in options.Meta)
+                {
+                    merged[kvp.Key] = kvp.Value;
+                }
+                request.Meta = merged;
+            }
         }
 
         return SendRequestAsync(
