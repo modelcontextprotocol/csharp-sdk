@@ -569,8 +569,9 @@ public abstract partial class McpClient : McpSession, IMcpClient
                 {
                     Name = toolName,
                     Arguments = ToArgumentsDictionary(arguments, serializerOptions),
-                    ProgressToken = progressToken,
                     Meta = meta,
+                    // Must set ProgressToken after Meta
+                    ProgressToken = progressToken,
                 },
                 McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
                 McpJsonUtilities.JsonContext.Default.CallToolResult,
