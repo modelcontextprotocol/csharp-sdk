@@ -74,6 +74,10 @@ internal sealed class StdioClientSessionTransport(
             // The process has exited, but we still need to ensure stderr has been flushed.
 #if NET
             await _process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            // WaitForExitAsync only waits for the process to exit, not for async stderr/stdout to complete.
+            // We need to call the parameterless WaitForExit to ensure async I/O is fully flushed.
+            // See: https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.process.waitforexit
+            _process.WaitForExit();
 #else
             _process.WaitForExit();
 #endif
