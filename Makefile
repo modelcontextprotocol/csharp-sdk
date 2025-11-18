@@ -24,8 +24,8 @@ test: build
 		--crashdump \
 		--hangdump \
 		--hangdump-timeout 7m \
-		--coverage
-		--coverage-output-format cobertura
+		--coverage \
+		--coverage-output-format cobertura \
 		-p:_MTPResultsDirectory=$(ARTIFACT_PATH)/testresults \
 
 pack: restore
