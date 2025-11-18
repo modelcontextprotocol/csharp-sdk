@@ -47,11 +47,23 @@ public class CompliancePrompts
     }
 
     [McpServerPrompt(Name = "test_prompt_with_image"), Description("Prompt with image")]
-    public static IEnumerable<ChatMessage> PromptWithImage()
+    public static IEnumerable<PromptMessage> PromptWithImage()
     {
         return [
-            new ChatMessage(ChatRole.User, [new DataContent(TEST_IMAGE_BASE64)]),
-            new ChatMessage(ChatRole.User, "Please analyze the image above."),
+            new PromptMessage
+            {
+                Role = Role.User,
+                Content = new ImageContentBlock
+                {
+                    MimeType = "image/png",
+                    Data = TEST_IMAGE_BASE64
+                }
+            },
+            new PromptMessage
+            {
+                Role = Role.User,
+                Content = new TextContentBlock { Text = "Please analyze the image above." }
+            },
         ];
     }
 }

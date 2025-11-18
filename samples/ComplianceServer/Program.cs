@@ -59,53 +59,17 @@ builder.Services
     })
     .WithCompleteHandler(async (ctx, ct) =>
     {
-        var exampleCompletions = new Dictionary<string, IEnumerable<string>>
+        // Basic completion support - returns empty array for conformance
+        // Real implementations would provide contextual suggestions
+        return new CompleteResult
         {
-            { "style", ["casual", "formal", "technical", "friendly"] },
-            { "temperature", ["0", "0.5", "0.7", "1.0"] },
-            { "resourceId", ["1", "2", "3", "4", "5"] }
+            Completion = new Completion
+            {
+                Values = [],
+                HasMore = false,
+                Total = 0
+            }
         };
-
-        if (ctx.Params is not { } @params)
-        {
-            throw new NotSupportedException($"Params are required.");
-        }
-
-        var @ref = @params.Ref;
-        var argument = @params.Argument;
-
-        if (@ref is ResourceTemplateReference rtr)
-        {
-            var resourceId = rtr.Uri?.Split("/").Last();
-
-            if (resourceId is null)
-            {
-                return new CompleteResult();
-            }
-
-            var values = exampleCompletions["resourceId"].Where(id => id.StartsWith(argument.Value));
-
-            return new CompleteResult
-            {
-                Completion = new Completion { Values = [.. values], HasMore = false, Total = values.Count() }
-            };
-        }
-
-        if (@ref is PromptReference pr)
-        {
-            if (!exampleCompletions.TryGetValue(argument.Name, out IEnumerable<string>? value))
-            {
-                throw new NotSupportedException($"Unknown argument name: {argument.Name}");
-            }
-
-            var values = value.Where(value => value.StartsWith(argument.Value));
-            return new CompleteResult
-            {
-                Completion = new Completion { Values = [.. values], HasMore = false, Total = values.Count() }
-            };
-        }
-
-        throw new NotSupportedException($"Unknown reference type: {@ref.Type}");
     })
     .WithSetLoggingLevelHandler(async (ctx, ct) =>
     {
@@ -114,13 +78,13 @@ builder.Services
             throw new McpProtocolException("Missing required argument 'level'", McpErrorCode.InvalidParams);
         }
 
-        // The SDK updates the LoggingLevel field of the IMcpServer
-
+        // The SDK updates the LoggingLevel field of the McpServer
+        // Send a log notification to confirm the level was set
         await ctx.Server.SendNotificationAsync("notifications/message", new
         {
-            Level = "debug",
-            Logger = "test-server",
-            Data = $"Logging level set to {ctx.Params.Level}",
+            Level = "info",
+            Logger = "conformance-test-server",
+            Data = $"Log level set to: {ctx.Params.Level}",
         }, cancellationToken: ct);
 
         return new EmptyResult();

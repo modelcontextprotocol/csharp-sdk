@@ -173,44 +173,197 @@ public class ComplianceTools
     }
 
     /// <summary>
-    /// Sampling tool - requests LLM completion from client (not implemented in this version)
+    /// Sampling tool - requests LLM completion from client
     /// </summary>
     [McpServerTool(Name = "test_sampling")]
     [Description("Tests server-initiated sampling (LLM completion request)")]
-    public static string Sampling([Description("The prompt to send to the LLM")] string prompt)
+    public static async Task<string> Sampling(
+        McpServer server,
+        [Description("The prompt to send to the LLM")] string prompt,
+        CancellationToken cancellationToken)
     {
-        // Note: Client-requested sampling is not yet implemented in the C# SDK
-        return "Sampling not supported or error: Sampling capability not implemented in C# SDK yet";
+        try
+        {
+            var samplingParams = new CreateMessageRequestParams
+            {
+                Messages = [new SamplingMessage
+                {
+                    Role = Role.User,
+                    Content = new TextContentBlock { Text = prompt },
+                }],
+                MaxTokens = 100,
+                Temperature = 0.7f
+            };
+
+            var result = await server.SampleAsync(samplingParams, cancellationToken);
+            return $"Sampling result: {(result.Content as TextContentBlock)?.Text ?? "No text content"}";
+        }
+        catch (Exception ex)
+        {
+            return $"Sampling not supported or error: {ex.Message}";
+        }
     }
 
     /// <summary>
-    /// Elicitation tool - requests user input from client (not implemented in this version)
+    /// Elicitation tool - requests user input from client
     /// </summary>
     [McpServerTool(Name = "test_elicitation")]
     [Description("Tests elicitation (user input request from client)")]
-    public static string Elicitation([Description("Message to show to the user")] string message)
+    public static async Task<string> Elicitation(
+        McpServer server,
+        [Description("Message to show to the user")] string message,
+        CancellationToken cancellationToken)
     {
-        // Note: Elicitation is not yet implemented in the C# SDK
-        return "Elicitation not supported or error: Elicitation capability not implemented in C# SDK yet";
+        try
+        {
+            var schema = new ElicitRequestParams.RequestSchema
+            {
+                Properties =
+                {
+                    ["response"] = new ElicitRequestParams.StringSchema()
+                    {
+                        Description = "User's response to the message"
+                    }
+                }
+            };
+
+            var result = await server.ElicitAsync(new ElicitRequestParams
+            {
+                Message = message,
+                RequestedSchema = schema
+            }, cancellationToken);
+
+            if (result.Action == "accept" && result.Content != null)
+            {
+                return $"User responded: {result.Content["response"].GetString()}";
+            }
+            else
+            {
+                return $"Elicitation {result.Action}";
+            }
+        }
+        catch (Exception ex)
+        {
+            return $"Elicitation not supported or error: {ex.Message}";
+        }
     }
 
     /// <summary>
-    /// SEP-1034: Elicitation with default values for all primitive types (not implemented)
+    /// SEP-1034: Elicitation with default values for all primitive types
     /// </summary>
     [McpServerTool(Name = "test_elicitation_sep1034_defaults")]
     [Description("Tests elicitation with default values per SEP-1034")]
-    public static string ElicitationSep1034Defaults()
+    public static async Task<string> ElicitationSep1034Defaults(
+        McpServer server,
+        CancellationToken cancellationToken)
     {
-        return "Elicitation not supported or error: Elicitation capability not implemented in C# SDK yet";
+        try
+        {
+            var schema = new ElicitRequestParams.RequestSchema
+            {
+                Properties =
+                {
+                    ["name"] = new ElicitRequestParams.StringSchema()
+                    {
+                        Description = "Name",
+                        Default = "John Doe"
+                    },
+                    ["age"] = new ElicitRequestParams.NumberSchema()
+                    {
+                        Type = "integer",
+                        Description = "Age",
+                        Default = 30
+                    },
+                    ["score"] = new ElicitRequestParams.NumberSchema()
+                    {
+                        Description = "Score",
+                        Default = 95.5
+                    },
+                    ["status"] = new ElicitRequestParams.EnumSchema()
+                    {
+                        Description = "Status",
+                        Enum = ["active", "inactive", "pending"],
+                        Default = "active"
+                    },
+                    ["verified"] = new ElicitRequestParams.BooleanSchema()
+                    {
+                        Description = "Verified",
+                        Default = true
+                    }
+                }
+            };
+
+            var result = await server.ElicitAsync(new ElicitRequestParams
+            {
+                Message = "Test elicitation with default values for primitive types",
+                RequestedSchema = schema
+            }, cancellationToken);
+
+            if (result.Action == "accept" && result.Content != null)
+            {
+                return $"Accepted with values: string={result.Content["stringField"].GetString()}, " +
+                       $"number={result.Content["numberField"].GetInt32()}, " +
+                       $"boolean={result.Content["booleanField"].GetBoolean()}";
+            }
+            else
+            {
+                return $"Elicitation {result.Action}";
+            }
+        }
+        catch (Exception ex)
+        {
+            return $"Elicitation not supported or error: {ex.Message}";
+        }
     }
 
     /// <summary>
-    /// SEP-1330: Elicitation with enum schema improvements (not implemented)
+    /// SEP-1330: Elicitation with enum schema improvements
     /// </summary>
     [McpServerTool(Name = "test_elicitation_sep1330_enums")]
     [Description("Tests elicitation with enum schema improvements per SEP-1330")]
-    public static string ElicitationSep1330Enums()
+    public static async Task<string> ElicitationSep1330Enums(
+        McpServer server,
+        CancellationToken cancellationToken)
     {
-        return "Elicitation not supported or error: Elicitation capability not implemented in C# SDK yet";
+        try
+        {
+            var schema = new ElicitRequestParams.RequestSchema
+            {
+                Properties =
+                {
+                    ["color"] = new ElicitRequestParams.EnumSchema()
+                    {
+                        Description = "Choose a color",
+                        Enum = ["red", "green", "blue"]
+                    },
+                    ["size"] = new ElicitRequestParams.EnumSchema()
+                    {
+                        Description = "Choose a size",
+                        Enum = ["small", "medium", "large"],
+                        Default = "medium"
+                    }
+                }
+            };
+
+            var result = await server.ElicitAsync(new ElicitRequestParams
+            {
+                Message = "Test elicitation with enum schema",
+                RequestedSchema = schema
+            }, cancellationToken);
+
+            if (result.Action == "accept" && result.Content != null)
+            {
+                return $"Accepted with values: color={result.Content["color"].GetString()}, " +
+                       $"size={result.Content["size"].GetString()}";
+            }
+            else
+            {
+                return $"Elicitation {result.Action}";
+            }
+        }
+        catch (Exception ex)
+        {
+            return $"Elicitation not supported or error: {ex.Message}";
+        }
     }
 }
