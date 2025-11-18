@@ -11,7 +11,7 @@ internal sealed class TokenResponse
     /// Gets or sets the access token.
     /// </summary>
     [JsonPropertyName("access_token")]
-    public string AccessToken { get; set; } = string.Empty;
+    public required string AccessToken { get; set; }
 
     /// <summary>
     /// Gets or sets the refresh token.
@@ -23,23 +23,17 @@ internal sealed class TokenResponse
     /// Gets or sets the number of seconds until the access token expires.
     /// </summary>
     [JsonPropertyName("expires_in")]
-    public int ExpiresIn { get; set; }
-
-    /// <summary>
-    /// Gets or sets the extended expiration time in seconds.
-    /// </summary>
-    [JsonPropertyName("ext_expires_in")]
-    public int ExtExpiresIn { get; set; }
+    public int? ExpiresIn { get; set; }
 
     /// <summary>
     /// Gets or sets the token type (typically "Bearer").
     /// </summary>
     [JsonPropertyName("token_type")]
-    public string TokenType { get; set; } = string.Empty;
+    public required string TokenType { get; set; }
 
     /// <summary>
     /// Gets or sets the scope of the access token.
     /// </summary>
     [JsonPropertyName("scope")]
-    public string Scope { get; set; } = string.Empty;
+    public string? Scope { get; set; }
 }
