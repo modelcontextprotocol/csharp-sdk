@@ -34,15 +34,4 @@ public sealed class RootsCapability
     [JsonPropertyName("listChanged")]
     public bool? ListChanged { get; set; }
 
-    /// <summary>
-    /// Gets or sets the handler for <see cref="RequestMethods.RootsList"/> requests.
-    /// </summary>
-    /// <remarks>
-    /// This handler is invoked when a client sends a <see cref="RequestMethods.RootsList"/> request to retrieve available roots.
-    /// The handler receives request parameters and should return a <see cref="ListRootsResult"/> containing the collection of available roots.
-    /// </remarks>
-    [JsonIgnore]
-    [Obsolete($"Use {nameof(McpClientOptions.Handlers.RootsHandler)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    public Func<ListRootsRequestParams?, CancellationToken, ValueTask<ListRootsResult>>? RootsHandler { get; set; }
 }

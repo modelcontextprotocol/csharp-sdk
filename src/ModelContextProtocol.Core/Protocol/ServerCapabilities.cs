@@ -66,25 +66,4 @@ public sealed class ServerCapabilities
     [JsonPropertyName("completions")]
     public CompletionsCapability? Completions { get; set; }
 
-    /// <summary>Gets or sets notification handlers to register with the server.</summary>
-    /// <remarks>
-    /// <para>
-    /// When constructed, the server will enumerate these handlers once, which may contain multiple handlers per notification method key.
-    /// The server will not re-enumerate the sequence after initialization.
-    /// </para>
-    /// <para>
-    /// Notification handlers allow the server to respond to client-sent notifications for specific methods.
-    /// Each key in the collection is a notification method name, and each value is a callback that will be invoked
-    /// when a notification with that method is received.
-    /// </para>
-    /// <para>
-    /// Handlers provided via <see cref="NotificationHandlers"/> will be registered with the server for the lifetime of the server.
-    /// For transient handlers, <see cref="McpSession.RegisterNotificationHandler"/> may be used to register a handler that can
-    /// then be unregistered by disposing of the <see cref="IAsyncDisposable"/> returned from the method.
-    /// </para>
-    /// </remarks>
-    [JsonIgnore]
-    [Obsolete($"Use {nameof(McpServerOptions.Handlers.NotificationHandlers)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    public IEnumerable<KeyValuePair<string, Func<JsonRpcNotification, CancellationToken, ValueTask>>>? NotificationHandlers { get; set; }
 }

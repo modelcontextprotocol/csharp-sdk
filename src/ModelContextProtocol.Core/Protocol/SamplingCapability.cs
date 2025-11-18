@@ -24,26 +24,4 @@ namespace ModelContextProtocol.Protocol;
 /// </remarks>
 public sealed class SamplingCapability
 {
-    /// <summary>
-    /// Gets or sets the handler for processing <see cref="RequestMethods.SamplingCreateMessage"/> requests.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// This handler function is called when an MCP server requests the client to generate content
-    /// using an AI model. The client must set this property for the sampling capability to work.
-    /// </para>
-    /// <para>
-    /// The handler receives message parameters, a progress reporter for updates, and a 
-    /// cancellation token. It should return a <see cref="CreateMessageResult"/> containing the 
-    /// generated content.
-    /// </para>
-    /// <para>
-    /// You can create a handler using the <see cref="McpClient.CreateSamplingHandler"/> extension
-    /// method with any implementation of <see cref="IChatClient"/>.
-    /// </para>
-    /// </remarks>
-    [JsonIgnore]
-    [Obsolete($"Use {nameof(McpClientOptions.Handlers.SamplingHandler)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    public Func<CreateMessageRequestParams?, IProgress<ProgressNotificationValue>, CancellationToken, ValueTask<CreateMessageResult>>? SamplingHandler { get; set; }
 }

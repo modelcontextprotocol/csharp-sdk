@@ -67,9 +67,8 @@ public interface IMcpEndpoint : IAsyncDisposable
     /// <remarks>
     /// <para>
     /// This method provides low-level access to send any JSON-RPC message. For specific message types,
-    /// consider using the higher-level methods such as <see cref="SendRequestAsync"/> or extension methods
-    /// like <see cref="McpEndpointExtensions.SendNotificationAsync(IMcpEndpoint, string, CancellationToken)"/>,
-    /// which provide a simpler API.
+    /// consider using the higher-level methods such as <see cref="SendRequestAsync"/> or
+    /// <see cref="McpSession.SendNotificationAsync"/>, which provide a simpler API.
     /// </para>
     /// <para>
     /// The method will serialize the message and transmit it using the underlying transport mechanism.
