@@ -57,7 +57,6 @@ public class McpEndpointExtensionsTests
             .Setup(s => s.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new JsonRpcResponse
             {
-                Id = default,
                 Result = JsonSerializer.SerializeToNode(42, McpJsonUtilities.DefaultOptions),
             });
 
