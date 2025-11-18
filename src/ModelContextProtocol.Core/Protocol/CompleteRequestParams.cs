@@ -23,18 +23,18 @@ public sealed class CompleteRequestParams : RequestParams
     /// Gets or sets the reference's information.
     /// </summary>
     [JsonPropertyName("ref")]
-    public required Reference Ref { get; init; }
+    public required Reference Ref { get; set; }
 
     /// <summary>
     /// Gets or sets the argument information for the completion request, specifying what is being completed
     /// and the current partial input.
     /// </summary>
     [JsonPropertyName("argument")]
-    public required Argument Argument { get; init; }
+    public required Argument Argument { get; set; }
 
     /// <summary>
     /// Gets or sets additional, optional context for completions.
     /// </summary>
     [JsonPropertyName("context")]
-    public CompleteContext? Context { get; init; }
+    public CompleteContext? Context { get; set; }
 }

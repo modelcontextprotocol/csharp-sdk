@@ -47,7 +47,7 @@ public static partial class McpJsonUtilities
         // Add a converter for user-defined enums, if reflection is enabled by default.
         if (JsonSerializer.IsReflectionEnabledByDefault)
         {
-            options.Converters.Add(new CustomizableJsonStringEnumConverter());
+            options.Converters.Add(new JsonStringEnumConverter());
         }
 
         options.MakeReadOnly();

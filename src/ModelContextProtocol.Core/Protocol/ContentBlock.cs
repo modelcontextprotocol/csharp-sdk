@@ -1,6 +1,7 @@
 using Microsoft.Extensions.AI;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -24,7 +25,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for more details.
 /// </para>
 /// </remarks>
-[JsonConverter(typeof(Converter))] // TODO: This converter exists due to the lack of downlevel support for AllowOutOfOrderMetadataProperties.
+[JsonConverter(typeof(Converter))]
 public abstract class ContentBlock
 {
     /// <summary>Prevent external derivations.</summary>
@@ -33,13 +34,13 @@ public abstract class ContentBlock
     }
 
     /// <summary>
-    /// Gets or sets the type of content.
+    /// When overridden in a derived class, gets the type of content.
     /// </summary>
     /// <remarks>
     /// This determines the structure of the content object. Valid values include "image", "audio", "text", "resource", and "resource_link".
     /// </remarks>
     [JsonPropertyName("type")]
-    public string Type { get; set; } = string.Empty;
+    public abstract string Type { get; }
 
     /// <summary>
     /// Gets or sets optional annotations for the content.
@@ -49,11 +50,13 @@ public abstract class ContentBlock
     /// and the priority level of the content. Clients can use this information to filter or prioritize content for different roles.
     /// </remarks>
     [JsonPropertyName("annotations")]
-    public Annotations? Annotations { get; init; }
+    public Annotations? Annotations { get; set; }
 
     /// <summary>
     /// Provides a <see cref="JsonConverter"/> for <see cref="ContentBlock"/>.
     /// </summary>
+    /// Provides a polymorphic converter for the <see cref="ContentBlock"/> class that doesn't  require
+    /// setting <see cref="JsonSerializerOptions.AllowOutOfOrderMetadataProperties"/> explicitly.
     [EditorBrowsable(EditorBrowsableState.Never)]
     public class Converter : JsonConverter<ContentBlock>
     {
@@ -140,6 +143,7 @@ public abstract class ContentBlock
                         break;
 
                     default:
+                        reader.Skip();
                         break;
                 }
             }
@@ -276,8 +280,8 @@ public abstract class ContentBlock
 /// <summary>Represents text provided to or from an LLM.</summary>
 public sealed class TextContentBlock : ContentBlock
 {
-    /// <summary>Initializes the instance of the <see cref="TextContentBlock"/> class.</summary>
-    public TextContentBlock() => Type = "text";
+    /// <inheritdoc/>
+    public override string Type => "text";
 
     /// <summary>
     /// Gets or sets the text content of the message.
@@ -298,8 +302,8 @@ public sealed class TextContentBlock : ContentBlock
 /// <summary>Represents an image provided to or from an LLM.</summary>
 public sealed class ImageContentBlock : ContentBlock
 {
-    /// <summary>Initializes the instance of the <see cref="ImageContentBlock"/> class.</summary>
-    public ImageContentBlock() => Type = "image";
+    /// <inheritdoc/>
+    public override string Type => "image";
 
     /// <summary>
     /// Gets or sets the base64-encoded image data.
@@ -331,8 +335,8 @@ public sealed class ImageContentBlock : ContentBlock
 /// <summary>Represents audio provided to or from an LLM.</summary>
 public sealed class AudioContentBlock : ContentBlock
 {
-    /// <summary>Initializes the instance of the <see cref="AudioContentBlock"/> class.</summary>
-    public AudioContentBlock() => Type = "audio";
+    /// <inheritdoc/>
+    public override string Type => "audio";
 
     /// <summary>
     /// Gets or sets the base64-encoded audio data.
@@ -367,8 +371,8 @@ public sealed class AudioContentBlock : ContentBlock
 /// </remarks>
 public sealed class EmbeddedResourceBlock : ContentBlock
 {
-    /// <summary>Initializes the instance of the <see cref="ResourceLinkBlock"/> class.</summary>
-    public EmbeddedResourceBlock() => Type = "resource";
+    /// <inheritdoc/>
+    public override string Type => "resource";
 
     /// <summary>
     /// Gets or sets the resource content of the message when <see cref="Type"/> is "resource".
@@ -399,20 +403,21 @@ public sealed class EmbeddedResourceBlock : ContentBlock
 /// </remarks>
 public sealed class ResourceLinkBlock : ContentBlock
 {
-    /// <summary>Initializes the instance of the <see cref="ResourceLinkBlock"/> class.</summary>
-    public ResourceLinkBlock() => Type = "resource_link";
+    /// <inheritdoc/>
+    public override string Type => "resource_link";
 
     /// <summary>
     /// Gets or sets the URI of this resource.
     /// </summary>
     [JsonPropertyName("uri")]
-    public required string Uri { get; init; }
+    [StringSyntax(StringSyntaxAttribute.Uri)]
+    public required string Uri { get; set; }
 
     /// <summary>
     /// Gets or sets a human-readable name for this resource.
     /// </summary>
     [JsonPropertyName("name")]
-    public required string Name { get; init; }
+    public required string Name { get; set; }
 
     /// <summary>
     /// Gets or sets a description of what this resource represents.
@@ -431,7 +436,7 @@ public sealed class ResourceLinkBlock : ContentBlock
     /// </para>
     /// </remarks>
     [JsonPropertyName("description")]
-    public string? Description { get; init; }
+    public string? Description { get; set; }
 
     /// <summary>
     /// Gets or sets the MIME type of this resource.
@@ -447,7 +452,7 @@ public sealed class ResourceLinkBlock : ContentBlock
     /// </para>
     /// </remarks>
     [JsonPropertyName("mimeType")]
-    public string? MimeType { get; init; }
+    public string? MimeType { get; set; }
 
     /// <summary>
     /// Gets or sets the size of the raw resource content (before base64 encoding), in bytes, if known.
@@ -456,5 +461,5 @@ public sealed class ResourceLinkBlock : ContentBlock
     /// This can be used by applications to display file sizes and estimate context window usage.
     /// </remarks>
     [JsonPropertyName("size")]
-    public long? Size { get; init; }
+    public long? Size { get; set; }
 }

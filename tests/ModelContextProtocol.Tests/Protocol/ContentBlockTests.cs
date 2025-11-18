@@ -1,5 +1,6 @@
-using System.Text.Json;
+using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol;
+using System.Text.Json;
 
 namespace ModelContextProtocol.Tests.Protocol;
 
@@ -79,5 +80,49 @@ public class ContentBlockTests
             JsonSerializer.Deserialize<ContentBlock>(Json, McpJsonUtilities.DefaultOptions));
         
         Assert.Contains("Name must be provided for 'resource_link' type", exception.Message);
+    }
+
+    [Fact]
+    public void Deserialize_IgnoresUnknownArrayProperty()
+    {
+        // This is a regression test where a server returned an unexpected response with
+        // `structuredContent` as an array nested inside a content block. This should be
+        // permitted with the `structuredContent` gracefully ignored in that location.
+        string responseJson = @"{
+            ""type"": ""text"",
+            ""text"": ""[\n  {\n    \""Data\"": \""1234567890\""\n  }\n]"",
+            ""structuredContent"": [
+                {
+                    ""Data"": ""1234567890""
+                }
+            ]
+        }";
+
+        var contentBlock = JsonSerializer.Deserialize<ContentBlock>(responseJson, McpJsonUtilities.DefaultOptions);
+        Assert.NotNull(contentBlock);
+
+        var textBlock = Assert.IsType<TextContentBlock>(contentBlock);
+        Assert.Contains("1234567890", textBlock.Text);
+    }
+
+    [Fact]
+    public void Deserialize_IgnoresUnknownObjectProperties()
+    {
+        string responseJson = @"{
+            ""type"": ""text"",
+            ""text"": ""Sample text"",
+            ""unknownObject"": {
+                ""nestedProp1"": ""value1"",
+                ""nestedProp2"": {
+                    ""deeplyNested"": true
+                }
+            }
+        }";
+
+        var contentBlock = JsonSerializer.Deserialize<ContentBlock>(responseJson, McpJsonUtilities.DefaultOptions);
+        Assert.NotNull(contentBlock);
+
+        var textBlock = Assert.IsType<TextContentBlock>(contentBlock);
+        Assert.Contains("Sample text", textBlock.Text);
     }
 }

@@ -25,5 +25,5 @@ public sealed class ModelHint
     /// selection based on these preferences and their available models.
     /// </remarks>
     [JsonPropertyName("name")]
-    public string? Name { get; init; }
+    public string? Name { get; set; }
 }

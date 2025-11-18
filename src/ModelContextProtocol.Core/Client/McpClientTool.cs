@@ -37,6 +37,45 @@ public sealed class McpClientTool : AIFunction
     private readonly string _description;
     private readonly IProgress<ProgressNotificationValue>? _progress;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="McpClientTool"/> class.
+    /// </summary>
+    /// <param name="client">The <see cref="McpClient"/> instance to use for invoking the tool.</param>
+    /// <param name="tool">The protocol <see cref="Tool"/> definition describing the tool's metadata and schema.</param>
+    /// <param name="serializerOptions">
+    /// The JSON serialization options governing argument serialization. If <see langword="null"/>, 
+    /// <see cref="McpJsonUtilities.DefaultOptions"/> will be used.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// This constructor enables reusing cached tool definitions across different <see cref="McpClient"/> instances
+    /// without needing to call <see cref="McpClient.ListToolsAsync"/> on every reconnect. This is particularly useful 
+    /// in scenarios where tool definitions are stable and network round-trips should be minimized.
+    /// </para>
+    /// <para>
+    /// The provided <paramref name="tool"/> must represent a tool that is actually available on the server 
+    /// associated with the <paramref name="client"/>. Attempting to invoke a tool that doesn't exist on the 
+    /// server will result in an <see cref="McpException"/>.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="tool"/> is <see langword="null"/>.</exception>
+    public McpClientTool(
+        McpClient client,
+        Tool tool,
+        JsonSerializerOptions? serializerOptions = null)
+    {
+        Throw.IfNull(client);
+        Throw.IfNull(tool);
+
+        _client = client;
+        ProtocolTool = tool;
+        JsonSerializerOptions = serializerOptions ?? McpJsonUtilities.DefaultOptions;
+        _name = tool.Name;
+        _description = tool.Description ?? string.Empty;
+        _progress = null;
+    }
+
     internal McpClientTool(
         McpClient client,
         Tool tool,
@@ -91,6 +130,26 @@ public sealed class McpClientTool : AIFunction
         AIFunctionArguments arguments, CancellationToken cancellationToken)
     {
         CallToolResult result = await CallAsync(arguments, _progress, JsonSerializerOptions, cancellationToken).ConfigureAwait(false);
+
+        // We want to translate the result content into AIContent, using AIContent as the exchange types, so
+        // that downstream IChatClients can specialize handling based on the content (e.g. sending image content
+        // back to the AI service as a multi-modal tool response). However, when there is additional information
+        // carried by the CallToolResult outside of its ContentBlocks, just returning AIContent from those ContentBlocks
+        // would lose that information. So, we only do the translation if there is no additional information to preserve.
+        if (result.IsError is not true &&
+            result.StructuredContent is null &&
+            result.Meta is not { Count: > 0 })
+        {
+            switch (result.Content.Count)
+            {
+                case 1 when result.Content[0].ToAIContent() is { } aiContent:
+                    return aiContent;
+
+                case > 1 when result.Content.Select(c => c.ToAIContent()).ToArray() is { } aiContents && aiContents.All(static c => c is not null):
+                    return aiContents;
+            }
+        }
+
         return JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.CallToolResult);
     }
 

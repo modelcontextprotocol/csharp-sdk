@@ -46,7 +46,7 @@ public sealed class Icon
     /// </para>
     /// </remarks>
     [JsonPropertyName("src")]
-    public required string Source { get; init; }
+    public required string Source { get; set; }
 
     /// <summary>
     /// Gets or sets the optional MIME type of the icon.
@@ -56,7 +56,7 @@ public sealed class Icon
     /// Common values include "image/png", "image/jpeg", "image/svg+xml", and "image/webp".
     /// </remarks>
     [JsonPropertyName("mimeType")]
-    public string? MimeType { get; init; }
+    public string? MimeType { get; set; }
 
     /// <summary>
     /// Gets or sets the optional size specifications for the icon.
@@ -71,7 +71,7 @@ public sealed class Icon
     /// </para>
     /// </remarks>
     [JsonPropertyName("sizes")]
-    public IList<string>? Sizes { get; init; }
+    public IList<string>? Sizes { get; set; }
 
     /// <summary>
     /// Gets or sets the optional theme for this icon.
@@ -81,5 +81,5 @@ public sealed class Icon
     /// Used to specify which UI theme the icon is designed for.
     /// </remarks>
     [JsonPropertyName("theme")]
-    public string? Theme { get; init; }
+    public string? Theme { get; set; }
 }

@@ -24,5 +24,5 @@ public abstract class PaginatedRequestParams : RequestParams
     /// property of a previous request's response.
     /// </remarks>
     [JsonPropertyName("cursor")]
-    public string? Cursor { get; init; }
+    public string? Cursor { get; set; }
 }

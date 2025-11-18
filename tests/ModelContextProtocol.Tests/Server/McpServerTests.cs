@@ -130,7 +130,7 @@ public class McpServerTests : LoggedTest
         await using var server = McpServer.Create(transport, _options, LoggerFactory);
         SetClientCapabilities(server, new ClientCapabilities());
 
-        var action = async () => await server.SampleAsync(new CreateMessageRequestParams { Messages = [] }, CancellationToken.None);
+        var action = async () => await server.SampleAsync(new CreateMessageRequestParams { Messages = [], MaxTokens = 1000 }, CancellationToken.None);
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(action);
@@ -147,7 +147,7 @@ public class McpServerTests : LoggedTest
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
 
         // Act
-        var result = await server.SampleAsync(new CreateMessageRequestParams { Messages = [] }, CancellationToken.None);
+        var result = await server.SampleAsync(new CreateMessageRequestParams { Messages = [], MaxTokens = 1000 }, CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.NotEmpty(transport.SentMessages);
@@ -201,7 +201,7 @@ public class McpServerTests : LoggedTest
         SetClientCapabilities(server, new ClientCapabilities());
 
         // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await server.ElicitAsync(new ElicitRequestParams(), CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await server.ElicitAsync(new ElicitRequestParams { Message = "" }, CancellationToken.None));
     }
 
     [Fact]
@@ -214,7 +214,7 @@ public class McpServerTests : LoggedTest
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
 
         // Act
-        var result = await server.ElicitAsync(new ElicitRequestParams(), CancellationToken.None);
+        var result = await server.ElicitAsync(new ElicitRequestParams { Message = "" }, CancellationToken.None);
 
         // Assert
         Assert.NotNull(result);
@@ -377,7 +377,7 @@ public class McpServerTests : LoggedTest
                 {
                     return new ReadResourceResult
                     {
-                        Contents = [new TextResourceContents { Text = "test" }]
+                        Contents = [new TextResourceContents { Text = "test", Uri = "" }]
                     };
                 };
                 options.Handlers.ListResourcesHandler = (request, ct) => throw new NotImplementedException();
@@ -592,6 +592,41 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
+    public async Task Can_Handle_Call_Tool_Requests_With_InputValidationException()
+    {
+        // Test that input validation errors (like ArgumentException from JSON deserialization)
+        // are returned as tool execution errors (IsError=true) rather than protocol errors, per SEP-1303.
+        const string errorMessage = "Input validation failed: invalid date format";
+
+        await Can_Handle_Requests(
+            new ServerCapabilities
+            {
+                Tools = new()
+            },
+            method: RequestMethods.ToolsCall,
+            configureOptions: options =>
+            {
+                options.Handlers.CallToolHandler = async (request, ct) =>
+                {
+                    // Simulate an input validation error (like what would happen with wrong argument types)
+                    throw new ArgumentException(errorMessage);
+                };
+                options.Handlers.ListToolsHandler = (request, ct) => throw new NotImplementedException();
+            },
+            assertResult: (_, response) =>
+            {
+                var result = JsonSerializer.Deserialize<CallToolResult>(response, McpJsonUtilities.DefaultOptions);
+                Assert.NotNull(result);
+                Assert.True(result.IsError, "Input validation errors should be returned as tool execution errors (IsError=true), not protocol errors");
+                Assert.NotEmpty(result.Content);
+                var textContent = Assert.IsType<TextContentBlock>(result.Content[0]);
+                // ArgumentException should result in a generic error message that doesn't expose the exception details
+                Assert.DoesNotContain(errorMessage, textContent.Text);
+                Assert.Contains("An error occurred", textContent.Text);
+            });
+    }
+
+    [Fact]
     public async Task Can_Handle_Call_Tool_Requests_With_McpProtocolException()
     {
         const string errorMessage = "Invalid tool parameters";
@@ -659,7 +694,7 @@ public class McpServerTests : LoggedTest
             {
                 Method = method,
                 Id = new RequestId(55)
-        }
+            }
         );
 
         var response = await receivedMessage.Task.WaitAsync(TimeSpan.FromSeconds(10));

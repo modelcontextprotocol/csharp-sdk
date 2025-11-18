@@ -34,6 +34,7 @@ public class McpClientTests : ClientServerTestBase
             {
                 Name = "test-server",
                 Version = "1.0.0",
+                Description = "A test server for unit testing",
                 WebsiteUrl = "https://example.com",
                 Icons =
                 [
@@ -52,6 +53,7 @@ public class McpClientTests : ClientServerTestBase
         var serverInfo = client.ServerInfo;
         Assert.Equal("test-server", serverInfo.Name);
         Assert.Equal("1.0.0", serverInfo.Version);
+        Assert.Equal("A test server for unit testing", serverInfo.Description);
         Assert.Equal("https://example.com", serverInfo.WebsiteUrl);
         Assert.NotNull(serverInfo.Icons);
         Assert.Equal(2, serverInfo.Icons.Count);
@@ -69,11 +71,34 @@ public class McpClientTests : ClientServerTestBase
         Assert.Equal("dark", icon1.Theme);
     }
 
+    [Fact]
+    public async Task ServerCanReadClientInfo()
+    {
+        var clientOptions = new McpClientOptions
+        {
+            ClientInfo = new Implementation
+            {
+                Name = "test-client",
+                Version = "2.0.0",
+                Description = "A test client for validating client-server communication"
+            }
+        };
+
+        await using McpClient client = await CreateMcpClientForServer(clientOptions);
+
+        // Verify the server received the client info with description
+        var clientInfo = Server.ClientInfo;
+        Assert.NotNull(clientInfo);
+        Assert.Equal("test-client", clientInfo.Name);
+        Assert.Equal("2.0.0", clientInfo.Version);
+        Assert.Equal("A test client for validating client-server communication", clientInfo.Description);
+    }
+
     [Theory]
-    [InlineData(null, null)]
+    [InlineData(null, 10)]
     [InlineData(0.7f, 50)]
     [InlineData(1.0f, 100)]
-    public async Task CreateSamplingHandler_ShouldHandleTextMessages(float? temperature, int? maxTokens)
+    public async Task CreateSamplingHandler_ShouldHandleTextMessages(float? temperature, int maxTokens)
     {
         // Arrange
         var mockChatClient = new Mock<IChatClient>();
@@ -472,7 +497,7 @@ public class McpClientTests : ClientServerTestBase
 
                 Assert.Equal("TestLogger", m.Logger);
 
-                string ? s = JsonSerializer.Deserialize<string>(m.Data.Value, McpJsonUtilities.DefaultOptions);
+                string? s = JsonSerializer.Deserialize<string>(m.Data.Value, McpJsonUtilities.DefaultOptions);
                 Assert.NotNull(s);
 
                 if (s.Contains("Information"))
@@ -505,7 +530,7 @@ public class McpClientTests : ClientServerTestBase
                 "Error message",
                 "Information message",
                 "Warning message",
-            ], 
+            ],
             data.OrderBy(s => s));
     }
 
