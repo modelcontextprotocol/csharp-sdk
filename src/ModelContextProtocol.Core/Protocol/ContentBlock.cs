@@ -25,7 +25,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for more details.
 /// </para>
 /// </remarks>
-[JsonConverter(typeof(Converter))] // TODO: This converter exists due to the lack of downlevel support for AllowOutOfOrderMetadataProperties.
+[JsonConverter(typeof(Converter))]
 public abstract class ContentBlock
 {
     /// <summary>Prevent external derivations.</summary>
@@ -55,6 +55,8 @@ public abstract class ContentBlock
     /// <summary>
     /// Provides a <see cref="JsonConverter"/> for <see cref="ContentBlock"/>.
     /// </summary>
+    /// Provides a polymorphic converter for the <see cref="ContentBlock"/> class that doesn't  require
+    /// setting <see cref="JsonSerializerOptions.AllowOutOfOrderMetadataProperties"/> explicitly.
     [EditorBrowsable(EditorBrowsableState.Never)]
     public class Converter : JsonConverter<ContentBlock>
     {

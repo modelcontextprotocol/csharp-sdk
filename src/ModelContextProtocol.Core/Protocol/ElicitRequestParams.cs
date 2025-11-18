@@ -61,7 +61,7 @@ public sealed class ElicitRequestParams
     /// Represents restricted subset of JSON Schema: 
     /// <see cref="StringSchema"/>, <see cref="NumberSchema"/>, <see cref="BooleanSchema"/>, or <see cref="EnumSchema"/>.
     /// </summary>
-    [JsonConverter(typeof(Converter))] // TODO: This converter exists due to the lack of downlevel support for AllowOutOfOrderMetadataProperties.
+    [JsonConverter(typeof(Converter))]
     public abstract class PrimitiveSchemaDefinition
     {
         /// <summary>Prevent external derivations.</summary>
@@ -84,6 +84,8 @@ public sealed class ElicitRequestParams
         /// <summary>
         /// Provides a <see cref="JsonConverter"/> for <see cref="ResourceContents"/>.
         /// </summary>
+        /// Provides a polymorphic converter for the <see cref="PrimitiveSchemaDefinition"/> class that doesn't  require
+        /// setting <see cref="JsonSerializerOptions.AllowOutOfOrderMetadataProperties"/> explicitly.
         [EditorBrowsable(EditorBrowsableState.Never)]
         public class Converter : JsonConverter<PrimitiveSchemaDefinition>
         {
