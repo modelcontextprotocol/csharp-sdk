@@ -1,4 +1,4 @@
-﻿using ModelContextProtocol.Client;
+using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Tests.Utils;
 
@@ -81,7 +81,7 @@ public class DockerEverythingServerTests(ITestOutputHelper testOutputHelper) : L
                     {
                         Model = "test-model",
                         Role = Role.Assistant,
-                        Content = new TextContentBlock { Text = "Test response" },
+                        Content = [new TextContentBlock { Text = "Test response" }],
                     };
                 }
             }

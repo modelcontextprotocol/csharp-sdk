@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
@@ -197,7 +197,7 @@ internal static class Program
 
                 return new CallToolResult
                 {
-                    Content = [new TextContentBlock { Text = $"LLM sampling result: {(sampleResult.Content as TextContentBlock)?.Text}" }]
+                    Content = [new TextContentBlock { Text = $"LLM sampling result: {sampleResult.Content.OfType<TextContentBlock>().FirstOrDefault()?.Text}" }]
                 };
             }
             else if (request.Params?.Name == "echoCliArg")
@@ -521,7 +521,7 @@ internal static class Program
             Messages = [new SamplingMessage
                 {
                     Role = Role.User,
-                    Content = new TextContentBlock { Text = $"Resource {uri} context: {context}" },
+                    Content = [new TextContentBlock { Text = $"Resource {uri} context: {context}" }],
                 }],
             SystemPrompt = "You are a helpful test server.",
             MaxTokens = maxTokens,

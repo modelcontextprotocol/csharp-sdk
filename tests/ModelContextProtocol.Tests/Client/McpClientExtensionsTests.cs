@@ -220,7 +220,14 @@ public class McpClientExtensionsTests
     {
         var mockClient = new Mock<McpClient> { CallBase = true };
 
-        var resultPayload = new GetPromptResult { Messages = [new PromptMessage { Role = Role.User, Content = new TextContentBlock { Text = "hi" } }] };
+        var resultPayload = new GetPromptResult 
+        {
+            Messages = [new()
+            {
+                Role = Role.User,
+                Content = new TextContentBlock { Text = "hi" } 
+            }] 
+        };
 
         mockClient
             .Setup(c => c.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()))

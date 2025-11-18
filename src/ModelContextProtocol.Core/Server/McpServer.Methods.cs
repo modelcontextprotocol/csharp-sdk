@@ -106,41 +106,25 @@ public abstract partial class McpServer : McpSession, IMcpServer
                 continue;
             }
 
-            if (message.Role == ChatRole.User || message.Role == ChatRole.Assistant)
+            Role role = message.Role == ChatRole.Assistant ? Role.Assistant : Role.User;
+
+            // Group all content blocks from this message into a single SamplingMessage
+            List<ContentBlock> contentBlocks = [];
+            foreach (var content in message.Contents)
             {
-                Role role = message.Role == ChatRole.User ? Role.User : Role.Assistant;
-
-                foreach (var content in message.Contents)
+                if (content.ToContentBlock() is { } contentBlock)
                 {
-                    switch (content)
-                    {
-                        case TextContent textContent:
-                            samplingMessages.Add(new()
-                            {
-                                Role = role,
-                                Content = new TextContentBlock { Text = textContent.Text },
-                            });
-                            break;
-
-                        case DataContent dataContent when dataContent.HasTopLevelMediaType("image") || dataContent.HasTopLevelMediaType("audio"):
-                            samplingMessages.Add(new()
-                            {
-                                Role = role,
-                                Content = dataContent.HasTopLevelMediaType("image") ?
-                                    new ImageContentBlock
-                                    {
-                                        MimeType = dataContent.MediaType,
-                                        Data = dataContent.Base64Data.ToString(),
-                                    } :
-                                    new AudioContentBlock
-                                    {
-                                        MimeType = dataContent.MediaType,
-                                        Data = dataContent.Base64Data.ToString(),
-                                    },
-                            });
-                            break;
-                    }
+                    contentBlocks.Add(contentBlock);
                 }
+            }
+
+            if (contentBlocks.Count > 0)
+            {
+                samplingMessages.Add(new()
+                {
+                    Role = role,
+                    Content = contentBlocks,
+                });
             }
         }
 
@@ -150,25 +134,63 @@ public abstract partial class McpServer : McpSession, IMcpServer
             modelPreferences = new() { Hints = [new() { Name = modelId }] };
         }
 
+        IList<Tool>? tools = null;
+        if (options?.Tools is { Count: > 0 })
+        {
+            foreach (var tool in options.Tools)
+            {
+                if (tool is AIFunctionDeclaration af)
+                {
+                    (tools ??= []).Add(new()
+                    {
+                        Name = af.Name,
+                        Description = af.Description,
+                        InputSchema = af.JsonSchema,
+                        Meta = af.AdditionalProperties.ToJsonObject(),
+                    });
+                }
+            }
+        }
+
+        ToolChoice? toolChoice = options?.ToolMode switch
+        {
+            NoneChatToolMode => new() { Mode = ToolChoice.ModeNone },
+            AutoChatToolMode => new() { Mode = ToolChoice.ModeAuto },
+            RequiredChatToolMode => new() { Mode = ToolChoice.ModeRequired },
+            _ => null,
+        };
+
         var result = await SampleAsync(new()
         {
-            Messages = samplingMessages,
             MaxTokens = options?.MaxOutputTokens ?? ServerOptions.MaxSamplingOutputTokens,
+            Messages = samplingMessages,
+            ModelPreferences = modelPreferences,
             StopSequences = options?.StopSequences?.ToArray(),
             SystemPrompt = systemPrompt?.ToString(),
             Temperature = options?.Temperature,
-            ModelPreferences = modelPreferences,
+            ToolChoice = toolChoice,
+            Tools = tools,
+            Meta = options?.AdditionalProperties?.ToJsonObject(),
         }, cancellationToken).ConfigureAwait(false);
 
-        AIContent? responseContent = result.Content.ToAIContent();
+        List<AIContent> responseContents = [];
+        foreach (var block in result.Content)
+        {
+            if (block.ToAIContent() is { } content)
+            {
+                responseContents.Add(content);
+            }
+        }
 
-        return new(new ChatMessage(result.Role is Role.User ? ChatRole.User : ChatRole.Assistant, responseContent is not null ? [responseContent] : []))
+        return new(new ChatMessage(result.Role is Role.User ? ChatRole.User : ChatRole.Assistant, responseContents))
         {
             ModelId = result.Model,
             FinishReason = result.StopReason switch
             {
-                "maxTokens" => ChatFinishReason.Length,
-                "endTurn" or "stopSequence" or _ => ChatFinishReason.Stop,
+                CreateMessageResult.StopReasonMaxTokens => ChatFinishReason.Length,
+                CreateMessageResult.StopReasonToolUse => ChatFinishReason.ToolCalls,
+                CreateMessageResult.StopReasonEndTurn or CreateMessageResult.StopReasonStopSequence => ChatFinishReason.Stop,
+                _ => null,
             }
         };
     }
