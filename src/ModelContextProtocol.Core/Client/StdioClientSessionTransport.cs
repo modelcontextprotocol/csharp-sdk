@@ -74,8 +74,9 @@ internal sealed class StdioClientSessionTransport(
             // The process has exited, but we still need to ensure stderr has been flushed.
 #if NET
             await _process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-#endif
+#else
             _process.WaitForExit();
+#endif
         }
         catch { }
 
