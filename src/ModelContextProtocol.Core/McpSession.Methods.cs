@@ -5,9 +5,7 @@ using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol;
 
-#pragma warning disable CS0618 // Type or member is obsolete
-public abstract partial class McpSession : IMcpEndpoint, IAsyncDisposable
-#pragma warning restore CS0618 // Type or member is obsolete
+public abstract partial class McpSession : IAsyncDisposable
 {
     /// <summary>
     /// Sends a JSON-RPC request and attempts to deserialize the result to <typeparamref name="TResult"/>.

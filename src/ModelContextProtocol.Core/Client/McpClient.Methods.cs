@@ -10,9 +10,7 @@ namespace ModelContextProtocol.Client;
 /// <summary>
 /// Represents an instance of a Model Context Protocol (MCP) client session that connects to and communicates with an MCP server.
 /// </summary>
-#pragma warning disable CS0618 // Type or member is obsolete
-public abstract partial class McpClient : McpSession, IMcpClient
-#pragma warning restore CS0618 // Type or member is obsolete
+public abstract partial class McpClient : McpSession
 {
     /// <summary>Creates an <see cref="McpClient"/>, connecting it to the specified server.</summary>
     /// <param name="clientTransport">The transport instance used to communicate with the server.</param>
