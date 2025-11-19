@@ -26,7 +26,7 @@ public sealed class McpServerPromptCreateOptions
     /// Gets or sets optional services used in the construction of the <see cref="McpServerPrompt"/>.
     /// </summary>
     /// <remarks>
-    /// These services will be used to determine which parameters should be satisifed from dependency injection. As such,
+    /// These services will be used to determine which parameters should be satisfied from dependency injection. As such,
     /// what services are satisfied via this provider should match what's satisfied via the provider passed in at invocation time.
     /// </remarks>
     public IServiceProvider? Services { get; set; }
@@ -46,7 +46,7 @@ public sealed class McpServerPromptCreateOptions
     public string? Title { get; set; }
 
     /// <summary>
-    /// Gets or set the description to use for the <see cref="McpServerPrompt"/>.
+    /// Gets or sets the description to use for the <see cref="McpServerPrompt"/>.
     /// </summary>
     /// <remarks>
     /// If <see langword="null"/>, but a <see cref="DescriptionAttribute"/> is applied to the method,
