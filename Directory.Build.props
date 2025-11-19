@@ -11,6 +11,10 @@
   </PropertyGroup>
 
   <PropertyGroup>
+    <!-- This works around issues with dotnet test which are fixed in https://github.com/dotnet/sdk/pull/51794 -->
+    <!-- It can be safely removed once .NET SDK 10.0.101 is out and is used in the repo -->
+    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+
     <RepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)'))</RepoRoot>
     <ArtifactsDir Condition="'$(ArtifactsDir)' == ''">$([MSBuild]::NormalizeDirectory('$(RepoRoot)', 'artifacts'))</ArtifactsDir>
     <ArtifactsObjDir>$([MSBuild]::NormalizeDirectory('$(ArtifactsDir)', 'obj'))</ArtifactsObjDir>
