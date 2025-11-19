@@ -1,0 +1,16 @@
+<Project>
+
+  <PropertyGroup>
+    <ArtifactsTestResultsDir>$([MSBuild]::NormalizeDirectory('$(ArtifactsDir)', 'TestResults', '$(Configuration)'))</ArtifactsTestResultsDir>
+    <ArtifactsPackagesDir>$([MSBuild]::NormalizeDirectory('$(ArtifactsDir)', 'packages', '$(Configuration)'))</ArtifactsPackagesDir>
+
+    <IntermediateOutputPath>$(BaseIntermediateOutputPath)$(Configuration)\</IntermediateOutputPath>
+    <OutputPath>$(BaseOutputPath)$(Configuration)\</OutputPath>
+
+    <PackageOutputPath>$(ArtifactsPackagesDir)</PackageOutputPath>
+
+    <_MTPResultsDirectory>$(ArtifactsTestResultsDir)</_MTPResultsDirectory>
+    <TestingPlatformCommandLineArguments>$(TestingPlatformCommandLineArguments) --results-directory $(_MTPResultsDirectory) --report-trx --report-trx-filename $(MSBuildProjectName).$(TargetFramework).$(OS).trx</TestingPlatformCommandLineArguments>
+  </PropertyGroup>
+
+</Project>
