@@ -4,10 +4,10 @@ using ModelContextProtocol.Server;
 using System.ComponentModel;
 using System.Text.Json;
 
-namespace ComplianceServer.Tools;
+namespace ConformanceServer.Tools;
 
 [McpServerToolType]
-public class ComplianceTools
+public class ConformanceTools
 {
     // Sample base64 encoded 1x1 red PNG pixel for testing
     private const string TestImageBase64 =
@@ -109,7 +109,7 @@ public class ComplianceTools
 
         // Use ILogger for logging (will be forwarded to client if supported)
         ILoggerProvider loggerProvider = server.AsClientLoggerProvider();
-        ILogger logger = loggerProvider.CreateLogger("ComplianceTools");
+        ILogger logger = loggerProvider.CreateLogger("ConformanceTools");
 
         logger.LogInformation("Tool execution started");
         await Task.Delay(50, cancellationToken);

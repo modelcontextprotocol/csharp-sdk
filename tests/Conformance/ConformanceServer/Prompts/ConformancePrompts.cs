@@ -3,9 +3,9 @@ using ModelContextProtocol.Protocol;
 using Microsoft.Extensions.AI;
 using System.ComponentModel;
 
-namespace ComplianceServer.Prompts;
+namespace ConformanceServer.Prompts;
 
-public class CompliancePrompts
+public class ConformancePrompts
 {
     // Sample base64 encoded 1x1 red PNG pixel for testing
     private const string TestImageBase64 =

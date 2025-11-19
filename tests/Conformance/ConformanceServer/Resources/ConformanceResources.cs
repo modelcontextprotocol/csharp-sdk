@@ -3,10 +3,10 @@ using ModelContextProtocol.Server;
 using System.ComponentModel;
 using System.Text.Json;
 
-namespace ComplianceServer.Resources;
+namespace ConformanceServer.Resources;
 
 [McpServerResourceType]
-public class ComplianceResources
+public class ConformanceResources
 {
     // Sample base64 encoded 1x1 red PNG pixel for testing
     private const string TestImageBase64 =

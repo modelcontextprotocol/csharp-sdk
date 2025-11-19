@@ -1,7 +1,7 @@
-using ComplianceServer;
-using ComplianceServer.Prompts;
-using ComplianceServer.Resources;
-using ComplianceServer.Tools;
+using ConformanceServer;
+using ConformanceServer.Prompts;
+using ConformanceServer.Resources;
+using ConformanceServer.Tools;
 using Microsoft.Extensions.AI;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
@@ -18,9 +18,9 @@ ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> subscriptions =
 builder.Services
     .AddMcpServer()
     .WithHttpTransport()
-    .WithTools<ComplianceTools>()
-    .WithPrompts<CompliancePrompts>()
-    .WithResources<ComplianceResources>()
+    .WithTools<ConformanceTools>()
+    .WithPrompts<ConformancePrompts>()
+    .WithResources<ConformanceResources>()
     .WithSubscribeToResourcesHandler(async (ctx, ct) =>
     {
         if (ctx.Server.SessionId == null)
