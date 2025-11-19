@@ -10,7 +10,7 @@ jobs:
   publish-coverage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
       - name: Setup .NET
         uses: actions/setup-dotnet@d4c94342e560b34958eacfc5d055d21461ed1c5d # v5.0.0
         with:
@@ -24,7 +24,7 @@ jobs:
           pattern: testresults-*
 
       - name: Combine coverage reports
-        uses: danielpalme/ReportGenerator-GitHub-Action@5.4.18
+        uses: danielpalme/ReportGenerator-GitHub-Action@5.5.0
         with:
           reports: "**/*.cobertura.xml"
           targetdir: "${{ github.workspace }}/report"

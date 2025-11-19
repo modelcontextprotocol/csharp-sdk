@@ -203,7 +203,6 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => server.SendRequestAsync(new JsonRpcRequest
         {
-            Id = default,
             Method = RequestMethods.SamplingCreateMessage
         }));
         return ex.Message;
@@ -222,7 +221,6 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => server.SendRequestAsync(new JsonRpcRequest
         {
-            Id = default,
             Method = RequestMethods.RootsList
         }));
         return ex.Message;
@@ -241,7 +239,6 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => server.SendRequestAsync(new JsonRpcRequest
         {
-            Id = default,
             Method = RequestMethods.ElicitationCreate
         }));
         return ex.Message;

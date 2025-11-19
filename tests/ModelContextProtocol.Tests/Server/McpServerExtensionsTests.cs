@@ -94,7 +94,6 @@ public class McpServerExtensionsTests
             .Setup(s => s.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new JsonRpcResponse
             {
-                Id = default,
                 Result = JsonSerializer.SerializeToNode(resultPayload, McpJsonUtilities.DefaultOptions),
             });
 
@@ -146,7 +145,6 @@ public class McpServerExtensionsTests
             })
             .ReturnsAsync(new JsonRpcResponse
             {
-                Id = default,
                 Result = JsonSerializer.SerializeToNode(resultPayload, McpJsonUtilities.DefaultOptions),
             });
 
@@ -159,7 +157,7 @@ public class McpServerExtensionsTests
         Assert.Equal(ChatRole.Assistant, last.Role);
         Assert.Equal("resp", last.Text);
         mockServer.Verify(s => s.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()), Times.Once);
-        
+
         // Verify that the default value was used
         Assert.NotNull(capturedRequest);
         Assert.Equal(CustomMaxSamplingOutputTokens, capturedRequest.MaxTokens);
@@ -180,7 +178,6 @@ public class McpServerExtensionsTests
             .Setup(s => s.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new JsonRpcResponse
             {
-                Id = default,
                 Result = JsonSerializer.SerializeToNode(resultPayload, McpJsonUtilities.DefaultOptions),
             });
 
@@ -207,7 +204,6 @@ public class McpServerExtensionsTests
             .Setup(s => s.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new JsonRpcResponse
             {
-                Id = default,
                 Result = JsonSerializer.SerializeToNode(resultPayload, McpJsonUtilities.DefaultOptions),
             });
 

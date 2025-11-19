@@ -26,5 +26,5 @@ public abstract class JsonRpcMessageWithId : JsonRpcMessage
     /// Each ID is expected to be unique within the context of a given session.
     /// </remarks>
     [JsonPropertyName("id")]
-    public required RequestId Id { get; set; }
+    public RequestId Id { get; set; }
 }

@@ -39,6 +39,10 @@ public abstract class Reference
     /// <summary>
     /// Provides a <see cref="JsonConverter"/> for <see cref="Reference"/>.
     /// </summary>
+    /// <remarks>
+    /// Provides a polymorphic converter for the <see cref="Reference"/> class that doesn't  require
+    /// setting <see cref="JsonSerializerOptions.AllowOutOfOrderMetadataProperties"/> explicitly.
+    /// </remarks>
     [EditorBrowsable(EditorBrowsableState.Never)]
     public sealed class Converter : JsonConverter<Reference>
     {
@@ -94,8 +98,6 @@ public abstract class Reference
                         break;
                 }
             }
-
-            // TODO: This converter exists due to the lack of downlevel support for AllowOutOfOrderMetadataProperties.
 
             switch (type)
             {
