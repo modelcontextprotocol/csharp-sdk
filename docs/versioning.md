@@ -9,7 +9,7 @@ The ModelContextProtocol specification continues to evolve rapidly, and it's imp
 Given a version number MAJOR.MINOR.PATCH, the package versions will increment the:
 
 * MAJOR version when incompatible API changes are included
-* MINOR version when functionality is added in a backward compatible manner
+* MINOR version when functionality is added in a backward-compatible manner
 * PATCH version when backward-compatible bug fixes are included
 
 *A pre-release version indicates that the version is unstable and might not satisfy the intended compatibility requirements.*
@@ -43,7 +43,7 @@ All releases are posted to https://github.com/modelcontextprotocol/csharp-sdk/re
 
 ### Specification schema changes
 
-If the MCP specification changes the schema for JSON payloads, the C# SDK may use the [`McpSession.NegotiatedProtocolVersion`](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.McpSession.html#ModelContextProtocol_McpSession_NegotiatedProtocolVersion) to dynamically change the payload schema, potentially using internal data transfer objects (DTOs) to achieve the needed deserialization behavior. These techniques will be applied where feasible to maintain backwards- and forwards-compatibility between MCP specification versions.
+If the MCP specification changes the schema for JSON payloads, the C# SDK may use the [`McpSession.NegotiatedProtocolVersion`](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.McpSession.html#ModelContextProtocol_McpSession_NegotiatedProtocolVersion) to dynamically change the payload schema, potentially using internal data transfer objects (DTOs) to achieve the needed deserialization behavior. These techniques will be applied where feasible to maintain backward- and forward-compatibility between MCP specification versions.
 
 Refer to the following prototypes for illustrations of how this could be achieved:
 
