@@ -9,7 +9,7 @@ namespace ComplianceServer.Resources;
 public class ComplianceResources
 {
     // Sample base64 encoded 1x1 red PNG pixel for testing
-    private const string TEST_IMAGE_BASE64 =
+    private const string TestImageBase64 =
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
 
     /// <summary>
@@ -33,7 +33,7 @@ public class ComplianceResources
         {
             Uri = "test://static-binary",
             MimeType = "image/png",
-            Blob = TEST_IMAGE_BASE64
+            Blob = TestImageBase64
         };
     }
 

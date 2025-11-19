@@ -10,11 +10,11 @@ namespace ComplianceServer.Tools;
 public class ComplianceTools
 {
     // Sample base64 encoded 1x1 red PNG pixel for testing
-    private const string TEST_IMAGE_BASE64 =
+    private const string TestImageBase64 =
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
 
     // Sample base64 encoded minimal WAV file for testing
-    private const string TEST_AUDIO_BASE64 =
+    private const string TestAudioBase64 =
         "UklGRiYAAABXQVZFZm10IBAAAAABAAEAQB8AAAB9AAACABAAZGF0YQIAAAA=";
 
     /// <summary>
@@ -36,7 +36,7 @@ public class ComplianceTools
     {
         return new ImageContentBlock
         {
-            Data = TEST_IMAGE_BASE64,
+            Data = TestImageBase64,
             MimeType = "image/png"
         };
     }
@@ -50,7 +50,7 @@ public class ComplianceTools
     {
         return new AudioContentBlock
         {
-            Data = TEST_AUDIO_BASE64,
+            Data = TestAudioBase64,
             MimeType = "audio/wav"
         };
     }
@@ -83,7 +83,7 @@ public class ComplianceTools
         return
         [
             new TextContentBlock { Text = "Multiple content types test:" },
-            new ImageContentBlock { Data = TEST_IMAGE_BASE64, MimeType = "image/png" },
+            new ImageContentBlock { Data = TestImageBase64, MimeType = "image/png" },
             new EmbeddedResourceBlock
             {
                 Resource = new TextResourceContents
