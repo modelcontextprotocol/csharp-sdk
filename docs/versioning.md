@@ -21,11 +21,11 @@ Beginning with the 1.0.0 release, the following support policy will be applied f
 1. New functionality and additive APIs will be introduced in MINOR releases within the current MAJOR version only
     * New functionality will not be added to an earlier MAJOR version
 2. Bugs will be fixed within either:
-    a. A new PATCH release against the latest MAJOR.MINOR version
-    b. A new MINOR release against the latest MAJOR version
+    1. A new PATCH release against the latest MAJOR.MINOR version
+    2. A new MINOR release against the latest MAJOR version
 3. Critical, blocking issues will be fixed against:
-    a. The latest MINOR version within _the current_ MAJOR version
-    b. The latest MINOR version within _one previous_ MAJOR version, until the latest MAJOR version has been published for 3 months
+    1. The latest MINOR version within _the current_ MAJOR version
+    2. The latest MINOR version within _one previous_ MAJOR version, until the latest MAJOR version has been published for 3 months
 
 ## Experimental APIs
 
