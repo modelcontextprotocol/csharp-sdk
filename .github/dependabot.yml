@@ -17,6 +17,7 @@ updates:
         patterns:
           - "xunit.*"
           - "Microsoft.NET.Test.Sdk"
+          - "Microsoft.Testing.*"
           - "coverlet.*"
           - "GitHubActionsTestLogger"
           - "Moq"
