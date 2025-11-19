@@ -33,5 +33,4 @@ public sealed class RootsCapability
     /// </remarks>
     [JsonPropertyName("listChanged")]
     public bool? ListChanged { get; set; }
-
 }

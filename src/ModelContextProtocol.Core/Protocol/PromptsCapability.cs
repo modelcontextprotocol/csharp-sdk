@@ -31,5 +31,4 @@ public sealed class PromptsCapability
     /// </remarks>
     [JsonPropertyName("listChanged")]
     public bool? ListChanged { get; set; }
-
 }

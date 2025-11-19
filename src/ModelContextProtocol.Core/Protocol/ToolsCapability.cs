@@ -22,5 +22,4 @@ public sealed class ToolsCapability
     /// </remarks>
     [JsonPropertyName("listChanged")]
     public bool? ListChanged { get; set; }
-
 }

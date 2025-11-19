@@ -65,5 +65,4 @@ public sealed class ServerCapabilities
     /// </summary>
     [JsonPropertyName("completions")]
     public CompletionsCapability? Completions { get; set; }
-
 }

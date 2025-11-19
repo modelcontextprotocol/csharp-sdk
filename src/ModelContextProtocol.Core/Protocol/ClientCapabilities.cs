@@ -66,5 +66,4 @@ public sealed class ClientCapabilities
     /// </summary>
     [JsonPropertyName("elicitation")]
     public ElicitationCapability? Elicitation { get; set; }
-
 }
