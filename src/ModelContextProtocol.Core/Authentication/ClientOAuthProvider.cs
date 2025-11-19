@@ -347,7 +347,7 @@ internal sealed partial class ClientOAuthProvider
             ThrowFailedToHandleUnauthorizedResponse($"The {nameof(AuthorizationRedirectDelegate)} returned a null or empty authorization code.");
         }
 
-        await ExchangeCodeForTokenAsync(protectedResourceMetadata, authServerMetadata, authCode, codeVerifier, cancellationToken).ConfigureAwait(false);
+        await ExchangeCodeForTokenAsync(protectedResourceMetadata, authServerMetadata, authCode!, codeVerifier, cancellationToken).ConfigureAwait(false);
     }
 
     private Uri BuildAuthorizationUrl(
