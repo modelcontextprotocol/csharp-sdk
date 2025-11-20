@@ -41,6 +41,9 @@ To get started writing a client, the `McpClient.CreateAsync` method is used to i
 to a server. Once you have an `McpClient`, you can interact with it, such as to enumerate all available tools and invoke tools.
 
 ```csharp
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
+
 var clientTransport = new StdioClientTransport(new StdioClientTransportOptions
 {
     Name = "Everything",
@@ -63,7 +66,7 @@ var result = await client.CallToolAsync(
     cancellationToken:CancellationToken.None);
 
 // echo always returns one and only one text content object
-Console.WriteLine(result.Content.First(c => c.Type == "text").Text);
+Console.WriteLine(result.Content.OfType<TextContentBlock>().First().Text);
 ```
 
 You can find samples demonstrating how to use ModelContextProtocol with an LLM SDK in the [samples](samples) directory, and also refer to the [tests](tests/ModelContextProtocol.Tests) project for more examples. Additional examples and documentation will be added as in the near future.
