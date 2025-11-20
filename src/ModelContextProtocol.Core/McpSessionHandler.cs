@@ -808,8 +808,8 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} received request for unknown request ID '{RequestId}'.")]
     private partial void LogNoRequestFoundForMessageWithId(string endpointName, RequestId requestId);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} request failed for method '{Method}' (tool: '{ToolName}'): {ErrorMessage} ({ErrorCode}).")]
-    private partial void LogSendingRequestFailed(string endpointName, string method, string errorMessage, int errorCode, string? toolName = null);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} request failed for method '{Method}' (target: '{ToolName}'): {ErrorMessage} ({ErrorCode}).")]
+    private partial void LogSendingRequestFailed(string endpointName, string method, string errorMessage, int errorCode, string? targetName = null);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} received invalid response for method '{Method}'.")]
     private partial void LogSendingRequestInvalidResponseType(string endpointName, string method);
