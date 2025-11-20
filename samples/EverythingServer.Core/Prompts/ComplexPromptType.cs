@@ -1,9 +1,9 @@
-﻿using EverythingServer.Tools;
+﻿using EverythingServer.Core.Tools;
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
 
-namespace EverythingServer.Prompts;
+namespace EverythingServer.Core.Prompts;
 
 [McpServerPromptType]
 public class ComplexPromptType
