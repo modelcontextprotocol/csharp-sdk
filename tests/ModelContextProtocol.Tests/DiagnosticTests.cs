@@ -9,15 +9,12 @@ using System.Text.Json;
 
 namespace ModelContextProtocol.Tests;
 
-[Collection(nameof(ExclusiveExecution))]
+[Collection(nameof(DisableParallelization))]
 public class DiagnosticTests
 {
     [Fact]
     public async Task Session_TracksActivities()
     {
-        // Ensure no ambient activity from previous tests
-        Activity.Current = null;
-
         var activities = new List<Activity>();
         var clientToServerLog = new List<string>();
 
@@ -35,9 +32,6 @@ public class DiagnosticTests
                 var tool = tools.First(t => t.Name == "DoubleValue");
                 await tool.InvokeAsync(new() { ["amount"] = 42 }, TestContext.Current.CancellationToken);
             }, clientToServerLog);
-
-            // Ensure all activities are flushed before disposal
-            tracerProvider.ForceFlush();
         }
 
         Assert.NotEmpty(activities);
@@ -83,9 +77,6 @@ public class DiagnosticTests
     [Fact]
     public async Task Session_FailedToolCall()
     {
-        // Ensure no ambient activity from previous tests
-        Activity.Current = null;
-
         var activities = new List<Activity>();
 
         using (var tracerProvider = OpenTelemetry.Sdk.CreateTracerProviderBuilder()
@@ -98,9 +89,6 @@ public class DiagnosticTests
                 await client.CallToolAsync("Throw", cancellationToken: TestContext.Current.CancellationToken);
                 await Assert.ThrowsAsync<McpProtocolException>(async () => await client.CallToolAsync("does-not-exist", cancellationToken: TestContext.Current.CancellationToken));
             }, []);
-
-            // Ensure all activities are flushed before disposal
-            tracerProvider.ForceFlush();
         }
 
         Assert.NotEmpty(activities);
