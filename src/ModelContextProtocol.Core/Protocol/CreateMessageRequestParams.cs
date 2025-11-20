@@ -16,7 +16,15 @@ public sealed class CreateMessageRequestParams : RequestParams
     /// Gets or sets an indication as to which server contexts should be included in the prompt.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The client may ignore this request.
+    /// </para>
+    /// <para>
+    /// <see cref="ContextInclusion"/>, and in particular <see cref="ContextInclusion.ThisServer"/> and
+    /// <see cref="ContextInclusion.AllServers"/>, are deprecated. Servers should only use these values if the client
+    /// declares <see cref="ClientCapabilities.Sampling"/> with <see cref="SamplingCapability.Context"/> set.
+    /// These values may be removed in future spec releases.
+    /// </para>
     /// </remarks>
     [JsonPropertyName("includeContext")]
     public ContextInclusion? IncludeContext { get; set; }
@@ -100,4 +108,16 @@ public sealed class CreateMessageRequestParams : RequestParams
     /// </summary>
     [JsonPropertyName("temperature")]
     public float? Temperature { get; set; }
+
+    /// <summary>
+    /// Gets or sets tools that the model may use during generation.
+    /// </summary>
+    [JsonPropertyName("tools")]
+    public IList<Tool>? Tools { get; set; }
+
+    /// <summary>
+    /// Gets or sets controls for how the model uses tools.
+    /// </summary>
+    [JsonPropertyName("toolChoice")]
+    public ToolChoice? ToolChoice { get; set; }
 }

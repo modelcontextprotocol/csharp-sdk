@@ -249,7 +249,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         {
             AIContent aiContent => new()
             {
-                Content = [aiContent.ToContent()],
+                Content = [aiContent.ToContentBlock()],
                 StructuredContent = structuredContent,
                 IsError = aiContent is ErrorContent
             },
@@ -491,7 +491,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         foreach (var item in contentItems)
         {
-            contentList.Add(item.ToContent());
+            contentList.Add(item.ToContentBlock());
             hasAny = true;
 
             if (allErrorContent && item is not ErrorContent)

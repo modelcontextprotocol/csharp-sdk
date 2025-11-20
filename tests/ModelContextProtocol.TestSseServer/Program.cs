@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Connections;
+using Microsoft.AspNetCore.Connections;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Serilog;
@@ -46,7 +46,7 @@ public class Program
                 Messages = [new SamplingMessage
                 {
                     Role = Role.User,
-                    Content = new TextContentBlock { Text = $"Resource {uri} context: {context}" },
+                    Content = [new TextContentBlock { Text = $"Resource {uri} context: {context}" }],
                 }],
                 SystemPrompt = "You are a helpful test server.",
                 MaxTokens = maxTokens,
@@ -191,7 +191,7 @@ public class Program
 
                     return new CallToolResult
                     {
-                        Content = [new TextContentBlock { Text = $"LLM sampling result: {(sampleResult.Content as TextContentBlock)?.Text}" }]
+                        Content = [new TextContentBlock { Text = $"LLM sampling result: {sampleResult.Content.OfType<TextContentBlock>().FirstOrDefault()?.Text}" }]
                     };
                 }
                 else
@@ -339,7 +339,7 @@ public class Program
                     });
                     messages.Add(new PromptMessage
                     {
-                        Role = Role.Assistant,
+                        Role = Role.User,
                         Content = new TextContentBlock { Text = "I understand. You've provided a complex prompt with temperature and style arguments. How would you like me to proceed?" },
                     });
                     messages.Add(new PromptMessage

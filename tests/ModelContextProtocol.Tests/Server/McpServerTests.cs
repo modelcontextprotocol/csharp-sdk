@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
@@ -802,12 +802,12 @@ public class McpServerTests : LoggedTest
             Assert.Equal($"You are a helpful assistant.{Environment.NewLine}More system stuff.", rp.SystemPrompt);
 
             Assert.Equal(2, rp.Messages.Count);
-            Assert.Equal("I am going to France.", Assert.IsType<TextContentBlock>(rp.Messages[0].Content).Text);
-            Assert.Equal("What is the most famous tower in Paris?", Assert.IsType<TextContentBlock>(rp.Messages[1].Content).Text);
+            Assert.Equal("I am going to France.", Assert.IsType<TextContentBlock>(Assert.Single(rp.Messages[0].Content)).Text);
+            Assert.Equal("What is the most famous tower in Paris?", Assert.IsType<TextContentBlock>(Assert.Single(rp.Messages[1].Content)).Text);
 
             CreateMessageResult result = new()
             {
-                Content = new TextContentBlock { Text = "The Eiffel Tower." },
+                Content = [new TextContentBlock { Text = "The Eiffel Tower." }],
                 Model = "amazingmodel",
                 Role = Role.Assistant,
                 StopReason = "endTurn",

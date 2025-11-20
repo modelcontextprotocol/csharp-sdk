@@ -1,4 +1,3 @@
-using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol;
 using System.Text.Json;
 
@@ -124,5 +123,106 @@ public class ContentBlockTests
 
         var textBlock = Assert.IsType<TextContentBlock>(contentBlock);
         Assert.Contains("Sample text", textBlock.Text);
+    }
+
+    [Fact]
+    public void ToolResultContentBlock_WithError_SerializationRoundtrips()
+    {
+        ToolResultContentBlock toolResult = new()
+        {
+            ToolUseId = "call_123",
+            Content = [new TextContentBlock { Text = "Error: City not found" }],
+            IsError = true
+        };
+
+        var json = JsonSerializer.Serialize<ContentBlock>(toolResult, McpJsonUtilities.DefaultOptions);
+        var deserialized = JsonSerializer.Deserialize<ContentBlock>(json, McpJsonUtilities.DefaultOptions);
+
+        var result = Assert.IsType<ToolResultContentBlock>(deserialized);
+        Assert.Equal("call_123", result.ToolUseId);
+        Assert.True(result.IsError);
+        Assert.Single(result.Content);
+        var textBlock = Assert.IsType<TextContentBlock>(result.Content[0]);
+        Assert.Equal("Error: City not found", textBlock.Text);
+    }
+
+    [Fact]
+    public void ToolResultContentBlock_WithStructuredContent_SerializationRoundtrips()
+    {
+        ToolResultContentBlock toolResult = new()
+        {
+            ToolUseId = "call_123",
+            Content =
+            [
+                new TextContentBlock { Text = "Result data" }
+            ],
+            StructuredContent = JsonElement.Parse("""{"temperature":18,"condition":"cloudy"}"""),
+            IsError = false
+        };
+
+        var json = JsonSerializer.Serialize<ContentBlock>(toolResult, McpJsonUtilities.DefaultOptions);
+        var deserialized = JsonSerializer.Deserialize<ContentBlock>(json, McpJsonUtilities.DefaultOptions);
+
+        var result = Assert.IsType<ToolResultContentBlock>(deserialized);
+        Assert.Equal("call_123", result.ToolUseId);
+        Assert.Single(result.Content);
+        var textBlock = Assert.IsType<TextContentBlock>(result.Content[0]);
+        Assert.Equal("Result data", textBlock.Text);
+        Assert.NotNull(result.StructuredContent);
+        Assert.Equal(18, result.StructuredContent.Value.GetProperty("temperature").GetInt32());
+        Assert.Equal("cloudy", result.StructuredContent.Value.GetProperty("condition").GetString());
+        Assert.False(result.IsError);
+    }
+
+    [Fact]
+    public void ToolResultContentBlock_SerializationRoundTrip()
+    {
+        ToolResultContentBlock toolResult = new()
+        {
+            ToolUseId = "call_123",
+            Content =
+            [
+                new TextContentBlock { Text = "Result data" },
+                new ImageContentBlock { Data = "base64data", MimeType = "image/png" }
+            ],
+            StructuredContent = JsonElement.Parse("""{"temperature":18,"condition":"cloudy"}"""),
+            IsError = false
+        };
+
+        var json = JsonSerializer.Serialize<ContentBlock>(toolResult, McpJsonUtilities.DefaultOptions);
+        var deserialized = JsonSerializer.Deserialize<ContentBlock>(json, McpJsonUtilities.DefaultOptions);
+
+        var result = Assert.IsType<ToolResultContentBlock>(deserialized);
+        Assert.Equal("call_123", result.ToolUseId);
+        Assert.Equal(2, result.Content.Count);
+        var textBlock = Assert.IsType<TextContentBlock>(result.Content[0]);
+        Assert.Equal("Result data", textBlock.Text);
+        var imageBlock = Assert.IsType<ImageContentBlock>(result.Content[1]);
+        Assert.Equal("base64data", imageBlock.Data);
+        Assert.Equal("image/png", imageBlock.MimeType);
+        Assert.NotNull(result.StructuredContent);
+        Assert.Equal(18, result.StructuredContent.Value.GetProperty("temperature").GetInt32());
+        Assert.Equal("cloudy", result.StructuredContent.Value.GetProperty("condition").GetString());
+        Assert.False(result.IsError);
+    }
+
+    [Fact]
+    public void ToolUseContentBlock_SerializationRoundTrip()
+    {
+        ToolUseContentBlock toolUse = new()
+        {
+            Id = "call_abc123",
+            Name = "get_weather",
+            Input = JsonElement.Parse("""{"city":"Paris","units":"metric"}""")
+        };
+
+        var json = JsonSerializer.Serialize<ContentBlock>(toolUse, McpJsonUtilities.DefaultOptions);
+        var deserialized = JsonSerializer.Deserialize<ContentBlock>(json, McpJsonUtilities.DefaultOptions);
+
+        var result = Assert.IsType<ToolUseContentBlock>(deserialized);
+        Assert.Equal("call_abc123", result.Id);
+        Assert.Equal("get_weather", result.Name);
+        Assert.Equal("Paris", result.Input.GetProperty("city").GetString());
+        Assert.Equal("metric", result.Input.GetProperty("units").GetString());
     }
 }

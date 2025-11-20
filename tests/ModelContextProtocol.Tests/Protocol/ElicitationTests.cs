@@ -3,6 +3,8 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using System.Text.Json;
 
+#pragma warning disable CS0618 // Type or member is obsolete
+
 namespace ModelContextProtocol.Tests.Configuration;
 
 public partial class ElicitationTests : ClientServerTestBase

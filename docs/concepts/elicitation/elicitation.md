@@ -16,8 +16,15 @@ The C# SDK registers an instance of <xref:ModelContextProtocol.Server.McpServer>
 so tools can simply add a parameter of type <xref:ModelContextProtocol.Server.McpServer> to their method signature to access it.
 
 The MCP Server must specify the schema of each input value it is requesting from the user.
-Only primitive types (string, number, boolean) are supported for elicitation requests.
+Primitive types (string, number, boolean) and enum types are supported for elicitation requests.
 The schema may include a description to help the user understand what is being requested.
+
+For enum types, the SDK supports several schema formats:
+- **UntitledSingleSelectEnumSchema**: A single-select enum where the enum values serve as both the value and display text
+- **TitledSingleSelectEnumSchema**: A single-select enum with separate display titles for each option (using JSON Schema `oneOf` with `const` and `title`)
+- **UntitledMultiSelectEnumSchema**: A multi-select enum allowing multiple values to be selected
+- **TitledMultiSelectEnumSchema**: A multi-select enum with display titles for each option
+- **LegacyTitledEnumSchema** (deprecated): The legacy enum schema using `enumNames` for backward compatibility
 
 The server can request a single input or multiple inputs at once.
 To help distinguish multiple inputs, each input has a unique name.

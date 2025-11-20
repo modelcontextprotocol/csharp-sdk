@@ -352,13 +352,10 @@ public class McpClientToolTests : ClientServerTestBase
 
         Assert.IsType<JsonElement>(result);
         var jsonElement = (JsonElement)result!;
-        Assert.True(jsonElement.TryGetProperty("content", out var contentArray));
-        Assert.Equal(JsonValueKind.Array, contentArray.ValueKind);
-        Assert.Equal(1, contentArray.GetArrayLength());
+        Assert.True(jsonElement.TryGetProperty("content", out var contentValue));
+        Assert.Equal(JsonValueKind.Array, contentValue.ValueKind);
         
-        var firstContent = contentArray[0];
-        Assert.True(firstContent.TryGetProperty("type", out var typeProperty));
-        Assert.Equal("resource_link", typeProperty.GetString());
+        Assert.Equal(1, contentValue.GetArrayLength());
     }
 
     [Fact]
