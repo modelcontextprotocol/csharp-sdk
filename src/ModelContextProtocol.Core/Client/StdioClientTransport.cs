@@ -162,11 +162,11 @@ public sealed partial class StdioClientTransport : IClientTransport
             // up the encoding from Console.InputEncoding. As such, when not targeting .NET Core,
             // we temporarily change Console.InputEncoding to no-BOM UTF-8 around the Process.Start
             // call, to ensure it picks up the correct encoding.
-            // IMPORTANT: This must be synchronized to prevent race conditions when multiple
-            // transports are created concurrently.
 #if NET
             processStarted = process.Start();
 #else
+            // IMPORTANT: This must be synchronized to prevent race conditions when multiple
+            // transports are created concurrently.
             lock (s_consoleEncodingLock)
             {
                 Encoding originalInputEncoding = Console.InputEncoding;
