@@ -75,7 +75,7 @@ public partial class McpClientResourceTemplateTests : ClientServerTestBase
     {
         await using McpClient client = await CreateMcpClientForServer();
 
-        var result = await client.ReadResourceAsync(uriTemplate, variables, TestContext.Current.CancellationToken);
+        var result = await client.ReadResourceAsync(uriTemplate, variables, null, TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         var actualUri = Assert.IsType<TextResourceContents>(Assert.Single(result.Contents)).Text;
 
@@ -110,13 +110,13 @@ public partial class McpClientResourceTemplateTests : ClientServerTestBase
     // The JSON from the test case files has been extracted below.
 
     // Copyright 2011- The Authors
-    // 
+    //
     // Licensed under the Apache License, Version 2.0 (the "License");
     // you may not use this file except in compliance with the License.
     // You may obtain a copy of the License at
-    // 
+    //
     //     http://www.apache.org/licenses/LICENSE-2.0
-    // 
+    //
     // Unless required by applicable law or agreed to in writing, software
     // distributed under the License is distributed on an "AS IS" BASIS,
     // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -255,7 +255,7 @@ public partial class McpClientResourceTemplateTests : ClientServerTestBase
               ["X{.var:3}", "X.val"],
               ["X{.list}", "X.red,green,blue"],
               ["X{.list*}", "X.red.green.blue"],
-              ["X{.keys}", [ 
+              ["X{.keys}", [
                 "X.comma,%2C,dot,.,semi,%3B",
                 "X.comma,%2C,semi,%3B,dot,.",
                 "X.dot,.,comma,%2C,semi,%3B",
@@ -275,7 +275,7 @@ public partial class McpClientResourceTemplateTests : ClientServerTestBase
                 "/semi,%3B,comma,%2C,dot,.",
                 "/semi,%3B,dot,.,comma,%2C"
               ]],
-              ["{/keys*}", [ 
+              ["{/keys*}", [
                 "/comma=%2C/dot=./semi=%3B",
                 "/comma=%2C/semi=%3B/dot=.",
                 "/dot=./comma=%2C/semi=%3B",
@@ -286,7 +286,7 @@ public partial class McpClientResourceTemplateTests : ClientServerTestBase
               ["{;hello:5}", ";hello=Hello"],
               ["{;list}", ";list=red,green,blue"],
               ["{;list*}", ";list=red;list=green;list=blue"],
-              ["{;keys}", [ 
+              ["{;keys}", [
                 ";keys=comma,%2C,dot,.,semi,%3B",
                 ";keys=comma,%2C,semi,%3B,dot,.",
                 ";keys=dot,.,comma,%2C,semi,%3B",
@@ -294,7 +294,7 @@ public partial class McpClientResourceTemplateTests : ClientServerTestBase
                 ";keys=semi,%3B,comma,%2C,dot,.",
                 ";keys=semi,%3B,dot,.,comma,%2C"
               ]],
-              ["{;keys*}", [ 
+              ["{;keys*}", [
                 ";comma=%2C;dot=.;semi=%3B",
                 ";comma=%2C;semi=%3B;dot=.",
                 ";dot=.;comma=%2C;semi=%3B",
@@ -305,7 +305,7 @@ public partial class McpClientResourceTemplateTests : ClientServerTestBase
               ["{?var:3}", "?var=val"],
               ["{?list}", "?list=red,green,blue"],
               ["{?list*}", "?list=red&list=green&list=blue"],
-              ["{?keys}", [ 
+              ["{?keys}", [
                 "?keys=comma,%2C,dot,.,semi,%3B",
                 "?keys=comma,%2C,semi,%3B,dot,.",
                 "?keys=dot,.,comma,%2C,semi,%3B",
@@ -313,7 +313,7 @@ public partial class McpClientResourceTemplateTests : ClientServerTestBase
                 "?keys=semi,%3B,comma,%2C,dot,.",
                 "?keys=semi,%3B,dot,.,comma,%2C"
               ]],
-              ["{?keys*}", [ 
+              ["{?keys*}", [
                 "?comma=%2C&dot=.&semi=%3B",
                 "?comma=%2C&semi=%3B&dot=.",
                 "?dot=.&comma=%2C&semi=%3B",
@@ -324,7 +324,7 @@ public partial class McpClientResourceTemplateTests : ClientServerTestBase
               ["{&var:3}", "&var=val"],
               ["{&list}", "&list=red,green,blue"],
               ["{&list*}", "&list=red&list=green&list=blue"],
-              ["{&keys}", [ 
+              ["{&keys}", [
                 "&keys=comma,%2C,dot,.,semi,%3B",
                 "&keys=comma,%2C,semi,%3B,dot,.",
                 "&keys=dot,.,comma,%2C,semi,%3B",
@@ -332,7 +332,7 @@ public partial class McpClientResourceTemplateTests : ClientServerTestBase
                 "&keys=semi,%3B,comma,%2C,dot,.",
                 "&keys=semi,%3B,dot,.,comma,%2C"
               ]],
-              ["{&keys*}", [ 
+              ["{&keys*}", [
                 "&comma=%2C&dot=.&semi=%3B",
                 "&comma=%2C&semi=%3B&dot=.",
                 "&dot=.&comma=%2C&semi=%3B",
@@ -636,7 +636,7 @@ public partial class McpClientResourceTemplateTests : ClientServerTestBase
                 "/semi,%3B,comma,%2C,dot,.",
                 "/semi,%3B,dot,.,comma,%2C"
                ]],
-               ["{/keys*}", [ 
+               ["{/keys*}", [
                 "/comma=%2C/dot=./semi=%3B",
                 "/comma=%2C/semi=%3B/dot=.",
                 "/dot=./comma=%2C/semi=%3B",
@@ -679,7 +679,7 @@ public partial class McpClientResourceTemplateTests : ClientServerTestBase
                 ["{;x,y,undef}", ";x=1024;y=768"],
                 ["{;list}", ";list=red,green,blue"],
                 ["{;list*}", ";list=red;list=green;list=blue"],
-                ["{;keys}", [ 
+                ["{;keys}", [
                   ";keys=comma,%2C,dot,.,semi,%3B",
                   ";keys=comma,%2C,semi,%3B,dot,.",
                   ";keys=dot,.,comma,%2C,semi,%3B",
@@ -687,7 +687,7 @@ public partial class McpClientResourceTemplateTests : ClientServerTestBase
                   ";keys=semi,%3B,comma,%2C,dot,.",
                   ";keys=semi,%3B,dot,.,comma,%2C"
                 ]],
-                ["{;keys*}", [ 
+                ["{;keys*}", [
                   ";comma=%2C;dot=.;semi=%3B",
                   ";comma=%2C;semi=%3B;dot=.",
                   ";dot=.;comma=%2C;semi=%3B",
@@ -727,7 +727,7 @@ public partial class McpClientResourceTemplateTests : ClientServerTestBase
                 ["{?var:3}", "?var=val"],
                 ["{?list}", "?list=red,green,blue"],
                 ["{?list*}", "?list=red&list=green&list=blue"],
-                ["{?keys}", [ 
+                ["{?keys}", [
                   "?keys=comma,%2C,dot,.,semi,%3B",
                   "?keys=comma,%2C,semi,%3B,dot,.",
                   "?keys=dot,.,comma,%2C,semi,%3B",
@@ -735,7 +735,7 @@ public partial class McpClientResourceTemplateTests : ClientServerTestBase
                   "?keys=semi,%3B,comma,%2C,dot,.",
                   "?keys=semi,%3B,dot,.,comma,%2C"
                 ]],
-                ["{?keys*}", [ 
+                ["{?keys*}", [
                   "?comma=%2C&dot=.&semi=%3B",
                   "?comma=%2C&semi=%3B&dot=.",
                   "?dot=.&comma=%2C&semi=%3B",
@@ -775,7 +775,7 @@ public partial class McpClientResourceTemplateTests : ClientServerTestBase
                   ["{&x,y,undef}", "&x=1024&y=768"],
                   ["{&list}", "&list=red,green,blue"],
                   ["{&list*}", "&list=red&list=green&list=blue"],
-                  ["{&keys}", [ 
+                  ["{&keys}", [
                     "&keys=comma,%2C,dot,.,semi,%3B",
                     "&keys=comma,%2C,semi,%3B,dot,.",
                     "&keys=dot,.,comma,%2C,semi,%3B",
@@ -783,7 +783,7 @@ public partial class McpClientResourceTemplateTests : ClientServerTestBase
                     "&keys=semi,%3B,comma,%2C,dot,.",
                     "&keys=semi,%3B,dot,.,comma,%2C"
                   ]],
-                  ["{&keys*}", [ 
+                  ["{&keys*}", [
                     "&comma=%2C&dot=.&semi=%3B",
                     "&comma=%2C&semi=%3B&dot=.",
                     "&dot=.&comma=%2C&semi=%3B",

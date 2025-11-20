@@ -80,8 +80,8 @@ public abstract partial class McpSession : IMcpEndpoint, IAsyncDisposable
     /// <returns>A task that represents the asynchronous send operation.</returns>
     /// <remarks>
     /// <para>
-    /// This method sends a notification without any parameters. Notifications are one-way messages 
-    /// that don't expect a response. They are commonly used for events, status updates, or to signal 
+    /// This method sends a notification without any parameters. Notifications are one-way messages
+    /// that don't expect a response. They are commonly used for events, status updates, or to signal
     /// changes in state.
     /// </para>
     /// </remarks>
@@ -102,11 +102,11 @@ public abstract partial class McpSession : IMcpEndpoint, IAsyncDisposable
     /// <returns>A task that represents the asynchronous send operation.</returns>
     /// <remarks>
     /// <para>
-    /// This method sends a notification with parameters to the connected session. Notifications are one-way 
+    /// This method sends a notification with parameters to the connected session. Notifications are one-way
     /// messages that don't expect a response, commonly used for events, status updates, or signaling changes.
     /// </para>
     /// <para>
-    /// The parameters object is serialized to JSON according to the provided serializer options or the default 
+    /// The parameters object is serialized to JSON according to the provided serializer options or the default
     /// options if none are specified.
     /// </para>
     /// <para>
@@ -152,6 +152,7 @@ public abstract partial class McpSession : IMcpEndpoint, IAsyncDisposable
     /// </summary>
     /// <param name="progressToken">The <see cref="ProgressToken"/> identifying the operation for which progress is being reported.</param>
     /// <param name="progress">The progress update to send, containing information such as percentage complete or status message.</param>
+    /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task representing the completion of the notification operation (not the operation being tracked).</returns>
     /// <exception cref="ArgumentNullException">The current session instance is <see langword="null"/>.</exception>
@@ -168,6 +169,7 @@ public abstract partial class McpSession : IMcpEndpoint, IAsyncDisposable
     public Task NotifyProgressAsync(
         ProgressToken progressToken,
         ProgressNotificationValue progress,
+        RequestOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         return SendNotificationAsync(
@@ -176,6 +178,7 @@ public abstract partial class McpSession : IMcpEndpoint, IAsyncDisposable
             {
                 ProgressToken = progressToken,
                 Progress = progress,
+                Meta = options?.Meta,
             },
             McpJsonUtilities.JsonContext.Default.ProgressNotificationParams,
             cancellationToken);

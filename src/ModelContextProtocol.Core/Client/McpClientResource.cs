@@ -52,7 +52,7 @@ public sealed class McpClientResource
     /// which can be useful for advanced scenarios or when implementing custom MCP client extensions.
     /// </para>
     /// <para>
-    /// For most common use cases, you can use the more convenient <see cref="Name"/> and 
+    /// For most common use cases, you can use the more convenient <see cref="Name"/> and
     /// <see cref="Description"/> properties instead of accessing the <see cref="ProtocolResource"/> directly.
     /// </para>
     /// </remarks>
@@ -80,10 +80,10 @@ public sealed class McpClientResource
     /// <returns>A <see cref="ValueTask{ReadResourceResult}"/> containing the resource's result with content and messages.</returns>
     /// <remarks>
     /// <para>
-    /// This is a convenience method that internally calls <see cref="McpClient.ReadResourceAsync(string, CancellationToken)"/>.
+    /// This is a convenience method that internally calls <see cref="McpClient.ReadResourceAsync(string, RequestOptions, CancellationToken)"/>.
     /// </para>
     /// </remarks>
     public ValueTask<ReadResourceResult> ReadAsync(
         CancellationToken cancellationToken = default) =>
-        _client.ReadResourceAsync(Uri, cancellationToken);
+        _client.ReadResourceAsync(Uri, null, cancellationToken);
 }
