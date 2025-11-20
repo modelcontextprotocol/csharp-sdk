@@ -18,5 +18,5 @@ public sealed class RequestParamsMetadata
     /// The receiver is not obligated to provide these notifications.
     /// </remarks>
     [JsonPropertyName("progressToken")]
-    public ProgressToken? ProgressToken { get; set; } = default!;
+    public ProgressToken? ProgressToken { get; set; }
 }

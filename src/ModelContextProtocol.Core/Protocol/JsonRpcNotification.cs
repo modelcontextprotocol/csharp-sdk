@@ -17,11 +17,11 @@ public sealed class JsonRpcNotification : JsonRpcMessage
     /// Gets or sets the name of the notification method.
     /// </summary>
     [JsonPropertyName("method")]
-    public required string Method { get; init; }
+    public required string Method { get; set; }
 
     /// <summary>
     /// Gets or sets optional parameters for the notification.
     /// </summary>
     [JsonPropertyName("params")]
-    public JsonNode? Params { get; init; }
+    public JsonNode? Params { get; set; }
 }

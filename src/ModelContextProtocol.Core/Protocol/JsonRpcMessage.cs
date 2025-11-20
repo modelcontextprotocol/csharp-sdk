@@ -1,6 +1,5 @@
 using ModelContextProtocol.Server;
 using System.ComponentModel;
-using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -27,7 +26,7 @@ public abstract class JsonRpcMessage
     /// </summary>
     /// <inheritdoc />
     [JsonPropertyName("jsonrpc")]
-    public string JsonRpc { get; init; } = "2.0";
+    public string JsonRpc { get; set; } = "2.0";
 
     /// <summary>
     /// Gets or sets the contextual information for this JSON-RPC message.

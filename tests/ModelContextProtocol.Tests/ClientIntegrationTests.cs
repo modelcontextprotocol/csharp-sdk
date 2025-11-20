@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Tests.Utils;
@@ -383,7 +383,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
                     {
                         Model = "test-model",
                         Role = Role.Assistant,
-                        Content = new TextContentBlock { Text = "Test response" },
+                        Content = [new TextContentBlock { Text = "Test response" }],
                     };
                 }
             }

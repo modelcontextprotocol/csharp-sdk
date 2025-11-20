@@ -1,4 +1,4 @@
-﻿using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Protocol;
 using System.Text.Json;
 using System.Threading.Channels;
 
@@ -74,7 +74,7 @@ public class TestServerTransport : ITransport
         await WriteMessageAsync(new JsonRpcResponse
         {
             Id = request.Id,
-            Result = JsonSerializer.SerializeToNode(new CreateMessageResult { Content = new TextContentBlock { Text = "" }, Model = "model", Role = Role.User }, McpJsonUtilities.DefaultOptions),
+            Result = JsonSerializer.SerializeToNode(new CreateMessageResult { Content = [new TextContentBlock { Text = "" }], Model = "model"}, McpJsonUtilities.DefaultOptions),
         }, cancellationToken);
     }
 

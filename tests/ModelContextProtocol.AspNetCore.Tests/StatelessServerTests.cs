@@ -201,7 +201,10 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         var requestSamplingEx = await Assert.ThrowsAsync<InvalidOperationException>(() => server.SampleAsync([]));
         Assert.Equal(expectedSamplingErrorMessage, requestSamplingEx.Message);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => server.SendRequestAsync(new JsonRpcRequest { Method = RequestMethods.SamplingCreateMessage }));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => server.SendRequestAsync(new JsonRpcRequest
+        {
+            Method = RequestMethods.SamplingCreateMessage
+        }));
         return ex.Message;
     }
 
@@ -216,7 +219,10 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         var requestRootsEx = Assert.Throws<InvalidOperationException>(() => server.RequestRootsAsync(new()));
         Assert.Equal(expectedRootsErrorMessage, requestRootsEx.Message);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => server.SendRequestAsync(new JsonRpcRequest { Method = RequestMethods.RootsList }));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => server.SendRequestAsync(new JsonRpcRequest
+        {
+            Method = RequestMethods.RootsList
+        }));
         return ex.Message;
     }
 
@@ -228,10 +234,13 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         // Even when the client has elicitation support, it should not be advertised in stateless mode.
         Assert.Null(server.ClientCapabilities);
 
-        var requestElicitationEx = Assert.Throws<InvalidOperationException>(() => server.ElicitAsync(new()));
+        var requestElicitationEx = Assert.Throws<InvalidOperationException>(() => server.ElicitAsync(new() { Message = string.Empty }));
         Assert.Equal(expectedElicitationErrorMessage, requestElicitationEx.Message);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => server.SendRequestAsync(new JsonRpcRequest { Method = RequestMethods.ElicitationCreate }));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => server.SendRequestAsync(new JsonRpcRequest
+        {
+            Method = RequestMethods.ElicitationCreate
+        }));
         return ex.Message;
     }
 

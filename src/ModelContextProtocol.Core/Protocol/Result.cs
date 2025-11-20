@@ -20,5 +20,5 @@ public abstract class Result
     /// Implementations must not make assumptions about its contents.
     /// </remarks>
     [JsonPropertyName("_meta")]
-    public JsonObject? Meta { get; init; }
+    public JsonObject? Meta { get; set; }
 }

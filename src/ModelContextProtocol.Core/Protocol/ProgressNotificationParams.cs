@@ -29,7 +29,7 @@ public sealed class ProgressNotificationParams : NotificationParams
     /// correlate the notifications with the original request.
     /// </para>
     /// </remarks>
-    public required ProgressToken ProgressToken { get; init; }
+    public required ProgressToken ProgressToken { get; set; }
 
     /// <summary>
     /// Gets or sets the progress thus far.
@@ -37,7 +37,7 @@ public sealed class ProgressNotificationParams : NotificationParams
     /// <remarks>
     /// This should increase for each notification issued as part of the same request, even if the total is unknown.
     /// </remarks>
-    public required ProgressNotificationValue Progress { get; init; }
+    public required ProgressNotificationValue Progress { get; set; }
 
     /// <summary>
     /// Provides a <see cref="JsonConverter"/> for <see cref="ProgressNotificationParams"/>.
@@ -80,6 +80,10 @@ public sealed class ProgressNotificationParams : NotificationParams
 
                         case "_meta":
                             meta = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.JsonObject);
+                            break;
+
+                        default:
+                            reader.Skip();
                             break;
                     }
                 }

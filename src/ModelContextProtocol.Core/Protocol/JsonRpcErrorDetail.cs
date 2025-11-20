@@ -17,7 +17,7 @@ public sealed class JsonRpcErrorDetail
     /// Gets an integer error code according to the JSON-RPC specification.
     /// </summary>
     [JsonPropertyName("code")]
-    public required int Code { get; init; }
+    public required int Code { get; set; }
 
     /// <summary>
     /// Gets a short description of the error.
@@ -28,7 +28,7 @@ public sealed class JsonRpcErrorDetail
     /// in the JSON-RPC 2.0 specification.
     /// </remarks>
     [JsonPropertyName("message")]
-    public required string Message { get; init; }
+    public required string Message { get; set; }
 
     /// <summary>
     /// Gets optional additional error data.
@@ -40,5 +40,5 @@ public sealed class JsonRpcErrorDetail
     /// the error condition.
     /// </remarks>
     [JsonPropertyName("data")]
-    public object? Data { get; init; }
+    public object? Data { get; set; }
 }

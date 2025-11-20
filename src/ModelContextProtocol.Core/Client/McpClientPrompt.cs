@@ -22,8 +22,30 @@ public sealed class McpClientPrompt
 {
     private readonly McpClient _client;
 
-    internal McpClientPrompt(McpClient client, Prompt prompt)
+    /// <summary>
+    /// Initializes a new instance of the <see cref="McpClientPrompt"/> class.
+    /// </summary>
+    /// <param name="client">The <see cref="McpClient"/> instance to use for invoking the prompt.</param>
+    /// <param name="prompt">The protocol <see cref="Prompt"/> definition describing the prompt's metadata.</param>
+    /// <remarks>
+    /// <para>
+    /// This constructor enables reusing cached prompt definitions across different <see cref="McpClient"/> instances
+    /// without needing to call <see cref="McpClient.ListPromptsAsync"/> on every reconnect. This is particularly useful 
+    /// in scenarios where prompt definitions are stable and network round-trips should be minimized.
+    /// </para>
+    /// <para>
+    /// The provided <paramref name="prompt"/> must represent a prompt that is actually available on the server 
+    /// associated with the <paramref name="client"/>. Attempting to invoke a prompt that doesn't exist on the 
+    /// server will result in an <see cref="McpException"/>.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="prompt"/> is <see langword="null"/>.</exception>
+    public McpClientPrompt(McpClient client, Prompt prompt)
     {
+        Throw.IfNull(client);
+        Throw.IfNull(prompt);
+
         _client = client;
         ProtocolPrompt = prompt;
     }
