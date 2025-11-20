@@ -1,8 +1,9 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
 using System.Text.Json;
+
+#pragma warning disable CS0618 // Type or member is obsolete
 
 namespace ModelContextProtocol.Tests.Configuration;
 

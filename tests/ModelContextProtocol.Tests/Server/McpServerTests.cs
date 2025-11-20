@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
@@ -130,7 +130,7 @@ public class McpServerTests : LoggedTest
         await using var server = McpServer.Create(transport, _options, LoggerFactory);
         SetClientCapabilities(server, new ClientCapabilities());
 
-        var action = async () => await server.SampleAsync(new CreateMessageRequestParams { Messages = [] }, CancellationToken.None);
+        var action = async () => await server.SampleAsync(new CreateMessageRequestParams { Messages = [], MaxTokens = 1000 }, CancellationToken.None);
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(action);
@@ -147,7 +147,7 @@ public class McpServerTests : LoggedTest
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
 
         // Act
-        var result = await server.SampleAsync(new CreateMessageRequestParams { Messages = [] }, CancellationToken.None);
+        var result = await server.SampleAsync(new CreateMessageRequestParams { Messages = [], MaxTokens = 1000 }, CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.NotEmpty(transport.SentMessages);
@@ -201,7 +201,7 @@ public class McpServerTests : LoggedTest
         SetClientCapabilities(server, new ClientCapabilities());
 
         // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await server.ElicitAsync(new ElicitRequestParams(), CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await server.ElicitAsync(new ElicitRequestParams { Message = "" }, CancellationToken.None));
     }
 
     [Fact]
@@ -214,7 +214,7 @@ public class McpServerTests : LoggedTest
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
 
         // Act
-        var result = await server.ElicitAsync(new ElicitRequestParams(), CancellationToken.None);
+        var result = await server.ElicitAsync(new ElicitRequestParams { Message = "" }, CancellationToken.None);
 
         // Assert
         Assert.NotNull(result);
@@ -369,7 +369,7 @@ public class McpServerTests : LoggedTest
             new ServerCapabilities
             {
                 Resources = new()
-            }, 
+            },
             method: RequestMethods.ResourcesRead,
             configureOptions: options =>
             {
@@ -377,7 +377,7 @@ public class McpServerTests : LoggedTest
                 {
                     return new ReadResourceResult
                     {
-                        Contents = [new TextResourceContents { Text = "test" }]
+                        Contents = [new TextResourceContents { Text = "test", Uri = "" }]
                     };
                 };
                 options.Handlers.ListResourcesHandler = (request, ct) => throw new NotImplementedException();
@@ -438,7 +438,7 @@ public class McpServerTests : LoggedTest
     public async Task Can_Handle_Get_Prompts_Requests()
     {
         await Can_Handle_Requests(
-            new ServerCapabilities 
+            new ServerCapabilities
             {
                 Prompts = new()
             },
@@ -466,7 +466,7 @@ public class McpServerTests : LoggedTest
     public async Task Can_Handle_List_Tools_Requests()
     {
         await Can_Handle_Requests(
-            new ServerCapabilities 
+            new ServerCapabilities
             {
                 Tools = new()
             },
@@ -504,7 +504,7 @@ public class McpServerTests : LoggedTest
             new ServerCapabilities
             {
                 Tools = new()
-            }, 
+            },
             method: RequestMethods.ToolsCall,
             configureOptions: options =>
             {
@@ -592,6 +592,41 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
+    public async Task Can_Handle_Call_Tool_Requests_With_InputValidationException()
+    {
+        // Test that input validation errors (like ArgumentException from JSON deserialization)
+        // are returned as tool execution errors (IsError=true) rather than protocol errors, per SEP-1303.
+        const string errorMessage = "Input validation failed: invalid date format";
+
+        await Can_Handle_Requests(
+            new ServerCapabilities
+            {
+                Tools = new()
+            },
+            method: RequestMethods.ToolsCall,
+            configureOptions: options =>
+            {
+                options.Handlers.CallToolHandler = async (request, ct) =>
+                {
+                    // Simulate an input validation error (like what would happen with wrong argument types)
+                    throw new ArgumentException(errorMessage);
+                };
+                options.Handlers.ListToolsHandler = (request, ct) => throw new NotImplementedException();
+            },
+            assertResult: (_, response) =>
+            {
+                var result = JsonSerializer.Deserialize<CallToolResult>(response, McpJsonUtilities.DefaultOptions);
+                Assert.NotNull(result);
+                Assert.True(result.IsError, "Input validation errors should be returned as tool execution errors (IsError=true), not protocol errors");
+                Assert.NotEmpty(result.Content);
+                var textContent = Assert.IsType<TextContentBlock>(result.Content[0]);
+                // ArgumentException should result in a generic error message that doesn't expose the exception details
+                Assert.DoesNotContain(errorMessage, textContent.Text);
+                Assert.Contains("An error occurred", textContent.Text);
+            });
+    }
+
+    [Fact]
     public async Task Can_Handle_Call_Tool_Requests_With_McpProtocolException()
     {
         const string errorMessage = "Invalid tool parameters";
@@ -626,7 +661,7 @@ public class McpServerTests : LoggedTest
             TestContext.Current.CancellationToken
         );
 
-        var error = await receivedMessage.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        var error = await receivedMessage.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         Assert.NotNull(error);
         Assert.NotNull(error.Error);
         Assert.Equal((int)errorCode, error.Error.Code);
@@ -659,10 +694,10 @@ public class McpServerTests : LoggedTest
             {
                 Method = method,
                 Id = new RequestId(55)
-        }
+            }
         );
 
-        var response = await receivedMessage.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var response = await receivedMessage.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.NotNull(response);
 
         assertResult(server, response.Result);
@@ -767,19 +802,19 @@ public class McpServerTests : LoggedTest
             Assert.Equal($"You are a helpful assistant.{Environment.NewLine}More system stuff.", rp.SystemPrompt);
 
             Assert.Equal(2, rp.Messages.Count);
-            Assert.Equal("I am going to France.", Assert.IsType<TextContentBlock>(rp.Messages[0].Content).Text);
-            Assert.Equal("What is the most famous tower in Paris?", Assert.IsType<TextContentBlock>(rp.Messages[1].Content).Text);
+            Assert.Equal("I am going to France.", Assert.IsType<TextContentBlock>(Assert.Single(rp.Messages[0].Content)).Text);
+            Assert.Equal("What is the most famous tower in Paris?", Assert.IsType<TextContentBlock>(Assert.Single(rp.Messages[1].Content)).Text);
 
             CreateMessageResult result = new()
             {
-                Content = new TextContentBlock { Text = "The Eiffel Tower." },
+                Content = [new TextContentBlock { Text = "The Eiffel Tower." }],
                 Model = "amazingmodel",
                 Role = Role.Assistant,
                 StopReason = "endTurn",
             };
 
             return Task.FromResult(new JsonRpcResponse
-            { 
+            {
                 Id = new RequestId("0"),
                 Result = JsonSerializer.SerializeToNode(result, McpJsonUtilities.DefaultOptions),
             });

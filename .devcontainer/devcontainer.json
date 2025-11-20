@@ -19,5 +19,5 @@
 			}
 		}
 	},
-	"postCreateCommand": "dotnet --list-sdks && echo 'Available .NET SDKs installed successfully!'"
+	"postCreateCommand": "dotnet dev-certs https --trust && dotnet --list-sdks && echo 'Available .NET SDKs installed successfully!'"
 }

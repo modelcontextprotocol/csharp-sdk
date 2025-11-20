@@ -45,7 +45,7 @@ jobs:
 
     steps:
     - name: Clone the repo
-      uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
       with:
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
 
@@ -53,7 +53,7 @@ jobs:
       uses: actions/setup-dotnet@d4c94342e560b34958eacfc5d055d21461ed1c5d # v5.0.0
       with:
         dotnet-version: |
-          10.0.100-rc.1.25451.107
+          10.0.x
           9.0.x
 
     - name: Build
@@ -73,13 +73,13 @@ jobs:
       version_suffix_args: ${{ github.event_name != 'release' && format('--version-suffix "{0}"', inputs.version_suffix_override || format('ci.{0}', github.run_number)) || '' }}
 
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
       - name: Setup .NET
         uses: actions/setup-dotnet@d4c94342e560b34958eacfc5d055d21461ed1c5d # v5.0.0
         with:
           dotnet-version: |
-            10.0.100-rc.1.25451.107
+            10.0.x
             9.0.x
 
       - name: Pack
@@ -89,7 +89,7 @@ jobs:
           --output "${{ github.workspace }}/artifacts/packages"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         if: ${{ !cancelled() }}
         with:
           name: build-artifacts
@@ -103,15 +103,15 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
       - name: Setup .NET
         uses: actions/setup-dotnet@d4c94342e560b34958eacfc5d055d21461ed1c5d # v5.0.0
         with:
-          dotnet-version: 10.0.100-rc.1.25451.107
+          dotnet-version: 10.0.x
 
       - name: Download build artifacts
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
 
       - name: Authenticate to GitHub registry
         run: dotnet nuget add source
@@ -123,7 +123,7 @@ jobs:
 
       - name: Publish to GitHub NuGet package registry
         run: dotnet nuget push
-            ${{github.workspace}}/build-artifacts/packages/*.nupkg
+            ${{github.workspace}}/packages/*.nupkg
             --source "github"
             --api-key ${{ secrets.GITHUB_TOKEN }}
             --skip-duplicate
@@ -138,14 +138,14 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
       - name: Download build artifacts
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
 
       - name: Upload release asset
         run: gh release upload ${{ github.event.release.tag_name }}
-          ${{ github.workspace }}/build-artifacts/packages/*.*nupkg
+          ${{ github.workspace }}/packages/*.*nupkg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -158,19 +158,19 @@ jobs:
     permissions: { }
 
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
       - name: Setup .NET
         uses: actions/setup-dotnet@d4c94342e560b34958eacfc5d055d21461ed1c5d # v5.0.0
         with:
-          dotnet-version: 10.0.100-rc.1.25451.107
+          dotnet-version: 10.0.x
 
       - name: Download build artifacts
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
 
       - name: Publish to NuGet.org (Releases only)
         run: dotnet nuget push
-            ${{github.workspace}}/build-artifacts/packages/*.nupkg
+            ${{github.workspace}}/packages/*.nupkg
             --source https://api.nuget.org/v3/index.json
             --api-key ${{ secrets.NUGET_KEY_MODELCONTEXTPROTOCOL }}
             --skip-duplicate

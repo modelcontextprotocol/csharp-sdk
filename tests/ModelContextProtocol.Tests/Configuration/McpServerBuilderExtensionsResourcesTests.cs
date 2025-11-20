@@ -7,7 +7,6 @@ using ModelContextProtocol.Server;
 using Moq;
 using System.Collections;
 using System.ComponentModel;
-using System.Text.Json;
 using System.Threading.Channels;
 using static ModelContextProtocol.Tests.Configuration.McpServerBuilderExtensionsPromptsTests;
 
@@ -105,7 +104,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
                 case "test://ResourceTemplate2":
                     return new ReadResourceResult
                     {
-                        Contents = [new TextResourceContents { Text = request.Params?.Uri ?? "(null)" }]
+                        Contents = [new TextResourceContents { Text = request.Params?.Uri ?? "(null)", Uri = request.Params?.Uri ?? "(null)" }]
                     };
             }
 

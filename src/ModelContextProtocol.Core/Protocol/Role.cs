@@ -5,7 +5,7 @@ namespace ModelContextProtocol.Protocol;
 /// <summary>
 /// Represents the type of role in the Model Context Protocol conversation.
 /// </summary>
-[JsonConverter(typeof(CustomizableJsonStringEnumConverter<Role>))]
+[JsonConverter(typeof(JsonStringEnumConverter<Role>))]
 public enum Role
 {
     /// <summary>

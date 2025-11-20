@@ -36,7 +36,7 @@ jobs:
 
     steps:
     - name: 📥 Clone the repo
-      uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
       with:
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
 
@@ -44,7 +44,7 @@ jobs:
       uses: actions/setup-dotnet@d4c94342e560b34958eacfc5d055d21461ed1c5d # v5.0.0
       with:
         dotnet-version: |
-          10.0.100-rc.1.25451.107
+          10.0.x
           9.0.x
 
     # NetFX testing on non-Windows requires mono
@@ -57,7 +57,7 @@ jobs:
       run: brew install mono
 
     - name: 🔧 Set up Node.js
-      uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+      uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
       with:
         node-version: '20'
 
@@ -82,7 +82,7 @@ jobs:
 
     - name: 📤 Upload test results artifact
       if: always()
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
       with:
         name: testresults-${{ matrix.os }}-${{ matrix.configuration }}
         path: artifacts/testresults/**

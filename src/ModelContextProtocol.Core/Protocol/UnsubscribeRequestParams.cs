@@ -25,5 +25,5 @@ public sealed class UnsubscribeRequestParams : RequestParams
     /// </summary>
     [JsonPropertyName("uri")]
     [StringSyntax(StringSyntaxAttribute.Uri)]
-    public string? Uri { get; init; }
+    public required string Uri { get; set; }
 }

@@ -16,7 +16,11 @@ public class McpServerExtensionsTests
         var server = new Mock<IMcpServer>(MockBehavior.Strict).Object;
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () => await server.SampleAsync(
-            new CreateMessageRequestParams { Messages = [new SamplingMessage { Role = Role.User, Content = new TextContentBlock { Text = "hi" } }] },
+            new CreateMessageRequestParams
+            {
+                Messages = [new SamplingMessage { Role = Role.User, Content = [new TextContentBlock { Text = "hi" }] }],
+                MaxTokens = 1000
+            },
             TestContext.Current.CancellationToken));
         Assert.Contains("Prefer using 'McpServer.SampleAsync' instead", ex.Message);
     }
@@ -76,7 +80,7 @@ public class McpServerExtensionsTests
 
         var resultPayload = new CreateMessageResult
         {
-            Content = new TextContentBlock { Text = "resp" },
+            Content = [new TextContentBlock { Text = "resp" }],
             Model = "test-model",
             Role = Role.Assistant,
             StopReason = "endTurn",
@@ -97,12 +101,13 @@ public class McpServerExtensionsTests
 
         var result = await server.SampleAsync(new CreateMessageRequestParams
         {
-            Messages = [new SamplingMessage { Role = Role.User, Content = new TextContentBlock { Text = "hi" } }]
+            Messages = [new SamplingMessage { Role = Role.User, Content = [new TextContentBlock { Text = "hi" }] }],
+            MaxTokens = 1000
         }, TestContext.Current.CancellationToken);
 
         Assert.Equal("test-model", result.Model);
         Assert.Equal(Role.Assistant, result.Role);
-        Assert.Equal("resp", Assert.IsType<TextContentBlock>(result.Content).Text);
+        Assert.Equal("resp", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
         mockServer.Verify(s => s.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -113,18 +118,31 @@ public class McpServerExtensionsTests
 
         var resultPayload = new CreateMessageResult
         {
-            Content = new TextContentBlock { Text = "resp" },
+            Content = [new TextContentBlock { Text = "resp" }],
             Model = "test-model",
             Role = Role.Assistant,
             StopReason = "endTurn",
         };
+
+        const int CustomMaxSamplingOutputTokens = 500;
 
         mockServer
             .Setup(s => s.ClientCapabilities)
             .Returns(new ClientCapabilities() { Sampling = new() });
 
         mockServer
+            .Setup(s => s.ServerOptions)
+            .Returns(new McpServerOptions { MaxSamplingOutputTokens = CustomMaxSamplingOutputTokens });
+
+        CreateMessageRequestParams? capturedRequest = null;
+        mockServer
             .Setup(s => s.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<JsonRpcRequest, CancellationToken>((request, _) =>
+            {
+                capturedRequest = JsonSerializer.Deserialize<CreateMessageRequestParams>(
+                    request.Params ?? throw new InvalidOperationException(),
+                    McpJsonUtilities.DefaultOptions);
+            })
             .ReturnsAsync(new JsonRpcResponse
             {
                 Result = JsonSerializer.SerializeToNode(resultPayload, McpJsonUtilities.DefaultOptions),
@@ -139,6 +157,10 @@ public class McpServerExtensionsTests
         Assert.Equal(ChatRole.Assistant, last.Role);
         Assert.Equal("resp", last.Text);
         mockServer.Verify(s => s.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+
+        // Verify that the default value was used
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(CustomMaxSamplingOutputTokens, capturedRequest.MaxTokens);
     }
 
     [Fact]

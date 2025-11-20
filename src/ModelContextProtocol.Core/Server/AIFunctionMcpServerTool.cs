@@ -143,6 +143,11 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                     ReadOnlyHint = options.ReadOnly,
                 };
             }
+
+            // Populate Meta from options and/or McpMetaAttribute instances if a MethodInfo is available
+            tool.Meta = function.UnderlyingMethod is not null ?
+                CreateMetaFromAttributes(function.UnderlyingMethod, options.Meta, options.SerializerOptions) :
+                options.Meta;
         }
 
         return new AIFunctionMcpServerTool(function, tool, options?.Services, structuredOutputRequiresWrapping, options?.Metadata ?? []);
@@ -202,6 +207,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     /// <summary>Initializes a new instance of the <see cref="McpServerTool"/> class.</summary>
     private AIFunctionMcpServerTool(AIFunction function, Tool tool, IServiceProvider? serviceProvider, bool structuredOutputRequiresWrapping, IReadOnlyList<object> metadata)
     {
+        ValidateToolName(tool.Name);
+
         AIFunction = function;
         ProtocolTool = tool;
         ProtocolTool.McpServerTool = this;
@@ -242,7 +249,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         {
             AIContent aiContent => new()
             {
-                Content = [aiContent.ToContent()],
+                Content = [aiContent.ToContentBlock()],
                 StructuredContent = structuredContent,
                 IsError = aiContent is ErrorContent
             },
@@ -351,14 +358,53 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         return metadata.AsReadOnly();
     }
 
-    /// <summary>Regex that flags runs of characters other than ASCII digits or letters.</summary>
+    /// <summary>Creates a Meta <see cref="JsonObject"/> from <see cref="McpMetaAttribute"/> instances on the specified method.</summary>
+    /// <param name="method">The method to extract <see cref="McpMetaAttribute"/> instances from.</param>
+    /// <param name="meta">Optional <see cref="JsonObject"/> to seed the Meta with. Properties from this object take precedence over attributes.</param>
+    /// <param name="serializerOptions">Optional <see cref="JsonSerializerOptions"/> to use for serialization. This parameter is ignored when parsing JSON strings from attributes.</param>
+    /// <returns>A <see cref="JsonObject"/> with metadata, or null if no metadata is present.</returns>
+    internal static JsonObject? CreateMetaFromAttributes(MethodInfo method, JsonObject? meta = null, JsonSerializerOptions? serializerOptions = null)
+    {
+        // Transfer all McpMetaAttribute instances to the Meta JsonObject, ignoring any that would overwrite existing properties.
+        foreach (var attr in method.GetCustomAttributes<McpMetaAttribute>())
+        {
+            if (meta?.ContainsKey(attr.Name) is not true)
+            {
+                (meta ??= [])[attr.Name] = JsonNode.Parse(attr.JsonValue);
+            }
+        }
+
+        return meta;
+    }
+
 #if NET
+    /// <summary>Regex that flags runs of characters other than ASCII digits or letters.</summary>
     [GeneratedRegex("[^0-9A-Za-z]+")]
     private static partial Regex NonAsciiLetterDigitsRegex();
+
+    /// <summary>Regex that validates tool names.</summary>
+    [GeneratedRegex(@"^[A-Za-z0-9_.-]{1,128}\z")]
+    private static partial Regex ValidateToolNameRegex();
 #else
     private static Regex NonAsciiLetterDigitsRegex() => _nonAsciiLetterDigits;
     private static readonly Regex _nonAsciiLetterDigits = new("[^0-9A-Za-z]+", RegexOptions.Compiled);
+
+    private static Regex ValidateToolNameRegex() => _validateToolName;
+    private static readonly Regex _validateToolName = new(@"^[A-Za-z0-9_.-]{1,128}\z", RegexOptions.Compiled);
 #endif
+
+    private static void ValidateToolName(string name)
+    {
+        if (name is null)
+        {
+            throw new ArgumentException("Tool name cannot be null.");
+        }
+
+        if (!ValidateToolNameRegex().IsMatch(name))
+        {
+            throw new ArgumentException($"The tool name '{name}' is invalid. Tool names must match the regular expression '{ValidateToolNameRegex()}'");
+        }
+    }
 
     private static JsonElement? CreateOutputSchema(AIFunction function, McpServerToolCreateOptions? toolCreateOptions, out bool structuredOutputRequiresWrapping)
     {
@@ -445,7 +491,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         foreach (var item in contentItems)
         {
-            contentList.Add(item.ToContent());
+            contentList.Add(item.ToContentBlock());
             hasAny = true;
 
             if (allErrorContent && item is not ErrorContent)

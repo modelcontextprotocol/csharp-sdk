@@ -292,7 +292,7 @@ internal sealed partial class McpServerImpl : McpServer
         var subscribe = resourcesCapability?.Subscribe;
 
         // Handle resources provided via DI.
-        if (resources is { IsEmpty: false })
+        if (resources is not null)
         {
             var originalListResourcesHandler = listResourcesHandler;
             listResourcesHandler = async (request, cancellationToken) =>
@@ -342,10 +342,7 @@ internal sealed partial class McpServerImpl : McpServer
             {
                 if (request.MatchedPrimitive is McpServerResource matchedResource)
                 {
-                    if (await matchedResource.ReadAsync(request, cancellationToken).ConfigureAwait(false) is { } result)
-                    {
-                        return result;
-                    }
+                    return await matchedResource.ReadAsync(request, cancellationToken).ConfigureAwait(false);
                 }
 
                 return await originalReadResourceHandler(request, cancellationToken).ConfigureAwait(false);
@@ -366,22 +363,17 @@ internal sealed partial class McpServerImpl : McpServer
                 if (request.Params?.Uri is { } uri && resources is not null)
                 {
                     // First try an O(1) lookup by exact match.
-                    if (resources.TryGetPrimitive(uri, out var resource))
+                    if (resources.TryGetPrimitive(uri, out var resource) && !resource.IsTemplated)
                     {
                         request.MatchedPrimitive = resource;
                     }
                     else
                     {
                         // Fall back to an O(N) lookup, trying to match against each URI template.
-                        // The number of templates is controlled by the server developer, and the number is expected to be
-                        // not terribly large. If that changes, this can be tweaked to enable a more efficient lookup.
                         foreach (var resourceTemplate in resources)
                         {
-                            // Check if this template would handle the request by testing if ReadAsync would succeed
-                            if (resourceTemplate.IsTemplated)
+                            if (resourceTemplate.IsMatch(uri))
                             {
-                                // This is a simplified check - a more robust implementation would match the URI pattern
-                                // For now, we'll let the actual handler attempt the match
                                 request.MatchedPrimitive = resourceTemplate;
                                 break;
                             }
@@ -453,7 +445,7 @@ internal sealed partial class McpServerImpl : McpServer
         var listChanged = promptsCapability?.ListChanged;
 
         // Handle tools provided via DI by augmenting the handlers to incorporate them.
-        if (prompts is { IsEmpty: false })
+        if (prompts is not null)
         {
             var originalListPromptsHandler = listPromptsHandler;
             listPromptsHandler = async (request, cancellationToken) =>
@@ -541,7 +533,7 @@ internal sealed partial class McpServerImpl : McpServer
         var listChanged = toolsCapability?.ListChanged;
 
         // Handle tools provided via DI by augmenting the handlers to incorporate them.
-        if (tools is { IsEmpty: false })
+        if (tools is not null)
         {
             var originalListToolsHandler = listToolsHandler;
             listToolsHandler = async (request, cancellationToken) =>

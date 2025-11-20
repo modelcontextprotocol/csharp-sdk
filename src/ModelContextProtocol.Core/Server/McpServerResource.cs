@@ -163,6 +163,16 @@ public abstract class McpServerResource : IMcpServerPrimitive
     public abstract IReadOnlyList<object> Metadata { get; }
 
     /// <summary>
+    /// Evaluates whether the <paramref name="uri"/> matches the <see cref="ProtocolResourceTemplate"/>
+    /// and can be used as the <see cref="ReadResourceRequestParams.Uri"/> passed to <see cref="ReadAsync"/>.
+    /// </summary>
+    /// <param name="uri">The URI being evaluated for this resource.</param>
+    /// <returns>
+    /// <see langword="true"/> if the <paramref name="uri"/> matches the <see cref="ProtocolResourceTemplate"/>; otherwise, <see langword="false"/>.
+    /// </returns>
+    public abstract bool IsMatch(string uri);
+
+    /// <summary>
     /// Gets the resource, rendering it with the provided request parameters and returning the resource result.
     /// </summary>
     /// <param name="request">
@@ -174,12 +184,14 @@ public abstract class McpServerResource : IMcpServerPrimitive
     /// </param>
     /// <returns>
     /// A <see cref="ValueTask{ReadResourceResult}"/> representing the asynchronous operation, containing a <see cref="ReadResourceResult"/> with
-    /// the resource content and messages. If and only if this <see cref="McpServerResource"/> doesn't match the <see cref="ReadResourceRequestParams.Uri"/>,
-    /// the method returns <see langword="null"/>.
+    /// the resource content and messages.
     /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is <see langword="null"/>.</exception>
-    /// <exception cref="InvalidOperationException">The resource implementation returned <see langword="null"/> or an unsupported result type.</exception>
-    public abstract ValueTask<ReadResourceResult?> ReadAsync(
+    /// <exception cref="InvalidOperationException">
+    /// The <see cref="ReadResourceRequestParams.Uri"/> did not match the <see cref="ProtocolResourceTemplate"/> for this resource,
+    /// the resource implementation returned <see langword="null"/>, or the resource implementation returned an unsupported result type.
+    /// </exception>
+    public abstract ValueTask<ReadResourceResult> ReadAsync(
         RequestContext<ReadResourceRequestParams> request,
         CancellationToken cancellationToken = default);
 

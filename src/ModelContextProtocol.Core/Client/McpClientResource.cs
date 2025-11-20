@@ -17,8 +17,30 @@ public sealed class McpClientResource
 {
     private readonly McpClient _client;
 
-    internal McpClientResource(McpClient client, Resource resource)
+    /// <summary>
+    /// Initializes a new instance of the <see cref="McpClientResource"/> class.
+    /// </summary>
+    /// <param name="client">The <see cref="McpClient"/> instance to use for reading the resource.</param>
+    /// <param name="resource">The protocol <see cref="Resource"/> definition describing the resource's metadata.</param>
+    /// <remarks>
+    /// <para>
+    /// This constructor enables reusing cached resource definitions across different <see cref="McpClient"/> instances
+    /// without needing to call <see cref="McpClient.ListResourcesAsync"/> on every reconnect. This is particularly useful 
+    /// in scenarios where resource definitions are stable and network round-trips should be minimized.
+    /// </para>
+    /// <para>
+    /// The provided <paramref name="resource"/> must represent a resource that is actually available on the server 
+    /// associated with the <paramref name="client"/>. Attempting to read a resource that doesn't exist on the 
+    /// server will result in an <see cref="McpException"/>.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="resource"/> is <see langword="null"/>.</exception>
+    public McpClientResource(McpClient client, Resource resource)
     {
+        Throw.IfNull(client);
+        Throw.IfNull(resource);
+
         _client = client;
         ProtocolResource = resource;
     }

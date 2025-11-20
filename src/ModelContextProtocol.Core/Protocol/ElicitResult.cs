@@ -51,7 +51,7 @@ public sealed class ElicitResult : Result
     /// </para>
     /// <para>
     /// Values in the dictionary should be of types <see cref="JsonValueKind.String"/>, <see cref="JsonValueKind.Number"/>,
-    /// <see cref="JsonValueKind.True"/>, or <see cref="JsonValueKind.False"/>.
+    /// <see cref="JsonValueKind.True"/>, <see cref="JsonValueKind.False"/>, or <see cref="JsonValueKind.Array"/> (for multi-select enums).
     /// </para>
     /// </remarks>
     [JsonPropertyName("content")]
@@ -67,6 +67,25 @@ public sealed class ElicitResult<T> : Result
     /// <summary>
     /// Gets or sets the user action in response to the elicitation.
     /// </summary>
+    /// <value>
+    /// Defaults to "cancel" if not explicitly set.
+    /// </value>
+    /// <remarks>
+    /// <list type="bullet">
+    ///   <item>
+    ///     <term>"accept"</term>
+    ///     <description>User submitted the form/confirmed the action</description>
+    ///   </item>
+    ///   <item>
+    ///     <term>"decline"</term>
+    ///     <description>User explicitly declined the action</description>
+    ///   </item>
+    ///   <item>
+    ///     <term>"cancel"</term>
+    ///     <description>User dismissed without making an explicit choice (default)</description>
+    ///   </item>
+    /// </list>
+    /// </remarks>
     public string Action { get; set; } = "cancel";
 
     /// <summary>

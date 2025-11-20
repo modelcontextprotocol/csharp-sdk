@@ -17,8 +17,30 @@ public sealed class McpClientResourceTemplate
 {
     private readonly McpClient _client;
 
-    internal McpClientResourceTemplate(McpClient client, ResourceTemplate resourceTemplate)
+    /// <summary>
+    /// Initializes a new instance of the <see cref="McpClientResourceTemplate"/> class.
+    /// </summary>
+    /// <param name="client">The <see cref="McpClient"/> instance to use for reading the resource template.</param>
+    /// <param name="resourceTemplate">The protocol <see cref="ResourceTemplate"/> definition describing the resource template's metadata.</param>
+    /// <remarks>
+    /// <para>
+    /// This constructor enables reusing cached resource template definitions across different <see cref="McpClient"/> instances
+    /// without needing to call <see cref="McpClient.ListResourceTemplatesAsync"/> on every reconnect. This is particularly useful 
+    /// in scenarios where resource template definitions are stable and network round-trips should be minimized.
+    /// </para>
+    /// <para>
+    /// The provided <paramref name="resourceTemplate"/> must represent a resource template that is actually available on the server 
+    /// associated with the <paramref name="client"/>. Attempting to read a resource template that doesn't exist on the 
+    /// server will result in an <see cref="McpException"/>.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="resourceTemplate"/> is <see langword="null"/>.</exception>
+    public McpClientResourceTemplate(McpClient client, ResourceTemplate resourceTemplate)
     {
+        Throw.IfNull(client);
+        Throw.IfNull(resourceTemplate);
+
         _client = client;
         ProtocolResourceTemplate = resourceTemplate;
     }

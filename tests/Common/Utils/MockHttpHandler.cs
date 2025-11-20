@@ -1,6 +1,4 @@
-﻿using System.Net.Http;
-
-namespace ModelContextProtocol.Tests.Utils;
+﻿namespace ModelContextProtocol.Tests.Utils;
 
 public class MockHttpHandler : HttpMessageHandler
 {
