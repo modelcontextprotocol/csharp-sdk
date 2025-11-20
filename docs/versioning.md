@@ -31,7 +31,7 @@ Beginning with the 1.0.0 release, the following support policy will be applied f
 
 MAJOR or MINOR version updates might introduce or alter APIs annotated as [`[Experimental]`](https://learn.microsoft.com/dotnet/api/system.diagnostics.codeanalysis.experimentalattribute). This attribute indicates that an API is experimental and it may change at any time--including within PATCH or MINOR version updates.
 
-Experimental APIs require suppression of diagnostic codes specific to the MCP SDK APIs, using an `MCPEXP` prefix.
+Experimental APIs require suppression of diagnostic codes specific to the MCP SDK APIs, using an `MCP` prefix.
 
 ## Breaking changes
 
@@ -58,4 +58,4 @@ If APIs within the SDK become obsolete due to changes in the MCP spec or other e
 2. Within a MAJOR version update, APIs may be marked as `[Obsolete]` to produce _build errors_ indicating the API is no longer functional and always throws exceptions. The build errors will provide guidance specific to the affected APIs.
 3. Within a MAJOR version update, obsolete APIs may be removed. API removals are expected to be rare and avoided wherever possible, and `[Obsolete]` attributes will be applied ahead of the API removal.
 
-Beginning with the 1.0.0 release, all obsoletions will use diagnostic codes specific to the MCP SDK APIs, using an `MCPOBS` prefix.
+Beginning with the 1.0.0 release, all obsoletions will use diagnostic codes specific to the MCP SDK APIs, using an `MCP` prefix.
