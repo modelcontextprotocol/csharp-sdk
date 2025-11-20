@@ -73,10 +73,12 @@ public class ConformanceTests : IAsyncLifetime
             $"Conformance tests failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
     }    private static Process StartConformanceServer()
     {
-        // Find the ConformanceServer project directory
+        // The ConformanceServer is in a subdirectory of the test project
+        // Test binary is in: artifacts/bin/ModelContextProtocol.ConformanceTests/net10.0/
+        // ConformanceServer project is in: tests/ModelContextProtocol.ConformanceTests/ConformanceServer/
         var testProjectDir = AppContext.BaseDirectory;
         var conformanceServerDir = Path.GetFullPath(
-            Path.Combine(testProjectDir, "..", "..", "..", "..", "ConformanceServer"));
+            Path.Combine(testProjectDir, "..", "..", "..", "..", "tests", "ModelContextProtocol.ConformanceTests", "ConformanceServer"));
 
         if (!Directory.Exists(conformanceServerDir))
         {
