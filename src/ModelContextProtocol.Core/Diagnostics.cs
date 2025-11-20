@@ -13,7 +13,7 @@ internal static class Diagnostics
     internal static Meter Meter { get; } = new("Experimental.ModelContextProtocol");
 
     internal static Histogram<double> CreateDurationHistogram(string name, string description, bool longBuckets) =>
-        Meter.CreateHistogram<double>(name, "s", description, advice: longBuckets ? LongSecondsBucketBoundaries : ShortSecondsBucketBoundaries);
+        Meter.CreateHistogram(name, "s", description, advice: longBuckets ? LongSecondsBucketBoundaries : ShortSecondsBucketBoundaries);
 
     /// <summary>
     /// Follows boundaries from http.server.request.duration/http.client.request.duration

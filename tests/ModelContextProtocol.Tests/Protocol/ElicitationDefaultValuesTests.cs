@@ -1,6 +1,8 @@
 using ModelContextProtocol.Protocol;
 using System.Text.Json;
 
+#pragma warning disable CS0618 // Type or member is obsolete
+
 namespace ModelContextProtocol.Tests.Protocol;
 
 public class ElicitationDefaultValuesTests
@@ -259,7 +261,8 @@ public class ElicitationDefaultValuesTests
 
         // Assert
         Assert.NotNull(deserialized);
-        var enumSchema = Assert.IsType<ElicitRequestParams.EnumSchema>(deserialized);
+        // EnumSchema without enumNames deserializes as UntitledSingleSelectEnumSchema
+        var enumSchema = Assert.IsType<ElicitRequestParams.UntitledSingleSelectEnumSchema>(deserialized);
         Assert.Equal("draft", enumSchema.Default);
         Assert.Equal(["draft", "published", "archived"], enumSchema.Enum);
     }
@@ -326,7 +329,8 @@ public class ElicitationDefaultValuesTests
         var activeSchema = Assert.IsType<ElicitRequestParams.BooleanSchema>(deserialized.RequestedSchema.Properties["active"]);
         Assert.True(activeSchema.Default);
         
-        var statusSchema = Assert.IsType<ElicitRequestParams.EnumSchema>(deserialized.RequestedSchema.Properties["status"]);
+        // EnumSchema without enumNames deserializes as UntitledSingleSelectEnumSchema
+        var statusSchema = Assert.IsType<ElicitRequestParams.UntitledSingleSelectEnumSchema>(deserialized.RequestedSchema.Properties["status"]);
         Assert.Equal("active", statusSchema.Default);
     }
 }

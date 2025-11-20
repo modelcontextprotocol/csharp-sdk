@@ -16,12 +16,21 @@ namespace ModelContextProtocol.Protocol;
 /// When this capability is enabled, an MCP server can request the client to generate content
 /// using an AI model. The client must set a <see cref="McpClientHandlers.SamplingHandler"/> to process these requests.
 /// </para>
-/// <para>
-/// This class is intentionally empty as the Model Context Protocol specification does not
-/// currently define additional properties for sampling capabilities. Future versions of the
-/// specification may extend this capability with additional configuration options.
-/// </para>
 /// </remarks>
 public sealed class SamplingCapability
 {
+    /// <summary>
+    /// Gets or sets whether the client supports context inclusion via includeContext parameter.
+    /// </summary>
+    /// <remarks>
+    /// If not declared, servers should only use includeContext: "none".
+    /// </remarks>
+    [JsonPropertyName("context")]
+    public SamplingContextCapability? Context { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the client supports tool use via tools and toolChoice parameters.
+    /// </summary>
+    [JsonPropertyName("tools")]
+    public SamplingToolsCapability? Tools { get; set; }
 }

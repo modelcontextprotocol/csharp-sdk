@@ -4,6 +4,8 @@ using ModelContextProtocol.Protocol;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+#pragma warning disable CS0618 // Type or member is obsolete
+
 namespace ModelContextProtocol.Tests.Configuration;
 
 public partial class ElicitationTypedTests : ClientServerTestBase
@@ -147,7 +149,7 @@ public partial class ElicitationTypedTests : ClientServerTestBase
                                 break;
 
                             case nameof(SampleForm.Role):
-                                var enumSchema = Assert.IsType<ElicitRequestParams.EnumSchema>(value);
+                                var enumSchema = Assert.IsType<ElicitRequestParams.UntitledSingleSelectEnumSchema>(value);
                                 Assert.Equal("string", enumSchema.Type);
                                 Assert.Equal([nameof(SampleRole.User), nameof(SampleRole.Admin)], enumSchema.Enum);
                                 break;
