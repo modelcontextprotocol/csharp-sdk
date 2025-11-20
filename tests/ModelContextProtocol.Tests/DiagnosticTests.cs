@@ -9,7 +9,7 @@ using System.Text.Json;
 
 namespace ModelContextProtocol.Tests;
 
-[Collection(nameof(ExclusiveExecution))]
+[Collection(nameof(DisableParallelization))]
 public class DiagnosticTests
 {
     [Fact]
