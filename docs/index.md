@@ -13,7 +13,7 @@ The Model Context Protocol (MCP) is an open protocol that standardizes how appli
 For more information about MCP:
 
 - [Official Documentation](https://modelcontextprotocol.io/)
-- [Protocol Specification](https://spec.modelcontextprotocol.io/)
+- [Protocol Specification](https://modelcontextprotocol.io/specification/)
 - [GitHub Organization](https://github.com/modelcontextprotocol)
 
 For how-to guides, tutorials, and additional guidance, refer to the [official MCP documentation](https://modelcontextprotocol.io/).

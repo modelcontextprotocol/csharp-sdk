@@ -61,4 +61,4 @@ echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":
 
 - [File-Based Programs Tutorial](https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/tutorials/file-based-programs)
 - [C# Preprocessor Directives for File-Based Apps](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/preprocessor-directives#file-based-apps)
-- [Model Context Protocol Specification](https://spec.modelcontextprotocol.io/)
+- [Model Context Protocol Specification](https://modelcontextprotocol.io/specification/)
