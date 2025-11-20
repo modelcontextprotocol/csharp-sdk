@@ -73,10 +73,10 @@ public class McpClientCreationTests
                 RootsHandler = async (t, r) => new ListRootsResult { Roots = [] },
                 SamplingHandler = async (c, p, t) => new CreateMessageResult
                 {
-                    Content = [new TextContentBlock { Text = "result" }],
+                    Content = new TextContentBlock { Text = "result" },
                     Model = "test-model",
                     Role = Role.User,
-                    StopReason = "endTurn",
+                    StopReason = "endTurn"
                 }
             }
         };

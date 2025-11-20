@@ -22,7 +22,8 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         await Assert.ThrowsAsync<IOException>(() => McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
     }
 
-    [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
+    // [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
+    [Fact]
     public async Task CreateAsync_ValidProcessInvalidServer_StdErrCallbackInvoked()
     {
         string id = Guid.NewGuid().ToString("N");

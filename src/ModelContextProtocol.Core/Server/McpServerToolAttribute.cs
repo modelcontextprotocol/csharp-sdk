@@ -90,7 +90,7 @@ namespace ModelContextProtocol.Server;
 ///   </item>
 ///   <item>
 ///     <term><see cref="AIContent"/></term>
-///     <description>Converted to a single <see cref="ContentBlock"/> object using <see cref="AIContentExtensions.ToContentBlock(AIContent)"/>.</description>
+///     <description>Converted to a single <see cref="ContentBlock"/> object using <see cref="AIContentExtensions.ToContent(AIContent)"/>.</description>
 ///   </item>
 ///   <item>
 ///     <term><see cref="string"/></term>
@@ -106,7 +106,7 @@ namespace ModelContextProtocol.Server;
 ///   </item>
 ///   <item>
 ///     <term><see cref="IEnumerable{AIContent}"/> of <see cref="AIContent"/></term>
-///     <description>Each <see cref="AIContent"/> is converted to a <see cref="ContentBlock"/> object using <see cref="AIContentExtensions.ToContentBlock(AIContent)"/>.</description>
+///     <description>Each <see cref="AIContent"/> is converted to a <see cref="ContentBlock"/> object using <see cref="AIContentExtensions.ToContent(AIContent)"/>.</description>
 ///   </item>
 ///   <item>
 ///     <term><see cref="IEnumerable{Content}"/> of <see cref="ContentBlock"/></term>

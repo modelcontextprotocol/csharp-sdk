@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Builder;
+﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -143,7 +143,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
     }
 
     [Fact]
-    public async Task Sampling_DoesNotCloseStreamPrematurely()
+    public async Task Sampling_DoesNotCloseStream_Prematurely()
     {
         Assert.SkipWhen(Stateless, "Sampling is not supported in stateless mode.");
 
@@ -172,14 +172,14 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
                     Assert.NotNull(parameters?.Messages);
                     var message = Assert.Single(parameters.Messages);
                     Assert.Equal(Role.User, message.Role);
-                    Assert.Equal("Test prompt for sampling", Assert.IsType<TextContentBlock>(Assert.Single(message.Content)).Text);
+                    Assert.Equal("Test prompt for sampling", Assert.IsType<TextContentBlock>(message.Content).Text);
 
                     sampleCount++;
                     return new CreateMessageResult
                     {
                         Model = "test-model",
                         Role = Role.Assistant,
-                        Content = [new TextContentBlock { Text = "Sampling response from client" }],
+                        Content = new TextContentBlock { Text = "Sampling response from client" },
                     };
                 }
             }
@@ -285,7 +285,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
                     new SamplingMessage
                     {
                         Role = Role.User,
-                        Content = [new TextContentBlock { Text = prompt }],
+                        Content = new TextContentBlock { Text = prompt },
                     }
                 ],
                 MaxTokens = 1000
@@ -294,7 +294,7 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
             await server.SampleAsync(samplingRequest, cancellationToken);
             var samplingResult = await server.SampleAsync(samplingRequest, cancellationToken);
 
-            return $"Sampling completed successfully. Client responded: {Assert.IsType<TextContentBlock>(Assert.Single(samplingResult.Content)).Text}";
+            return $"Sampling completed successfully. Client responded: {Assert.IsType<TextContentBlock>(samplingResult.Content).Text}";
         }
     }
 }

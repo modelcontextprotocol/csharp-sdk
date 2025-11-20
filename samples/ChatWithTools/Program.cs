@@ -1,6 +1,5 @@
 ﻿using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
-using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using OpenAI;
 using OpenTelemetry;

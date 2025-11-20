@@ -17,7 +17,7 @@ public class SampleLlmTool
         var samplingParams = CreateRequestSamplingParams(prompt ?? string.Empty, "sampleLLM", maxTokens);
         var sampleResult = await server.SampleAsync(samplingParams, cancellationToken);
 
-        return $"LLM sampling result: {sampleResult.Content.OfType<TextContentBlock>().FirstOrDefault()?.Text}";
+        return $"LLM sampling result: {(sampleResult.Content as TextContentBlock)?.Text}";
     }
 
     private static CreateMessageRequestParams CreateRequestSamplingParams(string context, string uri, int maxTokens = 100)
@@ -27,7 +27,7 @@ public class SampleLlmTool
             Messages = [new SamplingMessage
                 {
                     Role = Role.User,
-                    Content = [new TextContentBlock { Text = $"Resource {uri} context: {context}" }],
+                    Content = new TextContentBlock { Text = $"Resource {uri} context: {context}" },
                 }],
             SystemPrompt = "You are a helpful test server.",
             MaxTokens = maxTokens,

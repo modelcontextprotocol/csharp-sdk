@@ -80,7 +80,7 @@ public class McpClientHandlers
     /// generated content.
     /// </para>
     /// <para>
-    /// You can create a handler using the <see cref="AIContentExtensions.CreateSamplingHandler"/> extension
+    /// You can create a handler using the <see cref="McpClientExtensions.CreateSamplingHandler"/> extension
     /// method with any implementation of <see cref="IChatClient"/>.
     /// </para>
     /// </remarks>

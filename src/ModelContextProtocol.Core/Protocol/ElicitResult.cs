@@ -51,7 +51,7 @@ public sealed class ElicitResult : Result
     /// </para>
     /// <para>
     /// Values in the dictionary should be of types <see cref="JsonValueKind.String"/>, <see cref="JsonValueKind.Number"/>,
-    /// <see cref="JsonValueKind.True"/>, <see cref="JsonValueKind.False"/>, or <see cref="JsonValueKind.Array"/> (for multi-select enums).
+    /// <see cref="JsonValueKind.True"/>, or <see cref="JsonValueKind.False"/>.
     /// </para>
     /// </remarks>
     [JsonPropertyName("content")]

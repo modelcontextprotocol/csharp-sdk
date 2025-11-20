@@ -1,8 +1,6 @@
 using ModelContextProtocol.Protocol;
 using System.Text.Json;
 
-#pragma warning disable CS0618 // Type or member is obsolete
-
 namespace ModelContextProtocol.Tests.Protocol;
 
 public static class PrimitiveSchemaDefinitionTests

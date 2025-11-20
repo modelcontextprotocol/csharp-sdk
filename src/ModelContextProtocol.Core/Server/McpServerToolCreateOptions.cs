@@ -41,7 +41,7 @@ public sealed class McpServerToolCreateOptions
     public string? Name { get; set; }
 
     /// <summary>
-    /// Gets or sets the description to use for the <see cref="McpServerTool"/>.
+    /// Gets or set the description to use for the <see cref="McpServerTool"/>.
     /// </summary>
     /// <remarks>
     /// If <see langword="null"/>, but a <see cref="DescriptionAttribute"/> is applied to the method,
