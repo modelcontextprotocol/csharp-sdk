@@ -1,9 +1,7 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using System.Text.Json;
-
-#pragma warning disable CS0618 // Type or member is obsolete
 
 namespace ModelContextProtocol.Tests.Configuration;
 
@@ -46,10 +44,14 @@ public partial class ElicitationTests : ClientServerTestBase
                                 Description = "description4",
                                 Default = true,
                             },
-                            ["prop4"] = new ElicitRequestParams.EnumSchema
+                            ["prop4"] = new ElicitRequestParams.TitledSingleSelectEnumSchema
                             {
-                                Enum = ["option1", "option2", "option3"],
-                                EnumNames = ["Name1", "Name2", "Name3"],
+                                OneOf =
+                                [
+                                    new ElicitRequestParams.EnumSchemaOption { Const = "option1", Title = "Name1" },
+                                    new ElicitRequestParams.EnumSchemaOption { Const = "option2", Title = "Name2" },
+                                    new ElicitRequestParams.EnumSchemaOption { Const = "option3", Title = "Name3" }
+                                ],
                             },
                         },
                     },
@@ -104,9 +106,14 @@ public partial class ElicitationTests : ClientServerTestBase
                                 break;
 
                             case "prop4":
-                                var primitiveEnum = Assert.IsType<ElicitRequestParams.EnumSchema>(entry.Value);
-                                Assert.Equal(["option1", "option2", "option3"], primitiveEnum.Enum);
-                                Assert.Equal(["Name1", "Name2", "Name3"], primitiveEnum.EnumNames);
+                                var primitiveEnum = Assert.IsType<ElicitRequestParams.TitledSingleSelectEnumSchema>(entry.Value);
+                                Assert.Equal(3, primitiveEnum.OneOf.Count);
+                                Assert.Equal("option1", primitiveEnum.OneOf[0].Const);
+                                Assert.Equal("Name1", primitiveEnum.OneOf[0].Title);
+                                Assert.Equal("option2", primitiveEnum.OneOf[1].Const);
+                                Assert.Equal("Name2", primitiveEnum.OneOf[1].Title);
+                                Assert.Equal("option3", primitiveEnum.OneOf[2].Const);
+                                Assert.Equal("Name3", primitiveEnum.OneOf[2].Title);
                                 break;
 
                             default:

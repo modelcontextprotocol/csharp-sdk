@@ -36,7 +36,7 @@ public class McpClientHandlers
     /// </para>
     /// <para>
     /// Handlers provided via <see cref="NotificationHandlers"/> will be registered with the client for the lifetime of the client.
-    /// For transient handlers, <see cref="IMcpEndpoint.RegisterNotificationHandler"/> may be used to register a handler that can
+    /// For transient handlers, <see cref="McpSession.RegisterNotificationHandler"/> may be used to register a handler that can
     /// then be unregistered by disposing of the <see cref="IAsyncDisposable"/> returned from the method.
     /// </para>
     /// </remarks>

@@ -230,10 +230,6 @@ internal sealed partial class McpServerImpl : McpServer
         var completeHandler = options.Handlers.CompleteHandler;
         var completionsCapability = options.Capabilities?.Completions;
 
-#pragma warning disable CS0618 // Type or member is obsolete
-        completeHandler ??= completionsCapability?.CompleteHandler;
-#pragma warning restore CS0618 // Type or member is obsolete
-
         if (completeHandler is null && completionsCapability is null)
         {
             return;
@@ -265,14 +261,6 @@ internal sealed partial class McpServerImpl : McpServer
         var unsubscribeHandler = options.Handlers.UnsubscribeFromResourcesHandler;
         var resources = options.ResourceCollection;
         var resourcesCapability = options.Capabilities?.Resources;
-
-#pragma warning disable CS0618 // Type or member is obsolete
-        listResourcesHandler ??= resourcesCapability?.ListResourcesHandler;
-        listResourceTemplatesHandler ??= resourcesCapability?.ListResourceTemplatesHandler;
-        readResourceHandler ??= resourcesCapability?.ReadResourceHandler;
-        subscribeHandler ??= resourcesCapability?.SubscribeToResourcesHandler;
-        unsubscribeHandler ??= resourcesCapability?.UnsubscribeFromResourcesHandler;
-#pragma warning restore CS0618 // Type or member is obsolete
 
         if (listResourcesHandler is null && listResourceTemplatesHandler is null && readResourceHandler is null &&
             subscribeHandler is null && unsubscribeHandler is null && resources is null &&
@@ -427,11 +415,6 @@ internal sealed partial class McpServerImpl : McpServer
         var prompts = options.PromptCollection;
         var promptsCapability = options.Capabilities?.Prompts;
 
-#pragma warning disable CS0618 // Type or member is obsolete
-        listPromptsHandler ??= promptsCapability?.ListPromptsHandler;
-        getPromptHandler ??= promptsCapability?.GetPromptHandler;
-#pragma warning restore CS0618 // Type or member is obsolete
-
         if (listPromptsHandler is null && getPromptHandler is null && prompts is null &&
             promptsCapability is null)
         {
@@ -514,11 +497,6 @@ internal sealed partial class McpServerImpl : McpServer
         var callToolHandler = options.Handlers.CallToolHandler;
         var tools = options.ToolCollection;
         var toolsCapability = options.Capabilities?.Tools;
-
-#pragma warning disable CS0618 // Type or member is obsolete
-        listToolsHandler ??= toolsCapability?.ListToolsHandler;
-        callToolHandler ??= toolsCapability?.CallToolHandler;
-#pragma warning restore CS0618 // Type or member is obsolete
 
         if (listToolsHandler is null && callToolHandler is null && tools is null &&
             toolsCapability is null)
@@ -617,10 +595,6 @@ internal sealed partial class McpServerImpl : McpServer
     {
         // We don't require that the handler be provided, as we always store the provided log level to the server.
         var setLoggingLevelHandler = options.Handlers.SetLoggingLevelHandler;
-
-#pragma warning disable CS0618 // Type or member is obsolete
-        setLoggingLevelHandler ??= options.Capabilities?.Logging?.SetLoggingLevelHandler;
-#pragma warning restore CS0618 // Type or member is obsolete
 
         // Apply filters to the handler
         if (setLoggingLevelHandler is not null)
