@@ -44,6 +44,8 @@ updates:
       - dependency-name: "Microsoft.IdentityModel.*"
       - dependency-name: "Microsoft.Bcl.*"
       - dependency-name: "Microsoft.SourceLink.*"
+      # Ignore Roslyn/CodeAnalysis dependencies to maintain VS 2022 compatibility
+      - dependency-name: "Microsoft.CodeAnalysis.*"
       # Ignore all System product dependencies except those explicitly in testing groups
       - dependency-name: "System.Diagnostics.*"
       - dependency-name: "System.IO.*"
