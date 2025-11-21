@@ -1,3 +1,4 @@
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -24,6 +25,7 @@ public static partial class McpServerBuilderExtensions
     /// <typeparam name="TToolType">The tool type.</typeparam>
     /// <param name="builder">The builder instance.</param>
     /// <param name="serializerOptions">The serializer options governing tool parameter marshalling.</param>
+    /// <param name="schemaCreateOptions">The JSON schema creation options governing tool schema generation.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     /// <remarks>
@@ -36,7 +38,8 @@ public static partial class McpServerBuilderExtensions
         DynamicallyAccessedMemberTypes.NonPublicMethods |
         DynamicallyAccessedMemberTypes.PublicConstructors)] TToolType>(
         this IMcpServerBuilder builder,
-        JsonSerializerOptions? serializerOptions = null)
+        JsonSerializerOptions? serializerOptions = null,
+        AIJsonSchemaCreateOptions? schemaCreateOptions = null)
     {
         Throw.IfNull(builder);
 
@@ -45,8 +48,36 @@ public static partial class McpServerBuilderExtensions
             if (toolMethod.GetCustomAttribute<McpServerToolAttribute>() is not null)
             {
                 builder.Services.AddSingleton((Func<IServiceProvider, McpServerTool>)(toolMethod.IsStatic ?
-                    services => McpServerTool.Create(toolMethod, options: new() { Services = services, SerializerOptions = serializerOptions }) :
-                    services => McpServerTool.Create(toolMethod, static r => CreateTarget(r.Services, typeof(TToolType)), new() { Services = services, SerializerOptions = serializerOptions })));
+                    services =>
+                    {
+                        var effectiveSerializerOptions = serializerOptions;
+                        var effectiveSchemaCreateOptions = schemaCreateOptions;
+                        
+                        // Try to get server-wide defaults if not explicitly provided
+                        if (effectiveSerializerOptions is null || effectiveSchemaCreateOptions is null)
+                        {
+                            var defaultOptions = services.GetService<McpServerDefaultOptions>();
+                            effectiveSerializerOptions ??= defaultOptions?.JsonSerializerOptions;
+                            effectiveSchemaCreateOptions ??= defaultOptions?.SchemaCreateOptions;
+                        }
+                        
+                        return McpServerTool.Create(toolMethod, options: new() { Services = services, SerializerOptions = effectiveSerializerOptions, SchemaCreateOptions = effectiveSchemaCreateOptions });
+                    } :
+                    services =>
+                    {
+                        var effectiveSerializerOptions = serializerOptions;
+                        var effectiveSchemaCreateOptions = schemaCreateOptions;
+                        
+                        // Try to get server-wide defaults if not explicitly provided
+                        if (effectiveSerializerOptions is null || effectiveSchemaCreateOptions is null)
+                        {
+                            var defaultOptions = services.GetService<McpServerDefaultOptions>();
+                            effectiveSerializerOptions ??= defaultOptions?.JsonSerializerOptions;
+                            effectiveSchemaCreateOptions ??= defaultOptions?.SchemaCreateOptions;
+                        }
+                        
+                        return McpServerTool.Create(toolMethod, static r => CreateTarget(r.Services, typeof(TToolType)), new() { Services = services, SerializerOptions = effectiveSerializerOptions, SchemaCreateOptions = effectiveSchemaCreateOptions });
+                    }));
             }
         }
 
@@ -58,6 +89,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="target">The target instance from which the tools should be sourced.</param>
     /// <param name="serializerOptions">The serializer options governing tool parameter marshalling.</param>
+    /// <param name="schemaCreateOptions">The JSON schema creation options governing tool schema generation.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     /// <remarks>
@@ -76,7 +108,8 @@ public static partial class McpServerBuilderExtensions
         DynamicallyAccessedMemberTypes.NonPublicMethods)] TToolType>(
         this IMcpServerBuilder builder,
         TToolType target,
-        JsonSerializerOptions? serializerOptions = null)
+        JsonSerializerOptions? serializerOptions = null,
+        AIJsonSchemaCreateOptions? schemaCreateOptions = null)
     {
         Throw.IfNull(builder);
         Throw.IfNull(target);
@@ -90,10 +123,24 @@ public static partial class McpServerBuilderExtensions
         {
             if (toolMethod.GetCustomAttribute<McpServerToolAttribute>() is not null)
             {
-                builder.Services.AddSingleton(services => McpServerTool.Create(
-                    toolMethod,
-                    toolMethod.IsStatic ? null : target,
-                    new() { Services = services, SerializerOptions = serializerOptions }));
+                builder.Services.AddSingleton(services =>
+                {
+                    var effectiveSerializerOptions = serializerOptions;
+                    var effectiveSchemaCreateOptions = schemaCreateOptions;
+                    
+                    // Try to get server-wide defaults if not explicitly provided
+                    if (effectiveSerializerOptions is null || effectiveSchemaCreateOptions is null)
+                    {
+                        var defaultOptions = services.GetService<McpServerDefaultOptions>();
+                        effectiveSerializerOptions ??= defaultOptions?.JsonSerializerOptions;
+                        effectiveSchemaCreateOptions ??= defaultOptions?.SchemaCreateOptions;
+                    }
+                    
+                    return McpServerTool.Create(
+                        toolMethod,
+                        toolMethod.IsStatic ? null : target,
+                        new() { Services = services, SerializerOptions = effectiveSerializerOptions, SchemaCreateOptions = effectiveSchemaCreateOptions });
+                });
             }
         }
 
@@ -126,6 +173,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="toolTypes">Types with <see cref="McpServerToolAttribute"/>-attributed methods to add as tools to the server.</param>
     /// <param name="serializerOptions">The serializer options governing tool parameter marshalling.</param>
+    /// <param name="schemaCreateOptions">The JSON schema creation options governing tool schema generation.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="toolTypes"/> is <see langword="null"/>.</exception>
@@ -135,7 +183,8 @@ public static partial class McpServerBuilderExtensions
     /// instance for each. For instance methods, an instance will be constructed for each invocation of the tool.
     /// </remarks>
     [RequiresUnreferencedCode(WithToolsRequiresUnreferencedCodeMessage)]
-    public static IMcpServerBuilder WithTools(this IMcpServerBuilder builder, IEnumerable<Type> toolTypes, JsonSerializerOptions? serializerOptions = null)
+    public static IMcpServerBuilder WithTools(this IMcpServerBuilder builder, IEnumerable<Type> toolTypes, JsonSerializerOptions? serializerOptions = null,
+        AIJsonSchemaCreateOptions? schemaCreateOptions = null)
     {
         Throw.IfNull(builder);
         Throw.IfNull(toolTypes);
@@ -149,8 +198,34 @@ public static partial class McpServerBuilderExtensions
                     if (toolMethod.GetCustomAttribute<McpServerToolAttribute>() is not null)
                     {
                         builder.Services.AddSingleton((Func<IServiceProvider, McpServerTool>)(toolMethod.IsStatic ?
-                            services => McpServerTool.Create(toolMethod, options: new() { Services = services , SerializerOptions = serializerOptions }) :
-                            services => McpServerTool.Create(toolMethod, r => CreateTarget(r.Services, toolType), new() { Services = services , SerializerOptions = serializerOptions })));
+                            services =>
+                            {
+                                var effectiveSerializerOptions = serializerOptions;
+                                var effectiveSchemaCreateOptions = schemaCreateOptions;
+                                
+                                if (effectiveSerializerOptions is null || effectiveSchemaCreateOptions is null)
+                                {
+                                    var defaultOptions = services.GetService<McpServerDefaultOptions>();
+                                    effectiveSerializerOptions ??= defaultOptions?.JsonSerializerOptions;
+                                    effectiveSchemaCreateOptions ??= defaultOptions?.SchemaCreateOptions;
+                                }
+                                
+                                return McpServerTool.Create(toolMethod, options: new() { Services = services, SerializerOptions = effectiveSerializerOptions, SchemaCreateOptions = effectiveSchemaCreateOptions });
+                            } :
+                            services =>
+                            {
+                                var effectiveSerializerOptions = serializerOptions;
+                                var effectiveSchemaCreateOptions = schemaCreateOptions;
+                                
+                                if (effectiveSerializerOptions is null || effectiveSchemaCreateOptions is null)
+                                {
+                                    var defaultOptions = services.GetService<McpServerDefaultOptions>();
+                                    effectiveSerializerOptions ??= defaultOptions?.JsonSerializerOptions;
+                                    effectiveSchemaCreateOptions ??= defaultOptions?.SchemaCreateOptions;
+                                }
+                                
+                                return McpServerTool.Create(toolMethod, r => CreateTarget(r.Services, toolType), new() { Services = services, SerializerOptions = effectiveSerializerOptions, SchemaCreateOptions = effectiveSchemaCreateOptions });
+                            }));
                     }
                 }
             }
@@ -164,6 +239,7 @@ public static partial class McpServerBuilderExtensions
     /// </summary>
     /// <param name="builder">The builder instance.</param>
     /// <param name="serializerOptions">The serializer options governing tool parameter marshalling.</param>
+    /// <param name="schemaCreateOptions">The JSON schema creation options governing tool schema generation.</param>
     /// <param name="toolAssembly">The assembly to load the types from. If <see langword="null"/>, the calling assembly will be used.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
@@ -188,7 +264,8 @@ public static partial class McpServerBuilderExtensions
     /// </para>
     /// </remarks>
     [RequiresUnreferencedCode(WithToolsRequiresUnreferencedCodeMessage)]
-    public static IMcpServerBuilder WithToolsFromAssembly(this IMcpServerBuilder builder, Assembly? toolAssembly = null, JsonSerializerOptions? serializerOptions = null)
+    public static IMcpServerBuilder WithToolsFromAssembly(this IMcpServerBuilder builder, Assembly? toolAssembly = null, JsonSerializerOptions? serializerOptions = null,
+        AIJsonSchemaCreateOptions? schemaCreateOptions = null)
     {
         Throw.IfNull(builder);
 
@@ -198,7 +275,8 @@ public static partial class McpServerBuilderExtensions
             from t in toolAssembly.GetTypes()
             where t.GetCustomAttribute<McpServerToolTypeAttribute>() is not null
             select t,
-            serializerOptions);
+            serializerOptions,
+            schemaCreateOptions);
     }
     #endregion
 
@@ -211,6 +289,7 @@ public static partial class McpServerBuilderExtensions
     /// <typeparam name="TPromptType">The prompt type.</typeparam>
     /// <param name="builder">The builder instance.</param>
     /// <param name="serializerOptions">The serializer options governing prompt parameter marshalling.</param>
+    /// <param name="schemaCreateOptions">The JSON schema creation options governing prompt schema generation.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     /// <remarks>
@@ -223,7 +302,8 @@ public static partial class McpServerBuilderExtensions
         DynamicallyAccessedMemberTypes.NonPublicMethods |
         DynamicallyAccessedMemberTypes.PublicConstructors)] TPromptType>(
         this IMcpServerBuilder builder,
-        JsonSerializerOptions? serializerOptions = null)
+        JsonSerializerOptions? serializerOptions = null,
+        AIJsonSchemaCreateOptions? schemaCreateOptions = null)
     {
         Throw.IfNull(builder);
 
@@ -232,8 +312,34 @@ public static partial class McpServerBuilderExtensions
             if (promptMethod.GetCustomAttribute<McpServerPromptAttribute>() is not null)
             {
                 builder.Services.AddSingleton((Func<IServiceProvider, McpServerPrompt>)(promptMethod.IsStatic ?
-                    services => McpServerPrompt.Create(promptMethod, options: new() { Services = services, SerializerOptions = serializerOptions }) :
-                    services => McpServerPrompt.Create(promptMethod, static r => CreateTarget(r.Services, typeof(TPromptType)), new() { Services = services, SerializerOptions = serializerOptions })));
+                    services =>
+                    {
+                        var effectiveSerializerOptions = serializerOptions;
+                        var effectiveSchemaCreateOptions = schemaCreateOptions;
+                        
+                        if (effectiveSerializerOptions is null || effectiveSchemaCreateOptions is null)
+                        {
+                            var defaultOptions = services.GetService<McpServerDefaultOptions>();
+                            effectiveSerializerOptions ??= defaultOptions?.JsonSerializerOptions;
+                            effectiveSchemaCreateOptions ??= defaultOptions?.SchemaCreateOptions;
+                        }
+                        
+                        return McpServerPrompt.Create(promptMethod, options: new() { Services = services, SerializerOptions = effectiveSerializerOptions, SchemaCreateOptions = effectiveSchemaCreateOptions });
+                    } :
+                    services =>
+                    {
+                        var effectiveSerializerOptions = serializerOptions;
+                        var effectiveSchemaCreateOptions = schemaCreateOptions;
+                        
+                        if (effectiveSerializerOptions is null || effectiveSchemaCreateOptions is null)
+                        {
+                            var defaultOptions = services.GetService<McpServerDefaultOptions>();
+                            effectiveSerializerOptions ??= defaultOptions?.JsonSerializerOptions;
+                            effectiveSchemaCreateOptions ??= defaultOptions?.SchemaCreateOptions;
+                        }
+                        
+                        return McpServerPrompt.Create(promptMethod, static r => CreateTarget(r.Services, typeof(TPromptType)), new() { Services = services, SerializerOptions = effectiveSerializerOptions, SchemaCreateOptions = effectiveSchemaCreateOptions });
+                    }));
             }
         }
 
@@ -245,6 +351,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="target">The target instance from which the prompts should be sourced.</param>
     /// <param name="serializerOptions">The serializer options governing prompt parameter marshalling.</param>
+    /// <param name="schemaCreateOptions">The JSON schema creation options governing prompt schema generation.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     /// <remarks>
@@ -263,7 +370,8 @@ public static partial class McpServerBuilderExtensions
         DynamicallyAccessedMemberTypes.NonPublicMethods)] TPromptType>(
         this IMcpServerBuilder builder,
         TPromptType target,
-        JsonSerializerOptions? serializerOptions = null)
+        JsonSerializerOptions? serializerOptions = null,
+        AIJsonSchemaCreateOptions? schemaCreateOptions = null)
     {
         Throw.IfNull(builder);
         Throw.IfNull(target);
@@ -277,7 +385,20 @@ public static partial class McpServerBuilderExtensions
         {
             if (promptMethod.GetCustomAttribute<McpServerPromptAttribute>() is not null)
             {
-                builder.Services.AddSingleton(services => McpServerPrompt.Create(promptMethod, target, new() { Services = services, SerializerOptions = serializerOptions }));
+                builder.Services.AddSingleton(services =>
+                {
+                    var effectiveSerializerOptions = serializerOptions;
+                    var effectiveSchemaCreateOptions = schemaCreateOptions;
+                    
+                    if (effectiveSerializerOptions is null || effectiveSchemaCreateOptions is null)
+                    {
+                        var defaultOptions = services.GetService<McpServerDefaultOptions>();
+                        effectiveSerializerOptions ??= defaultOptions?.JsonSerializerOptions;
+                        effectiveSchemaCreateOptions ??= defaultOptions?.SchemaCreateOptions;
+                    }
+                    
+                    return McpServerPrompt.Create(promptMethod, target, new() { Services = services, SerializerOptions = effectiveSerializerOptions, SchemaCreateOptions = effectiveSchemaCreateOptions });
+                });
             }
         }
 
@@ -310,6 +431,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="promptTypes">Types with marked methods to add as prompts to the server.</param>
     /// <param name="serializerOptions">The serializer options governing prompt parameter marshalling.</param>
+    /// <param name="schemaCreateOptions">The JSON schema creation options governing prompt schema generation.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="promptTypes"/> is <see langword="null"/>.</exception>
@@ -319,7 +441,8 @@ public static partial class McpServerBuilderExtensions
     /// instance for each. For instance methods, an instance will be constructed for each invocation of the prompt.
     /// </remarks>
     [RequiresUnreferencedCode(WithPromptsRequiresUnreferencedCodeMessage)]
-    public static IMcpServerBuilder WithPrompts(this IMcpServerBuilder builder, IEnumerable<Type> promptTypes, JsonSerializerOptions? serializerOptions = null)
+    public static IMcpServerBuilder WithPrompts(this IMcpServerBuilder builder, IEnumerable<Type> promptTypes, JsonSerializerOptions? serializerOptions = null,
+        AIJsonSchemaCreateOptions? schemaCreateOptions = null)
     {
         Throw.IfNull(builder);
         Throw.IfNull(promptTypes);
@@ -333,8 +456,34 @@ public static partial class McpServerBuilderExtensions
                     if (promptMethod.GetCustomAttribute<McpServerPromptAttribute>() is not null)
                     {
                         builder.Services.AddSingleton((Func<IServiceProvider, McpServerPrompt>)(promptMethod.IsStatic ?
-                            services => McpServerPrompt.Create(promptMethod, options: new() { Services = services, SerializerOptions = serializerOptions }) :
-                            services => McpServerPrompt.Create(promptMethod, r => CreateTarget(r.Services, promptType), new() { Services = services, SerializerOptions = serializerOptions })));
+                            services =>
+                            {
+                                var effectiveSerializerOptions = serializerOptions;
+                                var effectiveSchemaCreateOptions = schemaCreateOptions;
+                                
+                                if (effectiveSerializerOptions is null || effectiveSchemaCreateOptions is null)
+                                {
+                                    var defaultOptions = services.GetService<McpServerDefaultOptions>();
+                                    effectiveSerializerOptions ??= defaultOptions?.JsonSerializerOptions;
+                                    effectiveSchemaCreateOptions ??= defaultOptions?.SchemaCreateOptions;
+                                }
+                                
+                                return McpServerPrompt.Create(promptMethod, options: new() { Services = services, SerializerOptions = effectiveSerializerOptions, SchemaCreateOptions = effectiveSchemaCreateOptions });
+                            } :
+                            services =>
+                            {
+                                var effectiveSerializerOptions = serializerOptions;
+                                var effectiveSchemaCreateOptions = schemaCreateOptions;
+                                
+                                if (effectiveSerializerOptions is null || effectiveSchemaCreateOptions is null)
+                                {
+                                    var defaultOptions = services.GetService<McpServerDefaultOptions>();
+                                    effectiveSerializerOptions ??= defaultOptions?.JsonSerializerOptions;
+                                    effectiveSchemaCreateOptions ??= defaultOptions?.SchemaCreateOptions;
+                                }
+                                
+                                return McpServerPrompt.Create(promptMethod, r => CreateTarget(r.Services, promptType), new() { Services = services, SerializerOptions = effectiveSerializerOptions, SchemaCreateOptions = effectiveSchemaCreateOptions });
+                            }));
                     }
                 }
             }
@@ -348,6 +497,7 @@ public static partial class McpServerBuilderExtensions
     /// </summary>
     /// <param name="builder">The builder instance.</param>
     /// <param name="serializerOptions">The serializer options governing prompt parameter marshalling.</param>
+    /// <param name="schemaCreateOptions">The JSON schema creation options governing prompt schema generation.</param>
     /// <param name="promptAssembly">The assembly to load the types from. If <see langword="null"/>, the calling assembly will be used.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
@@ -372,7 +522,8 @@ public static partial class McpServerBuilderExtensions
     /// </para>
     /// </remarks>
     [RequiresUnreferencedCode(WithPromptsRequiresUnreferencedCodeMessage)]
-    public static IMcpServerBuilder WithPromptsFromAssembly(this IMcpServerBuilder builder, Assembly? promptAssembly = null, JsonSerializerOptions? serializerOptions = null)
+    public static IMcpServerBuilder WithPromptsFromAssembly(this IMcpServerBuilder builder, Assembly? promptAssembly = null, JsonSerializerOptions? serializerOptions = null,
+        AIJsonSchemaCreateOptions? schemaCreateOptions = null)
     {
         Throw.IfNull(builder);
 
@@ -382,7 +533,8 @@ public static partial class McpServerBuilderExtensions
             from t in promptAssembly.GetTypes()
             where t.GetCustomAttribute<McpServerPromptTypeAttribute>() is not null
             select t,
-            serializerOptions);
+            serializerOptions,
+            schemaCreateOptions);
     }
     #endregion
 
@@ -394,6 +546,8 @@ public static partial class McpServerBuilderExtensions
     /// <summary>Adds <see cref="McpServerResource"/> instances to the service collection backing <paramref name="builder"/>.</summary>
     /// <typeparam name="TResourceType">The resource type.</typeparam>
     /// <param name="builder">The builder instance.</param>
+    /// <param name="serializerOptions">The serializer options governing resource parameter marshalling.</param>
+    /// <param name="schemaCreateOptions">The JSON schema creation options governing resource schema generation.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     /// <remarks>
@@ -405,7 +559,9 @@ public static partial class McpServerBuilderExtensions
         DynamicallyAccessedMemberTypes.PublicMethods |
         DynamicallyAccessedMemberTypes.NonPublicMethods |
         DynamicallyAccessedMemberTypes.PublicConstructors)] TResourceType>(
-        this IMcpServerBuilder builder)
+        this IMcpServerBuilder builder,
+        JsonSerializerOptions? serializerOptions = null,
+        AIJsonSchemaCreateOptions? schemaCreateOptions = null)
     {
         Throw.IfNull(builder);
 
@@ -414,8 +570,34 @@ public static partial class McpServerBuilderExtensions
             if (resourceTemplateMethod.GetCustomAttribute<McpServerResourceAttribute>() is not null)
             {
                 builder.Services.AddSingleton((Func<IServiceProvider, McpServerResource>)(resourceTemplateMethod.IsStatic ?
-                    services => McpServerResource.Create(resourceTemplateMethod, options: new() { Services = services }) :
-                    services => McpServerResource.Create(resourceTemplateMethod, static r => CreateTarget(r.Services, typeof(TResourceType)), new() { Services = services })));
+                    services =>
+                    {
+                        var effectiveSerializerOptions = serializerOptions;
+                        var effectiveSchemaCreateOptions = schemaCreateOptions;
+                        
+                        if (effectiveSerializerOptions is null || effectiveSchemaCreateOptions is null)
+                        {
+                            var defaultOptions = services.GetService<McpServerDefaultOptions>();
+                            effectiveSerializerOptions ??= defaultOptions?.JsonSerializerOptions;
+                            effectiveSchemaCreateOptions ??= defaultOptions?.SchemaCreateOptions;
+                        }
+                        
+                        return McpServerResource.Create(resourceTemplateMethod, options: new() { Services = services, SerializerOptions = effectiveSerializerOptions, SchemaCreateOptions = effectiveSchemaCreateOptions });
+                    } :
+                    services =>
+                    {
+                        var effectiveSerializerOptions = serializerOptions;
+                        var effectiveSchemaCreateOptions = schemaCreateOptions;
+                        
+                        if (effectiveSerializerOptions is null || effectiveSchemaCreateOptions is null)
+                        {
+                            var defaultOptions = services.GetService<McpServerDefaultOptions>();
+                            effectiveSerializerOptions ??= defaultOptions?.JsonSerializerOptions;
+                            effectiveSchemaCreateOptions ??= defaultOptions?.SchemaCreateOptions;
+                        }
+                        
+                        return McpServerResource.Create(resourceTemplateMethod, static r => CreateTarget(r.Services, typeof(TResourceType)), new() { Services = services, SerializerOptions = effectiveSerializerOptions, SchemaCreateOptions = effectiveSchemaCreateOptions });
+                    }));
             }
         }
 
@@ -426,6 +608,8 @@ public static partial class McpServerBuilderExtensions
     /// <typeparam name="TResourceType">The resource type.</typeparam>
     /// <param name="builder">The builder instance.</param>
     /// <param name="target">The target instance from which the prompts should be sourced.</param>
+    /// <param name="serializerOptions">The serializer options governing resource parameter marshalling.</param>
+    /// <param name="schemaCreateOptions">The JSON schema creation options governing resource schema generation.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     /// <remarks>
@@ -443,7 +627,9 @@ public static partial class McpServerBuilderExtensions
         DynamicallyAccessedMemberTypes.PublicMethods |
         DynamicallyAccessedMemberTypes.NonPublicMethods)] TResourceType>(
         this IMcpServerBuilder builder,
-        TResourceType target)
+        TResourceType target,
+        JsonSerializerOptions? serializerOptions = null,
+        AIJsonSchemaCreateOptions? schemaCreateOptions = null)
     {
         Throw.IfNull(builder);
         Throw.IfNull(target);
@@ -457,7 +643,20 @@ public static partial class McpServerBuilderExtensions
         {
             if (resourceTemplateMethod.GetCustomAttribute<McpServerResourceAttribute>() is not null)
             {
-                builder.Services.AddSingleton(services => McpServerResource.Create(resourceTemplateMethod, target, new() { Services = services }));
+                builder.Services.AddSingleton(services =>
+                {
+                    var effectiveSerializerOptions = serializerOptions;
+                    var effectiveSchemaCreateOptions = schemaCreateOptions;
+                    
+                    if (effectiveSerializerOptions is null || effectiveSchemaCreateOptions is null)
+                    {
+                        var defaultOptions = services.GetService<McpServerDefaultOptions>();
+                        effectiveSerializerOptions ??= defaultOptions?.JsonSerializerOptions;
+                        effectiveSchemaCreateOptions ??= defaultOptions?.SchemaCreateOptions;
+                    }
+                    
+                    return McpServerResource.Create(resourceTemplateMethod, target, new() { Services = services, SerializerOptions = effectiveSerializerOptions, SchemaCreateOptions = effectiveSchemaCreateOptions });
+                });
             }
         }
 
@@ -489,6 +688,8 @@ public static partial class McpServerBuilderExtensions
     /// <summary>Adds <see cref="McpServerResource"/> instances to the service collection backing <paramref name="builder"/>.</summary>
     /// <param name="builder">The builder instance.</param>
     /// <param name="resourceTemplateTypes">Types with marked methods to add as resources to the server.</param>
+    /// <param name="serializerOptions">The serializer options governing resource parameter marshalling.</param>
+    /// <param name="schemaCreateOptions">The JSON schema creation options governing resource schema generation.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="resourceTemplateTypes"/> is <see langword="null"/>.</exception>
@@ -498,7 +699,8 @@ public static partial class McpServerBuilderExtensions
     /// instance for each. For instance methods, an instance will be constructed for each invocation of the resource.
     /// </remarks>
     [RequiresUnreferencedCode(WithResourcesRequiresUnreferencedCodeMessage)]
-    public static IMcpServerBuilder WithResources(this IMcpServerBuilder builder, IEnumerable<Type> resourceTemplateTypes)
+    public static IMcpServerBuilder WithResources(this IMcpServerBuilder builder, IEnumerable<Type> resourceTemplateTypes, JsonSerializerOptions? serializerOptions = null,
+        AIJsonSchemaCreateOptions? schemaCreateOptions = null)
     {
         Throw.IfNull(builder);
         Throw.IfNull(resourceTemplateTypes);
@@ -512,8 +714,34 @@ public static partial class McpServerBuilderExtensions
                     if (resourceTemplateMethod.GetCustomAttribute<McpServerResourceAttribute>() is not null)
                     {
                         builder.Services.AddSingleton((Func<IServiceProvider, McpServerResource>)(resourceTemplateMethod.IsStatic ?
-                            services => McpServerResource.Create(resourceTemplateMethod, options: new() { Services = services }) :
-                            services => McpServerResource.Create(resourceTemplateMethod, r => CreateTarget(r.Services, resourceTemplateType), new() { Services = services })));
+                            services =>
+                            {
+                                var effectiveSerializerOptions = serializerOptions;
+                                var effectiveSchemaCreateOptions = schemaCreateOptions;
+                                
+                                if (effectiveSerializerOptions is null || effectiveSchemaCreateOptions is null)
+                                {
+                                    var defaultOptions = services.GetService<McpServerDefaultOptions>();
+                                    effectiveSerializerOptions ??= defaultOptions?.JsonSerializerOptions;
+                                    effectiveSchemaCreateOptions ??= defaultOptions?.SchemaCreateOptions;
+                                }
+                                
+                                return McpServerResource.Create(resourceTemplateMethod, options: new() { Services = services, SerializerOptions = effectiveSerializerOptions, SchemaCreateOptions = effectiveSchemaCreateOptions });
+                            } :
+                            services =>
+                            {
+                                var effectiveSerializerOptions = serializerOptions;
+                                var effectiveSchemaCreateOptions = schemaCreateOptions;
+                                
+                                if (effectiveSerializerOptions is null || effectiveSchemaCreateOptions is null)
+                                {
+                                    var defaultOptions = services.GetService<McpServerDefaultOptions>();
+                                    effectiveSerializerOptions ??= defaultOptions?.JsonSerializerOptions;
+                                    effectiveSchemaCreateOptions ??= defaultOptions?.SchemaCreateOptions;
+                                }
+                                
+                                return McpServerResource.Create(resourceTemplateMethod, r => CreateTarget(r.Services, resourceTemplateType), new() { Services = services, SerializerOptions = effectiveSerializerOptions, SchemaCreateOptions = effectiveSchemaCreateOptions });
+                            }));
                     }
                 }
             }
@@ -526,6 +754,8 @@ public static partial class McpServerBuilderExtensions
     /// Adds types marked with the <see cref="McpServerResourceTypeAttribute"/> attribute from the given assembly as resources to the server.
     /// </summary>
     /// <param name="builder">The builder instance.</param>
+    /// <param name="serializerOptions">The serializer options governing resource parameter marshalling.</param>
+    /// <param name="schemaCreateOptions">The JSON schema creation options governing resource schema generation.</param>
     /// <param name="resourceAssembly">The assembly to load the types from. If <see langword="null"/>, the calling assembly will be used.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
@@ -550,7 +780,8 @@ public static partial class McpServerBuilderExtensions
     /// </para>
     /// </remarks>
     [RequiresUnreferencedCode(WithResourcesRequiresUnreferencedCodeMessage)]
-    public static IMcpServerBuilder WithResourcesFromAssembly(this IMcpServerBuilder builder, Assembly? resourceAssembly = null)
+    public static IMcpServerBuilder WithResourcesFromAssembly(this IMcpServerBuilder builder, Assembly? resourceAssembly = null, JsonSerializerOptions? serializerOptions = null,
+        AIJsonSchemaCreateOptions? schemaCreateOptions = null)
     {
         Throw.IfNull(builder);
 
@@ -559,7 +790,9 @@ public static partial class McpServerBuilderExtensions
         return builder.WithResources(
             from t in resourceAssembly.GetTypes()
             where t.GetCustomAttribute<McpServerResourceTypeAttribute>() is not null
-            select t);
+            select t,
+            serializerOptions,
+            schemaCreateOptions);
     }
     #endregion
 
