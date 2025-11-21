@@ -62,9 +62,14 @@ public class ConformanceTests : IAsyncLifetime
     }
 
     [Fact]
-    [Trait("Execution", "Manual")] // Requires Node.js/npm to be installed
     public async Task RunConformanceTests()
     {
+        // Check if Node.js is installed
+        if (!IsNodeInstalled())
+        {
+            throw new SkipException("Node.js is not installed. Skipping conformance tests.");
+        }
+
         // Run the conformance test suite
         var result = await RunNpxConformanceTests();
 
@@ -156,5 +161,34 @@ public class ConformanceTests : IAsyncLifetime
             Output: outputBuilder.ToString(),
             Error: errorBuilder.ToString()
         );
+    }
+
+    private static bool IsNodeInstalled()
+    {
+        try
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "node",
+                Arguments = "--version",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(startInfo);
+            if (process == null)
+            {
+                return false;
+            }
+
+            process.WaitForExit(5000);
+            return process.ExitCode == 0;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }
