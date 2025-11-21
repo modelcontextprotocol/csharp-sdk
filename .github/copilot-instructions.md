@@ -100,7 +100,8 @@ The SDK consists of three main packages:
 - Mock external dependencies (filesystem, HTTP clients) rather than calling real services
 - Use `CancellationTokenSource` with timeouts to prevent hanging tests
 - Dispose resources properly (servers, clients, transports) using `IDisposable` or `await using`
-- Run tests with: `dotnet test --filter '(Execution!=Manual)'`
+- Run tests with: `dotnet test --filter-not-trait 'Execution=Manual'`
+- Valid test filter switches include: `--filter-class`, `--filter-not-class`, `--filter-method`, `--filter-not-method`, `--filter-namespace`, `--filter-not-namespace`, `--filter-not-trait`, `--filter-trait`. The switches `--filter-class` and `--filter-method` expect fully qualified names, unless a filter is used as a prefix like `--filter-class "*.SomeClassName"` or `--filter-method "*.SomeMethodName"`. These switches can be repeated to run tests on multiple classes or methods at once, e.g., `--filter-method "*.SomeMethodName1" --filter-method "*.SomeMethodName2"`.
 
 ## Build and Development
 
