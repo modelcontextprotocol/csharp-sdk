@@ -25,7 +25,6 @@ test: build
 		--blame-hang-timeout 7m \
 		--diag "$(ARTIFACT_PATH)/diag.txt" \
 		--logger "trx" \
-		--logger "GitHubActions;summary.includePassedTests=true;summary.includeSkippedTests=true" \
 		--collect "XPlat Code Coverage" \
 		--results-directory $(ARTIFACT_PATH)/testresults \
 		-- \
