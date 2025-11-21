@@ -177,24 +177,24 @@ public partial class ElicitationTypedTests : ClientServerTestBase
                         Action = "accept",
                         Content = new Dictionary<string, JsonElement>
                         {
-                            [nameof(SampleForm.Name)] = (JsonElement)JsonSerializer.Deserialize("""
+                            [nameof(SampleForm.Name)] = JsonElement.Parse("""
                                 "Alice"
-                                """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
-                            [nameof(SampleForm.Age)] = (JsonElement)JsonSerializer.Deserialize("""
+                                """),
+                            [nameof(SampleForm.Age)] = JsonElement.Parse("""
                                 30
-                                """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
-                            [nameof(SampleForm.Active)] = (JsonElement)JsonSerializer.Deserialize("""
+                                """),
+                            [nameof(SampleForm.Active)] = JsonElement.Parse("""
                                 true
-                                """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
-                            [nameof(SampleForm.Role)] = (JsonElement)JsonSerializer.Deserialize("""
+                                """),
+                            [nameof(SampleForm.Role)] = JsonElement.Parse("""
                                 "Admin"
-                                """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
-                            [nameof(SampleForm.Score)] = (JsonElement)JsonSerializer.Deserialize("""
+                                """),
+                            [nameof(SampleForm.Score)] = JsonElement.Parse("""
                                 99.5
-                                """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
-                            [nameof(SampleForm.Created)] = (JsonElement)JsonSerializer.Deserialize("""
+                                """),
+                            [nameof(SampleForm.Created)] = JsonElement.Parse("""
                                 "2023-08-27T03:05:00"
-                                """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
+                                """),
                         },
                     };
                 },
@@ -228,15 +228,15 @@ public partial class ElicitationTypedTests : ClientServerTestBase
                         Action = "accept",
                         Content = new Dictionary<string, JsonElement>
                         {
-                            ["firstName"] = (JsonElement)JsonSerializer.Deserialize("""
+                            ["firstName"] = JsonElement.Parse("""
                                 "Bob"
-                                """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
-                            ["zipCode"] = (JsonElement)JsonSerializer.Deserialize("""
+                                """),
+                            ["zipCode"] = JsonElement.Parse("""
                                 90210
-                                """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
-                            ["isAdmin"] = (JsonElement)JsonSerializer.Deserialize("""
+                                """),
+                            ["isAdmin"] = JsonElement.Parse("""
                                 false
-                                """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
+                                """),
                         },
                     };
                 },

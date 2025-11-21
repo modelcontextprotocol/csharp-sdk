@@ -107,7 +107,7 @@ public class Program
                         {
                             Name = "echo",
                             Description = "Echoes the input back to the client.",
-                            InputSchema = JsonSerializer.Deserialize<JsonElement>("""
+                            InputSchema = JsonElement.Parse("""
                                 {
                                     "type": "object",
                                     "properties": {
@@ -118,23 +118,23 @@ public class Program
                                     },
                                     "required": ["message"]
                                 }
-                                """, McpJsonUtilities.DefaultOptions),
+                                """),
                         },
                         new Tool
                         {
                             Name = "echoSessionId",
                             Description = "Echoes the session id back to the client.",
-                            InputSchema = JsonSerializer.Deserialize<JsonElement>("""
+                            InputSchema = JsonElement.Parse("""
                                 {
                                     "type": "object"
                                 }
-                                """, McpJsonUtilities.DefaultOptions),
+                                """),
                         },
                         new Tool
                         {
                             Name = "sampleLLM",
                             Description = "Samples from an LLM using MCP's sampling feature.",
-                            InputSchema = JsonSerializer.Deserialize<JsonElement>("""
+                            InputSchema = JsonElement.Parse("""
                                 {
                                     "type": "object",
                                     "properties": {
@@ -149,7 +149,7 @@ public class Program
                                     },
                                     "required": ["prompt", "maxTokens"]
                                 }
-                                """, McpJsonUtilities.DefaultOptions),
+                                """),
                         }
                     ]
                 };
