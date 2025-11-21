@@ -21,7 +21,10 @@ public sealed class ElicitRequestParams
     /// Gets or sets the requested schema.
     /// </summary>
     /// <remarks>
-    /// May be one of <see cref="StringSchema"/>, <see cref="NumberSchema"/>, <see cref="BooleanSchema"/>, or <see cref="EnumSchema"/>.
+    /// May be one of <see cref="StringSchema"/>, <see cref="NumberSchema"/>, <see cref="BooleanSchema"/>,
+    /// <see cref="UntitledSingleSelectEnumSchema"/>, <see cref="TitledSingleSelectEnumSchema"/>,
+    /// <see cref="UntitledMultiSelectEnumSchema"/>, <see cref="TitledMultiSelectEnumSchema"/>,
+    /// or <see cref="LegacyTitledEnumSchema"/> (deprecated).
     /// </remarks>
     [JsonPropertyName("requestedSchema")]
     [field: MaybeNull]
@@ -59,7 +62,10 @@ public sealed class ElicitRequestParams
 
     /// <summary>
     /// Represents restricted subset of JSON Schema: 
-    /// <see cref="StringSchema"/>, <see cref="NumberSchema"/>, <see cref="BooleanSchema"/>, or <see cref="EnumSchema"/>.
+    /// <see cref="StringSchema"/>, <see cref="NumberSchema"/>, <see cref="BooleanSchema"/>,
+    /// <see cref="UntitledSingleSelectEnumSchema"/>, <see cref="TitledSingleSelectEnumSchema"/>,
+    /// <see cref="UntitledMultiSelectEnumSchema"/>, <see cref="TitledMultiSelectEnumSchema"/>,
+    /// or <see cref="LegacyTitledEnumSchema"/> (deprecated).
     /// </summary>
     [JsonConverter(typeof(Converter))]
     public abstract class PrimitiveSchemaDefinition
@@ -113,8 +119,13 @@ public sealed class ElicitRequestParams
                 bool? defaultBool = null;
                 double? defaultNumber = null;
                 string? defaultString = null;
+                IList<string>? defaultStringArray = null;
                 IList<string>? enumValues = null;
                 IList<string>? enumNames = null;
+                IList<EnumSchemaOption>? oneOf = null;
+                int? minItems = null;
+                int? maxItems = null;
+                object? items = null; // Can be UntitledEnumItemsSchema or TitledEnumItemsSchema
 
                 while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
                 {
@@ -161,6 +172,14 @@ public sealed class ElicitRequestParams
                             maximum = reader.GetDouble();
                             break;
 
+                        case "minItems":
+                            minItems = reader.GetInt32();
+                            break;
+
+                        case "maxItems":
+                            maxItems = reader.GetInt32();
+                            break;
+
                         case "default":
                             // We need to handle different types for default values
                             // Store the value based on the JSON token type
@@ -178,6 +197,9 @@ public sealed class ElicitRequestParams
                                 case JsonTokenType.String:
                                     defaultString = reader.GetString();
                                     break;
+                                case JsonTokenType.StartArray:
+                                    defaultStringArray = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.IListString);
+                                    break;
                             }
                             break;
 
@@ -187,6 +209,14 @@ public sealed class ElicitRequestParams
 
                         case "enumNames":
                             enumNames = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.IListString);
+                            break;
+
+                        case "oneOf":
+                            oneOf = DeserializeEnumOptions(ref reader);
+                            break;
+
+                        case "items":
+                            items = DeserializeEnumItemsSchema(ref reader);
                             break;
 
                         default:
@@ -204,14 +234,38 @@ public sealed class ElicitRequestParams
                 switch (type)
                 {
                     case "string":
-                        if (enumValues is not null)
+                        if (oneOf is not null)
                         {
-                            psd = new EnumSchema
+                            // TitledSingleSelectEnumSchema
+                            psd = new TitledSingleSelectEnumSchema
                             {
-                                Enum = enumValues,
-                                EnumNames = enumNames,
+                                OneOf = oneOf,
                                 Default = defaultString,
                             };
+                        }
+                        else if (enumValues is not null)
+                        {
+                            if (enumNames is not null)
+                            {
+                                // EnumSchema for backward compatibility
+#pragma warning disable CS0618 // Type or member is obsolete
+                                psd = new EnumSchema
+#pragma warning restore CS0618 // Type or member is obsolete
+                                {
+                                    Enum = enumValues,
+                                    EnumNames = enumNames,
+                                    Default = defaultString,
+                                };
+                            }
+                            else
+                            {
+                                // UntitledSingleSelectEnumSchema
+                                psd = new UntitledSingleSelectEnumSchema
+                                {
+                                    Enum = enumValues,
+                                    Default = defaultString,
+                                };
+                            }
                         }
                         else
                         {
@@ -221,6 +275,31 @@ public sealed class ElicitRequestParams
                                 MaxLength = maxLength,
                                 Format = format,
                                 Default = defaultString,
+                            };
+                        }
+                        break;
+
+                    case "array":
+                        if (items is TitledEnumItemsSchema titledItems)
+                        {
+                            // TitledMultiSelectEnumSchema
+                            psd = new TitledMultiSelectEnumSchema
+                            {
+                                MinItems = minItems,
+                                MaxItems = maxItems,
+                                Items = titledItems,
+                                Default = defaultStringArray,
+                            };
+                        }
+                        else if (items is UntitledEnumItemsSchema untitledItems)
+                        {
+                            // UntitledMultiSelectEnumSchema
+                            psd = new UntitledMultiSelectEnumSchema
+                            {
+                                MinItems = minItems,
+                                MaxItems = maxItems,
+                                Items = untitledItems,
+                                Default = defaultStringArray,
                             };
                         }
                         break;
@@ -251,6 +330,108 @@ public sealed class ElicitRequestParams
                 }
 
                 return psd;
+            }
+
+            private static IList<EnumSchemaOption> DeserializeEnumOptions(ref Utf8JsonReader reader)
+            {
+                if (reader.TokenType != JsonTokenType.StartArray)
+                {
+                    throw new JsonException("Expected array for oneOf property.");
+                }
+
+                var options = new List<EnumSchemaOption>();
+                while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
+                {
+                    if (reader.TokenType != JsonTokenType.StartObject)
+                    {
+                        throw new JsonException("Expected object in oneOf array.");
+                    }
+
+                    string? constValue = null;
+                    string? titleValue = null;
+
+                    while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+                    {
+                        if (reader.TokenType == JsonTokenType.PropertyName)
+                        {
+                            string? propertyName = reader.GetString();
+                            reader.Read();
+
+                            switch (propertyName)
+                            {
+                                case "const":
+                                    constValue = reader.GetString();
+                                    break;
+                                case "title":
+                                    titleValue = reader.GetString();
+                                    break;
+                                default:
+                                    reader.Skip();
+                                    break;
+                            }
+                        }
+                    }
+
+                    if (constValue is null || titleValue is null)
+                    {
+                        throw new JsonException("Each option in oneOf must have both 'const' and 'title' properties.");
+                    }
+
+                    options.Add(new EnumSchemaOption { Const = constValue, Title = titleValue });
+                }
+
+                return options;
+            }
+
+            private static object DeserializeEnumItemsSchema(ref Utf8JsonReader reader)
+            {
+                if (reader.TokenType != JsonTokenType.StartObject)
+                {
+                    throw new JsonException("Expected object for items property.");
+                }
+
+                string? type = null;
+                IList<string>? enumValues = null;
+                IList<EnumSchemaOption>? anyOf = null;
+
+                while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+                {
+                    if (reader.TokenType == JsonTokenType.PropertyName)
+                    {
+                        string? propertyName = reader.GetString();
+                        reader.Read();
+
+                        switch (propertyName)
+                        {
+                            case "type":
+                                type = reader.GetString();
+                                break;
+                            case "enum":
+                                enumValues = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.IListString);
+                                break;
+                            case "anyOf":
+                                anyOf = DeserializeEnumOptions(ref reader);
+                                break;
+                            default:
+                                reader.Skip();
+                                break;
+                        }
+                    }
+                }
+
+                // Determine which type to create based on the properties
+                if (anyOf is not null)
+                {
+                    return new TitledEnumItemsSchema { AnyOf = anyOf };
+                }
+                else if (enumValues is not null)
+                {
+                    return new UntitledEnumItemsSchema { Type = type ?? "string", Enum = enumValues };
+                }
+                else
+                {
+                    throw new JsonException("Items schema must have either 'enum' or 'anyOf' property.");
+                }
             }
 
             /// <inheritdoc/>
@@ -317,20 +498,82 @@ public sealed class ElicitRequestParams
                         }
                         break;
 
-                    case EnumSchema enumSchema:
-                        if (enumSchema.Enum is not null)
+                    case UntitledSingleSelectEnumSchema untitledSingleSelect:
+                        if (untitledSingleSelect.Enum is not null)
                         {
                             writer.WritePropertyName("enum");
-                            JsonSerializer.Serialize(writer, enumSchema.Enum, McpJsonUtilities.JsonContext.Default.IListString);
+                            JsonSerializer.Serialize(writer, untitledSingleSelect.Enum, McpJsonUtilities.JsonContext.Default.IListString);
                         }
-                        if (enumSchema.EnumNames is not null)
+                        if (untitledSingleSelect.Default is not null)
+                        {
+                            writer.WriteString("default", untitledSingleSelect.Default);
+                        }
+                        break;
+
+                    case TitledSingleSelectEnumSchema titledSingleSelect:
+                        if (titledSingleSelect.OneOf is not null && titledSingleSelect.OneOf.Count > 0)
+                        {
+                            writer.WritePropertyName("oneOf");
+                            SerializeEnumOptions(writer, titledSingleSelect.OneOf);
+                        }
+                        if (titledSingleSelect.Default is not null)
+                        {
+                            writer.WriteString("default", titledSingleSelect.Default);
+                        }
+                        break;
+
+                    case UntitledMultiSelectEnumSchema untitledMultiSelect:
+                        if (untitledMultiSelect.MinItems.HasValue)
+                        {
+                            writer.WriteNumber("minItems", untitledMultiSelect.MinItems.Value);
+                        }
+                        if (untitledMultiSelect.MaxItems.HasValue)
+                        {
+                            writer.WriteNumber("maxItems", untitledMultiSelect.MaxItems.Value);
+                        }
+                        writer.WritePropertyName("items");
+                        SerializeUntitledEnumItemsSchema(writer, untitledMultiSelect.Items);
+                        if (untitledMultiSelect.Default is not null)
+                        {
+                            writer.WritePropertyName("default");
+                            JsonSerializer.Serialize(writer, untitledMultiSelect.Default, McpJsonUtilities.JsonContext.Default.IListString);
+                        }
+                        break;
+
+                    case TitledMultiSelectEnumSchema titledMultiSelect:
+                        if (titledMultiSelect.MinItems.HasValue)
+                        {
+                            writer.WriteNumber("minItems", titledMultiSelect.MinItems.Value);
+                        }
+                        if (titledMultiSelect.MaxItems.HasValue)
+                        {
+                            writer.WriteNumber("maxItems", titledMultiSelect.MaxItems.Value);
+                        }
+                        writer.WritePropertyName("items");
+                        SerializeTitledEnumItemsSchema(writer, titledMultiSelect.Items);
+                        if (titledMultiSelect.Default is not null)
+                        {
+                            writer.WritePropertyName("default");
+                            JsonSerializer.Serialize(writer, titledMultiSelect.Default, McpJsonUtilities.JsonContext.Default.IListString);
+                        }
+                        break;
+
+#pragma warning disable CS0618 // Type or member is obsolete
+                    case LegacyTitledEnumSchema legacyEnum:
+#pragma warning restore CS0618 // Type or member is obsolete
+                        if (legacyEnum.Enum is not null)
+                        {
+                            writer.WritePropertyName("enum");
+                            JsonSerializer.Serialize(writer, legacyEnum.Enum, McpJsonUtilities.JsonContext.Default.IListString);
+                        }
+                        if (legacyEnum.EnumNames is not null)
                         {
                             writer.WritePropertyName("enumNames");
-                            JsonSerializer.Serialize(writer, enumSchema.EnumNames, McpJsonUtilities.JsonContext.Default.IListString);
+                            JsonSerializer.Serialize(writer, legacyEnum.EnumNames, McpJsonUtilities.JsonContext.Default.IListString);
                         }
-                        if (enumSchema.Default is not null)
+                        if (legacyEnum.Default is not null)
                         {
-                            writer.WriteString("default", enumSchema.Default);
+                            writer.WriteString("default", legacyEnum.Default);
                         }
                         break;
 
@@ -338,6 +581,36 @@ public sealed class ElicitRequestParams
                         throw new JsonException($"Unexpected schema type: {value.GetType().Name}");
                 }
 
+                writer.WriteEndObject();
+            }
+
+            private static void SerializeEnumOptions(Utf8JsonWriter writer, IList<EnumSchemaOption> options)
+            {
+                writer.WriteStartArray();
+                foreach (var option in options)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("const", option.Const);
+                    writer.WriteString("title", option.Title);
+                    writer.WriteEndObject();
+                }
+                writer.WriteEndArray();
+            }
+
+            private static void SerializeUntitledEnumItemsSchema(Utf8JsonWriter writer, UntitledEnumItemsSchema itemsSchema)
+            {
+                writer.WriteStartObject();
+                writer.WriteString("type", itemsSchema.Type);
+                writer.WritePropertyName("enum");
+                JsonSerializer.Serialize(writer, itemsSchema.Enum, McpJsonUtilities.JsonContext.Default.IListString);
+                writer.WriteEndObject();
+            }
+
+            private static void SerializeTitledEnumItemsSchema(Utf8JsonWriter writer, TitledEnumItemsSchema itemsSchema)
+            {
+                writer.WriteStartObject();
+                writer.WritePropertyName("anyOf");
+                SerializeEnumOptions(writer, itemsSchema.AnyOf);
                 writer.WriteEndObject();
             }
         }
@@ -467,8 +740,12 @@ public sealed class ElicitRequestParams
         public bool? Default { get; set; }
     }
 
-    /// <summary>Represents a schema for an enum type.</summary>
-    public sealed class EnumSchema : PrimitiveSchemaDefinition
+    /// <summary>
+    /// Represents a legacy schema for an enum type with enumNames.
+    /// This schema is deprecated in favor of <see cref="TitledSingleSelectEnumSchema"/>.
+    /// </summary>
+    [Obsolete("Use TitledSingleSelectEnumSchema instead. This type will be removed in a future version.")]
+    public class LegacyTitledEnumSchema : PrimitiveSchemaDefinition
     {
         /// <inheritdoc/>
         [JsonPropertyName("type")]
@@ -504,5 +781,197 @@ public sealed class ElicitRequestParams
         /// <summary>Gets or sets the default value for the enum.</summary>
         [JsonPropertyName("default")]
         public string? Default { get; set; }
+    }
+
+    /// <summary>
+    /// Represents a schema for single-selection enumeration without display titles for options.
+    /// </summary>
+    public sealed class UntitledSingleSelectEnumSchema : PrimitiveSchemaDefinition
+    {
+        /// <inheritdoc/>
+        [JsonPropertyName("type")]
+        public override string Type
+        {
+            get => "string";
+            set
+            {
+                if (value is not "string")
+                {
+                    throw new ArgumentException("Type must be 'string'.", nameof(value));
+                }
+            }
+        }
+
+        /// <summary>Gets or sets the list of allowed string values for the enum.</summary>
+        [JsonPropertyName("enum")]
+        [field: MaybeNull]
+        public IList<string> Enum
+        {
+            get => field ??= [];
+            set
+            {
+                Throw.IfNull(value);
+                field = value;
+            }
+        }
+
+        /// <summary>Gets or sets the default value for the enum.</summary>
+        [JsonPropertyName("default")]
+        public string? Default { get; set; }
+    }
+
+    /// <summary>
+    /// Represents a single option in a titled enum schema with a constant value and display title.
+    /// </summary>
+    public sealed class EnumSchemaOption
+    {
+        /// <summary>Gets or sets the constant value for this option.</summary>
+        [JsonPropertyName("const")]
+        public required string Const { get; set; }
+
+        /// <summary>Gets or sets the display title for this option.</summary>
+        [JsonPropertyName("title")]
+        public required string Title { get; set; }
+    }
+
+    /// <summary>
+    /// Represents a schema for single-selection enumeration with display titles for each option.
+    /// </summary>
+    public sealed class TitledSingleSelectEnumSchema : PrimitiveSchemaDefinition
+    {
+        /// <inheritdoc/>
+        [JsonPropertyName("type")]
+        public override string Type
+        {
+            get => "string";
+            set
+            {
+                if (value is not "string")
+                {
+                    throw new ArgumentException("Type must be 'string'.", nameof(value));
+                }
+            }
+        }
+
+        /// <summary>Gets or sets the list of enum options with their constant values and display titles.</summary>
+        [JsonPropertyName("oneOf")]
+        [field: MaybeNull]
+        public IList<EnumSchemaOption> OneOf
+        {
+            get => field ??= [];
+            set
+            {
+                Throw.IfNull(value);
+                field = value;
+            }
+        }
+
+        /// <summary>Gets or sets the default value for the enum.</summary>
+        [JsonPropertyName("default")]
+        public string? Default { get; set; }
+    }
+
+    /// <summary>
+    /// Represents the items schema for untitled multi-select enum arrays.
+    /// </summary>
+    public sealed class UntitledEnumItemsSchema
+    {
+        /// <summary>Gets or sets the type of the items.</summary>
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = "string";
+
+        /// <summary>Gets or sets the list of allowed string values.</summary>
+        [JsonPropertyName("enum")]
+        public required IList<string> Enum { get; set; }
+    }
+
+    /// <summary>
+    /// Represents the items schema for titled multi-select enum arrays.
+    /// </summary>
+    public sealed class TitledEnumItemsSchema
+    {
+        /// <summary>Gets or sets the list of enum options with constant values and display titles.</summary>
+        [JsonPropertyName("anyOf")]
+        public required IList<EnumSchemaOption> AnyOf { get; set; }
+    }
+
+    /// <summary>
+    /// Represents a schema for multiple-selection enumeration without display titles for options.
+    /// </summary>
+    public sealed class UntitledMultiSelectEnumSchema : PrimitiveSchemaDefinition
+    {
+        /// <inheritdoc/>
+        [JsonPropertyName("type")]
+        public override string Type
+        {
+            get => "array";
+            set
+            {
+                if (value is not "array")
+                {
+                    throw new ArgumentException("Type must be 'array'.", nameof(value));
+                }
+            }
+        }
+
+        /// <summary>Gets or sets the minimum number of items that can be selected.</summary>
+        [JsonPropertyName("minItems")]
+        public int? MinItems { get; set; }
+
+        /// <summary>Gets or sets the maximum number of items that can be selected.</summary>
+        [JsonPropertyName("maxItems")]
+        public int? MaxItems { get; set; }
+
+        /// <summary>Gets or sets the schema for items in the array.</summary>
+        [JsonPropertyName("items")]
+        public required UntitledEnumItemsSchema Items { get; set; }
+
+        /// <summary>Gets or sets the default values for the enum.</summary>
+        [JsonPropertyName("default")]
+        public IList<string>? Default { get; set; }
+    }
+
+    /// <summary>
+    /// Represents a schema for multiple-selection enumeration with display titles for each option.
+    /// </summary>
+    public sealed class TitledMultiSelectEnumSchema : PrimitiveSchemaDefinition
+    {
+        /// <inheritdoc/>
+        [JsonPropertyName("type")]
+        public override string Type
+        {
+            get => "array";
+            set
+            {
+                if (value is not "array")
+                {
+                    throw new ArgumentException("Type must be 'array'.", nameof(value));
+                }
+            }
+        }
+
+        /// <summary>Gets or sets the minimum number of items that can be selected.</summary>
+        [JsonPropertyName("minItems")]
+        public int? MinItems { get; set; }
+
+        /// <summary>Gets or sets the maximum number of items that can be selected.</summary>
+        [JsonPropertyName("maxItems")]
+        public int? MaxItems { get; set; }
+
+        /// <summary>Gets or sets the schema for items in the array.</summary>
+        [JsonPropertyName("items")]
+        public required TitledEnumItemsSchema Items { get; set; }
+
+        /// <summary>Gets or sets the default values for the enum.</summary>
+        [JsonPropertyName("default")]
+        public IList<string>? Default { get; set; }
+    }
+
+    /// <summary>
+    /// Represents a schema for an enum type. This is a compatibility alias for <see cref="LegacyTitledEnumSchema"/>.
+    /// </summary>
+    [Obsolete("Use UntitledSingleSelectEnumSchema or TitledSingleSelectEnumSchema instead. This type will be removed in a future version.")]
+    public sealed class EnumSchema : LegacyTitledEnumSchema
+    {
     }
 }

@@ -46,7 +46,7 @@ namespace ModelContextProtocol.Server;
 ///   <item>
 ///     <description>
 ///       <see cref="McpServer"/> parameters are bound directly to the <see cref="McpServer"/> instance associated
-///       with this request's <see cref="RequestContext{CallPromptRequestParams}"/>. Such parameters may be used to understand
+///       with this request's <see cref="RequestContext{GetPromptRequestParams}"/>. Such parameters may be used to understand
 ///       what server is being used to process the request, and to interact with the client issuing the request to that server.
 ///     </description>
 ///   </item>

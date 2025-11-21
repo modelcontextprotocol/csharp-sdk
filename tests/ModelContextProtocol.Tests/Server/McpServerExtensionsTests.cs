@@ -18,7 +18,7 @@ public class McpServerExtensionsTests
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () => await server.SampleAsync(
             new CreateMessageRequestParams
             {
-                Messages = [new SamplingMessage { Role = Role.User, Content = new TextContentBlock { Text = "hi" } }],
+                Messages = [new SamplingMessage { Role = Role.User, Content = [new TextContentBlock { Text = "hi" }] }],
                 MaxTokens = 1000
             },
             TestContext.Current.CancellationToken));
@@ -80,7 +80,7 @@ public class McpServerExtensionsTests
 
         var resultPayload = new CreateMessageResult
         {
-            Content = new TextContentBlock { Text = "resp" },
+            Content = [new TextContentBlock { Text = "resp" }],
             Model = "test-model",
             Role = Role.Assistant,
             StopReason = "endTurn",
@@ -101,13 +101,13 @@ public class McpServerExtensionsTests
 
         var result = await server.SampleAsync(new CreateMessageRequestParams
         {
-            Messages = [new SamplingMessage { Role = Role.User, Content = new TextContentBlock { Text = "hi" } }],
+            Messages = [new SamplingMessage { Role = Role.User, Content = [new TextContentBlock { Text = "hi" }] }],
             MaxTokens = 1000
         }, TestContext.Current.CancellationToken);
 
         Assert.Equal("test-model", result.Model);
         Assert.Equal(Role.Assistant, result.Role);
-        Assert.Equal("resp", Assert.IsType<TextContentBlock>(result.Content).Text);
+        Assert.Equal("resp", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
         mockServer.Verify(s => s.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -118,7 +118,7 @@ public class McpServerExtensionsTests
 
         var resultPayload = new CreateMessageResult
         {
-            Content = new TextContentBlock { Text = "resp" },
+            Content = [new TextContentBlock { Text = "resp" }],
             Model = "test-model",
             Role = Role.Assistant,
             StopReason = "endTurn",

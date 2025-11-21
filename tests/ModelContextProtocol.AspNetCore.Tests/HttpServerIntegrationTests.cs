@@ -1,4 +1,4 @@
-﻿using ModelContextProtocol.Client;
+using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Tests.Utils;
 
@@ -259,8 +259,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
             return new CreateMessageResult
             {
                 Model = "test-model",
-                Role = Role.Assistant,
-                Content = new TextContentBlock { Text = "Test response" },
+                Content = [new TextContentBlock { Text = "Test response" }],
             };
         };
         await using var client = await GetClientAsync(options);
