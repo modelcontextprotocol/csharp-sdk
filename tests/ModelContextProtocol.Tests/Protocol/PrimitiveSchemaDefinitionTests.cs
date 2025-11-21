@@ -108,6 +108,46 @@ public static class PrimitiveSchemaDefinitionTests
     }
 
     [Fact]
+    public static void EnumSchema_UnknownNestedArrays_AreIgnored()
+    {
+        // Test complex unknown properties with arrays of objects
+
+        const string jsonWithNestedArrays = """
+        {
+            "type": "string",
+            "enum": ["option1", "option2", "option3"],
+            "unknownComplex": [
+                {
+                    "nested": [
+                        {"deep": "value1"},
+                        {"deep": "value2"}
+                    ]
+                },
+                {
+                    "nested": [
+                        {"deep": "value3"}
+                    ]
+                }
+            ],
+            "default": "option1"
+        }
+        """;
+
+        var result = JsonSerializer.Deserialize<ElicitRequestParams.PrimitiveSchemaDefinition>(
+            jsonWithNestedArrays,
+            McpJsonUtilities.DefaultOptions);
+
+        Assert.NotNull(result);
+        var enumSchema = Assert.IsType<ElicitRequestParams.UntitledSingleSelectEnumSchema>(result);
+        Assert.Equal("string", enumSchema.Type);
+        Assert.Equal(3, enumSchema.Enum.Count);
+        Assert.Contains("option1", enumSchema.Enum);
+        Assert.Contains("option2", enumSchema.Enum);
+        Assert.Contains("option3", enumSchema.Enum);
+        Assert.Equal("option1", enumSchema.Default);
+    }
+
+    [Fact]
     public static void StringSchema_MultipleUnknownProperties_AllIgnored()
     {
         // Test that multiple unknown properties are all properly skipped
@@ -224,6 +264,33 @@ public static class PrimitiveSchemaDefinitionTests
     }
 
     [Fact]
+    public static void EnumSchema_UnknownPropertiesBetweenRequired_AreIgnored()
+    {
+        // Test unknown properties interspersed with required ones
+
+        const string jsonWithInterspersedUnknown = """
+        {
+            "unknownFirst": {"x": 1},
+            "type": "string",
+            "unknownSecond": [1, 2],
+            "enum": ["a", "b"],
+            "unknownThird": {"nested": {"value": true}}
+        }
+        """;
+
+        var result = JsonSerializer.Deserialize<ElicitRequestParams.PrimitiveSchemaDefinition>(
+            jsonWithInterspersedUnknown,
+            McpJsonUtilities.DefaultOptions);
+
+        Assert.NotNull(result);
+        var enumSchema = Assert.IsType<ElicitRequestParams.UntitledSingleSelectEnumSchema>(result);
+        Assert.Equal("string", enumSchema.Type);
+        Assert.Equal(2, enumSchema.Enum.Count);
+        Assert.Contains("a", enumSchema.Enum);
+        Assert.Contains("b", enumSchema.Enum);
+    }
+
+    [Fact]
     public static void BooleanSchema_VeryDeeplyNestedUnknown_IsIgnored()
     {
         // Test very deeply nested structures in unknown properties
@@ -256,5 +323,36 @@ public static class PrimitiveSchemaDefinitionTests
         var boolSchema = Assert.IsType<ElicitRequestParams.BooleanSchema>(result);
         Assert.Equal("boolean", boolSchema.Type);
         Assert.True(boolSchema.Default);
+    }
+
+    [Fact]
+    public static void EnumSchema_Deserialization_PreservesKnownProperties()
+    {
+        // Test deserialization of enum schema with all properties
+
+        const string enumSchemaJson = """
+        {
+            "type": "string",
+            "title": "Test Enum",
+            "description": "A test enum schema",
+            "enum": ["option1", "option2", "option3"],
+            "default": "option2"
+        }
+        """;
+
+        var deserialized = JsonSerializer.Deserialize<ElicitRequestParams.PrimitiveSchemaDefinition>(
+            enumSchemaJson,
+            McpJsonUtilities.DefaultOptions);
+
+        Assert.NotNull(deserialized);
+        var enumSchema = Assert.IsType<ElicitRequestParams.UntitledSingleSelectEnumSchema>(deserialized);
+        Assert.Equal("string", enumSchema.Type);
+        Assert.Equal("Test Enum", enumSchema.Title);
+        Assert.Equal("A test enum schema", enumSchema.Description);
+        Assert.Equal(3, enumSchema.Enum.Count);
+        Assert.Contains("option1", enumSchema.Enum);
+        Assert.Contains("option2", enumSchema.Enum);
+        Assert.Contains("option3", enumSchema.Enum);
+        Assert.Equal("option2", enumSchema.Default);
     }
 }
