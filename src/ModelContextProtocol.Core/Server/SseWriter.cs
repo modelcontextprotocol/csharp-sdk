@@ -7,7 +7,10 @@ using System.Threading.Channels;
 
 namespace ModelContextProtocol.Server;
 
-internal sealed class SseWriter(string? messageEndpoint = null, BoundedChannelOptions? channelOptions = null) : IAsyncDisposable
+internal sealed class SseWriter(
+    string? messageEndpoint = null,
+    BoundedChannelOptions? channelOptions = null,
+    IEventStore? eventStore = null) : IAsyncDisposable
 {
     private readonly Channel<SseItem<JsonRpcMessage?>> _messages = Channel.CreateBounded<SseItem<JsonRpcMessage?>>(channelOptions ?? new BoundedChannelOptions(1)
     {
@@ -60,8 +63,29 @@ internal sealed class SseWriter(string? messageEndpoint = null, BoundedChannelOp
             return false;
         }
 
+        var transport = message.Context?.RelatedTransport;
+        var sseItem = new SseItem<JsonRpcMessage?>(message, SseParser.EventTypeDefault);
+
+        if (eventStore is not null && 
+            transport is StreamableHttpPostTransport postTransport && 
+            !string.IsNullOrEmpty(postTransport.pendingStreamId))
+        {
+            var streamId = postTransport.pendingStreamId!;
+            sseItem = new SseItem<JsonRpcMessage?>(message, SseParser.EventTypeDefault)
+            {
+                EventId = eventStore.GetEventId(streamId, message)
+            };
+
+            // store the requests and response to the pending request
+            if (message is JsonRpcRequest jsonRpcReq || 
+                (message is JsonRpcResponse jsonRpcResp && jsonRpcResp.Id == postTransport.pendingRequestId))
+            {
+                eventStore.StoreEvent(streamId, sseItem);
+            }
+        }
+
         // Emit redundant "event: message" lines for better compatibility with other SDKs.
-        await _messages.Writer.WriteAsync(new SseItem<JsonRpcMessage?>(message, SseParser.EventTypeDefault), cancellationToken).ConfigureAwait(false);
+        await _messages.Writer.WriteAsync(sseItem, cancellationToken).ConfigureAwait(false);
         return true;
     }
 

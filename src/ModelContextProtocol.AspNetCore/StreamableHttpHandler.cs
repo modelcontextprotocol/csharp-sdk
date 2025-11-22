@@ -7,8 +7,10 @@ using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using System.Net.ServerSentEvents;
 using System.Security.Claims;
 using System.Security.Cryptography;
+using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.AspNetCore;
@@ -20,9 +22,11 @@ internal sealed class StreamableHttpHandler(
     StatefulSessionManager sessionManager,
     IHostApplicationLifetime hostApplicationLifetime,
     IServiceProvider applicationServices,
-    ILoggerFactory loggerFactory)
+    ILoggerFactory loggerFactory,
+    IEventStore? eventStore = null)
 {
     private const string McpSessionIdHeaderName = "Mcp-Session-Id";
+    private const string LastEventIdHeaderName = "Last-Event-Id";
 
     private static readonly JsonTypeInfo<JsonRpcMessage> s_messageTypeInfo = GetRequiredJsonTypeInfo<JsonRpcMessage>();
     private static readonly JsonTypeInfo<JsonRpcError> s_errorTypeInfo = GetRequiredJsonTypeInfo<JsonRpcError>();
@@ -88,6 +92,20 @@ internal sealed class StreamableHttpHandler(
             return;
         }
 
+        // eventId format is <streamId:Guid>_<DateTime.UtcNow.Ticks:long>
+        var lastEventId = context.Request.Headers[LastEventIdHeaderName].ToString();
+        if (!string.IsNullOrEmpty(lastEventId) && eventStore is not null)
+        {
+            InitializeSseResponse(context);
+            await eventStore.ReplayEventsAfter(lastEventId, async (enumerableEvents) => 
+                await SseFormatter.WriteAsync<JsonRpcMessage>(enumerableEvents,
+                    context.Response.Body,
+                    (item, bufferWriter) => JsonSerializer.Serialize(new Utf8JsonWriter(bufferWriter), item.Data, s_messageTypeInfo),
+                    context.RequestAborted));
+
+            return;
+        }
+
         if (!session.TryStartGetRequest())
         {
             await WriteJsonRpcErrorAsync(context,
@@ -105,11 +123,11 @@ internal sealed class StreamableHttpHandler(
         try
         {
             await using var _ = await session.AcquireReferenceAsync(cancellationToken);
-            InitializeSseResponse(context);
+        InitializeSseResponse(context);
 
-            // We should flush headers to indicate a 200 success quickly, because the initialization response
-            // will be sent in response to a different POST request. It might be a while before we send a message
-            // over this response body.
+        // We should flush headers to indicate a 200 success quickly, because the initialization response
+        // will be sent in response to a different POST request. It might be a while before we send a message
+        // over this response body.
             await context.Response.Body.FlushAsync(cancellationToken);
             await session.Transport.HandleGetRequestAsync(context.Response.Body, cancellationToken);
         }
@@ -190,7 +208,7 @@ internal sealed class StreamableHttpHandler(
         if (!HttpServerTransportOptions.Stateless)
         {
             sessionId = MakeNewSessionId();
-            transport = new()
+            transport = new(eventStore)
             {
                 SessionId = sessionId,
                 FlowExecutionContextFromRequests = !HttpServerTransportOptions.PerSessionExecutionContext,
@@ -273,7 +291,7 @@ internal sealed class StreamableHttpHandler(
     {
         Span<byte> buffer = stackalloc byte[16];
         RandomNumberGenerator.Fill(buffer);
-        return WebEncoders.Base64UrlEncode(buffer);
+        return WebEncoders.Base64UrlEncode(buffer).Replace("_", "-");
     }
     internal static async Task<JsonRpcMessage?> ReadJsonRpcMessageAsync(HttpContext context)
     {
