@@ -52,7 +52,7 @@ public class ConformanceTests : IAsyncLifetime
             try
             {
                 // Try to connect to the health endpoint
-                var response = await httpClient.GetAsync($"{_serverUrl}/health");
+                await httpClient.GetAsync($"{_serverUrl}/health");
                 // Any response (even an error) means the server is up
                 return;
             }
@@ -95,7 +95,9 @@ public class ConformanceTests : IAsyncLifetime
         // Report the results
         Assert.True(result.Success,
             $"Conformance tests failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
-    }    private Process StartConformanceServer()
+    }
+
+    private Process StartConformanceServer()
     {
         // The ConformanceServer binary is in a parallel directory to the test binary
         // Test binary is in: artifacts/bin/ModelContextProtocol.ConformanceTests/Debug/{tfm}/

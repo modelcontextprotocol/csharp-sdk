@@ -1,11 +1,9 @@
-using ConformanceServer;
 using ConformanceServer.Prompts;
 using ConformanceServer.Resources;
 using ConformanceServer.Tools;
 using Microsoft.Extensions.AI;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
 using System.Collections.Concurrent;
 
 var builder = WebApplication.CreateBuilder(args);
