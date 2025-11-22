@@ -94,4 +94,6 @@ var app = builder.Build();
 
 app.MapMcp();
 
+app.MapGet("/health", () => TypedResults.Ok("Healthy"));
+
 app.Run();

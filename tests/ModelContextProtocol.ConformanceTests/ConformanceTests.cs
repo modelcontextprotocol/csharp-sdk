@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Text;
-using Xunit;
 
 namespace ModelContextProtocol.ConformanceTests;
 
@@ -11,9 +10,32 @@ namespace ModelContextProtocol.ConformanceTests;
 /// </summary>
 public class ConformanceTests : IAsyncLifetime
 {
-    private const int ServerPort = 3001;
-    private static readonly string ServerUrl = $"http://localhost:{ServerPort}";
+    // Use different ports for each target framework to allow parallel execution
+    // net10.0 -> 3001, net9.0 -> 3002, net8.0 -> 3003
+    private static int GetPortForTargetFramework()
+    {
+        var testBinaryDir = AppContext.BaseDirectory;
+        var targetFramework = Path.GetFileName(testBinaryDir.TrimEnd(Path.DirectorySeparatorChar));
+
+        return targetFramework switch
+        {
+            "net10.0" => 3001,
+            "net9.0" => 3002,
+            "net8.0" => 3003,
+            _ => 3001 // Default fallback
+        };
+    }
+
+    private readonly int _serverPort = GetPortForTargetFramework();
+    private readonly string _serverUrl;
+    private readonly ITestOutputHelper _output;
     private Process? _serverProcess;
+
+    public ConformanceTests(ITestOutputHelper output)
+    {
+        _output = output;
+        _serverUrl = $"http://localhost:{_serverPort}";
+    }
 
     public async ValueTask InitializeAsync()
     {
@@ -29,8 +51,8 @@ public class ConformanceTests : IAsyncLifetime
         {
             try
             {
-                // Try to connect to the MCP endpoint
-                var response = await httpClient.GetAsync($"{ServerUrl}/mcp");
+                // Try to connect to the health endpoint
+                var response = await httpClient.GetAsync($"{_serverUrl}/health");
                 // Any response (even an error) means the server is up
                 return;
             }
@@ -65,10 +87,7 @@ public class ConformanceTests : IAsyncLifetime
     public async Task RunConformanceTests()
     {
         // Check if Node.js is installed
-        if (!IsNodeInstalled())
-        {
-            throw new SkipException("Node.js is not installed. Skipping conformance tests.");
-        }
+        Assert.SkipWhen(!IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
 
         // Run the conformance test suite
         var result = await RunNpxConformanceTests();
@@ -76,14 +95,15 @@ public class ConformanceTests : IAsyncLifetime
         // Report the results
         Assert.True(result.Success,
             $"Conformance tests failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
-    }    private static Process StartConformanceServer()
+    }    private Process StartConformanceServer()
     {
-        // The ConformanceServer is in a subdirectory of the test project
-        // Test binary is in: artifacts/bin/ModelContextProtocol.ConformanceTests/net10.0/
-        // ConformanceServer project is in: tests/ModelContextProtocol.ConformanceTests/ConformanceServer/
-        var testProjectDir = AppContext.BaseDirectory;
+        // The ConformanceServer binary is in a parallel directory to the test binary
+        // Test binary is in: artifacts/bin/ModelContextProtocol.ConformanceTests/Debug/{tfm}/
+        // ConformanceServer binary is in: artifacts/bin/ModelContextProtocol.ConformanceServer/Debug/{tfm}/
+        var testBinaryDir = AppContext.BaseDirectory; // e.g., .../net10.0/
+        var targetFramework = Path.GetFileName(testBinaryDir.TrimEnd(Path.DirectorySeparatorChar));
         var conformanceServerDir = Path.GetFullPath(
-            Path.Combine(testProjectDir, "..", "..", "..", "..", "tests", "ModelContextProtocol.ConformanceTests", "ConformanceServer"));
+            Path.Combine(testBinaryDir, "..", "..", "..", "ModelContextProtocol.ConformanceServer", "Debug", targetFramework));
 
         if (!Directory.Exists(conformanceServerDir))
         {
@@ -94,7 +114,7 @@ public class ConformanceTests : IAsyncLifetime
         var startInfo = new ProcessStartInfo
         {
             FileName = "dotnet",
-            Arguments = $"run --no-build --project ConformanceServer.csproj --urls {ServerUrl}",
+            Arguments = $"ModelContextProtocol.ConformanceServer.dll --urls {_serverUrl}",
             WorkingDirectory = conformanceServerDir,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -112,15 +132,42 @@ public class ConformanceTests : IAsyncLifetime
             throw new InvalidOperationException("Failed to start ConformanceServer process");
         }
 
+        // Asynchronously read output to prevent buffer overflow
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                string? line;
+                while ((line = await process.StandardOutput.ReadLineAsync()) != null)
+                {
+                    _output.WriteLine($"[Server {_serverPort}] {line}");
+                }
+            }
+            catch { /* Process may exit */ }
+        });
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                string? line;
+                while ((line = await process.StandardError.ReadLineAsync()) != null)
+                {
+                    _output.WriteLine($"[Server {_serverPort} ERROR] {line}");
+                }
+            }
+            catch { /* Process may exit */ }
+        });
+
         return process;
     }
 
-    private static async Task<(bool Success, string Output, string Error)> RunNpxConformanceTests()
+    private async Task<(bool Success, string Output, string Error)> RunNpxConformanceTests()
     {
         var startInfo = new ProcessStartInfo
         {
             FileName = "npx",
-            Arguments = $"@modelcontextprotocol/conformance server --url {ServerUrl}",
+            Arguments = $"@modelcontextprotocol/conformance server --url {_serverUrl}",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -136,7 +183,7 @@ public class ConformanceTests : IAsyncLifetime
         {
             if (e.Data != null)
             {
-                Console.WriteLine(e.Data); // Echo to test output
+                _output.WriteLine(e.Data);
                 outputBuilder.AppendLine(e.Data);
             }
         };
@@ -145,7 +192,7 @@ public class ConformanceTests : IAsyncLifetime
         {
             if (e.Data != null)
             {
-                Console.Error.WriteLine(e.Data); // Echo to test output
+                _output.WriteLine(e.Data);
                 errorBuilder.AppendLine(e.Data);
             }
         };

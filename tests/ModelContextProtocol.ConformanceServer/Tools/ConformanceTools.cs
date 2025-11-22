@@ -189,14 +189,14 @@ public class ConformanceTools
                 Messages = [new SamplingMessage
                 {
                     Role = Role.User,
-                    Content = new TextContentBlock { Text = prompt },
+                    Content = [new TextContentBlock { Text = prompt }],
                 }],
                 MaxTokens = 100,
                 Temperature = 0.7f
             };
 
             var result = await server.SampleAsync(samplingParams, cancellationToken);
-            return $"Sampling result: {(result.Content as TextContentBlock)?.Text ?? "No text content"}";
+            return $"Sampling result: {(result.Content.FirstOrDefault() as TextContentBlock)?.Text ?? "No text content"}";
         }
         catch (Exception ex)
         {
@@ -279,7 +279,7 @@ public class ConformanceTools
                         Description = "Score",
                         Default = 95.5
                     },
-                    ["status"] = new ElicitRequestParams.EnumSchema()
+                    ["status"] = new ElicitRequestParams.UntitledSingleSelectEnumSchema()
                     {
                         Description = "Status",
                         Enum = ["active", "inactive", "pending"],
@@ -331,12 +331,12 @@ public class ConformanceTools
             {
                 Properties =
                 {
-                    ["color"] = new ElicitRequestParams.EnumSchema()
+                    ["color"] = new ElicitRequestParams.UntitledSingleSelectEnumSchema()
                     {
                         Description = "Choose a color",
                         Enum = ["red", "green", "blue"]
                     },
-                    ["size"] = new ElicitRequestParams.EnumSchema()
+                    ["size"] = new ElicitRequestParams.UntitledSingleSelectEnumSchema()
                     {
                         Description = "Choose a size",
                         Enum = ["small", "medium", "large"],
