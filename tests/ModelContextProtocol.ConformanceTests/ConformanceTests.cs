@@ -103,9 +103,10 @@ public class ConformanceTests : IAsyncLifetime
         // Test binary is in: artifacts/bin/ModelContextProtocol.ConformanceTests/Debug/{tfm}/
         // ConformanceServer binary is in: artifacts/bin/ModelContextProtocol.ConformanceServer/Debug/{tfm}/
         var testBinaryDir = AppContext.BaseDirectory; // e.g., .../net10.0/
+        var configuration = Path.GetFileName(Path.GetDirectoryName(testBinaryDir.TrimEnd(Path.DirectorySeparatorChar))!);
         var targetFramework = Path.GetFileName(testBinaryDir.TrimEnd(Path.DirectorySeparatorChar));
         var conformanceServerDir = Path.GetFullPath(
-            Path.Combine(testBinaryDir, "..", "..", "..", "ModelContextProtocol.ConformanceServer", "Debug", targetFramework));
+            Path.Combine(testBinaryDir, "..", "..", "..", "ModelContextProtocol.ConformanceServer", configuration, targetFramework));
 
         if (!Directory.Exists(conformanceServerDir))
         {
