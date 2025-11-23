@@ -170,7 +170,7 @@ public class ConformanceTests : IAsyncLifetime
         var startInfo = new ProcessStartInfo
         {
             FileName = "npx",
-            Arguments = $"@modelcontextprotocol/conformance server --url {_serverUrl}",
+            Arguments = $"-y @modelcontextprotocol/conformance server --url {_serverUrl}",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
