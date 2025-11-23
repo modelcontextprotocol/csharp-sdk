@@ -25,19 +25,18 @@ await using var mcpClient = await McpClient.CreateAsync(clientTransport, options
 bool success = true;
 
 var tools = await mcpClient.ListToolsAsync();
-foreach (var tool in tools)
+Console.WriteLine($"Available tools: {string.Join(", ", tools.Select(t => t.Name))}");
+
+// Call the "add_numbers" tool
+var toolName = "add_numbers";
+Console.WriteLine($"Calling tool: {toolName}");
+var result = await mcpClient.CallToolAsync(toolName: toolName, arguments: new Dictionary<string, object?>
 {
-    Console.WriteLine($"Connected to server with tools: {tool.Name}");
-}
+    { "a", 5 },
+    { "b", 10 }
+});
 
-if (tools.Count > 0)
-{
-    Console.WriteLine($"Calling tool: {tools.First().Name}");
-
-    var result = await mcpClient.CallToolAsync(toolName: tools.First().Name);
-
-    success &= result.IsError != true;
-}
+success &= result.IsError != true;
 
 // Exit code 0 on success, 1 on failure
 return success ? 0 : 1;
