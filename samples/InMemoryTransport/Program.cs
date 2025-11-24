@@ -1,4 +1,7 @@
-﻿using ModelContextProtocol.Client;
+#!/usr/bin/env -S dotnet run --
+#:project ../../src/ModelContextProtocol/ModelContextProtocol.csproj
+
+using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.IO.Pipelines;
