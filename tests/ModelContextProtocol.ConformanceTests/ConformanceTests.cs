@@ -219,7 +219,7 @@ public class ConformanceTests : IAsyncLifetime
         {
             var startInfo = new ProcessStartInfo
             {
-                FileName = "node",
+                FileName = "npx",   // Check specifically for npx because windows seems unable to find it
                 Arguments = "--version",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
