@@ -43,7 +43,7 @@ dotnet run --project samples/QuickstartClient samples/QuickstartWeatherServer
 Or test with the MCP inspector:
 
 ```bash
-npx @modelcontextprotocol/inspector dotnet run samples/QuickstartWeatherServer/Program.cs
+npx @modelcontextprotocol/inspector dotnet run Program.cs
 ```
 
 ## What This Sample Shows
