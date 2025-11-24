@@ -30,6 +30,7 @@ internal sealed partial class ClientOAuthProvider
     private readonly IDictionary<string, string> _additionalAuthorizationParameters;
     private readonly Func<IReadOnlyList<Uri>, Uri?> _authServerSelector;
     private readonly AuthorizationRedirectDelegate _authorizationRedirectDelegate;
+    private readonly Uri? _clientMetadataDocumentUri;
 
     // _dcrClientName, _dcrClientUri, _dcrInitialAccessToken and _dcrResponseDelegate are used for dynamic client registration (RFC 7591)
     private readonly string? _dcrClientName;
@@ -74,6 +75,7 @@ internal sealed partial class ClientOAuthProvider
         _redirectUri = options.RedirectUri ?? throw new ArgumentException("ClientOAuthOptions.RedirectUri must configured.", nameof(options));
         _scopes = options.Scopes?.ToArray();
         _additionalAuthorizationParameters = options.AdditionalAuthorizationParameters;
+        _clientMetadataDocumentUri = options.ClientMetadataDocumentUri;
 
         // Set up authorization server selection strategy
         _authServerSelector = options.AuthServerSelector ?? DefaultAuthServerSelector;
@@ -223,10 +225,17 @@ internal sealed partial class ClientOAuthProvider
         // Store auth server metadata for future refresh operations
         _authServerMetadata = authServerMetadata;
 
-        // Perform dynamic client registration if needed
         if (string.IsNullOrEmpty(_clientId))
         {
-            await PerformDynamicClientRegistrationAsync(authServerMetadata, cancellationToken).ConfigureAwait(false);
+            // Try using a client metadata document before falling back to dynamic client registration
+            if (authServerMetadata.ClientIdMetadataDocumentSupported && _clientMetadataDocumentUri is not null)
+            {
+                ApplyClientIdMetadataDocument(_clientMetadataDocumentUri);
+            }
+            else
+            {
+                await PerformDynamicClientRegistrationAsync(authServerMetadata, cancellationToken).ConfigureAwait(false);
+            }
         }
 
         // Perform the OAuth flow
@@ -239,6 +248,23 @@ internal sealed partial class ClientOAuthProvider
 
         _token = token;
         LogOAuthAuthorizationCompleted();
+    }
+
+    private void ApplyClientIdMetadataDocument(Uri metadataUri)
+    {
+        if (!IsValidClientMetadataDocumentUri(metadataUri))
+        {
+            ThrowFailedToHandleUnauthorizedResponse(
+                $"{nameof(ClientOAuthOptions.ClientMetadataDocumentUri)} must be an HTTPS URL with a non-root absolute path. Value: '{metadataUri}'.");
+        }
+
+        _clientId = metadataUri.AbsoluteUri;
+
+        // See: https://datatracker.ietf.org/doc/html/draft-ietf-oauth-client-id-metadata-document-00#section-3
+        static bool IsValidClientMetadataDocumentUri(Uri uri)
+            => uri.IsAbsoluteUri
+            && string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+            && uri.AbsolutePath.Length > 1;
     }
 
     private static readonly string[] s_wellKnownPaths = [".well-known/openid-configuration", ".well-known/oauth-authorization-server"];

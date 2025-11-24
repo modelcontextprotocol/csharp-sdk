@@ -24,6 +24,17 @@ public sealed class ClientOAuthOptions
     public string? ClientSecret { get; set; }
 
     /// <summary>
+    /// Gets or sets the HTTPS URL pointing to this client's metadata document.
+    /// </summary>
+    /// <remarks>
+    /// When specified, and when the authorization server metadata reports
+    /// <c>client_id_metadata_document_supported = true</c>, the OAuth client will respond to
+    /// challenges by sending this URL as the client identifier instead of performing dynamic
+    /// client registration.
+    /// </remarks>
+    public Uri? ClientMetadataDocumentUri { get; set; }
+
+    /// <summary>
     /// Gets or sets the OAuth scopes to request.
     /// </summary>
     /// <remarks>
