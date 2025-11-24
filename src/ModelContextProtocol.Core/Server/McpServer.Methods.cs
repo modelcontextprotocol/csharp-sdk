@@ -243,7 +243,8 @@ public abstract partial class McpServer : McpSession, IMcpServer
     public ValueTask<ElicitResult> ElicitAsync(
         ElicitRequestParams request, CancellationToken cancellationToken = default)
     {
-        ThrowIfElicitationUnsupported();
+        Throw.IfNull(request);
+        ThrowIfElicitationUnsupported(request);
 
         return SendRequestAsync(
             RequestMethods.ElicitationCreate,
@@ -271,8 +272,6 @@ public abstract partial class McpServer : McpSession, IMcpServer
         JsonSerializerOptions? serializerOptions = null,
         CancellationToken cancellationToken = default)
     {
-        ThrowIfElicitationUnsupported();
-
         serializerOptions ??= McpJsonUtilities.DefaultOptions;
         serializerOptions.MakeReadOnly();
 
@@ -289,6 +288,8 @@ public abstract partial class McpServer : McpSession, IMcpServer
             Message = message,
             RequestedSchema = schema,
         };
+
+        ThrowIfElicitationUnsupported(request);
 
         var raw = await ElicitAsync(request, cancellationToken).ConfigureAwait(false);
 
@@ -456,16 +457,47 @@ public abstract partial class McpServer : McpSession, IMcpServer
         }
     }
 
-    private void ThrowIfElicitationUnsupported()
+    private void ThrowIfElicitationUnsupported(ElicitRequestParams request)
     {
-        if (ClientCapabilities?.Elicitation is null)
+        if (ClientCapabilities is null)
         {
-            if (ClientCapabilities is null)
+            throw new InvalidOperationException("Elicitation is not supported in stateless mode.");
+        }
+
+        var elicitationCapability = ClientCapabilities.Elicitation;
+        if (elicitationCapability is null)
+        {
+            throw new InvalidOperationException("Client does not support elicitation requests.");
+        }
+
+        if (string.Equals(request.Mode, "form", StringComparison.Ordinal) && elicitationCapability.Form is null)
+        {
+            if (request.RequestedSchema is null)
             {
-                throw new InvalidOperationException("Elicitation is not supported in stateless mode.");
+                throw new ArgumentException("Form mode elicitation requests require a requested schema.");
             }
 
-            throw new InvalidOperationException("Client does not support elicitation requests.");
+            if (elicitationCapability.Form is null)
+            {
+                throw new InvalidOperationException("Client does not support form mode elicitation requests.");
+            }
+        }
+        else if (string.Equals(request.Mode, "url", StringComparison.Ordinal))
+        {
+            if (request.Url is null)
+            {
+                throw new ArgumentException("URL mode elicitation requests require a URL.");
+            }
+
+            if (request.ElicitationId is null)
+            {
+                throw new ArgumentException("URL mode elicitation requests require an elicitation ID.");
+            }
+
+            if (elicitationCapability.Url is null)
+            {
+                throw new InvalidOperationException("Client does not support URL mode elicitation requests.");
+            }
         }
     }
 

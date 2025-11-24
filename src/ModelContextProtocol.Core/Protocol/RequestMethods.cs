@@ -41,13 +41,13 @@ public static class RequestMethods
     public const string ResourcesTemplatesList = "resources/templates/list";
 
     /// <summary>
-    /// The name of the request method sent from the client to request <see cref="NotificationMethods.ResourceUpdatedNotification"/> 
+    /// The name of the request method sent from the client to request <see cref="NotificationMethods.ResourceUpdatedNotification"/>
     /// notifications from the server whenever a particular resource changes.
     /// </summary>
     public const string ResourcesSubscribe = "resources/subscribe";
 
     /// <summary>
-    /// The name of the request method sent from the client to request unsubscribing from <see cref="NotificationMethods.ResourceUpdatedNotification"/> 
+    /// The name of the request method sent from the client to request unsubscribing from <see cref="NotificationMethods.ResourceUpdatedNotification"/>
     /// notifications from the server.
     /// </summary>
     public const string ResourcesUnsubscribe = "resources/unsubscribe";
@@ -78,7 +78,7 @@ public static class RequestMethods
     /// </summary>
     /// <remarks>
     /// This is used to provide autocompletion-like functionality for arguments in a resource reference or a prompt template.
-    /// The client provides a reference (resource or prompt), argument name, and partial value, and the server 
+    /// The client provides a reference (resource or prompt), argument name, and partial value, and the server
     /// responds with matching completion options.
     /// </remarks>
     public const string CompletionComplete = "completion/complete";
@@ -94,11 +94,21 @@ public static class RequestMethods
     public const string SamplingCreateMessage = "sampling/createMessage";
 
     /// <summary>
-    /// The name of the request method sent from the client to the server to elicit additional information from the user via the client.
+    /// The name of the request method sent from the server to elicit additional information from the user via the client.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// This request is used when the server needs more information from the client to proceed with a task or interaction.
-    /// Servers can request structured data from users, with optional JSON schemas to validate responses.
+    /// Servers can request structured data from users, with optional JSON schemas to validate responses (form mode),
+    /// or request URL mode (out-of-band) user interaction via navigation for sensitive operations.
+    /// </para>
+    /// <para>
+    /// Two modes are supported:
+    /// <list type="bullet">
+    ///   <item><description><b>form</b>: In-band elicitation where structured data is collected and returned to the server</description></item>
+    ///   <item><description><b>url</b>: URL mode (out-of-band) elicitation for sensitive operations like OAuth or payments</description></item>
+    /// </list>
+    /// </para>
     /// </remarks>
     public const string ElicitationCreate = "elicitation/create";
 

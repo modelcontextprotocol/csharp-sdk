@@ -10,8 +10,8 @@ public static class NotificationMethods
     /// </summary>
     /// <remarks>
     /// This notification informs clients that the set of available tools has been modified.
-    /// Changes may include tools being added, removed, or updated. Upon receiving this 
-    /// notification, clients may refresh their tool list by calling the appropriate 
+    /// Changes may include tools being added, removed, or updated. Upon receiving this
+    /// notification, clients may refresh their tool list by calling the appropriate
     /// method to get the updated list of tools.
     /// </remarks>
     public const string ToolListChangedNotification = "notifications/tools/list_changed";
@@ -21,8 +21,8 @@ public static class NotificationMethods
     /// </summary>
     /// <remarks>
     /// This notification informs clients that the set of available prompts has been modified.
-    /// Changes may include prompts being added, removed, or updated. Upon receiving this 
-    /// notification, clients may refresh their prompt list by calling the appropriate 
+    /// Changes may include prompts being added, removed, or updated. Upon receiving this
+    /// notification, clients may refresh their prompt list by calling the appropriate
     /// method to get the updated list of prompts.
     /// </remarks>
     public const string PromptListChangedNotification = "notifications/prompts/list_changed";
@@ -32,8 +32,8 @@ public static class NotificationMethods
     /// </summary>
     /// <remarks>
     /// This notification informs clients that the set of available resources has been modified.
-    /// Changes may include resources being added, removed, or updated. Upon receiving this 
-    /// notification, clients may refresh their resource list by calling the appropriate 
+    /// Changes may include resources being added, removed, or updated. Upon receiving this
+    /// notification, clients may refresh their resource list by calling the appropriate
     /// method to get the updated list of resources.
     /// </remarks>
     public const string ResourceListChangedNotification = "notifications/resources/list_changed";
@@ -52,13 +52,13 @@ public static class NotificationMethods
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This notification informs the server that the client's "roots" have changed. 
-    /// Roots define the boundaries of where servers can operate within the filesystem, 
-    /// allowing them to understand which directories and files they have access to. Servers 
+    /// This notification informs the server that the client's "roots" have changed.
+    /// Roots define the boundaries of where servers can operate within the filesystem,
+    /// allowing them to understand which directories and files they have access to. Servers
     /// can request the list of roots from supporting clients and receive notifications when that list changes.
     /// </para>
     /// <para>
-    /// After receiving this notification, servers may refresh their knowledge of roots by calling the appropriate 
+    /// After receiving this notification, servers may refresh their knowledge of roots by calling the appropriate
     /// method to get the updated list of roots from the client.
     /// </para>
     /// </remarks>
@@ -75,19 +75,28 @@ public static class NotificationMethods
     /// </para>
     /// <para>
     /// The minimum logging level that triggers notifications can be controlled by clients using the
-    /// <see cref="RequestMethods.LoggingSetLevel"/> request. If no level has been set by a client, 
+    /// <see cref="RequestMethods.LoggingSetLevel"/> request. If no level has been set by a client,
     /// the server may determine which messages to send based on its own configuration.
     /// </para>
     /// </remarks>
     public const string LoggingMessageNotification = "notifications/message";
 
     /// <summary>
+    /// The name of the notification sent by the server when a URL-mode elicitation flow completes.
+    /// </summary>
+    /// <remarks>
+    /// This notification references the original elicitation by ID, allowing clients to retry blocked requests
+    /// or update their UI state once the out-of-band interaction finishes.
+    /// </remarks>
+    public const string ElicitationCompleteNotification = "notifications/elicitation/complete";
+
+    /// <summary>
     /// The name of the notification sent from the client to the server after initialization has finished.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This notification is sent by the client after it has received and processed the server's response to the 
-    /// <see cref="RequestMethods.Initialize"/> request. It signals that the client is ready to begin normal operation 
+    /// This notification is sent by the client after it has received and processed the server's response to the
+    /// <see cref="RequestMethods.Initialize"/> request. It signals that the client is ready to begin normal operation
     /// and that the initialization phase is complete.
     /// </para>
     /// <para>

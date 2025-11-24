@@ -56,4 +56,20 @@ public enum McpErrorCode
     /// This error is used when the endpoint encounters an unexpected condition that prevents it from fulfilling the request.
     /// </remarks>
     InternalError = -32603,
+
+    /// <summary>
+    /// Indicates that URL-mode elicitation is required to complete the requested operation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This error is returned when a server operation requires additional user input through URL-mode elicitation
+    /// before it can proceed. The error data must include the `data.elicitations` payload describing the pending
+    /// elicitation(s) for the client to present to the user.
+    /// </para>
+    /// <para>
+    /// Common scenarios include OAuth authorization and other out-of-band flows that cannot be completed inside
+    /// the MCP client.
+    /// </para>
+    /// </remarks>
+    UrlElicitationRequired = -32042,
 }

@@ -181,23 +181,30 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                         {
                             LogRequestHandlerException(EndpointName, request.Method, ex);
 
-                            JsonRpcErrorDetail detail = ex is McpProtocolException mcpProtocolException ?
-                                new()
+                            JsonRpcErrorDetail detail = ex switch
+                            {
+                                UrlElicitationRequiredException urlException => new()
+                                {
+                                    Code = (int)urlException.ErrorCode,
+                                    Message = urlException.Message,
+                                    Data = urlException.CreateErrorDataNode(),
+                                },
+                                McpProtocolException mcpProtocolException => new()
                                 {
                                     Code = (int)mcpProtocolException.ErrorCode,
                                     Message = mcpProtocolException.Message,
-                                } : ex is McpException mcpException ?
-                                new()
+                                },
+                                McpException mcpException => new()
                                 {
-
                                     Code = (int)McpErrorCode.InternalError,
                                     Message = mcpException.Message,
-                                } :
-                                new()
+                                },
+                                _ => new()
                                 {
                                     Code = (int)McpErrorCode.InternalError,
                                     Message = "An error occurred.",
-                                };
+                                },
+                            };
 
                             var errorMessage = new JsonRpcError
                             {
@@ -452,7 +459,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             if (response is JsonRpcError error)
             {
                 LogSendingRequestFailed(EndpointName, request.Method, error.Error.Message, error.Error.Code);
-                throw new McpProtocolException($"Request failed (remote): {error.Error.Message}", (McpErrorCode)error.Error.Code);
+                throw CreateRemoteProtocolException(error);
             }
 
             if (response is JsonRpcResponse success)
@@ -767,6 +774,20 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         }
 
         return null;
+    }
+
+    private static McpProtocolException CreateRemoteProtocolException(JsonRpcError error)
+    {
+        string formattedMessage = $"Request failed (remote): {error.Error.Message}";
+        var errorCode = (McpErrorCode)error.Error.Code;
+
+        if (errorCode == McpErrorCode.UrlElicitationRequired &&
+            UrlElicitationRequiredException.TryCreateFromError(formattedMessage, error.Error, out var urlException))
+        {
+            return urlException;
+        }
+
+        return new McpProtocolException(formattedMessage, errorCode);
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} message processing canceled.")]

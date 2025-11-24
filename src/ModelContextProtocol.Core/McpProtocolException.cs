@@ -16,12 +16,12 @@ namespace ModelContextProtocol;
 /// <see cref="McpProtocolException"/>.
 /// </para>
 /// <para>
-/// <see cref="Exception.Message"/> or <see cref="ErrorCode"/> from a <see cref="McpProtocolException"/> may be 
+/// <see cref="Exception.Message"/> or <see cref="ErrorCode"/> from a <see cref="McpProtocolException"/> may be
 /// propagated to the remote endpoint; sensitive information should not be included. If sensitive details need
 /// to be included, a different exception type should be used.
 /// </para>
 /// </remarks>
-public sealed class McpProtocolException : McpException
+public class McpProtocolException : McpException
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="McpProtocolException"/> class.

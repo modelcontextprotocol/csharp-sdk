@@ -23,6 +23,7 @@ public partial class ElicitationTests : ClientServerTestBase
             var result = await request.Server.ElicitAsync(
                 new()
                 {
+                    Mode = "form",
                     Message = "Please provide more information.",
                     RequestedSchema = new()
                     {
@@ -75,7 +76,9 @@ public partial class ElicitationTests : ClientServerTestBase
                 ElicitationHandler = async (request, cancellationtoken) =>
                 {
                     Assert.NotNull(request);
+                    Assert.Equal("form", request.Mode);
                     Assert.Equal("Please provide more information.", request.Message);
+                    Assert.NotNull(request.RequestedSchema);
                     Assert.Equal(4, request.RequestedSchema.Properties.Count);
 
                     foreach (var entry in request.RequestedSchema.Properties)

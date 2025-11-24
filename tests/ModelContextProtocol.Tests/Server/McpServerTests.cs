@@ -210,11 +210,17 @@ public class McpServerTests : LoggedTest
         // Arrange
         await using var transport = new TestServerTransport();
         await using var server = McpServer.Create(transport, _options, LoggerFactory);
-        SetClientCapabilities(server, new ClientCapabilities { Elicitation = new ElicitationCapability() });
+        SetClientCapabilities(server, new ClientCapabilities
+        {
+            Elicitation = new()
+            {
+                Form = new(),
+            },
+        });
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
 
         // Act
-        var result = await server.ElicitAsync(new ElicitRequestParams { Message = "" }, CancellationToken.None);
+        var result = await server.ElicitAsync(new ElicitRequestParams { Message = "", RequestedSchema = new() }, CancellationToken.None);
 
         // Assert
         Assert.NotNull(result);

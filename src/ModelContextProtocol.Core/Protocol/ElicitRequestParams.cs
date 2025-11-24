@@ -9,32 +9,87 @@ namespace ModelContextProtocol.Protocol;
 /// <summary>
 /// Represents a message issued from the server to elicit additional information from the user via the client.
 /// </summary>
-public sealed class ElicitRequestParams
+public sealed class ElicitRequestParams : RequestParams
 {
+    /// <summary>
+    /// Gets or sets the elicitation mode: "form" for in-band data collection or "url" for out-of-band URL navigation.
+    /// </summary>
+    /// <remarks>
+    /// <list type="bullet">
+    ///   <item><description><b>form</b>: Client collects structured data via a form interface. Data is exposed to the client.</description></item>
+    ///   <item><description><b>url</b>: Client navigates user to a URL for out-of-band interaction. Sensitive data is not exposed to the client.</description></item>
+    /// </list>
+    /// </remarks>
+    [JsonPropertyName("mode")]
+    [field: MaybeNull]
+    public string Mode
+    {
+        get => field ??= "form";
+        set
+        {
+            if (value is not ("form" or "url"))
+            {
+                throw new ArgumentException("Mode must be 'form' or 'url'.", nameof(value));
+            }
+            field = value;
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets a unique identifier for this elicitation request.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Used to track and correlate the elicitation across multiple messages, especially for out-of-band flows
+    /// that may complete asynchronously.
+    /// </para>
+    /// <para>
+    /// Required for url mode elicitation to enable progress tracking and completion detection.
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("elicitationId")]
+    public string? ElicitationId { get; set; }
+
+    /// <summary>
+    /// Gets or sets the URL to navigate to for out-of-band elicitation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Required when <see cref="Mode"/> is "url". The client should prompt the user for consent
+    /// and then navigate to this URL in a user-agent (browser) where the user completes
+    /// the required interaction.
+    /// </para>
+    /// <para>
+    /// URLs must not appear in any other field of the elicitation request for security reasons.
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("url")]
+    public string? Url { get; set; }
+
     /// <summary>
     /// Gets or sets the message to present to the user.
     /// </summary>
+    /// <remarks>
+    /// For form mode, this describes what information is being requested.
+    /// For url mode, this explains why the user needs to navigate to the URL.
+    /// </remarks>
     [JsonPropertyName("message")]
     public required string Message { get; set; }
 
     /// <summary>
-    /// Gets or sets the requested schema.
+    /// Gets or sets the requested schema for form mode elicitation.
     /// </summary>
     /// <remarks>
+    /// Only applicable when <see cref="Mode"/> is "form".
     /// May be one of <see cref="StringSchema"/>, <see cref="NumberSchema"/>, <see cref="BooleanSchema"/>,
     /// <see cref="UntitledSingleSelectEnumSchema"/>, <see cref="TitledSingleSelectEnumSchema"/>,
     /// <see cref="UntitledMultiSelectEnumSchema"/>, <see cref="TitledMultiSelectEnumSchema"/>,
     /// or <see cref="LegacyTitledEnumSchema"/> (deprecated).
     /// </remarks>
     [JsonPropertyName("requestedSchema")]
-    [field: MaybeNull]
-    public RequestSchema RequestedSchema
-    {
-        get => field ??= new RequestSchema();
-        set => field = value;
-    }
+    public RequestSchema? RequestedSchema { get; set; }
 
-    /// <summary>Represents a request schema used in an elicitation request.</summary>
+    /// <summary>Represents a request schema used in a form mode elicitation request.</summary>
     public class RequestSchema
     {
         /// <summary>Gets the type of the schema.</summary>
@@ -61,7 +116,7 @@ public sealed class ElicitRequestParams
     }
 
     /// <summary>
-    /// Represents restricted subset of JSON Schema: 
+    /// Represents restricted subset of JSON Schema:
     /// <see cref="StringSchema"/>, <see cref="NumberSchema"/>, <see cref="BooleanSchema"/>,
     /// <see cref="UntitledSingleSelectEnumSchema"/>, <see cref="TitledSingleSelectEnumSchema"/>,
     /// <see cref="UntitledMultiSelectEnumSchema"/>, <see cref="TitledMultiSelectEnumSchema"/>,
