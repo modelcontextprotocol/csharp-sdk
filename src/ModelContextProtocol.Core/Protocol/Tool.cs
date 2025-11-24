@@ -1,8 +1,9 @@
+using ModelContextProtocol.Server;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
-using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Protocol;
 
@@ -110,6 +111,17 @@ public sealed class Tool : IBaseMetadata
     /// </remarks>
     [JsonPropertyName("annotations")]
     public ToolAnnotations? Annotations { get; set; }
+
+    /// <summary>
+    /// Gets or sets execution-related metadata for this tool.
+    /// </summary>
+    /// <remarks>
+    /// This property provides hints about how the tool should be executed, particularly
+    /// regarding task augmentation support. See <see cref="ToolExecution"/> for details.
+    /// </remarks>
+    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    [JsonPropertyName("execution")]
+    public ToolExecution? Execution { get; set; }
 
     /// <summary>
     /// Gets or sets an optional list of icons for this tool.

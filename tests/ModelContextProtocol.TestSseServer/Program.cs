@@ -150,6 +150,27 @@ public class Program
                                     "required": ["prompt", "maxTokens"]
                                 }
                                 """),
+                        },
+                        new Tool
+                        {
+                            Name = "longRunning",
+                            Description = "Simulates a long-running operation that supports task-based execution.",
+                            InputSchema = JsonElement.Parse("""
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "durationMs": {
+                                            "type": "number",
+                                            "description": "Duration of the operation in milliseconds"
+                                        }
+                                    },
+                                    "required": ["durationMs"]
+                                }
+                                """),
+                            Execution = new ToolExecution
+                            {
+                                TaskSupport = ToolTaskSupport.Optional
+                            }
                         }
                     ]
                 };
@@ -192,6 +213,19 @@ public class Program
                     return new CallToolResult
                     {
                         Content = [new TextContentBlock { Text = $"LLM sampling result: {sampleResult.Content.OfType<TextContentBlock>().FirstOrDefault()?.Text}" }]
+                    };
+                }
+                else if (request.Params.Name == "longRunning")
+                {
+                    if (request.Params.Arguments is null || !request.Params.Arguments.TryGetValue("durationMs", out var durationMsValue))
+                    {
+                        throw new McpProtocolException("Missing required argument 'durationMs'", McpErrorCode.InvalidParams);
+                    }
+                    int durationMs = Convert.ToInt32(durationMsValue.ToString());
+                    await Task.Delay(durationMs, cancellationToken);
+                    return new CallToolResult
+                    {
+                        Content = [new TextContentBlock { Text = $"Long-running operation completed after {durationMs}ms" }]
                     };
                 }
                 else

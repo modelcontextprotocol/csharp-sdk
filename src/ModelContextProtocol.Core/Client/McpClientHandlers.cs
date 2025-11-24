@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol;
+using System.Diagnostics.CodeAnalysis;
 
 namespace ModelContextProtocol.Client;
 
@@ -85,4 +86,25 @@ public class McpClientHandlers
     /// </para>
     /// </remarks>
     public Func<CreateMessageRequestParams?, IProgress<ProgressNotificationValue>, CancellationToken, ValueTask<CreateMessageResult>>? SamplingHandler { get; set; }
+
+    /// <summary>
+    /// Gets or sets the handler for processing <see cref="NotificationMethods.TaskStatusNotification"/> notifications.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This handler is called when the server sends a task status notification to inform the client
+    /// about changes to a task's state. These notifications are optional and clients MUST NOT rely
+    /// on receiving them.
+    /// </para>
+    /// <para>
+    /// The handler receives the updated <see cref="McpTask"/> object containing the current task state,
+    /// including its status, status message, and timestamps.
+    /// </para>
+    /// <para>
+    /// This handler is typically used to update UI or trigger actions based on task progress
+    /// without requiring explicit polling.
+    /// </para>
+    /// </remarks>
+    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    public Func<McpTask, CancellationToken, ValueTask>? TaskStatusHandler { get; set; }
 }

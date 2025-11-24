@@ -1,4 +1,6 @@
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
+using System.Diagnostics.CodeAnalysis;
 
 namespace ModelContextProtocol.Client;
 
@@ -78,4 +80,36 @@ public sealed class McpClientOptions
             field = value;
         }
     }
+
+    /// <summary>
+    /// Gets or sets the task store for managing client-side tasks.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When a task store is configured, the client will support task-augmented requests from the server.
+    /// This allows the server to request sampling or elicitation as tasks, which the client executes
+    /// asynchronously and allows the server to poll for status and results.
+    /// </para>
+    /// <para>
+    /// If not set, task-augmented requests will not be supported, and the client will not advertise
+    /// task capabilities to the server.
+    /// </para>
+    /// </remarks>
+    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    public IMcpTaskStore? TaskStore { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the client should send task status notifications to the server.
+    /// </summary>
+    /// <value>
+    /// <see langword="true"/> to send task status notifications; <see langword="false"/> otherwise.
+    /// The default is <see langword="true"/>.
+    /// </value>
+    /// <remarks>
+    /// When enabled and a <see cref="TaskStore"/> is configured, the client will send optional
+    /// <c>notifications/tasks/status</c> notifications to inform the server of task state changes.
+    /// Servers MUST NOT rely on receiving these notifications and should continue polling via <c>tasks/get</c>.
+    /// </remarks>
+    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    public bool SendTaskStatusNotifications { get; set; } = true;
 }

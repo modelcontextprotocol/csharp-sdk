@@ -25,4 +25,14 @@ public sealed class CallToolRequestParams : RequestParams
     /// </remarks>
     [JsonPropertyName("arguments")]
     public IDictionary<string, JsonElement>? Arguments { get; set; }
+
+    /// <summary>
+    /// Gets or sets optional task metadata to augment this request with task execution.
+    /// </summary>
+    /// <remarks>
+    /// When present, indicates that the requestor wants this operation executed as a task.
+    /// The receiver must support task augmentation for this specific request type.
+    /// </remarks>
+    [JsonPropertyName("task")]
+    public McpTaskMetadata? Task { get; set; }
 }
