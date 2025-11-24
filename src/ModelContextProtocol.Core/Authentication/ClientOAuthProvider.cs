@@ -264,7 +264,7 @@ internal sealed partial class ClientOAuthProvider
         static bool IsValidClientMetadataDocumentUri(Uri uri)
             => uri.IsAbsoluteUri
             && string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
-            && uri.AbsolutePath.Length > 1;
+            && uri.AbsolutePath.Length > 1; // AbsolutePath always starts with "/"
     }
 
     private static readonly string[] s_wellKnownPaths = [".well-known/openid-configuration", ".well-known/oauth-authorization-server"];
