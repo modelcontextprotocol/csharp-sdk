@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using ModelContextProtocol.Tests.Utils;
 
 namespace ModelContextProtocol.ConformanceTests;
 
@@ -29,7 +30,8 @@ public class ConformanceTests : IAsyncLifetime
     private readonly int _serverPort = GetPortForTargetFramework();
     private readonly string _serverUrl;
     private readonly ITestOutputHelper _output;
-    private Process? _serverProcess;
+    private Task? _serverTask;
+    private CancellationTokenSource? _serverCts;
 
     public ConformanceTests(ITestOutputHelper output)
     {
@@ -40,7 +42,7 @@ public class ConformanceTests : IAsyncLifetime
     public async ValueTask InitializeAsync()
     {
         // Start the ConformanceServer
-        _serverProcess = StartConformanceServer();
+        StartConformanceServer();
 
         // Wait for server to be ready (retry for up to 30 seconds)
         var timeout = TimeSpan.FromSeconds(30);
@@ -71,16 +73,25 @@ public class ConformanceTests : IAsyncLifetime
         throw new InvalidOperationException("ConformanceServer failed to start within the timeout period");
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         // Stop the server
-        if (_serverProcess != null && !_serverProcess.HasExited)
+        if (_serverCts != null)
         {
-            _serverProcess.Kill(entireProcessTree: true);
-            _serverProcess.WaitForExit(5000);
-            _serverProcess.Dispose();
+            _serverCts.Cancel();
+            if (_serverTask != null)
+            {
+                try
+                {
+                    await _serverTask.WaitAsync(TimeSpan.FromSeconds(5));
+                }
+                catch
+                {
+                    // Ignore exceptions during shutdown
+                }
+            }
+            _serverCts.Dispose();
         }
-        return ValueTask.CompletedTask;
     }
 
     [Fact]
@@ -97,7 +108,7 @@ public class ConformanceTests : IAsyncLifetime
             $"Conformance tests failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
     }
 
-    private Process StartConformanceServer()
+    private void StartConformanceServer()
     {
         // The ConformanceServer binary is in a parallel directory to the test binary
         // Test binary is in: artifacts/bin/ModelContextProtocol.ConformanceTests/Debug/{tfm}/
@@ -114,55 +125,9 @@ public class ConformanceTests : IAsyncLifetime
                 $"ConformanceServer directory not found at: {conformanceServerDir}");
         }
 
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "dotnet",
-            Arguments = $"ModelContextProtocol.ConformanceServer.dll --urls {_serverUrl}",
-            WorkingDirectory = conformanceServerDir,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            Environment =
-            {
-                ["ASPNETCORE_ENVIRONMENT"] = "Development"
-            }
-        };
-
-        var process = Process.Start(startInfo);
-        if (process == null)
-        {
-            throw new InvalidOperationException("Failed to start ConformanceServer process");
-        }
-
-        // Asynchronously read output to prevent buffer overflow
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                string? line;
-                while ((line = await process.StandardOutput.ReadLineAsync()) != null)
-                {
-                    _output.WriteLine($"[Server {_serverPort}] {line}");
-                }
-            }
-            catch { /* Process may exit */ }
-        });
-
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                string? line;
-                while ((line = await process.StandardError.ReadLineAsync()) != null)
-                {
-                    _output.WriteLine($"[Server {_serverPort} ERROR] {line}");
-                }
-            }
-            catch { /* Process may exit */ }
-        });
-
-        return process;
+        // Start the server in a background task
+        _serverCts = new CancellationTokenSource();
+        _serverTask = Task.Run(() => ConformanceServer.Program.MainAsync(["--urls", _serverUrl], new XunitLoggerProvider(_output), cancellationToken: _serverCts.Token));
     }
 
     private async Task<(bool Success, string Output, string Error)> RunNpxConformanceTests()
