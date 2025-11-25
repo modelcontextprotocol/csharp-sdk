@@ -3,6 +3,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
+using System.Text.Json;
 
 namespace ModelContextProtocol.Tests;
 
@@ -72,6 +73,28 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
 
         Assert.Equal("Request failed (remote): Resource not found", exception.Message);
         Assert.Equal((McpErrorCode)(-32002), exception.ErrorCode);
+        
+        // Verify the data was propagated to the exception
+        // The Data collection should contain the expected keys
+        var hasUri = false;
+        var hasCode = false;
+        foreach (System.Collections.DictionaryEntry entry in exception.Data)
+        {
+            if (entry.Key is string key)
+            {
+                if (key == "uri") hasUri = true;
+                if (key == "code") hasCode = true;
+            }
+        }
+        Assert.True(hasUri, "Exception.Data should contain 'uri' key");
+        Assert.True(hasCode, "Exception.Data should contain 'code' key");
+        
+        // Verify the values (they should be JsonElements)
+        var uriValue = Assert.IsType<JsonElement>(exception.Data["uri"]);
+        Assert.Equal("file:///path/to/resource", uriValue.GetString());
+        
+        var codeValue = Assert.IsType<JsonElement>(exception.Data["code"]);
+        Assert.Equal(404, codeValue.GetInt32());
     }
 
     [Fact]
@@ -87,6 +110,23 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
 
         Assert.Equal("Request failed (remote): Resource not found", exception.Message);
         Assert.Equal((McpErrorCode)(-32002), exception.ErrorCode);
+        
+        // Verify that only the serializable data was propagated (non-serializable was filtered out)
+        var hasUri = false;
+        var hasNonSerializable = false;
+        foreach (System.Collections.DictionaryEntry entry in exception.Data)
+        {
+            if (entry.Key is string key)
+            {
+                if (key == "uri") hasUri = true;
+                if (key == "nonSerializable") hasNonSerializable = true;
+            }
+        }
+        Assert.True(hasUri, "Exception.Data should contain 'uri' key");
+        Assert.False(hasNonSerializable, "Exception.Data should not contain 'nonSerializable' key");
+        
+        var uriValue = Assert.IsType<JsonElement>(exception.Data["uri"]);
+        Assert.Equal("file:///path/to/resource", uriValue.GetString());
     }
 
     [Fact]
@@ -100,6 +140,10 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
 
         Assert.Equal("Request failed (remote): Resource not found", exception.Message);
         Assert.Equal((McpErrorCode)(-32002), exception.ErrorCode);
+        
+        // When all data is non-serializable, the Data collection should be empty
+        // (the server's ConvertExceptionData returns null when no serializable data exists)
+        Assert.Empty(exception.Data);
     }
 
     /// <summary>

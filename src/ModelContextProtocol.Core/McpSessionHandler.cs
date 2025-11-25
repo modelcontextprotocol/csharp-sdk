@@ -453,7 +453,29 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             if (response is JsonRpcError error)
             {
                 LogSendingRequestFailed(EndpointName, request.Method, error.Error.Message, error.Error.Code);
-                throw new McpProtocolException($"Request failed (remote): {error.Error.Message}", (McpErrorCode)error.Error.Code);
+                var exception = new McpProtocolException($"Request failed (remote): {error.Error.Message}", (McpErrorCode)error.Error.Code);
+                
+                // Populate exception.Data with the error data if present
+                if (error.Error.Data is not null)
+                {
+                    // The data could be a Dictionary<string, JsonElement> or a JsonElement containing an object
+                    if (error.Error.Data is Dictionary<string, JsonElement> dataDict)
+                    {
+                        foreach (var kvp in dataDict)
+                        {
+                            exception.Data[kvp.Key] = kvp.Value;
+                        }
+                    }
+                    else if (error.Error.Data is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Object)
+                    {
+                        foreach (var property in jsonElement.EnumerateObject())
+                        {
+                            exception.Data[property.Name] = property.Value;
+                        }
+                    }
+                }
+                
+                throw exception;
             }
 
             if (response is JsonRpcResponse success)
