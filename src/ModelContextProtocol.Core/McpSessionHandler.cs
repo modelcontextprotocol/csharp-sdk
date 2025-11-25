@@ -211,7 +211,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                             {
                                 await SendMessageAsync(errorMessage, cancellationToken).ConfigureAwait(false);
                             }
-                            catch (Exception sendException) when ((sendException is JsonException || sendException is NotSupportedException) && detail.Data is not null)
+                            catch (Exception sendException) when (sendException is JsonException or NotSupportedException && detail.Data is not null)
                             {
                                 // If serialization fails (e.g., non-serializable data in Exception.Data),
                                 // retry without the data to ensure the client receives an error response.
@@ -781,7 +781,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     }
 
     /// <summary>
-    /// Converts the Exception.Data dictionary to a serializable Dictionary&lt;string, object?&gt;.
+    /// Converts the <see cref="Exception.Data"/> dictionary to a serializable <see cref="Dictionary{TKey, TValue}"/>.
     /// Returns null if the data dictionary is empty or contains no string keys.
     /// </summary>
     /// <remarks>
