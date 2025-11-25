@@ -60,7 +60,7 @@ public abstract partial class McpClient : McpSession, IMcpClient
     /// <param name="cancellationToken">Token used when establishing the transport connection.</param>
     /// <returns>An <see cref="McpClient"/> bound to the resumed session.</returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="clientTransport"/> or <paramref name="resumeOptions"/> is <see langword="null"/>.</exception>
-    public static McpClient ResumeSession(
+    public static async Task<McpClient> ResumeSessionAsync(
         IClientTransport clientTransport,
         ResumeClientSessionOptions resumeOptions,
         McpClientOptions? clientOptions = null,
@@ -72,7 +72,7 @@ public abstract partial class McpClient : McpSession, IMcpClient
         Throw.IfNull(resumeOptions.ServerCapabilities);
         Throw.IfNull(resumeOptions.ServerInfo);
 
-        var transport = clientTransport.ConnectAsync(cancellationToken).GetAwaiter().GetResult();
+        var transport = await clientTransport.ConnectAsync(cancellationToken).ConfigureAwait(false);
         var endpointName = clientTransport.Name;
 
         var clientSession = new McpClientImpl(transport, endpointName, clientOptions, loggerFactory);

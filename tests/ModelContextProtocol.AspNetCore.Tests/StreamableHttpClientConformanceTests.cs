@@ -239,7 +239,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
             NegotiatedProtocolVersion = resumeProtocolVersion,
         };
 
-        await using (var client = McpClient.ResumeSession(
+        await using (var client = await McpClient.ResumeSessionAsync(
             transport,
             resumeOptions,
             loggerFactory: LoggerFactory,
@@ -277,7 +277,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
-        Assert.Contains(nameof(McpClient.ResumeSession), exception.Message);
+        Assert.Contains(nameof(McpClient.ResumeSessionAsync), exception.Message);
     }
 
     private static async Task CallEchoAndValidateAsync(McpClientTool echoTool)

@@ -71,7 +71,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         {
             throw new InvalidOperationException(
                 $"Cannot send '{RequestMethods.Initialize}' when {nameof(HttpClientTransportOptions)}.{nameof(HttpClientTransportOptions.KnownSessionId)} is configured. " +
-                $"Call {nameof(McpClient)}.{nameof(McpClient.ResumeSession)} to resume existing sessions.");
+                $"Call {nameof(McpClient)}.{nameof(McpClient.ResumeSessionAsync)} to resume existing sessions.");
         }
 
         using var sendCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _connectionCts.Token);

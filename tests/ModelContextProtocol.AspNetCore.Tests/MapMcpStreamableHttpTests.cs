@@ -268,7 +268,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
             NegotiatedProtocolVersion = negotiatedProtocolVersion,
         };
 
-        await using (var resumedClient = McpClient.ResumeSession(
+        await using (var resumedClient = await McpClient.ResumeSessionAsync(
             resumeTransport,
             resumeOptions,
             loggerFactory: LoggerFactory,

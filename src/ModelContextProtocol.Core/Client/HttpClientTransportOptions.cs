@@ -84,7 +84,7 @@ public sealed class HttpClientTransportOptions
     /// </para>
     /// <para>
     /// Clients should pair this with
-    /// <see cref="McpClient.ResumeSession(IClientTransport, ResumeClientSessionOptions, McpClientOptions?, Microsoft.Extensions.Logging.ILoggerFactory?, CancellationToken)"/>
+    /// <see cref="McpClient.ResumeSessionAsync(IClientTransport, ResumeClientSessionOptions, McpClientOptions?, Microsoft.Extensions.Logging.ILoggerFactory?, CancellationToken)"/>
     /// to skip the initialization handshake when rehydrating a previously negotiated session.
     /// </para>
     /// </remarks>

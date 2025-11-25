@@ -16,6 +16,7 @@ public sealed class ResumeClientSessionOptions
     /// Gets or sets the server implementation metadata that identifies the connected MCP server.
     /// </summary>
     public required Implementation ServerInfo { get; set; }
+
     /// <summary>
     /// Gets or sets any instructions previously supplied by the server.
     /// </summary>
