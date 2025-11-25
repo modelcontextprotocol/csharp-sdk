@@ -21,4 +21,21 @@ public abstract class NotificationParams
     /// </remarks>
     [JsonPropertyName("_meta")]
     public JsonObject? Meta { get; set; }
+
+    /// <summary>
+    /// Merges additional metadata into the existing Meta object.
+    /// </summary>
+    /// <param name="additionalMeta">The additional metadata to merge.</param>
+    public void MergeMeta(JsonObject additionalMeta)
+    {
+        if (Meta == null)
+        {
+            Meta = new JsonObject();
+        }
+
+        foreach (var kvp in additionalMeta)
+        {
+            Meta[kvp.Key] = kvp.Value;
+        }
+    }
 }
