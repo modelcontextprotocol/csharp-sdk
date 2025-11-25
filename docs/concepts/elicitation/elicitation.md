@@ -9,13 +9,19 @@ uid: elicitation
 
 The **elicitation** feature allows servers to request additional information from users during interactions. This enables more dynamic and interactive AI experiences, making it easier to gather necessary context before executing tasks.
 
+The protocol supports two modes of elicitation:
+- **Form (In-Band)**: The server requests structured data (strings, numbers, booleans, enums) which the client collects via a form interface and returns to the server.
+- **URL Mode**: The server provides a URL for the user to visit (e.g., for OAuth, payments, or sensitive data entry). The interaction happens outside the MCP client.
+
 ### Server Support for Elicitation
 
-Servers request structured data from users with the <xref:ModelContextProtocol.Server.McpServer.ElicitAsync*> extension method on <xref:ModelContextProtocol.Server.McpServer>.
+Servers request information from users with the <xref:ModelContextProtocol.Server.McpServer.ElicitAsync*> extension method on <xref:ModelContextProtocol.Server.McpServer>.
 The C# SDK registers an instance of <xref:ModelContextProtocol.Server.McpServer> with the dependency injection container,
 so tools can simply add a parameter of type <xref:ModelContextProtocol.Server.McpServer> to their method signature to access it.
 
-The MCP Server must specify the schema of each input value it is requesting from the user.
+#### Form Mode Elicitation (In-Band)
+
+For form-based elicitation, the MCP Server must specify the schema of each input value it is requesting from the user.
 Primitive types (string, number, boolean) and enum types are supported for elicitation requests.
 The schema may include a description to help the user understand what is being requested.
 
@@ -33,18 +39,56 @@ The following example demonstrates how a server could request a boolean response
 
 [!code-csharp[](samples/server/Tools/InteractiveTools.cs?name=snippet_GuessTheNumber)]
 
+#### URL Mode Elicitation (Out-of-Band)
+
+For URL mode elicitation, the server provides a URL that the user must visit to complete an action. This is useful for scenarios like OAuth flows, payment processing, or collecting sensitive credentials that should not be exposed to the MCP client.
+
+To request a URL mode interaction, set the `Mode` to "url" and provide a `Url` and `ElicitationId` in the `ElicitRequestParams`.
+
+```csharp
+var elicitationId = Guid.NewGuid().ToString();
+var result = await server.ElicitAsync(
+    new ElicitRequestParams
+    {
+        Mode = "url",
+        ElicitationId = elicitationId,
+        Url = $"https://auth.example.com/oauth/authorize?state={elicitationId}",
+        Message = "Please authorize access to your account by logging in through your browser."
+    },
+    cancellationToken);
+```
+
 ### Client Support for Elicitation
 
-Elicitation is an optional feature so clients declare their support for it in their capabilities as part of the `initialize` request. In the MCP C# SDK, this is done by configuring an <xref:ModelContextProtocol.Client.McpClientHandlers.ElicitationHandler> in the <xref:ModelContextProtocol.Client.McpClientOptions>:
+Elicitation is an optional feature so clients declare their support for it in their capabilities as part of the `initialize` request. Clients can support `Form` (in-band), `Url` (out-of-band), or both.
 
-[!code-csharp[](samples/client/Program.cs?name=snippet_McpInitialize)]
+In the MCP C# SDK, this is done by configuring the capabilities and an <xref:ModelContextProtocol.Client.McpClientHandlers.ElicitationHandler> in the <xref:ModelContextProtocol.Client.McpClientOptions>:
 
-The ElicitationHandler is an asynchronous method that will be called when the server requests additional information.
-The ElicitationHandler must request input from the user and return the data in a format that matches the requested schema.
-This will be highly dependent on the client application and how it interacts with the user.
+```csharp
+var options = new McpClientOptions
+{
+    Capabilities = new ClientCapabilities
+    {
+        Elicitation = new ElicitationCapability
+        {
+            Form = new FormElicitationCapability(),
+            Url = new UrlElicitationCapability()
+        }
+    },
+    Handlers = new McpClientHandlers
+    {
+        ElicitationHandler = HandleElicitationAsync
+    }
+};
+```
 
-If the user provides the requested information, the ElicitationHandler should return an <xref:ModelContextProtocol.Protocol.ElicitResult> with the action set to "accept" and the content containing the user's input.
-If the user does not provide the requested information, the ElicitationHandler should return an [<xref:ModelContextProtocol.Protocol.ElicitResult> with the action set to "reject" and no content.
+The `ElicitationHandler` is an asynchronous method that will be called when the server requests additional information. The handler should check the `Mode` of the request:
+
+- **Form Mode**: Present the form defined by `RequestedSchema` to the user. Return the user's input in the `Content` of the result.
+- **URL Mode**: Present the `Message` and `Url` to the user. Ask for consent to open the URL. If the user consents, open the URL and return `Action="accept"`. If the user declines, return `Action="decline"`.
+
+If the user provides the requested information (or consents to URL mode), the ElicitationHandler should return an <xref:ModelContextProtocol.Protocol.ElicitResult> with the action set to "accept".
+If the user does not provide the requested information, the ElicitationHandler should return an <xref:ModelContextProtocol.Protocol.ElicitResult> with the action set to "reject" (or "decline" / "cancel").
 
 Below is an example of how a console application might handle elicitation requests.
 Here's an example implementation:

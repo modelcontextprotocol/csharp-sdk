@@ -125,6 +125,7 @@ public partial class ElicitationTypedTests : ClientServerTestBase
                     Assert.NotNull(request);
                     Assert.Equal("Please provide more information.", request.Message);
 
+                    Assert.NotNull(request.RequestedSchema);
                     Assert.Equal(6, request.RequestedSchema.Properties.Count);
 
                     foreach (var entry in request.RequestedSchema.Properties)
@@ -219,6 +220,7 @@ public partial class ElicitationTypedTests : ClientServerTestBase
                     Assert.Equal("Please provide more information.", request.Message);
 
                     // Expect camelCase names based on serializer options
+                    Assert.NotNull(request.RequestedSchema);
                     Assert.Contains("firstName", request.RequestedSchema.Properties.Keys);
                     Assert.Contains("zipCode", request.RequestedSchema.Properties.Keys);
                     Assert.Contains("isAdmin", request.RequestedSchema.Properties.Keys);
@@ -312,7 +314,6 @@ public partial class ElicitationTypedTests : ClientServerTestBase
     }
 
     [JsonConverter(typeof(JsonStringEnumConverter<SampleRole>))]
-
     public enum SampleRole
     {
         User,
@@ -327,7 +328,7 @@ public partial class ElicitationTypedTests : ClientServerTestBase
         public SampleRole Role { get; set; }
         public double Score { get; set; }
 
-        
+
         public DateTime Created { get; set; }
     }
 
@@ -400,6 +401,7 @@ public partial class ElicitationTypedTests : ClientServerTestBase
                     Assert.NotNull(request);
                     Assert.Equal("Please provide information.", request.Message);
 
+                    Assert.NotNull(request.RequestedSchema);
                     Assert.Equal(5, request.RequestedSchema.Properties.Count);
 
                     // Verify that default values from the type are mapped to the schema

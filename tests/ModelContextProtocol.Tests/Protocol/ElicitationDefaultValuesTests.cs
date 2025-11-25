@@ -315,20 +315,21 @@ public class ElicitationDefaultValuesTests
 
         // Assert
         Assert.NotNull(deserialized);
+        Assert.NotNull(deserialized.RequestedSchema);
         Assert.Equal(5, deserialized.RequestedSchema.Properties.Count);
-        
+
         var nameSchema = Assert.IsType<ElicitRequestParams.StringSchema>(deserialized.RequestedSchema.Properties["name"]);
         Assert.Equal("John Doe", nameSchema.Default);
-        
+
         var ageSchema = Assert.IsType<ElicitRequestParams.NumberSchema>(deserialized.RequestedSchema.Properties["age"]);
         Assert.Equal(30, ageSchema.Default);
-        
+
         var scoreSchema = Assert.IsType<ElicitRequestParams.NumberSchema>(deserialized.RequestedSchema.Properties["score"]);
         Assert.Equal(85.5, scoreSchema.Default);
-        
+
         var activeSchema = Assert.IsType<ElicitRequestParams.BooleanSchema>(deserialized.RequestedSchema.Properties["active"]);
         Assert.True(activeSchema.Default);
-        
+
         // EnumSchema without enumNames deserializes as UntitledSingleSelectEnumSchema
         var statusSchema = Assert.IsType<ElicitRequestParams.UntitledSingleSelectEnumSchema>(deserialized.RequestedSchema.Properties["status"]);
         Assert.Equal("active", statusSchema.Default);

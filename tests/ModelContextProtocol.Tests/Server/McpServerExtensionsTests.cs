@@ -198,7 +198,13 @@ public class McpServerExtensionsTests
 
         mockServer
             .Setup(s => s.ClientCapabilities)
-            .Returns(new ClientCapabilities() { Elicitation = new() });
+            .Returns(new ClientCapabilities()
+            {
+                Elicitation = new()
+                {
+                    Form = new()
+                }
+            });
 
         mockServer
             .Setup(s => s.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()))
@@ -209,7 +215,7 @@ public class McpServerExtensionsTests
 
         IMcpServer server = mockServer.Object;
 
-        var result = await server.ElicitAsync(new ElicitRequestParams { Message = "hi" }, TestContext.Current.CancellationToken);
+        var result = await server.ElicitAsync(new ElicitRequestParams { Message = "hi", RequestedSchema = new() }, TestContext.Current.CancellationToken);
 
         Assert.Equal("accept", result.Action);
         mockServer.Verify(s => s.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()), Times.Once);
