@@ -37,7 +37,7 @@ public sealed class McpClientTool : AIFunction
     private readonly string _name;
     private readonly string _description;
     private readonly IProgress<ProgressNotificationValue>? _progress;
-    private readonly JsonObject? _metadata;
+    private readonly JsonObject? _meta;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="McpClientTool"/> class.
@@ -76,7 +76,7 @@ public sealed class McpClientTool : AIFunction
         _name = tool.Name;
         _description = tool.Description ?? string.Empty;
         _progress = null;
-        _metadata = null;
+        _meta = null;
     }
 
     internal McpClientTool(
@@ -94,7 +94,7 @@ public sealed class McpClientTool : AIFunction
         _name = name ?? tool.Name;
         _description = description ?? tool.Description ?? string.Empty;
         _progress = progress;
-        _metadata = metadata;
+        _meta = metadata;
     }
 
     /// <summary>
@@ -199,7 +199,7 @@ public sealed class McpClientTool : AIFunction
         IProgress<ProgressNotificationValue>? progress = null,
         JsonSerializerOptions? serializerOptions = null,
         CancellationToken cancellationToken = default) =>
-        _client.CallToolAsync(ProtocolTool.Name, arguments, progress, serializerOptions, _metadata, cancellationToken);
+        _client.CallToolAsync(ProtocolTool.Name, arguments, progress, serializerOptions, _meta, cancellationToken);
 
     /// <summary>
     /// Creates a new instance of the tool but modified to return the specified name from its <see cref="Name"/> property.
@@ -226,7 +226,7 @@ public sealed class McpClientTool : AIFunction
     /// </para>
     /// </remarks>
     public McpClientTool WithName(string name) =>
-        new(_client, ProtocolTool, JsonSerializerOptions, name, _description, _progress, _metadata);
+        new(_client, ProtocolTool, JsonSerializerOptions, name, _description, _progress, _meta);
 
     /// <summary>
     /// Creates a new instance of the tool but modified to return the specified description from its <see cref="Description"/> property.
@@ -250,7 +250,7 @@ public sealed class McpClientTool : AIFunction
     /// </remarks>
     /// <returns>A new instance of <see cref="McpClientTool"/> with the provided description.</returns>
     public McpClientTool WithDescription(string description) =>
-        new(_client, ProtocolTool, JsonSerializerOptions, _name, description, _progress, _metadata);
+        new(_client, ProtocolTool, JsonSerializerOptions, _name, description, _progress, _meta);
 
     /// <summary>
     /// Creates a new instance of the tool but modified to report progress via the specified <see cref="IProgress{T}"/>.
@@ -273,7 +273,7 @@ public sealed class McpClientTool : AIFunction
     {
         Throw.IfNull(progress);
 
-        return new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, _name, _description, progress, _metadata);
+        return new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, _name, _description, progress, _meta);
     }
 
     /// <summary>
