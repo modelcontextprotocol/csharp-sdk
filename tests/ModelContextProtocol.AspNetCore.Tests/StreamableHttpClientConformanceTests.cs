@@ -6,6 +6,8 @@ using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 
@@ -107,6 +109,22 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
         await _app.StartAsync(TestContext.Current.CancellationToken);
     }
 
+    private async Task<ResumeTestServer> StartResumeServerAsync(string expectedSessionId)
+    {
+        Builder.Services.Configure<JsonOptions>(options =>
+        {
+            options.SerializerOptions.TypeInfoResolverChain.Add(McpJsonUtilities.DefaultOptions.TypeInfoResolver!);
+        });
+
+        _app = Builder.Build();
+
+        var resumeServer = new ResumeTestServer(expectedSessionId);
+        resumeServer.MapEndpoints(_app);
+
+        await _app.StartAsync(TestContext.Current.CancellationToken);
+        return resumeServer;
+    }
+
     [Fact]
     public async Task CanCallToolOnSessionlessStreamableHttpServer()
     {
@@ -174,6 +192,94 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
         Assert.Equal("test-session-123", sessionId);
     }
 
+    [Fact]
+    public async Task DoesNotSendDeleteWhenTransportDoesNotOwnSession()
+    {
+        await StartAsync(enableDelete: true);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/mcp"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+            OwnsSession = false,
+        }, HttpClient, LoggerFactory);
+
+        await using (await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken))
+        {
+            // No-op. Disposing the client should not trigger a DELETE request.
+        }
+
+        Assert.Empty(_deleteRequestSessionIds);
+    }
+
+    [Fact]
+    public async Task ResumeSessionStartsGetImmediately()
+    {
+        const string sessionId = "resume-session-123";
+        const string resumeInstructions = "Use cached instructions";
+        const string resumeProtocolVersion = "2025-06-18";
+        var resumeServer = await StartResumeServerAsync(sessionId);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/mcp"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+            KnownSessionId = sessionId,
+        }, HttpClient, LoggerFactory);
+
+        var serverCapabilities = new ServerCapabilities
+        {
+            Tools = new(),
+        };
+        var resumeOptions = new ResumeClientSessionOptions
+        {
+            ServerCapabilities = serverCapabilities,
+            ServerInfo = new Implementation { Name = "resume-server", Version = "1.0.0" },
+            ServerInstructions = resumeInstructions,
+            NegotiatedProtocolVersion = resumeProtocolVersion,
+        };
+
+        await using (var client = McpClient.ResumeSession(
+            transport,
+            resumeOptions,
+            loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken))
+        {
+            var observedSessionId = await resumeServer.GetStarted.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.Equal(sessionId, observedSessionId);
+
+            var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+            var tool = Assert.Single(tools);
+            Assert.Equal("resume-echo", tool.Name);
+
+            Assert.Equal(sessionId, Assert.Single(resumeServer.PostSessionIds));
+            Assert.Same(serverCapabilities, client.ServerCapabilities);
+            Assert.Same(resumeOptions.ServerInfo, client.ServerInfo);
+            Assert.Equal(resumeInstructions, client.ServerInstructions);
+            Assert.Equal(resumeProtocolVersion, client.NegotiatedProtocolVersion);
+        }
+
+        Assert.Equal(sessionId, Assert.Single(resumeServer.DeleteSessionIds));
+    }
+
+    [Fact]
+    public async Task CreateAsyncWithKnownSessionIdThrows()
+    {
+        await StartAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/mcp"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+            KnownSessionId = "already-initialized",
+        }, HttpClient, LoggerFactory);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains(nameof(McpClient.ResumeSession), exception.Message);
+    }
+
     private static async Task CallEchoAndValidateAsync(McpClientTool echoTool)
     {
         var response = await echoTool.CallAsync(new Dictionary<string, object?>() { ["message"] = "Hello world!" }, cancellationToken: TestContext.Current.CancellationToken);
@@ -197,5 +303,99 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
     private static string Echo(string message)
     {
         return message;
+    }
+
+    private sealed class ResumeTestServer
+    {
+        private static readonly Tool ResumeTool = new()
+        {
+            Name = "resume-echo",
+            Description = "Echoes the provided message.",
+        };
+
+        private readonly string _expectedSessionId;
+        private readonly TaskCompletionSource<string> _getStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly List<string> _postSessionIds = [];
+        private readonly List<string> _deleteSessionIds = [];
+
+        public ResumeTestServer(string expectedSessionId)
+        {
+            _expectedSessionId = expectedSessionId;
+        }
+
+        public Task<string> GetStarted => _getStarted.Task;
+        public IReadOnlyList<string> PostSessionIds => _postSessionIds;
+        public IReadOnlyList<string> DeleteSessionIds => _deleteSessionIds;
+
+        public void MapEndpoints(WebApplication app)
+        {
+            app.MapGet("/mcp", HandleGetAsync);
+            app.MapPost("/mcp", HandlePostAsync);
+            app.MapDelete("/mcp", HandleDeleteAsync);
+        }
+
+        private async Task HandleGetAsync(HttpContext context)
+        {
+            var sessionId = context.Request.Headers["mcp-session-id"].ToString();
+            if (!string.Equals(sessionId, _expectedSessionId, StringComparison.Ordinal))
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+
+            context.Response.Headers.ContentType = "text/event-stream";
+            _getStarted.TrySetResult(sessionId);
+            await context.Response.Body.FlushAsync();
+
+            try
+            {
+                await Task.Delay(Timeout.Infinite, context.RequestAborted);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+
+        private async Task HandlePostAsync(HttpContext context)
+        {
+            var sessionId = context.Request.Headers["mcp-session-id"].ToString();
+            _postSessionIds.Add(sessionId);
+
+            if (!string.Equals(sessionId, _expectedSessionId, StringComparison.Ordinal))
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+
+            var request = await context.Request.ReadFromJsonAsync(GetJsonTypeInfo<JsonRpcRequest>(), context.RequestAborted);
+            if (request is null)
+            {
+                context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                return;
+            }
+
+            if (request.Method == RequestMethods.ToolsList)
+            {
+                var response = new JsonRpcResponse
+                {
+                    Id = request.Id,
+                    Result = JsonSerializer.SerializeToNode(new ListToolsResult
+                    {
+                        Tools = [ResumeTool],
+                    }, McpJsonUtilities.DefaultOptions),
+                };
+
+                await context.Response.WriteAsJsonAsync(response, cancellationToken: context.RequestAborted);
+                return;
+            }
+
+            context.Response.StatusCode = StatusCodes.Status202Accepted;
+        }
+
+        private Task HandleDeleteAsync(HttpContext context)
+        {
+            _deleteSessionIds.Add(context.Request.Headers["mcp-session-id"].ToString());
+            return Task.CompletedTask;
+        }
     }
 }

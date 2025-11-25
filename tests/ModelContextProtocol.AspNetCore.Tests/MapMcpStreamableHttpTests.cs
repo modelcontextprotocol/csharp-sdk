@@ -2,7 +2,11 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Primitives;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using System.Collections.Concurrent;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
 
@@ -187,5 +191,96 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         // initialized notification and the tools/list call at a minimum.
         Assert.True(protocolVersionHeaderValues.Count > 1);
         Assert.All(protocolVersionHeaderValues, v => Assert.Equal("2025-03-26", v));
+    }
+
+    [Fact]
+    public async Task CanResumeSessionWithMapMcpAndRunSessionHandler()
+    {
+        Assert.SkipWhen(Stateless, "Session resumption relies on server-side session tracking.");
+
+        var runSessionCount = 0;
+        var serverTcs = new TaskCompletionSource<McpServer>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Builder.Services.AddMcpServer(options =>
+        {
+            options.ServerInfo = new Implementation
+            {
+                Name = "ResumeServer",
+                Version = "1.0.0",
+            };
+        }).WithHttpTransport(opts =>
+        {
+            ConfigureStateless(opts);
+            opts.RunSessionHandler = async (context, server, cancellationToken) =>
+            {
+                Interlocked.Increment(ref runSessionCount);
+                serverTcs.TrySetResult(server);
+                await server.RunAsync(cancellationToken);
+            };
+        }).WithTools<EchoHttpContextUserTools>();
+
+        await using var app = Builder.Build();
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        ServerCapabilities? serverCapabilities = null;
+        Implementation? serverInfo = null;
+        string? serverInstructions = null;
+        string? negotiatedProtocolVersion = null;
+        string? resumedSessionId = null;
+
+        await using var initialTransport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+            OwnsSession = false,
+        }, HttpClient, LoggerFactory);
+
+        await using (var initialClient = await McpClient.CreateAsync(initialTransport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken))
+        {
+            resumedSessionId = initialClient.SessionId ?? throw new InvalidOperationException("SessionId not negotiated.");
+            serverCapabilities = initialClient.ServerCapabilities;
+            serverInfo = initialClient.ServerInfo;
+            serverInstructions = initialClient.ServerInstructions;
+            negotiatedProtocolVersion = initialClient.NegotiatedProtocolVersion;
+
+            await initialClient.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        }
+
+        Assert.NotNull(serverCapabilities);
+        Assert.NotNull(serverInfo);
+        Assert.False(string.IsNullOrEmpty(resumedSessionId));
+
+        await serverTcs.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        await using var resumeTransport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+            KnownSessionId = resumedSessionId!,
+        }, HttpClient, LoggerFactory);
+
+        var resumeOptions = new ResumeClientSessionOptions
+        {
+            ServerCapabilities = serverCapabilities!,
+            ServerInfo = serverInfo!,
+            ServerInstructions = serverInstructions,
+            NegotiatedProtocolVersion = negotiatedProtocolVersion,
+        };
+
+        await using (var resumedClient = McpClient.ResumeSession(
+            resumeTransport,
+            resumeOptions,
+            loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken))
+        {
+            var tools = await resumedClient.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+            Assert.NotEmpty(tools);
+
+            Assert.Equal(serverInstructions, resumedClient.ServerInstructions);
+            Assert.Equal(negotiatedProtocolVersion, resumedClient.NegotiatedProtocolVersion);
+        }
+
+        Assert.Equal(1, runSessionCount);
     }
 }
