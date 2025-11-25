@@ -455,23 +455,13 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                 LogSendingRequestFailed(EndpointName, request.Method, error.Error.Message, error.Error.Code);
                 var exception = new McpProtocolException($"Request failed (remote): {error.Error.Message}", (McpErrorCode)error.Error.Code);
                 
-                // Populate exception.Data with the error data if present
-                if (error.Error.Data is not null)
+                // Populate exception.Data with the error data if present.
+                // When deserializing JSON, Data will be a JsonElement.
+                if (error.Error.Data is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Object)
                 {
-                    // The data could be a Dictionary<string, JsonElement> or a JsonElement containing an object
-                    if (error.Error.Data is Dictionary<string, JsonElement> dataDict)
+                    foreach (var property in jsonElement.EnumerateObject())
                     {
-                        foreach (var kvp in dataDict)
-                        {
-                            exception.Data[kvp.Key] = kvp.Value;
-                        }
-                    }
-                    else if (error.Error.Data is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Object)
-                    {
-                        foreach (var property in jsonElement.EnumerateObject())
-                        {
-                            exception.Data[property.Name] = property.Value;
-                        }
+                        exception.Data[property.Name] = property.Value;
                     }
                 }
                 
