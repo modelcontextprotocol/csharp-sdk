@@ -34,10 +34,10 @@ public sealed class ElicitResult : Result
     public string Action { get; set; } = "cancel";
 
     /// <summary>
-    /// Convenience indicator for whether the elicitation was accepted by the user.
+    /// Gets a value that indicates whether the elicitation was accepted by the user.
     /// </summary>
     /// <remarks>
-    ///  Indicates that the elicitation request completed successfully and value of <see cref="Content"/> has been populated with a value.
+    /// If <see langword="true"/>, it indicates that the elicitation request completed successfully and value of <see cref="Content"/> has been populated with a value.
     /// </remarks>
     [JsonIgnore]
     public bool IsAccepted => string.Equals(Action, "accept", StringComparison.OrdinalIgnoreCase);
@@ -47,7 +47,7 @@ public sealed class ElicitResult : Result
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This is typically omitted if the action is "cancel" or "decline".
+    /// This value is typically omitted if the action is "cancel" or "decline".
     /// </para>
     /// <para>
     /// Values in the dictionary should be of types <see cref="JsonValueKind.String"/>, <see cref="JsonValueKind.Number"/>,
@@ -89,10 +89,10 @@ public sealed class ElicitResult<T> : Result
     public string Action { get; set; } = "cancel";
 
     /// <summary>
-    /// Convenience indicator for whether the elicitation was accepted by the user.
+    /// Gets a value that indicates whether the elicitation was accepted by the user.
     /// </summary>
     /// <remarks>
-    ///  Indicates that the elicitation request completed successfully and value of <see cref="Content"/> has been populated with a value.
+    /// If <see langword="true"/>, it indicates that the elicitation request completed successfully and value of <see cref="Content"/> has been populated with a value.
     /// </remarks>
     public bool IsAccepted => string.Equals(Action, "accept", StringComparison.OrdinalIgnoreCase);
 

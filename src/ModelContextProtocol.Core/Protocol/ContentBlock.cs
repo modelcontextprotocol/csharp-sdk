@@ -35,8 +35,11 @@ public abstract class ContentBlock
     /// <summary>
     /// When overridden in a derived class, gets the type of content.
     /// </summary>
+    /// <value>
+    /// The type of content. Valid values include "image", "audio", "text", "resource", "resource_link", "tool_use", and "tool_result".
+    /// </value>
     /// <remarks>
-    /// This determines the structure of the content object. Valid values include "image", "audio", "text", "resource", "resource_link", "tool_use", and "tool_result".
+    /// This value determines the structure of the content object.
     /// </remarks>
     [JsonPropertyName("type")]
     public abstract string Type { get; }
@@ -381,9 +384,7 @@ public sealed class ImageContentBlock : ContentBlock
     /// Gets or sets the MIME type (or "media type") of the content, specifying the format of the data.
     /// </summary>
     /// <remarks>
-    /// <para>
     /// Common values include "image/png" and "image/jpeg".
-    /// </para>
     /// </remarks>
     [JsonPropertyName("mimeType")]
     public required string MimeType { get; set; }
@@ -405,9 +406,7 @@ public sealed class AudioContentBlock : ContentBlock
     /// Gets or sets the MIME type (or "media type") of the content, specifying the format of the data.
     /// </summary>
     /// <remarks>
-    /// <para>
     /// Common values include "audio/wav" and "audio/mp3".
-    /// </para>
     /// </remarks>
     [JsonPropertyName("mimeType")]
     public required string MimeType { get; set; }
@@ -427,7 +426,7 @@ public sealed class EmbeddedResourceBlock : ContentBlock
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Resources can be either text-based (<see cref="TextResourceContents"/>) or 
+    /// Resources can be either text-based (<see cref="TextResourceContents"/>) or
     /// binary (<see cref="BlobResourceContents"/>), allowing for flexible data representation.
     /// Each resource has a URI that can be used for identification and retrieval.
     /// </para>
@@ -463,7 +462,7 @@ public sealed class ResourceLinkBlock : ContentBlock
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This can be used by clients to improve the LLM's understanding of available resources. It can be thought of like a \"hint\" to the model.
+    /// This description can be used by clients to improve the LLM's understanding of available resources. It can be thought of like a \"hint\" to the model.
     /// </para>
     /// <para>
     /// The description should provide clear context about the resource's content, format, and purpose.
@@ -487,7 +486,7 @@ public sealed class ResourceLinkBlock : ContentBlock
     /// "image/png" for PNG images, and "application/json" for JSON data.
     /// </para>
     /// <para>
-    /// This property may be <see langword="null"/> if the MIME type is unknown or not applicable for the resource.
+    /// This property can be <see langword="null"/> if the MIME type is unknown or not applicable for the resource.
     /// </para>
     /// </remarks>
     [JsonPropertyName("mimeType")]
@@ -497,7 +496,7 @@ public sealed class ResourceLinkBlock : ContentBlock
     /// Gets or sets the size of the raw resource content (before base64 encoding), in bytes, if known.
     /// </summary>
     /// <remarks>
-    /// This can be used by applications to display file sizes and estimate context window usage.
+    /// This value can be used by applications to display file sizes and estimate context window usage.
     /// </remarks>
     [JsonPropertyName("size")]
     public long? Size { get; set; }
@@ -541,7 +540,7 @@ public sealed class ToolResultContentBlock : ContentBlock
     /// Gets or sets the ID of the tool use this result corresponds to.
     /// </summary>
     /// <remarks>
-    /// This must match the ID from a previous <see cref="ToolUseContentBlock"/>.
+    /// This value must match the ID from a previous <see cref="ToolUseContentBlock"/>.
     /// </remarks>
     [JsonPropertyName("toolUseId")]
     public required string ToolUseId { get; set; }
@@ -550,7 +549,7 @@ public sealed class ToolResultContentBlock : ContentBlock
     /// Gets or sets the unstructured result content of the tool use.
     /// </summary>
     /// <remarks>
-    /// This has the same format as CallToolResult.Content and can include text, images,
+    /// This value has the same format as CallToolResult.Content and can include text, images,
     /// audio, resource links, and embedded resources.
     /// </remarks>
     [JsonPropertyName("content")]
@@ -560,17 +559,19 @@ public sealed class ToolResultContentBlock : ContentBlock
     /// Gets or sets an optional structured result object.
     /// </summary>
     /// <remarks>
-    /// If the tool defined an outputSchema, this should conform to that schema.
+    /// If the tool defined an outputSchema, this object should conform to that schema.
     /// </remarks>
     [JsonPropertyName("structuredContent")]
     public JsonElement? StructuredContent { get; set; }
 
     /// <summary>
-    /// Gets or sets whether the tool use resulted in an error.
+    /// Gets or sets a value that indicates whether the tool use resulted in an error.
     /// </summary>
+    /// <value>
+    /// <see langword="true"/> if the tool use resulted in an error; <see langword="false"/> if it succeeded. The default is <see langword="false"/>.
+    /// </value>
     /// <remarks>
-    /// If true, the content typically describes the error that occurred.
-    /// Default: false
+    /// If <see langword="true"/>, the content typically describes the error that occurred.
     /// </remarks>
     [JsonPropertyName("isError")]
     public bool? IsError { get; set; }

@@ -8,7 +8,7 @@ namespace ModelContextProtocol.Protocol;
 public sealed class ToolChoice
 {
     /// <summary>
-    /// Gets or sets the mode controlling which tools the model can call.
+    /// Gets or sets the mode that controls which tools the model can call.
     /// </summary>
     /// <remarks>
     /// <list type="bullet">

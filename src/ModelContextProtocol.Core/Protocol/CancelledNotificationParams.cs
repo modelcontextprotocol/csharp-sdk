@@ -17,7 +17,7 @@ public sealed class CancelledNotificationParams : NotificationParams
     /// Gets or sets the ID of the request to cancel.
     /// </summary>
     /// <remarks>
-    /// This must match the ID of an in-flight request that the sender wishes to cancel.
+    /// This value must match the ID of an in-flight request that the sender wishes to cancel.
     /// </remarks>
     [JsonPropertyName("requestId")]
     public required RequestId RequestId { get; set; }

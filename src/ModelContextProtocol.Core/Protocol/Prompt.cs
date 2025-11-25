@@ -46,7 +46,7 @@ public sealed class Prompt : IBaseMetadata
     /// </para>
     /// <para>
     /// When a client makes a <see cref="RequestMethods.PromptsGet"/> request, it can provide values for these arguments
-    /// which will be substituted into the prompt template or otherwise used to render the prompt.
+    /// that will be substituted into the prompt template or otherwise used to render the prompt.
     /// </para>
     /// </remarks>
     [JsonPropertyName("arguments")]
@@ -56,7 +56,7 @@ public sealed class Prompt : IBaseMetadata
     /// Gets or sets an optional list of icons for this prompt.
     /// </summary>
     /// <remarks>
-    /// This can be used by clients to display the prompt's icon in a user interface.
+    /// This list can be used by clients to display the prompt's icon in a user interface.
     /// </remarks>
     [JsonPropertyName("icons")]
     public IList<Icon>? Icons { get; set; }
