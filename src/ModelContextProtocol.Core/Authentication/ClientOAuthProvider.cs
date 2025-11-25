@@ -13,9 +13,7 @@ using System.Web;
 namespace ModelContextProtocol.Authentication;
 
 /// <summary>
-/// A generic implementation of an OAuth authorization provider for MCP. This does not do any advanced token
-/// protection or caching - it acquires a token and server metadata and holds it in memory.
-/// This is suitable for demonstration and development purposes.
+/// A generic implementation of an OAuth authorization provider.
 /// </summary>
 internal sealed partial class ClientOAuthProvider
 {
@@ -178,12 +176,7 @@ internal sealed partial class ClientOAuthProvider
         HttpResponseMessage response,
         CancellationToken cancellationToken = default)
     {
-        // This provider only supports Bearer scheme
-        if (!string.Equals(scheme, BearerScheme, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException("This credential provider only supports the Bearer scheme");
-        }
-
+        ThrowIfNotBearerScheme(scheme);
         await PerformOAuthAuthorizationAsync(response, cancellationToken).ConfigureAwait(false);
     }
 
