@@ -497,7 +497,7 @@ public class McpClientToolTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task WithMetadata_MetadataIsPassedToServer()
+    public async Task WithMeta_MetaIsPassedToServer()
     {
         // Arrange
         await using McpClient client = await CreateMcpClientForServer();
@@ -511,8 +511,8 @@ public class McpClientToolTests : ClientServerTestBase
         };
 
         // Act - use tool with metadata
-        var toolWithMetadata = tool.WithMetadata(metadata);
-        var result = await toolWithMetadata.CallAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var toolWithMeta = tool.WithMeta(metadata);
+        var result = await toolWithMeta.CallAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -527,7 +527,7 @@ public class McpClientToolTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task WithMetadata_CreatesNewInstance()
+    public async Task WithMeta_CreatesNewInstance()
     {
         // Arrange
         await using McpClient client = await CreateMcpClientForServer();
@@ -537,16 +537,16 @@ public class McpClientToolTests : ClientServerTestBase
         var metadata = new JsonObject { ["key"] = "value" };
 
         // Act
-        var toolWithMetadata = tool.WithMetadata(metadata);
+        var toolWithMeta = tool.WithMeta(metadata);
 
         // Assert - should be a different instance
-        Assert.NotSame(tool, toolWithMetadata);
-        Assert.Equal(tool.Name, toolWithMetadata.Name);
-        Assert.Equal(tool.Description, toolWithMetadata.Description);
+        Assert.NotSame(tool, toolWithMeta);
+        Assert.Equal(tool.Name, toolWithMeta.Name);
+        Assert.Equal(tool.Description, toolWithMeta.Description);
     }
 
     [Fact]
-    public async Task WithMetadata_ChainsWithOtherWithMethods()
+    public async Task WithMeta_ChainsWithOtherWithMethods()
     {
         // Arrange
         await using McpClient client = await CreateMcpClientForServer();
@@ -555,11 +555,11 @@ public class McpClientToolTests : ClientServerTestBase
 
         var metadata = new JsonObject { ["chainedKey"] = "chainedValue" };
 
-        // Act - chain WithName, WithDescription, and WithMetadata
+        // Act - chain WithName, WithDescription, and WithMeta
         var modifiedTool = tool
             .WithName("custom_name")
             .WithDescription("Custom description")
-            .WithMetadata(metadata);
+            .WithMeta(metadata);
 
         var result = await modifiedTool.CallAsync(cancellationToken: TestContext.Current.CancellationToken);
 
@@ -575,7 +575,7 @@ public class McpClientToolTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task WithMetadata_MultipleToolInstancesWithDifferentMetadata()
+    public async Task WithMeta_MultipleToolInstancesWithDifferentMetadata()
     {
         // Arrange
         await using McpClient client = await CreateMcpClientForServer();
@@ -586,8 +586,8 @@ public class McpClientToolTests : ClientServerTestBase
         var metadata2 = new JsonObject { ["clientId"] = "client-2" };
 
         // Act - create two tool instances with different metadata
-        var tool1 = tool.WithMetadata(metadata1);
-        var tool2 = tool.WithMetadata(metadata2);
+        var tool1 = tool.WithMeta(metadata1);
+        var tool2 = tool.WithMeta(metadata2);
 
         var result1 = await tool1.CallAsync(cancellationToken: TestContext.Current.CancellationToken);
         var result2 = await tool2.CallAsync(cancellationToken: TestContext.Current.CancellationToken);
