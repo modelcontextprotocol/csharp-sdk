@@ -5,7 +5,7 @@ using ModelContextProtocol.Authentication;
 namespace ModelContextProtocol.AspNetCore.Authentication;
 
 /// <summary>
-/// Context for resource metadata request events.
+/// Represents the context for resource metadata request events.
 /// </summary>
 public class ResourceMetadataRequestContext : HandleRequestContext<McpAuthenticationOptions>
 {

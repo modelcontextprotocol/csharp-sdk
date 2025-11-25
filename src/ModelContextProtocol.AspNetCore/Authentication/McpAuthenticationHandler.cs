@@ -8,7 +8,7 @@ using System.Text.Encodings.Web;
 namespace ModelContextProtocol.AspNetCore.Authentication;
 
 /// <summary>
-/// Authentication handler for MCP protocol that adds resource metadata to challenge responses
+/// Represents an authentication handler for MCP protocol that adds resource metadata to challenge responses
 /// and handles resource metadata endpoint requests.
 /// </summary>
 public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationOptions>, IAuthenticationRequestHandler
