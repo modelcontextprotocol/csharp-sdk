@@ -186,10 +186,10 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                                 {
                                     Code = (int)mcpProtocolException.ErrorCode,
                                     Message = mcpProtocolException.Message,
+                                    Data = ConvertExceptionData(mcpProtocolException.Data),
                                 } : ex is McpException mcpException ?
                                 new()
                                 {
-
                                     Code = (int)McpErrorCode.InternalError,
                                     Message = mcpException.Message,
                                 } :
@@ -767,6 +767,29 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Converts the Exception.Data dictionary to a serializable Dictionary&lt;string, object?&gt;.
+    /// Returns null if the data dictionary is empty.
+    /// </summary>
+    private static Dictionary<string, object?>? ConvertExceptionData(System.Collections.IDictionary data)
+    {
+        if (data.Count == 0)
+        {
+            return null;
+        }
+
+        var result = new Dictionary<string, object?>(data.Count);
+        foreach (System.Collections.DictionaryEntry entry in data)
+        {
+            if (entry.Key is string key)
+            {
+                result[key] = entry.Value;
+            }
+        }
+
+        return result.Count > 0 ? result : null;
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} message processing canceled.")]
