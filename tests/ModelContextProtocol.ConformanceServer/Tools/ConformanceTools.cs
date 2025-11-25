@@ -3,6 +3,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ConformanceServer.Tools;
 
@@ -90,7 +91,7 @@ public class ConformanceTools
                 {
                     Uri = "test://mixed-content-resource",
                     MimeType = "application/json",
-                    Text = JsonSerializer.Serialize(new { test = "data", value = 123 })
+                    Text = "{ \"test\" = \"data\", \"value\" = 123 }"
                 }
             }
         ];

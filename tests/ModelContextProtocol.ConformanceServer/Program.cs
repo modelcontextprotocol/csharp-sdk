@@ -4,6 +4,9 @@ using ConformanceServer.Tools;
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol;
 using System.Collections.Concurrent;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.ConformanceServer;
 
@@ -89,11 +92,11 @@ public class Program
 
                 // The SDK updates the LoggingLevel field of the McpServer
                 // Send a log notification to confirm the level was set
-                await ctx.Server.SendNotificationAsync("notifications/message", new
+                await ctx.Server.SendNotificationAsync("notifications/message", new LoggingMessageNotificationParams
                 {
-                    Level = "info",
+                    Level = LoggingLevel.Info,
                     Logger = "conformance-test-server",
-                    Data = $"Log level set to: {ctx.Params.Level}",
+                    Data = JsonElement.Parse($"\"Log level set to: {ctx.Params.Level}\""),
                 }, cancellationToken: ct);
 
                 return new EmptyResult();

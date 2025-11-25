@@ -9,7 +9,7 @@ namespace ModelContextProtocol.ConformanceTests;
 /// This test starts the ConformanceServer, runs the Node.js-based conformance test suite,
 /// and reports the results.
 /// </summary>
-public class ConformanceTests : IAsyncLifetime
+public class ServerConformanceTests : IAsyncLifetime
 {
     // Use different ports for each target framework to allow parallel execution
     // net10.0 -> 3001, net9.0 -> 3002, net8.0 -> 3003
@@ -33,7 +33,7 @@ public class ConformanceTests : IAsyncLifetime
     private Task? _serverTask;
     private CancellationTokenSource? _serverCts;
 
-    public ConformanceTests(ITestOutputHelper output)
+    public ServerConformanceTests(ITestOutputHelper output)
     {
         _output = output;
         _serverUrl = $"http://localhost:{_serverPort}";

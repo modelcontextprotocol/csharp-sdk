@@ -2,6 +2,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ConformanceServer.Resources;
 
@@ -44,18 +45,13 @@ public class ConformanceResources
     [Description("A resource template with parameter substitution")]
     public static TextResourceContents TemplateResource(string id)
     {
-        var data = new
-        {
-            id = id,
-            templateTest = true,
-            data = $"Data for ID: {id}"
-        };
+        var data = new ResourceData(id, true, $"Data for ID: {id}");
 
         return new TextResourceContents
         {
             Uri = $"test://template/{id}/data",
             MimeType = "application/json",
-            Text = JsonSerializer.Serialize(data)
+            Text = JsonSerializer.Serialize(data, JsonContext.Default.ResourceData)
         };
     }
 
@@ -69,3 +65,8 @@ public class ConformanceResources
         return "Watched resource content";
     }
 }
+
+record ResourceData(string Id, bool TemplateTest, string Data);
+
+[JsonSerializable(typeof(ResourceData))]
+internal partial class JsonContext : JsonSerializerContext;
