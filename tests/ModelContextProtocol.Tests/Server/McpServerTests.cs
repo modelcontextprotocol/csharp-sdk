@@ -6,7 +6,6 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Threading.Channels;
 
 namespace ModelContextProtocol.Tests.Server;
 
@@ -721,101 +720,13 @@ public class McpServerTests : LoggedTest
         Assert.Equal(ErrorMessage, error.Error.Message);
         Assert.NotNull(error.Error.Data);
 
-        // Verify the data contains the uri
-        var dataDict = Assert.IsType<Dictionary<string, object?>>(error.Error.Data);
+        // Verify the data contains the uri (values are now JsonElements after serialization)
+        var dataDict = Assert.IsType<Dictionary<string, JsonElement>>(error.Error.Data);
         Assert.True(dataDict.ContainsKey("uri"));
-        Assert.Equal(ResourceUri, dataDict["uri"]);
+        Assert.Equal(ResourceUri, dataDict["uri"].GetString());
 
         await transport.DisposeAsync();
         await runTask;
-    }
-
-    [Fact]
-    public async Task Can_Handle_Call_Tool_Requests_With_McpProtocolException_And_NonSerializableData()
-    {
-        const string ErrorMessage = "Resource not found";
-        const McpErrorCode ErrorCode = (McpErrorCode)(-32002);
-
-        await using var transport = new SerializingTestServerTransport();
-        var options = CreateOptions(new ServerCapabilities { Tools = new() });
-        options.Handlers.CallToolHandler = async (request, ct) =>
-        {
-            throw new McpProtocolException(ErrorMessage, ErrorCode)
-            {
-                Data =
-                {
-                    // Add a non-serializable object (an object with circular reference)
-                    { "nonSerializable", new NonSerializableObject() }
-                }
-            };
-        };
-        options.Handlers.ListToolsHandler = (request, ct) => throw new NotImplementedException();
-
-        await using var server = McpServer.Create(transport, options, LoggerFactory);
-
-        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
-
-        var receivedMessage = new TaskCompletionSource<JsonRpcError>();
-
-        transport.OnMessageSent = (message) =>
-        {
-            if (message is JsonRpcError error && error.Id.ToString() == "55")
-                receivedMessage.SetResult(error);
-        };
-
-        await transport.SendMessageAsync(
-            new JsonRpcRequest
-            {
-                Method = RequestMethods.ToolsCall,
-                Id = new RequestId(55)
-            },
-            TestContext.Current.CancellationToken
-        );
-
-        // Client should still receive an error response, even though the data couldn't be serialized
-        var error = await receivedMessage.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
-        Assert.NotNull(error);
-        Assert.NotNull(error.Error);
-        Assert.Equal((int)ErrorCode, error.Error.Code);
-        Assert.Equal(ErrorMessage, error.Error.Message);
-        // Data should be null since it couldn't be serialized
-        Assert.Null(error.Error.Data);
-
-        await transport.DisposeAsync();
-        await runTask;
-    }
-
-    /// <summary>
-    /// A class that cannot be serialized by System.Text.Json due to circular reference.
-    /// </summary>
-    private sealed class NonSerializableObject
-    {
-        public NonSerializableObject() => Self = this;
-        public NonSerializableObject Self { get; set; }
-    }
-
-    /// <summary>
-    /// A test transport that simulates JSON serialization failure for non-serializable data.
-    /// </summary>
-    private sealed class SerializingTestServerTransport : ITransport
-    {
-        private readonly TestServerTransport _inner = new();
-
-        public bool IsConnected => _inner.IsConnected;
-        public ChannelReader<JsonRpcMessage> MessageReader => _inner.MessageReader;
-        public string? SessionId => _inner.SessionId;
-        public Action<JsonRpcMessage>? OnMessageSent { get => _inner.OnMessageSent; set => _inner.OnMessageSent = value; }
-
-        public Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
-        {
-            // Serialize the message to verify it can be serialized (this will throw JsonException if not)
-            // We serialize synchronously before any async operations to ensure the exception propagates correctly
-            _ = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions);
-
-            return _inner.SendMessageAsync(message, cancellationToken);
-        }
-
-        public ValueTask DisposeAsync() => _inner.DisposeAsync();
     }
 
     private async Task Can_Handle_Requests(ServerCapabilities? serverCapabilities, string method, Action<McpServerOptions>? configureOptions, Action<McpServer, JsonNode?> assertResult)

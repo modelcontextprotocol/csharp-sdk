@@ -207,17 +207,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                                 Context = new JsonRpcMessageContext { RelatedTransport = request.Context?.RelatedTransport },
                             };
 
-                            try
-                            {
-                                await SendMessageAsync(errorMessage, cancellationToken).ConfigureAwait(false);
-                            }
-                            catch (Exception sendException) when (sendException is JsonException or NotSupportedException && detail.Data is not null)
-                            {
-                                // If serialization fails (e.g., non-serializable data in Exception.Data),
-                                // retry without the data to ensure the client receives an error response.
-                                detail.Data = null;
-                                await SendMessageAsync(errorMessage, cancellationToken).ConfigureAwait(false);
-                            }
+                            await SendMessageAsync(errorMessage, cancellationToken).ConfigureAwait(false);
                         }
                         else if (ex is not OperationCanceledException)
                         {
@@ -782,28 +772,50 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
     /// <summary>
     /// Converts the <see cref="Exception.Data"/> dictionary to a serializable <see cref="Dictionary{TKey, TValue}"/>.
-    /// Returns null if the data dictionary is empty or contains no string keys.
+    /// Returns null if the data dictionary is empty or contains no string keys with serializable values.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Only entries with string keys are included in the result. Entries with non-string keys are ignored.
+    /// </para>
+    /// <para>
+    /// Each value is serialized to a <see cref="JsonElement"/> to ensure it can be safely included in the
+    /// JSON-RPC error response. Values that cannot be serialized are silently skipped.
+    /// </para>
     /// </remarks>
-    private static Dictionary<string, object?>? ConvertExceptionData(System.Collections.IDictionary data)
+    private static Dictionary<string, JsonElement>? ConvertExceptionData(System.Collections.IDictionary data)
     {
         if (data.Count == 0)
         {
             return null;
         }
 
-        var result = new Dictionary<string, object?>(data.Count);
+        var typeInfo = McpJsonUtilities.DefaultOptions.GetTypeInfo<object?>();
+
+        Dictionary<string, JsonElement>? result = null;
         foreach (System.Collections.DictionaryEntry entry in data)
         {
             if (entry.Key is string key)
             {
-                result[key] = entry.Value;
+                try
+                {
+                    // Serialize each value upfront to catch any serialization issues
+                    // before attempting to send the message. If the value is already a
+                    // JsonElement, use it directly.
+                    var element = entry.Value is JsonElement je
+                        ? je
+                        : JsonSerializer.SerializeToElement(entry.Value, typeInfo);
+                    result ??= new(data.Count);
+                    result[key] = element;
+                }
+                catch (Exception ex) when (ex is JsonException or NotSupportedException)
+                {
+                    // Skip non-serializable values silently
+                }
             }
         }
 
-        return result.Count > 0 ? result : null;
+        return result?.Count > 0 ? result : null;
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} message processing canceled.")]
