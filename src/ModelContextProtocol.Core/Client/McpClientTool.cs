@@ -299,7 +299,7 @@ public sealed class McpClientTool : AIFunction
     /// This can be useful for tracing, logging, or passing context information to the server.
     /// </para>
     /// <para>
-    /// Only one metadata object can be specified at a time. Calling <see cref="WithMetadata"/> again
+    /// Only one metadata object can be specified at a time. Calling <see cref="WithMeta"/> again
     /// will overwrite any previously specified metadata.
     /// </para>
     /// <para>
@@ -308,7 +308,7 @@ public sealed class McpClientTool : AIFunction
     /// </para>
     /// </remarks>
     /// <returns>A new instance of <see cref="McpClientTool"/>, configured with the provided metadata.</returns>
-    public McpClientTool WithMetadata(JsonObject metadata)
+    public McpClientTool WithMeta(JsonObject metadata)
     {
         Throw.IfNull(metadata);
 
