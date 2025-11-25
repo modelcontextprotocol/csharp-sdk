@@ -184,7 +184,7 @@ public abstract class McpServerTool : IMcpServerPrimitive
 
     /// <summary>
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via an <see cref="MethodInfo"/> for
-    /// and instance method, along with a <see cref="Type"/> representing the type of the target object to
+    /// an instance method, along with a <see cref="Type"/> representing the type of the target object to
     /// instantiate each time the method is invoked.
     /// </summary>
     /// <param name="method">The instance method to be represented via the created <see cref="AIFunction"/>.</param>

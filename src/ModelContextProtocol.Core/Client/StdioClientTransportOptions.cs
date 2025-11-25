@@ -43,7 +43,7 @@ public sealed class StdioClientTransportOptions
     /// <remarks>
     /// <para>
     /// This property allows you to specify environment variables that will be set in the server process's
-    /// environment. This is useful for passing configuration, authentication information, or runtime flags
+    /// environment. Setting these variables is useful for passing configuration, authentication information, or runtime flags
     /// to the server without modifying its code.
     /// </para>
     /// <para>
@@ -58,14 +58,14 @@ public sealed class StdioClientTransportOptions
     /// <summary>
     /// Gets or sets the timeout to wait for the server to shut down gracefully.
     /// </summary>
+    /// <value>
+    /// The amount of time to wait for the server to shut down gracefully. The default is 5 seconds.
+    /// </value>
     /// <remarks>
     /// <para>
     /// This property dictates how long the client should wait for the server process to exit cleanly during shutdown
-    /// before forcibly terminating it. This balances between giving the server enough time to clean up 
+    /// before forcibly terminating it. This balances giving the server enough time to clean up
     /// resources and not hanging indefinitely if a server process becomes unresponsive.
-    /// </para>
-    /// <para>
-    /// The default is five seconds.
     /// </para>
     /// </remarks>
     public TimeSpan ShutdownTimeout { get; set; } = TimeSpan.FromSeconds(5);

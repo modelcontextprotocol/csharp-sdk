@@ -51,9 +51,9 @@ internal sealed partial class ClientOAuthProvider
     /// </summary>
     /// <param name="serverUrl">The MCP server URL.</param>
     /// <param name="options">The OAuth provider configuration options.</param>
-    /// <param name="httpClient">The HTTP client to use for OAuth requests. If null, a default HttpClient will be used.</param>
+    /// <param name="httpClient">The HTTP client to use for OAuth requests. If null, a default HttpClient is used.</param>
     /// <param name="loggerFactory">A logger factory to handle diagnostic messages.</param>
-    /// <exception cref="ArgumentNullException">Thrown when serverUrl or options are null.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="serverUrl"/> or <paramref name="options"/> is null.</exception>
     public ClientOAuthProvider(
         Uri serverUrl,
         ClientOAuthOptions options,
@@ -133,7 +133,7 @@ internal sealed partial class ClientOAuthProvider
     /// <param name="scheme">The authentication scheme to use.</param>
     /// <param name="resourceUri">The URI of the resource requiring authentication.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>An authentication token string or null if no token could be obtained for the specified scheme.</returns>
+    /// <returns>An authentication token string, or null if no token could be obtained for the specified scheme.</returns>
     public async Task<string?> GetCredentialAsync(string scheme, Uri resourceUri, CancellationToken cancellationToken = default)
     {
         ThrowIfNotBearerScheme(scheme);
@@ -187,8 +187,8 @@ internal sealed partial class ClientOAuthProvider
     /// Performs OAuth authorization by selecting an appropriate authorization server and completing the OAuth flow.
     /// </summary>
     /// <param name="response">The 401 Unauthorized response containing authentication challenge.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Result indicating whether authorization was successful.</returns>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A result object indicating whether authorization was successful.</returns>
     private async Task PerformOAuthAuthorizationAsync(
         HttpResponseMessage response,
         CancellationToken cancellationToken)

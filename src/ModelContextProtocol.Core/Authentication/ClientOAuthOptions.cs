@@ -19,7 +19,7 @@ public sealed class ClientOAuthOptions
     /// Gets or sets the OAuth client secret.
     /// </summary>
     /// <remarks>
-    /// This is optional for public clients or when using PKCE without client authentication.
+    /// This secret is optional for public clients or when using PKCE without client authentication.
     /// </remarks>
     public string? ClientSecret { get; set; }
 
@@ -32,7 +32,7 @@ public sealed class ClientOAuthOptions
     /// If not specified, the provider will use the scopes from the protected resource metadata.
     /// </para>
     /// <para>
-    /// Common OAuth scopes include "openid", "profile", "email", etc.
+    /// Common OAuth scopes include "openid", "profile", and "email".
     /// </para>
     /// </remarks>
     public IEnumerable<string>? Scopes { get; set; }
@@ -71,7 +71,7 @@ public sealed class ClientOAuthOptions
     /// Gets or sets the options to use during dynamic client registration.
     /// </summary>
     /// <remarks>
-    /// Only used when a <see cref="ClientId"/> is not specified.
+    /// This value is only used when no <see cref="ClientId"/> is specified.
     /// </remarks>
     public DynamicClientRegistrationOptions? DynamicClientRegistration { get; set; }
 
@@ -81,7 +81,7 @@ public sealed class ClientOAuthOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Parameters specified cannot override or append to any automatically set parameters like the "redirect_uri"
+    /// Parameters specified cannot override or append to any automatically set parameters like the "redirect_uri",
     /// which should instead be configured via <see cref="RedirectUri"/>.
     /// </para>
     /// </remarks>

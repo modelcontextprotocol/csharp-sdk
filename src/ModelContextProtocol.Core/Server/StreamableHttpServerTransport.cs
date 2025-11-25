@@ -41,21 +41,21 @@ public sealed class StreamableHttpServerTransport : ITransport
     public string? SessionId { get; set; }
 
     /// <summary>
-    /// Configures whether the transport should be in stateless mode that does not require all requests for a given session
+    /// Gets or initializes a value that indicates whether the transport should be in stateless mode that does not require all requests for a given session
     /// to arrive to the same ASP.NET Core application process. Unsolicited server-to-client messages are not supported in this mode,
     /// so calling <see cref="HandleGetRequestAsync(Stream, CancellationToken)"/> results in an <see cref="InvalidOperationException"/>.
-    /// Server-to-client requests are also unsupported, because the responses may arrive at another ASP.NET Core application process.
+    /// Server-to-client requests are also unsupported, because the responses might arrive at another ASP.NET Core application process.
     /// Client sampling and roots capabilities are also disabled in stateless mode, because the server cannot make requests.
     /// </summary>
     public bool Stateless { get; init; }
 
     /// <summary>
-    /// Gets a value indicating whether the execution context should flow from the calls to <see cref="HandlePostRequestAsync(JsonRpcMessage, Stream, CancellationToken)"/>
+    /// Gets or initializes a value indicating whether the execution context should flow from the calls to <see cref="HandlePostRequestAsync(JsonRpcMessage, Stream, CancellationToken)"/>
     /// to the corresponding <see cref="JsonRpcMessageContext.ExecutionContext"/> property contained in the <see cref="JsonRpcMessage"/> instances returned by the <see cref="MessageReader"/>.
     /// </summary>
-    /// <remarks>
-    /// Defaults to <see langword="false"/>.
-    /// </remarks>
+    /// <value>
+    /// The default is <see langword="false"/>.
+    /// </value>
     public bool FlowExecutionContextFromRequests { get; init; }
 
     /// <summary>
@@ -103,14 +103,14 @@ public sealed class StreamableHttpServerTransport : ITransport
     /// <param name="cancellationToken">This token allows for the operation to be canceled if needed. The default is <see cref="CancellationToken.None"/>.</param>
     /// <param name="responseStream">The POST response body to write MCP JSON-RPC messages to.</param>
     /// <returns>
-    /// True, if data was written to the response body.
-    /// False, if nothing was written because the request body did not contain any <see cref="JsonRpcRequest"/> messages to respond to.
+    /// <see langword="true"/> if data was written to the response body.
+    /// <see false="false"/> if nothing was written because the request body did not contain any <see cref="JsonRpcRequest"/> messages to respond to.
     /// The HTTP application should typically respond with an empty "202 Accepted" response in this scenario.
     /// </returns>
-    /// <para>
-    /// If 's an authenticated <see cref="ClaimsPrincipal"/> sent the message, that can be included in the <see cref="JsonRpcMessage.Context"/>.
+    /// <remarks>
+    /// If an authenticated <see cref="ClaimsPrincipal"/> sent the message, that can be included in the <see cref="JsonRpcMessage.Context"/>.
     /// No other part of the context should be set.
-    /// </para>
+    /// </remarks>
     public async Task<bool> HandlePostRequestAsync(JsonRpcMessage message, Stream responseStream, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(message);

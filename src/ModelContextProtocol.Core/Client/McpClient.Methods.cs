@@ -17,14 +17,13 @@ public abstract partial class McpClient : McpSession, IMcpClient
     /// <summary>Creates an <see cref="McpClient"/>, connecting it to the specified server.</summary>
     /// <param name="clientTransport">The transport instance used to communicate with the server.</param>
     /// <param name="clientOptions">
-    /// A client configuration object which specifies client capabilities and protocol version.
-    /// If <see langword="null"/>, details based on the current process will be employed.
+    /// A client configuration object that specifies client capabilities and protocol version.
+    /// If <see langword="null"/>, details based on the current process are used.
     /// </param>
     /// <param name="loggerFactory">A logger factory for creating loggers for clients.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>An <see cref="McpClient"/> that's connected to the specified server.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="clientTransport"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentNullException"><paramref name="clientOptions"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="clientTransport"/> or <paramref name="clientOptions"/> is <see langword="null"/>.</exception>
     public static async Task<McpClient> CreateAsync(
         IClientTransport clientTransport,
         McpClientOptions? clientOptions = null,
@@ -55,7 +54,7 @@ public abstract partial class McpClient : McpSession, IMcpClient
     /// </summary>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that completes when the ping is successful.</returns>
-    /// <exception cref="McpException">Thrown when the server cannot be reached or returns an error response.</exception>
+    /// <exception cref="McpException">The server cannot be reached or returned an error response.</exception>
     public Task PingAsync(CancellationToken cancellationToken = default)
     {
         var opts = McpJsonUtilities.DefaultOptions;
@@ -70,7 +69,7 @@ public abstract partial class McpClient : McpSession, IMcpClient
     /// <summary>
     /// Retrieves a list of available tools from the server.
     /// </summary>
-    /// <param name="serializerOptions">The serializer options governing tool parameter serialization. If null, the default options will be used.</param>
+    /// <param name="serializerOptions">The serializer options governing tool parameter serialization. If null, the default options are used.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A list of all available tools as <see cref="McpClientTool"/> instances.</returns>
     public async ValueTask<IList<McpClientTool>> ListToolsAsync(
@@ -107,7 +106,7 @@ public abstract partial class McpClient : McpSession, IMcpClient
     /// <summary>
     /// Creates an enumerable for asynchronously enumerating all available tools from the server.
     /// </summary>
-    /// <param name="serializerOptions">The serializer options governing tool parameter serialization. If null, the default options will be used.</param>
+    /// <param name="serializerOptions">The serializer options governing tool parameter serialization. If null, the default options are used.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>An asynchronous sequence of all available tools as <see cref="McpClientTool"/> instances.</returns>
     public async IAsyncEnumerable<McpClientTool> EnumerateToolsAsync(
@@ -201,7 +200,7 @@ public abstract partial class McpClient : McpSession, IMcpClient
     /// Retrieves a specific prompt from the MCP server.
     /// </summary>
     /// <param name="name">The name of the prompt to retrieve.</param>
-    /// <param name="arguments">Optional arguments for the prompt. Keys are parameter names, and values are the argument values.</param>
+    /// <param name="arguments">Optional arguments for the prompt. The dictionary keys are parameter names, and the values are the argument values.</param>
     /// <param name="serializerOptions">The serialization options governing argument serialization.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task containing the prompt's result with content and messages.</returns>
@@ -349,7 +348,7 @@ public abstract partial class McpClient : McpSession, IMcpClient
     /// <summary>
     /// Reads a resource from the server.
     /// </summary>
-    /// <param name="uri">The uri of the resource.</param>
+    /// <param name="uri">The URI of the resource.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     public ValueTask<ReadResourceResult> ReadResourceAsync(
         string uri, CancellationToken cancellationToken = default)
@@ -367,7 +366,7 @@ public abstract partial class McpClient : McpSession, IMcpClient
     /// <summary>
     /// Reads a resource from the server.
     /// </summary>
-    /// <param name="uri">The uri of the resource.</param>
+    /// <param name="uri">The URI of the resource.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     public ValueTask<ReadResourceResult> ReadResourceAsync(
         Uri uri, CancellationToken cancellationToken = default)
@@ -380,7 +379,7 @@ public abstract partial class McpClient : McpSession, IMcpClient
     /// <summary>
     /// Reads a resource from the server.
     /// </summary>
-    /// <param name="uriTemplate">The uri template of the resource.</param>
+    /// <param name="uriTemplate">The URI template of the resource.</param>
     /// <param name="arguments">Arguments to use to format <paramref name="uriTemplate"/>.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     public ValueTask<ReadResourceResult> ReadResourceAsync(
@@ -487,10 +486,10 @@ public abstract partial class McpClient : McpSession, IMcpClient
     /// <summary>
     /// Invokes a tool on the server.
     /// </summary>
-    /// <param name="toolName">The name of the tool to call on the server..</param>
+    /// <param name="toolName">The name of the tool to call on the server.</param>
     /// <param name="arguments">An optional dictionary of arguments to pass to the tool.</param>
-    /// <param name="progress">Optional progress reporter for server notifications.</param>
-    /// <param name="serializerOptions">JSON serializer options.</param>
+    /// <param name="progress">An optional progress reporter for server notifications.</param>
+    /// <param name="serializerOptions">The JSON serializer options.</param>
     /// <param name="cancellationToken">A cancellation token.</param>
     /// <returns>The <see cref="CallToolResult"/> from the tool execution.</returns>
     public ValueTask<CallToolResult> CallToolAsync(
@@ -580,7 +579,7 @@ public abstract partial class McpClient : McpSession, IMcpClient
     public Task SetLoggingLevel(LogLevel level, CancellationToken cancellationToken = default) =>
         SetLoggingLevel(McpServerImpl.ToLoggingLevel(level), cancellationToken);
 
-    /// <summary>Convers a dictionary with <see cref="object"/> values to a dictionary with <see cref="JsonElement"/> values.</summary>
+    /// <summary>Converts a dictionary with <see cref="object"/> values to a dictionary with <see cref="JsonElement"/> values.</summary>
     private static Dictionary<string, JsonElement>? ToArgumentsDictionary(
         IReadOnlyDictionary<string, object?>? arguments, JsonSerializerOptions options)
     {
