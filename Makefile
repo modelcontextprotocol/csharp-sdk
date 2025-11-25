@@ -18,15 +18,17 @@ build: restore
 test: build
 	dotnet test \
 		--no-build \
-		--no-progress \
 		--configuration $(CONFIGURATION) \
-		--filter-not-trait 'Execution=Manual' \
-		--crashdump \
-		--hangdump \
-		--hangdump-timeout 7m \
-		--coverage \
-		--coverage-output-format cobertura \
-		-p:_MTPResultsDirectory=$(ARTIFACT_PATH)/testresults \
+		--filter '(Execution!=Manual)' \
+		--blame \
+		--blame-crash \
+		--blame-hang-timeout 7m \
+		--diag "$(ARTIFACT_PATH)/diag.txt" \
+		--logger "trx" \
+		--collect "XPlat Code Coverage" \
+		--results-directory $(ARTIFACT_PATH)/testresults \
+		-- \
+		RunConfiguration.CollectSourceInformation=true
 
 pack: restore
 	dotnet pack --no-restore --configuration $(CONFIGURATION)

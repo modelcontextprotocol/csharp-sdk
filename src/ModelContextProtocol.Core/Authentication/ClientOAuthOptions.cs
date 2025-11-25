@@ -97,4 +97,10 @@ public sealed class ClientOAuthOptions
     /// </para>
     /// </remarks>
     public IDictionary<string, string> AdditionalAuthorizationParameters { get; set; } = new Dictionary<string, string>();
+
+    /// <summary>
+    /// Gets or sets the token cache to use for storing and retrieving tokens beyond the lifetime of the transport.
+    /// If none is provided, tokens will be cached with the transport.
+    /// </summary>
+    public ITokenCache? TokenCache { get; set; }
 }

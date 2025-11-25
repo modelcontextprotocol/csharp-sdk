@@ -13,9 +13,7 @@ using System.Web;
 namespace ModelContextProtocol.Authentication;
 
 /// <summary>
-/// A generic implementation of an OAuth authorization provider for MCP. This does not do any advanced token
-/// protection or caching - it acquires a token and server metadata and holds it in memory.
-/// This is suitable for demonstration and development purposes.
+/// A generic implementation of an OAuth authorization provider.
 /// </summary>
 internal sealed partial class ClientOAuthProvider
 {
@@ -23,6 +21,8 @@ internal sealed partial class ClientOAuthProvider
     /// The Bearer authentication scheme.
     /// </summary>
     private const string BearerScheme = "Bearer";
+
+    private static readonly string[] s_wellKnownPaths = [".well-known/openid-configuration", ".well-known/oauth-authorization-server"];
 
     private readonly Uri _serverUrl;
     private readonly Uri _redirectUri;
@@ -44,7 +44,7 @@ internal sealed partial class ClientOAuthProvider
     private string? _clientId;
     private string? _clientSecret;
 
-    private TokenContainer? _token;
+    private ITokenCache _tokenCache;
     private AuthorizationServerMetadata? _authServerMetadata;
 
     /// <summary>
@@ -58,11 +58,11 @@ internal sealed partial class ClientOAuthProvider
     public ClientOAuthProvider(
         Uri serverUrl,
         ClientOAuthOptions options,
-        HttpClient? httpClient = null,
+        HttpClient httpClient,
         ILoggerFactory? loggerFactory = null)
     {
         _serverUrl = serverUrl ?? throw new ArgumentNullException(nameof(serverUrl));
-        _httpClient = httpClient ?? new HttpClient();
+        _httpClient = httpClient;
         _logger = (ILogger?)loggerFactory?.CreateLogger<ClientOAuthProvider>() ?? NullLogger.Instance;
 
         if (options is null)
@@ -87,6 +87,7 @@ internal sealed partial class ClientOAuthProvider
         _dcrClientUri = options.DynamicClientRegistration?.ClientUri;
         _dcrInitialAccessToken = options.DynamicClientRegistration?.InitialAccessToken;
         _dcrResponseDelegate = options.DynamicClientRegistration?.ResponseDelegate;
+        _tokenCache = options.TokenCache ?? new InMemoryTokenCache();
     }
 
     /// <summary>
@@ -140,20 +141,21 @@ internal sealed partial class ClientOAuthProvider
     {
         ThrowIfNotBearerScheme(scheme);
 
+        var tokens = await _tokenCache.GetTokensAsync(cancellationToken).ConfigureAwait(false);
+
         // Return the token if it's valid
-        if (_token != null && _token.ExpiresAt > DateTimeOffset.UtcNow.AddMinutes(5))
+        if (tokens is not null && !tokens.IsExpired)
         {
-            return _token.AccessToken;
+            return tokens.AccessToken;
         }
 
-        // Try to refresh the token if we have a refresh token
-        if (_token?.RefreshToken != null && _authServerMetadata != null)
+        // Try to refresh the access token if it is invalid and we have a refresh token.
+        if (tokens?.RefreshToken != null && _authServerMetadata != null)
         {
-            var newToken = await RefreshTokenAsync(_token.RefreshToken, resourceUri, _authServerMetadata, cancellationToken).ConfigureAwait(false);
-            if (newToken != null)
+            var newTokens = await RefreshTokenAsync(tokens.RefreshToken, resourceUri, _authServerMetadata, cancellationToken).ConfigureAwait(false);
+            if (newTokens is not null)
             {
-                _token = newToken;
-                return _token.AccessToken;
+                return newTokens.AccessToken;
             }
         }
 
@@ -176,12 +178,7 @@ internal sealed partial class ClientOAuthProvider
         HttpResponseMessage response,
         CancellationToken cancellationToken = default)
     {
-        // This provider only supports Bearer scheme
-        if (!string.Equals(scheme, BearerScheme, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException("This credential provider only supports the Bearer scheme");
-        }
-
+        ThrowIfNotBearerScheme(scheme);
         await PerformOAuthAuthorizationAsync(response, cancellationToken).ConfigureAwait(false);
     }
 
@@ -225,6 +222,18 @@ internal sealed partial class ClientOAuthProvider
         // Store auth server metadata for future refresh operations
         _authServerMetadata = authServerMetadata;
 
+        // The existing access token must be invalid to have resulted in a 401 response, but refresh might still work.
+        if (await _tokenCache.GetTokensAsync(cancellationToken).ConfigureAwait(false) is { RefreshToken: { } refreshToken })
+        {
+            var refreshedTokens = await RefreshTokenAsync(refreshToken, protectedResourceMetadata.Resource, authServerMetadata, cancellationToken).ConfigureAwait(false);
+            if (refreshedTokens is not null)
+            {
+                // A non-null result indicates the refresh succeeded and the new tokens have been stored.
+                return;
+            }
+        }
+
+        // Assign a client ID if necessary
         if (string.IsNullOrEmpty(_clientId))
         {
             // Try using a client metadata document before falling back to dynamic client registration
@@ -239,14 +248,8 @@ internal sealed partial class ClientOAuthProvider
         }
 
         // Perform the OAuth flow
-        var token = await InitiateAuthorizationCodeFlowAsync(protectedResourceMetadata, authServerMetadata, cancellationToken).ConfigureAwait(false);
+        await InitiateAuthorizationCodeFlowAsync(protectedResourceMetadata, authServerMetadata, cancellationToken).ConfigureAwait(false);
 
-        if (token is null)
-        {
-            ThrowFailedToHandleUnauthorizedResponse($"The {nameof(AuthorizationRedirectDelegate)} returned a null or empty token.");
-        }
-
-        _token = token;
         LogOAuthAuthorizationCompleted();
     }
 
@@ -266,8 +269,6 @@ internal sealed partial class ClientOAuthProvider
             && string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
             && uri.AbsolutePath.Length > 1; // AbsolutePath always starts with "/"
     }
-
-    private static readonly string[] s_wellKnownPaths = [".well-known/openid-configuration", ".well-known/oauth-authorization-server"];
 
     private async Task<AuthorizationServerMetadata> GetAuthServerMetadataAsync(Uri authServerUri, CancellationToken cancellationToken)
     {
@@ -324,7 +325,7 @@ internal sealed partial class ClientOAuthProvider
         throw new McpException($"Failed to find .well-known/openid-configuration or .well-known/oauth-authorization-server metadata for authorization server: '{authServerUri}'");
     }
 
-    private async Task<TokenContainer> RefreshTokenAsync(string refreshToken, Uri resourceUri, AuthorizationServerMetadata authServerMetadata, CancellationToken cancellationToken)
+    private async Task<TokenContainer?> RefreshTokenAsync(string refreshToken, Uri resourceUri, AuthorizationServerMetadata authServerMetadata, CancellationToken cancellationToken)
     {
         var requestContent = new FormUrlEncodedContent(new Dictionary<string, string>
         {
@@ -340,10 +341,17 @@ internal sealed partial class ClientOAuthProvider
             Content = requestContent
         };
 
-        return await FetchTokenAsync(request, cancellationToken).ConfigureAwait(false);
+        using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+
+        if (!httpResponse.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        return await HandleSuccessfulTokenResponseAsync(httpResponse, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<TokenContainer?> InitiateAuthorizationCodeFlowAsync(
+    private async Task InitiateAuthorizationCodeFlowAsync(
         ProtectedResourceMetadata protectedResourceMetadata,
         AuthorizationServerMetadata authServerMetadata,
         CancellationToken cancellationToken)
@@ -356,10 +364,10 @@ internal sealed partial class ClientOAuthProvider
 
         if (string.IsNullOrEmpty(authCode))
         {
-            return null;
+            ThrowFailedToHandleUnauthorizedResponse($"The {nameof(AuthorizationRedirectDelegate)} returned a null or empty authorization code.");
         }
 
-        return await ExchangeCodeForTokenAsync(protectedResourceMetadata, authServerMetadata, authCode!, codeVerifier, cancellationToken).ConfigureAwait(false);
+        await ExchangeCodeForTokenAsync(protectedResourceMetadata, authServerMetadata, authCode!, codeVerifier, cancellationToken).ConfigureAwait(false);
     }
 
     private Uri BuildAuthorizationUrl(
@@ -403,7 +411,7 @@ internal sealed partial class ClientOAuthProvider
         return uriBuilder.Uri;
     }
 
-    private async Task<TokenContainer> ExchangeCodeForTokenAsync(
+    private async Task ExchangeCodeForTokenAsync(
         ProtectedResourceMetadata protectedResourceMetadata,
         AuthorizationServerMetadata authServerMetadata,
         string authorizationCode,
@@ -426,24 +434,39 @@ internal sealed partial class ClientOAuthProvider
             Content = requestContent
         };
 
-        return await FetchTokenAsync(request, cancellationToken).ConfigureAwait(false);
-    }
-
-    private async Task<TokenContainer> FetchTokenAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-    {
         using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
         httpResponse.EnsureSuccessStatusCode();
+        await HandleSuccessfulTokenResponseAsync(httpResponse, cancellationToken).ConfigureAwait(false);
+    }
 
-        using var stream = await httpResponse.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        var tokenResponse = await JsonSerializer.DeserializeAsync(stream, McpJsonUtilities.JsonContext.Default.TokenContainer, cancellationToken).ConfigureAwait(false);
+    private async Task<TokenContainer> HandleSuccessfulTokenResponseAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        var tokenResponse = await JsonSerializer.DeserializeAsync(stream, McpJsonUtilities.JsonContext.Default.TokenResponse, cancellationToken).ConfigureAwait(false);
 
         if (tokenResponse is null)
         {
-            ThrowFailedToHandleUnauthorizedResponse($"The token endpoint '{request.RequestUri}' returned an empty response.");
+            ThrowFailedToHandleUnauthorizedResponse($"The token endpoint '{response.RequestMessage?.RequestUri}' returned an empty response.");
         }
 
-        tokenResponse.ObtainedAt = DateTimeOffset.UtcNow;
-        return tokenResponse;
+        if (tokenResponse.TokenType is null || !string.Equals(tokenResponse.TokenType, BearerScheme, StringComparison.OrdinalIgnoreCase))
+        {
+            ThrowFailedToHandleUnauthorizedResponse($"The token endpoint '{response.RequestMessage?.RequestUri}' returned an unsupported token type: '{tokenResponse.TokenType ?? "<null>"}'. Only 'Bearer' tokens are supported.");
+        }
+
+        TokenContainer tokens = new()
+        {
+            AccessToken = tokenResponse.AccessToken,
+            RefreshToken = tokenResponse.RefreshToken,
+            ExpiresIn = tokenResponse.ExpiresIn,
+            TokenType = tokenResponse.TokenType,
+            Scope = tokenResponse.Scope,
+            ObtainedAt = DateTimeOffset.UtcNow,
+        };
+
+        await _tokenCache.StoreTokensAsync(tokens, cancellationToken).ConfigureAwait(false);
+
+        return tokens;
     }
 
     /// <summary>
@@ -607,7 +630,7 @@ internal sealed partial class ClientOAuthProvider
         string? resourceMetadataUrl = null;
         foreach (var header in response.Headers.WwwAuthenticate)
         {
-            if (string.Equals(header.Scheme, "Bearer", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(header.Parameter))
+            if (string.Equals(header.Scheme, BearerScheme, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(header.Parameter))
             {
                 resourceMetadataUrl = ParseWwwAuthenticateParameters(header.Parameter, "resource_metadata");
                 if (resourceMetadataUrl != null)

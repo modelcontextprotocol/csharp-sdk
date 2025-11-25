@@ -1,110 +1,43 @@
-using System.Net;
-using System.Net.Http.Json;
-using System.Text.Json;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.IdentityModel.Tokens;
 using ModelContextProtocol.AspNetCore.Authentication;
-using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
+using System.Net;
+using System.Net.Http.Json;
 
-namespace ModelContextProtocol.AspNetCore.Tests;
+namespace ModelContextProtocol.AspNetCore.Tests.OAuth;
 
 /// <summary>
 /// Tests for MCP authentication when resource metadata is provided via events rather than static configuration.
 /// </summary>
-public class AuthEventTests : KestrelInMemoryTest, IAsyncDisposable
+public class AuthEventTests : OAuthTestBase
 {
-    private const string McpServerUrl = "http://localhost:5000";
-    private const string OAuthServerUrl = "https://localhost:7029";
-
-    private readonly CancellationTokenSource _testCts = new();
-    private readonly TestOAuthServer.Program _testOAuthServer;
-    private readonly Task _testOAuthRunTask;
-
     public AuthEventTests(ITestOutputHelper outputHelper)
-        : base(outputHelper)
+        : base(outputHelper, configureMcpMetadata: false)
     {
-        // Let the HandleAuthorizationUrlAsync take a look at the Location header
-        SocketsHttpHandler.AllowAutoRedirect = false;
-        // The dev cert may not be installed on the CI, but AddJwtBearer requires an HTTPS backchannel by default.
-        // The easiest workaround is to disable cert validation for testing purposes.
-        SocketsHttpHandler.SslOptions.RemoteCertificateValidationCallback = (_, _, _, _) => true;
-
-        _testOAuthServer = new TestOAuthServer.Program(
-            XunitLoggerProvider,
-            KestrelInMemoryTransport
-        );
-        _testOAuthRunTask = _testOAuthServer.RunServerAsync(cancellationToken: _testCts.Token);
-
-        Builder
-            .Services.AddAuthentication(options =>
-            {
-                options.DefaultChallengeScheme = McpAuthenticationDefaults.AuthenticationScheme;
-                options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-            })
-            .AddJwtBearer(options =>
-            {
-                options.Backchannel = HttpClient;
-                options.Authority = OAuthServerUrl;
-                options.TokenValidationParameters = new TokenValidationParameters
-                {
-                    ValidateIssuer = true,
-                    ValidateAudience = true,
-                    ValidateLifetime = true,
-                    ValidateIssuerSigningKey = true,
-                    ValidAudience = McpServerUrl,
-                    ValidIssuer = OAuthServerUrl,
-                    NameClaimType = "name",
-                    RoleClaimType = "roles",
-                };
-            })
-            .AddMcp(options =>
-            {
-                // Note: ResourceMetadata is NOT set here - it will be provided via events
-                options.Events.OnResourceMetadataRequest = async context =>
-                {
-                    // Dynamically provide the resource metadata
-                    context.ResourceMetadata = new ProtectedResourceMetadata
-                    {
-                        Resource = new Uri(McpServerUrl),
-                        AuthorizationServers = { new Uri(OAuthServerUrl) },
-                        ScopesSupported = ["mcp:tools"],
-                    };
-                    await Task.CompletedTask;
-                };
-            });
-
-        Builder.Services.AddAuthorization();
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        _testCts.Cancel();
-        try
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
         {
-            await _testOAuthRunTask;
-        }
-        catch (OperationCanceledException) { }
-        finally
-        {
-            _testCts.Dispose();
-        }
+            // Note: ResourceMetadata is NOT set here - it will be provided via events
+            options.ResourceMetadata = null;
+
+            options.Events.OnResourceMetadataRequest = async context =>
+            {
+                // Dynamically provide the resource metadata
+                context.ResourceMetadata = new ProtectedResourceMetadata
+                {
+                    Resource = new Uri(McpServerUrl),
+                    AuthorizationServers = { new Uri(OAuthServerUrl) },
+                    ScopesSupported = ["mcp:tools"],
+                };
+                await Task.CompletedTask;
+            };
+        });
     }
 
     [Fact]
     public async Task CanAuthenticate_WithResourceMetadataFromEvent()
     {
-        Builder.Services.AddMcpServer().WithHttpTransport();
-
-        await using var app = Builder.Build();
-
-        app.MapMcp().RequireAuthorization();
-
-        await app.StartAsync(TestContext.Current.CancellationToken);
+        await using var app = await StartMcpServerAsync();
 
         await using var transport = new HttpClientTransport(
             new()
@@ -132,13 +65,7 @@ public class AuthEventTests : KestrelInMemoryTest, IAsyncDisposable
     [Fact]
     public async Task CanAuthenticate_WithDynamicClientRegistration_FromEvent()
     {
-        Builder.Services.AddMcpServer().WithHttpTransport();
-
-        await using var app = Builder.Build();
-
-        app.MapMcp().RequireAuthorization();
-
-        await app.StartAsync(TestContext.Current.CancellationToken);
+        await using var app = await StartMcpServerAsync();
 
         DynamicClientRegistrationResponse? dcrResponse = null;
 
@@ -181,13 +108,7 @@ public class AuthEventTests : KestrelInMemoryTest, IAsyncDisposable
     [Fact]
     public async Task ResourceMetadataEndpoint_ReturnsCorrectMetadata_FromEvent()
     {
-        Builder.Services.AddMcpServer().WithHttpTransport();
-
-        await using var app = Builder.Build();
-
-        app.MapMcp().RequireAuthorization();
-
-        await app.StartAsync(TestContext.Current.CancellationToken);
+        await using var app = await StartMcpServerAsync();
 
         // Make a direct request to the resource metadata endpoint
         using var response = await HttpClient.GetAsync(
@@ -211,8 +132,6 @@ public class AuthEventTests : KestrelInMemoryTest, IAsyncDisposable
     [Fact]
     public async Task ResourceMetadataEndpoint_CanModifyExistingMetadata_InEvent()
     {
-        Builder.Services.AddMcpServer().WithHttpTransport();
-
         // Override the configuration to test modification of existing metadata
         Builder.Services.Configure<McpAuthenticationOptions>(
             McpAuthenticationDefaults.AuthenticationScheme,
@@ -240,11 +159,7 @@ public class AuthEventTests : KestrelInMemoryTest, IAsyncDisposable
             }
         );
 
-        await using var app = Builder.Build();
-
-        app.MapMcp().RequireAuthorization();
-
-        await app.StartAsync(TestContext.Current.CancellationToken);
+        await using var app = await StartMcpServerAsync();
 
         // Make a direct request to the resource metadata endpoint
         using var response = await HttpClient.GetAsync(
@@ -270,15 +185,12 @@ public class AuthEventTests : KestrelInMemoryTest, IAsyncDisposable
     [Fact]
     public async Task ResourceMetadataEndpoint_ThrowsException_WhenNoMetadataProvided()
     {
-        Builder.Services.AddMcpServer().WithHttpTransport();
-
         // Override the configuration to test the error case where no metadata is provided
         Builder.Services.Configure<McpAuthenticationOptions>(
             McpAuthenticationDefaults.AuthenticationScheme,
             options =>
             {
                 // Don't set ResourceMetadata and provide an event that doesn't set it either
-                options.ResourceMetadata = null;
                 options.Events.OnResourceMetadataRequest = async context =>
                 {
                     // Intentionally don't set context.ResourceMetadata to test error handling
@@ -287,11 +199,7 @@ public class AuthEventTests : KestrelInMemoryTest, IAsyncDisposable
             }
         );
 
-        await using var app = Builder.Build();
-
-        app.MapMcp().RequireAuthorization();
-
-        await app.StartAsync(TestContext.Current.CancellationToken);
+        await using var app = await StartMcpServerAsync();
 
         // Make a direct request to the resource metadata endpoint - this should fail
         using var response = await HttpClient.GetAsync(
@@ -306,14 +214,11 @@ public class AuthEventTests : KestrelInMemoryTest, IAsyncDisposable
     [Fact]
     public async Task ResourceMetadataEndpoint_HandlesResponse_WhenHandleResponseCalled()
     {
-        Builder.Services.AddMcpServer().WithHttpTransport();
-
         // Override the configuration to test HandleResponse behavior
         Builder.Services.Configure<McpAuthenticationOptions>(
             McpAuthenticationDefaults.AuthenticationScheme,
             options =>
             {
-                options.ResourceMetadata = null;
                 options.Events.OnResourceMetadataRequest = async context =>
                 {
                     // Call HandleResponse() to discontinue processing and return to client
@@ -323,11 +228,7 @@ public class AuthEventTests : KestrelInMemoryTest, IAsyncDisposable
             }
         );
 
-        await using var app = Builder.Build();
-
-        app.MapMcp().RequireAuthorization();
-
-        await app.StartAsync(TestContext.Current.CancellationToken);
+        await using var app = await StartMcpServerAsync();
 
         // Make a direct request to the resource metadata endpoint
         using var response = await HttpClient.GetAsync(
@@ -349,14 +250,11 @@ public class AuthEventTests : KestrelInMemoryTest, IAsyncDisposable
     [Fact]
     public async Task ResourceMetadataEndpoint_SkipsHandler_WhenSkipHandlerCalled()
     {
-        Builder.Services.AddMcpServer().WithHttpTransport();
-
         // Override the configuration to test SkipHandler behavior
         Builder.Services.Configure<McpAuthenticationOptions>(
             McpAuthenticationDefaults.AuthenticationScheme,
             options =>
             {
-                options.ResourceMetadata = null;
                 options.Events.OnResourceMetadataRequest = async context =>
                 {
                     // Call SkipHandler() to discontinue processing in the current handler
@@ -366,11 +264,7 @@ public class AuthEventTests : KestrelInMemoryTest, IAsyncDisposable
             }
         );
 
-        await using var app = Builder.Build();
-
-        app.MapMcp().RequireAuthorization();
-
-        await app.StartAsync(TestContext.Current.CancellationToken);
+        await using var app = await StartMcpServerAsync();
 
         // Make a direct request to the resource metadata endpoint
         using var response = await HttpClient.GetAsync(
@@ -382,24 +276,5 @@ public class AuthEventTests : KestrelInMemoryTest, IAsyncDisposable
         // and let other handlers in the pipeline handle the request. Since there are no
         // other handlers configured for this endpoint, this should result in a 404
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-    }
-
-    private async Task<string?> HandleAuthorizationUrlAsync(
-        Uri authorizationUri,
-        Uri redirectUri,
-        CancellationToken cancellationToken
-    )
-    {
-        using var redirectResponse = await HttpClient.GetAsync(authorizationUri, cancellationToken);
-        Assert.Equal(HttpStatusCode.Redirect, redirectResponse.StatusCode);
-        var location = redirectResponse.Headers.Location;
-
-        if (location is not null && !string.IsNullOrEmpty(location.Query))
-        {
-            var queryParams = QueryHelpers.ParseQuery(location.Query);
-            return queryParams["code"];
-        }
-
-        return null;
     }
 }

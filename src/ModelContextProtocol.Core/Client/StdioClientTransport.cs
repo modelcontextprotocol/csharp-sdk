@@ -25,6 +25,12 @@ namespace ModelContextProtocol.Client;
 /// </remarks>
 public sealed partial class StdioClientTransport : IClientTransport
 {
+#if !NET
+    // On .NET Framework, we need to synchronize access to Console.InputEncoding
+    // to prevent race conditions when multiple transports are created concurrently.
+    private static readonly object s_consoleEncodingLock = new();
+#endif
+
     private readonly StdioClientTransportOptions _options;
     private readonly ILoggerFactory? _loggerFactory;
 
@@ -159,15 +165,20 @@ public sealed partial class StdioClientTransport : IClientTransport
 #if NET
             processStarted = process.Start();
 #else
-            Encoding originalInputEncoding = Console.InputEncoding;
-            try
+            // IMPORTANT: This must be synchronized to prevent race conditions when multiple
+            // transports are created concurrently.
+            lock (s_consoleEncodingLock)
             {
-                Console.InputEncoding = StreamClientSessionTransport.NoBomUtf8Encoding;
-                processStarted = process.Start();
-            }
-            finally
-            {
-                Console.InputEncoding = originalInputEncoding;
+                Encoding originalInputEncoding = Console.InputEncoding;
+                try
+                {
+                    Console.InputEncoding = StreamClientSessionTransport.NoBomUtf8Encoding;
+                    processStarted = process.Start();
+                }
+                finally
+                {
+                    Console.InputEncoding = originalInputEncoding;
+                }
             }
 #endif
 
