@@ -4,6 +4,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Client;
 
@@ -491,6 +492,7 @@ public abstract partial class McpClient : McpSession, IMcpClient
     /// <param name="arguments">An optional dictionary of arguments to pass to the tool.</param>
     /// <param name="progress">Optional progress reporter for server notifications.</param>
     /// <param name="serializerOptions">JSON serializer options.</param>
+    /// <param name="meta">Optional metadata to include in the request. This will be serialized as the <c>_meta</c> field in the JSON-RPC request parameters.</param>
     /// <param name="cancellationToken">A cancellation token.</param>
     /// <returns>The <see cref="CallToolResult"/> from the tool execution.</returns>
     public ValueTask<CallToolResult> CallToolAsync(
@@ -498,6 +500,7 @@ public abstract partial class McpClient : McpSession, IMcpClient
         IReadOnlyDictionary<string, object?>? arguments = null,
         IProgress<ProgressNotificationValue>? progress = null,
         JsonSerializerOptions? serializerOptions = null,
+        JsonObject? meta = null,
         CancellationToken cancellationToken = default)
     {
         Throw.IfNull(toolName);
@@ -506,7 +509,7 @@ public abstract partial class McpClient : McpSession, IMcpClient
 
         if (progress is not null)
         {
-            return SendRequestWithProgressAsync(toolName, arguments, progress, serializerOptions, cancellationToken);
+            return SendRequestWithProgressAsync(toolName, arguments, progress, serializerOptions, meta, cancellationToken);
         }
 
         return SendRequestAsync(
@@ -515,6 +518,7 @@ public abstract partial class McpClient : McpSession, IMcpClient
             {
                 Name = toolName,
                 Arguments = ToArgumentsDictionary(arguments, serializerOptions),
+                Meta = meta,
             },
             McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
             McpJsonUtilities.JsonContext.Default.CallToolResult,
@@ -525,6 +529,7 @@ public abstract partial class McpClient : McpSession, IMcpClient
             IReadOnlyDictionary<string, object?>? arguments,
             IProgress<ProgressNotificationValue> progress,
             JsonSerializerOptions serializerOptions,
+            JsonObject? meta,
             CancellationToken cancellationToken)
         {
             ProgressToken progressToken = new(Guid.NewGuid().ToString("N"));
@@ -541,14 +546,22 @@ public abstract partial class McpClient : McpSession, IMcpClient
                     return default;
                 }).ConfigureAwait(false);
 
+            // Clone the meta object if provided, as we need to add the progress token to it without mutating the original
+            JsonObject? metaWithProgress = meta is not null ? JsonNode.Parse(meta.ToJsonString())?.AsObject() : null;
+
+            var requestParams = new CallToolRequestParams
+            {
+                Name = toolName,
+                Arguments = ToArgumentsDictionary(arguments, serializerOptions),
+                Meta = metaWithProgress,
+            };
+
+            // Use the ProgressToken property setter which handles creating Meta if needed
+            requestParams.ProgressToken = progressToken;
+
             return await SendRequestAsync(
                 RequestMethods.ToolsCall,
-                new()
-                {
-                    Name = toolName,
-                    Arguments = ToArgumentsDictionary(arguments, serializerOptions),
-                    ProgressToken = progressToken,
-                },
+                requestParams,
                 McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
                 McpJsonUtilities.JsonContext.Default.CallToolResult,
                 cancellationToken: cancellationToken).ConfigureAwait(false);

@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Client;
 
@@ -556,6 +557,7 @@ public static class McpClientExtensions
     /// <param name="serializerOptions">
     /// The JSON serialization options governing argument serialization. If <see langword="null"/>, the default serialization options will be used.
     /// </param>
+    /// <param name="meta">Optional metadata to include in the request. This will be serialized as the <c>_meta</c> field in the JSON-RPC request parameters.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>
     /// A task containing the <see cref="CallToolResult"/> from the tool execution. The response includes
@@ -583,8 +585,9 @@ public static class McpClientExtensions
         IReadOnlyDictionary<string, object?>? arguments = null,
         IProgress<ProgressNotificationValue>? progress = null,
         JsonSerializerOptions? serializerOptions = null,
+        JsonObject? meta = null,
         CancellationToken cancellationToken = default)
-        => AsClientOrThrow(client).CallToolAsync(toolName, arguments, progress, serializerOptions, cancellationToken);
+        => AsClientOrThrow(client).CallToolAsync(toolName, arguments, progress, serializerOptions, meta, cancellationToken);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
 #pragma warning disable CS0618 // Type or member is obsolete
