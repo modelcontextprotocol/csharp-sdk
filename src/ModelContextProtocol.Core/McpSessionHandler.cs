@@ -206,7 +206,18 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                                 Error = detail,
                                 Context = new JsonRpcMessageContext { RelatedTransport = request.Context?.RelatedTransport },
                             };
-                            await SendMessageAsync(errorMessage, cancellationToken).ConfigureAwait(false);
+
+                            try
+                            {
+                                await SendMessageAsync(errorMessage, cancellationToken).ConfigureAwait(false);
+                            }
+                            catch (Exception sendException) when ((sendException is JsonException || sendException is NotSupportedException) && detail.Data is not null)
+                            {
+                                // If serialization fails (e.g., non-serializable data in Exception.Data),
+                                // retry without the data to ensure the client receives an error response.
+                                detail.Data = null;
+                                await SendMessageAsync(errorMessage, cancellationToken).ConfigureAwait(false);
+                            }
                         }
                         else if (ex is not OperationCanceledException)
                         {
