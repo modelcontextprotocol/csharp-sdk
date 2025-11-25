@@ -151,6 +151,15 @@ public class McpClientToolTests : ClientServerTestBase
                     MimeType = "application/octet-stream"
                 }
             };
+
+        // Tool that echoes back the metadata it receives
+        [McpServerTool]
+        public static TextContentBlock MetadataEchoTool(RequestContext<CallToolRequestParams> context)
+        {
+            var meta = context.Params?.Meta;
+            var metaJson = meta?.ToJsonString() ?? "{}";
+            return new TextContentBlock { Text = metaJson };
+        }
     }
 
     [Fact]
@@ -234,10 +243,10 @@ public class McpClientToolTests : ClientServerTestBase
 
         var aiContents = Assert.IsType<AIContent[]>(result);
         Assert.Equal(2, aiContents.Length);
-        
+
         var textContent = Assert.IsType<TextContent>(aiContents[0]);
         Assert.Equal("Description of the image", textContent.Text);
-        
+
         var dataContent = Assert.IsType<DataContent>(aiContents[1]);
         Assert.Equal("image/png", dataContent.MediaType);
     }
@@ -253,11 +262,11 @@ public class McpClientToolTests : ClientServerTestBase
 
         var aiContents = Assert.IsType<AIContent[]>(result);
         Assert.Equal(2, aiContents.Length);
-        
+
         var dataContent0 = Assert.IsType<DataContent>(aiContents[0]);
         Assert.Equal("image/png", dataContent0.MediaType);
         Assert.Equal("image1", Encoding.UTF8.GetString(dataContent0.Data.ToArray()));
-        
+
         var dataContent1 = Assert.IsType<DataContent>(aiContents[1]);
         Assert.Equal("image/jpeg", dataContent1.MediaType);
         Assert.Equal("image2", Encoding.UTF8.GetString(dataContent1.Data.ToArray()));
@@ -274,10 +283,10 @@ public class McpClientToolTests : ClientServerTestBase
 
         var aiContents = Assert.IsType<AIContent[]>(result);
         Assert.Equal(2, aiContents.Length);
-        
+
         var textContent = Assert.IsType<TextContent>(aiContents[0]);
         Assert.Equal("Audio transcription", textContent.Text);
-        
+
         var dataContent = Assert.IsType<DataContent>(aiContents[1]);
         Assert.Equal("audio/wav", dataContent.MediaType);
     }
@@ -293,10 +302,10 @@ public class McpClientToolTests : ClientServerTestBase
 
         var aiContents = Assert.IsType<AIContent[]>(result);
         Assert.Equal(2, aiContents.Length);
-        
+
         var textContent0 = Assert.IsType<TextContent>(aiContents[0]);
         Assert.Equal("Resource description", textContent0.Text);
-        
+
         var textContent1 = Assert.IsType<TextContent>(aiContents[1]);
         Assert.Equal("File content", textContent1.Text);
     }
@@ -312,16 +321,16 @@ public class McpClientToolTests : ClientServerTestBase
 
         var aiContents = Assert.IsType<AIContent[]>(result);
         Assert.Equal(4, aiContents.Length);
-        
+
         var textContent = Assert.IsType<TextContent>(aiContents[0]);
         Assert.Equal("Mixed content", textContent.Text);
-        
+
         var dataContent1 = Assert.IsType<DataContent>(aiContents[1]);
         Assert.Equal("image/png", dataContent1.MediaType);
-        
+
         var dataContent2 = Assert.IsType<DataContent>(aiContents[2]);
         Assert.Equal("audio/mp3", dataContent2.MediaType);
-        
+
         var dataContent3 = Assert.IsType<DataContent>(aiContents[3]);
         Assert.Equal("application/octet-stream", dataContent3.MediaType);
     }
@@ -354,7 +363,7 @@ public class McpClientToolTests : ClientServerTestBase
         var jsonElement = (JsonElement)result!;
         Assert.True(jsonElement.TryGetProperty("content", out var contentValue));
         Assert.Equal(JsonValueKind.Array, contentValue.ValueKind);
-        
+
         Assert.Equal(1, contentValue.GetArrayLength());
     }
 
@@ -371,11 +380,11 @@ public class McpClientToolTests : ClientServerTestBase
         Assert.True(jsonElement.TryGetProperty("content", out var contentArray));
         Assert.Equal(JsonValueKind.Array, contentArray.ValueKind);
         Assert.Equal(2, contentArray.GetArrayLength());
-        
+
         var firstContent = contentArray[0];
         Assert.True(firstContent.TryGetProperty("type", out var type1));
         Assert.Equal("image", type1.GetString());
-        
+
         var secondContent = contentArray[1];
         Assert.True(secondContent.TryGetProperty("type", out var type2));
         Assert.Equal("resource_link", type2.GetString());
@@ -485,5 +494,111 @@ public class McpClientToolTests : ClientServerTestBase
         var dataContent = Assert.IsType<DataContent>(aiContents[1]);
         Assert.NotNull(dataContent.RawRepresentation);
         Assert.IsType<ImageContentBlock>(dataContent.RawRepresentation);
+    }
+
+    [Fact]
+    public async Task WithMetadata_MetadataIsPassedToServer()
+    {
+        // Arrange
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "metadata_echo_tool");
+
+        var metadata = new JsonObject
+        {
+            ["traceId"] = "test-trace-123",
+            ["customKey"] = "customValue"
+        };
+
+        // Act - use tool with metadata
+        var toolWithMetadata = tool.WithMetadata(metadata);
+        var result = await toolWithMetadata.CallAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Single(result.Content);
+        var textBlock = Assert.IsType<TextContentBlock>(result.Content[0]);
+
+        // The tool echoes back the metadata it received
+        var receivedMetadata = JsonNode.Parse(textBlock.Text)?.AsObject();
+        Assert.NotNull(receivedMetadata);
+        Assert.Equal("test-trace-123", receivedMetadata["traceId"]?.GetValue<string>());
+        Assert.Equal("customValue", receivedMetadata["customKey"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task WithMetadata_CreatesNewInstance()
+    {
+        // Arrange
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "text_only_tool");
+
+        var metadata = new JsonObject { ["key"] = "value" };
+
+        // Act
+        var toolWithMetadata = tool.WithMetadata(metadata);
+
+        // Assert - should be a different instance
+        Assert.NotSame(tool, toolWithMetadata);
+        Assert.Equal(tool.Name, toolWithMetadata.Name);
+        Assert.Equal(tool.Description, toolWithMetadata.Description);
+    }
+
+    [Fact]
+    public async Task WithMetadata_ChainsWithOtherWithMethods()
+    {
+        // Arrange
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "metadata_echo_tool");
+
+        var metadata = new JsonObject { ["chainedKey"] = "chainedValue" };
+
+        // Act - chain WithName, WithDescription, and WithMetadata
+        var modifiedTool = tool
+            .WithName("custom_name")
+            .WithDescription("Custom description")
+            .WithMetadata(metadata);
+
+        var result = await modifiedTool.CallAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert - name and description should be modified
+        Assert.Equal("custom_name", modifiedTool.Name);
+        Assert.Equal("Custom description", modifiedTool.Description);
+
+        // Assert - metadata should still be passed
+        var textBlock = Assert.IsType<TextContentBlock>(result.Content[0]);
+        var receivedMetadata = JsonNode.Parse(textBlock.Text)?.AsObject();
+        Assert.NotNull(receivedMetadata);
+        Assert.Equal("chainedValue", receivedMetadata["chainedKey"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task WithMetadata_MultipleToolInstancesWithDifferentMetadata()
+    {
+        // Arrange
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "metadata_echo_tool");
+
+        var metadata1 = new JsonObject { ["clientId"] = "client-1" };
+        var metadata2 = new JsonObject { ["clientId"] = "client-2" };
+
+        // Act - create two tool instances with different metadata
+        var tool1 = tool.WithMetadata(metadata1);
+        var tool2 = tool.WithMetadata(metadata2);
+
+        var result1 = await tool1.CallAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var result2 = await tool2.CallAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert - each call should have its own metadata
+        var textBlock1 = Assert.IsType<TextContentBlock>(result1.Content[0]);
+        var receivedMetadata1 = JsonNode.Parse(textBlock1.Text)?.AsObject();
+        Assert.Equal("client-1", receivedMetadata1?["clientId"]?.GetValue<string>());
+
+        var textBlock2 = Assert.IsType<TextContentBlock>(result2.Content[0]);
+        var receivedMetadata2 = JsonNode.Parse(textBlock2.Text)?.AsObject();
+        Assert.Equal("client-2", receivedMetadata2?["clientId"]?.GetValue<string>());
     }
 }
