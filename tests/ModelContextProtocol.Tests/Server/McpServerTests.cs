@@ -674,19 +674,19 @@ public class McpServerTests : LoggedTest
     [Fact]
     public async Task Can_Handle_Call_Tool_Requests_With_McpProtocolException_And_Data()
     {
-        const string errorMessage = "Resource not found";
-        const McpErrorCode errorCode = (McpErrorCode)(-32002);
-        const string resourceUri = "file:///path/to/resource";
+        const string ErrorMessage = "Resource not found";
+        const McpErrorCode ErrorCode = (McpErrorCode)(-32002);
+        const string ResourceUri = "file:///path/to/resource";
 
         await using var transport = new TestServerTransport();
         var options = CreateOptions(new ServerCapabilities { Tools = new() });
         options.Handlers.CallToolHandler = async (request, ct) =>
         {
-            throw new McpProtocolException(errorMessage, errorCode)
+            throw new McpProtocolException(ErrorMessage, ErrorCode)
             {
                 Data =
                 {
-                    { "uri", resourceUri }
+                    { "uri", ResourceUri }
                 }
             };
         };
@@ -716,14 +716,14 @@ public class McpServerTests : LoggedTest
         var error = await receivedMessage.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         Assert.NotNull(error);
         Assert.NotNull(error.Error);
-        Assert.Equal((int)errorCode, error.Error.Code);
-        Assert.Equal(errorMessage, error.Error.Message);
+        Assert.Equal((int)ErrorCode, error.Error.Code);
+        Assert.Equal(ErrorMessage, error.Error.Message);
         Assert.NotNull(error.Error.Data);
 
         // Verify the data contains the uri
         var dataDict = Assert.IsType<Dictionary<string, object?>>(error.Error.Data);
         Assert.True(dataDict.ContainsKey("uri"));
-        Assert.Equal(resourceUri, dataDict["uri"]);
+        Assert.Equal(ResourceUri, dataDict["uri"]);
 
         await transport.DisposeAsync();
         await runTask;
