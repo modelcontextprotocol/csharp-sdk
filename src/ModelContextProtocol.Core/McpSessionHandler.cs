@@ -771,8 +771,11 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
     /// <summary>
     /// Converts the Exception.Data dictionary to a serializable Dictionary&lt;string, object?&gt;.
-    /// Returns null if the data dictionary is empty.
+    /// Returns null if the data dictionary is empty or contains no string keys.
     /// </summary>
+    /// <remarks>
+    /// Only entries with string keys are included in the result. Entries with non-string keys are ignored.
+    /// </remarks>
     private static Dictionary<string, object?>? ConvertExceptionData(System.Collections.IDictionary data)
     {
         if (data.Count == 0)

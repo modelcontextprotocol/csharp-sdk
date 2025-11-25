@@ -721,11 +721,9 @@ public class McpServerTests : LoggedTest
         Assert.NotNull(error.Error.Data);
 
         // Verify the data contains the uri
-        var dataJson = JsonSerializer.Serialize(error.Error.Data, McpJsonUtilities.DefaultOptions);
-        var dataObject = JsonSerializer.Deserialize<JsonObject>(dataJson, McpJsonUtilities.DefaultOptions);
-        Assert.NotNull(dataObject);
-        Assert.True(dataObject.ContainsKey("uri"));
-        Assert.Equal(resourceUri, dataObject["uri"]?.GetValue<string>());
+        var dataDict = Assert.IsType<Dictionary<string, object?>>(error.Error.Data);
+        Assert.True(dataDict.ContainsKey("uri"));
+        Assert.Equal(resourceUri, dataDict["uri"]);
 
         await transport.DisposeAsync();
         await runTask;
