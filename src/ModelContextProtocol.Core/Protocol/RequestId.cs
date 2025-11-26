@@ -27,8 +27,8 @@ public readonly struct RequestId : IEquatable<RequestId>
         Id = value;
     }
 
-    /// <summary>Gets the underlying object for this id.</summary>
-    /// <remarks>This will either be a <see cref="string"/>, a boxed <see cref="long"/>, or <see langword="null"/>.</remarks>
+    /// <summary>Gets the underlying object for this ID.</summary>
+    /// <remarks>This object will either be a <see cref="string"/>, a boxed <see cref="long"/>, or <see langword="null"/>.</remarks>
     public object? Id { get; }
 
     /// <inheritdoc />

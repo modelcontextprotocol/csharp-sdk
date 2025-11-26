@@ -50,6 +50,36 @@ public abstract partial class McpClient : McpSession, IMcpClient
     }
 
     /// <summary>
+    /// Recreates an <see cref="McpClient"/> using an existing transport session without sending a new initialize request.
+    /// </summary>
+    /// <param name="clientTransport">The transport instance already configured to connect to the target server.</param>
+    /// <param name="resumeOptions">The metadata captured from the original session that should be applied when resuming.</param>
+    /// <param name="clientOptions">Optional client settings that should mirror those used to create the original session.</param>
+    /// <param name="loggerFactory">An optional logger factory for diagnostics.</param>
+    /// <param name="cancellationToken">Token used when establishing the transport connection.</param>
+    /// <returns>An <see cref="McpClient"/> bound to the resumed session.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="clientTransport"/> or <paramref name="resumeOptions"/> is <see langword="null"/>.</exception>
+    public static async Task<McpClient> ResumeSessionAsync(
+        IClientTransport clientTransport,
+        ResumeClientSessionOptions resumeOptions,
+        McpClientOptions? clientOptions = null,
+        ILoggerFactory? loggerFactory = null,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(clientTransport);
+        Throw.IfNull(resumeOptions);
+        Throw.IfNull(resumeOptions.ServerCapabilities);
+        Throw.IfNull(resumeOptions.ServerInfo);
+
+        var transport = await clientTransport.ConnectAsync(cancellationToken).ConfigureAwait(false);
+        var endpointName = clientTransport.Name;
+
+        var clientSession = new McpClientImpl(transport, endpointName, clientOptions, loggerFactory);
+        clientSession.ResumeSession(resumeOptions);
+        return clientSession;
+    }
+
+    /// <summary>
     /// Sends a ping request to verify server connectivity.
     /// </summary>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>

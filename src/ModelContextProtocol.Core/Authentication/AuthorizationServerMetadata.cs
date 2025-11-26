@@ -66,4 +66,10 @@ internal sealed class AuthorizationServerMetadata
     /// </summary>
     [JsonPropertyName("scopes_supported")]
     public List<string>? ScopesSupported { get; set; }
+
+    /// <summary>
+    /// Indicates if the server supports OAuth Client ID Metadata Documents.
+    /// </summary>
+    [JsonPropertyName("client_id_metadata_document_supported")]
+    public bool ClientIdMetadataDocumentSupported { get; set; }
 }

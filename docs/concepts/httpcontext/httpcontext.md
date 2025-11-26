@@ -7,11 +7,11 @@ uid: httpcontext
 
 ## HTTP Context
 
-When using the Streamable HTTP transport, an MCP server may need to access the underlying [HttpContext] for a request.
+When using the Streamable HTTP transport, an MCP server might need to access the underlying [HttpContext] for a request.
 The [HttpContext] contains request metadata such as the HTTP headers, authorization context, and the actual path and query string for the request.
 
 To access the [HttpContext], the MCP server should add the [IHttpContextAccessor] service to the application service collection (typically in Program.cs).
-Then any classes, e.g. a class containing MCP tools, should accept an [IHttpContextAccessor] in their constructor and store this for use by its methods.
+Then any classes, for example, a class containing MCP tools, should accept an [IHttpContextAccessor] in their constructor and store this for use by its methods.
 Methods then use the [HttpContext property][IHttpContextAccessor.HttpContext] of the accessor to get the current context.
 
 [HttpContext]: https://learn.microsoft.com/dotnet/api/microsoft.aspnetcore.http.httpcontext

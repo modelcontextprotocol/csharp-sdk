@@ -1,101 +1,25 @@
-﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.WebUtilities;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.IdentityModel.Tokens;
 using ModelContextProtocol.AspNetCore.Authentication;
-using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
 using System.Net;
 using System.Reflection;
 using Xunit.Sdk;
 
-namespace ModelContextProtocol.AspNetCore.Tests;
+namespace ModelContextProtocol.AspNetCore.Tests.OAuth;
 
-public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
+public class AuthTests : OAuthTestBase
 {
-    private const string McpServerUrl = "http://localhost:5000";
-    private const string OAuthServerUrl = "https://localhost:7029";
-
-    private readonly CancellationTokenSource _testCts = new();
-    private readonly TestOAuthServer.Program _testOAuthServer;
-    private readonly Task _testOAuthRunTask;
-
-    private Uri? _lastAuthorizationUri;
+    private const string ClientMetadataDocumentUrl = $"{OAuthServerUrl}/client-metadata/cimd-client.json";
 
     public AuthTests(ITestOutputHelper outputHelper)
-        : base(outputHelper)
+         : base(outputHelper)
     {
-        // Let the HandleAuthorizationUrlAsync take a look at the Location header
-        SocketsHttpHandler.AllowAutoRedirect = false;
-        // The dev cert may not be installed on the CI, but AddJwtBearer requires an HTTPS backchannel by default.
-        // The easiest workaround is to disable cert validation for testing purposes.
-        SocketsHttpHandler.SslOptions.RemoteCertificateValidationCallback = (_, _, _, _) => true;
-
-        _testOAuthServer = new TestOAuthServer.Program(XunitLoggerProvider, KestrelInMemoryTransport);
-        _testOAuthRunTask = _testOAuthServer.RunServerAsync(cancellationToken: _testCts.Token);
-
-        Builder.Services.AddAuthentication(options =>
-        {
-            options.DefaultChallengeScheme = McpAuthenticationDefaults.AuthenticationScheme;
-            options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-        })
-        .AddJwtBearer(options =>
-        {
-            options.Backchannel = HttpClient;
-            options.Authority = OAuthServerUrl;
-            options.TokenValidationParameters = new TokenValidationParameters
-            {
-                ValidateIssuer = true,
-                ValidateAudience = true,
-                ValidateLifetime = true,
-                ValidateIssuerSigningKey = true,
-                ValidAudience = McpServerUrl,
-                ValidIssuer = OAuthServerUrl,
-                NameClaimType = "name",
-                RoleClaimType = "roles"
-            };
-        })
-        .AddMcp(options =>
-        {
-            options.ResourceMetadata = new ProtectedResourceMetadata
-            {
-                Resource = new Uri(McpServerUrl),
-                AuthorizationServers = { new Uri(OAuthServerUrl) },
-                ScopesSupported = ["mcp:tools"]
-            };
-        });
-
-        Builder.Services.AddAuthorization();
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        _testCts.Cancel();
-        try
-        {
-            await _testOAuthRunTask;
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        finally
-        {
-            _testCts.Dispose();
-        }
     }
 
     [Fact]
     public async Task CanAuthenticate()
     {
-        Builder.Services.AddMcpServer().WithHttpTransport();
-
-        await using var app = Builder.Build();
-
-        app.MapMcp().RequireAuthorization();
-
-        await app.StartAsync(TestContext.Current.CancellationToken);
+        await using var app = await StartMcpServerAsync();
 
         await using var transport = new HttpClientTransport(new()
         {
@@ -116,13 +40,7 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
     [Fact]
     public async Task CannotAuthenticate_WithoutOAuthConfiguration()
     {
-        Builder.Services.AddMcpServer().WithHttpTransport();
-
-        await using var app = Builder.Build();
-
-        app.MapMcp().RequireAuthorization();
-
-        await app.StartAsync(TestContext.Current.CancellationToken);
+        await using var app = await StartMcpServerAsync();
 
         await using var transport = new HttpClientTransport(new()
         {
@@ -138,13 +56,7 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
     [Fact]
     public async Task CannotAuthenticate_WithUnregisteredClient()
     {
-        Builder.Services.AddMcpServer().WithHttpTransport();
-
-        await using var app = Builder.Build();
-
-        app.MapMcp().RequireAuthorization();
-
-        await app.StartAsync(TestContext.Current.CancellationToken);
+        await using var app = await StartMcpServerAsync();
 
         await using var transport = new HttpClientTransport(new()
         {
@@ -166,13 +78,7 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
     [Fact]
     public async Task CanAuthenticate_WithDynamicClientRegistration()
     {
-        Builder.Services.AddMcpServer().WithHttpTransport();
-
-        await using var app = Builder.Build();
-
-        app.MapMcp().RequireAuthorization();
-
-        await app.StartAsync(TestContext.Current.CancellationToken);
+        await using var app = await StartMcpServerAsync();
 
         await using var transport = new HttpClientTransport(new()
         {
@@ -195,15 +101,108 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
     }
 
     [Fact]
+    public async Task CanAuthenticate_WithClientMetadataDocument()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new ClientOAuthOptions()
+            {
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                ClientMetadataDocumentUri = new Uri(ClientMetadataDocumentUrl)
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task UsesDynamicClientRegistration_WhenCimdNotSupported()
+    {
+        // Disable CIMD support on the test OAuth server so the client
+        // falls back to dynamic registration even if a CIMD URL is provided.
+        TestOAuthServer.ClientIdMetadataDocumentSupported = false;
+
+        await using var app = await StartMcpServerAsync();
+
+        // Provide an invalid CIMD URL; if CIMD were used, auth would fail.
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new ClientOAuthOptions()
+            {
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                ClientMetadataDocumentUri = new Uri("http://invalid-cimd.example.com"),
+                Scopes = ["mcp:tools"],
+                DynamicClientRegistration = new()
+                {
+                    ClientName = "Test MCP Client (No CIMD)",
+                    ClientUri = new Uri("https://example.com/no-cimd"),
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        // Should succeed via dynamic client registration.
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task DoesNotUseClientMetadataDocument_WhenClientIdIsSpecified()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        // Provide an invalid CIMD URL; if CIMD were used, auth would fail.
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new ClientOAuthOptions()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                ClientMetadataDocumentUri = new Uri("http://invalid-cimd.example.com"),
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Theory]
+    [InlineData("http://localhost:7029/client-metadata/cimd-client.json")] // Non-HTTPS Scheme
+    [InlineData("http://localhost:7029")] // Missing path
+    public async Task CannotAuthenticate_WithInvalidClientMetadataDocument(string uri)
+    {
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new ClientOAuthOptions()
+            {
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                ClientMetadataDocumentUri = new Uri(uri),
+            },
+        }, HttpClient, LoggerFactory);
+
+        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.StartsWith("Failed to handle unauthorized response", ex.Message);
+    }
+
+    [Fact]
     public async Task CanAuthenticate_WithTokenRefresh()
     {
-        Builder.Services.AddMcpServer().WithHttpTransport();
-
-        await using var app = Builder.Build();
-
-        app.MapMcp().RequireAuthorization();
-
-        await app.StartAsync(TestContext.Current.CancellationToken);
+        await using var app = await StartMcpServerAsync();
 
         await using var transport = new HttpClientTransport(new()
         {
@@ -222,19 +221,15 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
         await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.True(_testOAuthServer.HasIssuedRefreshToken);
+        Assert.True(TestOAuthServer.HasRefreshedToken);
     }
 
     [Fact]
     public async Task CanAuthenticate_WithExtraParams()
     {
-        Builder.Services.AddMcpServer().WithHttpTransport();
+        await using var app = await StartMcpServerAsync();
 
-        await using var app = Builder.Build();
-
-        app.MapMcp().RequireAuthorization();
-
-        await app.StartAsync(TestContext.Current.CancellationToken);
+        Uri? lastAuthorizationUri = null;
 
         await using var transport = new HttpClientTransport(new()
         {
@@ -244,7 +239,11 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                {
+                    lastAuthorizationUri = uri;
+                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                },
                 AdditionalAuthorizationParameters = new Dictionary<string, string>
                 {
                     ["custom_param"] = "custom_value",
@@ -255,20 +254,14 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
         await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.NotNull(_lastAuthorizationUri?.Query);
-        Assert.Contains("custom_param=custom_value", _lastAuthorizationUri?.Query);
+        Assert.NotNull(lastAuthorizationUri?.Query);
+        Assert.Contains("custom_param=custom_value", lastAuthorizationUri?.Query);
     }
 
     [Fact]
     public async Task CannotOverrideExistingParameters_WithExtraParams()
     {
-        Builder.Services.AddMcpServer().WithHttpTransport();
-
-        await using var app = Builder.Build();
-
-        app.MapMcp().RequireAuthorization();
-
-        await app.StartAsync(TestContext.Current.CancellationToken);
+        await using var app = await StartMcpServerAsync();
 
         await using var transport = new HttpClientTransport(new()
         {
@@ -389,22 +382,5 @@ public class AuthTests : KestrelInMemoryTest, IAsyncDisposable
 
         // Ensure we've checked every property. When new properties get added, we'll have to update this test along with the CloneResourceMetadata implementation.
         Assert.Empty(propertyNames);
-    }
-
-    private async Task<string?> HandleAuthorizationUrlAsync(Uri authorizationUri, Uri redirectUri, CancellationToken cancellationToken)
-    {
-        _lastAuthorizationUri = authorizationUri;
-
-        var redirectResponse = await HttpClient.GetAsync(authorizationUri, cancellationToken);
-        Assert.Equal(HttpStatusCode.Redirect, redirectResponse.StatusCode);
-        var location = redirectResponse.Headers.Location;
-
-        if (location is not null && !string.IsNullOrEmpty(location.Query))
-        {
-            var queryParams = QueryHelpers.ParseQuery(location.Query);
-            return queryParams["code"];
-        }
-
-        return null;
     }
 }

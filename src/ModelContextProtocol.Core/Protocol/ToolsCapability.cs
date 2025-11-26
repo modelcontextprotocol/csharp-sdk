@@ -11,10 +11,10 @@ namespace ModelContextProtocol.Protocol;
 public sealed class ToolsCapability
 {
     /// <summary>
-    /// Gets or sets whether this server supports notifications for changes to the tool list.
+    /// Gets or sets a value that indicates whether this server supports notifications for changes to the tool list.
     /// </summary>
     /// <remarks>
-    /// When set to <see langword="true"/>, the server will send notifications using
+    /// When set to <see langword="true"/>, the server sends notifications using
     /// <see cref="NotificationMethods.ToolListChangedNotification"/> when tools are added,
     /// removed, or modified. Clients can register handlers for these notifications to
     /// refresh their tool cache. This capability enables clients to stay synchronized with server-side

@@ -20,7 +20,7 @@ public sealed class ModelHint
     /// Gets or sets a hint for a model name.
     /// </summary>
     /// <remarks>
-    /// The specified string can be a partial or full model name. Clients may also 
+    /// The specified string can be a partial or full model name. Clients can also
     /// map hints to equivalent models from different providers. Clients make the final model
     /// selection based on these preferences and their available models.
     /// </remarks>

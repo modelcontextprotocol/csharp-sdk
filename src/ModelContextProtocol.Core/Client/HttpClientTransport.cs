@@ -72,6 +72,11 @@ public sealed class HttpClientTransport : IClientTransport, IAsyncDisposable
     /// <inheritdoc />
     public async Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default)
     {
+        if (_options.KnownSessionId is not null && _options.TransportMode == HttpTransportMode.Sse)
+        {
+            throw new InvalidOperationException("SSE transport does not support resuming an existing session.");
+        }
+
         return _options.TransportMode switch
         {
             HttpTransportMode.AutoDetect => new AutoDetectingClientSessionTransport(Name, _options, _mcpHttpClient, _loggerFactory),

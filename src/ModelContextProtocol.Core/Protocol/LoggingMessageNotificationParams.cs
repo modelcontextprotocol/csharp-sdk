@@ -13,7 +13,7 @@ namespace ModelContextProtocol.Protocol;
 /// Clients can filter these messages based on the <see cref="Level"/> and <see cref="Logger"/> properties.
 /// </para>
 /// <para>
-/// If no <see cref="RequestMethods.LoggingSetLevel"/> request has been sent from the client, the server may decide which
+/// If no <see cref="RequestMethods.LoggingSetLevel"/> request has been sent from the client, the server can decide which
 /// messages to send automatically.
 /// </para>
 /// <para>

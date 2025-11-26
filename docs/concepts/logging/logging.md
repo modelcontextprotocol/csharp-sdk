@@ -7,7 +7,7 @@ uid: logging
 
 ## Logging
 
-MCP servers may expose log messages to clients through the [Logging utility].
+MCP servers can expose log messages to clients through the [Logging utility].
 
 [Logging utility]: https://modelcontextprotocol.io/specification/2025-06-18/server/utilities/logging
 
@@ -18,7 +18,7 @@ This document describes how to implement logging in MCP servers and how clients 
 MCP uses the logging levels defined in [RFC 5424](https://tools.ietf.org/html/rfc5424).
 
 The MCP C# SDK uses the standard .NET [ILogger] and [ILoggerProvider] abstractions, which support a slightly
-different set of logging levels. Here's the levels and how they map to standard .NET logging levels.
+different set of logging levels. The following table shows the levels and how they map to standard .NET logging levels.
 
 | Level     | .NET | Description                       | Example Use Case             |
 |-----------|------|-----------------------------------|------------------------------|
@@ -46,8 +46,8 @@ MCP servers that implement the Logging utility must declare this in the capabili
 [Initialization]: https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle#initialization
 
 Servers built with the C# SDK always declare the logging capability. Doing so does not obligate the server
-to send log messages -- only allows it. Note that stateless MCP servers may not be capable of sending log
-messages as there may not be an open connection to the client on which the log messages could be sent.
+to send log messages&mdash;only allows it. Note that stateless MCP servers might not be capable of sending log
+messages as there might not be an open connection to the client on which the log messages could be sent.
 
 The C# SDK provides an extension method <xref:Microsoft.Extensions.DependencyInjection.McpServerBuilderExtensions.WithSetLoggingLevelHandler*> on <xref:Microsoft.Extensions.DependencyInjection.IMcpServerBuilder> to allow the
 server to perform any special logic it wants to perform when a client sets the logging level. However, the
@@ -70,7 +70,7 @@ Clients should check if the server supports logging by checking the <xref:ModelC
 
 If the server supports logging, the client should set the level of log messages it wishes to receive with
 the <xref:ModelContextProtocol.Client.McpClient.SetLoggingLevel*> method on <xref:ModelContextProtocol.Client.McpClient>. If the client does not set a logging level, the server might choose
-to send all log messages or none -- this is not specified in the protocol -- so it is important that the client
+to send all log messages or none&mdash;this is not specified in the protocol. So it's important that the client
 sets a logging level to ensure it receives the desired log messages and only those messages.
 
 The `loggingLevel` set by the client is an MCP logging level.

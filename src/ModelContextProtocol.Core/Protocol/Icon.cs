@@ -35,10 +35,10 @@ public sealed class Icon
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This can be an HTTP/HTTPS URL pointing to an image file or a data URI with base64-encoded image data.
+    /// This value can be an HTTP/HTTPS URL pointing to an image file or a data URI with base64-encoded image data.
     /// </para>
     /// <para>
-    /// Consumers SHOULD take steps to ensure URLs serving icons are from the same domain as the client/server 
+    /// Consumers SHOULD take steps to ensure URLs serving icons are from the same domain as the client/server
     /// or a trusted domain.
     /// </para>
     /// <para>
@@ -52,7 +52,7 @@ public sealed class Icon
     /// Gets or sets the optional MIME type of the icon.
     /// </summary>
     /// <remarks>
-    /// This can be used to override the server's MIME type if it's missing or generic.
+    /// This value can be used to override the server's MIME type if it's missing or generic.
     /// Common values include "image/png", "image/jpeg", "image/svg+xml", and "image/webp".
     /// </remarks>
     [JsonPropertyName("mimeType")]
@@ -63,7 +63,7 @@ public sealed class Icon
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This can specify one or more sizes at which the icon file can be used.
+    /// This property can specify one or more sizes at which the icon file can be used.
     /// Examples include "48x48", "any" for scalable formats like SVG.
     /// </para>
     /// <para>
@@ -78,7 +78,7 @@ public sealed class Icon
     /// </summary>
     /// <remarks>
     /// Can be "light", "dark", or a custom theme identifier.
-    /// Used to specify which UI theme the icon is designed for.
+    /// The value is used to specify which UI theme the icon is designed for.
     /// </remarks>
     [JsonPropertyName("theme")]
     public string? Theme { get; set; }

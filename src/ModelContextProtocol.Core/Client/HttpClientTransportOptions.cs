@@ -76,7 +76,34 @@ public sealed class HttpClientTransportOptions
     public IDictionary<string, string>? AdditionalHeaders { get; set; }
 
     /// <summary>
-    /// Gets or sets the authorization provider to use for authentication.
+    /// Gets or sets a session identifier that should be reused when connecting to a Streamable HTTP server.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When non-<see langword="null"/>, the transport assumes the server already created the session and will include the
+    /// specified session identifier in every HTTP request. This allows reconnecting to an existing session created in a
+    /// previous process. This option is only supported by the Streamable HTTP transport mode.
+    /// </para>
+    /// <para>
+    /// Clients should pair this with
+    /// <see cref="McpClient.ResumeSessionAsync(IClientTransport, ResumeClientSessionOptions, McpClientOptions?, Microsoft.Extensions.Logging.ILoggerFactory?, CancellationToken)"/>
+    /// to skip the initialization handshake when rehydrating a previously negotiated session.
+    /// </para>
+    /// </remarks>
+    public string? KnownSessionId { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether this transport endpoint is responsible for ending the session on dispose.
+    /// </summary>
+    /// <remarks>
+    /// When <see langword="true"/> (default), the transport sends a DELETE request that informs the server the session is
+    /// complete. Set this to <see langword="false"/> when creating a transport used solely to bootstrap session information
+    /// that will later be resumed elsewhere.
+    /// </remarks>
+    public bool OwnsSession { get; set; } = true;
+
+    /// <summary>
+    /// Gets sor sets the authorization provider to use for authentication.
     /// </summary>
     public ClientOAuthOptions? OAuth { get; set; }
 }

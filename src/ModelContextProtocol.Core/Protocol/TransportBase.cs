@@ -137,7 +137,7 @@ public abstract partial class TransportBase : ITransport
     /// <summary>
     /// Sets the transport to a disconnected state.
     /// </summary>
-    /// <param name="error">Optional error information associated with the transport disconnecting. Should be <see langwor="null"/> if the disconnect was graceful and expected.</param>
+    /// <param name="error">Optional error information associated with the transport disconnecting. Should be <see langword="null"/> if the disconnect was graceful and expected.</param>
     protected void SetDisconnected(Exception? error = null)
     {
         int state = _state;
