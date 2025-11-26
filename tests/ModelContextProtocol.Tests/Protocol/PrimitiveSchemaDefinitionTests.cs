@@ -1,6 +1,8 @@
 using ModelContextProtocol.Protocol;
 using System.Text.Json;
 
+#pragma warning disable CS0618 // Type or member is obsolete
+
 namespace ModelContextProtocol.Tests.Protocol;
 
 public static class PrimitiveSchemaDefinitionTests
@@ -116,6 +118,7 @@ public static class PrimitiveSchemaDefinitionTests
         {
             "type": "string",
             "enum": ["option1", "option2", "option3"],
+            "enumNames": ["Name1", "Name2", "Name3"],
             "unknownComplex": [
                 {
                     "nested": [
@@ -138,12 +141,16 @@ public static class PrimitiveSchemaDefinitionTests
             McpJsonUtilities.DefaultOptions);
 
         Assert.NotNull(result);
-        var enumSchema = Assert.IsType<ElicitRequestParams.UntitledSingleSelectEnumSchema>(result);
+        var enumSchema = Assert.IsType<ElicitRequestParams.EnumSchema>(result);
         Assert.Equal("string", enumSchema.Type);
         Assert.Equal(3, enumSchema.Enum.Count);
         Assert.Contains("option1", enumSchema.Enum);
         Assert.Contains("option2", enumSchema.Enum);
         Assert.Contains("option3", enumSchema.Enum);
+        Assert.Equal(3, enumSchema.EnumNames!.Count);
+        Assert.Contains("Name1", enumSchema.EnumNames);
+        Assert.Contains("Name2", enumSchema.EnumNames);
+        Assert.Contains("Name3", enumSchema.EnumNames);
         Assert.Equal("option1", enumSchema.Default);
     }
 
@@ -274,7 +281,8 @@ public static class PrimitiveSchemaDefinitionTests
             "type": "string",
             "unknownSecond": [1, 2],
             "enum": ["a", "b"],
-            "unknownThird": {"nested": {"value": true}}
+            "unknownThird": {"nested": {"value": true}},
+            "enumNames": ["Alpha", "Beta"]
         }
         """;
 
@@ -283,11 +291,14 @@ public static class PrimitiveSchemaDefinitionTests
             McpJsonUtilities.DefaultOptions);
 
         Assert.NotNull(result);
-        var enumSchema = Assert.IsType<ElicitRequestParams.UntitledSingleSelectEnumSchema>(result);
+        var enumSchema = Assert.IsType<ElicitRequestParams.EnumSchema>(result);
         Assert.Equal("string", enumSchema.Type);
         Assert.Equal(2, enumSchema.Enum.Count);
         Assert.Contains("a", enumSchema.Enum);
         Assert.Contains("b", enumSchema.Enum);
+        Assert.Equal(2, enumSchema.EnumNames!.Count);
+        Assert.Contains("Alpha", enumSchema.EnumNames);
+        Assert.Contains("Beta", enumSchema.EnumNames);
     }
 
     [Fact]
@@ -336,6 +347,7 @@ public static class PrimitiveSchemaDefinitionTests
             "title": "Test Enum",
             "description": "A test enum schema",
             "enum": ["option1", "option2", "option3"],
+            "enumNames": ["Name1", "Name2", "Name3"],
             "default": "option2"
         }
         """;
@@ -345,7 +357,7 @@ public static class PrimitiveSchemaDefinitionTests
             McpJsonUtilities.DefaultOptions);
 
         Assert.NotNull(deserialized);
-        var enumSchema = Assert.IsType<ElicitRequestParams.UntitledSingleSelectEnumSchema>(deserialized);
+        var enumSchema = Assert.IsType<ElicitRequestParams.EnumSchema>(deserialized);
         Assert.Equal("string", enumSchema.Type);
         Assert.Equal("Test Enum", enumSchema.Title);
         Assert.Equal("A test enum schema", enumSchema.Description);
@@ -353,6 +365,10 @@ public static class PrimitiveSchemaDefinitionTests
         Assert.Contains("option1", enumSchema.Enum);
         Assert.Contains("option2", enumSchema.Enum);
         Assert.Contains("option3", enumSchema.Enum);
+        Assert.Equal(3, enumSchema.EnumNames!.Count);
+        Assert.Contains("Name1", enumSchema.EnumNames);
+        Assert.Contains("Name2", enumSchema.EnumNames);
+        Assert.Contains("Name3", enumSchema.EnumNames);
         Assert.Equal("option2", enumSchema.Default);
     }
 }

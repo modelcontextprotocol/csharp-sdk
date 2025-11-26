@@ -1,6 +1,8 @@
 using ModelContextProtocol.Protocol;
 using System.Text.Json;
 
+#pragma warning disable CS0618 // Type or member is obsolete
+
 namespace ModelContextProtocol.Tests.Protocol;
 
 public class EnumSchemaTests
@@ -159,7 +161,34 @@ public class EnumSchemaTests
     }
 
     [Fact]
-    public void EnumSchema_Deserializes_As_UntitledSingleSelect()
+    public void LegacyTitledEnumSchema_WithEnumNames_Deserializes_As_EnumSchema()
+    {
+        // Arrange - JSON with enumNames should deserialize as EnumSchema for backward compatibility
+        string json = """
+            {
+                "type": "string",
+                "title": "Status",
+                "enum": ["active", "inactive", "pending"],
+                "enumNames": ["Active", "Inactive", "Pending"],
+                "default": "active"
+            }
+            """;
+
+        // Act
+        var deserialized = JsonSerializer.Deserialize<ElicitRequestParams.PrimitiveSchemaDefinition>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(deserialized);
+        var result = Assert.IsType<ElicitRequestParams.EnumSchema>(deserialized);
+        Assert.Equal("string", result.Type);
+        Assert.Equal("Status", result.Title);
+        Assert.Equal(["active", "inactive", "pending"], result.Enum);
+        Assert.Equal(["Active", "Inactive", "Pending"], result.EnumNames);
+        Assert.Equal("active", result.Default);
+    }
+
+    [Fact]
+    public void EnumSchema_WithoutEnumNames_Deserializes_As_UntitledSingleSelect()
     {
         // Arrange - JSON without enumNames should deserialize as UntitledSingleSelectEnumSchema
         string json = """

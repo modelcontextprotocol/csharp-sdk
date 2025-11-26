@@ -1,6 +1,8 @@
 using ModelContextProtocol.Protocol;
 using System.Text.Json;
 
+#pragma warning disable CS0618 // Type or member is obsolete
+
 namespace ModelContextProtocol.Tests.Protocol;
 
 public class ElicitationDefaultValuesTests
@@ -111,6 +113,49 @@ public class ElicitationDefaultValuesTests
     }
 
     [Fact]
+    public void EnumSchema_Default_Serializes_Correctly()
+    {
+        // Arrange
+        var schema = new ElicitRequestParams.EnumSchema
+        {
+            Title = "Priority",
+            Description = "Task priority",
+            Enum = ["low", "medium", "high"],
+            EnumNames = ["Low Priority", "Medium Priority", "High Priority"],
+            Default = "medium"
+        };
+
+        // Act - serialize as base type to use the converter
+        string json = JsonSerializer.Serialize<ElicitRequestParams.PrimitiveSchemaDefinition>(schema, McpJsonUtilities.DefaultOptions);
+        var deserialized = JsonSerializer.Deserialize<ElicitRequestParams.PrimitiveSchemaDefinition>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(deserialized);
+        var enumSchema = Assert.IsType<ElicitRequestParams.EnumSchema>(deserialized);
+        Assert.Equal("medium", enumSchema.Default);
+        Assert.Equal("Priority", enumSchema.Title);
+        Assert.Equal("Task priority", enumSchema.Description);
+        Assert.Contains("\"default\":\"medium\"", json);
+    }
+
+    [Fact]
+    public void EnumSchema_Default_Null_DoesNotSerialize()
+    {
+        // Arrange
+        var schema = new ElicitRequestParams.EnumSchema
+        {
+            Title = "Priority",
+            Enum = ["low", "medium", "high"]
+        };
+
+        // Act - serialize as base type to use the converter
+        string json = JsonSerializer.Serialize<ElicitRequestParams.PrimitiveSchemaDefinition>(schema, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.DoesNotContain("\"default\"", json);
+    }
+
+    [Fact]
     public void BooleanSchema_Default_True_Serializes_Correctly()
     {
         // Arrange
@@ -200,6 +245,29 @@ public class ElicitationDefaultValuesTests
     }
 
     [Fact]
+    public void PrimitiveSchemaDefinition_EnumSchema_WithDefault_RoundTrips()
+    {
+        // Arrange
+        var schema = new ElicitRequestParams.EnumSchema
+        {
+            Title = "Status",
+            Enum = ["draft", "published", "archived"],
+            Default = "draft"
+        };
+
+        // Act - serialize as base type to test the converter
+        string json = JsonSerializer.Serialize<ElicitRequestParams.PrimitiveSchemaDefinition>(schema, McpJsonUtilities.DefaultOptions);
+        var deserialized = JsonSerializer.Deserialize<ElicitRequestParams.PrimitiveSchemaDefinition>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(deserialized);
+        // EnumSchema without enumNames deserializes as UntitledSingleSelectEnumSchema
+        var enumSchema = Assert.IsType<ElicitRequestParams.UntitledSingleSelectEnumSchema>(deserialized);
+        Assert.Equal("draft", enumSchema.Default);
+        Assert.Equal(["draft", "published", "archived"], enumSchema.Enum);
+    }
+
+    [Fact]
     public void RequestSchema_WithAllDefaultTypes_Serializes_Correctly()
     {
         // Arrange
@@ -231,7 +299,7 @@ public class ElicitationDefaultValuesTests
                         Title = "Active",
                         Default = true
                     },
-                    ["status"] = new ElicitRequestParams.UntitledSingleSelectEnumSchema
+                    ["status"] = new ElicitRequestParams.EnumSchema
                     {
                         Title = "Status",
                         Enum = ["active", "inactive"],
