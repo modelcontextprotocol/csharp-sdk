@@ -298,7 +298,7 @@ public class EnumSchemaTests
 
         // Assert
         Assert.NotNull(deserialized);
-        var result = Assert.IsType<ElicitRequestParams.LegacyTitledEnumSchema>(deserialized);
+        var result = Assert.IsType<ElicitRequestParams.EnumSchema>(deserialized);
         Assert.Equal("string", result.Type);
         Assert.Equal("Environment", result.Title);
         Assert.Equal("Deployment environment", result.Description);

@@ -173,11 +173,8 @@ public static class PrimitiveSchemaDefinitionTests
     {
         const string json = """
         {
-            "type": "string",
-            "enum": ["optionA", "optionB", "optionC"],
+            "type": "array",
             "items": {
-                "type": "string",
-
                 "unknownNull": null,
                 "unknownEmptyObject": {},
                 "unknownObject": {"a": 1},
@@ -204,7 +201,7 @@ public static class PrimitiveSchemaDefinitionTests
             McpJsonUtilities.DefaultOptions);
         Assert.NotNull(result);
         var enumSchema = Assert.IsType<ElicitRequestParams.UntitledMultiSelectEnumSchema>(result);
-        Assert.Equal("string", enumSchema.Type);
+        Assert.Equal("array", enumSchema.Type);
         Assert.Equal(3, enumSchema.Items.Enum.Count);
         Assert.Contains("optionA", enumSchema.Items.Enum);
         Assert.Contains("optionB", enumSchema.Items.Enum);
@@ -219,10 +216,8 @@ public static class PrimitiveSchemaDefinitionTests
     {
         const string json = """
         {
-            "type": "string",
+            "type": "array",
             "items": {
-                "type": "string",
-
                 "unknownNull": null,
                 "unknownEmptyObject": {},
                 "unknownObject": {"a": 1},
@@ -253,7 +248,7 @@ public static class PrimitiveSchemaDefinitionTests
             McpJsonUtilities.DefaultOptions);
         Assert.NotNull(result);
         var enumSchema = Assert.IsType<ElicitRequestParams.TitledMultiSelectEnumSchema>(result);
-        Assert.Equal("string", enumSchema.Type);
+        Assert.Equal("array", enumSchema.Type);
         Assert.Equal(3, enumSchema.Items.AnyOf.Count);
         Assert.Contains(enumSchema.Items.AnyOf, option => option.Const == "optionX" && option.Title == "Option X");
         Assert.Contains(enumSchema.Items.AnyOf, option => option.Const == "optionY" && option.Title == "Option Y");
@@ -288,7 +283,7 @@ public static class PrimitiveSchemaDefinitionTests
             json,
             McpJsonUtilities.DefaultOptions);
         Assert.NotNull(result);
-        var enumSchema = Assert.IsType<ElicitRequestParams.LegacyTitledEnumSchema>(result);
+        var enumSchema = Assert.IsType<ElicitRequestParams.EnumSchema>(result);
         Assert.Equal("string", enumSchema.Type);
         Assert.Equal(2, enumSchema.Enum.Count);
         Assert.Contains("option1", enumSchema.Enum);
