@@ -36,7 +36,7 @@ public sealed class McpServerResourceCreateOptions
     /// </summary>
     /// <remarks>
     /// If <see langword="null"/>, but an <see cref="McpServerResourceAttribute"/> is applied to the member,
-    /// the <see cref="McpServerResourceAttribute.UriTemplate"/> from the attribute will be used. If that's not present,
+    /// the <see cref="McpServerResourceAttribute.UriTemplate"/> from the attribute is used. If that's not present,
     /// a URI template will be inferred from the member's signature.
     /// </remarks>
     public string? UriTemplate { get; set; }
@@ -46,7 +46,7 @@ public sealed class McpServerResourceCreateOptions
     /// </summary>
     /// <remarks>
     /// If <see langword="null"/>, but an <see cref="McpServerResourceAttribute"/> is applied to the member,
-    /// the name from the attribute will be used. If that's not present, a name based on the members's name will be used.
+    /// the name from the attribute is used. If that's not present, a name based on the members's name is used.
     /// </remarks>
     public string? Name { get; set; }
 
@@ -60,7 +60,7 @@ public sealed class McpServerResourceCreateOptions
     /// </summary>
     /// <remarks>
     /// If <see langword="null"/>, but a <see cref="DescriptionAttribute"/> is applied to the member,
-    /// the description from that attribute will be used.
+    /// the description from that attribute is used.
     /// </remarks>
     public string? Description { get; set; }
 
@@ -72,17 +72,17 @@ public sealed class McpServerResourceCreateOptions
     /// <summary>
     /// Gets or sets the JSON serializer options to use when marshalling data to/from JSON.
     /// </summary>
-    /// <remarks>
-    /// Defaults to <see cref="McpJsonUtilities.DefaultOptions"/> if left unspecified.
-    /// </remarks>
+    /// <value>
+    /// The default is <see cref="McpJsonUtilities.DefaultOptions"/>.
+    /// </value>
     public JsonSerializerOptions? SerializerOptions { get; set; }
 
     /// <summary>
     /// Gets or sets the JSON schema options when creating <see cref="AIFunction"/> from a method.
     /// </summary>
-    /// <remarks>
-    /// Defaults to <see cref="AIJsonSchemaCreateOptions.Default"/> if left unspecified.
-    /// </remarks>
+    /// <value>
+    /// The default is <see cref="AIJsonSchemaCreateOptions.Default"/>.
+    /// </value>
     public AIJsonSchemaCreateOptions? SchemaCreateOptions { get; set; }
 
     /// <summary>
@@ -98,7 +98,7 @@ public sealed class McpServerResourceCreateOptions
     /// Gets or sets the icons for this resource.
     /// </summary>
     /// <remarks>
-    /// This can be used by clients to display the resource's icon in a user interface.
+    /// This property can be used by clients to display the resource's icon in a user interface.
     /// </remarks>
     public IList<Icon>? Icons { get; set; }
 
@@ -109,7 +109,7 @@ public sealed class McpServerResourceCreateOptions
     /// <para>
     /// This <see cref="JsonObject"/> is used to seed the <see cref="Resource.Meta"/> property. Any metadata from
     /// <see cref="McpMetaAttribute"/> instances on the method will be added to this object, but
-    /// properties already present in this <see cref="JsonObject"/> will not be overwritten.
+    /// properties already present in this <see cref="JsonObject"/> are not overwritten.
     /// </para>
     /// <para>
     /// Implementations must not make assumptions about its contents.

@@ -9,8 +9,10 @@ namespace ModelContextProtocol.AspNetCore.Tests.OAuth;
 
 public class AuthTests : OAuthTestBase
 {
-   public AuthTests(ITestOutputHelper outputHelper)
-        : base(outputHelper)
+    private const string ClientMetadataDocumentUrl = $"{OAuthServerUrl}/client-metadata/cimd-client.json";
+
+    public AuthTests(ITestOutputHelper outputHelper)
+         : base(outputHelper)
     {
     }
 
@@ -96,6 +98,105 @@ public class AuthTests : OAuthTestBase
 
         await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task CanAuthenticate_WithClientMetadataDocument()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new ClientOAuthOptions()
+            {
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                ClientMetadataDocumentUri = new Uri(ClientMetadataDocumentUrl)
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task UsesDynamicClientRegistration_WhenCimdNotSupported()
+    {
+        // Disable CIMD support on the test OAuth server so the client
+        // falls back to dynamic registration even if a CIMD URL is provided.
+        TestOAuthServer.ClientIdMetadataDocumentSupported = false;
+
+        await using var app = await StartMcpServerAsync();
+
+        // Provide an invalid CIMD URL; if CIMD were used, auth would fail.
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new ClientOAuthOptions()
+            {
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                ClientMetadataDocumentUri = new Uri("http://invalid-cimd.example.com"),
+                Scopes = ["mcp:tools"],
+                DynamicClientRegistration = new()
+                {
+                    ClientName = "Test MCP Client (No CIMD)",
+                    ClientUri = new Uri("https://example.com/no-cimd"),
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        // Should succeed via dynamic client registration.
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task DoesNotUseClientMetadataDocument_WhenClientIdIsSpecified()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        // Provide an invalid CIMD URL; if CIMD were used, auth would fail.
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new ClientOAuthOptions()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                ClientMetadataDocumentUri = new Uri("http://invalid-cimd.example.com"),
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Theory]
+    [InlineData("http://localhost:7029/client-metadata/cimd-client.json")] // Non-HTTPS Scheme
+    [InlineData("http://localhost:7029")] // Missing path
+    public async Task CannotAuthenticate_WithInvalidClientMetadataDocument(string uri)
+    {
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new ClientOAuthOptions()
+            {
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+                ClientMetadataDocumentUri = new Uri(uri),
+            },
+        }, HttpClient, LoggerFactory);
+
+        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.StartsWith("Failed to handle unauthorized response", ex.Message);
     }
 
     [Fact]

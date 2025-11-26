@@ -6,7 +6,7 @@ using System.Text.Json.Nodes;
 namespace ModelContextProtocol.Server;
 
 /// <summary>
-/// Used to specify metadata for an MCP server primitive (tool, prompt, or resource).
+/// Specifies metadata for an MCP server primitive (tool, prompt, or resource).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -24,7 +24,7 @@ namespace ModelContextProtocol.Server;
 /// </para>
 /// </remarks>
 /// <example>
-/// <code>
+/// <code language="csharp">
 /// [McpServerTool]
 /// [McpMeta("model", "gpt-4o")]
 /// [McpMeta("version", "1.0")]
@@ -60,10 +60,10 @@ public sealed class McpMetaAttribute : Attribute
     }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="McpMetaAttribute"/> class with a boolean value.
+    /// Initializes a new instance of the <see cref="McpMetaAttribute"/> class with a Boolean value.
     /// </summary>
     /// <param name="name">The name (key) of the metadata entry.</param>
-    /// <param name="value">The boolean value of the metadata entry.</param>
+    /// <param name="value">The Boolean value of the metadata entry.</param>
     public McpMetaAttribute(string name, bool value)
     {
         Name = name;
@@ -85,16 +85,16 @@ public sealed class McpMetaAttribute : Attribute
     /// <remarks>
     /// <para>
     /// This value must be well-formed JSON. It will be parsed and added to the metadata <see cref="JsonObject"/>.
-    /// Simple values can be represented as JSON literals like <c>"\"my-string\""</c>, <c>"123"</c>, 
-    /// <c>"true"</c>, etc. Complex structures can be represented as JSON objects or arrays.
+    /// Simple values can be represented as JSON literals like <c>"\"my-string\""</c>, <c>"123"</c>,
+    /// or <c>"true"</c>. Complex structures can be represented as JSON objects or arrays.
     /// </para>
     /// <para>
-    /// Setting this property will override any value provided via the constructor.
+    /// Setting this property overrides any value provided via the constructor.
     /// </para>
     /// <para>
     /// For programmatic scenarios where you want to construct complex metadata without dealing with
-    /// JSON strings, use the <see cref="McpServerToolCreateOptions.Meta"/>, 
-    /// <see cref="McpServerPromptCreateOptions.Meta"/>, or <see cref="McpServerResourceCreateOptions.Meta"/> 
+    /// JSON strings, use the <see cref="McpServerToolCreateOptions.Meta"/>,
+    /// <see cref="McpServerPromptCreateOptions.Meta"/>, or <see cref="McpServerResourceCreateOptions.Meta"/>
     /// property to provide a JsonObject directly.
     /// </para>
     /// </remarks>

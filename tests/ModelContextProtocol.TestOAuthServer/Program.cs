@@ -13,6 +13,7 @@ public sealed class Program
 {
     private const int _port = 7029;
     private static readonly string _url = $"https://localhost:{_port}";
+    private static readonly string _clientMetadataDocumentUrl = $"{_url}/client-metadata/cimd-client.json";
 
     // Port 5000 is used by tests and port 7071 is used by the ProtectedMcpServer sample
     private static readonly string[] ValidResources = ["http://localhost:5000/", "http://localhost:7071/"];
@@ -43,6 +44,16 @@ public sealed class Program
     // Track if we've already issued an already-expired token for the CanAuthenticate_WithTokenRefresh test which uses the test-refresh-client registration.
     public bool HasIssuedExpiredToken { get; set; }
     public bool HasRefreshedToken { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the authorization server
+    /// advertises support for client ID metadata documents in its discovery
+    /// document. This is used by tests to toggle CIMD support.
+    /// </summary>
+    /// <remarks>
+    /// The default value is <c>true</c>.
+    /// </remarks>
+    public bool ClientIdMetadataDocumentSupported { get; set; } = true;
 
     /// <summary>
     /// Entry point for the application.
@@ -102,6 +113,7 @@ public sealed class Program
         _clients[clientId] = new ClientInfo
         {
             ClientId = clientId,
+            RequiresClientSecret = true,
             ClientSecret = clientSecret,
             RedirectUris = ["http://localhost:1179/callback"],
         };
@@ -111,7 +123,21 @@ public sealed class Program
         _clients["test-refresh-client"] = new ClientInfo
         {
             ClientId = "test-refresh-client",
+            RequiresClientSecret = true,
             ClientSecret = "test-refresh-secret",
+            RedirectUris = ["http://localhost:1179/callback"],
+        };
+
+        // This client is pre-registered to support testing Client ID Metadata Documents (CIMD).
+        // A non-test OAuth server implementation would fetch the metadata document from the client-specified
+        // URL during authorization, but we just register the client here to keep the test implementation simple.
+        // We also set 'RequiresClientSecret' to 'false' here because client secrets are disallowed when using CIMD.
+        // See https://datatracker.ietf.org/doc/html/draft-ietf-oauth-client-id-metadata-document-00#section-4.1
+        _clients[_clientMetadataDocumentUrl] = new ClientInfo
+        {
+            ClientId = _clientMetadataDocumentUrl,
+
+            RequiresClientSecret = false,
             RedirectUris = ["http://localhost:1179/callback"],
         };
 
@@ -144,7 +170,8 @@ public sealed class Program
                     CodeChallengeMethodsSupported = ["S256"],
                     GrantTypesSupported = ["authorization_code", "refresh_token"],
                     IntrospectionEndpoint = $"{_url}/introspect",
-                    RegistrationEndpoint = $"{_url}/register"
+                    RegistrationEndpoint = $"{_url}/register",
+                    ClientIdMetadataDocumentSupported = ClientIdMetadataDocumentSupported,
                 };
 
                 return Results.Ok(metadata);
@@ -468,6 +495,7 @@ public sealed class Program
             _clients[clientId] = new ClientInfo
             {
                 ClientId = clientId,
+                RequiresClientSecret = true,
                 ClientSecret = clientSecret,
                 RedirectUris = registrationRequest.RedirectUris,
             };
@@ -508,17 +536,17 @@ public sealed class Program
         var clientId = form["client_id"].ToString();
         var clientSecret = form["client_secret"].ToString();
 
-        if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(clientSecret))
+        if (string.IsNullOrEmpty(clientId) || !_clients.TryGetValue(clientId, out var client))
         {
             return null;
         }
 
-        if (_clients.TryGetValue(clientId, out var client) && client.ClientSecret == clientSecret)
+        if (client.RequiresClientSecret && client.ClientSecret != clientSecret)
         {
-            return client;
+            return null;
         }
 
-        return null;
+        return client;
     }
 
     /// <summary>

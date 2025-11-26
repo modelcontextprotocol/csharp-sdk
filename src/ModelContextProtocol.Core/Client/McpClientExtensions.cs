@@ -11,11 +11,9 @@ namespace ModelContextProtocol.Client;
 /// Provides extension methods for interacting with an <see cref="McpClient"/>.
 /// </summary>
 /// <remarks>
-/// <para>
 /// This class contains extension methods that simplify common operations with an MCP client,
 /// such as pinging a server, listing and working with tools, prompts, and resources, and
 /// managing subscriptions to resources.
-/// </para>
 /// </remarks>
 public static class McpClientExtensions
 {
@@ -28,7 +26,7 @@ public static class McpClientExtensions
     /// <remarks>
     /// <para>
     /// This method is used to check if the MCP server is online and responding to requests.
-    /// It can be useful for health checking, ensuring the connection is established, or verifying 
+    /// It can be useful for health checking, ensuring the connection is established, or verifying
     /// that the client has proper authorization to communicate with the server.
     /// </para>
     /// <para>
@@ -37,7 +35,7 @@ public static class McpClientExtensions
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
-    /// <exception cref="McpException">Thrown when the server cannot be reached or returns an error response.</exception>
+    /// <exception cref="McpException">The server cannot be reached or returned an error response.</exception>
     [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.PingAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     [EditorBrowsable(EditorBrowsableState.Never)]
     public static Task PingAsync(this IMcpClient client, CancellationToken cancellationToken = default)
@@ -47,7 +45,7 @@ public static class McpClientExtensions
     /// Retrieves a list of available tools from the server.
     /// </summary>
     /// <param name="client">The client instance used to communicate with the MCP server.</param>
-    /// <param name="serializerOptions">The serializer options governing tool parameter serialization. If null, the default options will be used.</param>
+    /// <param name="serializerOptions">The serializer options governing tool parameter serialization. If null, the default options are used.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A list of all available tools as <see cref="McpClientTool"/> instances.</returns>
     /// <remarks>
@@ -56,8 +54,8 @@ public static class McpClientExtensions
     /// It automatically handles pagination with cursors if the server responds with only a portion per request.
     /// </para>
     /// <para>
-    /// For servers with a large number of tools and that responds with paginated responses, consider using 
-    /// <see cref="EnumerateToolsAsync"/> instead, as it streams tools as they arrive rather than loading them all at once.
+    /// For servers with a large number of tools and that responds with paginated responses, consider using
+    /// <see cref="EnumerateToolsAsync"/> instead, because it streams tools as they arrive rather than loading them all at once.
     /// </para>
     /// <para>
     /// The serializer options provided are flowed to each <see cref="McpClientTool"/> and will be used
@@ -68,13 +66,13 @@ public static class McpClientExtensions
     /// <code>
     /// // Get all tools available on the server
     /// var tools = await mcpClient.ListToolsAsync();
-    /// 
+    ///
     /// // Use tools with an AI client
     /// ChatOptions chatOptions = new()
     /// {
     ///     Tools = [.. tools]
     /// };
-    /// 
+    ///
     /// await foreach (var update in chatClient.GetStreamingResponseAsync(userMessage, chatOptions))
     /// {
     ///     Console.Write(update);
@@ -94,7 +92,7 @@ public static class McpClientExtensions
     /// Creates an enumerable for asynchronously enumerating all available tools from the server.
     /// </summary>
     /// <param name="client">The client instance used to communicate with the MCP server.</param>
-    /// <param name="serializerOptions">The serializer options governing tool parameter serialization. If null, the default options will be used.</param>
+    /// <param name="serializerOptions">The serializer options governing tool parameter serialization. If null, the default options are used.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>An asynchronous sequence of all available tools as <see cref="McpClientTool"/> instances.</returns>
     /// <remarks>
@@ -105,7 +103,7 @@ public static class McpClientExtensions
     /// </para>
     /// <para>
     /// The serializer options provided are flowed to each <see cref="McpClientTool"/> and will be used
-    /// when invoking tools in order to serialize any parameters.
+    /// when invoking tools to serialize any parameters.
     /// </para>
     /// <para>
     /// Every iteration through the returned <see cref="IAsyncEnumerable{McpClientTool}"/>
@@ -142,7 +140,7 @@ public static class McpClientExtensions
     /// It automatically handles pagination with cursors if the server responds with only a portion per request.
     /// </para>
     /// <para>
-    /// For servers with a large number of prompts and that responds with paginated responses, consider using 
+    /// For servers with a large number of prompts and that responds with paginated responses, consider using
     /// <see cref="EnumeratePromptsAsync"/> instead, as it streams prompts as they arrive rather than loading them all at once.
     /// </para>
     /// </remarks>
@@ -201,7 +199,7 @@ public static class McpClientExtensions
     /// The server will process the arguments and return a prompt containing messages or other content.
     /// </para>
     /// <para>
-    /// Arguments are serialized into JSON and passed to the server, where they may be used to customize the 
+    /// Arguments are serialized into JSON and passed to the server, where they may be used to customize the
     /// prompt's behavior or content. Each prompt may have different argument requirements.
     /// </para>
     /// <para>
@@ -233,7 +231,7 @@ public static class McpClientExtensions
     /// It automatically handles pagination with cursors if the server responds with only a portion per request.
     /// </para>
     /// <para>
-    /// For servers with a large number of resource templates and that responds with paginated responses, consider using 
+    /// For servers with a large number of resource templates and that responds with paginated responses, consider using
     /// <see cref="EnumerateResourceTemplatesAsync"/> instead, as it streams templates as they arrive rather than loading them all at once.
     /// </para>
     /// </remarks>
@@ -289,7 +287,7 @@ public static class McpClientExtensions
     /// It automatically handles pagination with cursors if the server responds with only a portion per request.
     /// </para>
     /// <para>
-    /// For servers with a large number of resources and that responds with paginated responses, consider using 
+    /// For servers with a large number of resources and that responds with paginated responses, consider using
     /// <see cref="EnumerateResourcesAsync"/> instead, as it streams resources as they arrive rather than loading them all at once.
     /// </para>
     /// </remarks>
@@ -297,7 +295,7 @@ public static class McpClientExtensions
     /// <code>
     /// // Get all resources available on the server
     /// var resources = await client.ListResourcesAsync();
-    /// 
+    ///
     /// // Display information about each resource
     /// foreach (var resource in resources)
     /// {
@@ -410,7 +408,7 @@ public static class McpClientExtensions
     /// auto-completion in user interfaces.
     /// </para>
     /// <para>
-    /// When working with resource references, the server will return suggestions relevant to the specified 
+    /// When working with resource references, the server will return suggestions relevant to the specified
     /// resource URI.
     /// </para>
     /// </remarks>
@@ -554,7 +552,7 @@ public static class McpClientExtensions
     /// routed to this instance.
     /// </param>
     /// <param name="serializerOptions">
-    /// The JSON serialization options governing argument serialization. If <see langword="null"/>, the default serialization options will be used.
+    /// The JSON serialization options governing argument serialization. If <see langword="null"/>, the default serialization options are used.
     /// </param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>

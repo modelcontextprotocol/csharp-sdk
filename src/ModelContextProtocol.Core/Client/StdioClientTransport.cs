@@ -38,7 +38,7 @@ public sealed partial class StdioClientTransport : IClientTransport
     /// Initializes a new instance of the <see cref="StdioClientTransport"/> class.
     /// </summary>
     /// <param name="options">Configuration options for the transport, including the command to execute, arguments, working directory, and environment variables.</param>
-    /// <param name="loggerFactory">Logger factory for creating loggers used for diagnostic output during transport operations.</param>
+    /// <param name="loggerFactory">A logger factory for creating loggers used for diagnostic output during transport operations.</param>
     public StdioClientTransport(StdioClientTransportOptions options, ILoggerFactory? loggerFactory = null)
     {
         Throw.IfNull(options);
@@ -91,7 +91,7 @@ public sealed partial class StdioClientTransport : IClientTransport
 #endif
             };
 
-            if (arguments is not null) 
+            if (arguments is not null)
             {
 #if NET
                 foreach (string arg in arguments)
@@ -234,7 +234,7 @@ public sealed partial class StdioClientTransport : IClientTransport
         }
     }
 
-    /// <summary>Gets whether <paramref name="process"/> has exited.</summary>
+    /// <summary>Gets a value that indicates whether <paramref name="process"/> has exited.</summary>
     internal static bool HasExited(Process process)
     {
         try

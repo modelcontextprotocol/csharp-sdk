@@ -36,7 +36,7 @@ public sealed class McpServerPromptCreateOptions
     /// </summary>
     /// <remarks>
     /// If <see langword="null"/>, but an <see cref="McpServerPromptAttribute"/> is applied to the method,
-    /// the name from the attribute will be used. If that's not present, a name based on the method's name will be used.
+    /// the name from the attribute is used. If that's not present, a name based on the method's name is used.
     /// </remarks>
     public string? Name { get; set; }
 
@@ -50,7 +50,7 @@ public sealed class McpServerPromptCreateOptions
     /// </summary>
     /// <remarks>
     /// If <see langword="null"/>, but a <see cref="DescriptionAttribute"/> is applied to the method,
-    /// the description from that attribute will be used.
+    /// the description from that attribute is used.
     /// </remarks>
     public string? Description { get; set; }
 
@@ -63,7 +63,7 @@ public sealed class McpServerPromptCreateOptions
     public JsonSerializerOptions? SerializerOptions { get; set; }
 
     /// <summary>
-    /// Gets or sets the JSON schema options when creating <see cref="AIFunction"/> from a method.
+    /// Gets or sets the JSON schema options when creating an <see cref="AIFunction"/> from a method.
     /// </summary>
     /// <remarks>
     /// Defaults to <see cref="AIJsonSchemaCreateOptions.Default"/> if left unspecified.
@@ -83,7 +83,7 @@ public sealed class McpServerPromptCreateOptions
     /// Gets or sets the icons for this prompt.
     /// </summary>
     /// <remarks>
-    /// This can be used by clients to display the prompt's icon in a user interface.
+    /// This property can be used by clients to display the prompt's icon in a user interface.
     /// </remarks>
     public IList<Icon>? Icons { get; set; }
 

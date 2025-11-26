@@ -20,12 +20,12 @@ public sealed class ElicitRequestParams
     /// <summary>
     /// Gets or sets the requested schema.
     /// </summary>
-    /// <remarks>
-    /// May be one of <see cref="StringSchema"/>, <see cref="NumberSchema"/>, <see cref="BooleanSchema"/>,
+    /// <value>
+    /// Possible values are <see cref="StringSchema"/>, <see cref="NumberSchema"/>, <see cref="BooleanSchema"/>,
     /// <see cref="UntitledSingleSelectEnumSchema"/>, <see cref="TitledSingleSelectEnumSchema"/>,
     /// <see cref="UntitledMultiSelectEnumSchema"/>, <see cref="TitledMultiSelectEnumSchema"/>,
-    /// or <see cref="LegacyTitledEnumSchema"/> (deprecated).
-    /// </remarks>
+    /// and <see cref="LegacyTitledEnumSchema"/> (deprecated).
+    /// </value>
     [JsonPropertyName("requestedSchema")]
     [field: MaybeNull]
     public RequestSchema RequestedSchema
@@ -38,7 +38,7 @@ public sealed class ElicitRequestParams
     public class RequestSchema
     {
         /// <summary>Gets the type of the schema.</summary>
-        /// <remarks>This is always "object".</remarks>
+        /// <remarks>This value is always "object".</remarks>
         [JsonPropertyName("type")]
         public string Type => "object";
 
@@ -61,7 +61,7 @@ public sealed class ElicitRequestParams
     }
 
     /// <summary>
-    /// Represents restricted subset of JSON Schema: 
+    /// Represents a restricted subset of JSON Schema:
     /// <see cref="StringSchema"/>, <see cref="NumberSchema"/>, <see cref="BooleanSchema"/>,
     /// <see cref="UntitledSingleSelectEnumSchema"/>, <see cref="TitledSingleSelectEnumSchema"/>,
     /// <see cref="UntitledMultiSelectEnumSchema"/>, <see cref="TitledMultiSelectEnumSchema"/>,
@@ -70,12 +70,12 @@ public sealed class ElicitRequestParams
     [JsonConverter(typeof(Converter))]
     public abstract class PrimitiveSchemaDefinition
     {
-        /// <summary>Prevent external derivations.</summary>
+        /// <summary>Prevents external derivations.</summary>
         protected private PrimitiveSchemaDefinition()
         {
         }
 
-        /// <summary>Gets the type of the schema.</summary>
+        /// <summary>Gets or sets the type of the schema.</summary>
         [JsonPropertyName("type")]
         public abstract string Type { get; set; }
 
@@ -90,7 +90,7 @@ public sealed class ElicitRequestParams
         /// <summary>
         /// Provides a <see cref="JsonConverter"/> for <see cref="ResourceContents"/>.
         /// </summary>
-        /// Provides a polymorphic converter for the <see cref="PrimitiveSchemaDefinition"/> class that doesn't  require
+        /// Provides a polymorphic converter for the <see cref="PrimitiveSchemaDefinition"/> class that doesn't require
         /// setting <see cref="JsonSerializerOptions.AllowOutOfOrderMetadataProperties"/> explicitly.
         [EditorBrowsable(EditorBrowsableState.Never)]
         public class Converter : JsonConverter<PrimitiveSchemaDefinition>
@@ -742,8 +742,10 @@ public sealed class ElicitRequestParams
 
     /// <summary>
     /// Represents a legacy schema for an enum type with enumNames.
-    /// This schema is deprecated in favor of <see cref="TitledSingleSelectEnumSchema"/>.
     /// </summary>
+    /// <remarks>
+    /// This schema is deprecated in favor of <see cref="TitledSingleSelectEnumSchema"/>.
+    /// </remarks>
     [Obsolete("Use TitledSingleSelectEnumSchema instead. This type will be removed in a future version.")]
     public class LegacyTitledEnumSchema : PrimitiveSchemaDefinition
     {
