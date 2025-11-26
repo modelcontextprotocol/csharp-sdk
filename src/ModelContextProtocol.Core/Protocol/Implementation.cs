@@ -57,7 +57,7 @@ public sealed class Implementation : IBaseMetadata
     /// Gets or sets an optional list of icons for this implementation.
     /// </summary>
     /// <remarks>
-    /// This can be used by clients to display the implementation's icon in a user interface.
+    /// This value can be used by clients to display the implementation's icon in a user interface.
     /// </remarks>
     [JsonPropertyName("icons")]
     public IList<Icon>? Icons { get; set; }
@@ -70,7 +70,7 @@ public sealed class Implementation : IBaseMetadata
     /// This URL can be used by clients to link to documentation or more information about the implementation.
     /// </para>
     /// <para>
-    /// Consumers SHOULD take steps to ensure URLs are from the same domain as the client/server 
+    /// Consumers SHOULD take steps to ensure URLs are from the same domain as the client/server
     /// or a trusted domain to prevent security issues.
     /// </para>
     /// </remarks>

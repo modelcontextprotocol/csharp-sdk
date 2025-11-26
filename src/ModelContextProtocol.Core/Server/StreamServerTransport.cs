@@ -36,8 +36,7 @@ public class StreamServerTransport : TransportBase
     /// <param name="outputStream">The output <see cref="Stream"/> to use as standard output.</param>
     /// <param name="serverName">Optional name of the server, used for diagnostic purposes, like logging.</param>
     /// <param name="loggerFactory">Optional logger factory used for logging employed by the transport.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="inputStream"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentNullException"><paramref name="outputStream"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="inputStream"/> or <paramref name="outputStream"/> is <see langword="null"/>.</exception>
     public StreamServerTransport(Stream inputStream, Stream outputStream, string? serverName = null, ILoggerFactory? loggerFactory = null)
         : base(serverName is not null ? $"Server (stream) ({serverName})" : "Server (stream)", loggerFactory)
     {

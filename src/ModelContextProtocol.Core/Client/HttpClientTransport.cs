@@ -9,7 +9,7 @@ namespace ModelContextProtocol.Client;
 /// </summary>
 /// <remarks>
 /// This transport connects to an MCP server over HTTP using SSE or Streamable HTTP,
-/// allowing for real-time server-to-client communication with a standard HTTP requests.
+/// allowing for real-time server-to-client communication with standard HTTP requests.
 /// Unlike the <see cref="StdioClientTransport"/>, this transport connects to an existing server
 /// rather than launching a new process.
 /// </remarks>
@@ -24,8 +24,8 @@ public sealed class HttpClientTransport : IClientTransport, IAsyncDisposable
     /// <summary>
     /// Initializes a new instance of the <see cref="HttpClientTransport"/> class.
     /// </summary>
-    /// <param name="transportOptions">Configuration options for the transport.</param>
-    /// <param name="loggerFactory">Logger factory for creating loggers used for diagnostic output during transport operations.</param>
+    /// <param name="transportOptions">The configuration options for the transport.</param>
+    /// <param name="loggerFactory">The logger factory for creating loggers used for diagnostic output during transport operations.</param>
     public HttpClientTransport(HttpClientTransportOptions transportOptions, ILoggerFactory? loggerFactory = null)
         : this(transportOptions, new HttpClient(), loggerFactory, ownsHttpClient: true)
     {
@@ -34,9 +34,9 @@ public sealed class HttpClientTransport : IClientTransport, IAsyncDisposable
     /// <summary>
     /// Initializes a new instance of the <see cref="HttpClientTransport"/> class with a provided HTTP client.
     /// </summary>
-    /// <param name="transportOptions">Configuration options for the transport.</param>
+    /// <param name="transportOptions">The configuration options for the transport.</param>
     /// <param name="httpClient">The HTTP client instance used for requests.</param>
-    /// <param name="loggerFactory">Logger factory for creating loggers used for diagnostic output during transport operations.</param>
+    /// <param name="loggerFactory">The logger factory for creating loggers used for diagnostic output during transport operations.</param>
     /// <param name="ownsHttpClient">
     /// <see langword="true"/> to dispose of <paramref name="httpClient"/> when the transport is disposed;
     /// <see langword="false"/> if the caller is retaining ownership of the <paramref name="httpClient"/>'s lifetime.

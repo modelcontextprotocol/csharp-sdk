@@ -13,16 +13,16 @@ namespace ModelContextProtocol.Protocol;
 public sealed class ResourcesCapability
 {
     /// <summary>
-    /// Gets or sets whether this server supports subscribing to resource updates.
+    /// Gets or sets a value that indicates whether this server supports subscribing to resource updates.
     /// </summary>
     [JsonPropertyName("subscribe")]
     public bool? Subscribe { get; set; }
 
     /// <summary>
-    /// Gets or sets whether this server supports notifications for changes to the resource list.
+    /// Gets or sets a value that indicates whether this server supports notifications for changes to the resource list.
     /// </summary>
     /// <remarks>
-    /// When set to <see langword="true"/>, the server will send notifications using
+    /// When set to <see langword="true"/>, the server sends notifications using
     /// <see cref="NotificationMethods.ResourceListChangedNotification"/> when resources are added,
     /// removed, or modified. Clients can register handlers for these notifications to
     /// refresh their resource cache.

@@ -8,49 +8,49 @@ namespace ModelContextProtocol.Authentication;
 public sealed class DynamicClientRegistrationResponse
 {
     /// <summary>
-    /// Gets or sets the client identifier.
+    /// Gets or initializes the client identifier.
     /// </summary>
     [JsonPropertyName("client_id")]
     public required string ClientId { get; init; }
 
     /// <summary>
-    /// Gets or sets the client secret.
+    /// Gets or initializes the client secret.
     /// </summary>
     [JsonPropertyName("client_secret")]
     public string? ClientSecret { get; init; }
 
     /// <summary>
-    /// Gets or sets the redirect URIs for the client.
+    /// Gets or initializes the redirect URIs for the client.
     /// </summary>
     [JsonPropertyName("redirect_uris")]
     public string[]? RedirectUris { get; init; }
 
     /// <summary>
-    /// Gets or sets the token endpoint authentication method.
+    /// Gets or initializes the token endpoint authentication method.
     /// </summary>
     [JsonPropertyName("token_endpoint_auth_method")]
     public string? TokenEndpointAuthMethod { get; init; }
 
     /// <summary>
-    /// Gets or sets the grant types that the client will use.
+    /// Gets or initializes the grant types that the client will use.
     /// </summary>
     [JsonPropertyName("grant_types")]
     public string[]? GrantTypes { get; init; }
 
     /// <summary>
-    /// Gets or sets the response types that the client will use.
+    /// Gets or initializes the response types that the client will use.
     /// </summary>
     [JsonPropertyName("response_types")]
     public string[]? ResponseTypes { get; init; }
 
     /// <summary>
-    /// Gets or sets the client ID issued timestamp.
+    /// Gets or initializes the timestamp at which the client ID was issued.
     /// </summary>
     [JsonPropertyName("client_id_issued_at")]
     public long? ClientIdIssuedAt { get; init; }
 
     /// <summary>
-    /// Gets or sets the client secret expiration time.
+    /// Gets or initializes the client secret expiration time.
     /// </summary>
     [JsonPropertyName("client_secret_expires_at")]
     public long? ClientSecretExpiresAt { get; init; }

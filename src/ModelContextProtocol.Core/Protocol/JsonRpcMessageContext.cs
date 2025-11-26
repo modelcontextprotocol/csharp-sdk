@@ -18,9 +18,9 @@ public class JsonRpcMessageContext
     /// Gets or sets the transport the <see cref="JsonRpcMessage"/> was received on or should be sent over.
     /// </summary>
     /// <remarks>
-    /// This is used to support the Streamable HTTP transport where the specification states that the server
+    /// This property is used to support the Streamable HTTP transport where the specification states that the server
     /// SHOULD include JSON-RPC responses in the HTTP response body for the POST request containing
-    /// the corresponding JSON-RPC request. It may be <see langword="null"/> for other transports.
+    /// the corresponding JSON-RPC request. It can be <see langword="null"/> for other transports.
     /// </remarks>
     public ITransport? RelatedTransport { get; set; }
 
@@ -28,9 +28,9 @@ public class JsonRpcMessageContext
     /// Gets or sets the <see cref="ExecutionContext"/> that should be used to run any handlers
     /// </summary>
     /// <remarks>
-    /// This is used to support the Streamable HTTP transport in its default stateful mode. In this mode,
+    /// This property is used to support the Streamable HTTP transport in its default stateful mode. In this mode,
     /// the <see cref="McpServer"/> outlives the initial HTTP request context it was created on, and new
-    /// JSON-RPC messages can originate from future HTTP requests. This allows the transport to flow the
+    /// JSON-RPC messages can originate from future HTTP requests. This behavior allows the transport to flow the
     /// context with the JSON-RPC message. This is particularly useful for enabling IHttpContextAccessor
     /// in tool calls.
     /// </remarks>
@@ -49,11 +49,11 @@ public class JsonRpcMessageContext
     /// <para>
     /// The user information is automatically populated by the transport layer when processing
     /// incoming HTTP requests in ASP.NET Core scenarios. For other transport types or scenarios
-    /// where user authentication is not applicable, this property may be <see langword="null"/>.
+    /// where user authentication is not applicable, this property can be <see langword="null"/>.
     /// </para>
     /// <para>
     /// This property is particularly useful in the Streamable HTTP transport where JSON-RPC messages
-    /// may outlive the original HTTP request context, allowing user identity to be preserved
+    /// might outlive the original HTTP request context, allowing user identity to be preserved
     /// throughout the message processing pipeline.
     /// </para>
     /// </remarks>

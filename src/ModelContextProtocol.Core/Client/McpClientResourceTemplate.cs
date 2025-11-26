@@ -25,17 +25,16 @@ public sealed class McpClientResourceTemplate
     /// <remarks>
     /// <para>
     /// This constructor enables reusing cached resource template definitions across different <see cref="McpClient"/> instances
-    /// without needing to call <see cref="McpClient.ListResourceTemplatesAsync"/> on every reconnect. This is particularly useful 
+    /// without needing to call <see cref="McpClient.ListResourceTemplatesAsync"/> on every reconnect. This is particularly useful
     /// in scenarios where resource template definitions are stable and network round-trips should be minimized.
     /// </para>
     /// <para>
-    /// The provided <paramref name="resourceTemplate"/> must represent a resource template that is actually available on the server 
-    /// associated with the <paramref name="client"/>. Attempting to read a resource template that doesn't exist on the 
+    /// The provided <paramref name="resourceTemplate"/> must represent a resource template that is actually available on the server
+    /// associated with the <paramref name="client"/>. Attempting to read a resource template that doesn't exist on the
     /// server will result in an <see cref="McpException"/>.
     /// </para>
     /// </remarks>
-    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentNullException"><paramref name="resourceTemplate"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> or <paramref name="resourceTemplate"/> is <see langword="null"/>.</exception>
     public McpClientResourceTemplate(McpClient client, ResourceTemplate resourceTemplate)
     {
         Throw.IfNull(client);
@@ -52,7 +51,7 @@ public sealed class McpClientResourceTemplate
     /// which can be useful for advanced scenarios or when implementing custom MCP client extensions.
     /// </para>
     /// <para>
-    /// For most common use cases, you can use the more convenient <see cref="UriTemplate"/> and 
+    /// For most common use cases, you can use the more convenient <see cref="UriTemplate"/> and
     /// <see cref="Description"/> properties instead of accessing the <see cref="ProtocolResourceTemplate"/> directly.
     /// </para>
     /// </remarks>
@@ -67,10 +66,10 @@ public sealed class McpClientResourceTemplate
     /// <summary>Gets the title of the resource template.</summary>
     public string? Title => ProtocolResourceTemplate.Title;
 
-    /// <summary>Gets a description of the resource template.</summary>
+    /// <summary>Gets the description of the resource template.</summary>
     public string? Description => ProtocolResourceTemplate.Description;
 
-    /// <summary>Gets a media (MIME) type of the resource template.</summary>
+    /// <summary>Gets the media (MIME) type of the resource template.</summary>
     public string? MimeType => ProtocolResourceTemplate.MimeType;
 
     /// <summary>

@@ -36,17 +36,19 @@ public sealed class CallToolResult : Result
     public JsonNode? StructuredContent { get; set; }
 
     /// <summary>
-    /// Gets or sets an indication of whether the tool call was unsuccessful.
+    /// Gets or sets a value that indicates whether the tool call was unsuccessful.
     /// </summary>
+    /// <value>
+    /// <see langword="true"/> to signify that the tool execution failed; <see langword="false"/> if it was successful.
+    /// </value>
     /// <remarks>
     /// <para>
-    /// When set to <see langword="true"/>, it signifies that the tool execution failed.
     /// Tool execution errors (including input validation errors, API failures, and business logic errors)
     /// are reported with this property set to <see langword="true"/> and details in the <see cref="Content"/>
     /// property, rather than as protocol-level errors.
     /// </para>
     /// <para>
-    /// This allows language models to receive detailed error feedback and potentially self-correct
+    /// This design allows language models to receive detailed error feedback and potentially self-correct
     /// in subsequent requests. For example, if a date parameter is in the wrong format or out of range,
     /// the error message in <see cref="Content"/> can explain the issue, enabling the model to retry
     /// with corrected parameters.

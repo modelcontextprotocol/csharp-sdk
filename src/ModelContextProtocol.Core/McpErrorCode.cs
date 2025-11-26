@@ -37,13 +37,13 @@ public enum McpErrorCode
     /// This error is returned for protocol-level parameter issues, such as:
     /// </para>
     /// <list type="bullet">
-    /// <item><description>Malformed requests that fail to satisfy the request schema (e.g., CallToolRequest)</description></item>
-    /// <item><description>Unknown or unrecognized primitive names (e.g., tool, prompt, or resource names)</description></item>
+    /// <item><description>Malformed requests that fail to satisfy the request schema (for example, CallToolRequest)</description></item>
+    /// <item><description>Unknown or unrecognized primitive names (for example, tool, prompt, or resource names)</description></item>
     /// <item><description>Missing required protocol-level parameters</description></item>
     /// </list>
     /// <para>
     /// Note: Input validation errors within tool/prompt/resource arguments should be reported as execution errors
-    /// (e.g., via <see cref="Protocol.CallToolResult.IsError"/>) rather than as protocol errors, allowing language
+    /// (for example, via <see cref="Protocol.CallToolResult.IsError"/>) rather than as protocol errors, allowing language
     /// models to receive error feedback and self-correct.
     /// </para>
     /// </remarks>

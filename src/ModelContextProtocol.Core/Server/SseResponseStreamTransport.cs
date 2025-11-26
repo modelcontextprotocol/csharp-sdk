@@ -76,7 +76,7 @@ public sealed class SseResponseStreamTransport(Stream sseResponseStream, string?
     /// <param name="message">The JSON-RPC message received from the client.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task representing the asynchronous operation to buffer the JSON-RPC message for processing.</returns>
-    /// <exception cref="InvalidOperationException">Thrown when there is an attempt to process a message before calling <see cref="RunAsync(CancellationToken)"/>.</exception>
+    /// <exception cref="InvalidOperationException">There is an attempt to process a message before calling <see cref="RunAsync(CancellationToken)"/>.</exception>
     /// <remarks>
     /// <para>
     /// This method is the entry point for processing client-to-server communication in the SSE transport model.
