@@ -139,7 +139,6 @@ public sealed class McpServerToolCreateOptions
     /// <summary>
     /// Gets or sets the JSON schema options when creating an <see cref="AIFunction"/> from a method.
     /// </summary>
-    /// <remarks>
     /// <value>
     /// The default is <see cref="AIJsonSchemaCreateOptions.Default"/>.
     /// </value>

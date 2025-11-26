@@ -186,7 +186,6 @@ public sealed class McpServerToolAttribute : Attribute
     /// has no additional effect on its environment.
     /// </summary>
     /// <value>
-    /// <value>
     /// <see langword="true"/> if calling the tool repeatedly with the same arguments
     /// has no additional effect on the environment; <see langword="false"/> if it does.
     /// The default is <see langword="false"/>.
