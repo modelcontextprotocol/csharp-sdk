@@ -78,7 +78,7 @@ internal sealed partial class McpClientImpl : McpClient
                     cancellationToken),
                 McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams,
                 McpJsonUtilities.JsonContext.Default.CreateMessageResult);
-            
+
             _options.Capabilities ??= new();
             _options.Capabilities.Sampling ??= new();
         }
@@ -205,6 +205,28 @@ internal sealed partial class McpClientImpl : McpClient
         LogClientConnected(_endpointName);
     }
 
+    /// <summary>
+    /// Configures the client to use an already initialized session without performing the handshake.
+    /// </summary>
+    /// <param name="resumeOptions">The metadata captured from the previous session that should be applied to the resumed client.</param>
+    internal void ResumeSession(ResumeClientSessionOptions resumeOptions)
+    {
+        Throw.IfNull(resumeOptions);
+        Throw.IfNull(resumeOptions.ServerCapabilities);
+        Throw.IfNull(resumeOptions.ServerInfo);
+
+        _ = _sessionHandler.ProcessMessagesAsync(CancellationToken.None);
+
+        _serverCapabilities = resumeOptions.ServerCapabilities;
+        _serverInfo = resumeOptions.ServerInfo;
+        _serverInstructions = resumeOptions.ServerInstructions;
+        _negotiatedProtocolVersion = resumeOptions.NegotiatedProtocolVersion
+            ?? _options.ProtocolVersion
+            ?? McpSessionHandler.LatestProtocolVersion;
+
+        LogClientSessionResumed(_endpointName);
+    }
+
     /// <inheritdoc/>
     public override Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default)
         => _sessionHandler.SendRequestAsync(request, cancellationToken);
@@ -247,4 +269,7 @@ internal sealed partial class McpClientImpl : McpClient
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} client created and connected.")]
     private partial void LogClientConnected(string endpointName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} client resumed existing session.")]
+    private partial void LogClientSessionResumed(string endpointName);
 }

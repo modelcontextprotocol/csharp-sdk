@@ -30,9 +30,9 @@ public abstract class Reference
     /// <summary>
     /// When overridden in a derived class, gets the type of content.
     /// </summary>
-    /// <remarks>
-    /// This can be "ref/resource" or "ref/prompt".
-    /// </remarks>
+    /// <value>
+    /// "ref/resource" or "ref/prompt".
+    /// </value>
     [JsonPropertyName("type")]
     public abstract string Type { get; }
 

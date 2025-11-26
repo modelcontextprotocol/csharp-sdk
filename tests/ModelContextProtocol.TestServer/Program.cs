@@ -81,7 +81,7 @@ internal static class Program
                         Params = JsonSerializer.SerializeToNode(new LoggingMessageNotificationParams
                         {
                             Level = logLevel,
-                            Data = JsonSerializer.Deserialize<JsonElement>("\"Random log message\"")
+                            Data = JsonElement.Parse("\"Random log message\"")
                         })
                     }, cancellationToken);
                 }
@@ -117,7 +117,7 @@ internal static class Program
                     {
                         Name = "echo",
                         Description = "Echoes the input back to the client.",
-                        InputSchema = JsonSerializer.Deserialize<JsonElement>("""
+                        InputSchema = JsonElement.Parse("""
                             {
                                 "type": "object",
                                 "properties": {
@@ -134,17 +134,17 @@ internal static class Program
                     {
                         Name = "echoSessionId",
                         Description = "Echoes the session id back to the client.",
-                        InputSchema = JsonSerializer.Deserialize<JsonElement>("""
+                        InputSchema = JsonElement.Parse("""
                             {
                                 "type": "object"
                             }
-                            """, McpJsonUtilities.DefaultOptions),
+                            """),
                     },
                     new Tool
                     {
                         Name = "sampleLLM",
                         Description = "Samples from an LLM using MCP's sampling feature.",
-                        InputSchema = JsonSerializer.Deserialize<JsonElement>("""
+                        InputSchema = JsonElement.Parse("""
                             {
                                 "type": "object",
                                 "properties": {

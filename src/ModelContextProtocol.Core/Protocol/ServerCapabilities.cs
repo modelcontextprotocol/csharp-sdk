@@ -5,7 +5,7 @@ using ModelContextProtocol.Server;
 namespace ModelContextProtocol.Protocol;
 
 /// <summary>
-/// Represents the capabilities that a server may support.
+/// Represents the capabilities that a server supports.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -37,7 +37,7 @@ public sealed class ServerCapabilities
     public IDictionary<string, object>? Experimental { get; set; }
 
     /// <summary>
-    /// Gets or sets a server's logging capability, supporting sending log messages to the client.
+    /// Gets or sets a server's logging capability for sending log messages to the client.
     /// </summary>
     [JsonPropertyName("logging")]
     public LoggingCapability? Logging { get; set; }

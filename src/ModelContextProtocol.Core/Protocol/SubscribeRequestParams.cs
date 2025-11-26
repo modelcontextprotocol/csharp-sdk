@@ -18,7 +18,7 @@ namespace ModelContextProtocol.Protocol;
 /// or until the connection is terminated.
 /// </para>
 /// <para>
-/// The server may refuse or limit subscriptions based on its capabilities or resource constraints.
+/// The server might refuse or limit subscriptions based on its capabilities or resource constraints.
 /// </para>
 /// </remarks>
 public sealed class SubscribeRequestParams : RequestParams

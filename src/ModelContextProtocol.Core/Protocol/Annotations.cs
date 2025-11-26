@@ -22,7 +22,7 @@ public sealed class Annotations
     /// </summary>
     /// <remarks>
     /// The value is a floating-point number between 0 and 1, where 0 represents the lowest priority
-    /// 1 represents highest priority.
+    /// and 1 represents the highest priority.
     /// </remarks>
     [JsonPropertyName("priority")]
     public float? Priority { get; set; }
@@ -31,8 +31,8 @@ public sealed class Annotations
     /// Gets or sets the moment the resource was last modified.
     /// </summary>
     /// <remarks>
-    /// The corresponding JSON should be an ISO 8601 formatted string (e.g., \"2025-01-12T15:00:58Z\").
-    /// Examples: last activity timestamp in an open file, timestamp when the resource was attached, etc.
+    /// The corresponding JSON should be an ISO 8601 formatted string (for example, \"2025-01-12T15:00:58Z\").
+    /// Examples of when the resource was last modified include last activity in an open file or when the resource was attached.
     /// </remarks>
     [JsonPropertyName("lastModified")]
     public DateTimeOffset? LastModified { get; set; }

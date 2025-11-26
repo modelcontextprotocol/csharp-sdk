@@ -20,7 +20,7 @@ namespace ModelContextProtocol.Protocol;
 public sealed class PromptsCapability
 {
     /// <summary>
-    /// Gets or sets whether this server supports notifications for changes to the prompt list.
+    /// Gets or sets a value that indicates whether this server supports notifications for changes to the prompt list.
     /// </summary>
     /// <remarks>
     /// When set to <see langword="true"/>, the server will send notifications using
