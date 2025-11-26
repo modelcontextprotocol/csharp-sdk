@@ -16,7 +16,7 @@ internal static class Diagnostics
         title: "Invalid XML documentation for MCP method",
         messageFormat: "XML comment for method '{0}' is invalid and cannot be processed to generate [Description] attributes.",
         category: "mcp",
-        defaultSeverity: DiagnosticSeverity.Warning,
+        defaultSeverity: DiagnosticSeverity.Info,
         isEnabledByDefault: true,
         description: "The XML documentation comment contains invalid XML and cannot be processed to generate Description attributes.");
 
@@ -25,7 +25,7 @@ internal static class Diagnostics
         title: "MCP method must be partial to generate [Description] attributes",
         messageFormat: "Method '{0}' has XML documentation that could be used to generate [Description] attributes, but the method is not declared as partial.",
         category: "mcp",
-        defaultSeverity: DiagnosticSeverity.Warning,
+        defaultSeverity: DiagnosticSeverity.Info,
         isEnabledByDefault: true,
         description: "Methods with MCP attributes should be declared as partial to allow the source generator to emit Description attributes from XML documentation comments.");
 }

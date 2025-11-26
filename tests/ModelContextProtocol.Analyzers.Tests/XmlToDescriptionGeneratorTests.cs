@@ -381,7 +381,7 @@ public partial class XmlToDescriptionGeneratorTests
         
         // Should report MCP002 diagnostic
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "MCP002");
-        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.Equal(DiagnosticSeverity.Info, diagnostic.Severity);
         Assert.Contains("TestMethod", diagnostic.GetMessage());
         Assert.Contains("partial", diagnostic.GetMessage());
     }
@@ -412,7 +412,7 @@ public partial class XmlToDescriptionGeneratorTests
         
         // Should report MCP002 diagnostic because parameter has documentation
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "MCP002");
-        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.Equal(DiagnosticSeverity.Info, diagnostic.Severity);
     }
 
     [Fact]
@@ -441,7 +441,7 @@ public partial class XmlToDescriptionGeneratorTests
         
         // Should report MCP002 diagnostic because return has documentation
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "MCP002");
-        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.Equal(DiagnosticSeverity.Info, diagnostic.Severity);
     }
 
     [Fact]
@@ -559,7 +559,7 @@ public partial class XmlToDescriptionGeneratorTests
         
         // Should report MCP002 diagnostic because parameter description would be generated
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "MCP002");
-        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.Equal(DiagnosticSeverity.Info, diagnostic.Severity);
     }
 
     [Fact]
@@ -590,7 +590,7 @@ public partial class XmlToDescriptionGeneratorTests
         
         // Should report MCP002 diagnostic for prompts too
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "MCP002");
-        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.Equal(DiagnosticSeverity.Info, diagnostic.Severity);
     }
 
     [Fact]
@@ -621,7 +621,7 @@ public partial class XmlToDescriptionGeneratorTests
         
         // Should report MCP002 diagnostic for resources too
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "MCP002");
-        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.Equal(DiagnosticSeverity.Info, diagnostic.Severity);
     }
 
     [Fact]
@@ -721,9 +721,9 @@ public partial class XmlToDescriptionGeneratorTests
         
         AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
         
-        // Should report a warning diagnostic
+        // Should report an info diagnostic
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "MCP001");
-        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.Equal(DiagnosticSeverity.Info, diagnostic.Severity);
         Assert.Contains("invalid", diagnostic.GetMessage(), StringComparison.OrdinalIgnoreCase);
     }
 
