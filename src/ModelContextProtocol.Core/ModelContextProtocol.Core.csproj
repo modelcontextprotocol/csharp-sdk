@@ -14,8 +14,15 @@
     <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+    <!-- CS0436: Allow ObsoleteAttribute to be redefined internally -->
+    <NoWarn>$(NoWarn);CS0436</NoWarn>
+  </PropertyGroup>
+
   <ItemGroup>
     <Compile Include="..\Common\Throw.cs" Link="Throw.cs" />
+    <Compile Include="..\Common\Obsoletions.cs" Link="Obsoletions.cs" />
+    <Compile Include="..\Common\Experimentals.cs" Link="Experimentals.cs" />
   </ItemGroup>
 
   <!-- Dependencies only needed by netstandard2.0 -->

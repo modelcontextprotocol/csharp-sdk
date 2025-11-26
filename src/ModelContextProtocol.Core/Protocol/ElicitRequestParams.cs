@@ -247,10 +247,12 @@ public sealed class ElicitRequestParams
                         {
                             if (enumNames is not null)
                             {
-                                // EnumSchema for backward compatibility
-#pragma warning disable CS0618 // Type or member is obsolete
+                                // EnumSchema is deprecated but supported for backward compatibility.
+                                // Use the EnumSchema class, which is an alias for LegacyTitledEnumSchema,
+                                // to ensure backward compatibility with existing code relying on that type.
+#pragma warning disable MCP00001
                                 psd = new EnumSchema
-#pragma warning restore CS0618 // Type or member is obsolete
+#pragma warning restore MCP00001
                                 {
                                     Enum = enumValues,
                                     EnumNames = enumNames,
@@ -558,22 +560,22 @@ public sealed class ElicitRequestParams
                         }
                         break;
 
-#pragma warning disable CS0618 // Type or member is obsolete
-                    case LegacyTitledEnumSchema legacyEnum:
-#pragma warning restore CS0618 // Type or member is obsolete
-                        if (legacyEnum.Enum is not null)
+#pragma warning disable MCP00001 // LegacyTitledEnumSchema is deprecated but supported for backward compatibility
+                    case LegacyTitledEnumSchema legacyTitledEnum:
+#pragma warning restore MCP00001
+                        if (legacyTitledEnum.Enum is not null)
                         {
                             writer.WritePropertyName("enum");
-                            JsonSerializer.Serialize(writer, legacyEnum.Enum, McpJsonUtilities.JsonContext.Default.IListString);
+                            JsonSerializer.Serialize(writer, legacyTitledEnum.Enum, McpJsonUtilities.JsonContext.Default.IListString);
                         }
-                        if (legacyEnum.EnumNames is not null)
+                        if (legacyTitledEnum.EnumNames is not null)
                         {
                             writer.WritePropertyName("enumNames");
-                            JsonSerializer.Serialize(writer, legacyEnum.EnumNames, McpJsonUtilities.JsonContext.Default.IListString);
+                            JsonSerializer.Serialize(writer, legacyTitledEnum.EnumNames, McpJsonUtilities.JsonContext.Default.IListString);
                         }
-                        if (legacyEnum.Default is not null)
+                        if (legacyTitledEnum.Default is not null)
                         {
-                            writer.WriteString("default", legacyEnum.Default);
+                            writer.WriteString("default", legacyTitledEnum.Default);
                         }
                         break;
 
@@ -738,51 +740,6 @@ public sealed class ElicitRequestParams
         /// <summary>Gets or sets the default value for the Boolean.</summary>
         [JsonPropertyName("default")]
         public bool? Default { get; set; }
-    }
-
-    /// <summary>
-    /// Represents a legacy schema for an enum type with enumNames.
-    /// </summary>
-    /// <remarks>
-    /// This schema is deprecated in favor of <see cref="TitledSingleSelectEnumSchema"/>.
-    /// </remarks>
-    [Obsolete("Use TitledSingleSelectEnumSchema instead. This type will be removed in a future version.")]
-    public class LegacyTitledEnumSchema : PrimitiveSchemaDefinition
-    {
-        /// <inheritdoc/>
-        [JsonPropertyName("type")]
-        public override string Type
-        {
-            get => "string";
-            set
-            {
-                if (value is not "string")
-                {
-                    throw new ArgumentException("Type must be 'string'.", nameof(value));
-                }
-            }
-        }
-
-        /// <summary>Gets or sets the list of allowed string values for the enum.</summary>
-        [JsonPropertyName("enum")]
-        [field: MaybeNull]
-        public IList<string> Enum
-        {
-            get => field ??= [];
-            set
-            {
-                Throw.IfNull(value);
-                field = value;
-            }
-        }
-
-        /// <summary>Gets or sets optional display names corresponding to the enum values.</summary>
-        [JsonPropertyName("enumNames")]
-        public IList<string>? EnumNames { get; set; }
-
-        /// <summary>Gets or sets the default value for the enum.</summary>
-        [JsonPropertyName("default")]
-        public string? Default { get; set; }
     }
 
     /// <summary>
@@ -970,10 +927,59 @@ public sealed class ElicitRequestParams
     }
 
     /// <summary>
-    /// Represents a schema for an enum type. This is a compatibility alias for <see cref="LegacyTitledEnumSchema"/>.
+    /// Represents a legacy schema for an enum type with enumNames.
+    /// This is a compatibility alias for <see cref="LegacyTitledEnumSchema"/>.
     /// </summary>
-    [Obsolete("Use UntitledSingleSelectEnumSchema or TitledSingleSelectEnumSchema instead. This type will be removed in a future version.")]
+    /// <remarks>
+    /// This schema is deprecated in favor of <see cref="TitledSingleSelectEnumSchema"/>.
+    /// </remarks>
+    [Obsolete(Obsoletions.LegacyTitledEnumSchema_Message, DiagnosticId = Obsoletions.LegacyTitledEnumSchema_DiagnosticId, UrlFormat = Obsoletions.LegacyTitledEnumSchema_Url)]
     public sealed class EnumSchema : LegacyTitledEnumSchema
     {
+    }
+
+    /// <summary>
+    /// Represents a legacy schema for an enum type with enumNames.
+    /// </summary>
+    /// <remarks>
+    /// This schema is deprecated in favor of <see cref="TitledSingleSelectEnumSchema"/>.
+    /// </remarks>
+    [Obsolete(Obsoletions.LegacyTitledEnumSchema_Message, DiagnosticId = Obsoletions.LegacyTitledEnumSchema_DiagnosticId, UrlFormat = Obsoletions.LegacyTitledEnumSchema_Url)]
+    public class LegacyTitledEnumSchema : PrimitiveSchemaDefinition
+    {
+        /// <inheritdoc/>
+        [JsonPropertyName("type")]
+        public override string Type
+        {
+            get => "string";
+            set
+            {
+                if (value is not "string")
+                {
+                    throw new ArgumentException("Type must be 'string'.", nameof(value));
+                }
+            }
+        }
+
+        /// <summary>Gets or sets the list of allowed string values for the enum.</summary>
+        [JsonPropertyName("enum")]
+        [field: MaybeNull]
+        public IList<string> Enum
+        {
+            get => field ??= [];
+            set
+            {
+                Throw.IfNull(value);
+                field = value;
+            }
+        }
+
+        /// <summary>Gets or sets optional display names corresponding to the enum values.</summary>
+        [JsonPropertyName("enumNames")]
+        public IList<string>? EnumNames { get; set; }
+
+        /// <summary>Gets or sets the default value for the enum.</summary>
+        [JsonPropertyName("default")]
+        public string? Default { get; set; }
     }
 }
