@@ -1542,4 +1542,1206 @@ public partial class XmlToDescriptionGeneratorTests
         public List<Diagnostic> Diagnostics { get; set; } = [];
         public Compilation? Compilation { get; set; }
     }
+
+    [Fact]
+    public void Generator_WithUnchangedInput_UsesCaching()
+    {
+        const string Source = """
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>
+                /// Test tool description
+                /// </summary>
+                /// <param name="input">Input parameter</param>
+                [McpServerTool]
+                public static partial string TestMethod(string input)
+                {
+                    return input;
+                }
+            }
+            """;
+
+        var syntaxTree = CSharpSyntaxTree.ParseText(Source, cancellationToken: TestContext.Current.CancellationToken);
+
+        var runtimePath = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
+        List<MetadataReference> referenceList =
+        [
+            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(System.ComponentModel.DescriptionAttribute).Assembly.Location),
+            MetadataReference.CreateFromFile(Path.Combine(runtimePath, "System.Runtime.dll")),
+            MetadataReference.CreateFromFile(Path.Combine(runtimePath, "netstandard.dll")),
+        ];
+
+        try
+        {
+            var coreAssemblyPath = Path.Combine(AppContext.BaseDirectory, "ModelContextProtocol.Core.dll");
+            if (File.Exists(coreAssemblyPath))
+            {
+                referenceList.Add(MetadataReference.CreateFromFile(coreAssemblyPath));
+            }
+        }
+        catch
+        {
+            // If we can't find it, the compilation will fail with appropriate errors
+        }
+
+        var compilation = CSharpCompilation.Create("TestAssembly", [syntaxTree], referenceList, new(OutputKind.DynamicallyLinkedLibrary));
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(
+            generators: [new XmlToDescriptionGenerator().AsSourceGenerator()],
+            driverOptions: new GeneratorDriverOptions(
+                disabledOutputs: default,
+                trackIncrementalGeneratorSteps: true));
+
+        // Run #1: runs the generator.
+        driver = driver.RunGenerators(compilation, TestContext.Current.CancellationToken);
+        var runResult1 = driver.GetRunResult();
+        Assert.Single(runResult1.Results);
+        var generatorResult1 = runResult1.Results[0];
+        Assert.Single(generatorResult1.GeneratedSources);
+
+        // Run #2: no changes, same compilation, should use cached results.
+        driver = driver.RunGenerators(compilation, TestContext.Current.CancellationToken);
+        var runResult2 = driver.GetRunResult();
+        Assert.Single(runResult2.Results);
+        var generatorResult2 = runResult2.Results[0];
+        Assert.Single(generatorResult2.GeneratedSources);
+        var allOutputs2 = generatorResult2.TrackedSteps.Values.SelectMany(steps => steps.SelectMany(step => step.Outputs)).ToList();
+        Assert.NotEmpty(allOutputs2);
+        Assert.All(allOutputs2, output => Assert.True(output.Reason is IncrementalStepRunReason.Cached or IncrementalStepRunReason.Unchanged));
+
+        // Run #3: add a second MCP method in a separate tree, first method's output should be cached
+        var secondMethodTree = CSharpSyntaxTree.ParseText("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+            
+            namespace Test;
+            
+            [McpServerToolType]
+            public partial class MoreTools
+            {
+                /// <summary>
+                /// Another tool
+                /// </summary>
+                [McpServerTool]
+                public static partial string AnotherMethod(string input)
+                {
+                    return input;
+                }
+            }
+            """, cancellationToken: TestContext.Current.CancellationToken);
+        driver = driver.RunGenerators(CSharpCompilation.Create("TestAssembly", [syntaxTree, secondMethodTree], referenceList, new(OutputKind.DynamicallyLinkedLibrary)), TestContext.Current.CancellationToken);
+        var runResult3 = driver.GetRunResult();
+        Assert.Single(runResult3.Results);
+        var generatorResult3 = runResult3.Results[0];
+        Assert.Single(generatorResult3.GeneratedSources);
+        
+        // Check that at least some outputs were cached (the original method should be cached)
+        var allOutputs3 = generatorResult3.TrackedSteps.Values.SelectMany(steps => steps.SelectMany(step => step.Outputs)).ToList();
+        Assert.NotEmpty(allOutputs3);
+        Assert.Contains(allOutputs3, output => output.Reason is IncrementalStepRunReason.Cached or IncrementalStepRunReason.Unchanged);
+
+        // Run #4: change the MCP method's XML docs. Should regenerate.
+        var modifiedSource = Source.Replace("Test tool description", "Modified tool description");
+        var modifiedTree = CSharpSyntaxTree.ParseText(modifiedSource, cancellationToken: TestContext.Current.CancellationToken);
+        driver = driver.RunGenerators(CSharpCompilation.Create("TestAssembly", [modifiedTree], referenceList, new(OutputKind.DynamicallyLinkedLibrary)), TestContext.Current.CancellationToken);
+        var runResult4 = driver.GetRunResult();
+        Assert.Single(runResult4.Results);
+        var generatorResult4 = runResult4.Results[0];
+        Assert.Single(generatorResult4.GeneratedSources);
+        var allOutputs4 = generatorResult4.TrackedSteps.Values.SelectMany(steps => steps.SelectMany(step => step.Outputs)).ToList();
+        Assert.NotEmpty(allOutputs4);
+        Assert.Contains(allOutputs4, output => output.Reason is not (IncrementalStepRunReason.Cached or IncrementalStepRunReason.Unchanged));
+
+        // The output should be different now
+        var output4 = generatorResult4.GeneratedSources[0].SourceText.ToString();
+        Assert.Contains("Modified tool description", output4);
+        Assert.DoesNotContain("Test tool description", output4);
+    }
+
+    [Fact]
+    public void Generator_WithInstanceMethod_GeneratesCorrectly()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>
+                /// Instance method tool
+                /// </summary>
+                [McpServerTool]
+                public partial string InstanceMethod(string input)
+                {
+                    return input;
+                }
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace Test
+            {
+                partial class TestTools
+                {
+                    [Description("Instance method tool")]
+                    public partial string InstanceMethod(string input);
+                }
+            }
+            """;
+        
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Generator_WithAsyncMethod_GeneratesCorrectly()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+            using System.Threading.Tasks;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>
+                /// Async tool
+                /// </summary>
+                /// <param name="input">The input</param>
+                [McpServerTool]
+                public static partial Task<string> AsyncMethod(string input);
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace Test
+            {
+                partial class TestTools
+                {
+                    [Description("Async tool")]
+                    public static partial Task<string> AsyncMethod([Description("The input")] string input);
+                }
+            }
+            """;
+        
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Generator_WithGenericMethod_GeneratesCorrectly()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>
+                /// Generic method tool
+                /// </summary>
+                /// <typeparam name="T">The type parameter</typeparam>
+                /// <param name="input">The input</param>
+                [McpServerTool]
+                public static partial string GenericMethod<T>(T input)
+                {
+                    return input?.ToString() ?? string.Empty;
+                }
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace Test
+            {
+                partial class TestTools
+                {
+                    [Description("Generic method tool")]
+                    public static partial string GenericMethod<T>([Description("The input")] T input);
+                }
+            }
+            """;
+        
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Generator_WithGenericMethodOverloadsDifferingByArity_GeneratesCorrectly()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>
+                /// Non-generic overload
+                /// </summary>
+                /// <param name="input">The input</param>
+                [McpServerTool]
+                public static partial string GenericMethod(string input)
+                {
+                    return input;
+                }
+
+                /// <summary>
+                /// Generic overload with one type parameter
+                /// </summary>
+                /// <typeparam name="T">The type parameter</typeparam>
+                /// <param name="input">The input</param>
+                [McpServerTool]
+                public static partial string GenericMethod<T>(T input)
+                {
+                    return input?.ToString() ?? string.Empty;
+                }
+
+                /// <summary>
+                /// Generic overload with two type parameters
+                /// </summary>
+                /// <typeparam name="T1">The first type parameter</typeparam>
+                /// <typeparam name="T2">The second type parameter</typeparam>
+                /// <param name="input1">The first input</param>
+                /// <param name="input2">The second input</param>
+                [McpServerTool]
+                public static partial string GenericMethod<T1, T2>(T1 input1, T2 input2)
+                {
+                    return $"{input1?.ToString() ?? string.Empty}, {input2?.ToString() ?? string.Empty}";
+                }
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace Test
+            {
+                partial class TestTools
+                {
+                    [Description("Non-generic overload")]
+                    public static partial string GenericMethod([Description("The input")] string input);
+
+                    [Description("Generic overload with one type parameter")]
+                    public static partial string GenericMethod<T>([Description("The input")] T input);
+
+                    [Description("Generic overload with two type parameters")]
+                    public static partial string GenericMethod<T1, T2>([Description("The first input")] T1 input1, [Description("The second input")] T2 input2);
+                }
+            }
+            """;
+        
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Generator_WithMultipleMethodsInSameClass_GeneratesAll()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>
+                /// First tool
+                /// </summary>
+                [McpServerTool]
+                public static partial string FirstMethod(string input)
+                {
+                    return input;
+                }
+
+                /// <summary>
+                /// Second tool
+                /// </summary>
+                [McpServerTool]
+                public static partial string SecondMethod(string input)
+                {
+                    return input;
+                }
+
+                /// <summary>
+                /// Third tool
+                /// </summary>
+                [McpServerTool]
+                public static partial string ThirdMethod(string input)
+                {
+                    return input;
+                }
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace Test
+            {
+                partial class TestTools
+                {
+                    [Description("First tool")]
+                    public static partial string FirstMethod(string input);
+
+                    [Description("Second tool")]
+                    public static partial string SecondMethod(string input);
+
+                    [Description("Third tool")]
+                    public static partial string ThirdMethod(string input);
+                }
+            }
+            """;
+        
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Generator_WithExistingReturnDescription_SkipsReturn()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>
+                /// Test tool
+                /// </summary>
+                /// <returns>The result</returns>
+                [McpServerTool]
+                [return: Description("Already has return description")]
+                public static partial string TestMethod(string input)
+                {
+                    return input;
+                }
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace Test
+            {
+                partial class TestTools
+                {
+                    [Description("Test tool")]
+                    public static partial string TestMethod(string input);
+                }
+            }
+            """;
+        
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Generator_WithStructType_GeneratesCorrectly()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial struct TestTools
+            {
+                /// <summary>
+                /// Struct tool
+                /// </summary>
+                [McpServerTool]
+                public static partial string StructMethod(string input)
+                {
+                    return input;
+                }
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace Test
+            {
+                partial struct TestTools
+                {
+                    [Description("Struct tool")]
+                    public static partial string StructMethod(string input);
+                }
+            }
+            """;
+        
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Generator_WithComplexParameterTypes_GeneratesCorrectly()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+            using System.Collections.Generic;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>
+                /// Complex parameters tool
+                /// </summary>
+                /// <param name="items">Array parameter</param>
+                /// <param name="dict">Dictionary parameter</param>
+                /// <param name="nullable">Nullable parameter</param>
+                [McpServerTool]
+                public static partial string ComplexMethod(string[] items, Dictionary<string, int> dict, int? nullable)
+                {
+                    return string.Empty;
+                }
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace Test
+            {
+                partial class TestTools
+                {
+                    [Description("Complex parameters tool")]
+                    public static partial string ComplexMethod([Description("Array parameter")] string[] items, [Description("Dictionary parameter")] Dictionary<string, int> dict, [Description("Nullable parameter")] int? nullable);
+                }
+            }
+            """;
+        
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Generator_WithWhitespaceOnlyXml_GeneratesPartialWithoutDescription()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>
+                ///    
+                /// </summary>
+                /// <param name="input">  </param>
+                [McpServerTool]
+                public static partial string TestMethod(string input)
+                {
+                    return input;
+                }
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace Test
+            {
+                partial class TestTools
+                {
+                    public static partial string TestMethod(string input);
+                }
+            }
+            """;
+        
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Generator_WithRemarksOnly_GeneratesMethodDescription()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <remarks>
+                /// Just remarks without summary
+                /// </remarks>
+                [McpServerTool]
+                public static partial string TestMethod(string input)
+                {
+                    return input;
+                }
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace Test
+            {
+                partial class TestTools
+                {
+                    [Description("Just remarks without summary")]
+                    public static partial string TestMethod(string input);
+                }
+            }
+            """;
+        
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Generator_WithReturnsOnly_GeneratesReturnDescription()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <returns>Just the return value description</returns>
+                [McpServerTool]
+                public static partial string TestMethod(string input)
+                {
+                    return input;
+                }
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace Test
+            {
+                partial class TestTools
+                {
+                    [return: Description("Just the return value description")]
+                    public static partial string TestMethod(string input);
+                }
+            }
+            """;
+        
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Generator_WithPartialParameterDocs_GeneratesOnlyDocumentedParameters()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>
+                /// Test tool
+                /// </summary>
+                /// <param name="first">First parameter has docs</param>
+                /// <param name="third">Third parameter has docs</param>
+                [McpServerTool]
+                public static partial string TestMethod(string first, string second, string third)
+                {
+                    return first;
+                }
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace Test
+            {
+                partial class TestTools
+                {
+                    [Description("Test tool")]
+                    public static partial string TestMethod([Description("First parameter has docs")] string first, string second, [Description("Third parameter has docs")] string third);
+                }
+            }
+            """;
+        
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Generator_WithMixedMcpAttributesInSameClass_GeneratesCorrectly()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            [McpServerPromptType]
+            [McpServerResourceType]
+            public partial class MixedMcpClass
+            {
+                /// <summary>A tool</summary>
+                [McpServerTool]
+                public static partial string MyTool(string input) => input;
+
+                /// <summary>A prompt</summary>
+                [McpServerPrompt]
+                public static partial string MyPrompt(string input) => input;
+
+                /// <summary>A resource</summary>
+                [McpServerResource("test:///{id}")]
+                public static partial string MyResource(string id) => id;
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace Test
+            {
+                partial class MixedMcpClass
+                {
+                    [Description("A tool")]
+                    public static partial string MyTool(string input);
+
+                    [Description("A prompt")]
+                    public static partial string MyPrompt(string input);
+
+                    [Description("A resource")]
+                    public static partial string MyResource(string id);
+                }
+            }
+            """;
+        
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Generator_WithProtectedMethod_GeneratesCorrectly()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>Protected tool</summary>
+                [McpServerTool]
+                protected static partial string ProtectedMethod(string input);
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace Test
+            {
+                partial class TestTools
+                {
+                    [Description("Protected tool")]
+                    protected static partial string ProtectedMethod(string input);
+                }
+            }
+            """;
+        
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Generator_WithInternalMethod_GeneratesCorrectly()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>Internal tool</summary>
+                [McpServerTool]
+                internal static partial string InternalMethod(string input);
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace Test
+            {
+                partial class TestTools
+                {
+                    [Description("Internal tool")]
+                    internal static partial string InternalMethod(string input);
+                }
+            }
+            """;
+        
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Generator_WithProtectedInternalMethod_GeneratesCorrectly()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>Protected internal tool</summary>
+                [McpServerTool]
+                protected internal static partial string ProtectedInternalMethod(string input);
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace Test
+            {
+                partial class TestTools
+                {
+                    [Description("Protected internal tool")]
+                    protected internal static partial string ProtectedInternalMethod(string input);
+                }
+            }
+            """;
+        
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Generator_WithPrivateProtectedMethod_GeneratesCorrectly()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>Private protected tool</summary>
+                [McpServerTool]
+                private protected static partial string PrivateProtectedMethod(string input);
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace Test
+            {
+                partial class TestTools
+                {
+                    [Description("Private protected tool")]
+                    private protected static partial string PrivateProtectedMethod(string input);
+                }
+            }
+            """;
+        
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Generator_WithPrivateMethod_GeneratesCorrectly()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>Private tool</summary>
+                [McpServerTool]
+                private static partial string PrivateMethod(string input);
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace Test
+            {
+                partial class TestTools
+                {
+                    [Description("Private tool")]
+                    private static partial string PrivateMethod(string input);
+                }
+            }
+            """;
+        
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Generator_NonPartialMethodWithInvalidXml_ReportsMCP001Diagnostic()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public class TestTools
+            {
+                /// <summary>
+                /// Test with <unclosed tag
+                /// </summary>
+                [McpServerTool]
+                public static string TestMethod(string input)
+                {
+                    return input;
+                }
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Empty(result.GeneratedSources);
+        
+        // Should report MCP001 diagnostic for invalid XML even on non-partial methods
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "MCP001");
+        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
+        Assert.Contains("invalid", diagnostic.GetMessage(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Generator_PartialMethodWithoutXmlButWithExistingDescription_StillGeneratesPartial()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                [McpServerTool]
+                [Description("Has existing description")]
+                public static partial string TestMethod(string input)
+                {
+                    return input;
+                }
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace Test
+            {
+                partial class TestTools
+                {
+                    public static partial string TestMethod(string input);
+                }
+            }
+            """;
+        
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Generator_WithInterfaceType_GeneratesCorrectly()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial interface ITestTools
+            {
+                /// <summary>Interface tool</summary>
+                [McpServerTool]
+                static abstract partial string InterfaceMethod(string input);
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace Test
+            {
+                partial interface ITestTools
+                {
+                    [Description("Interface tool")]
+                    static abstract partial string InterfaceMethod(string input);
+                }
+            }
+            """;
+        
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Generator_WithMultipleGenericTypeParameters_GeneratesCorrectly()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>Multi-generic method</summary>
+                /// <typeparam name="T1">First type</typeparam>
+                /// <typeparam name="T2">Second type</typeparam>
+                /// <typeparam name="T3">Third type</typeparam>
+                /// <param name="first">First param</param>
+                /// <param name="second">Second param</param>
+                /// <param name="third">Third param</param>
+                [McpServerTool]
+                public static partial string MultiGeneric<T1, T2, T3>(T1 first, T2 second, T3 third);
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+        
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace Test
+            {
+                partial class TestTools
+                {
+                    [Description("Multi-generic method")]
+                    public static partial string MultiGeneric<T1, T2, T3>([Description("First param")] T1 first, [Description("Second param")] T2 second, [Description("Third param")] T3 third);
+                }
+            }
+            """;
+        
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
 }
