@@ -1,4 +1,5 @@
 using ModelContextProtocol.Protocol;
+using System.Text.Json;
 
 namespace ModelContextProtocol.Server;
 
@@ -59,6 +60,41 @@ public sealed class McpServerOptions
     /// to provide context about available functionality.
     /// </remarks>
     public string? ServerInstructions { get; set; }
+
+    /// <summary>
+    /// Gets or sets the default JSON serializer options to use for tools, prompts, and resources.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This property provides server-wide default serialization settings that will be used
+    /// by all tools, prompts, and resources unless they explicitly specify their own
+    /// <see cref="JsonSerializerOptions"/> during registration.
+    /// </para>
+    /// <para>
+    /// If not set, defaults to <see cref="McpJsonUtilities.DefaultOptions"/>.
+    /// </para>
+    /// <para>
+    /// This is useful for configuring settings like <c>JsonNumberHandling.AllowNamedFloatingPointLiterals</c>
+    /// to handle special floating-point values like <see cref="double.PositiveInfinity"/>, <see cref="double.NegativeInfinity"/>,
+    /// and <see cref="double.NaN"/>.
+    /// </para>
+    /// </remarks>
+    public JsonSerializerOptions? JsonSerializerOptions { get; set; }
+
+    /// <summary>
+    /// Gets or sets the default JSON schema creation options to use for tools, prompts, and resources.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This property provides server-wide default schema creation settings that will be used
+    /// by all tools, prompts, and resources unless they explicitly specify their own
+    /// <see cref="Microsoft.Extensions.AI.AIJsonSchemaCreateOptions"/> during registration.
+    /// </para>
+    /// <para>
+    /// If not set, defaults to <see cref="Microsoft.Extensions.AI.AIJsonSchemaCreateOptions.Default"/>.
+    /// </para>
+    /// </remarks>
+    public Microsoft.Extensions.AI.AIJsonSchemaCreateOptions? SchemaCreateOptions { get; set; }
 
     /// <summary>
     /// Gets or sets whether to create a new service provider scope for each handled request.

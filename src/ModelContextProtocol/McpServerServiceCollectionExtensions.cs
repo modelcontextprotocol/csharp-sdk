@@ -21,10 +21,23 @@ public static class McpServerServiceCollectionExtensions
     {
         services.AddOptions();
         services.TryAddEnumerable(ServiceDescriptor.Transient<IConfigureOptions<McpServerOptions>, McpServerOptionsSetup>());
+        
+        // Capture default options from the configuration callback to avoid circular dependencies
+        // when resolving IOptions<McpServerOptions> from within tool/prompt/resource factories
+        var defaultOptions = new McpServerDefaultOptions();
         if (configureOptions is not null)
         {
+            var tempOptions = new McpServerOptions();
+            configureOptions(tempOptions);
+            defaultOptions.JsonSerializerOptions = tempOptions.JsonSerializerOptions;
+            defaultOptions.SchemaCreateOptions = tempOptions.SchemaCreateOptions;
+            
             services.Configure(configureOptions);
         }
+        
+        // Register the default options as a singleton that can be safely resolved
+        // without circular dependencies. Use AddSingleton (not TryAdd) to ensure it's registered.
+        services.AddSingleton<McpServerDefaultOptions>(defaultOptions);
 
         return new DefaultMcpServerBuilder(services);
     }
