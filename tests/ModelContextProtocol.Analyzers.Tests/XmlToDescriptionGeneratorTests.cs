@@ -721,9 +721,9 @@ public partial class XmlToDescriptionGeneratorTests
         
         AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
         
-        // Should report an info diagnostic
+        // Should report a warning diagnostic
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "MCP001");
-        Assert.Equal(DiagnosticSeverity.Info, diagnostic.Severity);
+        Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
         Assert.Contains("invalid", diagnostic.GetMessage(), StringComparison.OrdinalIgnoreCase);
     }
 

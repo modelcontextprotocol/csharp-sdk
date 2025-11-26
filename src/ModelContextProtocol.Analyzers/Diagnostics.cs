@@ -16,7 +16,7 @@ internal static class Diagnostics
         title: "Invalid XML documentation for MCP method",
         messageFormat: "XML comment for method '{0}' is invalid and cannot be processed to generate [Description] attributes.",
         category: "mcp",
-        defaultSeverity: DiagnosticSeverity.Info,
+        defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
         description: "The XML documentation comment contains invalid XML and cannot be processed to generate Description attributes.");
 
