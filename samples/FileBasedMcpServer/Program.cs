@@ -1,4 +1,4 @@
-#!/usr/bin/env -S dotnet run --
+#!/usr/bin/env dotnet
 #:package Microsoft.Extensions.Hosting
 #:project ../../src/ModelContextProtocol/ModelContextProtocol.csproj
 

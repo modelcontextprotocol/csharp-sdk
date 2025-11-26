@@ -4,7 +4,7 @@ _layout: landing
 
 # Overview
 
-The official C# SDK for the [Model Context Protocol](https://modelcontextprotocol.io/), enabling .NET applications, services, and libraries to implement and interact with MCP clients and servers. Please visit our [API documentation](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.html) for more details on available functionality.
+The official C# SDK for the [Model Context Protocol](https://modelcontextprotocol.io/), enabling .NET applications, services, and libraries to implement and interact with MCP clients and servers. For more details on available functionality, please see the [API documentation](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.html).
 
 ## About MCP
 
@@ -16,11 +16,11 @@ For more information about MCP:
 - [Protocol Specification](https://modelcontextprotocol.io/specification/)
 - [GitHub Organization](https://github.com/modelcontextprotocol)
 
-For how-to guides, tutorials, and additional guidance, refer to the [official MCP documentation](https://modelcontextprotocol.io/).
+For how-to guides, tutorials, and additional guidance, see the [official MCP documentation](https://modelcontextprotocol.io/).
 
 ## Official SDK packages
 
-The official C# SDK packages for stable and pre-release versions are published to the [NuGet Gallery](https://www.nuget.org) under the [ModelContextProtocolOfficial](https://www.nuget.org/profiles/ModelContextProtocolOfficial) profile.
+The official C# SDK packages for stable and prerelease versions are published to the [NuGet Gallery](https://www.nuget.org) under the [ModelContextProtocolOfficial](https://www.nuget.org/profiles/ModelContextProtocolOfficial) profile.
 
 Continuous integration builds are published to the modelcontextprotocol organization's [GitHub NuGet package registry](https://github.com/orgs/modelcontextprotocol/packages?ecosystem=nuget).
 
