@@ -8,7 +8,7 @@ namespace ModelContextProtocol;
 /// Configures the McpServerOptions using addition services from DI.
 /// </summary>
 /// <param name="serverHandlers">The server handlers configuration options.</param>
-/// <param name="serverTools">The individually registered tool.</param>
+/// <param name="serverTools">The individually registered tools.</param>
 /// <param name="serverPrompts">The individually registered prompts.</param>
 /// <param name="serverResources">The individually registered resources.</param>
 internal sealed class McpServerOptionsSetup(
