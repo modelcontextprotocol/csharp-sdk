@@ -193,31 +193,48 @@ internal sealed partial class ClientOAuthProvider
         CancellationToken cancellationToken)
     {
         // Get available authorization servers from the 401 response
-        var protectedResourceMetadata = await ExtractProtectedResourceMetadata(response, _serverUrl, cancellationToken).ConfigureAwait(false);
-        var availableAuthorizationServers = protectedResourceMetadata.AuthorizationServers;
-
-        if (availableAuthorizationServers.Count == 0)
+        ProtectedResourceMetadata? protectedResourceMetadata = null;
+        try
         {
-            ThrowFailedToHandleUnauthorizedResponse("No authorization servers found in authentication challenge");
+            protectedResourceMetadata = await ExtractProtectedResourceMetadata(response, _serverUrl, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            protectedResourceMetadata = null;
         }
 
-        // Select authorization server using configured strategy
-        var selectedAuthServer = _authServerSelector(availableAuthorizationServers);
-
-        if (selectedAuthServer is null)
+        Uri authServer;
+        if (protectedResourceMetadata is not null)
         {
-            ThrowFailedToHandleUnauthorizedResponse($"Authorization server selection returned null. Available servers: {string.Join(", ", availableAuthorizationServers)}");
-        }
+            var availableAuthorizationServers = protectedResourceMetadata.AuthorizationServers;
+            if (availableAuthorizationServers.Count == 0)
+            {
+                ThrowFailedToHandleUnauthorizedResponse("No authorization servers found in authentication challenge");
+            }
 
-        if (!availableAuthorizationServers.Contains(selectedAuthServer))
+            // Select authorization server using configured strategy
+            var selectedAuthServer = _authServerSelector(availableAuthorizationServers);
+            if (selectedAuthServer is null)
+            {
+                ThrowFailedToHandleUnauthorizedResponse($"Authorization server selection returned null. Available servers: {string.Join(", ", availableAuthorizationServers)}");
+            }
+
+            if (!availableAuthorizationServers.Contains(selectedAuthServer))
+            {
+                ThrowFailedToHandleUnauthorizedResponse($"Authorization server selector returned a server not in the available list: {selectedAuthServer}. Available servers: {string.Join(", ", availableAuthorizationServers)}");
+            }
+
+            LogSelectedAuthorizationServer(selectedAuthServer, availableAuthorizationServers.Count);
+
+            authServer = selectedAuthServer;
+        }
+        else
         {
-            ThrowFailedToHandleUnauthorizedResponse($"Authorization server selector returned a server not in the available list: {selectedAuthServer}. Available servers: {string.Join(", ", availableAuthorizationServers)}");
+            authServer = new(_serverUrl.GetLeftPart(UriPartial.Authority));
         }
-
-        LogSelectedAuthorizationServer(selectedAuthServer, availableAuthorizationServers.Count);
 
         // Get auth server metadata
-        var authServerMetadata = await GetAuthServerMetadataAsync(selectedAuthServer, cancellationToken).ConfigureAwait(false);
+        var authServerMetadata = await GetAuthServerMetadataAsync(authServer, cancellationToken).ConfigureAwait(false);
 
         // Store auth server metadata for future refresh operations
         _authServerMetadata = authServerMetadata;
@@ -225,7 +242,7 @@ internal sealed partial class ClientOAuthProvider
         // The existing access token must be invalid to have resulted in a 401 response, but refresh might still work.
         if (await _tokenCache.GetTokensAsync(cancellationToken).ConfigureAwait(false) is { RefreshToken: { } refreshToken })
         {
-            var refreshedTokens = await RefreshTokenAsync(refreshToken, protectedResourceMetadata.Resource, authServerMetadata, cancellationToken).ConfigureAwait(false);
+            var refreshedTokens = await RefreshTokenAsync(refreshToken, protectedResourceMetadata?.Resource, authServerMetadata, cancellationToken).ConfigureAwait(false);
             if (refreshedTokens is not null)
             {
                 // A non-null result indicates the refresh succeeded and the new tokens have been stored.
@@ -325,20 +342,24 @@ internal sealed partial class ClientOAuthProvider
         throw new McpException($"Failed to find .well-known/openid-configuration or .well-known/oauth-authorization-server metadata for authorization server: '{authServerUri}'");
     }
 
-    private async Task<TokenContainer?> RefreshTokenAsync(string refreshToken, Uri resourceUri, AuthorizationServerMetadata authServerMetadata, CancellationToken cancellationToken)
+    private async Task<TokenContainer?> RefreshTokenAsync(string refreshToken, Uri? resourceUri, AuthorizationServerMetadata authServerMetadata, CancellationToken cancellationToken)
     {
-        var requestContent = new FormUrlEncodedContent(new Dictionary<string, string>
+        var requestContent = new Dictionary<string, string>
         {
             ["grant_type"] = "refresh_token",
             ["refresh_token"] = refreshToken,
             ["client_id"] = GetClientIdOrThrow(),
             ["client_secret"] = _clientSecret ?? string.Empty,
-            ["resource"] = resourceUri.ToString(),
-        });
+        };
+
+        if (resourceUri is not null)
+        {
+            requestContent.Add("resource", resourceUri.ToString());
+        }
 
         using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.TokenEndpoint)
         {
-            Content = requestContent
+            Content = new FormUrlEncodedContent(requestContent)
         };
 
         using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
@@ -352,7 +373,7 @@ internal sealed partial class ClientOAuthProvider
     }
 
     private async Task InitiateAuthorizationCodeFlowAsync(
-        ProtectedResourceMetadata protectedResourceMetadata,
+        ProtectedResourceMetadata? protectedResourceMetadata,
         AuthorizationServerMetadata authServerMetadata,
         CancellationToken cancellationToken)
     {
@@ -371,7 +392,7 @@ internal sealed partial class ClientOAuthProvider
     }
 
     private Uri BuildAuthorizationUrl(
-        ProtectedResourceMetadata protectedResourceMetadata,
+        ProtectedResourceMetadata? protectedResourceMetadata,
         AuthorizationServerMetadata authServerMetadata,
         string codeChallenge)
     {
@@ -382,13 +403,17 @@ internal sealed partial class ClientOAuthProvider
             ["response_type"] = "code",
             ["code_challenge"] = codeChallenge,
             ["code_challenge_method"] = "S256",
-            ["resource"] = protectedResourceMetadata.Resource.ToString(),
         };
 
-        var scopesSupported = protectedResourceMetadata.ScopesSupported;
-        if (_scopes is not null || scopesSupported.Count > 0)
+        if (protectedResourceMetadata is not null)
         {
-            queryParamsDictionary["scope"] = string.Join(" ", _scopes ?? scopesSupported.ToArray());
+            queryParamsDictionary.Add("resource", protectedResourceMetadata.Resource.ToString());
+
+            var scopesSupported = protectedResourceMetadata.ScopesSupported;
+            if (_scopes is not null || scopesSupported.Count > 0)
+            {
+                queryParamsDictionary["scope"] = string.Join(" ", _scopes ?? scopesSupported.ToArray());
+            }
         }
 
         // Add extra parameters if provided. Load into a dictionary before constructing to avoid overwiting values.
@@ -412,13 +437,13 @@ internal sealed partial class ClientOAuthProvider
     }
 
     private async Task ExchangeCodeForTokenAsync(
-        ProtectedResourceMetadata protectedResourceMetadata,
+        ProtectedResourceMetadata? protectedResourceMetadata,
         AuthorizationServerMetadata authServerMetadata,
         string authorizationCode,
         string codeVerifier,
         CancellationToken cancellationToken)
     {
-        var requestContent = new FormUrlEncodedContent(new Dictionary<string, string>
+        var requestContent = new Dictionary<string, string>
         {
             ["grant_type"] = "authorization_code",
             ["code"] = authorizationCode,
@@ -426,12 +451,16 @@ internal sealed partial class ClientOAuthProvider
             ["client_id"] = GetClientIdOrThrow(),
             ["code_verifier"] = codeVerifier,
             ["client_secret"] = _clientSecret ?? string.Empty,
-            ["resource"] = protectedResourceMetadata.Resource.ToString(),
-        });
+        };
+
+        if (protectedResourceMetadata is not null)
+        {
+            requestContent.Add("resource", protectedResourceMetadata.Resource.ToString());
+        }
 
         using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.TokenEndpoint)
         {
-            Content = requestContent
+            Content = new FormUrlEncodedContent(requestContent)
         };
 
         using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
@@ -627,27 +656,45 @@ internal sealed partial class ClientOAuthProvider
         }
 
         // Look for the Bearer authentication scheme with resource_metadata parameter
-        string? resourceMetadataUrl = null;
+        List<Uri> candidateMetadataUris = [];
         foreach (var header in response.Headers.WwwAuthenticate)
         {
             if (string.Equals(header.Scheme, BearerScheme, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(header.Parameter))
             {
-                resourceMetadataUrl = ParseWwwAuthenticateParameters(header.Parameter, "resource_metadata");
+                var resourceMetadataUrl = ParseWwwAuthenticateParameters(header.Parameter, "resource_metadata");
                 if (resourceMetadataUrl != null)
                 {
+                    candidateMetadataUris.Add(new(resourceMetadataUrl));
                     break;
                 }
             }
         }
 
-        if (resourceMetadataUrl == null)
+        Uri wellKnownResourceUriRoot = new(serverUrl.GetLeftPart(UriPartial.Authority) + "/.well-known/oauth-protected-resource");
+        candidateMetadataUris.Add(wellKnownResourceUriRoot);
+        candidateMetadataUris.Add(new(wellKnownResourceUriRoot, serverUrl.AbsolutePath));
+
+        ProtectedResourceMetadata? metadata = null;
+        foreach (var candidateUri in candidateMetadataUris)
         {
-            throw new McpException("The WWW-Authenticate header does not contain a resource_metadata parameter");
+            try
+            {
+                metadata = await FetchProtectedResourceMetadataAsync(candidateUri, cancellationToken).ConfigureAwait(false);
+                if (metadata is not null)
+                {
+                    break;
+                }
+            }
+            catch
+            {
+                continue;
+            }
         }
 
-        Uri metadataUri = new(resourceMetadataUrl);
-        var metadata = await FetchProtectedResourceMetadataAsync(metadataUri, cancellationToken).ConfigureAwait(false)
-            ?? throw new McpException($"Failed to fetch resource metadata from {resourceMetadataUrl}");
+        if (metadata == null)
+        {
+            throw new McpException($"Failed to fetch resource metadata");
+        }
 
         // Per RFC: The resource value must be identical to the URL that the client used
         // to make the request to the resource server
