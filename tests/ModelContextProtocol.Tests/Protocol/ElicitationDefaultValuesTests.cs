@@ -282,7 +282,7 @@ public static class ElicitationDefaultValuesTests
         Assert.DoesNotContain("\"default\"", json);
     }
 
-#pragma warning disable MCP00001 // LegacyTitledEnumSchema is deprecated but supported for backward compatibility
+#pragma warning disable MCP9001 // LegacyTitledEnumSchema is deprecated but supported for backward compatibility
     [Fact]
     public static void LegacyTitledEnumSchema_Default_Null_DoesNotSerialize()
     {
@@ -300,7 +300,7 @@ public static class ElicitationDefaultValuesTests
         // Assert
         Assert.DoesNotContain("\"default\"", json);
     }
-#pragma warning restore MCP00001
+#pragma warning restore MCP9001
 
     [Fact]
     public static void RequestSchema_WithAllDefaultTypes_Serializes_Correctly()

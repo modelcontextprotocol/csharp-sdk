@@ -278,7 +278,7 @@ public class EnumSchemaTests
         Assert.Equal(["user"], result.Default);
     }
 
-#pragma warning disable MCP00001 // EnumSchema and LegacyTitledEnumSchema are deprecated but supported for backward compatibility
+#pragma warning disable MCP9001 // EnumSchema and LegacyTitledEnumSchema are deprecated but supported for backward compatibility
     [Fact]
     public void LegacyTitledEnumSchema_Serializes_Correctly()
     {
@@ -364,5 +364,5 @@ public class EnumSchemaTests
         Assert.Equal(["Development", "Staging", "Production"], result.EnumNames);
         Assert.Equal("staging", result.Default);
     }
-#pragma warning restore MCP00001
+#pragma warning restore MCP9001
 }

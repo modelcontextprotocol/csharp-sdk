@@ -258,7 +258,7 @@ public static class PrimitiveSchemaDefinitionTests
         Assert.Contains("optionZ", enumSchema.Default);
     }
 
-#pragma warning disable MCP00001 // LegacyTitledEnumSchema is deprecated but supported for backward compatibility
+#pragma warning disable MCP9001 // LegacyTitledEnumSchema is deprecated but supported for backward compatibility
     [Fact]
     public static void LegacyTitledEnumSchema_UnknownProperties_AreIgnored()
     {
@@ -291,5 +291,5 @@ public static class PrimitiveSchemaDefinitionTests
         Assert.Contains("Option 1", enumSchema.EnumNames!);
         Assert.Contains("Option 2", enumSchema.EnumNames!);
     }
-#pragma warning restore MCP00001
+#pragma warning restore MCP9001
 }

@@ -250,9 +250,9 @@ public sealed class ElicitRequestParams
                                 // EnumSchema is deprecated but supported for backward compatibility.
                                 // Use the EnumSchema class, which is an alias for LegacyTitledEnumSchema,
                                 // to ensure backward compatibility with existing code relying on that type.
-#pragma warning disable MCP00001
+#pragma warning disable MCP9001
                                 psd = new EnumSchema
-#pragma warning restore MCP00001
+#pragma warning restore MCP9001
                                 {
                                     Enum = enumValues,
                                     EnumNames = enumNames,
@@ -560,9 +560,9 @@ public sealed class ElicitRequestParams
                         }
                         break;
 
-#pragma warning disable MCP00001 // LegacyTitledEnumSchema is deprecated but supported for backward compatibility
+#pragma warning disable MCP9001 // LegacyTitledEnumSchema is deprecated but supported for backward compatibility
                     case LegacyTitledEnumSchema legacyTitledEnum:
-#pragma warning restore MCP00001
+#pragma warning restore MCP9001
                         if (legacyTitledEnum.Enum is not null)
                         {
                             writer.WritePropertyName("enum");
