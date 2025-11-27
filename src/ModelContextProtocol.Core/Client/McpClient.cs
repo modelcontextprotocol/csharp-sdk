@@ -39,8 +39,8 @@ public abstract partial class McpClient : McpSession
     /// tools, expected input formats, limitations, or any other helpful information.
     /// </para>
     /// <para>
-    /// This can be used by clients to improve an LLM's understanding of available tools, prompts, and resources. 
-    /// It can be thought of like a "hint" to the model and may be added to a system prompt.
+    /// This can be used by clients to improve an LLM's understanding of available tools, prompts, and resources.
+    /// It can be thought of like a "hint" to the model and can be added to a system prompt.
     /// </para>
     /// </remarks>
     public abstract string? ServerInstructions { get; }

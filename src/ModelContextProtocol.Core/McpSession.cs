@@ -17,9 +17,9 @@ namespace ModelContextProtocol;
 /// </list>
 /// </para>
 /// <para>
-/// <see cref="McpSession"/> serves as the base interface for both <see cref="McpClient"/> and 
-/// <see cref="McpServer"/> interfaces, providing the common functionality needed for MCP protocol 
-/// communication. Most applications will use these more specific interfaces rather than working with 
+/// <see cref="McpSession"/> serves as the base interface for both <see cref="McpClient"/> and
+/// <see cref="McpServer"/> interfaces, providing the common functionality needed for MCP protocol
+/// communication. Most applications will use these more specific interfaces rather than working with
 /// <see cref="McpSession"/> directly.
 /// </para>
 /// <para>
@@ -30,7 +30,7 @@ public abstract partial class McpSession : IAsyncDisposable
 {
     /// <summary>Gets an identifier associated with the current MCP session.</summary>
     /// <remarks>
-    /// Typically populated in transports supporting multiple sessions such as Streamable HTTP or SSE.
+    /// Typically populated in transports supporting multiple sessions, such as Streamable HTTP or SSE.
     /// Can return <see langword="null"/> if the session hasn't initialized or if the transport doesn't
     /// support multiple sessions (as is the case with STDIO).
     /// </remarks>
@@ -51,7 +51,7 @@ public abstract partial class McpSession : IAsyncDisposable
     /// <param name="request">The JSON-RPC request to send.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task containing the session's response.</returns>
-    /// <exception cref="InvalidOperationException">The transport is not connected, or another error occurs during request processing.</exception>
+    /// <exception cref="InvalidOperationException">The transport is not connected, or another error occurred during request processing.</exception>
     /// <exception cref="McpException">An error occurred during request processing.</exception>
     /// <remarks>
     /// This method provides low-level access to send raw JSON-RPC requests. For most use cases,
@@ -77,7 +77,7 @@ public abstract partial class McpSession : IAsyncDisposable
     /// on this class that provide a simpler API.
     /// </para>
     /// <para>
-    /// The method will serialize the message and transmit it using the underlying transport mechanism.
+    /// The method serializes the message and transmits it using the underlying transport mechanism.
     /// </para>
     /// </remarks>
     public abstract Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default);

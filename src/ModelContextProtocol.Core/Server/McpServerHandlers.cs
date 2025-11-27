@@ -159,7 +159,7 @@ public sealed class McpServerHandlers
     /// <summary>Gets or sets notification handlers to register with the server.</summary>
     /// <remarks>
     /// <para>
-    /// When constructed, the server will enumerate these handlers once, which may contain multiple handlers per notification method key.
+    /// When constructed, the server will enumerate these handlers, which may contain multiple handlers per notification method key, once.
     /// The server will not re-enumerate the sequence after initialization.
     /// </para>
     /// <para>

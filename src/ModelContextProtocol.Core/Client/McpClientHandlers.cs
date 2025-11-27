@@ -26,7 +26,7 @@ public class McpClientHandlers
     /// <summary>Gets or sets notification handlers to register with the client.</summary>
     /// <remarks>
     /// <para>
-    /// When constructed, the client will enumerate these handlers once, which may contain multiple handlers per notification method key.
+    /// When constructed, the client will enumerate these handlers, which might contain multiple handlers per notification method key, once.
     /// The client will not re-enumerate the sequence after initialization.
     /// </para>
     /// <para>
@@ -36,7 +36,7 @@ public class McpClientHandlers
     /// </para>
     /// <para>
     /// Handlers provided via <see cref="NotificationHandlers"/> will be registered with the client for the lifetime of the client.
-    /// For transient handlers, <see cref="McpSession.RegisterNotificationHandler"/> may be used to register a handler that can
+    /// For transient handlers, you can use <see cref="IMcpEndpoint.RegisterNotificationHandler"/> to register a handler that can
     /// then be unregistered by disposing of the <see cref="IAsyncDisposable"/> returned from the method.
     /// </para>
     /// </remarks>
@@ -75,8 +75,8 @@ public class McpClientHandlers
     /// using an AI model. The client must set this property for the sampling capability to work.
     /// </para>
     /// <para>
-    /// The handler receives message parameters, a progress reporter for updates, and a 
-    /// cancellation token. It should return a <see cref="CreateMessageResult"/> containing the 
+    /// The handler receives message parameters, a progress reporter for updates, and a
+    /// cancellation token. It should return a <see cref="CreateMessageResult"/> containing the
     /// generated content.
     /// </para>
     /// <para>

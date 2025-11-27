@@ -13,8 +13,8 @@ public abstract partial class McpSession : IAsyncDisposable
     /// <typeparam name="TParameters">The type of the request parameters to serialize from.</typeparam>
     /// <typeparam name="TResult">The type of the result to deserialize to.</typeparam>
     /// <param name="method">The JSON-RPC method name to invoke.</param>
-    /// <param name="parameters">Object representing the request parameters.</param>
-    /// <param name="requestId">The request id for the request.</param>
+    /// <param name="parameters">The request parameters.</param>
+    /// <param name="requestId">The request ID for the request.</param>
     /// <param name="serializerOptions">The options governing request serialization.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous operation. The task result contains the deserialized result.</returns>
@@ -40,10 +40,10 @@ public abstract partial class McpSession : IAsyncDisposable
     /// <typeparam name="TParameters">The type of the request parameters to serialize from.</typeparam>
     /// <typeparam name="TResult">The type of the result to deserialize to.</typeparam>
     /// <param name="method">The JSON-RPC method name to invoke.</param>
-    /// <param name="parameters">Object representing the request parameters.</param>
+    /// <param name="parameters">The request parameters.</param>
     /// <param name="parametersTypeInfo">The type information for request parameter serialization.</param>
     /// <param name="resultTypeInfo">The type information for request parameter deserialization.</param>
-    /// <param name="requestId">The request id for the request.</param>
+    /// <param name="requestId">The request ID for the request.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous operation. The task result contains the deserialized result.</returns>
     internal async ValueTask<TResult> SendRequestAsync<TParameters, TResult>(
@@ -78,8 +78,8 @@ public abstract partial class McpSession : IAsyncDisposable
     /// <returns>A task that represents the asynchronous send operation.</returns>
     /// <remarks>
     /// <para>
-    /// This method sends a notification without any parameters. Notifications are one-way messages 
-    /// that don't expect a response. They are commonly used for events, status updates, or to signal 
+    /// This method sends a notification without any parameters. Notifications are one-way messages
+    /// that don't expect a response. They are commonly used for events, status updates, or to signal
     /// changes in state.
     /// </para>
     /// </remarks>
@@ -94,17 +94,17 @@ public abstract partial class McpSession : IAsyncDisposable
     /// </summary>
     /// <typeparam name="TParameters">The type of the notification parameters to serialize.</typeparam>
     /// <param name="method">The JSON-RPC method name for the notification.</param>
-    /// <param name="parameters">Object representing the notification parameters.</param>
+    /// <param name="parameters">The notification parameters.</param>
     /// <param name="serializerOptions">The options governing parameter serialization. If null, default options are used.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous send operation.</returns>
     /// <remarks>
     /// <para>
-    /// This method sends a notification with parameters to the connected session. Notifications are one-way 
+    /// This method sends a notification with parameters to the connected session. Notifications are one-way
     /// messages that don't expect a response, commonly used for events, status updates, or signaling changes.
     /// </para>
     /// <para>
-    /// The parameters object is serialized to JSON according to the provided serializer options or the default 
+    /// The parameters object is serialized to JSON according to the provided serializer options or the default
     /// options if none are specified.
     /// </para>
     /// <para>
@@ -129,7 +129,7 @@ public abstract partial class McpSession : IAsyncDisposable
     /// Sends a notification to the server with parameters.
     /// </summary>
     /// <param name="method">The JSON-RPC method name to invoke.</param>
-    /// <param name="parameters">Object representing the request parameters.</param>
+    /// <param name="parameters">The request parameters.</param>
     /// <param name="parametersTypeInfo">The type information for request parameter serialization.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     internal Task SendNotificationAsync<TParameters>(
@@ -148,7 +148,7 @@ public abstract partial class McpSession : IAsyncDisposable
     /// <summary>
     /// Notifies the connected session of progress for a long-running operation.
     /// </summary>
-    /// <param name="progressToken">The <see cref="ProgressToken"/> identifying the operation for which progress is being reported.</param>
+    /// <param name="progressToken">The token that identifies the operation for which progress is being reported.</param>
     /// <param name="progress">The progress update to send, containing information such as percentage complete or status message.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task representing the completion of the notification operation (not the operation being tracked).</returns>

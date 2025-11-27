@@ -13,13 +13,15 @@ public static class HttpMcpServerBuilderExtensions
 {
     /// <summary>
     /// Adds the services necessary for <see cref="M:McpEndpointRouteBuilderExtensions.MapMcp"/>
-    /// to handle MCP requests and sessions using the MCP Streamable HTTP transport. For more information on configuring the underlying HTTP server
-    /// to control things like port binding custom TLS certificates, see the <see href="https://learn.microsoft.com/aspnet/core/fundamentals/minimal-apis">Minimal APIs quick reference</see>.
+    /// to handle MCP requests and sessions using the MCP Streamable HTTP transport.
     /// </summary>
     /// <param name="builder">The builder instance.</param>
     /// <param name="configureOptions">Configures options for the Streamable HTTP transport. This allows configuring per-session
     /// <see cref="McpServerOptions"/> and running logic before and after a session.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <remarks>For more information on configuring the underlying HTTP server
+    /// to control things like port binding custom TLS certificates, see the <see href="https://learn.microsoft.com/aspnet/core/fundamentals/minimal-apis">Minimal APIs quick reference</see>.
+    /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     public static IMcpServerBuilder WithHttpTransport(this IMcpServerBuilder builder, Action<HttpServerTransportOptions>? configureOptions = null)
     {

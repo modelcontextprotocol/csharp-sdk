@@ -26,13 +26,12 @@ public abstract partial class McpServer : McpSession
     /// <summary>
     /// Creates a new instance of an <see cref="McpServer"/>.
     /// </summary>
-    /// <param name="transport">Transport to use for the server representing an already-established MCP session.</param>
+    /// <param name="transport">The transport to use for the server representing an already-established MCP session.</param>
     /// <param name="serverOptions">Configuration options for this server, including capabilities. </param>
     /// <param name="loggerFactory">Logger factory to use for logging. If null, logging will be disabled.</param>
     /// <param name="serviceProvider">Optional service provider to create new instances of tools and other dependencies.</param>
     /// <returns>An <see cref="McpServer"/> instance that should be disposed when no longer needed.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="transport"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentNullException"><paramref name="serverOptions"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="transport"/> or <paramref name="serverOptions"/> is <see langword="null"/>.</exception>
     public static McpServer Create(
         ITransport transport,
         McpServerOptions serverOptions,
@@ -205,7 +204,7 @@ public abstract partial class McpServer : McpSession
     }
 
     /// <summary>Gets an <see cref="ILogger"/> on which logged messages will be sent as notifications to the client.</summary>
-    /// <returns>An <see cref="ILogger"/> that can be used to log to the client..</returns>
+    /// <returns>An <see cref="ILogger"/> that can be used to log to the client.</returns>
     public ILoggerProvider AsClientLoggerProvider()
     {
         return new ClientLoggerProvider(this);
@@ -339,7 +338,7 @@ public abstract partial class McpServer : McpSession
     /// <param name="type">The type to create the schema for.</param>
     /// <param name="serializerOptions">The serializer options to use.</param>
     /// <returns>The created primitive schema definition.</returns>
-    /// <exception cref="McpProtocolException">Thrown when the type is not supported.</exception>
+    /// <exception cref="McpProtocolException">The type is not supported.</exception>
     private static ElicitRequestParams.PrimitiveSchemaDefinition CreatePrimitiveSchema(Type type, JsonSerializerOptions serializerOptions)
     {
         if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))

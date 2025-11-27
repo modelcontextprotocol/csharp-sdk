@@ -4,7 +4,7 @@ using ModelContextProtocol.Authentication;
 namespace ModelContextProtocol.AspNetCore.Authentication;
 
 /// <summary>
-/// Options for the MCP authentication handler.
+/// Represents options for the MCP authentication handler.
 /// </summary>
 public class McpAuthenticationOptions : AuthenticationSchemeOptions
 {
@@ -25,16 +25,16 @@ public class McpAuthenticationOptions : AuthenticationSchemeOptions
     /// Gets or sets the events used to handle authentication events.
     /// </summary>
     public new McpAuthenticationEvents Events
-    { 
-        get => (McpAuthenticationEvents)base.Events!; 
+    {
+        get => (McpAuthenticationEvents)base.Events!;
         set => base.Events = value;
     }
 
     /// <summary>
-    /// The URI to the resource metadata document.
+    /// Gets or sets the URI to the resource metadata document.
     /// </summary>
     /// <remarks>
-    /// This URI will be included in the WWW-Authenticate header when a 401 response is returned.
+    /// This URI is included in the WWW-Authenticate header when a 401 response is returned.
     /// </remarks>
     public Uri ResourceMetadataUri { get; set; }
 

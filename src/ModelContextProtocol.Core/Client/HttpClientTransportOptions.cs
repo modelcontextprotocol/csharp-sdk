@@ -33,18 +33,17 @@ public sealed class HttpClientTransportOptions
     }
 
     /// <summary>
-    /// Gets or sets the transport mode to use for the connection. Defaults to <see cref="HttpTransportMode.AutoDetect"/>.
+    /// Gets or sets the transport mode to use for the connection.
     /// </summary>
+    /// <value>
+    /// The transport mode to use for the connection. The default is <see cref="HttpTransportMode.AutoDetect"/>.
+    /// </value>
     /// <remarks>
-    /// <para>
     /// When set to <see cref="HttpTransportMode.AutoDetect"/> (the default), the client will first attempt to use
     /// Streamable HTTP transport and automatically fall back to SSE transport if the server doesn't support it.
-    /// </para>
-    /// <para>
-    /// <see href="https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http">Streamable HTTP transport specification</see>.
-    /// <see href="https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse">HTTP with SSE transport specification</see>.
-    /// </para>
     /// </remarks>
+    /// <seealso href="https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http">Streamable HTTP transport specification</seealso>.
+    /// <seealso href="https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse">HTTP with SSE transport specification</seealso>.
     public HttpTransportMode TransportMode { get; set; } = HttpTransportMode.AutoDetect;
 
     /// <summary>
@@ -53,20 +52,23 @@ public sealed class HttpClientTransportOptions
     public string? Name { get; set; }
 
     /// <summary>
-    /// Gets or sets a timeout used to establish the initial connection to the SSE server. Defaults to 30 seconds.
+    /// Gets or sets a timeout used to establish the initial connection to the SSE server.
     /// </summary>
+    /// <value>
+    /// The timeout used to establish the initial connection to the SSE server. The default is 30 seconds.
+    /// </value>
     /// <remarks>
     /// This timeout controls how long the client waits for:
     /// <list type="bullet">
-    ///   <item><description>The initial HTTP connection to be established with the SSE server</description></item>
-    ///   <item><description>The endpoint event to be received, which indicates the message endpoint URL</description></item>
+    ///   <item><description>The initial HTTP connection to be established with the SSE server.</description></item>
+    ///   <item><description>The endpoint event to be received, which indicates the message endpoint URL.</description></item>
     /// </list>
-    /// If the timeout expires before the connection is established, a <see cref="TimeoutException"/> will be thrown.
+    /// If the timeout expires before the connection is established, a <see cref="TimeoutException"/> is thrown.
     /// </remarks>
     public TimeSpan ConnectionTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    /// Gets custom HTTP headers to include in requests to the SSE server.
+    /// Gets or sets custom HTTP headers to include in requests to the SSE server.
     /// </summary>
     /// <remarks>
     /// Use this property to specify custom HTTP headers that should be sent with each request to the server.
