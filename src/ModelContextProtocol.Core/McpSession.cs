@@ -26,9 +26,7 @@ namespace ModelContextProtocol;
 /// All MCP sessions should be properly disposed after use as they implement <see cref="IAsyncDisposable"/>.
 /// </para>
 /// </remarks>
-#pragma warning disable CS0618 // Type or member is obsolete
-public abstract partial class McpSession : IMcpEndpoint, IAsyncDisposable
-#pragma warning restore CS0618 // Type or member is obsolete
+public abstract partial class McpSession : IAsyncDisposable
 {
     /// <summary>Gets an identifier associated with the current MCP session.</summary>
     /// <remarks>

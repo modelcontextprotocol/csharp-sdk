@@ -58,12 +58,10 @@ internal sealed partial class McpClientImpl : McpClient
     {
         McpClientHandlers handlers = options.Handlers;
 
-#pragma warning disable CS0618 // Type or member is obsolete
-        var notificationHandlersFromOptions = handlers.NotificationHandlers ?? options.Capabilities?.NotificationHandlers;
-        var samplingHandler = handlers.SamplingHandler ?? options.Capabilities?.Sampling?.SamplingHandler;
-        var rootsHandler = handlers.RootsHandler ?? options.Capabilities?.Roots?.RootsHandler;
-        var elicitationHandler = handlers.ElicitationHandler ?? options.Capabilities?.Elicitation?.ElicitationHandler;
-#pragma warning restore CS0618 // Type or member is obsolete
+        var notificationHandlersFromOptions = handlers.NotificationHandlers;
+        var samplingHandler = handlers.SamplingHandler;
+        var rootsHandler = handlers.RootsHandler;
+        var elicitationHandler = handlers.ElicitationHandler;
 
         if (notificationHandlersFromOptions is not null)
         {
