@@ -25,6 +25,8 @@ public class McpClientMetaTests : ClientServerTestBase
                 WebsiteUrl = "https://example.com",
             };
             o.ToolCollection = new ();
+            o.ResourceCollection = new ();
+            o.PromptCollection = new ();
         });
     }
 
@@ -42,7 +44,7 @@ public class McpClientMetaTests : ClientServerTestBase
 
                 return $"Meta foo is {metaFoo}";
             },
-            new () { Name = "echo_meta" }));
+            new () { Name = "meta_tool" }));
 
         await using McpClient client = await CreateMcpClientForServer();
 
@@ -50,17 +52,52 @@ public class McpClientMetaTests : ClientServerTestBase
         {
             Meta = new JsonObject()
             {
-                { "foo", "barbaz" }
+                { "foo", "bar baz" }
             }
         };
 
-        var result = await client.CallToolAsync("echo_meta", options: requestOptions, cancellationToken: TestContext.Current.CancellationToken);
-        // Assert.Contains("barbaz", result?.ToString());
+        var result = await client.CallToolAsync("meta_tool", options: requestOptions, cancellationToken: TestContext.Current.CancellationToken);
+
         Assert.NotNull(result);
         Assert.Null(result.IsError);
 
         var textContent = result.Content.OfType<TextContentBlock>().FirstOrDefault();
         Assert.NotNull(textContent);
-        Assert.Contains("barbaz", textContent.Text);
+        Assert.Contains("bar baz", textContent.Text);
+    }
+
+    [Fact]
+    public async Task ResourceGetWithMetaFields()
+    {
+        Server.ServerOptions.ResourceCollection?.Add(McpServerResource.Create(
+            (RequestContext<ReadResourceRequestParams> context) =>
+            {
+                // Access the foo property of _meta field from the request parameters
+                var metaFoo = context.Params?.Meta?["foo"]?.ToString();
+
+                // Assert that the meta foo is correctly passed
+                Assert.NotNull(metaFoo);
+
+                return $"Resource with Meta foo is {metaFoo}";
+            },
+            new () { UriTemplate = "test://meta_resource" }));
+
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var requestOptions = new RequestOptions()
+        {
+            Meta = new JsonObject()
+            {
+                { "foo", "bar baz" }
+            }
+        };
+
+        var result = await client.ReadResourceAsync("test://meta_resource", options: requestOptions, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+
+        var textContent = result.Contents.OfType<TextResourceContents>().FirstOrDefault();
+        Assert.NotNull(textContent);
+        Assert.Contains("bar baz", textContent.Text);
     }
 }
