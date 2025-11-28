@@ -67,7 +67,7 @@ public class McpClientMetaTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task ResourceGetWithMetaFields()
+    public async Task ResourceReadWithMetaFields()
     {
         Server.ServerOptions.ResourceCollection?.Add(McpServerResource.Create(
             (RequestContext<ReadResourceRequestParams> context) =>
@@ -97,6 +97,44 @@ public class McpClientMetaTests : ClientServerTestBase
         Assert.NotNull(result);
 
         var textContent = result.Contents.OfType<TextResourceContents>().FirstOrDefault();
+        Assert.NotNull(textContent);
+        Assert.Contains("bar baz", textContent.Text);
+    }
+
+
+    [Fact]
+    public async Task PromptGettWithMetaFields()
+    {
+        Server.ServerOptions.PromptCollection?.Add(McpServerPrompt.Create(
+            (RequestContext<GetPromptRequestParams> context) =>
+            {
+                // Access the foo property of _meta field from the request parameters
+                var metaFoo = context.Params?.Meta?["foo"]?.ToString();
+
+                // Assert that the meta foo is correctly passed
+                Assert.NotNull(metaFoo);
+
+                return $"Prompt with Meta foo is {metaFoo}";
+            },
+            new () { Name = "meta_prompt" }));
+
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var requestOptions = new RequestOptions()
+        {
+            Meta = new JsonObject()
+            {
+                { "foo", "bar baz" }
+            }
+        };
+
+        var result = await client.GetPromptAsync("meta_prompt", options: requestOptions, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.NotEmpty(result.Messages);
+        var message = result.Messages.First();
+        Assert.NotNull(message.Content);
+        var textContent = message.Content as TextContentBlock;
         Assert.NotNull(textContent);
         Assert.Contains("bar baz", textContent.Text);
     }
