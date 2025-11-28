@@ -39,7 +39,7 @@ public static class McpClientExtensions
     [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.PingAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     [EditorBrowsable(EditorBrowsableState.Never)]
     public static Task PingAsync(this IMcpClient client, CancellationToken cancellationToken = default)
-        => AsClientOrThrow(client).PingAsync(cancellationToken);
+        => AsClientOrThrow(client).PingAsync(null, cancellationToken).AsTask();
 
     /// <summary>
     /// Retrieves a list of available tools from the server.
@@ -86,7 +86,7 @@ public static class McpClientExtensions
         this IMcpClient client,
         JsonSerializerOptions? serializerOptions = null,
         CancellationToken cancellationToken = default)
-        => AsClientOrThrow(client).ListToolsAsync(serializerOptions, cancellationToken);
+        => AsClientOrThrow(client).ListToolsAsync(new RequestOptions { JsonSerializerOptions = serializerOptions }, cancellationToken);
 
     /// <summary>
     /// Creates an enumerable for asynchronously enumerating all available tools from the server.
@@ -126,7 +126,7 @@ public static class McpClientExtensions
         this IMcpClient client,
         JsonSerializerOptions? serializerOptions = null,
         CancellationToken cancellationToken = default)
-        => AsClientOrThrow(client).EnumerateToolsAsync(serializerOptions, cancellationToken);
+        => AsClientOrThrow(client).EnumerateToolsAsync(new RequestOptions { JsonSerializerOptions = serializerOptions }, cancellationToken);
 
     /// <summary>
     /// Retrieves a list of available prompts from the server.
@@ -149,7 +149,7 @@ public static class McpClientExtensions
     [EditorBrowsable(EditorBrowsableState.Never)]
     public static ValueTask<IList<McpClientPrompt>> ListPromptsAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
-        => AsClientOrThrow(client).ListPromptsAsync(cancellationToken);
+        => AsClientOrThrow(client).ListPromptsAsync(null, cancellationToken);
 
     /// <summary>
     /// Creates an enumerable for asynchronously enumerating all available prompts from the server.
@@ -182,7 +182,7 @@ public static class McpClientExtensions
     [EditorBrowsable(EditorBrowsableState.Never)]
     public static IAsyncEnumerable<McpClientPrompt> EnumeratePromptsAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
-        => AsClientOrThrow(client).EnumeratePromptsAsync(cancellationToken);
+        => AsClientOrThrow(client).EnumeratePromptsAsync(null, cancellationToken);
 
     /// <summary>
     /// Retrieves a specific prompt from the MCP server.
@@ -217,7 +217,7 @@ public static class McpClientExtensions
         IReadOnlyDictionary<string, object?>? arguments = null,
         JsonSerializerOptions? serializerOptions = null,
         CancellationToken cancellationToken = default)
-        => AsClientOrThrow(client).GetPromptAsync(name, arguments, serializerOptions, cancellationToken);
+        => AsClientOrThrow(client).GetPromptAsync(name, arguments, new RequestOptions { JsonSerializerOptions = serializerOptions }, cancellationToken);
 
     /// <summary>
     /// Retrieves a list of available resource templates from the server.
@@ -240,7 +240,7 @@ public static class McpClientExtensions
     [EditorBrowsable(EditorBrowsableState.Never)]
     public static ValueTask<IList<McpClientResourceTemplate>> ListResourceTemplatesAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
-        => AsClientOrThrow(client).ListResourceTemplatesAsync(cancellationToken);
+        => AsClientOrThrow(client).ListResourceTemplatesAsync(null, cancellationToken);
 
     /// <summary>
     /// Creates an enumerable for asynchronously enumerating all available resource templates from the server.
@@ -273,7 +273,7 @@ public static class McpClientExtensions
     [EditorBrowsable(EditorBrowsableState.Never)]
     public static IAsyncEnumerable<McpClientResourceTemplate> EnumerateResourceTemplatesAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
-        => AsClientOrThrow(client).EnumerateResourceTemplatesAsync(cancellationToken);
+        => AsClientOrThrow(client).EnumerateResourceTemplatesAsync(null, cancellationToken);
 
     /// <summary>
     /// Retrieves a list of available resources from the server.
@@ -308,7 +308,7 @@ public static class McpClientExtensions
     [EditorBrowsable(EditorBrowsableState.Never)]
     public static ValueTask<IList<McpClientResource>> ListResourcesAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
-        => AsClientOrThrow(client).ListResourcesAsync(cancellationToken);
+        => AsClientOrThrow(client).ListResourcesAsync(null, cancellationToken);
 
     /// <summary>
     /// Creates an enumerable for asynchronously enumerating all available resources from the server.
@@ -341,7 +341,7 @@ public static class McpClientExtensions
     [EditorBrowsable(EditorBrowsableState.Never)]
     public static IAsyncEnumerable<McpClientResource> EnumerateResourcesAsync(
         this IMcpClient client, CancellationToken cancellationToken = default)
-        => AsClientOrThrow(client).EnumerateResourcesAsync(cancellationToken);
+        => AsClientOrThrow(client).EnumerateResourcesAsync(null, cancellationToken);
 
     /// <summary>
     /// Reads a resource from the server.
@@ -356,7 +356,7 @@ public static class McpClientExtensions
     [EditorBrowsable(EditorBrowsableState.Never)]
     public static ValueTask<ReadResourceResult> ReadResourceAsync(
         this IMcpClient client, string uri, CancellationToken cancellationToken = default)
-        => AsClientOrThrow(client).ReadResourceAsync(uri, cancellationToken);
+        => AsClientOrThrow(client).ReadResourceAsync(uri, null, cancellationToken);
 
     /// <summary>
     /// Reads a resource from the server.
@@ -370,7 +370,7 @@ public static class McpClientExtensions
     [EditorBrowsable(EditorBrowsableState.Never)]
     public static ValueTask<ReadResourceResult> ReadResourceAsync(
         this IMcpClient client, Uri uri, CancellationToken cancellationToken = default)
-        => AsClientOrThrow(client).ReadResourceAsync(uri, cancellationToken);
+        => AsClientOrThrow(client).ReadResourceAsync(uri, null, cancellationToken);
 
     /// <summary>
     /// Reads a resource from the server.
@@ -386,7 +386,7 @@ public static class McpClientExtensions
     [EditorBrowsable(EditorBrowsableState.Never)]
     public static ValueTask<ReadResourceResult> ReadResourceAsync(
         this IMcpClient client, string uriTemplate, IReadOnlyDictionary<string, object?> arguments, CancellationToken cancellationToken = default)
-        => AsClientOrThrow(client).ReadResourceAsync(uriTemplate, arguments, cancellationToken);
+        => AsClientOrThrow(client).ReadResourceAsync(uriTemplate, arguments, null, cancellationToken);
 
     /// <summary>
     /// Requests completion suggestions for a prompt argument or resource reference.
@@ -450,7 +450,7 @@ public static class McpClientExtensions
     [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.SubscribeToResourceAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     [EditorBrowsable(EditorBrowsableState.Never)]
     public static Task SubscribeToResourceAsync(this IMcpClient client, string uri, CancellationToken cancellationToken = default)
-        => AsClientOrThrow(client).SubscribeToResourceAsync(uri, cancellationToken);
+        => AsClientOrThrow(client).SubscribeToResourceAsync(uri, null, cancellationToken);
 
     /// <summary>
     /// Subscribes to a resource on the server to receive notifications when it changes.
@@ -479,7 +479,7 @@ public static class McpClientExtensions
     [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.SubscribeToResourceAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     [EditorBrowsable(EditorBrowsableState.Never)]
     public static Task SubscribeToResourceAsync(this IMcpClient client, Uri uri, CancellationToken cancellationToken = default)
-        => AsClientOrThrow(client).SubscribeToResourceAsync(uri, cancellationToken);
+        => AsClientOrThrow(client).SubscribeToResourceAsync(uri, null, cancellationToken);
 
     /// <summary>
     /// Unsubscribes from a resource on the server to stop receiving notifications about its changes.
@@ -508,7 +508,7 @@ public static class McpClientExtensions
     [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.UnsubscribeFromResourceAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     [EditorBrowsable(EditorBrowsableState.Never)]
     public static Task UnsubscribeFromResourceAsync(this IMcpClient client, string uri, CancellationToken cancellationToken = default)
-        => AsClientOrThrow(client).UnsubscribeFromResourceAsync(uri, cancellationToken);
+        => AsClientOrThrow(client).UnsubscribeFromResourceAsync(uri, null, cancellationToken);
 
     /// <summary>
     /// Unsubscribes from a resource on the server to stop receiving notifications about its changes.
@@ -536,7 +536,7 @@ public static class McpClientExtensions
     [Obsolete($"Use {nameof(McpClient)}.{nameof(McpClient.UnsubscribeFromResourceAsync)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
     [EditorBrowsable(EditorBrowsableState.Never)]
     public static Task UnsubscribeFromResourceAsync(this IMcpClient client, Uri uri, CancellationToken cancellationToken = default)
-        => AsClientOrThrow(client).UnsubscribeFromResourceAsync(uri, cancellationToken);
+        => AsClientOrThrow(client).UnsubscribeFromResourceAsync(uri, null, cancellationToken);
 
     /// <summary>
     /// Invokes a tool on the server.
@@ -582,7 +582,7 @@ public static class McpClientExtensions
         IProgress<ProgressNotificationValue>? progress = null,
         JsonSerializerOptions? serializerOptions = null,
         CancellationToken cancellationToken = default)
-        => AsClientOrThrow(client).CallToolAsync(toolName, arguments, progress, serializerOptions, cancellationToken);
+        => AsClientOrThrow(client).CallToolAsync(toolName, arguments, progress, new RequestOptions { JsonSerializerOptions = serializerOptions }, cancellationToken);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
 #pragma warning disable CS0618 // Type or member is obsolete

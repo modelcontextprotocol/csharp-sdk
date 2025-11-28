@@ -47,7 +47,7 @@ public class Program
                         new ChatMessage(ChatRole.System, "You are a helpful test server"),
                         new ChatMessage(ChatRole.User, $"Resource {uri}, context: A new subscription was started"),
                     ],
-                    options: new ChatOptions
+                    chatOptions: new ChatOptions
                     {
                         MaxOutputTokens = 100,
                         Temperature = 0.7f,

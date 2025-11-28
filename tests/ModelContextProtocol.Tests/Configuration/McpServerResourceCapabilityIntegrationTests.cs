@@ -41,7 +41,7 @@ public class McpServerResourceCapabilityIntegrationTests : ClientServerTestBase
         Assert.True(client.ServerCapabilities.Resources.Subscribe, "Server should advertise Subscribe capability when manually set");
 
         // The resources should be exposed and listable
-        var resources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
+        var resources = await client.ListResourcesAsync(null, TestContext.Current.CancellationToken);
         Assert.NotEmpty(resources);
         Assert.Contains(resources, r => r.Name == "test_resource");
     }
@@ -56,7 +56,7 @@ public class McpServerResourceCapabilityIntegrationTests : ClientServerTestBase
         Assert.NotNull(client.ServerCapabilities.Resources);
 
         // The resources should be exposed and listable
-        var resources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
+        var resources = await client.ListResourcesAsync(null, TestContext.Current.CancellationToken);
         Assert.NotEmpty(resources);
     }
 

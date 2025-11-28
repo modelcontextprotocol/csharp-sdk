@@ -129,7 +129,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
 
         Assert.NotNull(client.ServerCapabilities.Resources);
 
-        var resources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
+        var resources = await client.ListResourcesAsync(null, TestContext.Current.CancellationToken);
         Assert.Equal(5, resources.Count);
 
         var resource = resources.First(t => t.Name == "some_neat_direct_resource");
@@ -146,7 +146,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     {
         await using McpClient client = await CreateMcpClientForServer();
 
-        var resources = await client.ListResourceTemplatesAsync(TestContext.Current.CancellationToken);
+        var resources = await client.ListResourceTemplatesAsync(null, TestContext.Current.CancellationToken);
         Assert.Equal(3, resources.Count);
 
         var resource = resources.First(t => t.Name == "some_neat_templated_resource");
@@ -163,7 +163,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     {
         await using McpClient client = await CreateMcpClientForServer();
 
-        var resources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
+        var resources = await client.ListResourcesAsync(null, TestContext.Current.CancellationToken);
         Assert.Equal(5, resources.Count);
 
         Channel<JsonRpcNotification> listChanged = Channel.CreateUnbounded<JsonRpcNotification>();
@@ -184,7 +184,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
             serverResources.Add(newResource);
             await notificationRead;
 
-            resources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
+            resources = await client.ListResourcesAsync(null, TestContext.Current.CancellationToken);
             Assert.Equal(6, resources.Count);
             Assert.Contains(resources, t => t.Name == "NewResource");
 
@@ -194,7 +194,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
             await notificationRead;
         }
 
-        resources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
+        resources = await client.ListResourcesAsync(null, TestContext.Current.CancellationToken);
         Assert.Equal(5, resources.Count);
         Assert.DoesNotContain(resources, t => t.Name == "NewResource");
     }

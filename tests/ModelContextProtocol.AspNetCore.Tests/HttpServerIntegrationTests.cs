@@ -35,7 +35,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
 
         // Act
         await using var client = await GetClientAsync();
-        await client.PingAsync(TestContext.Current.CancellationToken);
+        await client.PingAsync(null, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(client);
@@ -139,7 +139,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         // act
         await using var client = await GetClientAsync();
 
-        IList<McpClientResource> allResources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
+        IList<McpClientResource> allResources = await client.ListResourcesAsync(null, TestContext.Current.CancellationToken);
 
         // The everything server provides 100 test resources
         Assert.Equal(100, allResources.Count);
@@ -155,7 +155,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         // Odd numbered resources are text in the everything server (despite the docs saying otherwise)
         // 1 is index 0, which is "even" in the 0-based index
         // We copied this oddity to the test server
-        var result = await client.ReadResourceAsync("test://static/resource/1", TestContext.Current.CancellationToken);
+        var result = await client.ReadResourceAsync("test://static/resource/1", null, TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
         Assert.Single(result.Contents);
@@ -174,7 +174,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         // Even numbered resources are binary in the everything server (despite the docs saying otherwise)
         // 2 is index 1, which is "odd" in the 0-based index
         // We copied this oddity to the test server
-        var result = await client.ReadResourceAsync("test://static/resource/2", TestContext.Current.CancellationToken);
+        var result = await client.ReadResourceAsync("test://static/resource/2", null, TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
         Assert.Single(result.Contents);
@@ -190,7 +190,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
 
         // act
         await using var client = await GetClientAsync();
-        var prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
+        var prompts = await client.ListPromptsAsync(null, TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(prompts);

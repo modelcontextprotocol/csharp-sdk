@@ -342,7 +342,7 @@ public class McpClientExtensionsTests
 
         IMcpClient client = mockClient.Object;
 
-        var result = await client.ReadResourceAsync("mcp://resource/1", TestContext.Current.CancellationToken);
+        var result = await client.ReadResourceAsync("mcp://resource/1", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
         mockClient.Verify(c => c.SendRequestAsync(It.IsAny<JsonRpcRequest>(), It.IsAny<CancellationToken>()), Times.Once);

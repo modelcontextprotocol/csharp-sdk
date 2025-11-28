@@ -126,7 +126,7 @@ public static class McpEndpointExtensions
         ProgressToken progressToken,
         ProgressNotificationValue progress,
         CancellationToken cancellationToken = default)
-        => AsSessionOrThrow(endpoint).NotifyProgressAsync(progressToken, progress, cancellationToken);
+        => AsSessionOrThrow(endpoint).NotifyProgressAsync(progressToken, progress, cancellationToken: cancellationToken);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
 #pragma warning disable CS0618 // Type or member is obsolete

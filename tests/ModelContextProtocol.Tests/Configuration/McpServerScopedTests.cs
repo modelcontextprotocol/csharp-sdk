@@ -24,7 +24,7 @@ public partial class McpServerScopedTests : ClientServerTestBase
     {
         await using McpClient client = await CreateMcpClientForServer();
 
-        var tools = await client.ListToolsAsync(McpServerScopedTestsJsonContext.Default.Options, TestContext.Current.CancellationToken);
+        var tools = await client.ListToolsAsync(new RequestOptions { JsonSerializerOptions = McpServerScopedTestsJsonContext.Default.Options }, TestContext.Current.CancellationToken);
         var tool = tools.First(t => t.Name == "echo_complex");
         Assert.DoesNotContain("\"complex\"", JsonSerializer.Serialize(tool.JsonSchema, McpJsonUtilities.DefaultOptions));
 
