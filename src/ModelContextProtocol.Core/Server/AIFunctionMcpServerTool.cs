@@ -118,7 +118,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         Tool tool = new()
         {
             Name = options?.Name ?? function.Name,
-            Description = options?.Description ?? function.Description,
+            Description = GetToolDescription(function, options),
             InputSchema = function.JsonSchema,
             OutputSchema = CreateOutputSchema(function, options, out bool structuredOutputRequiresWrapping),
             Icons = options?.Icons,
@@ -404,6 +404,57 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         {
             throw new ArgumentException($"The tool name '{name}' is invalid. Tool names must match the regular expression '{ValidateToolNameRegex()}'");
         }
+    }
+
+    /// <summary>
+    /// Gets the tool description, synthesizing from both the function description and return description when appropriate.
+    /// </summary>
+    /// <remarks>
+    /// When UseStructuredContent is true, the return description is included in the output schema.
+    /// When UseStructuredContent is false (default), if there's a return description in the ReturnJsonSchema,
+    /// it will be appended to the tool description so the information is still available to consumers.
+    /// </remarks>
+    private static string? GetToolDescription(AIFunction function, McpServerToolCreateOptions? options)
+    {
+        string? description = options?.Description ?? function.Description;
+
+        // If structured content is enabled, the return description will be in the output schema
+        if (options?.UseStructuredContent is true)
+        {
+            return description;
+        }
+
+        // When structured content is disabled, try to extract the return description from ReturnJsonSchema
+        // and append it to the tool description so the information is available to consumers
+        string? returnDescription = GetReturnDescription(function.ReturnJsonSchema);
+        if (returnDescription is null)
+        {
+            return description;
+        }
+
+        // Synthesize a combined description
+        if (string.IsNullOrEmpty(description))
+        {
+            return $"Returns: {returnDescription}";
+        }
+
+        return $"{description} Returns: {returnDescription}";
+    }
+
+    /// <summary>
+    /// Extracts the description property from a ReturnJsonSchema if present.
+    /// </summary>
+    private static string? GetReturnDescription(JsonElement? returnJsonSchema)
+    {
+        if (returnJsonSchema is not JsonElement schema ||
+            schema.ValueKind != JsonValueKind.Object ||
+            !schema.TryGetProperty("description", out JsonElement descriptionElement) ||
+            descriptionElement.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        return descriptionElement.GetString();
     }
 
     private static JsonElement? CreateOutputSchema(AIFunction function, McpServerToolCreateOptions? toolCreateOptions, out bool structuredOutputRequiresWrapping)

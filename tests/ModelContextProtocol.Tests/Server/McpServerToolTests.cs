@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Moq;
+using System.ComponentModel;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -742,6 +743,87 @@ public partial class McpServerToolTests
 
         Assert.Null(tool.ProtocolTool.Icons);
     }
+
+    [Fact]
+    public void ReturnDescription_StructuredOutputDisabled_IncludedInToolDescription()
+    {
+        // When UseStructuredContent is false (default), return description should be appended to tool description
+        McpServerTool tool = McpServerTool.Create(ToolWithReturnDescription);
+
+        Assert.Equal("Tool that returns data. Returns: The computed result", tool.ProtocolTool.Description);
+        Assert.Null(tool.ProtocolTool.OutputSchema);
+    }
+
+    [Fact]
+    public void ReturnDescription_StructuredOutputEnabled_NotIncludedInToolDescription()
+    {
+        // When UseStructuredContent is true, return description should be in the output schema, not in tool description
+        McpServerTool tool = McpServerTool.Create(ToolWithReturnDescription, new() { UseStructuredContent = true });
+
+        Assert.Equal("Tool that returns data.", tool.ProtocolTool.Description);
+        Assert.NotNull(tool.ProtocolTool.OutputSchema);
+        // Verify the output schema contains the description
+        Assert.True(tool.ProtocolTool.OutputSchema.Value.TryGetProperty("properties", out var properties));
+        Assert.True(properties.TryGetProperty("result", out var result));
+        Assert.True(result.TryGetProperty("description", out var description));
+        Assert.Equal("The computed result", description.GetString());
+    }
+
+    [Fact]
+    public void ReturnDescription_NoFunctionDescription_OnlyReturnsDescription()
+    {
+        // When there's no function description but there's a return description
+        McpServerTool tool = McpServerTool.Create(ToolWithOnlyReturnDescription);
+
+        Assert.Equal("Returns: The computed result", tool.ProtocolTool.Description);
+        Assert.Null(tool.ProtocolTool.OutputSchema);
+    }
+
+    [Fact]
+    public void ReturnDescription_ExplicitDescriptionOption_SynthesizesWithReturnDescription()
+    {
+        // When Description is explicitly set in options and there's a return description,
+        // the return description should be appended since UseStructuredContent is false
+        McpServerTool tool = McpServerTool.Create(ToolWithReturnDescription, new() { Description = "Custom description" });
+
+        Assert.Equal("Custom description Returns: The computed result", tool.ProtocolTool.Description);
+        Assert.Null(tool.ProtocolTool.OutputSchema);
+    }
+
+    [Fact]
+    public void ReturnDescription_NoReturnDescription_NoChange()
+    {
+        // When there's no return description, the tool description should remain unchanged
+        McpServerTool tool = McpServerTool.Create(ToolWithoutReturnDescription);
+
+        Assert.Equal("Tool without return description.", tool.ProtocolTool.Description);
+        Assert.Null(tool.ProtocolTool.OutputSchema);
+    }
+
+    [Fact]
+    public void ReturnDescription_StructuredOutputEnabled_WithExplicitDescription_NoSynthesis()
+    {
+        // When UseStructuredContent is true and Description is set, return description goes to output schema
+        McpServerTool tool = McpServerTool.Create(ToolWithReturnDescription, new() 
+        { 
+            Description = "Custom description", 
+            UseStructuredContent = true 
+        });
+
+        // Description should not have the return description appended
+        Assert.Equal("Custom description", tool.ProtocolTool.Description);
+        Assert.NotNull(tool.ProtocolTool.OutputSchema);
+    }
+
+    [Description("Tool that returns data.")]
+    [return: Description("The computed result")]
+    private static string ToolWithReturnDescription() => "result";
+
+    [return: Description("The computed result")]
+    private static string ToolWithOnlyReturnDescription() => "result";
+
+    [Description("Tool without return description.")]
+    private static string ToolWithoutReturnDescription() => "result";
 
     [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
     [JsonSerializable(typeof(DisposableToolType))]
