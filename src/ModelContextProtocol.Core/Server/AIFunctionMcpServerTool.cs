@@ -427,18 +427,18 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         // When structured content is disabled, try to extract the return description from ReturnJsonSchema
         // and append it to the tool description so the information is available to consumers
         string? returnDescription = GetReturnDescription(function.ReturnJsonSchema);
-        if (returnDescription is null)
+        if (string.IsNullOrWhiteSpace(returnDescription))
         {
             return description;
         }
 
         // Synthesize a combined description
-        if (string.IsNullOrEmpty(description))
+        if (string.IsNullOrWhiteSpace(description))
         {
             return $"Returns: {returnDescription}";
         }
 
-        return $"{description} Returns: {returnDescription}";
+        return $"{description}\nReturns: {returnDescription}";
     }
 
     /// <summary>
@@ -447,9 +447,9 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     private static string? GetReturnDescription(JsonElement? returnJsonSchema)
     {
         if (returnJsonSchema is not JsonElement schema ||
-            schema.ValueKind != JsonValueKind.Object ||
+            schema.ValueKind is not JsonValueKind.Object ||
             !schema.TryGetProperty("description", out JsonElement descriptionElement) ||
-            descriptionElement.ValueKind != JsonValueKind.String)
+            descriptionElement.ValueKind is not JsonValueKind.String)
         {
             return null;
         }

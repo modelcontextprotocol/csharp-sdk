@@ -750,7 +750,7 @@ public partial class McpServerToolTests
         // When UseStructuredContent is false (default), return description should be appended to tool description
         McpServerTool tool = McpServerTool.Create(ToolWithReturnDescription);
 
-        Assert.Equal("Tool that returns data. Returns: The computed result", tool.ProtocolTool.Description);
+        Assert.Equal("Tool that returns data.\nReturns: The computed result", tool.ProtocolTool.Description);
         Assert.Null(tool.ProtocolTool.OutputSchema);
     }
 
@@ -786,7 +786,7 @@ public partial class McpServerToolTests
         // the return description should be appended since UseStructuredContent is false
         McpServerTool tool = McpServerTool.Create(ToolWithReturnDescription, new() { Description = "Custom description" });
 
-        Assert.Equal("Custom description Returns: The computed result", tool.ProtocolTool.Description);
+        Assert.Equal("Custom description\nReturns: The computed result", tool.ProtocolTool.Description);
         Assert.Null(tool.ProtocolTool.OutputSchema);
     }
 
