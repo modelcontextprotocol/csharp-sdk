@@ -68,15 +68,6 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
         });
     }
 
-    // On .NET Framework, Exception.Data requires values to be serializable with [Serializable].
-    // JsonElement is not marked as serializable, so these tests are skipped on .NET Framework.
-    private static bool IsNetFramework =>
-#if NET
-        false;
-#else
-        true;
-#endif
-
     [Fact]
     public async Task Exception_With_Serializable_Data_Propagates_To_Client()
     {
@@ -89,7 +80,7 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
         Assert.Equal((McpErrorCode)(-32002), exception.ErrorCode);
 
         // Skip data verification on .NET Framework since JsonElement cannot be stored in Exception.Data
-        if (IsNetFramework)
+        if (PlatformDetection.IsNetFramework)
         {
             return;
         }
@@ -132,7 +123,7 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
         Assert.Equal((McpErrorCode)(-32002), exception.ErrorCode);
 
         // Skip data verification on .NET Framework since JsonElement cannot be stored in Exception.Data
-        if (IsNetFramework)
+        if (PlatformDetection.IsNetFramework)
         {
             return;
         }
