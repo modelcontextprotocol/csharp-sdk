@@ -11,9 +11,9 @@ namespace ModelContextProtocol.Tests;
 /// Tests for McpProtocolException.Data propagation to JSON-RPC error responses.
 /// </summary>
 /// <remarks>
-/// Note: On .NET Framework, Exception.Data requires values to be serializable with [Serializable].
-/// Since JsonElement is not marked as serializable, the data population on the client side is skipped
-/// on that platform. These tests verify the error message and code are correct regardless of platform.
+/// Primitive values (strings, numbers, bools) are extracted from JsonElements and stored directly,
+/// which works on all platforms including .NET Framework. Complex objects and arrays are stored as
+/// JsonElement on .NET Core, but skipped on .NET Framework (where JsonElement is not serializable).
 /// </remarks>
 public class McpProtocolExceptionDataTests : ClientServerTestBase
 {
@@ -79,12 +79,6 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
         Assert.Equal("Request failed (remote): Resource not found", exception.Message);
         Assert.Equal((McpErrorCode)(-32002), exception.ErrorCode);
 
-        // Skip data verification on .NET Framework since JsonElement cannot be stored in Exception.Data
-        if (PlatformDetection.IsNetFramework)
-        {
-            return;
-        }
-        
         // Verify the data was propagated to the exception
         // The Data collection should contain the expected keys
         var hasUri = false;
@@ -100,12 +94,9 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
         Assert.True(hasUri, "Exception.Data should contain 'uri' key");
         Assert.True(hasCode, "Exception.Data should contain 'code' key");
         
-        // Verify the values (they should be JsonElements)
-        var uriValue = Assert.IsType<JsonElement>(exception.Data["uri"]);
-        Assert.Equal("file:///path/to/resource", uriValue.GetString());
-        
-        var codeValue = Assert.IsType<JsonElement>(exception.Data["code"]);
-        Assert.Equal(404, codeValue.GetInt32());
+        // Verify the values - primitives are extracted as their native types (string, double, bool)
+        Assert.Equal("file:///path/to/resource", exception.Data["uri"]);
+        Assert.Equal(404.0, exception.Data["code"]); // Numbers are stored as double
     }
 
     [Fact]
@@ -122,12 +113,6 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
         Assert.Equal("Request failed (remote): Resource not found", exception.Message);
         Assert.Equal((McpErrorCode)(-32002), exception.ErrorCode);
 
-        // Skip data verification on .NET Framework since JsonElement cannot be stored in Exception.Data
-        if (PlatformDetection.IsNetFramework)
-        {
-            return;
-        }
-        
         // Verify that only the serializable data was propagated (non-serializable was filtered out)
         var hasUri = false;
         var hasNonSerializable = false;
@@ -142,8 +127,7 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
         Assert.True(hasUri, "Exception.Data should contain 'uri' key");
         Assert.False(hasNonSerializable, "Exception.Data should not contain 'nonSerializable' key");
         
-        var uriValue = Assert.IsType<JsonElement>(exception.Data["uri"]);
-        Assert.Equal("file:///path/to/resource", uriValue.GetString());
+        Assert.Equal("file:///path/to/resource", exception.Data["uri"]);
     }
 
     [Fact]
