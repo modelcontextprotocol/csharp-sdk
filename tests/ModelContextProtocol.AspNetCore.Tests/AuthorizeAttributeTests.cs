@@ -17,7 +17,6 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 /// </summary>
 public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : KestrelInMemoryTest(testOutputHelper)
 {
-    private readonly MockLoggerProvider _mockLoggerProvider = new();
 
     private async Task<McpClient> ConnectAsync()
     {
@@ -273,7 +272,6 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
     [Fact]
     public async Task ListTools_WithoutAuthFilters_ThrowsInvalidOperationException()
     {
-        _mockLoggerProvider.LogMessages.Clear();
         await using var app = await StartServerWithoutAuthFilters(builder => builder.WithTools<AuthorizationTestTools>());
         var client = await ConnectAsync();
 
@@ -281,7 +279,7 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
             await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Equal("Request failed (remote): An error occurred.", exception.Message);
-        Assert.Contains(_mockLoggerProvider.LogMessages, log =>
+        Assert.Contains(MockLoggerProvider.LogMessages, log =>
             log.LogLevel == LogLevel.Warning &&
             log.Exception is InvalidOperationException &&
             log.Exception.Message.Contains("Authorization filter was not invoked for tools/list operation") &&
@@ -291,7 +289,6 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
     [Fact]
     public async Task CallTool_WithoutAuthFilters_ReturnsError()
     {
-        _mockLoggerProvider.LogMessages.Clear();
         await using var app = await StartServerWithoutAuthFilters(builder => builder.WithTools<AuthorizationTestTools>());
         var client = await ConnectAsync();
 
@@ -304,7 +301,7 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
 
         var errorContent = Assert.IsType<TextContentBlock>(Assert.Single(toolResult.Content));
         Assert.Equal("An error occurred invoking 'authorized_tool'.", errorContent.Text);
-        Assert.Contains(_mockLoggerProvider.LogMessages, log =>
+        Assert.Contains(MockLoggerProvider.LogMessages, log =>
             log.LogLevel == LogLevel.Error &&
             log.Exception is InvalidOperationException &&
             log.Exception.Message.Contains("Authorization filter was not invoked for tools/call operation") &&
@@ -314,7 +311,6 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
     [Fact]
     public async Task ListPrompts_WithoutAuthFilters_ThrowsInvalidOperationException()
     {
-        _mockLoggerProvider.LogMessages.Clear();
         await using var app = await StartServerWithoutAuthFilters(builder => builder.WithPrompts<AuthorizationTestPrompts>());
         var client = await ConnectAsync();
 
@@ -322,7 +318,7 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
             await client.ListPromptsAsync(cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Equal("Request failed (remote): An error occurred.", exception.Message);
-        Assert.Contains(_mockLoggerProvider.LogMessages, log =>
+        Assert.Contains(MockLoggerProvider.LogMessages, log =>
             log.LogLevel == LogLevel.Warning &&
             log.Exception is InvalidOperationException &&
             log.Exception.Message.Contains("Authorization filter was not invoked for prompts/list operation") &&
@@ -332,7 +328,6 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
     [Fact]
     public async Task GetPrompt_WithoutAuthFilters_ThrowsInvalidOperationException()
     {
-        _mockLoggerProvider.LogMessages.Clear();
         await using var app = await StartServerWithoutAuthFilters(builder => builder.WithPrompts<AuthorizationTestPrompts>());
         var client = await ConnectAsync();
 
@@ -343,7 +338,7 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
                 cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Equal("Request failed (remote): An error occurred.", exception.Message);
-        Assert.Contains(_mockLoggerProvider.LogMessages, log =>
+        Assert.Contains(MockLoggerProvider.LogMessages, log =>
             log.LogLevel == LogLevel.Warning &&
             log.Exception is InvalidOperationException &&
             log.Exception.Message.Contains("Authorization filter was not invoked for prompts/get operation") &&
@@ -353,7 +348,6 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
     [Fact]
     public async Task ListResources_WithoutAuthFilters_ThrowsInvalidOperationException()
     {
-        _mockLoggerProvider.LogMessages.Clear();
         await using var app = await StartServerWithoutAuthFilters(builder => builder.WithResources<AuthorizationTestResources>());
         var client = await ConnectAsync();
 
@@ -361,7 +355,7 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
             await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Equal("Request failed (remote): An error occurred.", exception.Message);
-        Assert.Contains(_mockLoggerProvider.LogMessages, log =>
+        Assert.Contains(MockLoggerProvider.LogMessages, log =>
             log.LogLevel == LogLevel.Warning &&
             log.Exception is InvalidOperationException &&
             log.Exception.Message.Contains("Authorization filter was not invoked for resources/list operation") &&
@@ -371,7 +365,6 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
     [Fact]
     public async Task ReadResource_WithoutAuthFilters_ThrowsInvalidOperationException()
     {
-        _mockLoggerProvider.LogMessages.Clear();
         await using var app = await StartServerWithoutAuthFilters(builder => builder.WithResources<AuthorizationTestResources>());
         var client = await ConnectAsync();
 
@@ -381,7 +374,7 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
                 cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Equal("Request failed (remote): An error occurred.", exception.Message);
-        Assert.Contains(_mockLoggerProvider.LogMessages, log =>
+        Assert.Contains(MockLoggerProvider.LogMessages, log =>
             log.LogLevel == LogLevel.Warning &&
             log.Exception is InvalidOperationException &&
             log.Exception.Message.Contains("Authorization filter was not invoked for resources/read operation") &&
@@ -391,7 +384,6 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
     [Fact]
     public async Task ListResourceTemplates_WithoutAuthFilters_ThrowsInvalidOperationException()
     {
-        _mockLoggerProvider.LogMessages.Clear();
         await using var app = await StartServerWithoutAuthFilters(builder => builder.WithResources<AuthorizationTestResources>());
         var client = await ConnectAsync();
 
@@ -399,7 +391,7 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
             await client.ListResourceTemplatesAsync(cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Equal("Request failed (remote): An error occurred.", exception.Message);
-        Assert.Contains(_mockLoggerProvider.LogMessages, log =>
+        Assert.Contains(MockLoggerProvider.LogMessages, log =>
             log.LogLevel == LogLevel.Warning &&
             log.Exception is InvalidOperationException &&
             log.Exception.Message.Contains("Authorization filter was not invoked for resources/templates/list operation") &&
@@ -412,7 +404,6 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
         configure(mcpServerBuilder);
 
         Builder.Services.AddAuthorization();
-        Builder.Services.AddSingleton<ILoggerProvider>(_mockLoggerProvider);
 
         var app = Builder.Build();
 
@@ -439,7 +430,6 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
         configure(mcpServerBuilder);
 
         Builder.Services.AddAuthorization();
-        Builder.Services.AddSingleton<ILoggerProvider>(_mockLoggerProvider);
 
         var app = Builder.Build();
         app.MapMcp();

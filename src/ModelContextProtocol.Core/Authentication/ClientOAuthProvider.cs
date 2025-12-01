@@ -21,6 +21,7 @@ internal sealed partial class ClientOAuthProvider
     /// The Bearer authentication scheme.
     /// </summary>
     private const string BearerScheme = "Bearer";
+    private const string ProtectedResourceMetadataWellKnownPath = "/.well-known/oauth-protected-resource";
 
     private static readonly string[] s_wellKnownPaths = [".well-known/openid-configuration", ".well-known/oauth-authorization-server"];
 
@@ -43,7 +44,6 @@ internal sealed partial class ClientOAuthProvider
 
     private string? _clientId;
     private string? _clientSecret;
-
     private ITokenCache _tokenCache;
     private AuthorizationServerMetadata? _authServerMetadata;
 
@@ -223,9 +223,11 @@ internal sealed partial class ClientOAuthProvider
         _authServerMetadata = authServerMetadata;
 
         // The existing access token must be invalid to have resulted in a 401 response, but refresh might still work.
+        var resourceUri = GetRequiredResourceUri(protectedResourceMetadata);
+
         if (await _tokenCache.GetTokensAsync(cancellationToken).ConfigureAwait(false) is { RefreshToken: { } refreshToken })
         {
-            var refreshedTokens = await RefreshTokenAsync(refreshToken, protectedResourceMetadata.Resource, authServerMetadata, cancellationToken).ConfigureAwait(false);
+            var refreshedTokens = await RefreshTokenAsync(refreshToken, resourceUri, authServerMetadata, cancellationToken).ConfigureAwait(false);
             if (refreshedTokens is not null)
             {
                 // A non-null result indicates the refresh succeeded and the new tokens have been stored.
@@ -375,6 +377,8 @@ internal sealed partial class ClientOAuthProvider
         AuthorizationServerMetadata authServerMetadata,
         string codeChallenge)
     {
+        var resourceUri = GetRequiredResourceUri(protectedResourceMetadata);
+
         var queryParamsDictionary = new Dictionary<string, string>
         {
             ["client_id"] = GetClientIdOrThrow(),
@@ -382,7 +386,7 @@ internal sealed partial class ClientOAuthProvider
             ["response_type"] = "code",
             ["code_challenge"] = codeChallenge,
             ["code_challenge_method"] = "S256",
-            ["resource"] = protectedResourceMetadata.Resource.ToString(),
+            ["resource"] = resourceUri.ToString(),
         };
 
         var scopesSupported = protectedResourceMetadata.ScopesSupported;
@@ -418,6 +422,8 @@ internal sealed partial class ClientOAuthProvider
         string codeVerifier,
         CancellationToken cancellationToken)
     {
+        var resourceUri = GetRequiredResourceUri(protectedResourceMetadata);
+
         var requestContent = new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["grant_type"] = "authorization_code",
@@ -426,7 +432,7 @@ internal sealed partial class ClientOAuthProvider
             ["client_id"] = GetClientIdOrThrow(),
             ["code_verifier"] = codeVerifier,
             ["client_secret"] = _clientSecret ?? string.Empty,
-            ["resource"] = protectedResourceMetadata.Resource.ToString(),
+            ["resource"] = resourceUri.ToString(),
         });
 
         using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.TokenEndpoint)
@@ -467,6 +473,28 @@ internal sealed partial class ClientOAuthProvider
         await _tokenCache.StoreTokensAsync(tokens, cancellationToken).ConfigureAwait(false);
 
         return tokens;
+    }
+
+    private static Uri BuildProtectedResourceMetadataUri(Uri resourceUri)
+    {
+        var builder = new UriBuilder(resourceUri)
+        {
+            Query = string.Empty,
+            Fragment = string.Empty,
+        };
+
+        var pathSuffix = resourceUri.AbsolutePath;
+        if (pathSuffix.Length > 1)
+        {
+            pathSuffix = pathSuffix.TrimEnd('/');
+            builder.Path = string.Concat(ProtectedResourceMetadataWellKnownPath, pathSuffix);
+        }
+        else
+        {
+            builder.Path = ProtectedResourceMetadataWellKnownPath;
+        }
+
+        return builder.Uri;
     }
 
     /// <summary>
@@ -583,6 +611,16 @@ internal sealed partial class ClientOAuthProvider
         return string.Equals(normalizedMetadataResource, normalizedResourceLocation, StringComparison.OrdinalIgnoreCase);
     }
 
+    private static Uri GetRequiredResourceUri(ProtectedResourceMetadata protectedResourceMetadata)
+    {
+        if (protectedResourceMetadata.Resource is null)
+        {
+            ThrowFailedToHandleUnauthorizedResponse("Protected resource metadata did not include a 'resource' value.");
+        }
+
+        return protectedResourceMetadata.Resource;
+    }
+
     /// <summary>
     /// Normalizes a URI for consistent comparison.
     /// </summary>
@@ -611,8 +649,7 @@ internal sealed partial class ClientOAuthProvider
     /// <param name="serverUrl">The server URL to verify against the resource metadata.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>The resource metadata if the resource matches the server, otherwise throws an exception.</returns>
-    /// <exception cref="InvalidOperationException">Thrown when the response is not a 401, lacks a WWW-Authenticate header,
-    /// lacks a resource_metadata parameter, the metadata can't be fetched, or the resource URI doesn't match the server URL.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when the response is not a 401, the metadata can't be fetched, or the resource URI doesn't match the server URL.</exception>
     private async Task<ProtectedResourceMetadata> ExtractProtectedResourceMetadata(HttpResponseMessage response, Uri serverUrl, CancellationToken cancellationToken = default)
     {
         if (response.StatusCode != System.Net.HttpStatusCode.Unauthorized)
@@ -620,34 +657,42 @@ internal sealed partial class ClientOAuthProvider
             throw new InvalidOperationException($"Expected a 401 Unauthorized response, but received {(int)response.StatusCode} {response.StatusCode}");
         }
 
-        // Extract the WWW-Authenticate header
+        Uri metadataUri;
+
         if (response.Headers.WwwAuthenticate.Count == 0)
         {
-            throw new McpException("The 401 response does not contain a WWW-Authenticate header");
+            metadataUri = BuildProtectedResourceMetadataUri(serverUrl);
+            LogMissingWwwAuthenticateHeader(metadataUri);
         }
-
-        // Look for the Bearer authentication scheme with resource_metadata parameter
-        string? resourceMetadataUrl = null;
-        foreach (var header in response.Headers.WwwAuthenticate)
+        else
         {
-            if (string.Equals(header.Scheme, BearerScheme, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(header.Parameter))
+            // Look for the Bearer authentication scheme with resource_metadata parameter
+            string? resourceMetadataUrl = null;
+            foreach (var header in response.Headers.WwwAuthenticate)
             {
-                resourceMetadataUrl = ParseWwwAuthenticateParameters(header.Parameter, "resource_metadata");
-                if (resourceMetadataUrl != null)
+                if (string.Equals(header.Scheme, BearerScheme, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(header.Parameter))
                 {
-                    break;
+                    resourceMetadataUrl = ParseWwwAuthenticateParameters(header.Parameter, "resource_metadata");
+                    if (resourceMetadataUrl != null)
+                    {
+                        break;
+                    }
                 }
+            }
+
+            if (resourceMetadataUrl == null)
+            {
+                metadataUri = BuildProtectedResourceMetadataUri(serverUrl);
+                LogMissingResourceMetadataParameter(metadataUri);
+            }
+            else
+            {
+                metadataUri = new(resourceMetadataUrl);
             }
         }
 
-        if (resourceMetadataUrl == null)
-        {
-            throw new McpException("The WWW-Authenticate header does not contain a resource_metadata parameter");
-        }
-
-        Uri metadataUri = new(resourceMetadataUrl);
         var metadata = await FetchProtectedResourceMetadataAsync(metadataUri, cancellationToken).ConfigureAwait(false)
-            ?? throw new McpException($"Failed to fetch resource metadata from {resourceMetadataUrl}");
+            ?? throw new McpException($"Failed to fetch resource metadata from {metadataUri}");
 
         // Per RFC: The resource value must be identical to the URL that the client used
         // to make the request to the resource server
@@ -760,4 +805,10 @@ internal sealed partial class ClientOAuthProvider
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Validating resource metadata against original server URL: {ServerUrl}")]
     partial void LogValidatingResourceMetadata(Uri serverUrl);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "WWW-Authenticate header missing. Falling back to resource metadata at {MetadataUri}")]
+    partial void LogMissingWwwAuthenticateHeader(Uri metadataUri);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "WWW-Authenticate header missing resource_metadata parameter. Falling back to {MetadataUri}")]
+    partial void LogMissingResourceMetadataParameter(Uri metadataUri);
 }

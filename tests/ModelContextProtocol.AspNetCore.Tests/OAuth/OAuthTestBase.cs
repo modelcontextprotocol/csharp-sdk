@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
@@ -55,7 +56,6 @@ public abstract class OAuthTestBase : KestrelInMemoryTest, IAsyncDisposable
             {
                 options.ResourceMetadata = new ProtectedResourceMetadata
                 {
-                    Resource = new Uri(McpServerUrl),
                     AuthorizationServers = { new Uri(OAuthServerUrl) },
                     ScopesSupported = ["mcp:tools"]
                 };
@@ -82,10 +82,18 @@ public abstract class OAuthTestBase : KestrelInMemoryTest, IAsyncDisposable
         }
     }
 
-    protected async Task<WebApplication> StartMcpServerAsync()
+    protected async Task<WebApplication> StartMcpServerAsync(string path = "", string? authScheme = null)
     {
+        Builder.Services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+        {
+            options.TokenValidationParameters.ValidAudience = $"{McpServerUrl}{path}";
+        });
+
         var app = Builder.Build();
-        app.MapMcp().RequireAuthorization();
+        app.MapMcp(path).RequireAuthorization(new AuthorizeAttribute
+        {
+            AuthenticationSchemes = authScheme
+        });
         await app.StartAsync(TestContext.Current.CancellationToken);
         return app;
     }

@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -22,6 +23,7 @@ public abstract class ClientServerTestBase : LoggedTest, IAsyncDisposable
         ServiceCollection sc = new();
         sc.AddLogging();
         sc.AddSingleton(XunitLoggerProvider);
+        sc.AddSingleton<ILoggerProvider>(MockLoggerProvider);
         _builder = sc
             .AddMcpServer()
             .WithStreamServerTransport(_clientToServerPipe.Reader.AsStream(), _serverToClientPipe.Writer.AsStream());

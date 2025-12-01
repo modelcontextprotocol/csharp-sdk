@@ -13,6 +13,9 @@ namespace ModelContextProtocol.AspNetCore.Authentication;
 /// </summary>
 public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationOptions>, IAuthenticationRequestHandler
 {
+    private const string DefaultResourceMetadataPath = "/.well-known/oauth-protected-resource";
+    private static readonly PathString DefaultResourceMetadataPrefix = new(DefaultResourceMetadataPath);
+
     /// <summary>
     /// Initializes a new instance of the <see cref="McpAuthenticationHandler"/> class.
     /// </summary>
@@ -27,18 +30,17 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
     /// <inheritdoc />
     public async Task<bool> HandleRequestAsync()
     {
-        // Check if the request is for the resource metadata endpoint
-        string requestPath = Request.Path.Value ?? string.Empty;
-
-        string expectedMetadataPath = Options.ResourceMetadataUri?.ToString() ?? string.Empty;
-        if (Options.ResourceMetadataUri != null && !Options.ResourceMetadataUri.IsAbsoluteUri)
+        if (Options.ResourceMetadataUri is Uri configuredUri)
         {
-            // For relative URIs, it's just the path component.
-            expectedMetadataPath = Options.ResourceMetadataUri.OriginalString;
+            return await HandleConfiguredResourceMetadataRequestAsync(configuredUri);
         }
 
-        // If the path doesn't match, let the request continue through the pipeline
-        if (!string.Equals(requestPath, expectedMetadataPath, StringComparison.OrdinalIgnoreCase))
+        return await HandleDefaultResourceMetadataRequestAsync();
+    }
+
+    private async Task<bool> HandleConfiguredResourceMetadataRequestAsync(Uri resourceMetadataUri)
+    {
+        if (!IsConfiguredEndpointRequest(resourceMetadataUri))
         {
             return false;
         }
@@ -46,46 +48,101 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         return await HandleResourceMetadataRequestAsync();
     }
 
-    /// <summary>
-    /// Gets the base URL from the current request, including scheme, host, and path base.
-    /// </summary>
-    private string GetBaseUrl() => $"{Request.Scheme}://{Request.Host}{Request.PathBase}";
+    private async Task<bool> HandleDefaultResourceMetadataRequestAsync()
+    {
+        if (!Request.Path.StartsWithSegments(DefaultResourceMetadataPrefix, out var resourceSuffix))
+        {
+            return false;
+        }
+
+        var deriveResourceUriBuilder = new UriBuilder(Request.Scheme, Request.Host.Host)
+        {
+            Path = $"{Request.PathBase}{resourceSuffix}",
+            Port = Request.Host.Port ?? (Request.Scheme == "https" ? 443 : 80),
+        };
+
+        return await HandleResourceMetadataRequestAsync(deriveResourceUriBuilder.Uri);
+    }
 
     /// <summary>
     /// Gets the absolute URI for the resource metadata endpoint.
     /// </summary>
     private string GetAbsoluteResourceMetadataUri()
     {
-        var resourceMetadataUri = Options.ResourceMetadataUri;
-
-        string currentPath = resourceMetadataUri?.ToString() ?? string.Empty;
-
-        if (resourceMetadataUri != null && resourceMetadataUri.IsAbsoluteUri)
+        if (Options.ResourceMetadataUri is Uri resourceMetadataUri)
         {
-            return currentPath;
+            if (resourceMetadataUri.IsAbsoluteUri)
+            {
+                return resourceMetadataUri.ToString();
+            }
+
+            var seperator = resourceMetadataUri.OriginalString.StartsWith("/") ? "" : "/";
+            return $"{Request.Scheme}://{Request.Host.ToUriComponent()}{Request.PathBase}{seperator}{resourceMetadataUri.OriginalString}";
         }
 
-        // For relative URIs, combine with the base URL
-        string baseUrl = GetBaseUrl();
-        string relativePath = resourceMetadataUri?.OriginalString.TrimStart('/') ?? string.Empty;
-
-        if (!Uri.TryCreate($"{baseUrl.TrimEnd('/')}/{relativePath}", UriKind.Absolute, out var absoluteUri))
-        {
-            throw new InvalidOperationException($"Could not create absolute URI for resource metadata. Base URL: {baseUrl}, Relative Path: {relativePath}");
-        }
-
-        return absoluteUri.ToString();
+        return $"{Request.Scheme}://{Request.Host.ToUriComponent()}{Request.PathBase}{DefaultResourceMetadataPath}{Request.Path}";
     }
 
-    private async Task<bool> HandleResourceMetadataRequestAsync()
+    private bool IsConfiguredEndpointRequest(Uri resourceMetadataUri)
     {
-        var resourceMetadata = Options.ResourceMetadata;
+        var expectedPath = GetConfiguredResourceMetadataPath(resourceMetadataUri);
+
+        if (!string.Equals(Request.Path.Value, expectedPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!resourceMetadataUri.IsAbsoluteUri)
+        {
+            return true;
+        }
+
+        if (!Request.Host.HasValue)
+        {
+            return false;
+        }
+
+        if (!string.Equals(Request.Host.Host, resourceMetadataUri.Host, StringComparison.OrdinalIgnoreCase))
+        {
+            Logger.LogWarning(
+                "Resource metadata request host '{RequestHost}' did not match configured host '{ConfiguredHost}'.",
+                Request.Host.Value,
+                resourceMetadataUri.Host);
+            return false;
+        }
+
+        if (!string.Equals(Request.Scheme, resourceMetadataUri.Scheme, StringComparison.OrdinalIgnoreCase))
+        {
+            Logger.LogWarning(
+                "Resource metadata request scheme '{RequestScheme}' did not match configured scheme '{ConfiguredScheme}'.",
+                Request.Scheme,
+                resourceMetadataUri.Scheme);
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string GetConfiguredResourceMetadataPath(Uri resourceMetadataUri)
+    {
+        if (resourceMetadataUri.IsAbsoluteUri)
+        {
+            return resourceMetadataUri.AbsolutePath;
+        }
+
+        var path = resourceMetadataUri.OriginalString;
+        return path.StartsWith("/") ? path : $"/{path}";
+    }
+
+    private async Task<bool> HandleResourceMetadataRequestAsync(Uri? derivedResourceUri = null)
+    {
+        var resourceMetadata = CloneResourceMetadata(Options.ResourceMetadata, derivedResourceUri);
 
         if (Options.Events.OnResourceMetadataRequest is not null)
         {
             var context = new ResourceMetadataRequestContext(Request.HttpContext, Scheme, Options)
             {
-                ResourceMetadata = CloneResourceMetadata(resourceMetadata),
+                ResourceMetadata = resourceMetadata,
             };
 
             await Options.Events.OnResourceMetadataRequest(context);
@@ -109,12 +166,12 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
             resourceMetadata = context.ResourceMetadata;
         }
 
-        if (resourceMetadata == null)
+        if (resourceMetadata is null)
         {
-            throw new InvalidOperationException(
-                "ResourceMetadata has not been configured. Please set McpAuthenticationOptions.ResourceMetadata or ensure context.ResourceMetadata is set inside McpAuthenticationOptions.Events.OnResourceMetadataRequest."
-            );
+            throw new InvalidOperationException("ResourceMetadata has not been configured. Please set McpAuthenticationOptions.ResourceMetadata or ensure context.ResourceMetadata is set inside McpAuthenticationOptions.Events.OnResourceMetadataRequest.");
         }
+
+        resourceMetadata.Resource ??= derivedResourceUri;
 
         await Results.Json(resourceMetadata, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(ProtectedResourceMetadata))).ExecuteAsync(Context);
         return true;
@@ -142,7 +199,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         return base.HandleChallengeAsync(properties);
     }
 
-    internal static ProtectedResourceMetadata? CloneResourceMetadata(ProtectedResourceMetadata? resourceMetadata)
+    internal static ProtectedResourceMetadata? CloneResourceMetadata(ProtectedResourceMetadata? resourceMetadata, Uri? derivedResourceUri = null)
     {
         if (resourceMetadata is null)
         {
@@ -151,7 +208,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
 
         return new ProtectedResourceMetadata
         {
-            Resource = resourceMetadata.Resource,
+            Resource = resourceMetadata.Resource ?? derivedResourceUri,
             AuthorizationServers = [.. resourceMetadata.AuthorizationServers],
             BearerMethodsSupported = [.. resourceMetadata.BearerMethodsSupported],
             ScopesSupported = [.. resourceMetadata.ScopesSupported],
@@ -167,5 +224,4 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
             DpopBoundAccessTokensRequired = resourceMetadata.DpopBoundAccessTokensRequired
         };
     }
-
 }

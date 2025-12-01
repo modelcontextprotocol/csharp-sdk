@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using ModelContextProtocol.Tests.Utils;
 
 namespace ModelContextProtocol.Tests.Configuration;
 
@@ -13,8 +12,6 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
         : base(testOutputHelper)
     {
     }
-
-    private MockLoggerProvider _mockLoggerProvider = new();
 
     private static ILogger GetLogger(IServiceProvider? services, string categoryName)
     {
@@ -133,8 +130,6 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
             {
                 Completion = new() { Values = ["test"] }
             });
-
-        services.AddSingleton<ILoggerProvider>(_mockLoggerProvider);
     }
 
     [Fact]
@@ -144,7 +139,7 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
 
         await client.ListResourceTemplatesAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        var logMessage = Assert.Single(_mockLoggerProvider.LogMessages, m => m.Message == "ListResourceTemplatesFilter executed");
+        var logMessage = Assert.Single(MockLoggerProvider.LogMessages, m => m.Message == "ListResourceTemplatesFilter executed");
         Assert.Equal(LogLevel.Information, logMessage.LogLevel);
         Assert.Equal("ListResourceTemplatesFilter", logMessage.Category);
     }
@@ -156,7 +151,7 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
 
         await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        var logMessage = Assert.Single(_mockLoggerProvider.LogMessages, m => m.Message == "ListToolsFilter executed");
+        var logMessage = Assert.Single(MockLoggerProvider.LogMessages, m => m.Message == "ListToolsFilter executed");
         Assert.Equal(LogLevel.Information, logMessage.LogLevel);
         Assert.Equal("ListToolsFilter", logMessage.Category);
     }
@@ -168,7 +163,7 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
 
         await client.CallToolAsync("test_tool_method", cancellationToken: TestContext.Current.CancellationToken);
 
-        var logMessage = Assert.Single(_mockLoggerProvider.LogMessages, m => m.Message == "CallToolFilter executed for tool: test_tool_method");
+        var logMessage = Assert.Single(MockLoggerProvider.LogMessages, m => m.Message == "CallToolFilter executed for tool: test_tool_method");
         Assert.Equal(LogLevel.Information, logMessage.LogLevel);
         Assert.Equal("CallToolFilter", logMessage.Category);
     }
@@ -194,7 +189,7 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
 
         await client.ListPromptsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        var logMessage = Assert.Single(_mockLoggerProvider.LogMessages, m => m.Message == "ListPromptsFilter executed");
+        var logMessage = Assert.Single(MockLoggerProvider.LogMessages, m => m.Message == "ListPromptsFilter executed");
         Assert.Equal(LogLevel.Information, logMessage.LogLevel);
         Assert.Equal("ListPromptsFilter", logMessage.Category);
     }
@@ -206,7 +201,7 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
 
         await client.GetPromptAsync("test_prompt_method", cancellationToken: TestContext.Current.CancellationToken);
 
-        var logMessage = Assert.Single(_mockLoggerProvider.LogMessages, m => m.Message == "GetPromptFilter executed for prompt: test_prompt_method");
+        var logMessage = Assert.Single(MockLoggerProvider.LogMessages, m => m.Message == "GetPromptFilter executed for prompt: test_prompt_method");
         Assert.Equal(LogLevel.Information, logMessage.LogLevel);
         Assert.Equal("GetPromptFilter", logMessage.Category);
     }
@@ -218,7 +213,7 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
 
         await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        var logMessage = Assert.Single(_mockLoggerProvider.LogMessages, m => m.Message == "ListResourcesFilter executed");
+        var logMessage = Assert.Single(MockLoggerProvider.LogMessages, m => m.Message == "ListResourcesFilter executed");
         Assert.Equal(LogLevel.Information, logMessage.LogLevel);
         Assert.Equal("ListResourcesFilter", logMessage.Category);
     }
@@ -230,7 +225,7 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
 
         await client.ReadResourceAsync("test://resource/123", cancellationToken: TestContext.Current.CancellationToken);
 
-        var logMessage = Assert.Single(_mockLoggerProvider.LogMessages, m => m.Message == "ReadResourceFilter executed for resource: test://resource/{id}");
+        var logMessage = Assert.Single(MockLoggerProvider.LogMessages, m => m.Message == "ReadResourceFilter executed for resource: test://resource/{id}");
         Assert.Equal(LogLevel.Information, logMessage.LogLevel);
         Assert.Equal("ReadResourceFilter", logMessage.Category);
     }
@@ -243,7 +238,7 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
         var reference = new PromptReference { Name = "test_prompt_method" };
         await client.CompleteAsync(reference, "argument", "value", cancellationToken: TestContext.Current.CancellationToken);
 
-        var logMessage = Assert.Single(_mockLoggerProvider.LogMessages, m => m.Message == "CompleteFilter executed");
+        var logMessage = Assert.Single(MockLoggerProvider.LogMessages, m => m.Message == "CompleteFilter executed");
         Assert.Equal(LogLevel.Information, logMessage.LogLevel);
         Assert.Equal("CompleteFilter", logMessage.Category);
     }
@@ -255,7 +250,7 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
 
         await client.SubscribeToResourceAsync("test://resource/123", cancellationToken: TestContext.Current.CancellationToken);
 
-        var logMessage = Assert.Single(_mockLoggerProvider.LogMessages, m => m.Message == "SubscribeToResourcesFilter executed");
+        var logMessage = Assert.Single(MockLoggerProvider.LogMessages, m => m.Message == "SubscribeToResourcesFilter executed");
         Assert.Equal(LogLevel.Information, logMessage.LogLevel);
         Assert.Equal("SubscribeToResourcesFilter", logMessage.Category);
     }
@@ -267,7 +262,7 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
 
         await client.UnsubscribeFromResourceAsync("test://resource/123", cancellationToken: TestContext.Current.CancellationToken);
 
-        var logMessage = Assert.Single(_mockLoggerProvider.LogMessages, m => m.Message == "UnsubscribeFromResourcesFilter executed");
+        var logMessage = Assert.Single(MockLoggerProvider.LogMessages, m => m.Message == "UnsubscribeFromResourcesFilter executed");
         Assert.Equal(LogLevel.Information, logMessage.LogLevel);
         Assert.Equal("UnsubscribeFromResourcesFilter", logMessage.Category);
     }
@@ -279,7 +274,7 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
 
         await client.SetLoggingLevel(LoggingLevel.Info, cancellationToken: TestContext.Current.CancellationToken);
 
-        var logMessage = Assert.Single(_mockLoggerProvider.LogMessages, m => m.Message == "SetLoggingLevelFilter executed");
+        var logMessage = Assert.Single(MockLoggerProvider.LogMessages, m => m.Message == "SetLoggingLevelFilter executed");
         Assert.Equal(LogLevel.Information, logMessage.LogLevel);
         Assert.Equal("SetLoggingLevelFilter", logMessage.Category);
     }
@@ -291,7 +286,7 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
 
         await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        var logMessages = _mockLoggerProvider.LogMessages
+        var logMessages = MockLoggerProvider.LogMessages
             .Where(m => m.Category.StartsWith("ListToolsOrder"))
             .Select(m => m.Message);
 

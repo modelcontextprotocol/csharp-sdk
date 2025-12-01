@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 
 namespace ModelContextProtocol.Tests.Utils;
 
-public class MockLoggerProvider() : ILoggerProvider
+public class MockLoggerProvider : ILoggerProvider
 {
     public ConcurrentQueue<(string Category, LogLevel LogLevel, EventId EventId, string Message, Exception? Exception)> LogMessages { get; } = [];
 

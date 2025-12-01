@@ -16,7 +16,11 @@ public sealed class Program
     private static readonly string _clientMetadataDocumentUrl = $"{_url}/client-metadata/cimd-client.json";
 
     // Port 5000 is used by tests and port 7071 is used by the ProtectedMcpServer sample
-    private static readonly string[] ValidResources = ["http://localhost:5000/", "http://localhost:7071/"];
+    private static readonly string[] ValidResources = [
+        "http://localhost:5000/",
+        "http://localhost:5000/mcp",
+        "http://localhost:7071/"
+    ];
 
     private readonly ConcurrentDictionary<string, AuthorizationCodeInfo> _authCodes = new();
     private readonly ConcurrentDictionary<string, TokenInfo> _tokens = new();

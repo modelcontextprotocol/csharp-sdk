@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using ModelContextProtocol.AspNetCore.Authentication;
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
@@ -284,6 +285,71 @@ public class AuthTests : OAuthTestBase
     }
 
     [Fact]
+    public async Task CanAuthenticate_WithoutResourceInWwwAuthenticateHeader()
+    {
+        await using var app = await StartMcpServerAsync(authScheme: JwtBearerDefaults.AuthenticationScheme);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task CanAuthenticate_WithoutResourceInWwwAuthenticateHeader_WithPathSuffix()
+    {
+        const string serverPath = "/mcp";
+        await using var app = await StartMcpServerAsync(serverPath, authScheme: JwtBearerDefaults.AuthenticationScheme);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new Uri($"{McpServerUrl}{serverPath}"),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task JwtBearerChallenge_DoesNotIncludeResourceMetadata()
+    {
+        await using var app = await StartMcpServerAsync(authScheme: JwtBearerDefaults.AuthenticationScheme);
+
+        using var unauthorizedResponse = await HttpClient.GetAsync(McpServerUrl, HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Unauthorized, unauthorizedResponse.StatusCode);
+
+        var headerFound = false;
+        foreach (var header in unauthorizedResponse.Headers.WwwAuthenticate)
+        {
+            headerFound = true;
+            Assert.Equal("Bearer", header.Scheme);
+            Assert.True(header.Parameter is null || !header.Parameter.Contains("resource_metadata", StringComparison.OrdinalIgnoreCase));
+        }
+
+        Assert.True(headerFound);
+
+        using var metadataResponse = await HttpClient.GetAsync(new Uri("/.well-known/oauth-protected-resource", UriKind.Relative), TestContext.Current.CancellationToken);
+        metadataResponse.EnsureSuccessStatusCode();
+    }
+
+    [Fact]
     public void CloneResourceMetadataClonesAllProperties()
     {
         var propertyNames = typeof(ProtectedResourceMetadata).GetProperties().Select(property => property.Name).ToList();
@@ -312,7 +378,7 @@ public class AuthTests : OAuthTestBase
         var cloneMethod = handlerType.GetMethod("CloneResourceMetadata", BindingFlags.Static | BindingFlags.NonPublic);
         Assert.NotNull(cloneMethod);
 
-        var clonedMetadata = (ProtectedResourceMetadata?)cloneMethod.Invoke(null, [metadata]);
+        var clonedMetadata = (ProtectedResourceMetadata?)cloneMethod.Invoke(null, [metadata, null]);
         Assert.NotNull(clonedMetadata);
 
         // Ensure the cloned metadata is not the same instance
