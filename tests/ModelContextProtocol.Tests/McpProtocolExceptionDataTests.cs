@@ -10,6 +10,11 @@ namespace ModelContextProtocol.Tests;
 /// <summary>
 /// Tests for McpProtocolException.Data propagation to JSON-RPC error responses.
 /// </summary>
+/// <remarks>
+/// Note: On .NET Framework, Exception.Data requires values to be serializable with [Serializable].
+/// Since JsonElement is not marked as serializable, the data population on the client side is skipped
+/// on that platform. These tests verify the error message and code are correct regardless of platform.
+/// </remarks>
 public class McpProtocolExceptionDataTests : ClientServerTestBase
 {
     public McpProtocolExceptionDataTests(ITestOutputHelper testOutputHelper)
@@ -63,20 +68,6 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
         });
     }
 
-    /// <summary>
-    /// Gets the JsonElement from an Exception.Data value, handling both direct JsonElement (on .NET Core)
-    /// and SerializableJsonElement wrapper (on .NET Framework).
-    /// </summary>
-    private static JsonElement GetJsonElement(object? value)
-    {
-        return value switch
-        {
-            JsonElement je => je,
-            SerializableJsonElement sje => sje.Value,
-            _ => throw new InvalidOperationException($"Expected JsonElement or SerializableJsonElement, got {value?.GetType().Name ?? "null"}")
-        };
-    }
-
     [Fact]
     public async Task Exception_With_Serializable_Data_Propagates_To_Client()
     {
@@ -87,6 +78,12 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
 
         Assert.Equal("Request failed (remote): Resource not found", exception.Message);
         Assert.Equal((McpErrorCode)(-32002), exception.ErrorCode);
+
+        // Skip data verification on .NET Framework since JsonElement cannot be stored in Exception.Data
+        if (PlatformDetection.IsNetFramework)
+        {
+            return;
+        }
         
         // Verify the data was propagated to the exception
         // The Data collection should contain the expected keys
@@ -103,11 +100,11 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
         Assert.True(hasUri, "Exception.Data should contain 'uri' key");
         Assert.True(hasCode, "Exception.Data should contain 'code' key");
         
-        // Verify the values (they are JsonElements on .NET Core, SerializableJsonElement on .NET Framework)
-        var uriValue = GetJsonElement(exception.Data["uri"]);
+        // Verify the values (they should be JsonElements)
+        var uriValue = Assert.IsType<JsonElement>(exception.Data["uri"]);
         Assert.Equal("file:///path/to/resource", uriValue.GetString());
         
-        var codeValue = GetJsonElement(exception.Data["code"]);
+        var codeValue = Assert.IsType<JsonElement>(exception.Data["code"]);
         Assert.Equal(404, codeValue.GetInt32());
     }
 
@@ -124,6 +121,12 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
 
         Assert.Equal("Request failed (remote): Resource not found", exception.Message);
         Assert.Equal((McpErrorCode)(-32002), exception.ErrorCode);
+
+        // Skip data verification on .NET Framework since JsonElement cannot be stored in Exception.Data
+        if (PlatformDetection.IsNetFramework)
+        {
+            return;
+        }
         
         // Verify that only the serializable data was propagated (non-serializable was filtered out)
         var hasUri = false;
@@ -139,7 +142,7 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
         Assert.True(hasUri, "Exception.Data should contain 'uri' key");
         Assert.False(hasNonSerializable, "Exception.Data should not contain 'nonSerializable' key");
         
-        var uriValue = GetJsonElement(exception.Data["uri"]);
+        var uriValue = Assert.IsType<JsonElement>(exception.Data["uri"]);
         Assert.Equal("file:///path/to/resource", uriValue.GetString());
     }
 
