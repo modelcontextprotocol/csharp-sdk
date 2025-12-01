@@ -25,7 +25,7 @@ internal static class Diagnostics
         title: "MCP method must be partial to generate [Description] attributes",
         messageFormat: "Method '{0}' has XML documentation that could be used to generate [Description] attributes, but the method is not declared as partial.",
         category: "mcp",
-        defaultSeverity: DiagnosticSeverity.Warning,
+        defaultSeverity: DiagnosticSeverity.Info,
         isEnabledByDefault: true,
         description: "Methods with MCP attributes should be declared as partial to allow the source generator to emit Description attributes from XML documentation comments.");
 }

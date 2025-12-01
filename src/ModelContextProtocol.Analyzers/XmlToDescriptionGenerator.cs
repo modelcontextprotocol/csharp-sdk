@@ -72,7 +72,7 @@ public sealed class XmlToDescriptionGenerator : IIncrementalGenerator
         List<(IMethodSymbol MethodSymbol, MethodDeclarationSyntax MethodDeclaration, XmlDocumentation? XmlDocs)> methodsToGenerate = new(methods.Length);
         foreach (var methodModel in methods)
         {
-            var xmlDocs = ExtractXmlDocumentation(methodModel.MethodSymbol, context);
+            var xmlDocs = ExtractXmlDocumentation(methodModel.MethodSymbol, methodModel.MethodDeclaration, context);
 
             // Generate implementation for partial methods.
             if (methodModel.MethodDeclaration.Modifiers.Any(SyntaxKind.PartialKeyword))
@@ -97,7 +97,7 @@ public sealed class XmlToDescriptionGenerator : IIncrementalGenerator
         }
     }
 
-    private static XmlDocumentation? ExtractXmlDocumentation(IMethodSymbol methodSymbol, SourceProductionContext context)
+    private static XmlDocumentation? ExtractXmlDocumentation(IMethodSymbol methodSymbol, MethodDeclarationSyntax methodDeclaration, SourceProductionContext context)
     {
         string? xmlDoc = methodSymbol.GetDocumentationCommentXml();
         if (string.IsNullOrWhiteSpace(xmlDoc))
@@ -138,11 +138,14 @@ public sealed class XmlToDescriptionGenerator : IIncrementalGenerator
         }
         catch (System.Xml.XmlException)
         {
-            // Emit warning for invalid XML
-            context.ReportDiagnostic(Diagnostic.Create(
-                Diagnostics.InvalidXmlDocumentation,
-                methodSymbol.Locations.FirstOrDefault(),
-                methodSymbol.Name));
+            // Emit warning for invalid XML only if the method is partial (as that's when it would affect generated code)
+            if (methodDeclaration.Modifiers.Any(SyntaxKind.PartialKeyword))
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    Diagnostics.InvalidXmlDocumentation,
+                    methodSymbol.Locations.FirstOrDefault(),
+                    methodSymbol.Name));
+            }
             return null;
         }
     }
