@@ -461,7 +461,16 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                 {
                     foreach (var property in jsonElement.EnumerateObject())
                     {
-                        exception.Data[property.Name] = property.Value;
+                        try
+                        {
+                            exception.Data[property.Name] = property.Value;
+                        }
+                        catch (ArgumentException)
+                        {
+                            // On .NET Framework, Exception.Data uses ListDictionaryInternal which requires
+                            // values to be serializable. JsonElement is not marked as [Serializable], so
+                            // setting it throws ArgumentException. We silently skip such entries.
+                        }
                     }
                 }
                 

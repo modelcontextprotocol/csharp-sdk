@@ -10,6 +10,11 @@ namespace ModelContextProtocol.Tests;
 /// <summary>
 /// Tests for McpProtocolException.Data propagation to JSON-RPC error responses.
 /// </summary>
+/// <remarks>
+/// Note: On .NET Framework, Exception.Data requires values to be serializable with [Serializable].
+/// Since JsonElement is not marked as serializable, the data population on the client side is skipped
+/// on that platform. These tests verify the error message and code are correct regardless of platform.
+/// </remarks>
 public class McpProtocolExceptionDataTests : ClientServerTestBase
 {
     public McpProtocolExceptionDataTests(ITestOutputHelper testOutputHelper)
@@ -63,6 +68,15 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
         });
     }
 
+    // On .NET Framework, Exception.Data requires values to be serializable with [Serializable].
+    // JsonElement is not marked as serializable, so these tests are skipped on .NET Framework.
+    private static bool IsNetFramework =>
+#if NET
+        false;
+#else
+        true;
+#endif
+
     [Fact]
     public async Task Exception_With_Serializable_Data_Propagates_To_Client()
     {
@@ -73,6 +87,12 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
 
         Assert.Equal("Request failed (remote): Resource not found", exception.Message);
         Assert.Equal((McpErrorCode)(-32002), exception.ErrorCode);
+
+        // Skip data verification on .NET Framework since JsonElement cannot be stored in Exception.Data
+        if (IsNetFramework)
+        {
+            return;
+        }
         
         // Verify the data was propagated to the exception
         // The Data collection should contain the expected keys
@@ -110,6 +130,12 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
 
         Assert.Equal("Request failed (remote): Resource not found", exception.Message);
         Assert.Equal((McpErrorCode)(-32002), exception.ErrorCode);
+
+        // Skip data verification on .NET Framework since JsonElement cannot be stored in Exception.Data
+        if (IsNetFramework)
+        {
+            return;
+        }
         
         // Verify that only the serializable data was propagated (non-serializable was filtered out)
         var hasUri = false;
