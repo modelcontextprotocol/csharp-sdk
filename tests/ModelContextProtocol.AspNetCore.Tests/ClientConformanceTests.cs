@@ -20,7 +20,8 @@ public class ClientConformanceTests //: IAsyncLifetime
 
     [Theory]
     [InlineData("initialize")]
-    // [InlineData("tools_call")]
+    [InlineData("tools_call")]
+    [InlineData("auth/metadata-default")]
     public async Task RunConformanceTest(string scenario)
     {
         // Check if Node.js is installed
@@ -36,10 +37,22 @@ public class ClientConformanceTests //: IAsyncLifetime
 
     private async Task<(bool Success, string Output, string Error)> RunClientConformanceScenario(string scenario)
     {
+        // Construct an absolute path to the conformance client executable
+        var exeSuffix = OperatingSystem.IsWindows() ? ".exe" : "";
+        var conformanceClientPath = Path.GetFullPath($"./ModelContextProtocol.ConformanceClient{exeSuffix}");
+        // Replace AspNetCore.Tests with ConformanceClient in the path
+        conformanceClientPath = conformanceClientPath.Replace("AspNetCore.Tests", "ConformanceClient");
+
+        if (!File.Exists(conformanceClientPath))
+        {
+            throw new FileNotFoundException(
+                $"ConformanceClient executable not found at: {conformanceClientPath}");
+        }
+
         var startInfo = new ProcessStartInfo
         {
             FileName = "npx",
-            Arguments = $"-y @modelcontextprotocol/conformance client --scenario {scenario} --command \"dotnet run --no-build --project ../ModelContextProtocol.ConformanceClient/ModelContextProtocol.ConformanceClient.csproj\"",
+            Arguments = $"-y @modelcontextprotocol/conformance client --scenario {scenario} --command \"{conformanceClientPath} {scenario}\"",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
