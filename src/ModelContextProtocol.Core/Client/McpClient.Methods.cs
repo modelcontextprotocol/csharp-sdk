@@ -592,7 +592,12 @@ public abstract partial class McpClient : McpSession
                 }).ConfigureAwait(false);
 
             var metaWithProgress = meta is not null ? new JsonObject(meta) : new JsonObject();
-            metaWithProgress["progressToken"] = JsonValue.Create(progressToken.Token as string);
+            metaWithProgress["progressToken"] = progressToken.Token switch
+                {
+                    string s => JsonValue.Create(s),
+                    long l => JsonValue.Create(l),
+                    _ => throw new InvalidOperationException("ProgressToken must be a string or long")
+                };
 
             return await SendRequestAsync(
                 RequestMethods.ToolsCall,

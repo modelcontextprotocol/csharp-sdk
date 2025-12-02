@@ -13,7 +13,7 @@ public class McpClientMetaTests : ClientServerTestBase
     {
     }
 
-   protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
+    protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
         services.Configure<McpServerOptions>(o =>
         {
