@@ -17,6 +17,8 @@ namespace ModelContextProtocol.Tests;
 /// </remarks>
 public class McpProtocolExceptionDataTests : ClientServerTestBase
 {
+    public static bool IsNotNetFramework => !PlatformDetection.IsNetFramework;
+    
     public McpProtocolExceptionDataTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
     {
@@ -99,7 +101,7 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
         Assert.Equal(404.0, exception.Data["code"]); // Numbers are stored as double
     }
 
-    [Fact]
+    [Fact(Skip = "Non-serializable test data not supported on .NET Framework", SkipUnless = nameof(IsNotNetFramework))]
     public async Task Exception_With_NonSerializable_Data_Still_Propagates_Error_To_Client()
     {
         await using McpClient client = await CreateMcpClientForServer();
@@ -130,7 +132,7 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
         Assert.Equal("file:///path/to/resource", exception.Data["uri"]);
     }
 
-    [Fact]
+    [Fact(Skip = "Non-serializable test data not supported on .NET Framework", SkipUnless = nameof(IsNotNetFramework))]
     public async Task Exception_With_Only_NonSerializable_Data_Still_Propagates_Error_To_Client()
     {
         await using McpClient client = await CreateMcpClientForServer();
