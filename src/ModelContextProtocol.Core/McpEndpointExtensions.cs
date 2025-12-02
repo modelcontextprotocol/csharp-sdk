@@ -13,7 +13,7 @@ namespace ModelContextProtocol;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This class provides strongly-typed methods for working with the Model Context Protocol (MCP) endpoints,
+/// This class provides strongly typed methods for working with the Model Context Protocol (MCP) endpoints,
 /// simplifying JSON-RPC communication by handling serialization and deserialization of parameters and results.
 /// </para>
 /// <para>
@@ -30,8 +30,8 @@ public static class McpEndpointExtensions
     /// <typeparam name="TResult">The type of the result to deserialize to.</typeparam>
     /// <param name="endpoint">The MCP client or server instance.</param>
     /// <param name="method">The JSON-RPC method name to invoke.</param>
-    /// <param name="parameters">Object representing the request parameters.</param>
-    /// <param name="requestId">The request id for the request.</param>
+    /// <param name="parameters">The request parameters.</param>
+    /// <param name="requestId">The request ID for the request.</param>
     /// <param name="serializerOptions">The options governing request serialization.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous operation. The task result contains the deserialized result.</returns>
@@ -56,8 +56,8 @@ public static class McpEndpointExtensions
     /// <returns>A task that represents the asynchronous send operation.</returns>
     /// <remarks>
     /// <para>
-    /// This method sends a notification without any parameters. Notifications are one-way messages 
-    /// that don't expect a response. They are commonly used for events, status updates, or to signal 
+    /// This method sends a notification without any parameters. Notifications are one-way messages
+    /// that don't expect a response. They are commonly used for events, status updates, or to signal
     /// changes in state.
     /// </para>
     /// </remarks>
@@ -78,11 +78,11 @@ public static class McpEndpointExtensions
     /// <returns>A task that represents the asynchronous send operation.</returns>
     /// <remarks>
     /// <para>
-    /// This method sends a notification with parameters to the connected endpoint. Notifications are one-way 
+    /// This method sends a notification with parameters to the connected endpoint. Notifications are one-way
     /// messages that don't expect a response, commonly used for events, status updates, or signaling changes.
     /// </para>
     /// <para>
-    /// The parameters object is serialized to JSON according to the provided serializer options or the default 
+    /// The parameters object is serialized to JSON according to the provided serializer options or the default
     /// options if none are specified.
     /// </para>
     /// <para>

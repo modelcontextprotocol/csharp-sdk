@@ -21,7 +21,7 @@ namespace ModelContextProtocol.Protocol;
 public sealed class ListResourcesResult : PaginatedResult
 {
     /// <summary>
-    /// A list of resources that the server offers.
+    /// Gets or sets a list of resources that the server offers.
     /// </summary>
     [JsonPropertyName("resources")]
     public IList<Resource> Resources { get; set; } = [];

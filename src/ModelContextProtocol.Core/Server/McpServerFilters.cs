@@ -12,7 +12,7 @@ namespace ModelContextProtocol.Server;
 public sealed class McpServerFilters
 {
     /// <summary>
-    /// Gets the filters for the list tools handler pipeline.
+    /// Gets the filters for the list-tools handler pipeline.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -29,7 +29,7 @@ public sealed class McpServerFilters
     public List<McpRequestFilter<ListToolsRequestParams, ListToolsResult>> ListToolsFilters { get; } = [];
 
     /// <summary>
-    /// Gets the filters for the call tool handler pipeline.
+    /// Gets the filters for the call-tool handler pipeline.
     /// </summary>
     /// <remarks>
     /// These filters wrap handlers that are invoked when a client makes a call to a tool that isn't found in the <see cref="McpServerTool"/> collection.
@@ -39,7 +39,7 @@ public sealed class McpServerFilters
     public List<McpRequestFilter<CallToolRequestParams, CallToolResult>> CallToolFilters { get; } = [];
 
     /// <summary>
-    /// Gets the filters for the list prompts handler pipeline.
+    /// Gets the filters for the list-prompts handler pipeline.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -56,7 +56,7 @@ public sealed class McpServerFilters
     public List<McpRequestFilter<ListPromptsRequestParams, ListPromptsResult>> ListPromptsFilters { get; } = [];
 
     /// <summary>
-    /// Gets the filters for the get prompt handler pipeline.
+    /// Gets the filters for the get-prompt handler pipeline.
     /// </summary>
     /// <remarks>
     /// These filters wrap handlers that are invoked when a client requests details for a specific prompt that isn't found in the <see cref="McpServerPrompt"/> collection.
@@ -66,7 +66,7 @@ public sealed class McpServerFilters
     public List<McpRequestFilter<GetPromptRequestParams, GetPromptResult>> GetPromptFilters { get; } = [];
 
     /// <summary>
-    /// Gets the filters for the list resource templates handler pipeline.
+    /// Gets the filters for the list-resource-templates handler pipeline.
     /// </summary>
     /// <remarks>
     /// These filters wrap handlers that return a list of available resource templates when requested by a client.
@@ -77,7 +77,7 @@ public sealed class McpServerFilters
     public List<McpRequestFilter<ListResourceTemplatesRequestParams, ListResourceTemplatesResult>> ListResourceTemplatesFilters { get; } = [];
 
     /// <summary>
-    /// Gets the filters for the list resources handler pipeline.
+    /// Gets the filters for the list-resources handler pipeline.
     /// </summary>
     /// <remarks>
     /// These filters wrap handlers that return a list of available resources when requested by a client.
@@ -88,7 +88,7 @@ public sealed class McpServerFilters
     public List<McpRequestFilter<ListResourcesRequestParams, ListResourcesResult>> ListResourcesFilters { get; } = [];
 
     /// <summary>
-    /// Gets the filters for the read resource handler pipeline.
+    /// Gets the filters for the read-resource handler pipeline.
     /// </summary>
     /// <remarks>
     /// These filters wrap handlers that are invoked when a client requests the content of a specific resource identified by its URI.
@@ -98,7 +98,7 @@ public sealed class McpServerFilters
     public List<McpRequestFilter<ReadResourceRequestParams, ReadResourceResult>> ReadResourceFilters { get; } = [];
 
     /// <summary>
-    /// Gets the filters for the complete handler pipeline.
+    /// Gets the filters for the complete-handler pipeline.
     /// </summary>
     /// <remarks>
     /// These filters wrap handlers that provide auto-completion suggestions for prompt arguments or resource references in the Model Context Protocol.
@@ -109,7 +109,7 @@ public sealed class McpServerFilters
     public List<McpRequestFilter<CompleteRequestParams, CompleteResult>> CompleteFilters { get; } = [];
 
     /// <summary>
-    /// Gets the filters for the subscribe to resources handler pipeline.
+    /// Gets the filters for the subscribe-to-resources handler pipeline.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -126,7 +126,7 @@ public sealed class McpServerFilters
     public List<McpRequestFilter<SubscribeRequestParams, EmptyResult>> SubscribeToResourcesFilters { get; } = [];
 
     /// <summary>
-    /// Gets the filters for the unsubscribe from resources handler pipeline.
+    /// Gets the filters for the unsubscribe-from-resources handler pipeline.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -143,7 +143,7 @@ public sealed class McpServerFilters
     public List<McpRequestFilter<UnsubscribeRequestParams, EmptyResult>> UnsubscribeFromResourcesFilters { get; } = [];
 
     /// <summary>
-    /// Gets the filters for the set logging level handler pipeline.
+    /// Gets the filters for the set-logging-level handler pipeline.
     /// </summary>
     /// <remarks>
     /// <para>

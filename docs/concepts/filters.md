@@ -66,6 +66,7 @@ Execution flow: `filter1 -> filter2 -> filter3 -> baseHandler -> filter3 -> filt
 ## Common Use Cases
 
 ### Logging
+
 ```csharp
 .AddListToolsFilter(next => async (context, cancellationToken) =>
 {
@@ -79,6 +80,7 @@ Execution flow: `filter1 -> filter2 -> filter3 -> baseHandler -> filter3 -> filt
 ```
 
 ### Error Handling
+
 ```csharp
 .AddCallToolFilter(next => async (context, cancellationToken) =>
 {
@@ -98,6 +100,7 @@ Execution flow: `filter1 -> filter2 -> filter3 -> baseHandler -> filter3 -> filt
 ```
 
 ### Performance Monitoring
+
 ```csharp
 .AddListToolsFilter(next => async (context, cancellationToken) =>
 {
@@ -112,6 +115,7 @@ Execution flow: `filter1 -> filter2 -> filter3 -> baseHandler -> filter3 -> filt
 ```
 
 ### Caching
+
 ```csharp
 .AddListResourcesFilter(next => async (context, cancellationToken) =>
 {
@@ -214,9 +218,11 @@ public class RestrictedTools
 The authorization filters work differently for list operations versus individual operations:
 
 #### List Operations (ListTools, ListPrompts, ListResources)
+
 For list operations, the filters automatically remove unauthorized items from the results. Users only see tools, prompts, or resources they have permission to access.
 
 #### Individual Operations (CallTool, GetPrompt, ReadResource)
+
 For individual operations, the filters throw an `McpException` with "Access forbidden" message. These get turned into JSON-RPC errors if uncaught by middleware.
 
 ### Filter Execution Order and Authorization
@@ -224,12 +230,14 @@ For individual operations, the filters throw an `McpException` with "Access forb
 Authorization filters are applied automatically when you call `AddAuthorizationFilters()`. These filters run at a specific point in the filter pipeline, which means:
 
 **Filters added before authorization filters** can see:
-- Unauthorized requests for operations before they are rejected by the authorization filters
-- Complete listings for unauthorized primitives before they are filtered out by the authorization filters
+
+- Unauthorized requests for operations before they are rejected by the authorization filters.
+- Complete listings for unauthorized primitives before they are filtered out by the authorization filters.
 
 **Filters added after authorization filters** will only see:
-- Authorized requests that passed authorization checks
-- Filtered listings containing only authorized primitives
+
+- Authorized requests that passed authorization checks.
+- Filtered listings containing only authorized primitives.
 
 This allows you to implement logging, metrics, or other cross-cutting concerns that need to see all requests, while still maintaining proper authorization:
 
@@ -312,6 +320,6 @@ You can also create custom authorization filters using the filter methods:
 
 Within filters, you have access to:
 
-- `context.User` - The current user's `ClaimsPrincipal`
-- `context.Services` - The request's service provider for resolving authorization services
-- `context.MatchedPrimitive` - The matched tool/prompt/resource with its metadata including authorization attributes via `context.MatchedPrimitive.Metadata`
+- `context.User` - The current user's `ClaimsPrincipal`.
+- `context.Services` - The request's service provider for resolving authorization services.
+- `context.MatchedPrimitive` - The matched tool/prompt/resource with its metadata including authorization attributes via `context.MatchedPrimitive.Metadata`.

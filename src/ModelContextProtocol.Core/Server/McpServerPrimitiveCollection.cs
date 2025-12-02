@@ -5,7 +5,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace ModelContextProtocol.Server;
 
 /// <summary>Provides a thread-safe collection of <typeparamref name="T"/> instances, indexed by their names.</summary>
-/// <typeparam name="T">Specifies the type of primitive stored in the collection.</typeparam>
+/// <typeparam name="T">The type of primitive stored in the collection.</typeparam>
 public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollection<T>
     where T : IMcpServerPrimitive
 {
@@ -22,15 +22,15 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
 
     /// <summary>Occurs when the collection is changed.</summary>
     /// <remarks>
-    /// By default, this is raised when a primitive is added or removed. However, a derived implementation
-    /// may raise this event for other reasons, such as when a primitive is modified.
+    /// By default, this event is raised when a primitive is added or removed. However, a derived implementation
+    /// might raise this event for other reasons, such as when a primitive is modified.
     /// </remarks>
     public event EventHandler? Changed;
 
     /// <summary>Gets the number of primitives in the collection.</summary>
     public int Count => _primitives.Count;
 
-    /// <summary>Gets whether there are any primitives in the collection.</summary>
+    /// <summary>Gets a value that indicates whether there are any primitives in the collection.</summary>
     public bool IsEmpty => _primitives.IsEmpty;
 
     /// <summary>Raises <see cref="Changed"/> if there are registered handlers.</summary>
@@ -86,10 +86,10 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
         return added;
     }
 
-    /// <summary>Removes the specified primitivefrom the collection.</summary>
+    /// <summary>Removes the specified primitive from the collection.</summary>
     /// <param name="primitive">The primitive to be removed from the collection.</param>
     /// <returns>
-    /// <see langword="true"/> if the primitive was found in the collection and removed; otherwise, <see langword="false"/> if it couldn't be found.
+    /// <see langword="true"/> if the primitive was found in the collection and removed; <see langword="false"/> if it wasn't found.
     /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="primitive"/> is <see langword="null"/>.</exception>
     public virtual bool Remove(T primitive)
@@ -109,7 +109,7 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     /// <param name="name">The name of the primitive to retrieve.</param>
     /// <param name="primitive">The primitive, if found; otherwise, <see langword="null"/>.</param>
     /// <returns>
-    /// <see langword="true"/> if the primitive was found in the collection and return; otherwise, <see langword="false"/> if it couldn't be found.
+    /// <see langword="true"/> if the primitive was found in the collection and returned; <see langword="false"/> if it wasn't found.
     /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="name"/> is <see langword="null"/>.</exception>
     public virtual bool TryGetPrimitive(string name, [NotNullWhen(true)] out T? primitive)
@@ -120,7 +120,7 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
 
     /// <summary>Checks if a specific primitive is present in the collection of primitives.</summary>
     /// <param name="primitive">The primitive to search for in the collection.</param>
-    /// <see langword="true"/> if the primitive was found in the collection and return; otherwise, <see langword="false"/> if it couldn't be found.
+    /// <see langword="true"/> if the primitive was found in the collection and returned; <see langword="false"/> if it wasn't found.
     /// <exception cref="ArgumentNullException"><paramref name="primitive"/> is <see langword="null"/>.</exception>
     public virtual bool Contains(T primitive)
     {

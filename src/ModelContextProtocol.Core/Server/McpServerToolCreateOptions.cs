@@ -36,7 +36,7 @@ public sealed class McpServerToolCreateOptions
     /// </summary>
     /// <remarks>
     /// If <see langword="null"/>, but an <see cref="McpServerToolAttribute"/> is applied to the method,
-    /// the name from the attribute will be used. If that's not present, a name based on the method's name will be used.
+    /// the name from the attribute is used. If that's not present, a name based on the method's name is used.
     /// </remarks>
     public string? Name { get; set; }
 
@@ -45,7 +45,7 @@ public sealed class McpServerToolCreateOptions
     /// </summary>
     /// <remarks>
     /// If <see langword="null"/>, but a <see cref="DescriptionAttribute"/> is applied to the method,
-    /// the description from that attribute will be used.
+    /// the description from that attribute is used.
     /// </remarks>
     public string? Description { get; set; }
 
@@ -66,94 +66,82 @@ public sealed class McpServerToolCreateOptions
     public string? Title { get; set; }
 
     /// <summary>
-    /// Gets or sets whether the tool may perform destructive updates to its environment.
+    /// Gets or sets a value that indicates whether the tool might perform destructive updates to its environment.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// If <see langword="true"/>, the tool may perform destructive updates to its environment.
-    /// If <see langword="false"/>, the tool performs only additive updates.
-    /// This property is most relevant when the tool modifies its environment (ReadOnly = false).
-    /// </para>
-    /// <para>
+    /// <value>
+    /// <see langword="true"/> if the tool might perform destructive updates to its environment.
+    /// <see langword="false"/> if the tool performs only additive updates.
     /// The default is <see langword="true"/>.
-    /// </para>
+    /// </value>
+    /// <remarks>
+    /// This property is most relevant when the tool modifies its environment (ReadOnly = false).
     /// </remarks>
     public bool? Destructive { get; set; }
 
     /// <summary>
-    /// Gets or sets whether calling the tool repeatedly with the same arguments
-    /// will have no additional effect on its environment.
+    /// Gets or sets a value that indicates whether calling the tool repeatedly with the same arguments
+    /// has no additional effect on its environment.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// This property is most relevant when the tool modifies its environment (ReadOnly = false).
-    /// </para>
-    /// <para>
+    /// <value>
+    /// <see langword="true"/> if calling the tool repeatedly with the same arguments
+    /// has no additional effect on the environment; <see langword="false"/> if it does.
     /// The default is <see langword="false"/>.
-    /// </para>
+    /// </value>
+    /// <remarks>
+    /// This property is most relevant when the tool modifies its environment (ReadOnly = false).
     /// </remarks>
     public bool? Idempotent { get; set; }
 
     /// <summary>
-    /// Gets or sets whether this tool may interact with an "open world" of external entities.
+    /// Gets or sets a value that indicates whether this tool can interact with an "open world" of external entities.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// If <see langword="true"/>, the tool may interact with an unpredictable or dynamic set of entities (like web search).
-    /// If <see langword="false"/>, the tool's domain of interaction is closed and well-defined (like memory access).
-    /// </para>
-    /// <para>
+    /// <value>
+    /// <see langword="true"/> if the tool can interact with an unpredictable or dynamic set of entities (like web search).
+    /// <see langword="false"/> if the tool's domain of interaction is closed and well-defined (like memory access).
     /// The default is <see langword="true"/>.
-    /// </para>
-    /// </remarks>
+    /// </value>
     public bool? OpenWorld { get; set; }
 
     /// <summary>
-    /// Gets or sets whether this tool does not modify its environment.
+    /// Gets or sets a value that indicates whether this tool does not modify its environment.
     /// </summary>
-    /// <remarks>
-    /// <para>
+    /// <value>
     /// If <see langword="true"/>, the tool only performs read operations without changing state.
-    /// If <see langword="false"/>, the tool may make modifications to its environment.
-    /// </para>
-    /// <para>
+    /// If <see langword="false"/>, the tool might make modifications to its environment.
+    /// The default is <see langword="false"/>.
+    /// </value>
+    /// <remarks>
     /// Read-only tools do not have side effects beyond computational resource usage.
     /// They don't create, update, or delete data in any system.
-    /// </para>
-    /// <para>
-    /// The default is <see langword="false"/>.
-    /// </para>
     /// </remarks>
     public bool? ReadOnly { get; set; }
 
     /// <summary>
-    /// Gets or sets whether the tool should report an output schema for structured content.
+    /// Gets or sets a value that indicates whether the tool should report an output schema for structured content.
     /// </summary>
+    /// <value>
+    /// The default is <see langword="false"/>.
+    /// </value>
     /// <remarks>
-    /// <para>
     /// When enabled, the tool will attempt to populate the <see cref="Tool.OutputSchema"/>
     /// and provide structured content in the <see cref="CallToolResult.StructuredContent"/> property.
-    /// </para>
-    /// <para>
-    /// The default is <see langword="false"/>.
-    /// </para>
     /// </remarks>
     public bool UseStructuredContent { get; set; }
 
     /// <summary>
     /// Gets or sets the JSON serializer options to use when marshalling data to/from JSON.
     /// </summary>
-    /// <remarks>
-    /// Defaults to <see cref="McpJsonUtilities.DefaultOptions"/> if left unspecified.
-    /// </remarks>
+    /// <value>
+    /// The default is <see cref="McpJsonUtilities.DefaultOptions"/>.
+    /// </value>
     public JsonSerializerOptions? SerializerOptions { get; set; }
 
     /// <summary>
-    /// Gets or sets the JSON schema options when creating <see cref="AIFunction"/> from a method.
+    /// Gets or sets the JSON schema options when creating an <see cref="AIFunction"/> from a method.
     /// </summary>
-    /// <remarks>
-    /// Defaults to <see cref="AIJsonSchemaCreateOptions.Default"/> if left unspecified.
-    /// </remarks>
+    /// <value>
+    /// The default is <see cref="AIJsonSchemaCreateOptions.Default"/>.
+    /// </value>
     public AIJsonSchemaCreateOptions? SchemaCreateOptions { get; set; }
 
     /// <summary>
@@ -169,7 +157,7 @@ public sealed class McpServerToolCreateOptions
     /// Gets or sets the icons for this tool.
     /// </summary>
     /// <remarks>
-    /// This can be used by clients to display the tool's icon in a user interface.
+    /// This property can be used by clients to display the tool's icon in a user interface.
     /// </remarks>
     public IList<Icon>? Icons { get; set; }
 

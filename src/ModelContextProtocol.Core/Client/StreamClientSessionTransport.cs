@@ -31,7 +31,7 @@ internal class StreamClientSessionTransport : TransportBase
     /// A name that identifies this transport endpoint in logs.
     /// </param>
     /// <param name="loggerFactory">
-    /// Optional factory for creating loggers. If null, a NullLogger will be used.
+    /// Optional factory for creating loggers. If null, a NullLogger is used.
     /// </param>
     /// <remarks>
     /// This constructor starts a background task to read messages from the server output stream.
@@ -73,7 +73,7 @@ internal class StreamClientSessionTransport : TransportBase
     /// A name that identifies this transport endpoint in logs.
     /// </param>
     /// <param name="loggerFactory">
-    /// Optional factory for creating loggers. If null, a NullLogger will be used.
+    /// Optional factory for creating loggers. If null, a NullLogger is used.
     /// </param>
     /// <remarks>
     /// This constructor starts a background task to read messages from the server output stream.

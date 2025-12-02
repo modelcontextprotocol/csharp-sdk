@@ -21,7 +21,7 @@ namespace ModelContextProtocol.Protocol;
 public sealed class ListPromptsResult : PaginatedResult
 {
     /// <summary>
-    /// A list of prompts or prompt templates that the server offers.
+    /// Gets or sets a list of prompts or prompt templates that the server offers.
     /// </summary>
     [JsonPropertyName("prompts")]
     public IList<Prompt> Prompts { get; set; } = [];

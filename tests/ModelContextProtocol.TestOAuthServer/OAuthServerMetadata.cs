@@ -171,4 +171,11 @@ internal sealed class OAuthServerMetadata
     [JsonPropertyName("claims_supported")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<string>? ClaimsSupported { get; init; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether CIMD client IDs are supported.
+    /// </summary>
+    [JsonPropertyName("client_id_metadata_document_supported")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? ClientIdMetadataDocumentSupported { get; init; }
 }

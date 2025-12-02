@@ -1,7 +1,7 @@
 namespace ModelContextProtocol.Server;
 
 /// <summary>
-/// Used to attribute a type containing methods that should be exposed as <see cref="McpServerTool"/>s.
+/// Indicates that a type contains methods that should be exposed as <see cref="McpServerTool"/>s.
 /// </summary>
 /// <remarks>
 /// <para>

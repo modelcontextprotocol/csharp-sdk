@@ -50,13 +50,13 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                                 {
                                     Name = "FirstCustomTool",
                                     Description = "First tool returned by custom handler",
-                                    InputSchema = JsonSerializer.Deserialize<JsonElement>("""
+                                    InputSchema = JsonElement.Parse("""
                                         {
                                           "type": "object",
                                           "properties": {},
                                           "required": []
                                         }
-                                        """, McpJsonUtilities.DefaultOptions),
+                                        """),
                                 }],
                         };
 
@@ -68,13 +68,13 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                                 {
                                     Name = "SecondCustomTool",
                                     Description = "Second tool returned by custom handler",
-                                    InputSchema = JsonSerializer.Deserialize<JsonElement>("""
+                                    InputSchema = JsonElement.Parse("""
                                         {
                                           "type": "object",
                                           "properties": {},
                                           "required": []
                                         }
-                                        """, McpJsonUtilities.DefaultOptions),
+                                        """),
                                 }],
                         };
 
@@ -86,13 +86,13 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
                                 {
                                     Name = "FinalCustomTool",
                                     Description = "Third tool returned by custom handler",
-                                    InputSchema = JsonSerializer.Deserialize<JsonElement>("""
+                                    InputSchema = JsonElement.Parse("""
                                         {
                                           "type": "object",
                                           "properties": {},
                                           "required": []
                                         }
-                                        """, McpJsonUtilities.DefaultOptions),
+                                        """),
                                 }],
                         };
 

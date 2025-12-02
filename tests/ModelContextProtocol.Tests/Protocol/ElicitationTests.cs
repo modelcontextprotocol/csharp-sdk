@@ -120,18 +120,18 @@ public partial class ElicitationTests : ClientServerTestBase
                         Action = "accept",
                         Content = new Dictionary<string, JsonElement>
                         {
-                            ["prop1"] = (JsonElement)JsonSerializer.Deserialize("""
+                            ["prop1"] = JsonElement.Parse("""
                                 "string result"
-                                """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
-                            ["prop2"] = (JsonElement)JsonSerializer.Deserialize("""
+                                """),
+                            ["prop2"] = JsonElement.Parse("""
                                 42
-                                """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
-                            ["prop3"] = (JsonElement)JsonSerializer.Deserialize("""
+                                """),
+                            ["prop3"] = JsonElement.Parse("""
                                 true
-                                """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
-                            ["prop4"] = (JsonElement)JsonSerializer.Deserialize("""
+                                """),
+                            ["prop4"] = JsonElement.Parse("""
                                 "option2"
-                                """, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonElement)))!,
+                                """),
                         },
                     };
                 }

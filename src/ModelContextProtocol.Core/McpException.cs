@@ -6,7 +6,7 @@ namespace ModelContextProtocol;
 /// Represents an exception that is thrown when an Model Context Protocol (MCP) error occurs.
 /// </summary>
 /// <remarks>
-/// The <see cref="Exception.Message"/> from a <see cref="McpException"/> may be propagated to the remote
+/// The <see cref="Exception.Message"/> from a <see cref="McpException"/> might be propagated to the remote
 /// endpoint; sensitive information should not be included. If sensitive details need to be included,
 /// a different exception type should be used.
 ///

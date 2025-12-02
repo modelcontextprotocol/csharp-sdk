@@ -57,7 +57,7 @@ public sealed class Resource : IBaseMetadata
     /// "image/png" for PNG images, and "application/json" for JSON data.
     /// </para>
     /// <para>
-    /// This property may be <see langword="null"/> if the MIME type is unknown or not applicable for the resource.
+    /// This property can be <see langword="null"/> if the MIME type is unknown or not applicable for the resource.
     /// </para>
     /// </remarks>
     [JsonPropertyName("mimeType")]

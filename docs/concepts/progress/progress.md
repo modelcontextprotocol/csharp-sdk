@@ -12,7 +12,7 @@ The Model Context Protocol (MCP) supports [progress tracking] for long-running o
 [progress tracking]: https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/progress
 
 Typically progress tracking is supported by server tools that perform operations that take a significant amount of time to complete, such as image generation or complex calculations.
-However, progress tracking is defined in the MCP specification as a general feature that can be implemented for any request that is handled by either a server or a client.
+However, progress tracking is defined in the MCP specification as a general feature that can be implemented for any request that's handled by either a server or a client.
 This project illustrates the common case of a server tool that performs a long-running operation and sends progress updates to the client.
 
 ### Server Implementation
@@ -30,7 +30,7 @@ The server must verify that the caller provided a `progressToken` in the request
 ### Client Implementation
 
 Clients request progress updates by including a `progressToken` in the parameters of a request.
-Note that servers are not required to support progress tracking, so clients should not depend on receiving progress updates.
+Note that servers aren't required to support progress tracking, so clients should not depend on receiving progress updates.
 
 In the MCP C# SDK, clients can specify a `progressToken` in the request parameters when calling a tool method.
 The client should also provide a notification handler to process "notifications/progress" notifications.
