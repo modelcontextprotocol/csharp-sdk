@@ -119,7 +119,7 @@ public abstract partial class McpClient : McpSession
             tools ??= new List<McpClientTool>(toolResults.Tools.Count);
             foreach (var tool in toolResults.Tools)
             {
-                tools.Add(new McpClientTool(this, tool, serializerOptions));
+                tools.Add(new McpClientTool(this, tool, options?.JsonSerializerOptions));
             }
 
             cursor = toolResults.NextCursor;
@@ -139,9 +139,6 @@ public abstract partial class McpClient : McpSession
         RequestOptions? options = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var serializerOptions = options?.JsonSerializerOptions ?? McpJsonUtilities.DefaultOptions;
-        serializerOptions.MakeReadOnly();
-
         string? cursor = null;
         do
         {
@@ -154,7 +151,7 @@ public abstract partial class McpClient : McpSession
 
             foreach (var tool in toolResults.Tools)
             {
-                yield return new McpClientTool(this, tool, serializerOptions);
+                yield return new McpClientTool(this, tool, options?.JsonSerializerOptions);
             }
 
             cursor = toolResults.NextCursor;
@@ -588,12 +585,7 @@ public abstract partial class McpClient : McpSession
                 }).ConfigureAwait(false);
 
             var metaWithProgress = meta is not null ? new JsonObject(meta) : new JsonObject();
-            metaWithProgress["progressToken"] = progressToken.Token switch
-                {
-                    string s => JsonValue.Create(s),
-                    long l => JsonValue.Create(l),
-                    _ => throw new InvalidOperationException("ProgressToken must be a string or long")
-                };
+            metaWithProgress["progressToken"] = progressToken.ToString();
 
             return await SendRequestAsync(
                 RequestMethods.ToolsCall,

@@ -15,6 +15,13 @@ public sealed class RequestOptions
     private JsonObject? _meta;
 
     /// <summary>
+    /// Initializes a new instance of the <see cref="RequestOptions"/> class.
+    /// </summary>
+    public RequestOptions()
+    {
+    }
+
+    /// <summary>
     /// Optional metadata to include in the request.
     /// When getting, automatically includes the progress token if set.
     /// </summary>
@@ -52,11 +59,4 @@ public sealed class RequestOptions
     /// The progress token for tracking long-running operations.
     /// </summary>
     public ProgressToken? ProgressToken { get; set; }
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="RequestOptions"/> class.
-    /// </summary>
-    public RequestOptions()
-    {
-    }
 }
