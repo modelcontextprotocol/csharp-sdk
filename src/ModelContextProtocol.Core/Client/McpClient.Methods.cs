@@ -105,9 +105,6 @@ public abstract partial class McpClient : McpSession
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        var serializerOptions = options?.JsonSerializerOptions ?? McpJsonUtilities.DefaultOptions;
-        serializerOptions.MakeReadOnly();
-
         List<McpClientTool>? tools = null;
         string? cursor = null;
         do
