@@ -83,9 +83,8 @@ public abstract partial class McpClient : McpSession
     /// </summary>
     /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>A task that completes when the ping is successful.</returns>
+    /// <returns>A task containing the ping result.</returns>
     /// <exception cref="McpException">The server cannot be reached or returned an error response.</exception>
-    /// <exception cref="McpException">Thrown when the server cannot be reached or returns an error response.</exception>
     public ValueTask<PingResult> PingAsync(RequestOptions? options = null, CancellationToken cancellationToken = default)
     {
         return SendRequestAsync(

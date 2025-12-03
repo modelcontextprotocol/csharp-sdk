@@ -33,8 +33,8 @@ public sealed class RequestOptions
             // Add progress token to metadata
             meta["progressToken"] = ProgressToken.Value.Token switch
             {
-                string s => JsonValue.Create(s),
-                long l => JsonValue.Create(l),
+                string s => s,
+                long l => l,
                 _ => null
             };
 

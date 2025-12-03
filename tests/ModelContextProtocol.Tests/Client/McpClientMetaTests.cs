@@ -103,7 +103,7 @@ public class McpClientMetaTests : ClientServerTestBase
 
 
     [Fact]
-    public async Task PromptGettWithMetaFields()
+    public async Task PromptGetWithMetaFields()
     {
         Server.ServerOptions.PromptCollection?.Add(McpServerPrompt.Create(
             (RequestContext<GetPromptRequestParams> context) =>
