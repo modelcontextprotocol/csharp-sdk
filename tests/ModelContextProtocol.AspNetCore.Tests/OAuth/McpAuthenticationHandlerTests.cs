@@ -11,7 +11,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Encodings.Web;
 
-namespace ModelContextProtocol.AspNetCore.Tests.Authentication;
+namespace ModelContextProtocol.AspNetCore.Tests.OAuth;
 
 public class McpAuthenticationHandlerTests(ITestOutputHelper outputHelper) : KestrelInMemoryTest(outputHelper)
 {
@@ -23,6 +23,7 @@ public class McpAuthenticationHandlerTests(ITestOutputHelper outputHelper) : Kes
         await using var app = await StartAuthenticationServerAsync(options =>
         {
             options.ResourceMetadataUri = new Uri(metadataPath, UriKind.Relative);
+            options.ResourceMetadata!.Resource = new Uri("http://localhost:5000/challenge");
         });
 
         using var challengeResponse = await HttpClient.GetAsync(new Uri("/challenge", UriKind.Relative), HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
@@ -37,13 +38,33 @@ public class McpAuthenticationHandlerTests(ITestOutputHelper outputHelper) : Kes
     }
 
     [Fact]
+    public async Task MetadataRequest_CustomResourceMetadataUriWithoutResource_ThrowsInvalidOperationException()
+    {
+        const string metadataPath = "/.well-known/custom-metadata";
+
+        await using var app = await StartAuthenticationServerAsync(options =>
+        {
+            options.ResourceMetadataUri = new Uri(metadataPath, UriKind.Relative);
+        });
+
+        using var response = await HttpClient.GetAsync(new Uri(metadataPath, UriKind.Relative), TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        Assert.Contains(MockLoggerProvider.LogMessages, log =>
+            log.LogLevel == LogLevel.Error &&
+            log.Exception is InvalidOperationException &&
+            log.Exception.Message.Contains("ResourceMetadata.Resource could not be determined", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Challenge_WithAbsoluteResourceMetadataUri_SetsConfiguredUrl()
     {
-        var metadataUri = new Uri("http://localhost:5000/.well-known/custom-absolute", UriKind.Absolute);
+        var metadataUri = new Uri("http://localhost:5000/.well-known/custom-absolute");
 
         await using var app = await StartAuthenticationServerAsync(options =>
         {
             options.ResourceMetadataUri = metadataUri;
+            options.ResourceMetadata!.Resource = new Uri("http://localhost:5000/challenge");
         });
 
         using var challengeResponse = await HttpClient.GetAsync(new Uri("/challenge", UriKind.Relative), HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
@@ -60,7 +81,7 @@ public class McpAuthenticationHandlerTests(ITestOutputHelper outputHelper) : Kes
     [Fact]
     public async Task MetadataRequest_WithHostMismatch_LogsWarning()
     {
-        var metadataUri = new Uri("http://expected-host:5000/.well-known/host-mismatch", UriKind.Absolute);
+        var metadataUri = new Uri("http://expected-host:5000/.well-known/host-mismatch");
 
         await using var app = await StartAuthenticationServerAsync(options =>
         {
@@ -146,7 +167,11 @@ public class McpAuthenticationHandlerTests(ITestOutputHelper outputHelper) : Kes
 
         authenticationBuilder.AddScheme<McpAuthenticationOptions, McpAuthenticationHandler>(McpAuthenticationDefaults.AuthenticationScheme, options =>
         {
-            options.ResourceMetadata = CreateMetadata();
+            options.ResourceMetadata = new()
+            {
+                AuthorizationServers = [new Uri("https://localhost:7029")],
+                ScopesSupported = ["mcp:tools"],
+            };
             configureOptions?.Invoke(options);
         });
 
@@ -166,12 +191,6 @@ public class McpAuthenticationHandlerTests(ITestOutputHelper outputHelper) : Kes
         await app.StartAsync(TestContext.Current.CancellationToken);
         return app;
     }
-
-    private static ProtectedResourceMetadata CreateMetadata() => new()
-    {
-        AuthorizationServers = [new Uri("https://localhost:7029")],
-        ScopesSupported = ["mcp:tools"],
-    };
 
     private sealed class NoopBearerAuthenticationHandler(
         IOptionsMonitor<AuthenticationSchemeOptions> options,

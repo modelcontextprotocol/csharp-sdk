@@ -76,8 +76,8 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
                 return resourceMetadataUri.ToString();
             }
 
-            var seperator = resourceMetadataUri.OriginalString.StartsWith("/") ? "" : "/";
-            return $"{Request.Scheme}://{Request.Host.ToUriComponent()}{Request.PathBase}{seperator}{resourceMetadataUri.OriginalString}";
+            var separator = resourceMetadataUri.OriginalString.StartsWith("/") ? "" : "/";
+            return $"{Request.Scheme}://{Request.Host.ToUriComponent()}{Request.PathBase}{separator}{resourceMetadataUri.OriginalString}";
         }
 
         return $"{Request.Scheme}://{Request.Host.ToUriComponent()}{Request.PathBase}{DefaultResourceMetadataPath}{Request.Path}";
@@ -105,8 +105,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         if (!string.Equals(Request.Host.Host, resourceMetadataUri.Host, StringComparison.OrdinalIgnoreCase))
         {
             Logger.LogWarning(
-                "Resource metadata request host '{RequestHost}' did not match configured host '{ConfiguredHost}'.",
-                Request.Host.Value,
+                "Resource metadata request host did not match configured host '{ConfiguredHost}'.",
                 resourceMetadataUri.Host);
             return false;
         }
@@ -114,8 +113,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         if (!string.Equals(Request.Scheme, resourceMetadataUri.Scheme, StringComparison.OrdinalIgnoreCase))
         {
             Logger.LogWarning(
-                "Resource metadata request scheme '{RequestScheme}' did not match configured scheme '{ConfiguredScheme}'.",
-                Request.Scheme,
+                "Resource metadata request scheme did not match configured scheme '{ConfiguredScheme}'.",
                 resourceMetadataUri.Scheme);
             return false;
         }
@@ -172,6 +170,11 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         }
 
         resourceMetadata.Resource ??= derivedResourceUri;
+
+        if (resourceMetadata.Resource is null)
+        {
+            throw new InvalidOperationException("ResourceMetadata.Resource could not be determined. Please set McpAuthenticationOptions.ResourceMetadata.Resource or avoid setting a custom McpAuthenticationOptions.ResourceMetadataUri.");
+        }
 
         await Results.Json(resourceMetadata, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(ProtectedResourceMetadata))).ExecuteAsync(Context);
         return true;
