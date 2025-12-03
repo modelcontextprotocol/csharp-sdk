@@ -128,7 +128,11 @@ public sealed class McpClientTool : AIFunction
     protected async override ValueTask<object?> InvokeCoreAsync(
         AIFunctionArguments arguments, CancellationToken cancellationToken)
     {
-        CallToolResult result = await CallAsync(arguments, _progress, JsonSerializerOptions, cancellationToken).ConfigureAwait(false);
+        var options = JsonSerializerOptions is null ? null : new RequestOptions()
+        {
+            JsonSerializerOptions = JsonSerializerOptions,
+        };
+        CallToolResult result = await CallAsync(arguments, _progress, options, cancellationToken).ConfigureAwait(false);
 
         // We want to translate the result content into AIContent, using AIContent as the exchange types, so
         // that downstream IChatClients can specialize handling based on the content (e.g. sending image content
@@ -163,8 +167,8 @@ public sealed class McpClientTool : AIFunction
     /// value will result in a progress token being included in the call, and any resulting progress notifications during the operation
     /// routed to this instance.
     /// </param>
-    /// <param name="serializerOptions">
-    /// The JSON serialization options governing argument serialization. If <see langword="null"/>, the default serialization options are used.
+    /// <param name="options">
+    /// Optional request options including metadata, serialization settings, and progress tracking.
     /// </param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>
@@ -191,15 +195,14 @@ public sealed class McpClientTool : AIFunction
     public ValueTask<CallToolResult> CallAsync(
         IReadOnlyDictionary<string, object?>? arguments = null,
         IProgress<ProgressNotificationValue>? progress = null,
-        JsonSerializerOptions? serializerOptions = null,
+        RequestOptions? options = null,
         CancellationToken cancellationToken = default) =>
         _client.CallToolAsync(
             ProtocolTool.Name,
             arguments,
             progress,
-            serializerOptions is null ? null : new RequestOptions
-            {
-                JsonSerializerOptions = serializerOptions
+            options ?? new RequestOptions() {
+                JsonSerializerOptions = JsonSerializerOptions
             },
             cancellationToken);
 
