@@ -29,25 +29,35 @@ public sealed class RequestOptions
     {
         get
         {
-            if (ProgressToken == null)
-            {
-                return _meta;
-            }
-
-            // Clone existing metadata or create a new one
-            var meta = _meta?.DeepClone() as JsonObject ?? new JsonObject();
-
-            // Add progress token to metadata
-            meta["progressToken"] = ProgressToken.Value.Token switch
-            {
-                string s => s,
-                long l => l,
-                _ => null
-            };
-
-            return meta;
+            _meta ??= new JsonObject();
+            return _meta;
         }
-        set => _meta = value;
+        set
+        {
+            // Preserve the progress token if set.
+            var progressToken = _meta?["progressToken"];
+            if (value is null)
+            {
+                if (progressToken is not null)
+                {
+                    _meta = new JsonObject
+                    {
+                        ["progressToken"] = progressToken,
+                    };
+                }
+                else
+                {
+                    _meta = null;
+                }
+            }
+            else
+            {
+                if (progressToken is not null) {
+                    value["progressToken"] = progressToken;
+                }
+                _meta = value;
+            }
+        }
     }
 
     /// <summary>
@@ -58,5 +68,33 @@ public sealed class RequestOptions
     /// <summary>
     /// The progress token for tracking long-running operations.
     /// </summary>
-    public ProgressToken? ProgressToken { get; set; }
+    public ProgressToken? ProgressToken {
+        get
+        {
+            return _meta?["progressToken"] switch
+            {
+                JsonValue v when v.TryGetValue(out string? s) => new ProgressToken(s),
+                JsonValue v when v.TryGetValue(out long l) => new ProgressToken(l),
+                _ => null
+            };
+        }
+        set
+        {
+            if (value?.Token is {} token)
+            {
+                _meta ??= new JsonObject();
+                _meta["progressToken"] = token switch
+                {
+                    null => _meta.Remove("progressToken"),
+                    string s => s,
+                    long l => l,
+                    _ => throw new InvalidOperationException("ProgressToken must be a string or long"),
+                };
+            }
+            else
+            {
+                _meta?.Remove("progressToken");
+            }
+        }
+    }
 }
