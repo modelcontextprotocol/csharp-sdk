@@ -132,39 +132,6 @@ public abstract partial class McpClient : McpSession
     }
 
     /// <summary>
-    /// Creates an enumerable for asynchronously enumerating all available tools from the server.
-    /// </summary>
-    /// <param name="serializerOptions">The serializer options governing tool parameter serialization. If null, the default options are used.</param>
-    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>An asynchronous sequence of all available tools as <see cref="McpClientTool"/> instances.</returns>
-    public async IAsyncEnumerable<McpClientTool> EnumerateToolsAsync(
-        JsonSerializerOptions? serializerOptions = null,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        serializerOptions ??= McpJsonUtilities.DefaultOptions;
-        serializerOptions.MakeReadOnly();
-
-        string? cursor = null;
-        do
-        {
-            var toolResults = await SendRequestAsync(
-                RequestMethods.ToolsList,
-                new() { Cursor = cursor },
-                McpJsonUtilities.JsonContext.Default.ListToolsRequestParams,
-                McpJsonUtilities.JsonContext.Default.ListToolsResult,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            foreach (var tool in toolResults.Tools)
-            {
-                yield return new McpClientTool(this, tool, serializerOptions);
-            }
-
-            cursor = toolResults.NextCursor;
-        }
-        while (cursor is not null);
-    }
-
-    /// <summary>
     /// Retrieves a list of available prompts from the server.
     /// </summary>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
@@ -194,34 +161,6 @@ public abstract partial class McpClient : McpSession
         while (cursor is not null);
 
         return prompts;
-    }
-
-    /// <summary>
-    /// Creates an enumerable for asynchronously enumerating all available prompts from the server.
-    /// </summary>
-    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>An asynchronous sequence of all available prompts as <see cref="McpClientPrompt"/> instances.</returns>
-    public async IAsyncEnumerable<McpClientPrompt> EnumeratePromptsAsync(
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        string? cursor = null;
-        do
-        {
-            var promptResults = await SendRequestAsync(
-                RequestMethods.PromptsList,
-                new() { Cursor = cursor },
-                McpJsonUtilities.JsonContext.Default.ListPromptsRequestParams,
-                McpJsonUtilities.JsonContext.Default.ListPromptsResult,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            foreach (var prompt in promptResults.Prompts)
-            {
-                yield return new(this, prompt);
-            }
-
-            cursor = promptResults.NextCursor;
-        }
-        while (cursor is not null);
     }
 
     /// <summary>
@@ -285,34 +224,6 @@ public abstract partial class McpClient : McpSession
     }
 
     /// <summary>
-    /// Creates an enumerable for asynchronously enumerating all available resource templates from the server.
-    /// </summary>
-    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>An asynchronous sequence of all available resource templates as <see cref="ResourceTemplate"/> instances.</returns>
-    public async IAsyncEnumerable<McpClientResourceTemplate> EnumerateResourceTemplatesAsync(
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        string? cursor = null;
-        do
-        {
-            var templateResults = await SendRequestAsync(
-                RequestMethods.ResourcesTemplatesList,
-                new() { Cursor = cursor },
-                McpJsonUtilities.JsonContext.Default.ListResourceTemplatesRequestParams,
-                McpJsonUtilities.JsonContext.Default.ListResourceTemplatesResult,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            foreach (var templateResult in templateResults.ResourceTemplates)
-            {
-                yield return new McpClientResourceTemplate(this, templateResult);
-            }
-
-            cursor = templateResults.NextCursor;
-        }
-        while (cursor is not null);
-    }
-
-    /// <summary>
     /// Retrieves a list of available resources from the server.
     /// </summary>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
@@ -343,34 +254,6 @@ public abstract partial class McpClient : McpSession
         while (cursor is not null);
 
         return resources;
-    }
-
-    /// <summary>
-    /// Creates an enumerable for asynchronously enumerating all available resources from the server.
-    /// </summary>
-    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>An asynchronous sequence of all available resources as <see cref="Resource"/> instances.</returns>
-    public async IAsyncEnumerable<McpClientResource> EnumerateResourcesAsync(
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        string? cursor = null;
-        do
-        {
-            var resourceResults = await SendRequestAsync(
-                RequestMethods.ResourcesList,
-                new() { Cursor = cursor },
-                McpJsonUtilities.JsonContext.Default.ListResourcesRequestParams,
-                McpJsonUtilities.JsonContext.Default.ListResourcesResult,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            foreach (var resource in resourceResults.Resources)
-            {
-                yield return new McpClientResource(this, resource);
-            }
-
-            cursor = resourceResults.NextCursor;
-        }
-        while (cursor is not null);
     }
 
     /// <summary>
