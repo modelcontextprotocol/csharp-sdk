@@ -9,66 +9,81 @@ namespace ModelContextProtocol.Authentication;
 public sealed class ProtectedResourceMetadata
 {
     /// <summary>
-    /// The resource URI.
+    /// Gets or sets the resource URI.
     /// </summary>
+    /// <value>
+    /// The protected resource's resource identifier.
+    /// </value>
     /// <remarks>
-    /// REQUIRED. The protected resource's resource identifier.
+    /// REQUIRED.
     /// </remarks>
     [JsonPropertyName("resource")]
     public required Uri Resource { get; set; }
 
     /// <summary>
-    /// The list of authorization server URIs.
+    /// Gets or sets the list of authorization server URIs.
     /// </summary>
-    /// <remarks>
-    /// OPTIONAL. JSON array containing a list of OAuth authorization server issuer identifiers
+    /// <value>
+    /// A JSON array containing a list of OAuth authorization server issuer identifiers
     /// for authorization servers that can be used with this protected resource.
+    /// </value>
+    /// <remarks>
+    /// OPTIONAL.
     /// </remarks>
     [JsonPropertyName("authorization_servers")]
     public List<Uri> AuthorizationServers { get; set; } = [];
 
     /// <summary>
-    /// The supported bearer token methods.
+    /// Gets or sets the supported bearer token methods.
     /// </summary>
-    /// <remarks>
-    /// OPTIONAL. JSON array containing a list of the supported methods of sending an OAuth 2.0 bearer token
+    /// <value>
+    /// A JSON array containing a list of the supported methods of sending an OAuth 2.0 bearer token
     /// to the protected resource. Defined values are ["header", "body", "query"].
+    /// </value>
+    /// <remarks>
+    /// OPTIONAL.
     /// </remarks>
     [JsonPropertyName("bearer_methods_supported")]
     public List<string> BearerMethodsSupported { get; set; } = ["header"];
 
     /// <summary>
-    /// The supported scopes.
+    /// Gets or sets the supported scopes.
     /// </summary>
-    /// <remarks>
-    /// RECOMMENDED. JSON array containing a list of scope values that are used in authorization
+    /// <value>
+    /// A JSON array containing a list of scope values that are used in authorization
     /// requests to request access to this protected resource.
+    /// </value>
+    /// <remarks>
+    /// RECOMMENDED.
     /// </remarks>
     [JsonPropertyName("scopes_supported")]
     public List<string> ScopesSupported { get; set; } = [];
 
     /// <summary>
-    /// URL of the protected resource's JSON Web Key (JWK) Set document.
+    /// Gets or sets the URL of the protected resource's JSON Web Key (JWK) Set document.
     /// </summary>
     /// <remarks>
-    /// OPTIONAL. This contains public keys belonging to the protected resource, such as signing key(s)
-    /// that the resource server uses to sign resource responses. This URL MUST use the https scheme.
+    /// OPTIONAL. This document contains public keys belonging to the protected resource, such as signing keys
+    /// that the resource server uses to sign resource responses. This URL MUST use the HTTPS scheme.
     /// </remarks>
     [JsonPropertyName("jwks_uri")]
     public Uri? JwksUri { get; set; }
 
     /// <summary>
-    /// List of the JWS signing algorithms supported by the protected resource for signing resource responses.
+    /// Gets or sets the list of the JWS signing algorithms supported by the protected resource for signing resource responses.
     /// </summary>
+    /// <value>
+    /// A JSON array containing a list of the JWS signing algorithms (alg values) supported by the protected resource
+    /// for signing resource responses.
+    /// </value>
     /// <remarks>
-    /// OPTIONAL. JSON array containing a list of the JWS signing algorithms (alg values) supported by the protected resource
-    /// for signing resource responses. No default algorithms are implied if this entry is omitted. The value none MUST NOT be used.
+    /// OPTIONAL. No default algorithms are implied if this entry is omitted. The value "none" MUST NOT be used.
     /// </remarks>
     [JsonPropertyName("resource_signing_alg_values_supported")]
     public List<string>? ResourceSigningAlgValuesSupported { get; set; }
 
     /// <summary>
-    /// Human-readable name of the protected resource intended for display to the end user.
+    /// Gets or sets the human-readable name of the protected resource intended for display to the end user.
     /// </summary>
     /// <remarks>
     /// RECOMMENDED. It is recommended that protected resource metadata include this field.
@@ -78,26 +93,32 @@ public sealed class ProtectedResourceMetadata
     public string? ResourceName { get; set; }
 
     /// <summary>
-    /// The URI to the resource documentation.
+    /// Gets or sets the URI to the resource documentation.
     /// </summary>
-    /// <remarks>
-    /// OPTIONAL. URL of a page containing human-readable information that developers might want or need to know
+    /// <value>
+    /// The URL of a page containing human-readable information that developers might want or need to know
     /// when using the protected resource.
+    /// </value>
+    /// <remarks>
+    /// OPTIONAL.
     /// </remarks>
     [JsonPropertyName("resource_documentation")]
     public Uri? ResourceDocumentation { get; set; }
 
     /// <summary>
-    /// URL of a page containing human-readable information about the protected resource's requirements.
+    /// Gets or sets the URL of a page containing human-readable information about the protected resource's requirements.
     /// </summary>
+    /// <value>
+    /// The URL of a page that contains information about how the client can use the data provided by the protected resource.
+    /// </value>
     /// <remarks>
-    /// OPTIONAL. Information about how the client can use the data provided by the protected resource.
+    /// OPTIONAL.
     /// </remarks>
     [JsonPropertyName("resource_policy_uri")]
     public Uri? ResourcePolicyUri { get; set; }
 
     /// <summary>
-    /// URL of a page containing human-readable information about the protected resource's terms of service.
+    /// Gets or sets the URL of a page containing human-readable information about the protected resource's terms of service.
     /// </summary>
     /// <remarks>
     /// OPTIONAL. The value of this field MAY be internationalized.
@@ -106,39 +127,51 @@ public sealed class ProtectedResourceMetadata
     public Uri? ResourceTosUri { get; set; }
 
     /// <summary>
-    /// Boolean value indicating protected resource support for mutual-TLS client certificate-bound access tokens.
+    /// Gets or sets a value indicating whether there is protected resource support for mutual-TLS client certificate-bound access tokens.
     /// </summary>
+    /// <value>
+    /// <see langword="true"/> if there's protected resource support for mutual-TLS client certificate-bound access tokens; otherwise, <see langword="false"/>. The default is <see langword="false"/>.
+    /// </value>
     /// <remarks>
-    /// OPTIONAL. If omitted, the default value is false.
+    /// OPTIONAL.
     /// </remarks>
     [JsonPropertyName("tls_client_certificate_bound_access_tokens")]
     public bool? TlsClientCertificateBoundAccessTokens { get; set; }
 
     /// <summary>
-    /// List of the authorization details type values supported by the resource server.
+    /// Gets or sets the list of the authorization details type values supported by the resource server.
     /// </summary>
-    /// <remarks>
-    /// OPTIONAL. JSON array containing a list of the authorization details type values supported by the resource server
+    /// <value>
+    /// A JSON array containing a list of the authorization details type values supported by the resource server
     /// when the authorization_details request parameter is used.
+    /// </value>
+    /// <remarks>
+    /// OPTIONAL.
     /// </remarks>
     [JsonPropertyName("authorization_details_types_supported")]
     public List<string>? AuthorizationDetailsTypesSupported { get; set; }
 
     /// <summary>
-    /// List of the JWS algorithm values supported by the resource server for validating DPoP proof JWTs.
+    /// Gets or sets the list of the JWS algorithm values supported by the resource server for validating DPoP proof JWTs.
     /// </summary>
-    /// <remarks>
-    /// OPTIONAL. JSON array containing a list of the JWS alg values supported by the resource server
+    /// <value>
+    /// A JSON array containing a list of the JWS alg values supported by the resource server
     /// for validating Demonstrating Proof of Possession (DPoP) proof JWTs.
+    /// </value>
+    /// <remarks>
+    /// OPTIONAL.
     /// </remarks>
     [JsonPropertyName("dpop_signing_alg_values_supported")]
     public List<string>? DpopSigningAlgValuesSupported { get; set; }
 
     /// <summary>
-    /// Boolean value specifying whether the protected resource always requires the use of DPoP-bound access tokens.
+    /// Gets or sets a value indicating whether the protected resource always requires the use of DPoP-bound access tokens.
     /// </summary>
+    /// <value>
+    /// <see langword="true"/> if the protected resource always requires the use of DPoP-bound access tokens; otherwise, <see langword="false"/>. The default is <see langword="false"/>.
+    /// </value>
     /// <remarks>
-    /// OPTIONAL. If omitted, the default value is false.
+    /// OPTIONAL.
     /// </remarks>
     [JsonPropertyName("dpop_bound_access_tokens_required")]
     public bool? DpopBoundAccessTokensRequired { get; set; }

@@ -21,7 +21,7 @@ namespace ModelContextProtocol.Protocol;
 public sealed class ListToolsResult : PaginatedResult
 {
     /// <summary>
-    /// The server's response to a tools/list request from the client.
+    /// Gets or sets the server's response to a tools/list request from the client.
     /// </summary>
     [JsonPropertyName("tools")]
     public IList<Tool> Tools { get; set; } = [];

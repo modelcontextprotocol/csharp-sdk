@@ -25,6 +25,12 @@ namespace ModelContextProtocol.Client;
 /// </remarks>
 public sealed partial class StdioClientTransport : IClientTransport
 {
+#if !NET
+    // On .NET Framework, we need to synchronize access to Console.InputEncoding
+    // to prevent race conditions when multiple transports are created concurrently.
+    private static readonly object s_consoleEncodingLock = new();
+#endif
+
     private readonly StdioClientTransportOptions _options;
     private readonly ILoggerFactory? _loggerFactory;
 
@@ -32,7 +38,7 @@ public sealed partial class StdioClientTransport : IClientTransport
     /// Initializes a new instance of the <see cref="StdioClientTransport"/> class.
     /// </summary>
     /// <param name="options">Configuration options for the transport, including the command to execute, arguments, working directory, and environment variables.</param>
-    /// <param name="loggerFactory">Logger factory for creating loggers used for diagnostic output during transport operations.</param>
+    /// <param name="loggerFactory">A logger factory for creating loggers used for diagnostic output during transport operations.</param>
     public StdioClientTransport(StdioClientTransportOptions options, ILoggerFactory? loggerFactory = null)
     {
         Throw.IfNull(options);
@@ -85,7 +91,7 @@ public sealed partial class StdioClientTransport : IClientTransport
 #endif
             };
 
-            if (arguments is not null) 
+            if (arguments is not null)
             {
 #if NET
                 foreach (string arg in arguments)
@@ -159,15 +165,20 @@ public sealed partial class StdioClientTransport : IClientTransport
 #if NET
             processStarted = process.Start();
 #else
-            Encoding originalInputEncoding = Console.InputEncoding;
-            try
+            // IMPORTANT: This must be synchronized to prevent race conditions when multiple
+            // transports are created concurrently.
+            lock (s_consoleEncodingLock)
             {
-                Console.InputEncoding = StreamClientSessionTransport.NoBomUtf8Encoding;
-                processStarted = process.Start();
-            }
-            finally
-            {
-                Console.InputEncoding = originalInputEncoding;
+                Encoding originalInputEncoding = Console.InputEncoding;
+                try
+                {
+                    Console.InputEncoding = StreamClientSessionTransport.NoBomUtf8Encoding;
+                    processStarted = process.Start();
+                }
+                finally
+                {
+                    Console.InputEncoding = originalInputEncoding;
+                }
             }
 #endif
 
@@ -223,7 +234,7 @@ public sealed partial class StdioClientTransport : IClientTransport
         }
     }
 
-    /// <summary>Gets whether <paramref name="process"/> has exited.</summary>
+    /// <summary>Gets a value that indicates whether <paramref name="process"/> has exited.</summary>
     internal static bool HasExited(Process process)
     {
         try

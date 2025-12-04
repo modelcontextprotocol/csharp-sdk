@@ -47,6 +47,12 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         // until the first call to SendMessageAsync. Fortunately, that happens internally in McpClient.ConnectAsync
         // so we still throw any connection-related Exceptions from there and never expose a pre-connected client to the user.
         SetConnected();
+
+        if (_options.KnownSessionId is { } knownSessionId)
+        {
+            SessionId = knownSessionId;
+            _getReceiveTask = ReceiveUnsolicitedMessagesAsync();
+        }
     }
 
     /// <inheritdoc/>
@@ -60,6 +66,14 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
     // This is used by the auto transport so it can fall back and try SSE given a non-200 response without catching an exception.
     internal async Task<HttpResponseMessage> SendHttpRequestAsync(JsonRpcMessage message, CancellationToken cancellationToken)
     {
+        if (_options.KnownSessionId is not null &&
+            message is JsonRpcRequest { Method: RequestMethods.Initialize })
+        {
+            throw new InvalidOperationException(
+                $"Cannot send '{RequestMethods.Initialize}' when {nameof(HttpClientTransportOptions)}.{nameof(HttpClientTransportOptions.KnownSessionId)} is configured. " +
+                $"Call {nameof(McpClient)}.{nameof(McpClient.ResumeSessionAsync)} to resume existing sessions.");
+        }
+
         using var sendCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _connectionCts.Token);
         cancellationToken = sendCts.Token;
 
@@ -116,7 +130,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
             var initializeResult = JsonSerializer.Deserialize(initResponse.Result, McpJsonUtilities.JsonContext.Default.InitializeResult);
             _negotiatedProtocolVersion = initializeResult?.ProtocolVersion;
 
-            _getReceiveTask = ReceiveUnsolicitedMessagesAsync();
+            _getReceiveTask ??= ReceiveUnsolicitedMessagesAsync();
         }
 
         return response;
@@ -139,7 +153,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
             try
             {
                 // Send DELETE request to terminate the session. Only send if we have a session ID, per MCP spec.
-                if (!string.IsNullOrEmpty(SessionId))
+                if (_options.OwnsSession && !string.IsNullOrEmpty(SessionId))
                 {
                     await SendDeleteRequest();
                 }

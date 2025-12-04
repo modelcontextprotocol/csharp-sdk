@@ -58,7 +58,7 @@ public static class NotificationMethods
     /// can request the list of roots from supporting clients and receive notifications when that list changes.
     /// </para>
     /// <para>
-    /// After receiving this notification, servers may refresh their knowledge of roots by calling the appropriate
+    /// After receiving this notification, servers can refresh their knowledge of roots by calling the appropriate
     /// method to get the updated list of roots from the client.
     /// </para>
     /// </remarks>
@@ -76,7 +76,7 @@ public static class NotificationMethods
     /// <para>
     /// The minimum logging level that triggers notifications can be controlled by clients using the
     /// <see cref="RequestMethods.LoggingSetLevel"/> request. If no level has been set by a client,
-    /// the server may determine which messages to send based on its own configuration.
+    /// the server can determine which messages to send based on its own configuration.
     /// </para>
     /// </remarks>
     public const string LoggingMessageNotification = "notifications/message";
@@ -116,7 +116,7 @@ public static class NotificationMethods
     /// and optionally, a total value and a descriptive message.
     /// </para>
     /// <para>
-    /// Progress notifications may be sent by either the client or the server, depending on the context.
+    /// Progress notifications can be sent by either the client or the server, depending on the context.
     /// Progress notifications enable clients to display progress indicators for operations that might take
     /// significant time to complete, such as large file uploads, complex computations, or resource-intensive
     /// processing tasks.
@@ -125,12 +125,12 @@ public static class NotificationMethods
     public const string ProgressNotification = "notifications/progress";
 
     /// <summary>
-    /// The name of the notification sent to indicate that a previously-issued request should be canceled.
+    /// The name of the notification sent to indicate that a previously issued request should be canceled.
     /// </summary>
     /// <remarks>
     /// <para>
     /// From the issuer's perspective, the request should still be in-flight. However, due to communication latency,
-    /// it is always possible that this notification may arrive after the request has already finished.
+    /// it is always possible that this notification might arrive after the request has already finished.
     /// </para>
     /// <para>
     /// This notification indicates that the result will be unused, so any associated processing SHOULD cease.

@@ -22,20 +22,21 @@ so tools can simply add a parameter of type <xref:ModelContextProtocol.Server.Mc
 #### Form Mode Elicitation (In-Band)
 
 For form-based elicitation, the MCP Server must specify the schema of each input value it is requesting from the user.
-Primitive types (string, number, boolean) and enum types are supported for elicitation requests.
-The schema may include a description to help the user understand what is being requested.
+Primitive types (string, number, Boolean) and enum types are supported for elicitation requests.
+The schema might include a description to help the user understand what's being requested.
 
 For enum types, the SDK supports several schema formats:
-- **UntitledSingleSelectEnumSchema**: A single-select enum where the enum values serve as both the value and display text
-- **TitledSingleSelectEnumSchema**: A single-select enum with separate display titles for each option (using JSON Schema `oneOf` with `const` and `title`)
-- **UntitledMultiSelectEnumSchema**: A multi-select enum allowing multiple values to be selected
-- **TitledMultiSelectEnumSchema**: A multi-select enum with display titles for each option
-- **LegacyTitledEnumSchema** (deprecated): The legacy enum schema using `enumNames` for backward compatibility
+
+- **UntitledSingleSelectEnumSchema**: A single-select enum where the enum values serve as both the value and display text.
+- **TitledSingleSelectEnumSchema**: A single-select enum with separate display titles for each option (using JSON Schema `oneOf` with `const` and `title`).
+- **UntitledMultiSelectEnumSchema**: A multi-select enum allowing multiple values to be selected.
+- **TitledMultiSelectEnumSchema**: A multi-select enum with display titles for each option.
+- **LegacyTitledEnumSchema** (deprecated): The legacy enum schema using `enumNames` for backward compatibility.
 
 The server can request a single input or multiple inputs at once.
 To help distinguish multiple inputs, each input has a unique name.
 
-The following example demonstrates how a server could request a boolean response from the user.
+The following example demonstrates how a server could request a Boolean response from the user.
 
 [!code-csharp[](samples/server/Tools/InteractiveTools.cs?name=snippet_GuessTheNumber)]
 
@@ -90,7 +91,6 @@ The `ElicitationHandler` is an asynchronous method that will be called when the 
 If the user provides the requested information (or consents to URL mode), the ElicitationHandler should return an <xref:ModelContextProtocol.Protocol.ElicitResult> with the action set to "accept".
 If the user does not provide the requested information, the ElicitationHandler should return an <xref:ModelContextProtocol.Protocol.ElicitResult> with the action set to "reject" (or "decline" / "cancel").
 
-Below is an example of how a console application might handle elicitation requests.
-Here's an example implementation:
+Here's an example implementation of how a console application might handle elicitation requests:
 
 [!code-csharp[](samples/client/Program.cs?name=snippet_ElicitationHandler)]

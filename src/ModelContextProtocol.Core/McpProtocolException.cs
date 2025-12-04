@@ -51,7 +51,7 @@ public class McpProtocolException : McpException
     /// Initializes a new instance of the <see cref="McpProtocolException"/> class with a specified error message and JSON-RPC error code.
     /// </summary>
     /// <param name="message">The message that describes the error.</param>
-    /// <param name="errorCode">A <see cref="McpErrorCode"/>.</param>
+    /// <param name="errorCode">An <see cref="McpErrorCode"/>.</param>
     public McpProtocolException(string message, McpErrorCode errorCode) : this(message, null, errorCode)
     {
     }
@@ -61,7 +61,7 @@ public class McpProtocolException : McpException
     /// </summary>
     /// <param name="message">The message that describes the error.</param>
     /// <param name="innerException">The exception that is the cause of the current exception, or a null reference if no inner exception is specified.</param>
-    /// <param name="errorCode">A <see cref="McpErrorCode"/>.</param>
+    /// <param name="errorCode">An <see cref="McpErrorCode"/>.</param>
     public McpProtocolException(string message, Exception? innerException, McpErrorCode errorCode) : base(message, innerException)
     {
         ErrorCode = errorCode;

@@ -677,6 +677,64 @@ public class McpServerTests : LoggedTest
         await runTask;
     }
 
+    [Fact]
+    public async Task Can_Handle_Call_Tool_Requests_With_McpProtocolException_And_Data()
+    {
+        const string ErrorMessage = "Resource not found";
+        const McpErrorCode ErrorCode = (McpErrorCode)(-32002);
+        const string ResourceUri = "file:///path/to/resource";
+
+        await using var transport = new TestServerTransport();
+        var options = CreateOptions(new ServerCapabilities { Tools = new() });
+        options.Handlers.CallToolHandler = async (request, ct) =>
+        {
+            throw new McpProtocolException(ErrorMessage, ErrorCode)
+            {
+                Data =
+                {
+                    { "uri", ResourceUri }
+                }
+            };
+        };
+        options.Handlers.ListToolsHandler = (request, ct) => throw new NotImplementedException();
+
+        await using var server = McpServer.Create(transport, options, LoggerFactory);
+
+        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+
+        var receivedMessage = new TaskCompletionSource<JsonRpcError>();
+
+        transport.OnMessageSent = (message) =>
+        {
+            if (message is JsonRpcError error && error.Id.ToString() == "55")
+                receivedMessage.SetResult(error);
+        };
+
+        await transport.SendMessageAsync(
+            new JsonRpcRequest
+            {
+                Method = RequestMethods.ToolsCall,
+                Id = new RequestId(55)
+            },
+            TestContext.Current.CancellationToken
+        );
+
+        var error = await receivedMessage.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Assert.NotNull(error);
+        Assert.NotNull(error.Error);
+        Assert.Equal((int)ErrorCode, error.Error.Code);
+        Assert.Equal(ErrorMessage, error.Error.Message);
+        Assert.NotNull(error.Error.Data);
+
+        // Verify the data contains the uri (values are now JsonElements after serialization)
+        var dataDict = Assert.IsType<Dictionary<string, JsonElement>>(error.Error.Data);
+        Assert.True(dataDict.ContainsKey("uri"));
+        Assert.Equal(ResourceUri, dataDict["uri"].GetString());
+
+        await transport.DisposeAsync();
+        await runTask;
+    }
+
     private async Task Can_Handle_Requests(ServerCapabilities? serverCapabilities, string method, Action<McpServerOptions>? configureOptions, Action<McpServer, JsonNode?> assertResult)
     {
         await using var transport = new TestServerTransport();

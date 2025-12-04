@@ -14,7 +14,7 @@ public sealed class CreateMessageResult : Result
     /// Gets or sets the content of the assistant's response.
     /// </summary>
     /// <remarks>
-    /// In the corresponding JSON, this may be a single content block or an array of content blocks.
+    /// In the corresponding JSON, this might be a single content block or an array of content blocks.
     /// </remarks>
     [JsonPropertyName("content")]
     [JsonConverter(typeof(SingleItemOrListConverter<ContentBlock>))]
@@ -25,7 +25,7 @@ public sealed class CreateMessageResult : Result
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This should contain the specific model identifier such as "claude-3-5-sonnet-20241022" or "o3-mini".
+    /// This value should contain the specific model identifier such as "claude-3-5-sonnet-20241022" or "o3-mini".
     /// </para>
     /// <para>
     /// This property allows the server to know which model was used to generate the response,
@@ -54,6 +54,9 @@ public sealed class CreateMessageResult : Result
     /// <summary>
     /// Gets or sets the role of the user who generated the message.
     /// </summary>
+    /// <value>
+    /// The role of the user who generated the message. The default is <see cref="Role.Assistant"/>.
+    /// </value>
     [JsonPropertyName("role")]
     public Role Role { get; set; } = Role.Assistant;
 

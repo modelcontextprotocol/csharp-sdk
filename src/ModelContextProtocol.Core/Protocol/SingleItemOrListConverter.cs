@@ -5,7 +5,7 @@ using System.Text.Json.Serialization;
 namespace ModelContextProtocol.Protocol;
 
 /// <summary>
-/// JSON converter for <see cref="IList{T}"/> that handles both array and single object representations.
+/// Provides a JSON converter for <see cref="IList{T}"/> that handles both array and single object representations.
 /// </summary>
 [EditorBrowsable(EditorBrowsableState.Never)]
 public sealed class SingleItemOrListConverter<T> : JsonConverter<IList<T>>
@@ -32,7 +32,7 @@ public sealed class SingleItemOrListConverter<T> : JsonConverter<IList<T>>
 
             return list;
         }
-        
+
         if (reader.TokenType == JsonTokenType.StartObject)
         {
             return JsonSerializer.Deserialize(ref reader, options.GetTypeInfo(typeof(T))) is T item ? [item] : [];

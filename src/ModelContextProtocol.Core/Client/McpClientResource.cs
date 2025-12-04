@@ -9,8 +9,7 @@ namespace ModelContextProtocol.Client;
 /// <para>
 /// This class provides a client-side wrapper around a resource defined on an MCP server. It allows
 /// retrieving the resource's content by sending a request to the server with the resource's URI.
-/// Instances of this class are typically obtained by calling <see cref="McpClient.ListResourcesAsync"/>
-/// or <see cref="McpClient.EnumerateResourcesAsync"/>.
+/// Instances of this class are typically obtained by calling <see cref="McpClient.ListResourcesAsync"/>.
 /// </para>
 /// </remarks>
 public sealed class McpClientResource
@@ -25,17 +24,16 @@ public sealed class McpClientResource
     /// <remarks>
     /// <para>
     /// This constructor enables reusing cached resource definitions across different <see cref="McpClient"/> instances
-    /// without needing to call <see cref="McpClient.ListResourcesAsync"/> on every reconnect. This is particularly useful 
+    /// without needing to call <see cref="McpClient.ListResourcesAsync"/> on every reconnect. This is particularly useful
     /// in scenarios where resource definitions are stable and network round-trips should be minimized.
     /// </para>
     /// <para>
-    /// The provided <paramref name="resource"/> must represent a resource that is actually available on the server 
-    /// associated with the <paramref name="client"/>. Attempting to read a resource that doesn't exist on the 
+    /// The provided <paramref name="resource"/> must represent a resource that is actually available on the server
+    /// associated with the <paramref name="client"/>. Attempting to read a resource that doesn't exist on the
     /// server will result in an <see cref="McpException"/>.
     /// </para>
     /// </remarks>
-    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentNullException"><paramref name="resource"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> or <paramref name="resource"/> is <see langword="null"/>.</exception>
     public McpClientResource(McpClient client, Resource resource)
     {
         Throw.IfNull(client);
@@ -52,7 +50,7 @@ public sealed class McpClientResource
     /// which can be useful for advanced scenarios or when implementing custom MCP client extensions.
     /// </para>
     /// <para>
-    /// For most common use cases, you can use the more convenient <see cref="Name"/> and 
+    /// For most common use cases, you can use the more convenient <see cref="Name"/> and
     /// <see cref="Description"/> properties instead of accessing the <see cref="ProtocolResource"/> directly.
     /// </para>
     /// </remarks>
@@ -67,10 +65,10 @@ public sealed class McpClientResource
     /// <summary>Gets the title of the resource.</summary>
     public string? Title => ProtocolResource.Title;
 
-    /// <summary>Gets a description of the resource.</summary>
+    /// <summary>Gets the description of the resource.</summary>
     public string? Description => ProtocolResource.Description;
 
-    /// <summary>Gets a media (MIME) type of the resource.</summary>
+    /// <summary>Gets the media (MIME) type of the resource.</summary>
     public string? MimeType => ProtocolResource.MimeType;
 
     /// <summary>

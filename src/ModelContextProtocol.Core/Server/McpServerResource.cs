@@ -25,8 +25,8 @@ namespace ModelContextProtocol.Server;
 /// into the <see cref="ReadResourceResult"/> that's then serialized and sent back to the client.
 /// </para>
 /// <para>
-/// <see cref="McpServerResource"/> is used to represent both direct resources (e.g. "resource://example") and templated
-/// resources (e.g. "resource://example/{id}").
+/// <see cref="McpServerResource"/> is used to represent both direct resources (for example,"resource://example") and templated
+/// resources (for example,"resource://example/{id}").
 /// </para>
 /// <para>
 /// Read resource requests do not contain separate arguments, only a URI. However, for templated resources, portions of that URI may be considered
@@ -129,7 +129,7 @@ public abstract class McpServerResource : IMcpServerPrimitive
     {
     }
 
-    /// <summary>Gets whether this resource is a URI template with parameters as opposed to a direct resource.</summary>
+    /// <summary>Gets a value that indicates whether this resource is a URI template with parameters as opposed to a direct resource.</summary>
     public bool IsTemplated => ProtocolResourceTemplate.UriTemplate.Contains('{');
 
     /// <summary>Gets the protocol <see cref="ResourceTemplate"/> type for this instance.</summary>
@@ -140,7 +140,7 @@ public abstract class McpServerResource : IMcpServerPrimitive
     /// </para>
     /// <para>
     /// Every valid resource URI is a valid resource URI template, and thus this property always returns an instance.
-    /// In contrast, the <see cref="ProtocolResource"/> property may return <see langword="null"/> if the resource template
+    /// In contrast, the <see cref="ProtocolResource"/> property might return <see langword="null"/> if the resource template
     /// contains a parameter, in which case the resource template URI is not a valid resource URI.
     /// </para>
     /// </remarks>
@@ -224,12 +224,12 @@ public abstract class McpServerResource : IMcpServerPrimitive
 
     /// <summary>
     /// Creates an <see cref="McpServerResource"/> instance for a method, specified via an <see cref="MethodInfo"/> for
-    /// and instance method, along with a <see cref="Type"/> representing the type of the target object to
+    /// an instance method, along with a <see cref="Type"/> representing the type of the target object to
     /// instantiate each time the method is invoked.
     /// </summary>
     /// <param name="method">The instance method to be represented via the created <see cref="AIFunction"/>.</param>
     /// <param name="createTargetFunc">
-    /// Callback used on each function invocation to create an instance of the type on which the instance method <paramref name="method"/>
+    /// The callback used on each function invocation to create an instance of the type on which the instance method <paramref name="method"/>
     /// will be invoked. If the returned instance is <see cref="IAsyncDisposable"/> or <see cref="IDisposable"/>, it will
     /// be disposed of after method completes its invocation.
     /// </param>

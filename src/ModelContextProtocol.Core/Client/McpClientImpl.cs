@@ -58,12 +58,10 @@ internal sealed partial class McpClientImpl : McpClient
     {
         McpClientHandlers handlers = options.Handlers;
 
-#pragma warning disable CS0618 // Type or member is obsolete
-        var notificationHandlersFromOptions = handlers.NotificationHandlers ?? options.Capabilities?.NotificationHandlers;
-        var samplingHandler = handlers.SamplingHandler ?? options.Capabilities?.Sampling?.SamplingHandler;
-        var rootsHandler = handlers.RootsHandler ?? options.Capabilities?.Roots?.RootsHandler;
-        var elicitationHandler = handlers.ElicitationHandler ?? options.Capabilities?.Elicitation?.ElicitationHandler;
-#pragma warning restore CS0618 // Type or member is obsolete
+        var notificationHandlersFromOptions = handlers.NotificationHandlers;
+        var samplingHandler = handlers.SamplingHandler;
+        var rootsHandler = handlers.RootsHandler;
+        var elicitationHandler = handlers.ElicitationHandler;
 
         if (notificationHandlersFromOptions is not null)
         {
@@ -219,6 +217,28 @@ internal sealed partial class McpClientImpl : McpClient
         LogClientConnected(_endpointName);
     }
 
+    /// <summary>
+    /// Configures the client to use an already initialized session without performing the handshake.
+    /// </summary>
+    /// <param name="resumeOptions">The metadata captured from the previous session that should be applied to the resumed client.</param>
+    internal void ResumeSession(ResumeClientSessionOptions resumeOptions)
+    {
+        Throw.IfNull(resumeOptions);
+        Throw.IfNull(resumeOptions.ServerCapabilities);
+        Throw.IfNull(resumeOptions.ServerInfo);
+
+        _ = _sessionHandler.ProcessMessagesAsync(CancellationToken.None);
+
+        _serverCapabilities = resumeOptions.ServerCapabilities;
+        _serverInfo = resumeOptions.ServerInfo;
+        _serverInstructions = resumeOptions.ServerInstructions;
+        _negotiatedProtocolVersion = resumeOptions.NegotiatedProtocolVersion
+            ?? _options.ProtocolVersion
+            ?? McpSessionHandler.LatestProtocolVersion;
+
+        LogClientSessionResumed(_endpointName);
+    }
+
     /// <inheritdoc/>
     public override Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken = default)
         => _sessionHandler.SendRequestAsync(request, cancellationToken);
@@ -261,4 +281,7 @@ internal sealed partial class McpClientImpl : McpClient
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} client created and connected.")]
     private partial void LogClientConnected(string endpointName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} client resumed existing session.")]
+    private partial void LogClientSessionResumed(string endpointName);
 }

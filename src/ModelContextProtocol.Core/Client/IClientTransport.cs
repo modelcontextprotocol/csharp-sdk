@@ -26,15 +26,15 @@ public interface IClientTransport
     /// Asynchronously establishes a transport session with an MCP server and returns a transport for the duplex message stream.
     /// </summary>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>Returns an interface for the duplex message stream.</returns>
+    /// <returns>An interface for the duplex message stream.</returns>
     /// <remarks>
     /// <para>
-    /// This method is responsible for initializing the connection to the server using the specific transport 
-    /// mechanism implemented by the derived class. The returned <see cref="ITransport"/> interface 
+    /// This method is responsible for initializing the connection to the server using the specific transport
+    /// mechanism implemented by the derived class. The returned <see cref="ITransport"/> interface
     /// provides methods to send and receive messages over the established connection.
     /// </para>
     /// <para>
-    /// The lifetime of the returned <see cref="ITransport"/> instance is typically managed by the 
+    /// The lifetime of the returned <see cref="ITransport"/> instance is typically managed by the
     /// <see cref="McpClient"/> that uses this transport. When the client is disposed, it will dispose
     /// the transport session as well.
     /// </para>

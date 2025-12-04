@@ -193,6 +193,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                                 {
                                     Code = (int)mcpProtocolException.ErrorCode,
                                     Message = mcpProtocolException.Message,
+                                    Data = ConvertExceptionData(mcpProtocolException.Data),
                                 },
                                 McpException mcpException => new()
                                 {
@@ -213,6 +214,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                                 Error = detail,
                                 Context = new JsonRpcMessageContext { RelatedTransport = request.Context?.RelatedTransport },
                             };
+
                             await SendMessageAsync(errorMessage, cancellationToken).ConfigureAwait(false);
                         }
                         else if (ex is not OperationCanceledException)
@@ -459,7 +461,40 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             if (response is JsonRpcError error)
             {
                 LogSendingRequestFailed(EndpointName, request.Method, error.Error.Message, error.Error.Code);
-                throw CreateRemoteProtocolException(error);
+                var exception = CreateRemoteProtocolException(error);
+
+                // Populate exception.Data with the error data if present.
+                // When deserializing JSON, Data will be a JsonElement.
+                // We extract primitive values (strings, numbers, bools) for broader compatibility,
+                // as JsonElement is not [Serializable] and cannot be stored in Exception.Data on .NET Framework.
+                if (error.Error.Data is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (var property in jsonElement.EnumerateObject())
+                    {
+                        object? value = property.Value.ValueKind switch
+                        {
+                            JsonValueKind.String => property.Value.GetString(),
+                            JsonValueKind.Number => property.Value.GetDouble(),
+                            JsonValueKind.True => true,
+                            JsonValueKind.False => false,
+                            JsonValueKind.Null => null,
+#if NET
+                            // Objects and arrays are stored as JsonElement on .NET Core only
+                            _ => property.Value,
+#else
+                            // Skip objects/arrays on .NET Framework as JsonElement is not serializable
+                            _ => (object?)null,
+#endif
+                        };
+
+                        if (value is not null || property.Value.ValueKind == JsonValueKind.Null)
+                        {
+                            exception.Data[property.Name] = value;
+                        }
+                    }
+                }
+
+                throw exception;
             }
 
             if (response is JsonRpcResponse success)
@@ -788,6 +823,54 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         }
 
         return new McpProtocolException(formattedMessage, errorCode);
+    }
+
+    /// <summary>
+    /// Converts the <see cref="Exception.Data"/> dictionary to a serializable <see cref="Dictionary{TKey, TValue}"/>.
+    /// Returns null if the data dictionary is empty or contains no string keys with serializable values.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Only entries with string keys are included in the result. Entries with non-string keys are ignored.
+    /// </para>
+    /// <para>
+    /// Each value is serialized to a <see cref="JsonElement"/> to ensure it can be safely included in the
+    /// JSON-RPC error response. Values that cannot be serialized are silently skipped.
+    /// </para>
+    /// </remarks>
+    private static Dictionary<string, JsonElement>? ConvertExceptionData(System.Collections.IDictionary data)
+    {
+        if (data.Count == 0)
+        {
+            return null;
+        }
+
+        var typeInfo = McpJsonUtilities.DefaultOptions.GetTypeInfo<object?>();
+
+        Dictionary<string, JsonElement>? result = null;
+        foreach (System.Collections.DictionaryEntry entry in data)
+        {
+            if (entry.Key is string key)
+            {
+                try
+                {
+                    // Serialize each value upfront to catch any serialization issues
+                    // before attempting to send the message. If the value is already a
+                    // JsonElement, use it directly.
+                    var element = entry.Value is JsonElement je
+                        ? je
+                        : JsonSerializer.SerializeToElement(entry.Value, typeInfo);
+                    result ??= new(data.Count);
+                    result[key] = element;
+                }
+                catch (Exception ex) when (ex is JsonException or NotSupportedException)
+                {
+                    // Skip non-serializable values silently
+                }
+            }
+        }
+
+        return result?.Count > 0 ? result : null;
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} message processing canceled.")]

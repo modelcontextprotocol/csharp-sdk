@@ -23,21 +23,9 @@ namespace ModelContextProtocol.Protocol;
 /// <para>
 /// This class is intentionally empty as the Model Context Protocol specification does not
 /// currently define additional properties for sampling capabilities. Future versions of the
-/// specification may extend this capability with additional configuration options.
+/// specification might extend this capability with additional configuration options.
 /// </para>
 /// </remarks>
 public sealed class CompletionsCapability
 {
-    /// <summary>
-    /// Gets or sets the handler for completion requests.
-    /// </summary>
-    /// <remarks>
-    /// This handler provides auto-completion suggestions for prompt arguments or resource references in the Model Context Protocol.
-    /// The handler receives a reference type (e.g., "ref/prompt" or "ref/resource") and the current argument value,
-    /// and should return appropriate completion suggestions.
-    /// </remarks>
-    [JsonIgnore]
-    [Obsolete($"Use {nameof(McpServerOptions.Handlers.CompleteHandler)} instead. This member will be removed in a subsequent release.")] // See: https://github.com/modelcontextprotocol/csharp-sdk/issues/774
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    public McpRequestHandler<CompleteRequestParams, CompleteResult>? CompleteHandler { get; set; }
 }

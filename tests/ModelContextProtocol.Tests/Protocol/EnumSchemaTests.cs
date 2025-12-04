@@ -1,8 +1,6 @@
 using ModelContextProtocol.Protocol;
 using System.Text.Json;
 
-#pragma warning disable CS0618 // Type or member is obsolete
-
 namespace ModelContextProtocol.Tests.Protocol;
 
 public class EnumSchemaTests
@@ -161,36 +159,9 @@ public class EnumSchemaTests
     }
 
     [Fact]
-    public void LegacyTitledEnumSchema_WithEnumNames_Deserializes_As_EnumSchema()
+    public void SingleSelectEnum_WithEnum_Deserializes_As_UntitledSingleSelect()
     {
-        // Arrange - JSON with enumNames should deserialize as EnumSchema for backward compatibility
-        string json = """
-            {
-                "type": "string",
-                "title": "Status",
-                "enum": ["active", "inactive", "pending"],
-                "enumNames": ["Active", "Inactive", "Pending"],
-                "default": "active"
-            }
-            """;
-
-        // Act
-        var deserialized = JsonSerializer.Deserialize<ElicitRequestParams.PrimitiveSchemaDefinition>(json, McpJsonUtilities.DefaultOptions);
-
-        // Assert
-        Assert.NotNull(deserialized);
-        var result = Assert.IsType<ElicitRequestParams.EnumSchema>(deserialized);
-        Assert.Equal("string", result.Type);
-        Assert.Equal("Status", result.Title);
-        Assert.Equal(["active", "inactive", "pending"], result.Enum);
-        Assert.Equal(["Active", "Inactive", "Pending"], result.EnumNames);
-        Assert.Equal("active", result.Default);
-    }
-
-    [Fact]
-    public void EnumSchema_WithoutEnumNames_Deserializes_As_UntitledSingleSelect()
-    {
-        // Arrange - JSON without enumNames should deserialize as UntitledSingleSelectEnumSchema
+        // Arrange - JSON with enum should deserialize as UntitledSingleSelectEnumSchema
         string json = """
             {
                 "type": "string",
@@ -213,7 +184,7 @@ public class EnumSchemaTests
     }
 
     [Fact]
-    public void EnumSchema_WithOneOf_Deserializes_As_TitledSingleSelect()
+    public void SingleSelectEnum_WithOneOf_Deserializes_As_TitledSingleSelect()
     {
         // Arrange - JSON with oneOf should deserialize as TitledSingleSelectEnumSchema
         string json = """
@@ -246,7 +217,7 @@ public class EnumSchemaTests
     [Fact]
     public void MultiSelectEnum_WithEnum_Deserializes_As_UntitledMultiSelect()
     {
-        // Arrange
+        // Arrange - JSON with items.enum should deserialize as UntitledMultiSelectEnumSchema
         string json = """
             {
                 "type": "array",
@@ -275,7 +246,7 @@ public class EnumSchemaTests
     [Fact]
     public void MultiSelectEnum_WithAnyOf_Deserializes_As_TitledMultiSelect()
     {
-        // Arrange
+        // Arrange - JSON with items.anyOf should deserialize as TitledMultiSelectEnumSchema
         string json = """
             {
                 "type": "array",
@@ -306,4 +277,92 @@ public class EnumSchemaTests
         Assert.Equal("Administrator", result.Items.AnyOf[0].Title);
         Assert.Equal(["user"], result.Default);
     }
+
+#pragma warning disable MCP9001 // EnumSchema and LegacyTitledEnumSchema are deprecated but supported for backward compatibility
+    [Fact]
+    public void LegacyTitledEnumSchema_Serializes_Correctly()
+    {
+        // Arrange
+        var schema = new ElicitRequestParams.LegacyTitledEnumSchema
+        {
+            Title = "Environment",
+            Description = "Deployment environment",
+            Enum = ["dev", "staging", "prod"],
+            EnumNames = ["Development", "Staging", "Production"],
+            Default = "staging"
+        };
+
+        // Act
+        string json = JsonSerializer.Serialize<ElicitRequestParams.PrimitiveSchemaDefinition>(schema, McpJsonUtilities.DefaultOptions);
+        var deserialized = JsonSerializer.Deserialize<ElicitRequestParams.PrimitiveSchemaDefinition>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(deserialized);
+        var result = Assert.IsType<ElicitRequestParams.EnumSchema>(deserialized);
+        Assert.Equal("string", result.Type);
+        Assert.Equal("Environment", result.Title);
+        Assert.Equal("Deployment environment", result.Description);
+        Assert.Equal(["dev", "staging", "prod"], result.Enum);
+        Assert.Equal(["Development", "Staging", "Production"], result.EnumNames);
+        Assert.Equal("staging", result.Default);
+        Assert.Contains("\"enumNames\":[\"Development\",\"Staging\",\"Production\"]", json);
+    }
+
+    [Fact]
+    public void EnumSchema_Serializes_Correctly()
+    {
+        // Arrange
+        var schema = new ElicitRequestParams.EnumSchema
+        {
+            Title = "Environment",
+            Description = "Deployment environment",
+            Enum = ["dev", "staging", "prod"],
+            EnumNames = ["Development", "Staging", "Production"],
+            Default = "staging"
+        };
+
+        // Act
+        string json = JsonSerializer.Serialize<ElicitRequestParams.PrimitiveSchemaDefinition>(schema, McpJsonUtilities.DefaultOptions);
+        var deserialized = JsonSerializer.Deserialize<ElicitRequestParams.PrimitiveSchemaDefinition>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(deserialized);
+        var result = Assert.IsType<ElicitRequestParams.EnumSchema>(deserialized);
+        Assert.Equal("string", result.Type);
+        Assert.Equal("Environment", result.Title);
+        Assert.Equal("Deployment environment", result.Description);
+        Assert.Equal(["dev", "staging", "prod"], result.Enum);
+        Assert.Equal(["Development", "Staging", "Production"], result.EnumNames);
+        Assert.Equal("staging", result.Default);
+        Assert.Contains("\"enumNames\":[\"Development\",\"Staging\",\"Production\"]", json);
+    }
+
+    [Fact]
+    public void Enum_WithEnumNames_Deserializes_As_EnumSchema()
+    {
+        // Arrange - JSON with enumNames should deserialize as (deprecated) EnumSchema
+        string json = """
+            {
+                "type": "string",
+                "title": "Environment",
+                "description": "Deployment environment",
+                "enum": ["dev", "staging", "prod"],
+                "enumNames": ["Development", "Staging", "Production"],
+                "default": "staging"
+            }
+            """;
+        // Act
+        var deserialized = JsonSerializer.Deserialize<ElicitRequestParams.PrimitiveSchemaDefinition>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(deserialized);
+        var result = Assert.IsType<ElicitRequestParams.EnumSchema>(deserialized);
+        Assert.Equal("string", result.Type);
+        Assert.Equal("Environment", result.Title);
+        Assert.Equal("Deployment environment", result.Description);
+        Assert.Equal(["dev", "staging", "prod"], result.Enum);
+        Assert.Equal(["Development", "Staging", "Production"], result.EnumNames);
+        Assert.Equal("staging", result.Default);
+    }
+#pragma warning restore MCP9001
 }

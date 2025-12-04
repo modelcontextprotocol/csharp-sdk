@@ -148,7 +148,10 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(AudioContentBlock))]
     [JsonSerializable(typeof(EmbeddedResourceBlock))]
     [JsonSerializable(typeof(ResourceLinkBlock))]
+    [JsonSerializable(typeof(ContentBlock[]))]
     [JsonSerializable(typeof(IEnumerable<ContentBlock>))]
+    [JsonSerializable(typeof(PromptMessage))]
+    [JsonSerializable(typeof(IEnumerable<PromptMessage>))]
     [JsonSerializable(typeof(PromptReference))]
     [JsonSerializable(typeof(ResourceTemplateReference))]
     [JsonSerializable(typeof(BlobResourceContents))]
@@ -160,7 +163,7 @@ public static partial class McpJsonUtilities
 
     [JsonSerializable(typeof(ProtectedResourceMetadata))]
     [JsonSerializable(typeof(AuthorizationServerMetadata))]
-    [JsonSerializable(typeof(TokenContainer))]
+    [JsonSerializable(typeof(TokenResponse))]
     [JsonSerializable(typeof(DynamicClientRegistrationRequest))]
     [JsonSerializable(typeof(DynamicClientRegistrationResponse))]
 

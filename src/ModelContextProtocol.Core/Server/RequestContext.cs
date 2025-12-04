@@ -10,7 +10,7 @@ namespace ModelContextProtocol.Server;
 /// <remarks>
 /// The <see cref="RequestContext{TParams}"/> encapsulates all contextual information for handling an MCP request.
 /// This type is typically received as a parameter in handler delegates registered with IMcpServerBuilder,
-/// and may be injected as parameters into <see cref="McpServerTool"/>s.
+/// and can be injected as parameters into <see cref="McpServerTool"/>s.
 /// </remarks>
 public sealed class RequestContext<TParams>
 {
@@ -55,7 +55,7 @@ public sealed class RequestContext<TParams>
 
     /// <summary>Gets or sets the services associated with this request.</summary>
     /// <remarks>
-    /// This may not be the same instance stored in <see cref="McpServer.Services"/>
+    /// This provider might not be the same instance stored in <see cref="McpServer.Services"/>
     /// if <see cref="McpServerOptions.ScopeRequests"/> was true, in which case this
     /// might be a scoped <see cref="IServiceProvider"/> derived from the server's
     /// <see cref="McpServer.Services"/>.

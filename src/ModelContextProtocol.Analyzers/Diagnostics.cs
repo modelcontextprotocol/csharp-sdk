@@ -9,6 +9,14 @@ using System.Xml.Linq;
 namespace ModelContextProtocol.Analyzers;
 
 /// <summary>Provides the diagnostic descriptors used by the assembly.</summary>
+/// <remarks>
+/// Analyzer diagnostic IDs are in the format MCP### (or MCP1### if ever needed).
+/// <para>
+/// Diagnostic IDs cannot be reused if an analyzer is removed.
+/// This ensures that users do not suppress warnings for new diagnostics with existing
+/// suppressions that might be left in place from prior uses of the same diagnostic ID.
+/// </para>
+/// </remarks>
 internal static class Diagnostics
 {
     public static DiagnosticDescriptor InvalidXmlDocumentation { get; } = new(
@@ -25,7 +33,7 @@ internal static class Diagnostics
         title: "MCP method must be partial to generate [Description] attributes",
         messageFormat: "Method '{0}' has XML documentation that could be used to generate [Description] attributes, but the method is not declared as partial.",
         category: "mcp",
-        defaultSeverity: DiagnosticSeverity.Warning,
+        defaultSeverity: DiagnosticSeverity.Info,
         isEnabledByDefault: true,
         description: "Methods with MCP attributes should be declared as partial to allow the source generator to emit Description attributes from XML documentation comments.");
 }

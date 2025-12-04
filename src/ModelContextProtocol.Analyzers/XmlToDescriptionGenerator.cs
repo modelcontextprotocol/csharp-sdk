@@ -72,7 +72,7 @@ public sealed class XmlToDescriptionGenerator : IIncrementalGenerator
         List<(IMethodSymbol MethodSymbol, MethodDeclarationSyntax MethodDeclaration, XmlDocumentation? XmlDocs)> methodsToGenerate = new(methods.Length);
         foreach (var methodModel in methods)
         {
-            var xmlDocs = ExtractXmlDocumentation(methodModel.MethodSymbol, context);
+            var xmlDocs = ExtractXmlDocumentation(methodModel.MethodSymbol, methodModel.MethodDeclaration, context);
 
             // Generate implementation for partial methods.
             if (methodModel.MethodDeclaration.Modifiers.Any(SyntaxKind.PartialKeyword))
@@ -97,7 +97,7 @@ public sealed class XmlToDescriptionGenerator : IIncrementalGenerator
         }
     }
 
-    private static XmlDocumentation? ExtractXmlDocumentation(IMethodSymbol methodSymbol, SourceProductionContext context)
+    private static XmlDocumentation? ExtractXmlDocumentation(IMethodSymbol methodSymbol, MethodDeclarationSyntax methodDeclaration, SourceProductionContext context)
     {
         string? xmlDoc = methodSymbol.GetDocumentationCommentXml();
         if (string.IsNullOrWhiteSpace(xmlDoc))
@@ -138,11 +138,14 @@ public sealed class XmlToDescriptionGenerator : IIncrementalGenerator
         }
         catch (System.Xml.XmlException)
         {
-            // Emit warning for invalid XML
-            context.ReportDiagnostic(Diagnostic.Create(
-                Diagnostics.InvalidXmlDocumentation,
-                methodSymbol.Locations.FirstOrDefault(),
-                methodSymbol.Name));
+            // Emit warning for invalid XML only if the method is partial (as that's when it would affect generated code)
+            if (methodDeclaration.Modifiers.Any(SyntaxKind.PartialKeyword))
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    Diagnostics.InvalidXmlDocumentation,
+                    methodSymbol.Locations.FirstOrDefault(),
+                    methodSymbol.Name));
+            }
             return null;
         }
     }
@@ -318,10 +321,13 @@ public sealed class XmlToDescriptionGenerator : IIncrementalGenerator
             writer.WriteLine($"[return: Description(\"{EscapeString(xmlDocs.Returns)}\")]");
         }
 
-        // Copy modifiers from original method syntax.
+        // Copy modifiers from original method syntax, excluding 'async' which is invalid on partial declarations (CS1994).
         // Add return type (without nullable annotations).
         // Add method name.
-        writer.Write(string.Join(" ", methodDeclaration.Modifiers.Select(m => m.Text)));
+        var modifiers = methodDeclaration.Modifiers
+            .Where(m => !m.IsKind(SyntaxKind.AsyncKeyword))
+            .Select(m => m.Text);
+        writer.Write(string.Join(" ", modifiers));
         writer.Write(' ');
         writer.Write(methodSymbol.ReturnType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat));
         writer.Write(' ');
@@ -329,9 +335,11 @@ public sealed class XmlToDescriptionGenerator : IIncrementalGenerator
 
         // Add parameters with their Description attributes.
         writer.Write("(");
+        var parameterSyntaxList = methodDeclaration.ParameterList.Parameters;
         for (int i = 0; i < methodSymbol.Parameters.Length; i++)
         {
             IParameterSymbol param = methodSymbol.Parameters[i];
+            ParameterSyntax? paramSyntax = i < parameterSyntaxList.Count ? parameterSyntaxList[i] : null;
 
             if (i > 0)
             {
@@ -349,6 +357,13 @@ public sealed class XmlToDescriptionGenerator : IIncrementalGenerator
             writer.Write(param.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat));
             writer.Write(' ');
             writer.Write(param.Name);
+
+            // Preserve default parameter values from the original syntax.
+            if (paramSyntax?.Default is { } defaultValue)
+            {
+                writer.Write(' ');
+                writer.Write(defaultValue.ToFullString().Trim());
+            }
         }
         writer.WriteLine(");");
     }

@@ -30,65 +30,57 @@ public sealed class ToolAnnotations
     public string? Title { get; set; }
 
     /// <summary>
-    /// Gets or sets whether the tool may perform destructive updates to its environment.
+    /// Gets or sets a value that indicates whether the tool can perform destructive updates to its environment.
     /// </summary>
+    /// <value>
+    /// The default is <see langword="true"/>.
+    /// </value>
     /// <remarks>
-    /// <para>
-    /// If <see langword="true"/>, the tool may perform destructive updates to its environment.
+    /// If <see langword="true"/>, the tool can perform destructive updates to its environment.
     /// If <see langword="false"/>, the tool performs only additive updates.
     /// This property is most relevant when the tool modifies its environment (ReadOnly = false).
-    /// </para>
-    /// <para>
-    /// The default is <see langword="true"/>.
-    /// </para>
     /// </remarks>
     [JsonPropertyName("destructiveHint")]
     public bool? DestructiveHint { get; set; }
 
     /// <summary>
-    /// Gets or sets whether calling the tool repeatedly with the same arguments 
-    /// will have no additional effect on its environment.
+    /// Gets or sets a value that indicates whether calling the tool repeatedly with the same arguments
+    /// has no additional effect on its environment.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// This property is most relevant when the tool modifies its environment (ReadOnly = false).
-    /// </para>
-    /// <para>
+    /// <value>
+    /// <see langword="true"/> if calling the tool repeatedly with the same arguments
+    /// has no additional effect on the environment; <see langword="false"/> if it does.
     /// The default is <see langword="false"/>.
-    /// </para>
+    /// </value>
+    /// <remarks>
+    /// This property is most relevant when the tool modifies its environment (ReadOnly = false).
     /// </remarks>
     [JsonPropertyName("idempotentHint")]
     public bool? IdempotentHint { get; set; }
 
     /// <summary>
-    /// Gets or sets whether this tool may interact with an "open world" of external entities.
+    /// Gets or sets a value that indicates whether this tool can interact with an "open world" of external entities.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// If <see langword="true"/>, the tool may interact with an unpredictable or dynamic set of entities (like web search).
-    /// If <see langword="false"/>, the tool's domain of interaction is closed and well-defined (like memory access).
-    /// </para>
-    /// <para>
+    /// <value>
+    /// <see langword="true"/> if the tool can interact with an unpredictable or dynamic set of entities (like web search).
+    /// <see langword="false"/> if the tool's domain of interaction is closed and well-defined (like memory access).
     /// The default is <see langword="true"/>.
-    /// </para>
-    /// </remarks>
+    /// </value>
     [JsonPropertyName("openWorldHint")]
     public bool? OpenWorldHint { get; set; }
 
     /// <summary>
-    /// Gets or sets whether this tool does not modify its environment.
+    /// Gets or sets a value that indicates whether this tool modifies its environment.
     /// </summary>
+    /// <value>
+    /// <see langword="true"/> if the tool only performs read operations without changing state.
+    /// <see langword="false"/> if the tool can make modifications to its environment.
+    /// The default is <see langword="false"/>.
+    /// </value>
     /// <remarks>
-    /// <para>
-    /// If <see langword="true"/>, the tool only performs read operations without changing state.
-    /// If <see langword="false"/>, the tool may make modifications to its environment.
-    /// </para>
     /// <para>
     /// Read-only tools do not have side effects beyond computational resource usage.
     /// They don't create, update, or delete data in any system.
-    /// </para>
-    /// <para>
-    /// The default is <see langword="false"/>.
     /// </para>
     /// </remarks>
     [JsonPropertyName("readOnlyHint")]

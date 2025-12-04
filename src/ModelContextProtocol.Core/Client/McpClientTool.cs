@@ -10,7 +10,7 @@ namespace ModelContextProtocol.Client;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The <see cref="McpClientTool"/> class encapsulates an <see cref="McpClient"/> along with a description of 
+/// The <see cref="McpClientTool"/> class encapsulates an <see cref="McpClient"/> along with a description of
 /// a tool available via that client, allowing it to be invoked as an <see cref="AIFunction"/>. This enables integration
 /// with AI models that support function calling capabilities.
 /// </para>
@@ -20,7 +20,7 @@ namespace ModelContextProtocol.Client;
 /// </para>
 /// <para>
 /// Typically, you would get instances of this class by calling the <see cref="McpClient.ListToolsAsync"/>
-/// or <see cref="McpClient.EnumerateToolsAsync"/> extension methods on an <see cref="McpClient"/> instance.
+/// method on an <see cref="McpClient"/> instance.
 /// </para>
 /// </remarks>
 public sealed class McpClientTool : AIFunction
@@ -43,23 +43,22 @@ public sealed class McpClientTool : AIFunction
     /// <param name="client">The <see cref="McpClient"/> instance to use for invoking the tool.</param>
     /// <param name="tool">The protocol <see cref="Tool"/> definition describing the tool's metadata and schema.</param>
     /// <param name="serializerOptions">
-    /// The JSON serialization options governing argument serialization. If <see langword="null"/>, 
-    /// <see cref="McpJsonUtilities.DefaultOptions"/> will be used.
+    /// The JSON serialization options governing argument serialization. If <see langword="null"/>,
+    /// <see cref="McpJsonUtilities.DefaultOptions"/> is used.
     /// </param>
     /// <remarks>
     /// <para>
     /// This constructor enables reusing cached tool definitions across different <see cref="McpClient"/> instances
-    /// without needing to call <see cref="McpClient.ListToolsAsync"/> on every reconnect. This is particularly useful 
+    /// without needing to call <see cref="McpClient.ListToolsAsync"/> on every reconnect. This is particularly useful
     /// in scenarios where tool definitions are stable and network round-trips should be minimized.
     /// </para>
     /// <para>
-    /// The provided <paramref name="tool"/> must represent a tool that is actually available on the server 
-    /// associated with the <paramref name="client"/>. Attempting to invoke a tool that doesn't exist on the 
+    /// The provided <paramref name="tool"/> must represent a tool that is actually available on the server
+    /// associated with the <paramref name="client"/>. Attempting to invoke a tool that doesn't exist on the
     /// server will result in an <see cref="McpException"/>.
     /// </para>
     /// </remarks>
-    /// <exception cref="ArgumentNullException"><paramref name="client"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentNullException"><paramref name="tool"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> or <paramref name="tool"/> is <see langword="null"/>.</exception>
     public McpClientTool(
         McpClient client,
         Tool tool,
@@ -165,23 +164,23 @@ public sealed class McpClientTool : AIFunction
     /// routed to this instance.
     /// </param>
     /// <param name="serializerOptions">
-    /// The JSON serialization options governing argument serialization. If <see langword="null"/>, the default serialization options will be used.
+    /// The JSON serialization options governing argument serialization. If <see langword="null"/>, the default serialization options are used.
     /// </param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>
     /// A task containing the <see cref="CallToolResult"/> from the tool execution. The response includes
-    /// the tool's output content, which may be structured data, text, or an error message.
+    /// the tool's output content, which can be structured data, text, or an error message.
     /// </returns>
     /// <remarks>
     /// The base <see cref="AIFunction.InvokeAsync"/> method is overridden to invoke this <see cref="CallAsync"/> method.
-    /// The only difference in behavior is <see cref="AIFunction.InvokeAsync"/> will serialize the resulting <see cref="CallToolResult"/>"/>
+    /// The only difference in behavior is that <see cref="AIFunction.InvokeAsync"/> serializes the resulting <see cref="CallToolResult"/>"/>
     /// such that the <see cref="object"/> returned is a <see cref="JsonElement"/> containing the serialized <see cref="CallToolResult"/>.
     /// This <see cref="CallToolResult"/> method is intended to be called directly by user code, whereas the base <see cref="AIFunction.InvokeAsync"/>
     /// is intended to be used polymorphically via the base class, typically as part of an <see cref="IChatClient"/> operation.
     /// </remarks>
     /// <exception cref="McpException">The server could not find the requested tool, or the server encountered an error while processing the request.</exception>
     /// <example>
-    /// <code>
+    /// <code language="csharp">
     /// var result = await tool.CallAsync(
     ///     new Dictionary&lt;string, object?&gt;
     ///     {
@@ -203,23 +202,24 @@ public sealed class McpClientTool : AIFunction
     /// <returns>A new instance of <see cref="McpClientTool"/> with the provided name.</returns>
     /// <remarks>
     /// <para>
-    /// This is useful for optimizing the tool name for specific models or for prefixing the tool name 
+    /// This method is useful for optimizing the tool name for specific models or for prefixing the tool name
     /// with a namespace to avoid conflicts.
     /// </para>
     /// <para>
     /// Changing the name can help with:
     /// </para>
     /// <list type="bullet">
-    ///   <item>Making the tool name more intuitive for the model</item>
-    ///   <item>Preventing name collisions when using tools from multiple sources</item>
-    ///   <item>Creating specialized versions of a general tool for specific contexts</item>
+    ///   <item>Making the tool name more intuitive for the model.</item>
+    ///   <item>Preventing name collisions when using tools from multiple sources.</item>
+    ///   <item>Creating specialized versions of a general tool for specific contexts.</item>
     /// </list>
     /// <para>
-    /// When invoking <see cref="AIFunction.InvokeAsync"/>, the MCP server will still be called with 
+    /// When invoking <see cref="AIFunction.InvokeAsync"/>, the MCP server will still be called with
     /// the original tool name, so no mapping is required on the server side. This new name only affects
     /// the value returned from this instance's <see cref="AITool.Name"/>.
     /// </para>
     /// </remarks>
+    /// <returns>A new instance of <see cref="McpClientTool"/> with the provided name.</returns>
     public McpClientTool WithName(string name) =>
         new(_client, ProtocolTool, JsonSerializerOptions, name, _description, _progress);
 
@@ -233,12 +233,12 @@ public sealed class McpClientTool : AIFunction
     /// context about how the tool should be used. This is particularly useful when:
     /// </para>
     /// <list type="bullet">
-    ///   <item>The original description is too technical or lacks clarity for the model</item>
-    ///   <item>You want to add example usage scenarios to improve the model's understanding</item>
-    ///   <item>You need to tailor the tool's description for specific model requirements</item>
+    ///   <item>The original description is too technical or lacks clarity for the model.</item>
+    ///   <item>You want to add example usage scenarios to improve the model's understanding.</item>
+    ///   <item>You need to tailor the tool's description for specific model requirements.</item>
     /// </list>
     /// <para>
-    /// When invoking <see cref="AIFunction.InvokeAsync"/>, the MCP server will still be called with 
+    /// When invoking <see cref="AIFunction.InvokeAsync"/>, the MCP server will still be called with
     /// the original tool description, so no mapping is required on the server side. This new description only affects
     /// the value returned from this instance's <see cref="AITool.Description"/>.
     /// </para>
@@ -260,7 +260,7 @@ public sealed class McpClientTool : AIFunction
     /// </para>
     /// <para>
     /// Only one <see cref="IProgress{T}"/> can be specified at a time. Calling <see cref="WithProgress"/> again
-    /// will overwrite any previously specified progress instance.
+    /// overwrites any previously specified progress instance.
     /// </para>
     /// </remarks>
     /// <returns>A new instance of <see cref="McpClientTool"/>, configured with the provided progress instance.</returns>

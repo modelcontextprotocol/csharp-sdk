@@ -17,7 +17,7 @@ public interface IBaseMetadata
     /// <remarks>
     /// This is intended for UI and end-user contexts. It is optimized to be human-readable and easily understood,
     /// even by those unfamiliar with domain-specific terminology.
-    /// If not provided, <see cref="Name"/> may be used for display (except for tools, where <see cref="ToolAnnotations.Title"/>, if present, 
+    /// If not provided, <see cref="Name"/> can be used for display (except for tools, where <see cref="ToolAnnotations.Title"/>, if present,
     /// should be given precedence over using <see cref="Name"/>).
     /// </remarks>
     [JsonPropertyName("title")]
