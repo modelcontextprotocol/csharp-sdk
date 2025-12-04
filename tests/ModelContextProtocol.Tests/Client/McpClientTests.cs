@@ -287,55 +287,6 @@ public class McpClientTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task EnumerateToolsAsync_AllToolsReturned()
-    {
-        await using McpClient client = await CreateMcpClientForServer();
-
-        await foreach (var tool in client.EnumerateToolsAsync(cancellationToken: TestContext.Current.CancellationToken))
-        {
-            if (tool.Name == "Method4")
-            {
-                var result = await tool.InvokeAsync(new() { ["i"] = 42 }, TestContext.Current.CancellationToken);
-                Assert.Contains("Method4 Result 42", result?.ToString());
-                return;
-            }
-        }
-
-        Assert.Fail("Couldn't find target method");
-    }
-
-    [Fact]
-    public async Task EnumerateToolsAsync_FlowsJsonSerializerOptions()
-    {
-        JsonSerializerOptions options = new(JsonSerializerOptions.Default);
-        await using McpClient client = await CreateMcpClientForServer();
-        bool hasTools = false;
-
-        await foreach (var tool in client.EnumerateToolsAsync(new RequestOptions { JsonSerializerOptions = options }, TestContext.Current.CancellationToken))
-        {
-            Assert.Same(options, tool.JsonSerializerOptions);
-            hasTools = true;
-        }
-
-        foreach (var tool in await client.ListToolsAsync(new RequestOptions { JsonSerializerOptions = options }, TestContext.Current.CancellationToken))
-        {
-            Assert.Same(options, tool.JsonSerializerOptions);
-        }
-
-        Assert.True(hasTools);
-    }
-
-    [Fact]
-    public async Task EnumerateToolsAsync_HonorsJsonSerializerOptions()
-    {
-        JsonSerializerOptions emptyOptions = new() { TypeInfoResolver = JsonTypeInfoResolver.Combine() };
-        await using McpClient client = await CreateMcpClientForServer();
-
-        var tool = (await client.ListToolsAsync(new RequestOptions { JsonSerializerOptions = emptyOptions }, TestContext.Current.CancellationToken)).First();
-        await Assert.ThrowsAsync<NotSupportedException>(async () => await tool.InvokeAsync(new() { ["i"] = 42 }, TestContext.Current.CancellationToken));
-    }
-
-    [Fact]
     public async Task SendRequestAsync_HonorsJsonSerializerOptions()
     {
         JsonSerializerOptions emptyOptions = new() { TypeInfoResolver = JsonTypeInfoResolver.Combine() };

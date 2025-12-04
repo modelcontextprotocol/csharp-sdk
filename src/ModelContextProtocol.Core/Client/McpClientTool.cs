@@ -20,7 +20,7 @@ namespace ModelContextProtocol.Client;
 /// </para>
 /// <para>
 /// Typically, you would get instances of this class by calling the <see cref="McpClient.ListToolsAsync"/>
-/// or <see cref="McpClient.EnumerateToolsAsync"/> extension methods on an <see cref="McpClient"/> instance.
+/// method on an <see cref="McpClient"/> instance.
 /// </para>
 /// </remarks>
 public sealed class McpClientTool : AIFunction
