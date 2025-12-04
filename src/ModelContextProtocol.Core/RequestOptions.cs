@@ -27,37 +27,31 @@ public sealed class RequestOptions
     /// </summary>
     public JsonObject? Meta
     {
-        get
-        {
-            _meta ??= new JsonObject();
-            return _meta;
-        }
+        get => _meta ??= [];
         set
         {
             // Capture the existing progressToken value if set.
-            var progressToken = _meta?["progressToken"];
-            if (value is null)
+            var existingProgressToken = _meta?["progressToken"];
+
+            if (value is not null)
             {
-                if (progressToken is not null)
+                if (existingProgressToken is not null)
                 {
-                    _meta = new JsonObject
-                    {
-                        ["progressToken"] = progressToken,
-                    };
+                    value["progressToken"] ??= existingProgressToken;
                 }
-                else
+
+                _meta = value;
+            }
+            else if (existingProgressToken is not null)
+            {
+                _meta = new()
                 {
-                    _meta = null;
-                }
+                    ["progressToken"] = existingProgressToken,
+                };
             }
             else
             {
-                if (value["progressToken"] is null && progressToken is not null) {
-                    // Remove existing progressToken so it can be set into the new meta.
-                    _meta?.Remove("progressToken");
-                    value["progressToken"] = progressToken;
-                }
-                _meta = value;
+                _meta = null;
             }
         }
     }
@@ -70,21 +64,22 @@ public sealed class RequestOptions
     /// <summary>
     /// The progress token for tracking long-running operations.
     /// </summary>
-    public ProgressToken? ProgressToken {
+    public ProgressToken? ProgressToken
+    {
         get
         {
             return _meta?["progressToken"] switch
             {
-                JsonValue v when v.TryGetValue(out string? s) => new ProgressToken(s),
-                JsonValue v when v.TryGetValue(out long l) => new ProgressToken(l),
+                JsonValue v when v.TryGetValue(out string? s) => new(s),
+                JsonValue v when v.TryGetValue(out long l) => new(l),
                 _ => null
             };
         }
         set
         {
-            if (value?.Token is {} token)
+            if (value?.Token is { } token)
             {
-                _meta ??= new JsonObject();
+                _meta ??= [];
                 _meta["progressToken"] = token switch
                 {
                     string s => s,
