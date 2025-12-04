@@ -34,7 +34,7 @@ public sealed class RequestOptions
         }
         set
         {
-            // Preserve the progress token if set.
+            // Capture the existing progressToken value if set.
             var progressToken = _meta?["progressToken"];
             if (value is null)
             {
@@ -52,7 +52,9 @@ public sealed class RequestOptions
             }
             else
             {
-                if (progressToken is not null) {
+                if (value["progressToken"] is null && progressToken is not null) {
+                    // Remove existing progressToken so it can be set into the new meta.
+                    _meta?.Remove("progressToken");
                     value["progressToken"] = progressToken;
                 }
                 _meta = value;
@@ -85,7 +87,6 @@ public sealed class RequestOptions
                 _meta ??= new JsonObject();
                 _meta["progressToken"] = token switch
                 {
-                    null => _meta.Remove("progressToken"),
                     string s => s,
                     long l => l,
                     _ => throw new InvalidOperationException("ProgressToken must be a string or long"),
