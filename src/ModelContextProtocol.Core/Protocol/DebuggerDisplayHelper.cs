@@ -13,7 +13,7 @@ internal static class DebuggerDisplayHelper
     internal static string GetBase64LengthDisplay(string base64Data)
     {
 #if NET
-        if (System.Buffers.Text.Base64.IsValid(System.Text.Encoding.UTF8.GetBytes(base64Data), out int decodedLength))
+        if (System.Buffers.Text.Base64.IsValid(base64Data, out int decodedLength))
         {
             return $"{decodedLength} bytes";
         }
