@@ -76,6 +76,11 @@ public sealed class StreamableHttpServerTransport : ITransport
     /// <param name="sseResponseStream">The response stream to write MCP JSON-RPC messages as SSE events to.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task representing the send loop that writes JSON-RPC messages to the SSE response stream.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="sseResponseStream"/> is <see langword="null"/>.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// <see cref="Stateless"/> is <see langword="true"/> and GET requests are not supported in stateless mode,
+    /// or a GET request has already been started for this session.
+    /// </exception>
     public async Task HandleGetRequestAsync(Stream sseResponseStream, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(sseResponseStream);
@@ -107,6 +112,7 @@ public sealed class StreamableHttpServerTransport : ITransport
     /// <see false="false"/> if nothing was written because the request body did not contain any <see cref="JsonRpcRequest"/> messages to respond to.
     /// The HTTP application should typically respond with an empty "202 Accepted" response in this scenario.
     /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="message"/> or <paramref name="responseStream"/> is <see langword="null"/>.</exception>
     /// <remarks>
     /// If an authenticated <see cref="ClaimsPrincipal"/> sent the message, that can be included in the <see cref="JsonRpcMessage.Context"/>.
     /// No other part of the context should be set.

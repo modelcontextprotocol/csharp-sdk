@@ -80,6 +80,8 @@ public abstract partial class McpSession : IAsyncDisposable
     /// <param name="method">The notification method name.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous send operation.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="method"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="method"/> is empty or composed entirely of whitespace.</exception>
     /// <remarks>
     /// <para>
     /// This method sends a notification without any parameters. Notifications are one-way messages
@@ -103,6 +105,8 @@ public abstract partial class McpSession : IAsyncDisposable
     /// <param name="serializerOptions">The options governing parameter serialization. If null, default options are used.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous send operation.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="method"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="method"/> is empty or composed entirely of whitespace.</exception>
     /// <remarks>
     /// <para>
     /// This method sends a notification with parameters to the connected session. Notifications are one-way
@@ -158,7 +162,6 @@ public abstract partial class McpSession : IAsyncDisposable
     /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task representing the completion of the notification operation (not the operation being tracked).</returns>
-    /// <exception cref="ArgumentNullException">The current session instance is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="progress"/> is <see langword="null"/>.</exception>
     /// <remarks>
     /// <para>
@@ -195,7 +198,6 @@ public abstract partial class McpSession : IAsyncDisposable
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task representing the completion of the notification operation (not the operation being tracked).</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentNullException">The current session instance is <see langword="null"/>.</exception>
     /// <remarks>
     /// <para>
     /// This method sends a progress notification to the connected session using the Model Context Protocol's

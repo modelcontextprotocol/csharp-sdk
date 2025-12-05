@@ -275,6 +275,7 @@ public sealed class McpClientTool : AIFunction
     /// </para>
     /// </remarks>
     /// <returns>A new instance of <see cref="McpClientTool"/>, configured with the provided progress instance.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="progress"/> is <see langword="null"/>.</exception>
     public McpClientTool WithProgress(IProgress<ProgressNotificationValue> progress)
     {
         Throw.IfNull(progress);

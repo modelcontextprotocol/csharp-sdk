@@ -76,6 +76,7 @@ public sealed class SseResponseStreamTransport(Stream sseResponseStream, string?
     /// <param name="message">The JSON-RPC message received from the client.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task representing the asynchronous operation to buffer the JSON-RPC message for processing.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="message"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">There is an attempt to process a message before calling <see cref="RunAsync(CancellationToken)"/>.</exception>
     /// <remarks>
     /// <para>

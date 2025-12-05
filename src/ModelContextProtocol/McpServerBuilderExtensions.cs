@@ -59,7 +59,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="target">The target instance from which the tools should be sourced.</param>
     /// <param name="serializerOptions">The serializer options governing tool parameter marshalling.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="target"/> is <see langword="null"/>.</exception>
     /// <remarks>
     /// <para>
     /// This method discovers all methods (public and non-public) on the specified <typeparamref name="TToolType"/>
@@ -244,7 +244,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="target">The target instance from which the prompts should be sourced.</param>
     /// <param name="serializerOptions">The serializer options governing prompt parameter marshalling.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="target"/> is <see langword="null"/>.</exception>
     /// <remarks>
     /// <para>
     /// This method discovers all methods (public and non-public) on the specified <typeparamref name="TPromptType"/>
@@ -423,7 +423,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="target">The target instance from which the prompts should be sourced.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="target"/> is <see langword="null"/>.</exception>
     /// <remarks>
     /// <para>
     /// This method discovers all methods (public and non-public) on the specified <typeparamref name="TResourceType"/>

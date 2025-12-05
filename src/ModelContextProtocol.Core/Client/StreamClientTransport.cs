@@ -29,6 +29,7 @@ public sealed class StreamClientTransport : IClientTransport
     /// Reads from this stream will receive messages from the server.
     /// </param>
     /// <param name="loggerFactory">A logger factory for creating loggers.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="serverInput"/> or <paramref name="serverOutput"/> is <see langword="null"/>.</exception>
     public StreamClientTransport(
         Stream serverInput, Stream serverOutput, ILoggerFactory? loggerFactory = null)
     {

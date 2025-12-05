@@ -170,6 +170,7 @@ public abstract class McpServerResource : IMcpServerPrimitive
     /// <returns>
     /// <see langword="true"/> if the <paramref name="uri"/> matches the <see cref="ProtocolResourceTemplate"/>; otherwise, <see langword="false"/>.
     /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
     public abstract bool IsMatch(string uri);
 
     /// <summary>
@@ -235,7 +236,7 @@ public abstract class McpServerResource : IMcpServerPrimitive
     /// </param>
     /// <param name="options">Optional options used in the creation of the <see cref="McpServerResource"/> to control its behavior.</param>
     /// <returns>The created <see cref="AIFunction"/> for invoking <paramref name="method"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="method"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="method"/> or <paramref name="createTargetFunc"/> is <see langword="null"/>.</exception>
     public static McpServerResource Create(
         MethodInfo method,
         Func<RequestContext<ReadResourceRequestParams>, object> createTargetFunc,

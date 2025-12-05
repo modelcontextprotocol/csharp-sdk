@@ -270,6 +270,8 @@ public abstract partial class McpServer : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
     /// <returns>An <see cref="ElicitResult{T}"/> with the user's response, if accepted.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="message"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="message"/> is empty or composed entirely of whitespace.</exception>
+    /// <exception cref="InvalidOperationException">The client does not support elicitation.</exception>
     /// <remarks>
     /// Elicitation uses a constrained subset of JSON Schema and only supports strings, numbers/integers, booleans and string enums.
     /// Unsupported member types are ignored when constructing the schema.
