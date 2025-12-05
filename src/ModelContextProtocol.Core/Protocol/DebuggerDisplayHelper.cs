@@ -17,17 +17,14 @@ internal static class DebuggerDisplayHelper
         {
             return $"{decodedLength} bytes";
         }
-        return "invalid base64";
 #else
         try
         {
-            byte[] decoded = Convert.FromBase64String(base64Data);
-            return $"{decoded.Length} bytes";
+            return $"{Convert.FromBase64String(base64Data).Length} bytes";
         }
-        catch
-        {
-            return "invalid base64";
-        }
+        catch { }
 #endif
+
+        return "invalid base64";
     }
 }
