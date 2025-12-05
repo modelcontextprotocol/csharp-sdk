@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -11,6 +12,7 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class Resource : IBaseMetadata
 {
     /// <inheritdoc />
@@ -105,4 +107,7 @@ public sealed class Resource : IBaseMetadata
     /// </summary>
     [JsonIgnore]
     public McpServerResource? McpServerResource { get; set; }
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay => $"Name = {Name}, Uri = {Uri}";
 }

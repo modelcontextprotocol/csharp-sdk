@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.AI;
 using System.Text.Json.Serialization;
 
@@ -26,6 +27,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class PromptMessage
 {
     /// <summary>
@@ -49,4 +51,7 @@ public sealed class PromptMessage
     /// </remarks>
     [JsonPropertyName("role")]
     public required Role Role { get; set; }
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay => $"Role = {Role}, ContentType = {Content.Type}";
 }

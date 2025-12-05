@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -20,6 +21,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for more details.
 /// </para>
 /// </remarks>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class BlobResourceContents : ResourceContents
 {
     /// <summary>
@@ -27,4 +29,15 @@ public sealed class BlobResourceContents : ResourceContents
     /// </summary>
     [JsonPropertyName("blob")]
     public required string Blob { get; set; }
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay
+    {
+        get
+        {
+            const int MaxLength = 80;
+            string blobPreview = Blob.Length <= MaxLength ? Blob : $"{Blob.Substring(0, MaxLength)}...";
+            return $"Uri = {Uri}, Blob = {blobPreview}";
+        }
+    }
 }

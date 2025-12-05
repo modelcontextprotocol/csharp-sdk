@@ -356,6 +356,7 @@ public abstract class ContentBlock
 }
 
 /// <summary>Represents text provided to or from an LLM.</summary>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class TextContentBlock : ContentBlock
 {
     /// <inheritdoc/>
@@ -366,9 +367,16 @@ public sealed class TextContentBlock : ContentBlock
     /// </summary>
     [JsonPropertyName("text")]
     public required string Text { get; set; }
+
+    /// <inheritdoc/>
+    public override string ToString() => Text;
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay => $"Text = \"{Text}\"";
 }
 
 /// <summary>Represents an image provided to or from an LLM.</summary>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class ImageContentBlock : ContentBlock
 {
     /// <inheritdoc/>
@@ -388,9 +396,21 @@ public sealed class ImageContentBlock : ContentBlock
     /// </remarks>
     [JsonPropertyName("mimeType")]
     public required string MimeType { get; set; }
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay
+    {
+        get
+        {
+            const int MaxLength = 80;
+            string dataPreview = Data.Length <= MaxLength ? Data : $"{Data.Substring(0, MaxLength)}...";
+            return $"MimeType = {MimeType}, Data = {dataPreview}";
+        }
+    }
 }
 
 /// <summary>Represents audio provided to or from an LLM.</summary>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class AudioContentBlock : ContentBlock
 {
     /// <inheritdoc/>
@@ -410,12 +430,24 @@ public sealed class AudioContentBlock : ContentBlock
     /// </remarks>
     [JsonPropertyName("mimeType")]
     public required string MimeType { get; set; }
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay
+    {
+        get
+        {
+            const int MaxLength = 80;
+            string dataPreview = Data.Length <= MaxLength ? Data : $"{Data.Substring(0, MaxLength)}...";
+            return $"MimeType = {MimeType}, Data = {dataPreview}";
+        }
+    }
 }
 
 /// <summary>Represents the contents of a resource, embedded into a prompt or tool call result.</summary>
 /// <remarks>
 /// It is up to the client how best to render embedded resources for the benefit of the LLM and/or the user.
 /// </remarks>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class EmbeddedResourceBlock : ContentBlock
 {
     /// <inheritdoc/>
@@ -433,12 +465,16 @@ public sealed class EmbeddedResourceBlock : ContentBlock
     /// </remarks>
     [JsonPropertyName("resource")]
     public required ResourceContents Resource { get; set; }
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay => $"Uri = {Resource.Uri}";
 }
 
 /// <summary>Represents a resource that the server is capable of reading, included in a prompt or tool call result.</summary>
 /// <remarks>
 /// Resource links returned by tools are not guaranteed to appear in the results of `resources/list` requests.
 /// </remarks>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class ResourceLinkBlock : ContentBlock
 {
     /// <inheritdoc/>
@@ -500,9 +536,13 @@ public sealed class ResourceLinkBlock : ContentBlock
     /// </remarks>
     [JsonPropertyName("size")]
     public long? Size { get; set; }
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay => $"Name = {Name}, Uri = {Uri}";
 }
 
 /// <summary>Represents a request from the assistant to call a tool.</summary>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class ToolUseContentBlock : ContentBlock
 {
     /// <inheritdoc/>
@@ -528,9 +568,13 @@ public sealed class ToolUseContentBlock : ContentBlock
     /// </summary>
     [JsonPropertyName("input")]
     public required JsonElement Input { get; set; }
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay => $"Name = {Name}, Id = {Id}";
 }
 
 /// <summary>Represents the result of a tool use, provided by the user back to the assistant.</summary>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class ToolResultContentBlock : ContentBlock
 {
     /// <inheritdoc/>
@@ -575,4 +619,7 @@ public sealed class ToolResultContentBlock : ContentBlock
     /// </remarks>
     [JsonPropertyName("isError")]
     public bool? IsError { get; set; }
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay => $"ToolUseId = {ToolUseId}, ContentCount = {Content.Count}, IsError = {IsError ?? false}";
 }
