@@ -94,3 +94,120 @@ If the user does not provide the requested information, the ElicitationHandler s
 Here's an example implementation of how a console application might handle elicitation requests:
 
 [!code-csharp[](samples/client/Program.cs?name=snippet_ElicitationHandler)]
+
+### URL Elicitation Required Error
+
+When a tool cannot proceed without first completing a URL-mode elicitation (for example, when third-party OAuth authorization is needed), and calling `ElicitAsync` is not practical (for example in <xref: ModelContextProtocol.AspNetCore.HttpServerTransportOptions.Stateless> is enabled disabling server-to-client requets), the server may throw a <xref:ModelContextProtocol.UrlElicitationRequiredException>. This is a specialized error (JSON-RPC error code `-32042`) that signals to the client that one or more URL-mode elicitations must be completed before the original request can be retried.
+
+#### Throwing UrlElicitationRequiredException on the Server
+
+A server tool can throw `UrlElicitationRequiredException` when it detects that authorization or other out-of-band interaction is required:
+
+```csharp
+[McpServerTool, Description("A tool that requires third-party authorization")]
+public async Task<string> AccessThirdPartyResource(McpServer server, CancellationToken token)
+{
+    // Check if we already have valid credentials for this user
+    // (In a real app, you'd check stored tokens based on user identity)
+    bool hasValidCredentials = false;
+
+    if (!hasValidCredentials)
+    {
+        // Generate a unique elicitation ID for tracking
+        var elicitationId = Guid.NewGuid().ToString();
+
+        // Throw the exception to signal the client needs to complete URL elicitation
+        throw new UrlElicitationRequiredException(
+            "Authorization is required to access the third-party service.",
+            [
+                new ElicitRequestParams
+                {
+                    Mode = "url",
+                    ElicitationId = elicitationId,
+                    Url = $"https://auth.example.com/connect?elicitationId={elicitationId}",
+                    Message = "Please authorize access to your Example Co account."
+                }
+            ]);
+    }
+
+    // Proceed with the authorized operation
+    return "Successfully accessed the resource!";
+}
+```
+
+The exception can include multiple elicitations if the operation requires authorization from multiple services.
+
+#### Catching UrlElicitationRequiredException on the Client
+
+When the client calls a tool and receives a `UrlElicitationRequiredException`, it should:
+
+1. Present each URL elicitation to the user (showing the URL and message)
+2. Get user consent before opening each URL
+3. Optionally wait for completion notifications from the server
+4. Retry the original request after the user completes the out-of-band interactions
+
+```csharp
+try
+{
+    var result = await client.CallToolAsync("AccessThirdPartyResource");
+    Console.WriteLine($"Tool succeeded: {result.Content[0]}");
+}
+catch (UrlElicitationRequiredException ex)
+{
+    Console.WriteLine($"Authorization required: {ex.Message}");
+
+    // Process each required elicitation
+    foreach (var elicitation in ex.Elicitations)
+    {
+        Console.WriteLine($"\nServer requests URL interaction:");
+        Console.WriteLine($"  Message: {elicitation.Message}");
+        Console.WriteLine($"  URL: {elicitation.Url}");
+        Console.WriteLine($"  Elicitation ID: {elicitation.ElicitationId}");
+
+        // Show security warning and get user consent
+        Console.Write("\nDo you want to open this URL? (y/n): ");
+        var consent = Console.ReadLine();
+
+        if (consent?.ToLower() == "y")
+        {
+            // Open the URL in the system browser
+            Process.Start(new ProcessStartInfo(elicitation.Url!) { UseShellExecute = true });
+
+            Console.WriteLine("Waiting for you to complete the interaction in your browser...");
+            // Optionally listen for notifications/elicitation/complete notification
+        }
+    }
+
+    // After user completes the out-of-band interaction, retry the tool call
+    Console.Write("\nPress Enter to retry the tool call...");
+    Console.ReadLine();
+
+    var retryResult = await client.CallToolAsync("AccessThirdPartyResource");
+    Console.WriteLine($"Tool succeeded on retry: {retryResult.Content[0]}");
+}
+```
+
+#### Listening for Elicitation Completion Notifications
+
+Servers can optionally send a `notifications/elicitation/complete` notification when the out-of-band interaction is complete. Clients can register a handler to receive these notifications:
+
+```csharp
+await using var completionHandler = client.RegisterNotificationHandler(
+    NotificationMethods.ElicitationCompleteNotification,
+    async (notification, cancellationToken) =>
+    {
+        var payload = notification.Params?.Deserialize<ElicitationCompleteNotificationParams>(
+            McpJsonUtilities.DefaultOptions);
+
+        if (payload is not null)
+        {
+            Console.WriteLine($"Elicitation {payload.ElicitationId} completed!");
+            // Signal that the client can now retry the original request
+        }
+    });
+```
+
+This pattern is particularly useful for:
+- **Third-party OAuth flows**: When the MCP server needs to obtain tokens from external services on behalf of the user
+- **Payment processing**: When user confirmation is required through a secure payment interface
+- **Sensitive credential collection**: When API keys or other secrets must be entered directly on a trusted server page rather than through the MCP client
