@@ -5,15 +5,10 @@ using ModelContextProtocol.Protocol;
 namespace ModelContextProtocol;
 
 /// <summary>
-/// Contains optional parameters for MCP requests.
+/// Provides a bag of optional parameters for use with MCP requests.
 /// </summary>
 public sealed class RequestOptions
 {
-    /// <summary>
-    /// Optional metadata to include in the request.
-    /// </summary>
-    private JsonObject? _meta;
-
     /// <summary>
     /// Initializes a new instance of the <see cref="RequestOptions"/> class.
     /// </summary>
@@ -22,75 +17,61 @@ public sealed class RequestOptions
     }
 
     /// <summary>
-    /// Optional metadata to include in the request.
-    /// When getting, automatically includes the progress token if set.
+    /// Gets or sets optional metadata to include as the "_meta" property in a request.
     /// </summary>
-    public JsonObject? Meta
-    {
-        get => _meta ??= [];
-        set
-        {
-            // Capture the existing progressToken value if set.
-            var existingProgressToken = _meta?["progressToken"];
-
-            if (value is not null)
-            {
-                if (existingProgressToken is not null)
-                {
-                    value["progressToken"] ??= existingProgressToken;
-                }
-
-                _meta = value;
-            }
-            else if (existingProgressToken is not null)
-            {
-                _meta = new()
-                {
-                    ["progressToken"] = existingProgressToken,
-                };
-            }
-            else
-            {
-                _meta = null;
-            }
-        }
-    }
+    /// <remarks>
+    /// Although progress tokens are propagated in MCP "_meta" objects, the <see cref="ProgressToken"/>
+    /// property and the <see cref="Meta"/> property do not interact (setting <see cref="Meta"/>
+    /// does not affect <see cref="ProgressToken"/>, and the object returned from <see cref="Meta"/>
+    /// is not impacting by the value of <see cref="ProgressToken"/>). To get the actual <see cref="JsonObject"/>
+    /// that contains state from both <see cref="Meta"/> and <see cref="ProgressToken"/>, use the
+    /// <see cref="GetMetaForRequest"/> method.
+    /// </remarks>
+    public JsonObject? Meta { get; set; }
 
     /// <summary>
-    /// The serializer options governing tool parameter serialization. If null, the default options are used.
+    /// Gets or sets an optional progress token to use for tracking long-running operations.
     /// </summary>
+    /// <remarks>
+    /// Although progress tokens are propagated in MCP "_meta" objects, the <see cref="ProgressToken"/>
+    /// property and the <see cref="Meta"/> property do not interact (setting <see cref="ProgressToken"/>
+    /// does not affect <see cref="Meta"/>, and getting <see cref="ProgressToken"/> does not read from
+    /// <see cref="Meta"/>. To get the actual <see cref="JsonObject"/> that contains state from both
+    /// <see cref="Meta"/> and <see cref="ProgressToken"/>, use the <see cref="GetMetaForRequest"/> method.
+    /// </remarks>
+    public ProgressToken? ProgressToken { get; set; }
+
+    /// <summary>
+    /// Gets or sets a <see cref="JsonSerializer"/> to use for any serialization of arguments or results in the request.
+    /// </summary>
+    /// <remarks>
+    /// If <see langword="null"/>, <see cref="McpJsonUtilities.DefaultOptions"/> is used.
+    /// </remarks>
     public JsonSerializerOptions? JsonSerializerOptions { get; set; }
 
     /// <summary>
-    /// The progress token for tracking long-running operations.
+    /// Gets a <see cref="JsonObject"/> to use in requests for the "_meta" property.
     /// </summary>
-    public ProgressToken? ProgressToken
+    /// <returns>
+    /// A <see cref="JsonObject"/> suitable for use in requests for the "_meta" property.
+    /// </returns>
+    /// <remarks>
+    /// Progress tokens are part of MCP's _meta property. As such, if <see cref="ProgressToken"/>
+    /// is non-<see langword="null"/> but <see cref="Meta"/> is <see langword="null"/>, <see cref="GetMetaForRequest"/> will 
+    /// manufacture and return a new <see cref="JsonObject"/> instance containing the token. If both <see cref="ProgressToken"/>
+    /// and <see cref="Meta"/> are non-<see langword="null"/>, a new clone of <see cref="Meta"/> will be created and its
+    /// "progressToken" property overwritten with <see cref="ProgressToken"/>. Otherwise, <see cref="GetMetaForRequest"/>
+    /// will just return <see cref="Meta"/>.
+    /// </remarks>
+    public JsonObject? GetMetaForRequest()
     {
-        get
+        JsonObject? meta = Meta;
+        if (ProgressToken is not null)
         {
-            return _meta?["progressToken"] switch
-            {
-                JsonValue v when v.TryGetValue(out string? s) => new(s),
-                JsonValue v when v.TryGetValue(out long l) => new(l),
-                _ => null
-            };
+            meta = (JsonObject?)meta?.DeepClone() ?? [];
+            meta["progressToken"] = ProgressToken.ToString();
         }
-        set
-        {
-            if (value?.Token is { } token)
-            {
-                _meta ??= [];
-                _meta["progressToken"] = token switch
-                {
-                    string s => s,
-                    long l => l,
-                    _ => throw new InvalidOperationException("ProgressToken must be a string or long"),
-                };
-            }
-            else
-            {
-                _meta?.Remove("progressToken");
-            }
-        }
+
+        return meta;
     }
 }

@@ -93,7 +93,7 @@ public abstract partial class McpClient : McpSession
         return PingAsync(
             new PingRequestParams
             {
-                Meta = options?.Meta
+                Meta = options?.GetMetaForRequest()
             },
             cancellationToken);
     }
@@ -130,7 +130,7 @@ public abstract partial class McpClient : McpSession
         CancellationToken cancellationToken = default)
     {
         List<McpClientTool>? tools = null;
-        ListToolsRequestParams requestParams = new() { Meta = options?.Meta };
+        ListToolsRequestParams requestParams = new() { Meta = options?.GetMetaForRequest() };
         do
         {
             var toolResults = await ListToolsAsync(requestParams, cancellationToken).ConfigureAwait(false);
@@ -184,7 +184,7 @@ public abstract partial class McpClient : McpSession
         CancellationToken cancellationToken = default)
     {
         List<McpClientPrompt>? prompts = null;
-        ListPromptsRequestParams requestParams = new() { Meta = options?.Meta };
+        ListPromptsRequestParams requestParams = new() { Meta = options?.GetMetaForRequest() };
         do
         {
             var promptResults = await ListPromptsAsync(requestParams, cancellationToken).ConfigureAwait(false);
@@ -251,7 +251,7 @@ public abstract partial class McpClient : McpSession
             {
                 Name = name, 
                 Arguments = ToArgumentsDictionary(arguments, serializerOptions),
-                Meta = options?.Meta,
+                Meta = options?.GetMetaForRequest(),
             },
             cancellationToken);
     }
@@ -288,7 +288,7 @@ public abstract partial class McpClient : McpSession
         CancellationToken cancellationToken = default)
     {
         List<McpClientResourceTemplate>? resourceTemplates = null;
-        ListResourceTemplatesRequestParams requestParams = new() { Meta = options?.Meta };
+        ListResourceTemplatesRequestParams requestParams = new() { Meta = options?.GetMetaForRequest() };
         do
         {
             var templateResults = await ListResourceTemplatesAsync(requestParams, cancellationToken).ConfigureAwait(false);
@@ -342,7 +342,7 @@ public abstract partial class McpClient : McpSession
         CancellationToken cancellationToken = default)
     {
         List<McpClientResource>? resources = null;
-        ListResourcesRequestParams requestParams = new() { Meta = options?.Meta };
+        ListResourcesRequestParams requestParams = new() { Meta = options?.GetMetaForRequest() };
         do
         {
             var resourceResults = await ListResourcesAsync(requestParams, cancellationToken).ConfigureAwait(false);
@@ -413,7 +413,7 @@ public abstract partial class McpClient : McpSession
         return ReadResourceAsync(new ReadResourceRequestParams
         {
             Uri = uri,
-            Meta = options?.Meta,
+            Meta = options?.GetMetaForRequest(),
         }, cancellationToken);
     }
 
@@ -434,7 +434,7 @@ public abstract partial class McpClient : McpSession
             new ReadResourceRequestParams 
             {
                 Uri = UriTemplate.FormatUri(uriTemplate, arguments),
-                Meta = options?.Meta,
+                Meta = options?.GetMetaForRequest(),
             },
             cancellationToken);
     }
@@ -481,7 +481,7 @@ public abstract partial class McpClient : McpSession
             {
                 Ref = reference,
                 Argument = new() { Name = argumentName, Value = argumentValue },
-                Meta = options?.Meta,
+                Meta = options?.GetMetaForRequest(),
             },
             cancellationToken);
     }
@@ -536,7 +536,7 @@ public abstract partial class McpClient : McpSession
             new SubscribeRequestParams
             {
                 Uri = uri,
-                Meta = options?.Meta,
+                Meta = options?.GetMetaForRequest(),
             }, 
             cancellationToken);
     }
@@ -591,7 +591,7 @@ public abstract partial class McpClient : McpSession
             new UnsubscribeRequestParams 
             {
                 Uri = uri,
-                Meta = options?.Meta
+                Meta = options?.GetMetaForRequest()
             },
             cancellationToken);
     }
@@ -645,12 +645,12 @@ public abstract partial class McpClient : McpSession
                 {
                     Name = toolName,
                     Arguments = ToArgumentsDictionary(arguments, serializerOptions),
-                    Meta = options?.Meta,
+                    Meta = options?.GetMetaForRequest(),
                 },
                 cancellationToken);
         }
 
-        return SendRequestWithProgressAsync(toolName, arguments, progress, options?.Meta, serializerOptions, cancellationToken);
+        return SendRequestWithProgressAsync(toolName, arguments, progress, options?.GetMetaForRequest(), serializerOptions, cancellationToken);
 
         async ValueTask<CallToolResult> SendRequestWithProgressAsync(
             string toolName,
@@ -732,7 +732,7 @@ public abstract partial class McpClient : McpSession
             new SetLevelRequestParams
             {
                 Level = level, 
-                Meta = options?.Meta
+                Meta = options?.GetMetaForRequest()
             },
             cancellationToken);
     }

@@ -297,7 +297,7 @@ public abstract partial class McpServer : McpSession
         {
             Message = message,
             RequestedSchema = schema,
-            Meta = options?.Meta,
+            Meta = options?.GetMetaForRequest(),
         };
 
         ThrowIfElicitationUnsupported(request);

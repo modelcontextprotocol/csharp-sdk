@@ -183,7 +183,7 @@ public abstract partial class McpSession : IAsyncDisposable
             {
                 ProgressToken = progressToken,
                 Progress = progress,
-                Meta = options?.Meta,
+                Meta = options?.GetMetaForRequest(),
             },
             cancellationToken);
     }
