@@ -23,6 +23,7 @@ namespace ModelContextProtocol.Protocol;
 public sealed class BlobResourceContents : ResourceContents
 {
     private byte[]? _decodedData;
+    private ReadOnlyMemory<byte> _blob;
 
     /// <summary>
     /// Gets or sets the base64-encoded UTF-8 bytes representing the binary data of the item.
@@ -31,7 +32,15 @@ public sealed class BlobResourceContents : ResourceContents
     /// This is a zero-copy representation of the wire payload of this item. Setting this value will invalidate any cached value of <see cref="Data"/>.
     /// </remarks>
     [JsonPropertyName("blob")]
-    public required ReadOnlyMemory<byte> Blob { get; set; }
+    public required ReadOnlyMemory<byte> Blob
+    {
+        get => _blob;
+        set
+        {
+            _blob = value;
+            _decodedData = null; // Invalidate cache
+        }
+    }
 
     /// <summary>
     /// Gets the decoded data represented by <see cref="Blob"/>.

@@ -383,6 +383,7 @@ public sealed class TextContentBlock : ContentBlock
 public sealed class ImageContentBlock : ContentBlock
 {
     private byte[]? _decodedData;
+    private ReadOnlyMemory<byte> _data;
 
     /// <inheritdoc/>
     public override string Type => "image";
@@ -394,7 +395,15 @@ public sealed class ImageContentBlock : ContentBlock
     /// This is a zero-copy representation of the wire payload of this item. Setting this value will invalidate any cached value of <see cref="DecodedData"/>.
     /// </remarks>
     [JsonPropertyName("data")]
-    public required ReadOnlyMemory<byte> Data { get; set; }
+    public required ReadOnlyMemory<byte> Data
+    {
+        get => _data;
+        set
+        {
+            _data = value;
+            _decodedData = null; // Invalidate cache
+        }
+    }
 
     /// <summary>
     /// Gets the decoded image data represented by <see cref="Data"/>.
@@ -434,6 +443,7 @@ public sealed class ImageContentBlock : ContentBlock
 public sealed class AudioContentBlock : ContentBlock
 {
     private byte[]? _decodedData;
+    private ReadOnlyMemory<byte> _data;
 
     /// <inheritdoc/>
     public override string Type => "audio";
@@ -445,7 +455,15 @@ public sealed class AudioContentBlock : ContentBlock
     /// This is a zero-copy representation of the wire payload of this item. Setting this value will invalidate any cached value of <see cref="DecodedData"/>.
     /// </remarks>
     [JsonPropertyName("data")]
-    public required ReadOnlyMemory<byte> Data { get; set; }
+    public required ReadOnlyMemory<byte> Data
+    {
+        get => _data;
+        set
+        {
+            _data = value;
+            _decodedData = null; // Invalidate cache
+        }
+    }
 
     /// <summary>
     /// Gets the decoded audio data represented by <see cref="Data"/>.
