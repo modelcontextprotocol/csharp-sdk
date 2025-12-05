@@ -16,6 +16,9 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
     private static readonly MediaTypeWithQualityHeaderValue s_applicationJsonMediaType = new("application/json");
     private static readonly MediaTypeWithQualityHeaderValue s_textEventStreamMediaType = new("text/event-stream");
 
+    private static readonly TimeSpan s_defaultReconnectionDelay = TimeSpan.FromSeconds(1);
+    private const int MaxReconnectionAttempts = 2;
+
     private readonly McpHttpClient _httpClient;
     private readonly HttpClientTransportOptions _options;
     private readonly CancellationTokenSource _connectionCts;
@@ -106,7 +109,16 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         else if (response.Content.Headers.ContentType?.MediaType == "text/event-stream")
         {
             using var responseBodyStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            rpcResponseOrError = await ProcessSseResponseAsync(responseBodyStream, rpcRequest, cancellationToken).ConfigureAwait(false);
+            var sseState = await ProcessSseResponseAsync(responseBodyStream, rpcRequest, cancellationToken).ConfigureAwait(false);
+            rpcResponseOrError = sseState.Response;
+
+            // Resumability: If POST SSE stream ended without a response but we have a Last-Event-ID (from priming),
+            // attempt to resume by sending a GET request with Last-Event-ID header. The server will replay
+            // events from the event store, allowing us to receive the pending response.
+            if (rpcResponseOrError is null && rpcRequest is not null && sseState.LastEventId is not null)
+            {
+                rpcResponseOrError = await ResumeWithGetRequestAsync(rpcRequest, sseState, cancellationToken).ConfigureAwait(false);
+            }
         }
 
         if (rpcRequest is null)
@@ -188,54 +200,164 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
     private async Task ReceiveUnsolicitedMessagesAsync()
     {
-        // Send a GET request to handle any unsolicited messages not sent over a POST response.
-        using var request = new HttpRequestMessage(HttpMethod.Get, _options.Endpoint);
-        request.Headers.Accept.Add(s_textEventStreamMediaType);
-        CopyAdditionalHeaders(request.Headers, _options.AdditionalHeaders, SessionId, _negotiatedProtocolVersion);
+        var state = new SseStreamState();
 
-        // Server support for the GET request is optional. If it fails, we don't care. It just means we won't receive unsolicited messages.
-        HttpResponseMessage response;
-        try
+        // Continuously receive unsolicited messages until cancelled
+        while (!_connectionCts.Token.IsCancellationRequested)
         {
-            response = await _httpClient.SendAsync(request, message: null, _connectionCts.Token).ConfigureAwait(false);
-        }
-        catch (HttpRequestException)
-        {
-            return;
-        }
+            var result = await SendGetSseRequestWithRetriesAsync(
+                relatedRpcRequest: null,
+                state,
+                delayBeforeFirstAttempt: state.LastEventId is not null,
+                _connectionCts.Token).ConfigureAwait(false);
 
-        using (response)
-        {
-            if (!response.IsSuccessStatusCode)
+            // Update state for next reconnection attempt
+            state = state.UpdateFrom(result);
+
+            // If we exhausted retries without receiving any events, stop trying
+            if (result.LastEventId is null)
             {
                 return;
             }
-
-            using var responseStream = await response.Content.ReadAsStreamAsync(_connectionCts.Token).ConfigureAwait(false);
-            await ProcessSseResponseAsync(responseStream, relatedRpcRequest: null, _connectionCts.Token).ConfigureAwait(false);
         }
     }
 
-    private async Task<JsonRpcMessageWithId?> ProcessSseResponseAsync(Stream responseStream, JsonRpcRequest? relatedRpcRequest, CancellationToken cancellationToken)
+    /// <summary>
+    /// Reconnects via GET request with Last-Event-ID to resume receiving a pending response
+    /// after a POST SSE stream was closed by the server.
+    /// </summary>
+    private async Task<JsonRpcMessageWithId?> ResumeWithGetRequestAsync(
+        JsonRpcRequest relatedRpcRequest,
+        SseStreamState state,
+        CancellationToken cancellationToken)
     {
+        var result = await SendGetSseRequestWithRetriesAsync(
+            relatedRpcRequest,
+            state,
+            delayBeforeFirstAttempt: true,
+            cancellationToken).ConfigureAwait(false);
+
+        return result.Response;
+    }
+
+    /// <summary>
+    /// Sends a GET request for SSE with retry logic and resumability support.
+    /// </summary>
+    private async Task<SseStreamState> SendGetSseRequestWithRetriesAsync(
+        JsonRpcRequest? relatedRpcRequest,
+        SseStreamState state,
+        bool delayBeforeFirstAttempt,
+        CancellationToken cancellationToken)
+    {
+        int attempt = 0;
+        bool shouldDelay = delayBeforeFirstAttempt;
+
+        while (attempt < MaxReconnectionAttempts)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (shouldDelay)
+            {
+                var delay = state.RetryInterval ?? s_defaultReconnectionDelay;
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+            }
+            shouldDelay = true;
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, _options.Endpoint);
+            request.Headers.Accept.Add(s_textEventStreamMediaType);
+            CopyAdditionalHeaders(request.Headers, _options.AdditionalHeaders, SessionId, _negotiatedProtocolVersion);
+
+            if (!string.IsNullOrEmpty(state.LastEventId))
+            {
+                request.Headers.TryAddWithoutValidation("Last-Event-ID", state.LastEventId);
+            }
+
+            HttpResponseMessage response;
+            try
+            {
+                response = await _httpClient.SendAsync(request, message: null, cancellationToken).ConfigureAwait(false);
+            }
+            catch (HttpRequestException)
+            {
+                attempt++;
+                continue;
+            }
+
+            using (response)
+            {
+                if (!response.IsSuccessStatusCode)
+                {
+                    attempt++;
+                    continue;
+                }
+
+                using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+                var result = await ProcessSseResponseAsync(responseStream, relatedRpcRequest, cancellationToken).ConfigureAwait(false);
+
+                state = state.UpdateFrom(result);
+
+                if (result.Response is not null)
+                {
+                    return state;
+                }
+
+                // Stream worked but closed without the response - reset attempts
+                attempt = 0;
+            }
+        }
+
+        return state;
+    }
+
+    /// <summary>
+    /// Tracks resumability state across SSE stream connections.
+    /// </summary>
+    private readonly record struct SseStreamState(
+        JsonRpcMessageWithId? Response,
+        string? LastEventId,
+        TimeSpan? RetryInterval)
+    {
+        public SseStreamState() : this(null, null, null) { }
+
+        public SseStreamState UpdateFrom(SseStreamState other) => new(
+            other.Response ?? Response,
+            other.LastEventId ?? LastEventId,
+            other.RetryInterval ?? RetryInterval);
+    }
+
+    private async Task<SseStreamState> ProcessSseResponseAsync(
+        Stream responseStream,
+        JsonRpcRequest? relatedRpcRequest,
+        CancellationToken cancellationToken)
+    {
+        var state = new SseStreamState();
+
         await foreach (SseItem<string> sseEvent in SseParser.Create(responseStream).EnumerateAsync(cancellationToken).ConfigureAwait(false))
         {
-            if (sseEvent.EventType != "message")
+            // Track event ID and retry interval for resumability
+            if (!string.IsNullOrEmpty(sseEvent.EventId))
+            {
+                state = state with { LastEventId = sseEvent.EventId };
+            }
+            if (sseEvent.ReconnectionInterval.HasValue)
+            {
+                state = state with { RetryInterval = sseEvent.ReconnectionInterval.Value };
+            }
+
+            // Skip events with empty data (priming events, keep-alives)
+            if (string.IsNullOrEmpty(sseEvent.Data) || sseEvent.EventType != "message")
             {
                 continue;
             }
 
             var rpcResponseOrError = await ProcessMessageAsync(sseEvent.Data, relatedRpcRequest, cancellationToken).ConfigureAwait(false);
-
-            // The server SHOULD end the HTTP response body here anyway, but we won't leave it to chance. This transport makes
-            // a GET request for any notifications that might need to be sent after the completion of each POST.
             if (rpcResponseOrError is not null)
             {
-                return rpcResponseOrError;
+                return state with { Response = rpcResponseOrError };
             }
         }
 
-        return null;
+        return state;
     }
 
     private async Task<JsonRpcMessageWithId?> ProcessMessageAsync(string data, JsonRpcRequest? relatedRpcRequest, CancellationToken cancellationToken)

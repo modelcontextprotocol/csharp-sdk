@@ -46,6 +46,10 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
         message.Context ??= new JsonRpcMessageContext();
         message.Context.RelatedTransport = this;
 
+        // Provide callbacks for SSE stream control (SEP-1699)
+        message.Context.CloseSseStream = () => _sseWriter.Complete();
+        message.Context.CloseStandaloneSseStream = () => parentTransport.CloseStandaloneSseStream();
+
         if (parentTransport.FlowExecutionContextFromRequests)
         {
             message.Context.ExecutionContext = ExecutionContext.Capture();
@@ -56,6 +60,17 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
         if (_pendingRequest.Id is null)
         {
             return false;
+        }
+
+        // Configure the SSE writer for resumability if we have an event store
+        if (parentTransport.EventStore is not null && _pendingRequest.Id is not null)
+        {
+            _sseWriter.EventStore = parentTransport.EventStore;
+            _sseWriter.StreamId = _pendingRequest.Id.ToString();
+            _sseWriter.RetryInterval = parentTransport.RetryInterval;
+
+            // Send a priming event to establish resumability for this request
+            await _sseWriter.SendPrimingEventAsync(cancellationToken).ConfigureAwait(false);
         }
 
         _sseWriter.MessageFilter = StopOnFinalResponseFilter;

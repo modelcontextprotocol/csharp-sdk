@@ -58,4 +58,45 @@ public class JsonRpcMessageContext
     /// </para>
     /// </remarks>
     public ClaimsPrincipal? User { get; set; }
+
+    /// <summary>
+    /// Gets or sets a callback that closes the SSE stream associated with the current JSON-RPC request.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This callback implements the SSE polling pattern from SEP-1699. When invoked, it gracefully closes
+    /// the SSE stream for the current request, signaling to the client that it should reconnect to receive
+    /// the response. The server must have sent a priming event with an event ID before this callback is invoked.
+    /// </para>
+    /// <para>
+    /// This is useful for long-running operations where the server wants to free resources while the operation
+    /// is in progress. The client will reconnect with the Last-Event-ID header, and the server will replay
+    /// any events that were sent after that ID.
+    /// </para>
+    /// <para>
+    /// This callback is only available when using the Streamable HTTP transport with resumability enabled.
+    /// For other transports, this property will be <see langword="null"/>.
+    /// </para>
+    /// </remarks>
+    public Action? CloseSseStream { get; set; }
+
+    /// <summary>
+    /// Gets or sets a callback that closes the standalone SSE stream for the current session.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This callback closes the standalone SSE stream that is used for server-initiated messages
+    /// (notifications and requests from server to client). Unlike <see cref="CloseSseStream"/>,
+    /// this affects the session-level SSE stream rather than a request-specific stream.
+    /// </para>
+    /// <para>
+    /// This is useful when the server needs to signal the client to reconnect its standalone SSE stream,
+    /// for example during server restarts or resource cleanup.
+    /// </para>
+    /// <para>
+    /// This callback is only available when using the Streamable HTTP transport.
+    /// For other transports, this property will be <see langword="null"/>.
+    /// </para>
+    /// </remarks>
+    public Action? CloseStandaloneSseStream { get; set; }
 }
