@@ -9,7 +9,7 @@ namespace ModelContextProtocol.Client;
 /// <para>
 /// This class provides a client-side wrapper around a resource template defined on an MCP server. It allows
 /// retrieving the resource template's content by sending a request to the server with the resource's URI.
-/// Instances of this class are typically obtained by calling <see cref="McpClient.ListResourceTemplatesAsync"/>.
+/// Instances of this class are typically obtained by calling <see cref="McpClient.ListResourceTemplatesAsync(RequestOptions?, CancellationToken)"/>.
 /// </para>
 /// </remarks>
 public sealed class McpClientResourceTemplate
@@ -24,7 +24,7 @@ public sealed class McpClientResourceTemplate
     /// <remarks>
     /// <para>
     /// This constructor enables reusing cached resource template definitions across different <see cref="McpClient"/> instances
-    /// without needing to call <see cref="McpClient.ListResourceTemplatesAsync"/> on every reconnect. This is particularly useful
+    /// without needing to call <see cref="McpClient.ListResourceTemplatesAsync(RequestOptions?, CancellationToken)"/> on every reconnect. This is particularly useful
     /// in scenarios where resource template definitions are stable and network round-trips should be minimized.
     /// </para>
     /// <para>

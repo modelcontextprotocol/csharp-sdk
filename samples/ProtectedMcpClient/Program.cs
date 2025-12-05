@@ -70,7 +70,7 @@ if (tools.Any(t => t.Name == "get_alerts"))
 /// </summary>
 /// <param name="authorizationUrl">The authorization URL to open in the browser.</param>
 /// <param name="redirectUri">The redirect URI where the authorization code will be sent.</param>
-/// <param name="cancellationToken">The cancellation token.</param>
+/// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
 /// <returns>The authorization code extracted from the callback, or null if the operation failed.</returns>
 static async Task<string?> HandleAuthorizationUrlAsync(Uri authorizationUrl, Uri redirectUri, CancellationToken cancellationToken)
 {

@@ -12,8 +12,8 @@ namespace ModelContextProtocol.Protocol;
 /// </summary>
 /// <remarks>
 /// <para>
-/// References are commonly used with <see cref="McpClient.CompleteAsync"/> to request completion suggestions for arguments,
-/// and with other methods that need to reference resources or prompts.
+/// References are commonly used with <see cref="McpClient.CompleteAsync(Reference, string, string, ModelContextProtocol.RequestOptions?, CancellationToken)"/>
+/// to request completion suggestions for arguments, and with other methods that need to reference resources or prompts.
 /// </para>
 /// <para>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.

@@ -102,7 +102,7 @@ internal sealed partial class ClientOAuthProvider
     /// </summary>
     /// <param name="authorizationUrl">The authorization URL to handle.</param>
     /// <param name="redirectUri">The redirect URI where the authorization code will be sent.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>The authorization code entered by the user, or null if none was provided.</returns>
     private static Task<string?> DefaultAuthorizationUrlHandler(Uri authorizationUrl, Uri redirectUri, CancellationToken cancellationToken)
     {
@@ -135,7 +135,7 @@ internal sealed partial class ClientOAuthProvider
     /// </summary>
     /// <param name="scheme">The authentication scheme to use.</param>
     /// <param name="resourceUri">The URI of the resource requiring authentication.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>An authentication token string, or null if no token could be obtained for the specified scheme.</returns>
     public async Task<string?> GetCredentialAsync(string scheme, Uri resourceUri, CancellationToken cancellationToken = default)
     {
@@ -168,7 +168,7 @@ internal sealed partial class ClientOAuthProvider
     /// </summary>
     /// <param name="scheme">The authentication scheme that was used when the unauthorized response was received.</param>
     /// <param name="response">The HTTP response that contained the 401 status code.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>
     /// A result object indicating if the provider was able to handle the unauthorized response,
     /// and the authentication scheme that should be used for the next attempt, if any.
@@ -186,7 +186,7 @@ internal sealed partial class ClientOAuthProvider
     /// Performs OAuth authorization by selecting an appropriate authorization server and completing the OAuth flow.
     /// </summary>
     /// <param name="response">The 401 Unauthorized response containing authentication challenge.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A result object indicating whether authorization was successful.</returns>
     private async Task PerformOAuthAuthorizationAsync(
         HttpResponseMessage response,
@@ -473,7 +473,7 @@ internal sealed partial class ClientOAuthProvider
     /// Fetches the protected resource metadata from the provided URL.
     /// </summary>
     /// <param name="metadataUrl">The URL to fetch the metadata from.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>The fetched ProtectedResourceMetadata, or null if it couldn't be fetched.</returns>
     private async Task<ProtectedResourceMetadata?> FetchProtectedResourceMetadataAsync(Uri metadataUrl, CancellationToken cancellationToken = default)
     {
@@ -488,7 +488,7 @@ internal sealed partial class ClientOAuthProvider
     /// Performs dynamic client registration with the authorization server.
     /// </summary>
     /// <param name="authServerMetadata">The authorization server metadata.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     private async Task PerformDynamicClientRegistrationAsync(
         AuthorizationServerMetadata authServerMetadata,
@@ -609,7 +609,7 @@ internal sealed partial class ClientOAuthProvider
     /// </summary>
     /// <param name="response">The HTTP response containing the WWW-Authenticate header.</param>
     /// <param name="serverUrl">The server URL to verify against the resource metadata.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>The resource metadata if the resource matches the server, otherwise throws an exception.</returns>
     /// <exception cref="InvalidOperationException">Thrown when the response is not a 401, lacks a WWW-Authenticate header,
     /// lacks a resource_metadata parameter, the metadata can't be fetched, or the resource URI doesn't match the server URL.</exception>

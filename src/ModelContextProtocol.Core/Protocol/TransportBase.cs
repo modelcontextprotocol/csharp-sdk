@@ -94,6 +94,8 @@ public abstract partial class TransportBase : ITransport
             throw new InvalidOperationException("Transport is not connected.");
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (_logger.IsEnabled(LogLevel.Debug))
         {
             var messageId = (message as JsonRpcMessageWithId)?.Id.ToString() ?? "(no id)";

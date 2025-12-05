@@ -1,8 +1,6 @@
-﻿using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -41,7 +39,12 @@ public abstract partial class McpClient : McpSession
         }
         catch
         {
-            await clientSession.DisposeAsync().ConfigureAwait(false);
+            try
+            {
+                await clientSession.DisposeAsync().ConfigureAwait(false);
+            }
+            catch { } // allow the original exception to propagate
+
             throw;
         }
 
@@ -55,7 +58,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="resumeOptions">The metadata captured from the original session that should be applied when resuming.</param>
     /// <param name="clientOptions">Optional client settings that should mirror those used to create the original session.</param>
     /// <param name="loggerFactory">An optional logger factory for diagnostics.</param>
-    /// <param name="cancellationToken">Token used when establishing the transport connection.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>An <see cref="McpClient"/> bound to the resumed session.</returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="clientTransport"/> or <paramref name="resumeOptions"/> is <see langword="null"/>.</exception>
     public static async Task<McpClient> ResumeSessionAsync(
@@ -71,10 +74,10 @@ public abstract partial class McpClient : McpSession
         Throw.IfNull(resumeOptions.ServerInfo);
 
         var transport = await clientTransport.ConnectAsync(cancellationToken).ConfigureAwait(false);
-        var endpointName = clientTransport.Name;
 
-        var clientSession = new McpClientImpl(transport, endpointName, clientOptions, loggerFactory);
+        McpClientImpl clientSession = new(transport, clientTransport.Name, clientOptions, loggerFactory);
         clientSession.ResumeSession(resumeOptions);
+        
         return clientSession;
     }
 
@@ -87,9 +90,30 @@ public abstract partial class McpClient : McpSession
     /// <exception cref="McpException">The server cannot be reached or returned an error response.</exception>
     public ValueTask<PingResult> PingAsync(RequestOptions? options = null, CancellationToken cancellationToken = default)
     {
+        return PingAsync(
+            new PingRequestParams
+            {
+                Meta = options?.Meta
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends a ping request to verify server connectivity.
+    /// </summary>
+    /// <param name="requestParams">The request parameters to send in the request.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A task containing the ping result.</returns>
+    /// <exception cref="McpException">The server cannot be reached or returned an error response.</exception>
+    public ValueTask<PingResult> PingAsync(
+        PingRequestParams requestParams,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(requestParams);
+
         return SendRequestAsync(
             RequestMethods.Ping,
-            new PingRequestParams { Meta = options?.Meta },
+            requestParams,
             McpJsonUtilities.JsonContext.Default.PingRequestParams,
             McpJsonUtilities.JsonContext.Default.PingResult,
             cancellationToken: cancellationToken);
@@ -106,27 +130,47 @@ public abstract partial class McpClient : McpSession
         CancellationToken cancellationToken = default)
     {
         List<McpClientTool>? tools = null;
-        string? cursor = null;
+        ListToolsRequestParams requestParams = new() { Meta = options?.Meta };
         do
         {
-            var toolResults = await SendRequestAsync(
-                RequestMethods.ToolsList,
-                new() { Cursor = cursor, Meta = options?.Meta },
-                McpJsonUtilities.JsonContext.Default.ListToolsRequestParams,
-                McpJsonUtilities.JsonContext.Default.ListToolsResult,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            tools ??= new List<McpClientTool>(toolResults.Tools.Count);
+            var toolResults = await ListToolsAsync(requestParams, cancellationToken).ConfigureAwait(false);
+            tools ??= new(toolResults.Tools.Count);
             foreach (var tool in toolResults.Tools)
             {
-                tools.Add(new McpClientTool(this, tool, options?.JsonSerializerOptions));
+                tools.Add(new(this, tool, options?.JsonSerializerOptions));
             }
 
-            cursor = toolResults.NextCursor;
+            requestParams.Cursor = toolResults.NextCursor;
         }
-        while (cursor is not null);
+        while (requestParams.Cursor is not null);
 
         return tools;
+    }
+
+    /// <summary>
+    /// Retrieves a list of available tools from the server.
+    /// </summary>
+    /// <param name="requestParams">The request parameters to send in the request.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>The result of the request as provided by the server.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// The <see cref="ListToolsAsync(RequestOptions?, CancellationToken)"/> overload retrieves all tools by automatically handling pagination.
+    /// This overload works with the lower-level <see cref="ListToolsRequestParams"/> and <see cref="ListToolsResult"/>, returning the raw result from the server.
+    /// Any pagination needs to be managed by the caller.
+    /// </remarks>
+    public ValueTask<ListToolsResult> ListToolsAsync(
+        ListToolsRequestParams requestParams,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(requestParams);
+
+        return SendRequestAsync(
+            RequestMethods.ToolsList,
+            requestParams,
+            McpJsonUtilities.JsonContext.Default.ListToolsRequestParams,
+            McpJsonUtilities.JsonContext.Default.ListToolsResult,
+            cancellationToken: cancellationToken);
     }
 
     /// <summary>
@@ -140,27 +184,47 @@ public abstract partial class McpClient : McpSession
         CancellationToken cancellationToken = default)
     {
         List<McpClientPrompt>? prompts = null;
-        string? cursor = null;
+        ListPromptsRequestParams requestParams = new() { Meta = options?.Meta };
         do
         {
-            var promptResults = await SendRequestAsync(
-                RequestMethods.PromptsList,
-                new() { Cursor = cursor, Meta = options?.Meta },
-                McpJsonUtilities.JsonContext.Default.ListPromptsRequestParams,
-                McpJsonUtilities.JsonContext.Default.ListPromptsResult,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            prompts ??= new List<McpClientPrompt>(promptResults.Prompts.Count);
+            var promptResults = await ListPromptsAsync(requestParams, cancellationToken).ConfigureAwait(false);
+            prompts ??= new(promptResults.Prompts.Count);
             foreach (var prompt in promptResults.Prompts)
             {
-                prompts.Add(new McpClientPrompt(this, prompt));
+                prompts.Add(new(this, prompt));
             }
 
-            cursor = promptResults.NextCursor;
+            requestParams.Cursor = promptResults.NextCursor;
         }
-        while (cursor is not null);
+        while (requestParams.Cursor is not null);
 
         return prompts;
+    }
+
+    /// <summary>
+    /// Retrieves a list of available prompts from the server.
+    /// </summary>
+    /// <param name="requestParams">The request parameters to send in the request.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>The result of the request as provided by the server.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// The <see cref="ListPromptsAsync(RequestOptions?, CancellationToken)"/> overload retrieves all prompts by automatically handling pagination.
+    /// This overload works with the lower-level <see cref="ListPromptsRequestParams"/> and <see cref="ListPromptsResult"/>, returning the raw result from the server.
+    /// Any pagination needs to be managed by the caller.
+    /// </remarks>
+    public ValueTask<ListPromptsResult> ListPromptsAsync(
+        ListPromptsRequestParams requestParams,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(requestParams);
+
+        return SendRequestAsync(
+            RequestMethods.PromptsList,
+            requestParams,
+            McpJsonUtilities.JsonContext.Default.ListPromptsRequestParams,
+            McpJsonUtilities.JsonContext.Default.ListPromptsResult,
+            cancellationToken: cancellationToken);
     }
 
     /// <summary>
@@ -182,9 +246,32 @@ public abstract partial class McpClient : McpSession
         var serializerOptions = options?.JsonSerializerOptions ?? McpJsonUtilities.DefaultOptions;
         serializerOptions.MakeReadOnly();
 
+        return GetPromptAsync(
+            new GetPromptRequestParams 
+            {
+                Name = name, 
+                Arguments = ToArgumentsDictionary(arguments, serializerOptions),
+                Meta = options?.Meta,
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Retrieves a list of available prompts from the server.
+    /// </summary>
+    /// <param name="requestParams">The request parameters to send in the request.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>The result of the request as provided by the server.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    public ValueTask<GetPromptResult> GetPromptAsync(
+        GetPromptRequestParams requestParams,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(requestParams);
+
         return SendRequestAsync(
             RequestMethods.PromptsGet,
-            new() { Name = name, Arguments = ToArgumentsDictionary(arguments, serializerOptions), Meta = options?.Meta },
+            requestParams,
             McpJsonUtilities.JsonContext.Default.GetPromptRequestParams,
             McpJsonUtilities.JsonContext.Default.GetPromptResult,
             cancellationToken: cancellationToken);
@@ -201,28 +288,47 @@ public abstract partial class McpClient : McpSession
         CancellationToken cancellationToken = default)
     {
         List<McpClientResourceTemplate>? resourceTemplates = null;
-
-        string? cursor = null;
+        ListResourceTemplatesRequestParams requestParams = new() { Meta = options?.Meta };
         do
         {
-            var templateResults = await SendRequestAsync(
-                RequestMethods.ResourcesTemplatesList,
-                new() { Cursor = cursor, Meta = options?.Meta },
-                McpJsonUtilities.JsonContext.Default.ListResourceTemplatesRequestParams,
-                McpJsonUtilities.JsonContext.Default.ListResourceTemplatesResult,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            resourceTemplates ??= new List<McpClientResourceTemplate>(templateResults.ResourceTemplates.Count);
+            var templateResults = await ListResourceTemplatesAsync(requestParams, cancellationToken).ConfigureAwait(false);
+            resourceTemplates ??= new(templateResults.ResourceTemplates.Count);
             foreach (var template in templateResults.ResourceTemplates)
             {
-                resourceTemplates.Add(new McpClientResourceTemplate(this, template));
+                resourceTemplates.Add(new(this, template));
             }
 
-            cursor = templateResults.NextCursor;
+            requestParams.Cursor = templateResults.NextCursor;
         }
-        while (cursor is not null);
+        while (requestParams.Cursor is not null);
 
         return resourceTemplates;
+    }
+
+    /// <summary>
+    /// Retrieves a list of available resource templates from the server.
+    /// </summary>
+    /// <param name="requestParams">The request parameters to send in the request.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>The result of the request as provided by the server.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// The <see cref="ListResourceTemplatesAsync(RequestOptions?, CancellationToken)"/> overload retrieves all resource templates by automatically handling pagination.
+    /// This overload works with the lower-level <see cref="ListResourceTemplatesRequestParams"/> and <see cref="ListResourceTemplatesResult"/>, returning the raw result from the server.
+    /// Any pagination needs to be managed by the caller.
+    /// </remarks>
+    public ValueTask<ListResourceTemplatesResult> ListResourceTemplatesAsync(
+        ListResourceTemplatesRequestParams requestParams,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(requestParams);
+
+        return SendRequestAsync(
+            RequestMethods.ResourcesTemplatesList,
+            requestParams,
+            McpJsonUtilities.JsonContext.Default.ListResourceTemplatesRequestParams,
+            McpJsonUtilities.JsonContext.Default.ListResourceTemplatesResult,
+            cancellationToken: cancellationToken);
     }
 
     /// <summary>
@@ -236,28 +342,61 @@ public abstract partial class McpClient : McpSession
         CancellationToken cancellationToken = default)
     {
         List<McpClientResource>? resources = null;
-
-        string? cursor = null;
+        ListResourcesRequestParams requestParams = new() { Meta = options?.Meta };
         do
         {
-            var resourceResults = await SendRequestAsync(
-                RequestMethods.ResourcesList,
-                new() { Cursor = cursor, Meta = options?.Meta },
-                McpJsonUtilities.JsonContext.Default.ListResourcesRequestParams,
-                McpJsonUtilities.JsonContext.Default.ListResourcesResult,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            resources ??= new List<McpClientResource>(resourceResults.Resources.Count);
+            var resourceResults = await ListResourcesAsync(requestParams, cancellationToken).ConfigureAwait(false);
+            resources ??= new(resourceResults.Resources.Count);
             foreach (var resource in resourceResults.Resources)
             {
-                resources.Add(new McpClientResource(this, resource));
+                resources.Add(new(this, resource));
             }
 
-            cursor = resourceResults.NextCursor;
+            requestParams.Cursor = resourceResults.NextCursor;
         }
-        while (cursor is not null);
+        while (requestParams.Cursor is not null);
 
         return resources;
+    }
+
+    /// <summary>
+    /// Retrieves a list of available resources from the server.
+    /// </summary>
+    /// <param name="requestParams">The request parameters to send in the request.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>The result of the request as provided by the server.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// The <see cref="ListResourcesAsync(RequestOptions?, CancellationToken)"/> overload retrieves all resources by automatically handling pagination.
+    /// This overload works with the lower-level <see cref="ListResourcesRequestParams"/> and <see cref="ListResourcesResult"/>, returning the raw result from the server.
+    /// Any pagination needs to be managed by the caller.
+    /// </remarks>
+    public ValueTask<ListResourcesResult> ListResourcesAsync(
+        ListResourcesRequestParams requestParams,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(requestParams);
+
+        return SendRequestAsync(
+            RequestMethods.ResourcesList,
+            requestParams,
+            McpJsonUtilities.JsonContext.Default.ListResourcesRequestParams,
+            McpJsonUtilities.JsonContext.Default.ListResourcesResult,
+            cancellationToken: cancellationToken);
+    }
+        
+    /// <summary>
+    /// Reads a resource from the server.
+    /// </summary>
+    /// <param name="uri">The URI of the resource.</param>
+    /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    public ValueTask<ReadResourceResult> ReadResourceAsync(
+        Uri uri, RequestOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(uri);
+
+        return ReadResourceAsync(uri.AbsoluteUri, options, cancellationToken);
     }
 
     /// <summary>
@@ -271,26 +410,11 @@ public abstract partial class McpClient : McpSession
     {
         Throw.IfNullOrWhiteSpace(uri);
 
-        return SendRequestAsync(
-            RequestMethods.ResourcesRead,
-            new() { Uri = uri, Meta = options?.Meta },
-            McpJsonUtilities.JsonContext.Default.ReadResourceRequestParams,
-            McpJsonUtilities.JsonContext.Default.ReadResourceResult,
-            cancellationToken: cancellationToken);
-    }
-
-    /// <summary>
-    /// Reads a resource from the server.
-    /// </summary>
-    /// <param name="uri">The URI of the resource.</param>
-    /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
-    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    public ValueTask<ReadResourceResult> ReadResourceAsync(
-        Uri uri, RequestOptions? options = null, CancellationToken cancellationToken = default)
-    {
-        Throw.IfNull(uri);
-
-        return ReadResourceAsync(uri.ToString(), options, cancellationToken);
+        return ReadResourceAsync(new ReadResourceRequestParams
+        {
+            Uri = uri,
+            Meta = options?.Meta,
+        }, cancellationToken);
     }
 
     /// <summary>
@@ -306,9 +430,31 @@ public abstract partial class McpClient : McpSession
         Throw.IfNullOrWhiteSpace(uriTemplate);
         Throw.IfNull(arguments);
 
+        return ReadResourceAsync(
+            new ReadResourceRequestParams 
+            {
+                Uri = UriTemplate.FormatUri(uriTemplate, arguments),
+                Meta = options?.Meta,
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads a resource from the server.
+    /// </summary>
+    /// <param name="requestParams">The request parameters to send in the request.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>The result of the request.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    public ValueTask<ReadResourceResult> ReadResourceAsync(
+        ReadResourceRequestParams requestParams,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(requestParams);
+
         return SendRequestAsync(
             RequestMethods.ResourcesRead,
-            new() { Uri = UriTemplate.FormatUri(uriTemplate, arguments), Meta = options?.Meta },
+            requestParams,
             McpJsonUtilities.JsonContext.Default.ReadResourceRequestParams,
             McpJsonUtilities.JsonContext.Default.ReadResourceResult,
             cancellationToken: cancellationToken);
@@ -320,23 +466,59 @@ public abstract partial class McpClient : McpSession
     /// <param name="reference">The reference object specifying the type and optional URI or name.</param>
     /// <param name="argumentName">The name of the argument for which completions are requested.</param>
     /// <param name="argumentValue">The current value of the argument, used to filter relevant completions.</param>
+    /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A <see cref="CompleteResult"/> containing completion suggestions.</returns>
-    public ValueTask<CompleteResult> CompleteAsync(Reference reference, string argumentName, string argumentValue, CancellationToken cancellationToken = default)
+    public ValueTask<CompleteResult> CompleteAsync(
+        Reference reference, string argumentName, string argumentValue,
+        RequestOptions? options = null, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(reference);
         Throw.IfNullOrWhiteSpace(argumentName);
 
-        return SendRequestAsync(
-            RequestMethods.CompletionComplete,
-            new()
+        return CompleteAsync(
+            new CompleteRequestParams
             {
                 Ref = reference,
-                Argument = new Argument { Name = argumentName, Value = argumentValue }
+                Argument = new() { Name = argumentName, Value = argumentValue },
+                Meta = options?.Meta,
             },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Requests completion suggestions for a prompt argument or resource reference.
+    /// </summary>
+    /// <param name="requestParams">The request parameters to send in the request.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>The result of the request.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    public ValueTask<CompleteResult> CompleteAsync(
+        CompleteRequestParams requestParams, 
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(requestParams);
+
+        return SendRequestAsync(
+            RequestMethods.CompletionComplete,
+            requestParams,
             McpJsonUtilities.JsonContext.Default.CompleteRequestParams,
             McpJsonUtilities.JsonContext.Default.CompleteResult,
             cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// Unsubscribes from a resource on the server to stop receiving notifications about its changes.
+    /// </summary>
+    /// <param name="uri">The URI of the resource to which to subscribe.</param>
+    /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    public Task SubscribeToResourceAsync(Uri uri, RequestOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(uri);
+
+        return SubscribeToResourceAsync(uri.AbsoluteUri, options, cancellationToken);
     }
 
     /// <summary>
@@ -350,43 +532,32 @@ public abstract partial class McpClient : McpSession
     {
         Throw.IfNullOrWhiteSpace(uri);
 
-        return SendRequestAsync(
-            RequestMethods.ResourcesSubscribe,
-            new() { Uri = uri, Meta = options?.Meta },
-            McpJsonUtilities.JsonContext.Default.SubscribeRequestParams,
-            McpJsonUtilities.JsonContext.Default.EmptyResult,
-            cancellationToken: cancellationToken).AsTask();
+        return SubscribeToResourceAsync(
+            new SubscribeRequestParams
+            {
+                Uri = uri,
+                Meta = options?.Meta,
+            }, 
+            cancellationToken);
     }
 
     /// <summary>
     /// Subscribes to a resource on the server to receive notifications when it changes.
     /// </summary>
-    /// <param name="uri">The URI of the resource to which to subscribe.</param>
-    /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
+    /// <param name="requestParams">The request parameters to send in the request.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>A task that represents the asynchronous operation.</returns>
-    public Task SubscribeToResourceAsync(Uri uri, RequestOptions? options = null, CancellationToken cancellationToken = default)
+    /// <returns>The result of the request.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    public Task SubscribeToResourceAsync(
+        SubscribeRequestParams requestParams,
+        CancellationToken cancellationToken = default)
     {
-        Throw.IfNull(uri);
-
-        return SubscribeToResourceAsync(uri.ToString(), options, cancellationToken);
-    }
-
-    /// <summary>
-    /// Unsubscribes from a resource on the server to stop receiving notifications about its changes.
-    /// </summary>
-    /// <param name="uri">The URI of the resource to unsubscribe from.</param>
-    /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
-    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>A task that represents the asynchronous operation.</returns>
-    public Task UnsubscribeFromResourceAsync(string uri, RequestOptions? options = null, CancellationToken cancellationToken = default)
-    {
-        Throw.IfNullOrWhiteSpace(uri);
+        Throw.IfNull(requestParams);
 
         return SendRequestAsync(
-            RequestMethods.ResourcesUnsubscribe,
-            new() { Uri = uri, Meta = options?.Meta },
-            McpJsonUtilities.JsonContext.Default.UnsubscribeRequestParams,
+            RequestMethods.ResourcesSubscribe,
+            requestParams,
+            McpJsonUtilities.JsonContext.Default.SubscribeRequestParams,
             McpJsonUtilities.JsonContext.Default.EmptyResult,
             cancellationToken: cancellationToken).AsTask();
     }
@@ -402,7 +573,48 @@ public abstract partial class McpClient : McpSession
     {
         Throw.IfNull(uri);
 
-        return UnsubscribeFromResourceAsync(uri.ToString(), options, cancellationToken);
+        return UnsubscribeFromResourceAsync(uri.AbsoluteUri, options, cancellationToken);
+    }
+
+    /// <summary>
+    /// Unsubscribes from a resource on the server to stop receiving notifications about its changes.
+    /// </summary>
+    /// <param name="uri">The URI of the resource to unsubscribe from.</param>
+    /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
+    public Task UnsubscribeFromResourceAsync(string uri, RequestOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        Throw.IfNullOrWhiteSpace(uri);
+
+        return UnsubscribeFromResourceAsync(
+            new UnsubscribeRequestParams 
+            {
+                Uri = uri,
+                Meta = options?.Meta
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Unsubscribes from a resource on the server to stop receiving notifications about its changes.
+    /// </summary>
+    /// <param name="requestParams">The request parameters to send in the request.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>The result of the request.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    public Task UnsubscribeFromResourceAsync(
+        UnsubscribeRequestParams requestParams,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(requestParams);
+
+        return SendRequestAsync(
+            RequestMethods.ResourcesUnsubscribe,
+            requestParams,
+            McpJsonUtilities.JsonContext.Default.UnsubscribeRequestParams,
+            McpJsonUtilities.JsonContext.Default.EmptyResult,
+            cancellationToken: cancellationToken).AsTask();
     }
 
     /// <summary>
@@ -412,7 +624,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="arguments">An optional dictionary of arguments to pass to the tool.</param>
     /// <param name="progress">An optional progress reporter for server notifications.</param>
     /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
-    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>The <see cref="CallToolResult"/> from the tool execution.</returns>
     public ValueTask<CallToolResult> CallToolAsync(
         string toolName,
@@ -422,25 +634,23 @@ public abstract partial class McpClient : McpSession
         CancellationToken cancellationToken = default)
     {
         Throw.IfNull(toolName);
+
         var serializerOptions = options?.JsonSerializerOptions ?? McpJsonUtilities.DefaultOptions;
         serializerOptions.MakeReadOnly();
 
-        if (progress is not null)
+        if (progress is null)
         {
-            return SendRequestWithProgressAsync(toolName, arguments, progress, options?.Meta, serializerOptions, cancellationToken);
+            return CallToolAsync(
+                new CallToolRequestParams
+                {
+                    Name = toolName,
+                    Arguments = ToArgumentsDictionary(arguments, serializerOptions),
+                    Meta = options?.Meta,
+                },
+                cancellationToken);
         }
 
-        return SendRequestAsync(
-            RequestMethods.ToolsCall,
-            new()
-            {
-                Name = toolName,
-                Arguments = ToArgumentsDictionary(arguments, serializerOptions),
-                Meta = options?.Meta,
-            },
-            McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
-            McpJsonUtilities.JsonContext.Default.CallToolResult,
-            cancellationToken: cancellationToken);
+        return SendRequestWithProgressAsync(toolName, arguments, progress, options?.Meta, serializerOptions, cancellationToken);
 
         async ValueTask<CallToolResult> SendRequestWithProgressAsync(
             string toolName,
@@ -464,38 +674,39 @@ public abstract partial class McpClient : McpSession
                     return default;
                 }).ConfigureAwait(false);
 
-            var metaWithProgress = meta is not null ? new JsonObject(meta) : new JsonObject();
+            JsonObject metaWithProgress = meta is not null ? new(meta) : [];
             metaWithProgress["progressToken"] = progressToken.ToString();
 
-            return await SendRequestAsync(
-                RequestMethods.ToolsCall,
+            return await CallToolAsync(
                 new()
                 {
                     Name = toolName,
                     Arguments = ToArgumentsDictionary(arguments, serializerOptions),
                     Meta = metaWithProgress,
                 },
-                McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
-                McpJsonUtilities.JsonContext.Default.CallToolResult,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
+                cancellationToken).ConfigureAwait(false);
         }
     }
 
     /// <summary>
-    /// Sets the logging level for the server to control which log messages are sent to the client.
+    /// Invokes a tool on the server.
     /// </summary>
-    /// <param name="level">The minimum severity level of log messages to receive from the server.</param>
-    /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
+    /// <param name="requestParams">The request parameters to send in the request.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>A task representing the asynchronous operation.</returns>
-    public Task SetLoggingLevel(LoggingLevel level, RequestOptions? options = null, CancellationToken cancellationToken = default)
+    /// <returns>The result of the request.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    public ValueTask<CallToolResult> CallToolAsync(
+        CallToolRequestParams requestParams,
+        CancellationToken cancellationToken = default)
     {
+        Throw.IfNull(requestParams);
+
         return SendRequestAsync(
-            RequestMethods.LoggingSetLevel,
-            new() { Level = level, Meta = options?.Meta },
-            McpJsonUtilities.JsonContext.Default.SetLevelRequestParams,
-            McpJsonUtilities.JsonContext.Default.EmptyResult,
-            cancellationToken: cancellationToken).AsTask();
+            RequestMethods.ToolsCall,
+            requestParams,
+            McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
+            McpJsonUtilities.JsonContext.Default.CallToolResult,
+            cancellationToken: cancellationToken);
     }
 
     /// <summary>
@@ -505,8 +716,47 @@ public abstract partial class McpClient : McpSession
     /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
-    public Task SetLoggingLevel(LogLevel level, RequestOptions? options = null, CancellationToken cancellationToken = default) =>
-        SetLoggingLevel(McpServerImpl.ToLoggingLevel(level), options, cancellationToken);
+    public Task SetLoggingLevelAsync(LogLevel level, RequestOptions? options = null, CancellationToken cancellationToken = default) =>
+        SetLoggingLevelAsync(McpServerImpl.ToLoggingLevel(level), options, cancellationToken);
+
+    /// <summary>
+    /// Sets the logging level for the server to control which log messages are sent to the client.
+    /// </summary>
+    /// <param name="level">The minimum severity level of log messages to receive from the server.</param>
+    /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    public Task SetLoggingLevelAsync(LoggingLevel level, RequestOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        return SetLoggingLevelAsync(
+            new SetLevelRequestParams
+            {
+                Level = level, 
+                Meta = options?.Meta
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Sets the logging level for the server to control which log messages are sent to the client.
+    /// </summary>
+    /// <param name="requestParams">The request parameters to send in the request.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>The result of the request.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    public Task SetLoggingLevelAsync(
+        SetLevelRequestParams requestParams,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(requestParams);
+
+        return SendRequestAsync(
+            RequestMethods.LoggingSetLevel,
+            requestParams,
+            McpJsonUtilities.JsonContext.Default.SetLevelRequestParams,
+            McpJsonUtilities.JsonContext.Default.EmptyResult,
+            cancellationToken: cancellationToken).AsTask();
+    }
 
     /// <summary>Converts a dictionary with <see cref="object"/> values to a dictionary with <see cref="JsonElement"/> values.</summary>
     private static Dictionary<string, JsonElement>? ToArgumentsDictionary(

@@ -157,7 +157,7 @@ internal sealed partial class McpClientImpl : McpClient
             {
                 // Send initialize request
                 string requestProtocol = _options.ProtocolVersion ?? McpSessionHandler.LatestProtocolVersion;
-                var initializeResponse = await this.SendRequestAsync(
+                var initializeResponse = await SendRequestAsync(
                     RequestMethods.Initialize,
                     new InitializeRequestParams
                     {

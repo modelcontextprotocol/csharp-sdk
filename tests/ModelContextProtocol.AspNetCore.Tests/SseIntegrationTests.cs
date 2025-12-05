@@ -88,7 +88,7 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
                     mcpServer.RegisterNotificationHandler("test/notification", async (notification, cancellationToken) =>
                     {
                         Assert.Equal("Hello from client!", notification.Params?["message"]?.GetValue<string>());
-                        await mcpServer.SendNotificationAsync("test/notification", new Envelope { Message = "Hello from server!" }, serializerOptions: JsonContext.Default.Options, cancellationToken: cancellationToken);
+                        await mcpServer.SendNotificationAsync("test/notification", new Envelope { Message = "Hello from server!" }, serializerOptions: JsonContext.Default.Options, cancellationToken);
                     });
                     return mcpServer.RunAsync(cancellationToken);
                 };

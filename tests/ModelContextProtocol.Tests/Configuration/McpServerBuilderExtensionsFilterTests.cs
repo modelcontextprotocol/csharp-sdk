@@ -277,7 +277,7 @@ public class McpServerBuilderExtensionsFilterTests : ClientServerTestBase
     {
         await using McpClient client = await CreateMcpClientForServer();
 
-        await client.SetLoggingLevel(LoggingLevel.Info, cancellationToken: TestContext.Current.CancellationToken);
+        await client.SetLoggingLevelAsync(LoggingLevel.Info, cancellationToken: TestContext.Current.CancellationToken);
 
         var logMessage = Assert.Single(_mockLoggerProvider.LogMessages, m => m.Message == "SetLoggingLevelFilter executed");
         Assert.Equal(LogLevel.Information, logMessage.LogLevel);

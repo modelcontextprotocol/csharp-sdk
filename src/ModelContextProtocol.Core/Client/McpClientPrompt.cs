@@ -10,7 +10,7 @@ namespace ModelContextProtocol.Client;
 /// <para>
 /// This class provides a client-side wrapper around a prompt defined on an MCP server. It allows
 /// retrieving the prompt's content by sending a request to the server with optional arguments.
-/// Instances of this class are typically obtained by calling <see cref="McpClient.ListPromptsAsync"/>.
+/// Instances of this class are typically obtained by calling <see cref="McpClient.ListPromptsAsync(RequestOptions?, CancellationToken)"/>.
 /// </para>
 /// <para>
 /// Each prompt has a name and optionally a description, and it can be invoked with arguments
@@ -29,7 +29,7 @@ public sealed class McpClientPrompt
     /// <remarks>
     /// <para>
     /// This constructor enables reusing cached prompt definitions across different <see cref="McpClient"/> instances
-    /// without needing to call <see cref="McpClient.ListPromptsAsync"/> on every reconnect. This is particularly useful
+    /// without needing to call <see cref="McpClient.ListPromptsAsync(RequestOptions?, CancellationToken)"/> on every reconnect. This is particularly useful
     /// in scenarios where prompt definitions are stable and network round-trips should be minimized.
     /// </para>
     /// <para>
@@ -83,7 +83,8 @@ public sealed class McpClientPrompt
     /// The server will process the request and return a result containing messages or other content.
     /// </para>
     /// <para>
-    /// This is a convenience method that internally calls <see cref="McpClient.GetPromptAsync"/>
+    /// This is a convenience method that internally calls 
+    /// <see cref="McpClient.GetPromptAsync(string, IReadOnlyDictionary{string, object?}?, RequestOptions?, CancellationToken)"/>
     /// with this prompt's name and arguments.
     /// </para>
     /// </remarks>

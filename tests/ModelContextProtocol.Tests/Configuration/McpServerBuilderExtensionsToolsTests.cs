@@ -682,8 +682,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
             return default;
         }))
         {
-            var result = await client.SendRequestAsync<CallToolRequestParams, CallToolResult>(
-                RequestMethods.ToolsCall,
+            var result = await client.CallToolAsync(
                 new CallToolRequestParams
                 {
                     Name = progressTool.ProtocolTool.Name,

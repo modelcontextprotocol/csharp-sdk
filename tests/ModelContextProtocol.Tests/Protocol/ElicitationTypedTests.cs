@@ -23,8 +23,8 @@ public partial class ElicitationTypedTests : ClientServerTestBase
             {
                 var result = await request.Server.ElicitAsync<SampleForm>(
                     message: "Please provide more information.",
-                    serializerOptions: ElicitationTypedDefaultJsonContext.Default.Options,
-                    cancellationToken: CancellationToken.None);
+                    options: new() { JsonSerializerOptions = ElicitationTypedDefaultJsonContext.Default.Options },
+                    CancellationToken.None);
 
                 Assert.Equal("accept", result.Action);
                 Assert.NotNull(result.Content);
@@ -38,8 +38,8 @@ public partial class ElicitationTypedTests : ClientServerTestBase
             {
                 var result = await request.Server.ElicitAsync<CamelForm>(
                     message: "Please provide more information.",
-                    serializerOptions: ElicitationTypedCamelJsonContext.Default.Options,
-                    cancellationToken: CancellationToken.None);
+                    options: new() { JsonSerializerOptions = ElicitationTypedCamelJsonContext.Default.Options },
+                    CancellationToken.None);
 
                 Assert.Equal("accept", result.Action);
                 Assert.NotNull(result.Content);
@@ -51,8 +51,8 @@ public partial class ElicitationTypedTests : ClientServerTestBase
             {
                 var result = await request.Server.ElicitAsync<NullablePropertyForm>(
                     message: "Please provide more information.",
-                    serializerOptions: ElicitationNullablePropertyJsonContext.Default.Options,
-                    cancellationToken: CancellationToken.None);
+                    options: new() { JsonSerializerOptions = ElicitationNullablePropertyJsonContext.Default.Options },
+                    CancellationToken.None);
 
                 // Should be unreachable
                 return new CallToolResult
@@ -64,8 +64,8 @@ public partial class ElicitationTypedTests : ClientServerTestBase
             {
                 await request.Server.ElicitAsync<UnsupportedForm>(
                     message: "Please provide more information.",
-                    serializerOptions: ElicitationUnsupportedJsonContext.Default.Options,
-                    cancellationToken: CancellationToken.None);
+                    options: new() { JsonSerializerOptions = ElicitationUnsupportedJsonContext.Default.Options },
+                    CancellationToken.None);
 
                 // Should be unreachable
                 return new CallToolResult
@@ -78,8 +78,8 @@ public partial class ElicitationTypedTests : ClientServerTestBase
                 // This should throw because T is not an object type with properties (string primitive)
                 await request.Server.ElicitAsync<string>(
                     message: "Any message",
-                    serializerOptions: McpJsonUtilities.DefaultOptions,
-                    cancellationToken: CancellationToken.None);
+                    options: new() { JsonSerializerOptions = McpJsonUtilities.DefaultOptions },
+                    CancellationToken.None);
 
                 return new CallToolResult
                 {
@@ -90,8 +90,8 @@ public partial class ElicitationTypedTests : ClientServerTestBase
             {
                 var result = await request.Server.ElicitAsync<FormWithDefaults>(
                     message: "Please provide information.",
-                    serializerOptions: ElicitationDefaultsJsonContext.Default.Options,
-                    cancellationToken: CancellationToken.None);
+                    options: new() { JsonSerializerOptions = ElicitationDefaultsJsonContext.Default.Options },
+                    CancellationToken.None);
 
                 // The test will validate the schema in the client handler
                 return new CallToolResult

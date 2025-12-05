@@ -14,7 +14,7 @@ public sealed class InteractiveTools
     [McpServerTool, Description("A simple game where the user has to guess a number between 1 and 10.")]
     public async Task<string> GuessTheNumber(
         McpServer server, // Get the McpServer from DI container
-        CancellationToken token
+        CancellationToken cancellationToken
     )
     {
         // Check if the client supports elicitation
@@ -37,7 +37,7 @@ public sealed class InteractiveTools
         {
             Message = "Do you want to play a game?",
             RequestedSchema = playSchema
-        }, token);
+        }, cancellationToken);
 
         // Check if user wants to play
         if (playResponse.Action != "accept" || playResponse.Content?["Answer"].ValueKind != JsonValueKind.True)
@@ -64,7 +64,7 @@ public sealed class InteractiveTools
         {
             Message = "What is your name?",
             RequestedSchema = nameSchema
-        }, token);
+        }, cancellationToken);
 
         if (nameResponse.Action != "accept")
         {
@@ -100,7 +100,7 @@ public sealed class InteractiveTools
             {
                 Message = message,
                 RequestedSchema = guessSchema
-            }, token);
+            }, cancellationToken);
 
             if (guessResponse.Action != "accept")
             {
@@ -128,7 +128,7 @@ public sealed class InteractiveTools
     [McpServerTool, Description("Example tool demonstrating various enum schema types")]
     public async Task<string> EnumExamples(
         McpServer server,
-        CancellationToken token
+        CancellationToken cancellationToken
     )
     {
         // Example 1: UntitledSingleSelectEnumSchema - Simple enum without display titles
@@ -150,7 +150,7 @@ public sealed class InteractiveTools
         {
             Message = "Select a priority level:",
             RequestedSchema = prioritySchema
-        }, token);
+        }, cancellationToken);
 
         if (priorityResponse.Action != "accept")
         {
@@ -184,7 +184,7 @@ public sealed class InteractiveTools
         {
             Message = "Select the issue severity:",
             RequestedSchema = severitySchema
-        }, token);
+        }, cancellationToken);
 
         if (severityResponse.Action != "accept")
         {
@@ -218,7 +218,7 @@ public sealed class InteractiveTools
         {
             Message = "Select up to 3 tags:",
             RequestedSchema = tagsSchema
-        }, token);
+        }, cancellationToken);
 
         if (tagsResponse.Action != "accept")
         {
@@ -257,7 +257,7 @@ public sealed class InteractiveTools
         {
             Message = "Select desired features:",
             RequestedSchema = featuresSchema
-        }, token);
+        }, cancellationToken);
 
         if (featuresResponse.Action != "accept")
         {

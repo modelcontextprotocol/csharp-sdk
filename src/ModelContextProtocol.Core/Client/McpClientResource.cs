@@ -9,7 +9,7 @@ namespace ModelContextProtocol.Client;
 /// <para>
 /// This class provides a client-side wrapper around a resource defined on an MCP server. It allows
 /// retrieving the resource's content by sending a request to the server with the resource's URI.
-/// Instances of this class are typically obtained by calling <see cref="McpClient.ListResourcesAsync"/>.
+/// Instances of this class are typically obtained by calling <see cref="McpClient.ListResourcesAsync(RequestOptions?, CancellationToken)"/>.
 /// </para>
 /// </remarks>
 public sealed class McpClientResource
@@ -24,7 +24,7 @@ public sealed class McpClientResource
     /// <remarks>
     /// <para>
     /// This constructor enables reusing cached resource definitions across different <see cref="McpClient"/> instances
-    /// without needing to call <see cref="McpClient.ListResourcesAsync"/> on every reconnect. This is particularly useful
+    /// without needing to call <see cref="McpClient.ListResourcesAsync(RequestOptions?, CancellationToken)"/> on every reconnect. This is particularly useful
     /// in scenarios where resource definitions are stable and network round-trips should be minimized.
     /// </para>
     /// <para>

@@ -100,7 +100,7 @@ public sealed class StreamableHttpServerTransport : ITransport
     /// to the <see cref="JsonRpcRequest"/> that initiated the message.
     /// </summary>
     /// <param name="message">The JSON-RPC message received from the client via the POST request body.</param>
-    /// <param name="cancellationToken">This token allows for the operation to be canceled if needed. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <param name="responseStream">The POST response body to write MCP JSON-RPC messages to.</param>
     /// <returns>
     /// <see langword="true"/> if data was written to the response body.

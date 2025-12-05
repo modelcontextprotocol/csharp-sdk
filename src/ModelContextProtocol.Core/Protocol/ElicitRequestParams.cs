@@ -391,7 +391,7 @@ public sealed class ElicitRequestParams : RequestParams
                 return psd;
             }
 
-            private static IList<EnumSchemaOption> DeserializeEnumOptions(ref Utf8JsonReader reader)
+            private static List<EnumSchemaOption> DeserializeEnumOptions(ref Utf8JsonReader reader)
             {
                 if (reader.TokenType != JsonTokenType.StartArray)
                 {

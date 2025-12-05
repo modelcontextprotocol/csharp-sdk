@@ -47,18 +47,21 @@ public abstract partial class McpServer : McpSession
     /// <summary>
     /// Requests to sample an LLM via the client using the specified request parameters.
     /// </summary>
-    /// <param name="request">The parameters for the sampling request.</param>
+    /// <param name="requestParams">The parameters for the sampling request.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
     /// <returns>A task containing the sampling result from the client.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
     public ValueTask<CreateMessageResult> SampleAsync(
-        CreateMessageRequestParams request, CancellationToken cancellationToken = default)
+        CreateMessageRequestParams requestParams,
+        CancellationToken cancellationToken = default)
     {
+        Throw.IfNull(requestParams);
         ThrowIfSamplingUnsupported();
 
         return SendRequestAsync(
             RequestMethods.SamplingCreateMessage,
-            request,
+            requestParams,
             McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams,
             McpJsonUtilities.JsonContext.Default.CreateMessageResult,
             cancellationToken: cancellationToken);
@@ -157,7 +160,7 @@ public abstract partial class McpServer : McpSession
             _ => null,
         };
 
-        var result = await SampleAsync(new()
+        var result = await SampleAsync(new CreateMessageRequestParams
         {
             MaxTokens = chatOptions?.MaxOutputTokens ?? ServerOptions.MaxSamplingOutputTokens,
             Messages = samplingMessages,
@@ -181,14 +184,16 @@ public abstract partial class McpServer : McpSession
 
         return new(new ChatMessage(result.Role is Role.User ? ChatRole.User : ChatRole.Assistant, responseContents))
         {
-            ModelId = result.Model,
+            CreatedAt = DateTimeOffset.UtcNow,
             FinishReason = result.StopReason switch
             {
+                CreateMessageResult.StopReasonEndTurn => ChatFinishReason.Stop,
                 CreateMessageResult.StopReasonMaxTokens => ChatFinishReason.Length,
+                CreateMessageResult.StopReasonStopSequence => ChatFinishReason.Stop,
                 CreateMessageResult.StopReasonToolUse => ChatFinishReason.ToolCalls,
-                CreateMessageResult.StopReasonEndTurn or CreateMessageResult.StopReasonStopSequence => ChatFinishReason.Stop,
                 _ => null,
-            }
+            },
+            ModelId = result.Model,
         };
     }
 
@@ -200,31 +205,33 @@ public abstract partial class McpServer : McpSession
     public IChatClient AsSamplingChatClient()
     {
         ThrowIfSamplingUnsupported();
+
         return new SamplingChatClient(this);
     }
 
     /// <summary>Gets an <see cref="ILogger"/> on which logged messages will be sent as notifications to the client.</summary>
     /// <returns>An <see cref="ILogger"/> that can be used to log to the client.</returns>
-    public ILoggerProvider AsClientLoggerProvider()
-    {
-        return new ClientLoggerProvider(this);
-    }
+    public ILoggerProvider AsClientLoggerProvider() => 
+        new ClientLoggerProvider(this);
 
     /// <summary>
     /// Requests the client to list the roots it exposes.
     /// </summary>
-    /// <param name="request">The parameters for the list roots request.</param>
+    /// <param name="requestParams">The parameters for the list roots request.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
     /// <returns>A task containing the list of roots exposed by the client.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The client does not support roots.</exception>
     public ValueTask<ListRootsResult> RequestRootsAsync(
-        ListRootsRequestParams request, CancellationToken cancellationToken = default)
+        ListRootsRequestParams requestParams,
+        CancellationToken cancellationToken = default)
     {
+        Throw.IfNull(requestParams);
         ThrowIfRootsUnsupported();
 
         return SendRequestAsync(
             RequestMethods.RootsList,
-            request,
+            requestParams,
             McpJsonUtilities.JsonContext.Default.ListRootsRequestParams,
             McpJsonUtilities.JsonContext.Default.ListRootsResult,
             cancellationToken: cancellationToken);
@@ -233,19 +240,21 @@ public abstract partial class McpServer : McpSession
     /// <summary>
     /// Requests additional information from the user via the client, allowing the server to elicit structured data.
     /// </summary>
-    /// <param name="request">The parameters for the elicitation request.</param>
+    /// <param name="requestParams">The parameters for the elicitation request.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
     /// <returns>A task containing the elicitation result.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The client does not support elicitation.</exception>
     public ValueTask<ElicitResult> ElicitAsync(
-        ElicitRequestParams request, CancellationToken cancellationToken = default)
+        ElicitRequestParams requestParams, 
+        CancellationToken cancellationToken = default)
     {
-        Throw.IfNull(request);
-        ThrowIfElicitationUnsupported(request);
+        Throw.IfNull(requestParams);
+        ThrowIfElicitationUnsupported(requestParams);
 
         return SendRequestAsync(
             RequestMethods.ElicitationCreate,
-            request,
+            requestParams,
             McpJsonUtilities.JsonContext.Default.ElicitRequestParams,
             McpJsonUtilities.JsonContext.Default.ElicitResult,
             cancellationToken: cancellationToken);
@@ -257,33 +266,38 @@ public abstract partial class McpServer : McpSession
     /// </summary>
     /// <typeparam name="T">The type describing the expected input shape. Only primitive members are supported (string, number, boolean, enum).</typeparam>
     /// <param name="message">The message to present to the user.</param>
-    /// <param name="serializerOptions">Serializer options that influence property naming and deserialization.</param>
+    /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
     /// <returns>An <see cref="ElicitResult{T}"/> with the user's response, if accepted.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="message"/> is <see langword="null"/>.</exception>
     /// <remarks>
     /// Elicitation uses a constrained subset of JSON Schema and only supports strings, numbers/integers, booleans and string enums.
     /// Unsupported member types are ignored when constructing the schema.
     /// </remarks>
     public async ValueTask<ElicitResult<T>> ElicitAsync<T>(
         string message,
-        JsonSerializerOptions? serializerOptions = null,
+        RequestOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        serializerOptions ??= McpJsonUtilities.DefaultOptions;
+        Throw.IfNullOrWhiteSpace(message);
+
+        var serializerOptions = options?.JsonSerializerOptions ?? McpJsonUtilities.DefaultOptions;
         serializerOptions.MakeReadOnly();
 
         var dict = s_elicitResultSchemaCache.GetValue(serializerOptions, _ => new());
 
+        var schema = dict.GetOrAdd(typeof(T),
 #if NET
-        var schema = dict.GetOrAdd(typeof(T), static (t, s) => BuildRequestSchema(t, s), serializerOptions);
+            static (t, s) => BuildRequestSchema(t, s), serializerOptions);
 #else
-        var schema = dict.GetOrAdd(typeof(T), type => BuildRequestSchema(type, serializerOptions));
+            type => BuildRequestSchema(type, serializerOptions));
 #endif
 
         var request = new ElicitRequestParams
         {
             Message = message,
             RequestedSchema = schema,
+            Meta = options?.Meta,
         };
 
         ThrowIfElicitationUnsupported(request);
@@ -295,7 +309,7 @@ public abstract partial class McpServer : McpSession
             return new ElicitResult<T> { Action = raw.Action, Content = default };
         }
 
-        var obj = new JsonObject();
+        JsonObject obj = [];
         foreach (var kvp in raw.Content)
         {
             obj[kvp.Key] = JsonNode.Parse(kvp.Value.GetRawText());

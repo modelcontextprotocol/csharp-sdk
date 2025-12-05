@@ -19,7 +19,7 @@ namespace ModelContextProtocol.Client;
 /// <see cref="WithName"/> and <see cref="WithDescription"/> without changing the underlying tool functionality.
 /// </para>
 /// <para>
-/// Typically, you would get instances of this class by calling the <see cref="McpClient.ListToolsAsync"/>
+/// Typically, you would get instances of this class by calling the <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/>
 /// method on an <see cref="McpClient"/> instance.
 /// </para>
 /// </remarks>
@@ -49,8 +49,8 @@ public sealed class McpClientTool : AIFunction
     /// <remarks>
     /// <para>
     /// This constructor enables reusing cached tool definitions across different <see cref="McpClient"/> instances
-    /// without needing to call <see cref="McpClient.ListToolsAsync"/> on every reconnect. This is particularly useful
-    /// in scenarios where tool definitions are stable and network round-trips should be minimized.
+    /// without needing to call <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/> on every reconnect. 
+    /// This is particularly useful in scenarios where tool definitions are stable and network round-trips should be minimized.
     /// </para>
     /// <para>
     /// The provided <paramref name="tool"/> must represent a tool that is actually available on the server

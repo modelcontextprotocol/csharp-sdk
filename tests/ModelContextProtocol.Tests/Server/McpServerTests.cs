@@ -130,7 +130,9 @@ public class McpServerTests : LoggedTest
         await using var server = McpServer.Create(transport, _options, LoggerFactory);
         SetClientCapabilities(server, new ClientCapabilities());
 
-        var action = async () => await server.SampleAsync(new CreateMessageRequestParams { Messages = [], MaxTokens = 1000 }, CancellationToken.None);
+        var action = async () => await server.SampleAsync(
+            new CreateMessageRequestParams { Messages = [], MaxTokens = 1000 }, 
+            CancellationToken.None);
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(action);
@@ -147,7 +149,9 @@ public class McpServerTests : LoggedTest
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
 
         // Act
-        var result = await server.SampleAsync(new CreateMessageRequestParams { Messages = [], MaxTokens = 1000 }, CancellationToken.None);
+        var result = await server.SampleAsync(
+            new CreateMessageRequestParams { Messages = [], MaxTokens = 1000 }, 
+            CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.NotEmpty(transport.SentMessages);
@@ -167,7 +171,9 @@ public class McpServerTests : LoggedTest
         SetClientCapabilities(server, new ClientCapabilities());
 
         // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await server.RequestRootsAsync(new ListRootsRequestParams(), CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await server.RequestRootsAsync(
+            new ListRootsRequestParams(), 
+            CancellationToken.None));
     }
 
     [Fact]
@@ -201,7 +207,9 @@ public class McpServerTests : LoggedTest
         SetClientCapabilities(server, new ClientCapabilities());
 
         // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await server.ElicitAsync(new ElicitRequestParams { Message = "" }, CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await server.ElicitAsync(
+            new ElicitRequestParams { Message = "" }, 
+            CancellationToken.None));
     }
 
     [Fact]
@@ -942,5 +950,55 @@ public class McpServerTests : LoggedTest
 
         await server.DisposeAsync();
         await serverTask;
+    }
+
+    [Fact]
+    public async Task NotifyProgressAsync_WithRequestParams_SendsNotification()
+    {
+        await using TestServerTransport transport = new();
+        var options = CreateOptions();
+
+        var server = McpServer.Create(transport, options, LoggerFactory);
+
+        Task serverTask = server.RunAsync(TestContext.Current.CancellationToken);
+
+        var progressParams = new ProgressNotificationParams
+        {
+            ProgressToken = new("test-token"),
+            Progress = new()
+            {
+                Progress = 25,
+                Total = 100,
+                Message = "Sending progress via params",
+            },
+        };
+
+        await server.NotifyProgressAsync(progressParams, TestContext.Current.CancellationToken);
+
+        // Verify the notification was sent
+        var notification = Assert.IsType<JsonRpcNotification>(
+            transport.SentMessages.FirstOrDefault(m => m is JsonRpcNotification n && n.Method == NotificationMethods.ProgressNotification));
+        Assert.NotNull(notification);
+        var sentProgress = JsonSerializer.Deserialize<ProgressNotificationParams>(notification.Params, McpJsonUtilities.DefaultOptions);
+        Assert.NotNull(sentProgress);
+        Assert.Equal("test-token", sentProgress.ProgressToken.ToString());
+        Assert.Equal(25, sentProgress.Progress.Progress);
+        Assert.Equal(100, sentProgress.Progress.Total);
+        Assert.Equal("Sending progress via params", sentProgress.Progress.Message);
+
+        await server.DisposeAsync();
+        await serverTask;
+    }
+
+    [Fact]
+    public async Task NotifyProgressAsync_WithRequestParams_NullThrows()
+    {
+        await using TestServerTransport transport = new();
+        var options = CreateOptions();
+
+        await using var server = McpServer.Create(transport, options, LoggerFactory);
+
+        await Assert.ThrowsAsync<ArgumentNullException>("requestParams",
+            () => server.NotifyProgressAsync((ProgressNotificationParams)null!, TestContext.Current.CancellationToken));
     }
 }

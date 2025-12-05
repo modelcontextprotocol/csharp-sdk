@@ -66,7 +66,7 @@ public sealed class UrlElicitationRequiredException : McpProtocolException
 
     private static bool TryParseElicitations(JsonElement dataElement, out IReadOnlyList<ElicitRequestParams> elicitations)
     {
-        elicitations = Array.Empty<ElicitRequestParams>();
+        elicitations = [];
 
         if (dataElement.ValueKind is not JsonValueKind.Object)
         {
