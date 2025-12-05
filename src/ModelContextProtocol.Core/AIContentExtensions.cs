@@ -268,9 +268,9 @@ public static class AIContentExtensions
         {
             TextContentBlock textContent => new TextContent(textContent.Text),
             
-            ImageContentBlock imageContent => new DataContent(Convert.FromBase64String(imageContent.Data), imageContent.MimeType),
+            ImageContentBlock imageContent => new DataContent(imageContent.DecodedData, imageContent.MimeType),
             
-            AudioContentBlock audioContent => new DataContent(Convert.FromBase64String(audioContent.Data), audioContent.MimeType),
+            AudioContentBlock audioContent => new DataContent(audioContent.DecodedData, audioContent.MimeType),
             
             EmbeddedResourceBlock resourceContent => resourceContent.Resource.ToAIContent(),
             
@@ -311,7 +311,7 @@ public static class AIContentExtensions
 
         AIContent ac = content switch
         {
-            BlobResourceContents blobResource => new DataContent(Convert.FromBase64String(blobResource.Blob), blobResource.MimeType ?? "application/octet-stream"),
+            BlobResourceContents blobResource => new DataContent(blobResource.Data, blobResource.MimeType ?? "application/octet-stream"),
             TextResourceContents textResource => new TextContent(textResource.Text),
             _ => throw new NotSupportedException($"Resource type '{content.GetType().Name}' is not supported.")
         };
@@ -384,13 +384,13 @@ public static class AIContentExtensions
 
             DataContent dataContent when dataContent.HasTopLevelMediaType("image") => new ImageContentBlock
             {
-                Data = dataContent.Base64Data.ToString(),
+                Data = System.Text.Encoding.UTF8.GetBytes(dataContent.Base64Data.ToString()),
                 MimeType = dataContent.MediaType,
             },
 
             DataContent dataContent when dataContent.HasTopLevelMediaType("audio") => new AudioContentBlock
             {
-                Data = dataContent.Base64Data.ToString(),
+                Data = System.Text.Encoding.UTF8.GetBytes(dataContent.Base64Data.ToString()),
                 MimeType = dataContent.MediaType,
             },
 
@@ -398,7 +398,7 @@ public static class AIContentExtensions
             {
                 Resource = new BlobResourceContents
                 {
-                    Blob = dataContent.Base64Data.ToString(),
+                    Blob = System.Text.Encoding.UTF8.GetBytes(dataContent.Base64Data.ToString()),
                     MimeType = dataContent.MediaType,
                     Uri = string.Empty,
                 }
