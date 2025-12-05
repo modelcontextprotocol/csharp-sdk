@@ -69,7 +69,7 @@ Clients should check if the server supports logging by checking the <xref:ModelC
 [!code-csharp[](samples/client/Program.cs?name=snippet_LoggingCapabilities)]
 
 If the server supports logging, the client should set the level of log messages it wishes to receive with
-the <xref:ModelContextProtocol.Client.McpClient.SetLoggingLevel*> method on <xref:ModelContextProtocol.Client.McpClient>. If the client does not set a logging level, the server might choose
+the <xref:ModelContextProtocol.Client.McpClient.SetLoggingLevelAsync*> method on <xref:ModelContextProtocol.Client.McpClient>. If the client does not set a logging level, the server might choose
 to send all log messages or none&mdash;this is not specified in the protocol. So it's important that the client
 sets a logging level to ensure it receives the desired log messages and only those messages.
 
