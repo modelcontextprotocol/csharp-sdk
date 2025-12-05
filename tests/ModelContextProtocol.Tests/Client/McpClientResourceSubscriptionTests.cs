@@ -293,4 +293,74 @@ public class McpClientResourceSubscriptionTests : ClientServerTestBase
         // Assert - no exception should be thrown
         Assert.True(true);
     }
+
+    [Fact]
+    public async Task SubscribeToResourceAsync_MultipleHandlersSameUri_BothReceiveNotifications()
+    {
+        // Arrange
+        await using McpClient client = await CreateMcpClientForServer();
+        const string resourceUri = "test://resource/1";
+        var handler1Called = new TaskCompletionSource<bool>();
+        var handler2Called = new TaskCompletionSource<bool>();
+        var handler1Count = 0;
+        var handler2Count = 0;
+
+        // Act - Create two subscriptions to the same URI
+        await using var subscription1 = await client.SubscribeToResourceAsync(
+            resourceUri,
+            (notification, ct) =>
+            {
+                Interlocked.Increment(ref handler1Count);
+                handler1Called.TrySetResult(true);
+                return default;
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        await using var subscription2 = await client.SubscribeToResourceAsync(
+            resourceUri,
+            (notification, ct) =>
+            {
+                Interlocked.Increment(ref handler2Count);
+                handler2Called.TrySetResult(true);
+                return default;
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Send a single notification
+        await Server.SendNotificationAsync(
+            NotificationMethods.ResourceUpdatedNotification,
+            new ResourceUpdatedNotificationParams { Uri = resourceUri },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert - Both handlers should be invoked
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var combined = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, TestContext.Current.CancellationToken);
+        await Task.WhenAll(
+            handler1Called.Task.WaitAsync(combined.Token),
+            handler2Called.Task.WaitAsync(combined.Token));
+
+        Assert.Equal(1, handler1Count);
+        Assert.Equal(1, handler2Count);
+
+        // Dispose one subscription
+        await subscription1.DisposeAsync();
+
+        // Reset the second handler's task completion
+        var handler2CalledAgain = new TaskCompletionSource<bool>();
+
+        // Send another notification
+        await Server.SendNotificationAsync(
+            NotificationMethods.ResourceUpdatedNotification,
+            new ResourceUpdatedNotificationParams { Uri = resourceUri },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Wait a bit to see if handler2 gets called again
+        await Task.Delay(100, TestContext.Current.CancellationToken);
+
+        // Assert - Only the second handler should still receive notifications
+        // Handler1 should not have been called again (still 1)
+        Assert.Equal(1, handler1Count);
+        // Handler2 should have been called again (now 2)
+        Assert.Equal(2, handler2Count);
+    }
 }

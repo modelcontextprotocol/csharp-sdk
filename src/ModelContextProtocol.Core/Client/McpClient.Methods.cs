@@ -610,7 +610,7 @@ public abstract partial class McpClient : McpSession
     /// Notifications for other resources are filtered out automatically.
     /// </para>
     /// </remarks>
-    public async Task<IAsyncDisposable> SubscribeToResourceAsync(
+    public Task<IAsyncDisposable> SubscribeToResourceAsync(
         Uri uri,
         Func<ResourceUpdatedNotificationParams, CancellationToken, ValueTask> handler,
         RequestOptions? options = null,
@@ -618,7 +618,7 @@ public abstract partial class McpClient : McpSession
     {
         Throw.IfNull(uri);
 
-        return await SubscribeToResourceAsync(uri.AbsoluteUri, handler, options, cancellationToken).ConfigureAwait(false);
+        return SubscribeToResourceAsync(uri.AbsoluteUri, handler, options, cancellationToken);
     }
 
     /// <summary>
@@ -654,20 +654,29 @@ public abstract partial class McpClient : McpSession
         Throw.IfNullOrWhiteSpace(uri);
         Throw.IfNull(handler);
 
-        // Subscribe to the resource
-        await SubscribeToResourceAsync(uri, options, cancellationToken).ConfigureAwait(false);
-
         // Register a notification handler that filters for this specific resource
         IAsyncDisposable handlerRegistration = RegisterNotificationHandler(
             NotificationMethods.ResourceUpdatedNotification,
             async (notification, ct) =>
             {
                 if (JsonSerializer.Deserialize(notification.Params, McpJsonUtilities.JsonContext.Default.ResourceUpdatedNotificationParams) is { } resourceUpdate &&
-                    string.Equals(resourceUpdate.Uri, uri, StringComparison.Ordinal))
+                    UriTemplate.UriTemplateComparer.Instance.Equals(resourceUpdate.Uri, uri))
                 {
                     await handler(resourceUpdate, ct).ConfigureAwait(false);
                 }
             });
+
+        try
+        {
+            // Subscribe to the resource
+            await SubscribeToResourceAsync(uri, options, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // If subscription fails, unregister the handler before propagating the exception
+            await handlerRegistration.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
 
         // Return a disposable that unsubscribes and removes the handler
         return new ResourceSubscription(this, uri, handlerRegistration, options);
@@ -694,18 +703,18 @@ public abstract partial class McpClient : McpSession
 
         public async ValueTask DisposeAsync()
         {
-            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            {
+                return;
+            }
+
+            try
             {
                 // Unsubscribe from the resource
-                try
-                {
-                    await _client.UnsubscribeFromResourceAsync(_uri, _options, CancellationToken.None).ConfigureAwait(false);
-                }
-                catch
-                {
-                    // Swallow exceptions during unsubscribe to ensure handler is still disposed
-                }
-
+                await _client.UnsubscribeFromResourceAsync(_uri, _options, CancellationToken.None).ConfigureAwait(false);
+            }
+            finally
+            {
                 // Dispose the notification handler registration
                 await _handlerRegistration.DisposeAsync().ConfigureAwait(false);
             }
