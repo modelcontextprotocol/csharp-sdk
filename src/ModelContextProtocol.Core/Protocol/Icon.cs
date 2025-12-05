@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -28,6 +29,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class Icon
 {
     /// <summary>
@@ -82,4 +84,14 @@ public sealed class Icon
     /// </remarks>
     [JsonPropertyName("theme")]
     public string? Theme { get; set; }
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay
+    {
+        get
+        {
+            string mimeInfo = MimeType is not null ? $", MimeType = {MimeType}" : "";
+            return $"Source = {Source}{mimeInfo}";
+        }
+    }
 }
