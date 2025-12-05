@@ -699,7 +699,7 @@ public abstract partial class McpClient : McpSession
                 // Unsubscribe from the resource
                 try
                 {
-                    await _client.UnsubscribeFromResourceAsync(_uri, _options).ConfigureAwait(false);
+                    await _client.UnsubscribeFromResourceAsync(_uri, _options, CancellationToken.None).ConfigureAwait(false);
                 }
                 catch
                 {
