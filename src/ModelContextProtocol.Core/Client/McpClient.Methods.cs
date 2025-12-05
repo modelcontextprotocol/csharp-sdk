@@ -561,6 +561,18 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>The result of the request.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This method subscribes to resource update notifications but does not register a handler.
+    /// To receive notifications, you must separately call <see cref="McpSession.RegisterNotificationHandler(string, Func{JsonRpcNotification, CancellationToken, ValueTask})"/>
+    /// with <see cref="NotificationMethods.ResourceUpdatedNotification"/> and filter for the specific resource URI.
+    /// To unsubscribe, call <see cref="UnsubscribeFromResourceAsync(UnsubscribeRequestParams, CancellationToken)"/> and dispose the handler registration.
+    /// </para>
+    /// <para>
+    /// For a simpler API that handles both subscription and notification registration in a single call,
+    /// use <see cref="SubscribeToResourceAsync(Uri, Func{ResourceUpdatedNotificationParams, CancellationToken, ValueTask}, RequestOptions?, CancellationToken)"/>.
+    /// </para>
+    /// </remarks>
     public Task SubscribeToResourceAsync(
         SubscribeRequestParams requestParams,
         CancellationToken cancellationToken = default)
@@ -573,6 +585,131 @@ public abstract partial class McpClient : McpSession
             McpJsonUtilities.JsonContext.Default.SubscribeRequestParams,
             McpJsonUtilities.JsonContext.Default.EmptyResult,
             cancellationToken: cancellationToken).AsTask();
+    }
+
+    /// <summary>
+    /// Subscribes to a resource on the server and registers a handler for notifications when it changes.
+    /// </summary>
+    /// <param name="uri">The URI of the resource to which to subscribe.</param>
+    /// <param name="handler">The handler to invoke when the resource is updated. It receives <see cref="ResourceUpdatedNotificationParams"/> for the subscribed resource.</param>
+    /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>
+    /// A task that completes with an <see cref="IAsyncDisposable"/> that, when disposed, unsubscribes from the resource
+    /// and removes the notification handler.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="uri"/> or <paramref name="handler"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This method provides a convenient way to subscribe to resource updates and handle notifications in a single call.
+    /// The returned <see cref="IAsyncDisposable"/> manages both the subscription and the notification handler registration.
+    /// When disposed, it automatically unsubscribes from the resource and removes the handler.
+    /// </para>
+    /// <para>
+    /// The handler will only be invoked for notifications related to the specified resource URI.
+    /// Notifications for other resources are filtered out automatically.
+    /// </para>
+    /// </remarks>
+    public async Task<IAsyncDisposable> SubscribeToResourceAsync(
+        Uri uri,
+        Func<ResourceUpdatedNotificationParams, CancellationToken, ValueTask> handler,
+        RequestOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(uri);
+
+        return await SubscribeToResourceAsync(uri.AbsoluteUri, handler, options, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Subscribes to a resource on the server and registers a handler for notifications when it changes.
+    /// </summary>
+    /// <param name="uri">The URI of the resource to which to subscribe.</param>
+    /// <param name="handler">The handler to invoke when the resource is updated. It receives <see cref="ResourceUpdatedNotificationParams"/> for the subscribed resource.</param>
+    /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>
+    /// A task that completes with an <see cref="IAsyncDisposable"/> that, when disposed, unsubscribes from the resource
+    /// and removes the notification handler.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="uri"/> or <paramref name="handler"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="uri"/> is empty or composed entirely of whitespace.</exception>
+    /// <remarks>
+    /// <para>
+    /// This method provides a convenient way to subscribe to resource updates and handle notifications in a single call.
+    /// The returned <see cref="IAsyncDisposable"/> manages both the subscription and the notification handler registration.
+    /// When disposed, it automatically unsubscribes from the resource and removes the handler.
+    /// </para>
+    /// <para>
+    /// The handler will only be invoked for notifications related to the specified resource URI.
+    /// Notifications for other resources are filtered out automatically.
+    /// </para>
+    /// </remarks>
+    public async Task<IAsyncDisposable> SubscribeToResourceAsync(
+        string uri,
+        Func<ResourceUpdatedNotificationParams, CancellationToken, ValueTask> handler,
+        RequestOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNullOrWhiteSpace(uri);
+        Throw.IfNull(handler);
+
+        // Subscribe to the resource
+        await SubscribeToResourceAsync(uri, options, cancellationToken).ConfigureAwait(false);
+
+        // Register a notification handler that filters for this specific resource
+        IAsyncDisposable handlerRegistration = RegisterNotificationHandler(
+            NotificationMethods.ResourceUpdatedNotification,
+            async (notification, ct) =>
+            {
+                if (JsonSerializer.Deserialize(notification.Params, McpJsonUtilities.JsonContext.Default.ResourceUpdatedNotificationParams) is { } resourceUpdate &&
+                    string.Equals(resourceUpdate.Uri, uri, StringComparison.Ordinal))
+                {
+                    await handler(resourceUpdate, ct).ConfigureAwait(false);
+                }
+            });
+
+        // Return a disposable that unsubscribes and removes the handler
+        return new ResourceSubscription(this, uri, handlerRegistration, options);
+    }
+
+    /// <summary>
+    /// Manages a resource subscription, handling both unsubscription and handler disposal.
+    /// </summary>
+    private sealed class ResourceSubscription : IAsyncDisposable
+    {
+        private readonly McpClient _client;
+        private readonly string _uri;
+        private readonly IAsyncDisposable _handlerRegistration;
+        private readonly RequestOptions? _options;
+        private int _disposed;
+
+        public ResourceSubscription(McpClient client, string uri, IAsyncDisposable handlerRegistration, RequestOptions? options)
+        {
+            _client = client;
+            _uri = uri;
+            _handlerRegistration = handlerRegistration;
+            _options = options;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                // Unsubscribe from the resource
+                try
+                {
+                    await _client.UnsubscribeFromResourceAsync(_uri, _options).ConfigureAwait(false);
+                }
+                catch
+                {
+                    // Swallow exceptions during unsubscribe to ensure handler is still disposed
+                }
+
+                // Dispose the notification handler registration
+                await _handlerRegistration.DisposeAsync().ConfigureAwait(false);
+            }
+        }
     }
 
     /// <summary>
