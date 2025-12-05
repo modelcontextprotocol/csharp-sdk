@@ -9,8 +9,8 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// <para>
 /// <see cref="BlobResourceContents"/> is used when binary data needs to be exchanged through
-/// the Model Context Protocol. The binary data is represented as a base64-encoded string
-/// in the <see cref="Blob"/> property.
+/// the Model Context Protocol. The binary data is represented as base64-encoded UTF-8 bytes
+/// in the <see cref="Blob"/> property, providing a zero-copy representation of the wire payload.
 /// </para>
 /// <para>
 /// This class inherits from <see cref="ResourceContents"/>, which also has a sibling implementation
@@ -24,20 +24,38 @@ namespace ModelContextProtocol.Protocol;
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class BlobResourceContents : ResourceContents
 {
-    /// <summary>
-    /// Gets or sets the base64-encoded string representing the binary data of the item.
-    /// </summary>
-    [JsonPropertyName("blob")]
-    public required string Blob { get; set; }
+    private byte[]? _decodedData;
 
-    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-    private string DebuggerDisplay
+    /// <summary>
+    /// Gets or sets the base64-encoded UTF-8 bytes representing the binary data of the item.
+    /// </summary>
+    /// <remarks>
+    /// This is a zero-copy representation of the wire payload of this item. Setting this value will invalidate any cached value of <see cref="Data"/>.
+    /// </remarks>
+    [JsonPropertyName("blob")]
+    public required ReadOnlyMemory<byte> Blob { get; set; }
+
+    /// <summary>
+    /// Gets the decoded data represented by <see cref="Blob"/>.
+    /// </summary>
+    /// <remarks>
+    /// Accessing this member will decode the value in <see cref="Blob"/> and cache the result.
+    /// Subsequent accesses return the cached value unless <see cref="Blob"/> is modified.
+    /// </remarks>
+    [JsonIgnore]
+    public ReadOnlyMemory<byte> Data
     {
         get
         {
-            string lengthDisplay = DebuggerDisplayHelper.GetBase64LengthDisplay(Blob);
-            string mimeInfo = MimeType is not null ? $", MimeType = {MimeType}" : "";
-            return $"Uri = \"{Uri}\"{mimeInfo}, Length = {lengthDisplay}";
+            if (_decodedData is null)
+            {
+#if NET6_0_OR_GREATER
+                _decodedData = Convert.FromBase64String(System.Text.Encoding.UTF8.GetString(Blob.Span));
+#else
+                _decodedData = Convert.FromBase64String(System.Text.Encoding.UTF8.GetString(Blob.ToArray()));
+#endif
+            }
+            return _decodedData;
         }
     }
 }

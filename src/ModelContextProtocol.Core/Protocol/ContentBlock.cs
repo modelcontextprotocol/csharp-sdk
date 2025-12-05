@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -87,7 +88,7 @@ public abstract class ContentBlock
             string? type = null;
             string? text = null;
             string? name = null;
-            string? data = null;
+            ReadOnlyMemory<byte>? data = null;
             string? mimeType = null;
             string? uri = null;
             string? description = null;
@@ -128,7 +129,15 @@ public abstract class ContentBlock
                         break;
 
                     case "data":
-                        data = reader.GetString();
+                        // Read the base64-encoded UTF-8 bytes directly without string allocation
+                        if (reader.HasValueSequence)
+                        {
+                            data = reader.ValueSequence.ToArray();
+                        }
+                        else
+                        {
+                            data = reader.ValueSpan.ToArray();
+                        }
                         break;
 
                     case "mimeType":
@@ -279,12 +288,14 @@ public abstract class ContentBlock
                     break;
 
                 case ImageContentBlock imageContent:
-                    writer.WriteString("data", imageContent.Data);
+                    // Write the UTF-8 bytes directly as a string value
+                    writer.WriteString("data", imageContent.Data.Span);
                     writer.WriteString("mimeType", imageContent.MimeType);
                     break;
 
                 case AudioContentBlock audioContent:
-                    writer.WriteString("data", audioContent.Data);
+                    // Write the UTF-8 bytes directly as a string value
+                    writer.WriteString("data", audioContent.Data.Span);
                     writer.WriteString("mimeType", audioContent.MimeType);
                     break;
 
@@ -376,14 +387,43 @@ public sealed class TextContentBlock : ContentBlock
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class ImageContentBlock : ContentBlock
 {
+    private byte[]? _decodedData;
+
     /// <inheritdoc/>
     public override string Type => "image";
 
     /// <summary>
-    /// Gets or sets the base64-encoded image data.
+    /// Gets or sets the base64-encoded UTF-8 bytes representing the image data.
     /// </summary>
+    /// <remarks>
+    /// This is a zero-copy representation of the wire payload of this item. Setting this value will invalidate any cached value of <see cref="DecodedData"/>.
+    /// </remarks>
     [JsonPropertyName("data")]
-    public required string Data { get; set; }
+    public required ReadOnlyMemory<byte> Data { get; set; }
+
+    /// <summary>
+    /// Gets the decoded image data represented by <see cref="Data"/>.
+    /// </summary>
+    /// <remarks>
+    /// Accessing this member will decode the value in <see cref="Data"/> and cache the result.
+    /// Subsequent accesses return the cached value unless <see cref="Data"/> is modified.
+    /// </remarks>
+    [JsonIgnore]
+    public ReadOnlyMemory<byte> DecodedData
+    {
+        get
+        {
+            if (_decodedData is null)
+            {
+#if NET6_0_OR_GREATER
+                _decodedData = Convert.FromBase64String(System.Text.Encoding.UTF8.GetString(Data.Span));
+#else
+                _decodedData = Convert.FromBase64String(System.Text.Encoding.UTF8.GetString(Data.ToArray()));
+#endif
+            }
+            return _decodedData;
+        }
+    }
 
     /// <summary>
     /// Gets or sets the MIME type (or "media type") of the content, specifying the format of the data.
@@ -402,14 +442,43 @@ public sealed class ImageContentBlock : ContentBlock
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class AudioContentBlock : ContentBlock
 {
+    private byte[]? _decodedData;
+
     /// <inheritdoc/>
     public override string Type => "audio";
 
     /// <summary>
-    /// Gets or sets the base64-encoded audio data.
+    /// Gets or sets the base64-encoded UTF-8 bytes representing the audio data.
     /// </summary>
+    /// <remarks>
+    /// This is a zero-copy representation of the wire payload of this item. Setting this value will invalidate any cached value of <see cref="DecodedData"/>.
+    /// </remarks>
     [JsonPropertyName("data")]
-    public required string Data { get; set; }
+    public required ReadOnlyMemory<byte> Data { get; set; }
+
+    /// <summary>
+    /// Gets the decoded audio data represented by <see cref="Data"/>.
+    /// </summary>
+    /// <remarks>
+    /// Accessing this member will decode the value in <see cref="Data"/> and cache the result.
+    /// Subsequent accesses return the cached value unless <see cref="Data"/> is modified.
+    /// </remarks>
+    [JsonIgnore]
+    public ReadOnlyMemory<byte> DecodedData
+    {
+        get
+        {
+            if (_decodedData is null)
+            {
+#if NET6_0_OR_GREATER
+                _decodedData = Convert.FromBase64String(System.Text.Encoding.UTF8.GetString(Data.Span));
+#else
+                _decodedData = Convert.FromBase64String(System.Text.Encoding.UTF8.GetString(Data.ToArray()));
+#endif
+            }
+            return _decodedData;
+        }
+    }
 
     /// <summary>
     /// Gets or sets the MIME type (or "media type") of the content, specifying the format of the data.

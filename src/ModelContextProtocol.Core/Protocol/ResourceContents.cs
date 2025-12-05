@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -78,7 +79,7 @@ public abstract class ResourceContents
 
             string? uri = null;
             string? mimeType = null;
-            string? blob = null;
+            ReadOnlyMemory<byte>? blob = null;
             string? text = null;
             JsonObject? meta = null;
 
@@ -104,7 +105,15 @@ public abstract class ResourceContents
                         break;
 
                     case "blob":
-                        blob = reader.GetString();
+                        // Read the base64-encoded UTF-8 bytes directly without string allocation
+                        if (reader.HasValueSequence)
+                        {
+                            blob = reader.ValueSequence.ToArray();
+                        }
+                        else
+                        {
+                            blob = reader.ValueSpan.ToArray();
+                        }
                         break;
 
                     case "text":
@@ -127,7 +136,7 @@ public abstract class ResourceContents
                 {
                     Uri = uri ?? string.Empty,
                     MimeType = mimeType,
-                    Blob = blob,
+                    Blob = blob.Value,
                     Meta = meta,
                 };
             }
@@ -162,7 +171,8 @@ public abstract class ResourceContents
             Debug.Assert(value is BlobResourceContents or TextResourceContents);
             if (value is BlobResourceContents blobResource)
             {
-                writer.WriteString("blob", blobResource.Blob);
+                // Write the UTF-8 bytes directly as a string value
+                writer.WriteString("blob", blobResource.Blob.Span);
             }
             else if (value is TextResourceContents textResource)
             {
