@@ -108,7 +108,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
                     };
             }
 
-            throw new McpProtocolException($"Resource not found: {request.Params?.Uri}");
+            throw new McpProtocolException($"Resource not found: {request.Params?.Uri}", McpErrorCode.ResourceNotFound);
         })
         .WithResources<SimpleResources>();
     }
@@ -249,6 +249,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
             cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains("Resource not found", e.Message);
+        Assert.Equal(McpErrorCode.ResourceNotFound, e.ErrorCode);
     }
 
     [Fact]
