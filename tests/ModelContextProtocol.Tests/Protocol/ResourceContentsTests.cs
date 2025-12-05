@@ -70,7 +70,7 @@ public static class ResourceContentsTests
         var blobResource = Assert.IsType<BlobResourceContents>(result);
         Assert.Equal("file:///test.bin", blobResource.Uri);
         Assert.Equal("application/octet-stream", blobResource.MimeType);
-        Assert.Equal("AQIDBA==", blobResource.Blob);
+        Assert.Equal("AQIDBA==", System.Text.Encoding.UTF8.GetString(blobResource.Blob.ToArray()));
     }
 
     [Fact]
@@ -134,7 +134,7 @@ public static class ResourceContentsTests
         Assert.NotNull(result);
         var blobResource = Assert.IsType<BlobResourceContents>(result);
         Assert.Equal("blob://test", blobResource.Uri);
-        Assert.Equal("SGVsbG8=", blobResource.Blob);
+        Assert.Equal("SGVsbG8=", System.Text.Encoding.UTF8.GetString(blobResource.Blob.ToArray()));
         Assert.Equal("application/custom", blobResource.MimeType);
     }
 
@@ -193,7 +193,7 @@ public static class ResourceContentsTests
         Assert.NotNull(result);
         var blobResource = Assert.IsType<BlobResourceContents>(result);
         Assert.Equal("http://example.com/blob", blobResource.Uri);
-        Assert.Equal("Zm9v", blobResource.Blob);
+        Assert.Equal("Zm9v", System.Text.Encoding.UTF8.GetString(blobResource.Blob.ToArray()));
     }
 
     [Fact]
@@ -239,7 +239,7 @@ public static class ResourceContentsTests
         Assert.NotNull(result);
         var blobResource = Assert.IsType<BlobResourceContents>(result);
         Assert.Equal("test://blob", blobResource.Uri);
-        Assert.Equal("YmFy", blobResource.Blob);
+        Assert.Equal("YmFy", System.Text.Encoding.UTF8.GetString(blobResource.Blob.ToArray()));
     }
 
     [Fact]
@@ -301,7 +301,7 @@ public static class ResourceContentsTests
         Assert.NotNull(result);
         var blobResource = Assert.IsType<BlobResourceContents>(result);
         Assert.Equal("deep://blob", blobResource.Uri);
-        Assert.Equal("ZGVlcA==", blobResource.Blob);
+        Assert.Equal("ZGVlcA==", System.Text.Encoding.UTF8.GetString(blobResource.Blob.ToArray()));
     }
 
     [Fact]
@@ -363,7 +363,7 @@ public static class ResourceContentsTests
         {
             Uri = "file:///test.bin",
             MimeType = "application/octet-stream",
-            Blob = "AQIDBA=="
+            Blob = System.Text.Encoding.UTF8.GetBytes("AQIDBA==")
         };
 
         var json = JsonSerializer.Serialize<ResourceContents>(original, McpJsonUtilities.DefaultOptions);
@@ -373,7 +373,7 @@ public static class ResourceContentsTests
         var blobResource = Assert.IsType<BlobResourceContents>(deserialized);
         Assert.Equal(original.Uri, blobResource.Uri);
         Assert.Equal(original.MimeType, blobResource.MimeType);
-        Assert.Equal(original.Blob, blobResource.Blob);
+        Assert.True(original.Blob.Span.SequenceEqual(blobResource.Blob.Span));
     }
 
     [Fact]
@@ -415,7 +415,7 @@ public static class ResourceContentsTests
         Assert.NotNull(result);
         var blobResource = Assert.IsType<BlobResourceContents>(result);
         Assert.Equal("test://both", blobResource.Uri);
-        Assert.Equal("YmxvYg==", blobResource.Blob);
+        Assert.Equal("YmxvYg==", System.Text.Encoding.UTF8.GetString(blobResource.Blob.ToArray()));
     }
 
     [Fact]
@@ -457,6 +457,6 @@ public static class ResourceContentsTests
         Assert.NotNull(result);
         var blobResource = Assert.IsType<BlobResourceContents>(result);
         Assert.Equal(string.Empty, blobResource.Uri);
-        Assert.Equal("YmxvYg==", blobResource.Blob);
+        Assert.Equal("YmxvYg==", System.Text.Encoding.UTF8.GetString(blobResource.Blob.ToArray()));
     }
 }

@@ -262,7 +262,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         Assert.Single(result.Contents);
 
         BlobResourceContents blobResource = Assert.IsType<BlobResourceContents>(result.Contents[0]);
-        Assert.NotNull(blobResource.Blob);
+        Assert.False(blobResource.Blob.IsEmpty);
     }
 
     // Not supported by "everything" server version on npx

@@ -31,7 +31,7 @@ public class SimpleResourceType
             } :
             new BlobResourceContents
             {
-                Blob = resource.Description!,
+                Blob = System.Text.Encoding.UTF8.GetBytes(resource.Description!),
                 MimeType = resource.MimeType,
                 Uri = resource.Uri,
             };
