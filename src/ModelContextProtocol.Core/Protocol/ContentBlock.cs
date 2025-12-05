@@ -33,30 +33,6 @@ public abstract class ContentBlock
     }
 
     /// <summary>
-    /// Helper method to get the decoded length of base64 data for debugger display.
-    /// </summary>
-    private protected static string GetBase64LengthDisplay(string base64Data)
-    {
-        try
-        {
-#if NET
-            if (System.Buffers.Text.Base64.IsValid(System.Text.Encoding.UTF8.GetBytes(base64Data), out int decodedLength))
-            {
-                return $"{decodedLength} bytes";
-            }
-            return "invalid base64";
-#else
-            byte[] decoded = Convert.FromBase64String(base64Data);
-            return $"{decoded.Length} bytes";
-#endif
-        }
-        catch
-        {
-            return "invalid base64";
-        }
-    }
-
-    /// <summary>
     /// When overridden in a derived class, gets the type of content.
     /// </summary>
     /// <value>
@@ -380,7 +356,7 @@ public abstract class ContentBlock
 }
 
 /// <summary>Represents text provided to or from an LLM.</summary>
-[DebuggerDisplay("Text = \\\"{Text}\\\"")]
+[DebuggerDisplay("Text = \"{Text}\"")]
 public sealed class TextContentBlock : ContentBlock
 {
     /// <inheritdoc/>
@@ -419,7 +395,7 @@ public sealed class ImageContentBlock : ContentBlock
     public required string MimeType { get; set; }
 
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-    private string DebuggerDisplay => $"MimeType = {MimeType}, Length = {GetBase64LengthDisplay(Data)}";
+    private string DebuggerDisplay => $"MimeType = {MimeType}, Length = {DebuggerDisplayHelper.GetBase64LengthDisplay(Data)}";
 }
 
 /// <summary>Represents audio provided to or from an LLM.</summary>
@@ -445,7 +421,7 @@ public sealed class AudioContentBlock : ContentBlock
     public required string MimeType { get; set; }
 
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-    private string DebuggerDisplay => $"MimeType = {MimeType}, Length = {GetBase64LengthDisplay(Data)}";
+    private string DebuggerDisplay => $"MimeType = {MimeType}, Length = {DebuggerDisplayHelper.GetBase64LengthDisplay(Data)}";
 }
 
 /// <summary>Represents the contents of a resource, embedded into a prompt or tool call result.</summary>
@@ -479,7 +455,7 @@ public sealed class EmbeddedResourceBlock : ContentBlock
 /// <remarks>
 /// Resource links returned by tools are not guaranteed to appear in the results of `resources/list` requests.
 /// </remarks>
-[DebuggerDisplay("Name = {Name}, Uri = \\\"{Uri}\\\"")]
+[DebuggerDisplay("Name = {Name}, Uri = \"{Uri}\"")]
 public sealed class ResourceLinkBlock : ContentBlock
 {
     /// <inheritdoc/>

@@ -20,7 +20,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for more details.
 /// </para>
 /// </remarks>
-[DebuggerDisplay("Uri = \\\"{Uri}\\\", Text = \\\"{Text}\\\"")]
+[DebuggerDisplay("Uri = \"{Uri}\", Text = \"{Text}\"")]
 public sealed class TextResourceContents : ResourceContents
 {
     /// <summary>
