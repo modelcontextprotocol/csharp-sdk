@@ -57,6 +57,12 @@ public sealed class SamplingMessage
     {
         get
         {
+            // Show actual text content if it's a single TextContentBlock
+            if (Content.Count == 1 && Content[0] is TextContentBlock textBlock)
+            {
+                return $"Role = {Role}, Text = \"{textBlock.Text}\"";
+            }
+
             string contentTypes = Content.Count == 1 
                 ? Content[0].Type 
                 : $"{Content.Count} items";
