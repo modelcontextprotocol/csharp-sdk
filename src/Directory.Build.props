@@ -7,7 +7,7 @@
     <RepositoryType>git</RepositoryType>
     <VersionPrefix>0.5.0</VersionPrefix>
     <VersionSuffix>preview.1</VersionSuffix>
-    <Authors>ModelContextProtocolOfficial</Authors>
+    <Authors>ModelContextProtocol</Authors>
     <Copyright>© Anthropic and Contributors.</Copyright>
     <PackageTags>ModelContextProtocol;mcp;ai;llm</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
