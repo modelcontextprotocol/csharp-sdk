@@ -461,40 +461,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             if (response is JsonRpcError error)
             {
                 LogSendingRequestFailed(EndpointName, request.Method, error.Error.Message, error.Error.Code);
-                var exception = CreateRemoteProtocolException(error);
-
-                // Populate exception.Data with the error data if present.
-                // When deserializing JSON, Data will be a JsonElement.
-                // We extract primitive values (strings, numbers, bools) for broader compatibility,
-                // as JsonElement is not [Serializable] and cannot be stored in Exception.Data on .NET Framework.
-                if (error.Error.Data is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Object)
-                {
-                    foreach (var property in jsonElement.EnumerateObject())
-                    {
-                        object? value = property.Value.ValueKind switch
-                        {
-                            JsonValueKind.String => property.Value.GetString(),
-                            JsonValueKind.Number => property.Value.GetDouble(),
-                            JsonValueKind.True => true,
-                            JsonValueKind.False => false,
-                            JsonValueKind.Null => null,
-#if NET
-                            // Objects and arrays are stored as JsonElement on .NET Core only
-                            _ => property.Value,
-#else
-                            // Skip objects/arrays on .NET Framework as JsonElement is not serializable
-                            _ => (object?)null,
-#endif
-                        };
-
-                        if (value is not null || property.Value.ValueKind == JsonValueKind.Null)
-                        {
-                            exception.Data[property.Name] = value;
-                        }
-                    }
-                }
-
-                throw exception;
+                throw CreateRemoteProtocolException(error);
             }
 
             if (response is JsonRpcResponse success)
@@ -816,13 +783,49 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         string formattedMessage = $"Request failed (remote): {error.Error.Message}";
         var errorCode = (McpErrorCode)error.Error.Code;
 
+        McpProtocolException exception;
         if (errorCode == McpErrorCode.UrlElicitationRequired &&
             UrlElicitationRequiredException.TryCreateFromError(formattedMessage, error.Error, out var urlException))
         {
-            return urlException;
+            exception = urlException;
+        }
+        else
+        {
+            exception = new McpProtocolException(formattedMessage, errorCode);
         }
 
-        return new McpProtocolException(formattedMessage, errorCode);
+        // Populate exception.Data with the error data if present.
+        // When deserializing JSON, Data will be a JsonElement.
+        // We extract primitive values (strings, numbers, bools) for broader compatibility,
+        // as JsonElement is not [Serializable] and cannot be stored in Exception.Data on .NET Framework.
+        if (error.Error.Data is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in jsonElement.EnumerateObject())
+            {
+                object? value = property.Value.ValueKind switch
+                {
+                    JsonValueKind.String => property.Value.GetString(),
+                    JsonValueKind.Number => property.Value.GetDouble(),
+                    JsonValueKind.True => true,
+                    JsonValueKind.False => false,
+                    JsonValueKind.Null => null,
+#if NET
+                    // Objects and arrays are stored as JsonElement on .NET Core only
+                    _ => property.Value,
+#else
+                    // Skip objects/arrays on .NET Framework as JsonElement is not serializable
+                    _ => (object?)null,
+#endif
+                };
+
+                if (value is not null || property.Value.ValueKind == JsonValueKind.Null)
+                {
+                    exception.Data[property.Name] = value;
+                }
+            }
+        }
+
+        return exception;
     }
 
     /// <summary>
