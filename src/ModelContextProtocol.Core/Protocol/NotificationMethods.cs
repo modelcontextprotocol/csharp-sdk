@@ -82,6 +82,15 @@ public static class NotificationMethods
     public const string LoggingMessageNotification = "notifications/message";
 
     /// <summary>
+    /// The name of the notification sent by the server when a URL-mode elicitation flow completes.
+    /// </summary>
+    /// <remarks>
+    /// This notification references the original elicitation by ID, allowing clients to retry blocked requests
+    /// or update their UI state once the out-of-band interaction finishes.
+    /// </remarks>
+    public const string ElicitationCompleteNotification = "notifications/elicitation/complete";
+
+    /// <summary>
     /// The name of the notification sent from the client to the server after initialization has finished.
     /// </summary>
     /// <remarks>

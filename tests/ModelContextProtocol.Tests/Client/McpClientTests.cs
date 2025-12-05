@@ -287,55 +287,6 @@ public class McpClientTests : ClientServerTestBase
     }
 
     [Fact]
-    public async Task EnumerateToolsAsync_AllToolsReturned()
-    {
-        await using McpClient client = await CreateMcpClientForServer();
-
-        await foreach (var tool in client.EnumerateToolsAsync(cancellationToken: TestContext.Current.CancellationToken))
-        {
-            if (tool.Name == "Method4")
-            {
-                var result = await tool.InvokeAsync(new() { ["i"] = 42 }, TestContext.Current.CancellationToken);
-                Assert.Contains("Method4 Result 42", result?.ToString());
-                return;
-            }
-        }
-
-        Assert.Fail("Couldn't find target method");
-    }
-
-    [Fact]
-    public async Task EnumerateToolsAsync_FlowsJsonSerializerOptions()
-    {
-        JsonSerializerOptions options = new(JsonSerializerOptions.Default);
-        await using McpClient client = await CreateMcpClientForServer();
-        bool hasTools = false;
-
-        await foreach (var tool in client.EnumerateToolsAsync(options, TestContext.Current.CancellationToken))
-        {
-            Assert.Same(options, tool.JsonSerializerOptions);
-            hasTools = true;
-        }
-
-        foreach (var tool in await client.ListToolsAsync(options, TestContext.Current.CancellationToken))
-        {
-            Assert.Same(options, tool.JsonSerializerOptions);
-        }
-
-        Assert.True(hasTools);
-    }
-
-    [Fact]
-    public async Task EnumerateToolsAsync_HonorsJsonSerializerOptions()
-    {
-        JsonSerializerOptions emptyOptions = new() { TypeInfoResolver = JsonTypeInfoResolver.Combine() };
-        await using McpClient client = await CreateMcpClientForServer();
-
-        var tool = (await client.ListToolsAsync(emptyOptions, TestContext.Current.CancellationToken)).First();
-        await Assert.ThrowsAsync<NotSupportedException>(async () => await tool.InvokeAsync(new() { ["i"] = 42 }, TestContext.Current.CancellationToken));
-    }
-
-    [Fact]
     public async Task SendRequestAsync_HonorsJsonSerializerOptions()
     {
         JsonSerializerOptions emptyOptions = new() { TypeInfoResolver = JsonTypeInfoResolver.Combine() };
@@ -359,7 +310,7 @@ public class McpClientTests : ClientServerTestBase
         JsonSerializerOptions emptyOptions = new() { TypeInfoResolver = JsonTypeInfoResolver.Combine() };
         await using McpClient client = await CreateMcpClientForServer();
 
-        await Assert.ThrowsAsync<NotSupportedException>(async () => await client.GetPromptAsync("Prompt", new Dictionary<string, object?> { ["i"] = 42 }, emptyOptions, cancellationToken: TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<NotSupportedException>(async () => await client.GetPromptAsync("Prompt", new Dictionary<string, object?> { ["i"] = 42 }, new RequestOptions { JsonSerializerOptions = emptyOptions }, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -368,7 +319,7 @@ public class McpClientTests : ClientServerTestBase
         JsonSerializerOptions options = new(JsonSerializerOptions.Default);
         await using McpClient client = await CreateMcpClientForServer();
 
-        var tool = (await client.ListToolsAsync(options, TestContext.Current.CancellationToken)).First();
+        var tool = (await client.ListToolsAsync(new RequestOptions { JsonSerializerOptions = options }, TestContext.Current.CancellationToken)).First();
         var originalName = tool.Name;
         var renamedTool = tool.WithName("RenamedTool");
 
@@ -382,7 +333,7 @@ public class McpClientTests : ClientServerTestBase
     {
         JsonSerializerOptions options = new(JsonSerializerOptions.Default);
         await using McpClient client = await CreateMcpClientForServer();
-        var tool = (await client.ListToolsAsync(options, TestContext.Current.CancellationToken)).FirstOrDefault();
+        var tool = (await client.ListToolsAsync(new RequestOptions { JsonSerializerOptions = options }, TestContext.Current.CancellationToken)).FirstOrDefault();
         var originalDescription = tool?.Description;
         var redescribedTool = tool?.WithDescription("ToolWithNewDescription");
         Assert.NotNull(redescribedTool);
@@ -456,7 +407,7 @@ public class McpClientTests : ClientServerTestBase
         Assert.False(logger.IsEnabled(LogLevel.Error));
         Assert.False(logger.IsEnabled(LogLevel.Critical));
 
-        await client.SetLoggingLevel(LoggingLevel.Info, TestContext.Current.CancellationToken);
+        await client.SetLoggingLevel(LoggingLevel.Info, options: null, TestContext.Current.CancellationToken);
 
         DateTime start = DateTime.UtcNow;
         while (Server.LoggingLevel is null)

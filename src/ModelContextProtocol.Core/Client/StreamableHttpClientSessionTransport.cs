@@ -166,6 +166,10 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
             catch (OperationCanceledException)
             {
             }
+            catch (Exception ex)
+            {
+                LogTransportShutdownFailed(Name, ex);
+            }
             finally
             {
                 _connectionCts.Dispose();
@@ -268,15 +272,8 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         using var deleteRequest = new HttpRequestMessage(HttpMethod.Delete, _options.Endpoint);
         CopyAdditionalHeaders(deleteRequest.Headers, _options.AdditionalHeaders, SessionId, _negotiatedProtocolVersion);
 
-        try
-        {
-            // Do not validate we get a successful status code, because server support for the DELETE request is optional
-            (await _httpClient.SendAsync(deleteRequest, message: null, CancellationToken.None).ConfigureAwait(false)).Dispose();
-        }
-        catch (Exception ex)
-        {
-            LogTransportShutdownFailed(Name, ex);
-        }
+        // Do not validate we get a successful status code, because server support for the DELETE request is optional
+        (await _httpClient.SendAsync(deleteRequest, message: null, CancellationToken.None).ConfigureAwait(false)).Dispose();
     }
 
     private void LogJsonException(JsonException ex, string data)

@@ -23,19 +23,19 @@ public sealed class McpServerResourceRoutingTests(ITestOutputHelper testOutputHe
         // Regression test for https://github.com/modelcontextprotocol/csharp-sdk/issues/821.
         await using McpClient client = await CreateMcpClientForServer();
 
-        var nonTemplatedResult = await client.ReadResourceAsync("test://resource/non-templated", TestContext.Current.CancellationToken);
+        var nonTemplatedResult = await client.ReadResourceAsync("test://resource/non-templated", null, TestContext.Current.CancellationToken);
         Assert.Equal("static", ((TextResourceContents)nonTemplatedResult.Contents[0]).Text);
 
-        var templatedResult = await client.ReadResourceAsync("test://resource/12345", TestContext.Current.CancellationToken);
+        var templatedResult = await client.ReadResourceAsync("test://resource/12345", null, TestContext.Current.CancellationToken);
         Assert.Equal("template: 12345", ((TextResourceContents)templatedResult.Contents[0]).Text);
 
-        var exactTemplatedResult = await client.ReadResourceAsync("test://resource/{id}", TestContext.Current.CancellationToken);
+        var exactTemplatedResult = await client.ReadResourceAsync("test://resource/{id}", null, TestContext.Current.CancellationToken);
         Assert.Equal("template: {id}", ((TextResourceContents)exactTemplatedResult.Contents[0]).Text);
 
-        var paramsResult = await client.ReadResourceAsync("test://params?a1=a&a2=b&a3=c", TestContext.Current.CancellationToken);
+        var paramsResult = await client.ReadResourceAsync("test://params?a1=a&a2=b&a3=c", null, TestContext.Current.CancellationToken);
         Assert.Equal("params: a, b, c", ((TextResourceContents)paramsResult.Contents[0]).Text);
 
-        var mcpEx = await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ReadResourceAsync("test://params{?a1,a2,a3}", TestContext.Current.CancellationToken));
+        var mcpEx = await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ReadResourceAsync("test://params{?a1,a2,a3}", null, TestContext.Current.CancellationToken));
         Assert.Equal(McpErrorCode.InvalidParams, mcpEx.ErrorCode);
         Assert.Equal("Request failed (remote): Unknown resource URI: 'test://params{?a1,a2,a3}'", mcpEx.Message);
     }

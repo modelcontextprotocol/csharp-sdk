@@ -104,7 +104,19 @@ internal sealed partial class McpClientImpl : McpClient
                 McpJsonUtilities.JsonContext.Default.ElicitResult);
 
             _options.Capabilities ??= new();
-            _options.Capabilities.Elicitation ??= new();
+            if (_options.Capabilities.Elicitation is null)
+            {
+                // Default to supporting only form mode if not explicitly configured
+                _options.Capabilities.Elicitation = new()
+                {
+                    Form = new(),
+                };
+            }
+            else if (_options.Capabilities.Elicitation.Form is null && _options.Capabilities.Elicitation.Url is null)
+            {
+                // If ElicitationCapability is set but both modes are null, default to form mode for backward compatibility
+                _options.Capabilities.Elicitation.Form = new();
+            }
         }
     }
 

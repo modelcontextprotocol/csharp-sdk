@@ -150,6 +150,7 @@ public abstract partial class McpSession : IAsyncDisposable
     /// </summary>
     /// <param name="progressToken">The token that identifies the operation for which progress is being reported.</param>
     /// <param name="progress">The progress update to send, containing information such as percentage complete or status message.</param>
+    /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task representing the completion of the notification operation (not the operation being tracked).</returns>
     /// <exception cref="ArgumentNullException">The current session instance is <see langword="null"/>.</exception>
@@ -166,6 +167,7 @@ public abstract partial class McpSession : IAsyncDisposable
     public Task NotifyProgressAsync(
         ProgressToken progressToken,
         ProgressNotificationValue progress,
+        RequestOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         return SendNotificationAsync(
@@ -174,6 +176,7 @@ public abstract partial class McpSession : IAsyncDisposable
             {
                 ProgressToken = progressToken,
                 Progress = progress,
+                Meta = options?.Meta,
             },
             McpJsonUtilities.JsonContext.Default.ProgressNotificationParams,
             cancellationToken);

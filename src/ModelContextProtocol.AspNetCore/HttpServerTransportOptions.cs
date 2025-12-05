@@ -39,7 +39,7 @@ public class HttpServerTransportOptions
     /// the <see cref="RunSessionHandler"/> will be called once for for each request, and the "/sse" endpoint will be disabled.
     /// Unsolicited server-to-client messages and all server-to-client requests are also unsupported, because any responses
     /// might arrive at another ASP.NET Core application process.
-    /// Client sampling and roots capabilities are also disabled in stateless mode, because the server cannot make requests.
+    /// Client sampling, elicitation, and roots capabilities are also disabled in stateless mode, because the server cannot make requests.
     /// </remarks>
     public bool Stateless { get; set; }
 

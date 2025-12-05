@@ -21,7 +21,7 @@ namespace ModelContextProtocol;
 /// to be included, a different exception type should be used.
 /// </para>
 /// </remarks>
-public sealed class McpProtocolException : McpException
+public class McpProtocolException : McpException
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="McpProtocolException"/> class.

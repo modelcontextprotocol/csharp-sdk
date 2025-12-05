@@ -141,7 +141,7 @@ public class ConformanceTools
             {
                 Progress = 0,
                 Total = 100,
-            }, cancellationToken);
+            }, cancellationToken: cancellationToken);
 
             await Task.Delay(50, cancellationToken);
 
@@ -149,7 +149,7 @@ public class ConformanceTools
             {
                 Progress = 50,
                 Total = 100,
-            }, cancellationToken);
+            }, cancellationToken: cancellationToken);
 
             await Task.Delay(50, cancellationToken);
 
@@ -157,7 +157,7 @@ public class ConformanceTools
             {
                 Progress = 100,
                 Total = 100,
-            }, cancellationToken);
+            }, cancellationToken: cancellationToken);
         }
 
         return progressToken?.ToString() ?? "No progress token provided";

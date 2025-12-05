@@ -385,6 +385,7 @@ public static class ElicitationDefaultValuesTests
 
         // Assert
         Assert.NotNull(deserialized);
+        Assert.NotNull(deserialized.RequestedSchema);
         Assert.Equal(8, deserialized.RequestedSchema.Properties.Count);
 
         var nameSchema = Assert.IsType<ElicitRequestParams.StringSchema>(deserialized.RequestedSchema.Properties["name"]);
