@@ -11,7 +11,7 @@ namespace ModelContextProtocol.AspNetCore.Authentication;
 /// Represents an authentication handler for MCP protocol that adds resource metadata to challenge responses
 /// and handles resource metadata endpoint requests.
 /// </summary>
-public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationOptions>, IAuthenticationRequestHandler
+public partial class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationOptions>, IAuthenticationRequestHandler
 {
     private const string DefaultResourceMetadataPath = "/.well-known/oauth-protected-resource";
     private static readonly PathString DefaultResourceMetadataPrefix = new(DefaultResourceMetadataPath);
@@ -28,14 +28,14 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
     }
 
     /// <inheritdoc />
-    public async Task<bool> HandleRequestAsync()
+    public Task<bool> HandleRequestAsync()
     {
         if (Options.ResourceMetadataUri is Uri configuredUri)
         {
-            return await HandleConfiguredResourceMetadataRequestAsync(configuredUri);
+            return HandleConfiguredResourceMetadataRequestAsync(configuredUri);
         }
 
-        return await HandleDefaultResourceMetadataRequestAsync();
+        return HandleDefaultResourceMetadataRequestAsync();
     }
 
     private async Task<bool> HandleConfiguredResourceMetadataRequestAsync(Uri resourceMetadataUri)
@@ -58,7 +58,7 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
         var deriveResourceUriBuilder = new UriBuilder(Request.Scheme, Request.Host.Host)
         {
             Path = $"{Request.PathBase}{resourceSuffix}",
-            Port = Request.Host.Port ?? (Request.Scheme == "https" ? 443 : 80),
+            Port = Request.Host.Port ?? (string.Equals(Request.Scheme, "https", StringComparison.OrdinalIgnoreCase) ? 443 : 80),
         };
 
         return await HandleResourceMetadataRequestAsync(deriveResourceUriBuilder.Uri);
@@ -97,24 +97,15 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
             return true;
         }
 
-        if (!Request.Host.HasValue)
-        {
-            return false;
-        }
-
         if (!string.Equals(Request.Host.Host, resourceMetadataUri.Host, StringComparison.OrdinalIgnoreCase))
         {
-            Logger.LogWarning(
-                "Resource metadata request host did not match configured host '{ConfiguredHost}'.",
-                resourceMetadataUri.Host);
+            LogResourceMetadataHostMismatch(Logger, resourceMetadataUri.Host);
             return false;
         }
 
         if (!string.Equals(Request.Scheme, resourceMetadataUri.Scheme, StringComparison.OrdinalIgnoreCase))
         {
-            Logger.LogWarning(
-                "Resource metadata request scheme did not match configured scheme '{ConfiguredScheme}'.",
-                resourceMetadataUri.Scheme);
+            LogResourceMetadataSchemeMismatch(Logger, resourceMetadataUri.Scheme);
             return false;
         }
 
@@ -227,4 +218,10 @@ public class McpAuthenticationHandler : AuthenticationHandler<McpAuthenticationO
             DpopBoundAccessTokensRequired = resourceMetadata.DpopBoundAccessTokensRequired
         };
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Resource metadata request host did not match configured host '{ConfiguredHost}'.")]
+    private static partial void LogResourceMetadataHostMismatch(ILogger logger, string configuredHost);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Resource metadata request scheme did not match configured scheme '{ConfiguredScheme}'.")]
+    private static partial void LogResourceMetadataSchemeMismatch(ILogger logger, string configuredScheme);
 }
