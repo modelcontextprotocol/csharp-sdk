@@ -302,6 +302,7 @@ public class McpClientResourceSubscriptionTests : ClientServerTestBase
         const string resourceUri = "test://resource/1";
         var handler1Called = new TaskCompletionSource<bool>();
         var handler2Called = new TaskCompletionSource<bool>();
+        var handler2CalledAgain = new TaskCompletionSource<bool>();
         var handler1Count = 0;
         var handler2Count = 0;
 
@@ -320,8 +321,15 @@ public class McpClientResourceSubscriptionTests : ClientServerTestBase
             resourceUri,
             (notification, ct) =>
             {
-                Interlocked.Increment(ref handler2Count);
-                handler2Called.TrySetResult(true);
+                var count = Interlocked.Increment(ref handler2Count);
+                if (count == 1)
+                {
+                    handler2Called.TrySetResult(true);
+                }
+                else if (count == 2)
+                {
+                    handler2CalledAgain.TrySetResult(true);
+                }
                 return default;
             },
             cancellationToken: TestContext.Current.CancellationToken);
@@ -345,17 +353,16 @@ public class McpClientResourceSubscriptionTests : ClientServerTestBase
         // Dispose one subscription
         await subscription1.DisposeAsync();
 
-        // Reset the second handler's task completion
-        var handler2CalledAgain = new TaskCompletionSource<bool>();
-
         // Send another notification
         await Server.SendNotificationAsync(
             NotificationMethods.ResourceUpdatedNotification,
             new ResourceUpdatedNotificationParams { Uri = resourceUri },
             cancellationToken: TestContext.Current.CancellationToken);
 
-        // Wait a bit to see if handler2 gets called again
-        await Task.Delay(100, TestContext.Current.CancellationToken);
+        // Wait for handler2 to be called again
+        using var cts2 = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var combined2 = CancellationTokenSource.CreateLinkedTokenSource(cts2.Token, TestContext.Current.CancellationToken);
+        await handler2CalledAgain.Task.WaitAsync(combined2.Token);
 
         // Assert - Only the second handler should still receive notifications
         // Handler1 should not have been called again (still 1)
