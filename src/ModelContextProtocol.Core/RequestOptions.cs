@@ -16,6 +16,16 @@ public sealed class RequestOptions
     {
     }
 
+    /// <summary>Creates a shallow clone of this options instance.</summary>
+    /// <returns>A shallow clone of this options instance.</returns>
+    internal RequestOptions Clone() => 
+        new()
+        {
+            JsonSerializerOptions = JsonSerializerOptions,
+            Meta = Meta,
+            ProgressToken = ProgressToken,
+        };
+
     /// <summary>
     /// Gets or sets optional metadata to include as the "_meta" property in a request.
     /// </summary>
