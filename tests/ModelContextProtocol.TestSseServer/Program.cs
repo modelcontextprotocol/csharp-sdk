@@ -89,7 +89,7 @@ public class Program
                 {
                     Uri = uri,
                     MimeType = "application/octet-stream",
-                    Blob = Convert.ToBase64String(buffer)
+                    Blob = System.Text.Encoding.UTF8.GetBytes(Convert.ToBase64String(buffer))
                 });
             }
         }
@@ -347,7 +347,7 @@ public class Program
                         Role = Role.User,
                         Content = new ImageContentBlock
                         {
-                            Data = MCP_TINY_IMAGE,
+                            Data = System.Text.Encoding.UTF8.GetBytes(MCP_TINY_IMAGE),
                             MimeType = "image/png"
                         }
                     });
