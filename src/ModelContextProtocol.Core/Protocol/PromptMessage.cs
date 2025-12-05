@@ -53,5 +53,17 @@ public sealed class PromptMessage
     public required Role Role { get; set; }
 
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-    private string DebuggerDisplay => $"Role = {Role}, ContentType = {Content.Type}";
+    private string DebuggerDisplay
+    {
+        get
+        {
+            // Show actual text content if it's a TextContentBlock
+            if (Content is TextContentBlock textBlock)
+            {
+                return $"Role = {Role}, Text = \"{textBlock.Text}\"";
+            }
+
+            return $"Role = {Role}, ContentType = {Content.Type}";
+        }
+    }
 }

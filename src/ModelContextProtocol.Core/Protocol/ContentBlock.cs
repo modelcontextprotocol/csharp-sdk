@@ -402,9 +402,9 @@ public sealed class ImageContentBlock : ContentBlock
     {
         get
         {
-            const int MaxLength = 80;
-            string dataPreview = Data.Length <= MaxLength ? Data : $"{Data.Substring(0, MaxLength)}...";
-            return $"MimeType = {MimeType}, Data = {dataPreview}";
+            // Decode base64 to get actual byte length
+            int byteLength = Data.Length * 3 / 4;
+            return $"MimeType = {MimeType}, Length = {byteLength} bytes";
         }
     }
 }
@@ -436,9 +436,9 @@ public sealed class AudioContentBlock : ContentBlock
     {
         get
         {
-            const int MaxLength = 80;
-            string dataPreview = Data.Length <= MaxLength ? Data : $"{Data.Substring(0, MaxLength)}...";
-            return $"MimeType = {MimeType}, Data = {dataPreview}";
+            // Decode base64 to get actual byte length
+            int byteLength = Data.Length * 3 / 4;
+            return $"MimeType = {MimeType}, Length = {byteLength} bytes";
         }
     }
 }
@@ -542,7 +542,7 @@ public sealed class ResourceLinkBlock : ContentBlock
 }
 
 /// <summary>Represents a request from the assistant to call a tool.</summary>
-[DebuggerDisplay("{DebuggerDisplay,nq}")]
+[DebuggerDisplay("Name = {Name}, Id = {Id}")]
 public sealed class ToolUseContentBlock : ContentBlock
 {
     /// <inheritdoc/>
@@ -568,9 +568,6 @@ public sealed class ToolUseContentBlock : ContentBlock
     /// </summary>
     [JsonPropertyName("input")]
     public required JsonElement Input { get; set; }
-
-    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-    private string DebuggerDisplay => $"Name = {Name}, Id = {Id}";
 }
 
 /// <summary>Represents the result of a tool use, provided by the user back to the assistant.</summary>
@@ -621,5 +618,35 @@ public sealed class ToolResultContentBlock : ContentBlock
     public bool? IsError { get; set; }
 
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-    private string DebuggerDisplay => $"ToolUseId = {ToolUseId}, ContentCount = {Content.Count}, IsError = {IsError ?? false}";
+    private string DebuggerDisplay
+    {
+        get
+        {
+            if (IsError == true)
+            {
+                return $"ToolUseId = {ToolUseId}, IsError = true";
+            }
+
+            // Try to show the result content
+            if (Content.Count == 1 && Content[0] is TextContentBlock textBlock)
+            {
+                return $"ToolUseId = {ToolUseId}, Result = \"{textBlock.Text}\"";
+            }
+
+            if (StructuredContent.HasValue)
+            {
+                try
+                {
+                    string json = StructuredContent.Value.GetRawText();
+                    return $"ToolUseId = {ToolUseId}, Result = {json}";
+                }
+                catch
+                {
+                    // Fall back to content count if GetRawText fails
+                }
+            }
+
+            return $"ToolUseId = {ToolUseId}, ContentCount = {Content.Count}";
+        }
+    }
 }

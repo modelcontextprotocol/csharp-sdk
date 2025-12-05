@@ -12,7 +12,7 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
-[DebuggerDisplay("{DebuggerDisplay,nq}")]
+[DebuggerDisplay("Name = {Name}, Uri = {Uri}")]
 public sealed class Resource : IBaseMetadata
 {
     /// <inheritdoc />
@@ -107,7 +107,4 @@ public sealed class Resource : IBaseMetadata
     /// </summary>
     [JsonIgnore]
     public McpServerResource? McpServerResource { get; set; }
-
-    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-    private string DebuggerDisplay => $"Name = {Name}, Uri = {Uri}";
 }

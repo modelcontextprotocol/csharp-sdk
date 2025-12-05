@@ -35,9 +35,10 @@ public sealed class BlobResourceContents : ResourceContents
     {
         get
         {
-            const int MaxLength = 80;
-            string blobPreview = Blob.Length <= MaxLength ? Blob : $"{Blob.Substring(0, MaxLength)}...";
-            return $"Uri = {Uri}, Blob = {blobPreview}";
+            // Decode base64 to get actual byte length
+            int byteLength = Blob.Length * 3 / 4;
+            string mimeInfo = MimeType is not null ? $", MimeType = {MimeType}" : "";
+            return $"Uri = {Uri}{mimeInfo}, Length = {byteLength} bytes";
         }
     }
 }
