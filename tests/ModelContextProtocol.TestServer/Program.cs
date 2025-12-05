@@ -434,7 +434,7 @@ internal static class Program
             }
 
             ResourceContents contents = resourceContents.FirstOrDefault(r => r.Uri == request.Params.Uri)
-                ?? throw new McpProtocolException($"Resource not found: '{request.Params.Uri}'", McpErrorCode.InvalidParams);
+                ?? throw new McpProtocolException($"Resource not found: '{request.Params.Uri}'", McpErrorCode.ResourceNotFound);
 
             return new ReadResourceResult
             {

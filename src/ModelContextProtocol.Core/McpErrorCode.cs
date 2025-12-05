@@ -72,4 +72,13 @@ public enum McpErrorCode
     /// </para>
     /// </remarks>
     UrlElicitationRequired = -32042,
+
+    /// <summary>
+    /// Indicates that the requested resource could not be found.
+    /// </summary>
+    /// <remarks>
+    /// This error should be used when a resource URI does not match any available resource on the server.
+    /// It allows clients to distinguish between missing resources and other types of errors.
+    /// </remarks>
+    ResourceNotFound = -32002,
 }

@@ -681,7 +681,7 @@ public class McpServerTests : LoggedTest
     public async Task Can_Handle_Call_Tool_Requests_With_McpProtocolException_And_Data()
     {
         const string ErrorMessage = "Resource not found";
-        const McpErrorCode ErrorCode = (McpErrorCode)(-32002);
+        const McpErrorCode ErrorCode = McpErrorCode.ResourceNotFound;
         const string ResourceUri = "file:///path/to/resource";
 
         await using var transport = new TestServerTransport();

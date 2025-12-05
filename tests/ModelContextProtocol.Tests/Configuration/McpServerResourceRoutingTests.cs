@@ -36,7 +36,7 @@ public sealed class McpServerResourceRoutingTests(ITestOutputHelper testOutputHe
         Assert.Equal("params: a, b, c", ((TextResourceContents)paramsResult.Contents[0]).Text);
 
         var mcpEx = await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ReadResourceAsync("test://params{?a1,a2,a3}", null, TestContext.Current.CancellationToken));
-        Assert.Equal(McpErrorCode.InvalidParams, mcpEx.ErrorCode);
+        Assert.Equal(McpErrorCode.ResourceNotFound, mcpEx.ErrorCode);
         Assert.Equal("Request failed (remote): Unknown resource URI: 'test://params{?a1,a2,a3}'", mcpEx.Message);
     }
 }
