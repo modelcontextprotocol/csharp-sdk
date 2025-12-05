@@ -91,7 +91,7 @@ public sealed class Icon
         get
         {
             string mimeInfo = MimeType is not null ? $", MimeType = {MimeType}" : "";
-            return $"Source = {Source}{mimeInfo}";
+            return $"Source = \"{Source}\"{mimeInfo}";
         }
     }
 }

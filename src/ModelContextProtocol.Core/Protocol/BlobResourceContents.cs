@@ -35,10 +35,30 @@ public sealed class BlobResourceContents : ResourceContents
     {
         get
         {
-            // Decode base64 to get actual byte length
-            int byteLength = Blob.Length * 3 / 4;
+            string lengthDisplay;
+            try
+            {
+#if NET
+                if (System.Buffers.Text.Base64.IsValid(System.Text.Encoding.UTF8.GetBytes(Blob), out int decodedLength))
+                {
+                    lengthDisplay = $"{decodedLength} bytes";
+                }
+                else
+                {
+                    lengthDisplay = "invalid base64";
+                }
+#else
+                byte[] decoded = Convert.FromBase64String(Blob);
+                lengthDisplay = $"{decoded.Length} bytes";
+#endif
+            }
+            catch
+            {
+                lengthDisplay = "invalid base64";
+            }
+
             string mimeInfo = MimeType is not null ? $", MimeType = {MimeType}" : "";
-            return $"Uri = {Uri}{mimeInfo}, Length = {byteLength} bytes";
+            return $"Uri = \"{Uri}\"{mimeInfo}, Length = {lengthDisplay}";
         }
     }
 }
