@@ -58,8 +58,12 @@ public partial class McpAuthenticationHandler : AuthenticationHandler<McpAuthent
         var deriveResourceUriBuilder = new UriBuilder(Request.Scheme, Request.Host.Host)
         {
             Path = $"{Request.PathBase}{resourceSuffix}",
-            Port = Request.Host.Port ?? (string.Equals(Request.Scheme, "https", StringComparison.OrdinalIgnoreCase) ? 443 : 80),
         };
+
+        if (Request.Host.Port is not null)
+        {
+            deriveResourceUriBuilder.Port = Request.Host.Port.Value;
+        }
 
         return await HandleResourceMetadataRequestAsync(deriveResourceUriBuilder.Uri);
     }
@@ -76,7 +80,7 @@ public partial class McpAuthenticationHandler : AuthenticationHandler<McpAuthent
                 return resourceMetadataUri.ToString();
             }
 
-            var separator = resourceMetadataUri.OriginalString.StartsWith("/") ? "" : "/";
+            var separator = resourceMetadataUri.OriginalString.StartsWith('/') ? "" : "/";
             return $"{Request.Scheme}://{Request.Host.ToUriComponent()}{Request.PathBase}{separator}{resourceMetadataUri.OriginalString}";
         }
 
@@ -120,7 +124,7 @@ public partial class McpAuthenticationHandler : AuthenticationHandler<McpAuthent
         }
 
         var path = resourceMetadataUri.OriginalString;
-        return path.StartsWith("/") ? path : $"/{path}";
+        return path.StartsWith('/') ? path : $"/{path}";
     }
 
     private async Task<bool> HandleResourceMetadataRequestAsync(Uri? derivedResourceUri = null)
