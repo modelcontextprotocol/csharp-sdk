@@ -61,7 +61,7 @@ var result = await server.ElicitAsync(
 
 ### Client Support for Elicitation
 
-Elicitation is an optional feature so clients declare their support for it in their capabilities as part of the `initialize` request. Clients can support `Form` (in-band), `Url` (out-of-band), or both.
+Clients declare their support for elicitation in their capabilities as part of the `initialize` request. Clients can support `Form` (in-band), `Url` (out-of-band), or both.
 
 In the MCP C# SDK, this is done by configuring the capabilities and an <xref:ModelContextProtocol.Client.McpClientHandlers.ElicitationHandler> in the <xref:ModelContextProtocol.Client.McpClientOptions>:
 
