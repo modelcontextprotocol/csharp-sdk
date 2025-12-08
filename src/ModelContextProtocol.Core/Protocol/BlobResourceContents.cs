@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -58,10 +59,11 @@ public sealed class BlobResourceContents : ResourceContents
         {
             if (_decodedData is null)
             {
-#if NET6_0_OR_GREATER
+#if NET
                 _decodedData = Convert.FromBase64String(System.Text.Encoding.UTF8.GetString(Blob.Span));
 #else
-                _decodedData = Convert.FromBase64String(System.Text.Encoding.UTF8.GetString(Blob.ToArray()));
+                byte[] array = MemoryMarshal.TryGetArray(Blob, out ArraySegment<byte> segment) && segment.Offset == 0 && segment.Count == segment.Array!.Length ? segment.Array : Blob.ToArray();
+                _decodedData = Convert.FromBase64String(System.Text.Encoding.UTF8.GetString(array));
 #endif
             }
             return _decodedData;
