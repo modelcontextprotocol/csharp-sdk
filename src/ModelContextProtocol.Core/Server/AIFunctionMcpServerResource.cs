@@ -396,8 +396,8 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
                 { 
                     Uri = request.Params!.Uri, 
                     MimeType = dc.MediaType, 
-                    Blob = MemoryMarshal.TryGetArray(dc.Base64Data, out ArraySegment<char> segment) && segment.Offset == 0 && segment.Count == segment.Array!.Length 
-                        ? System.Text.Encoding.UTF8.GetBytes(segment.Array) 
+                    Blob = MemoryMarshal.TryGetArray(dc.Base64Data, out ArraySegment<char> segment)
+                        ? System.Text.Encoding.UTF8.GetBytes(segment.Array!, segment.Offset, segment.Count) 
                         : System.Text.Encoding.UTF8.GetBytes(dc.Base64Data.ToString()) 
                 }],
             },
@@ -428,8 +428,8 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
                         {
                             Uri = request.Params!.Uri,
                             MimeType = dc.MediaType,
-                            Blob = MemoryMarshal.TryGetArray(dc.Base64Data, out ArraySegment<char> segment) && segment.Offset == 0 && segment.Count == segment.Array!.Length 
-                                ? System.Text.Encoding.UTF8.GetBytes(segment.Array) 
+                            Blob = MemoryMarshal.TryGetArray(dc.Base64Data, out ArraySegment<char> segment)
+                                ? System.Text.Encoding.UTF8.GetBytes(segment.Array!, segment.Offset, segment.Count) 
                                 : System.Text.Encoding.UTF8.GetBytes(dc.Base64Data.ToString())
                         },
 
