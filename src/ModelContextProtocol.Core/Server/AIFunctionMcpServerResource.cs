@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -391,7 +392,14 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
 
             DataContent dc => new()
             {
-                Contents = [new BlobResourceContents { Uri = request.Params!.Uri, MimeType = dc.MediaType, Blob = System.Text.Encoding.UTF8.GetBytes(dc.Base64Data.ToString()) }],
+                Contents = [new BlobResourceContents 
+                { 
+                    Uri = request.Params!.Uri, 
+                    MimeType = dc.MediaType, 
+                    Blob = MemoryMarshal.TryGetArray(dc.Base64Data, out ArraySegment<char> segment) && segment.Offset == 0 && segment.Count == segment.Array!.Length 
+                        ? System.Text.Encoding.UTF8.GetBytes(segment.Array) 
+                        : System.Text.Encoding.UTF8.GetBytes(dc.Base64Data.ToString()) 
+                }],
             },
 
             string text => new()
@@ -420,7 +428,9 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
                         {
                             Uri = request.Params!.Uri,
                             MimeType = dc.MediaType,
-                            Blob = System.Text.Encoding.UTF8.GetBytes(dc.Base64Data.ToString())
+                            Blob = MemoryMarshal.TryGetArray(dc.Base64Data, out ArraySegment<char> segment) && segment.Offset == 0 && segment.Count == segment.Array!.Length 
+                                ? System.Text.Encoding.UTF8.GetBytes(segment.Array) 
+                                : System.Text.Encoding.UTF8.GetBytes(dc.Base64Data.ToString())
                         },
 
                         _ => throw new InvalidOperationException($"Unsupported AIContent type '{ac.GetType()}' returned from resource function."),

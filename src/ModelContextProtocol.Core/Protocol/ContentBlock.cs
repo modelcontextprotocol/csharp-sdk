@@ -2,6 +2,7 @@ using System.Buffers;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -419,10 +420,11 @@ public sealed class ImageContentBlock : ContentBlock
         {
             if (_decodedData is null)
             {
-#if NET6_0_OR_GREATER
+#if NET
                 _decodedData = Convert.FromBase64String(System.Text.Encoding.UTF8.GetString(Data.Span));
 #else
-                _decodedData = Convert.FromBase64String(System.Text.Encoding.UTF8.GetString(Data.ToArray()));
+                byte[] array = MemoryMarshal.TryGetArray(Data, out ArraySegment<byte> segment) && segment.Offset == 0 && segment.Count == segment.Array!.Length ? segment.Array : Data.ToArray();
+                _decodedData = Convert.FromBase64String(System.Text.Encoding.UTF8.GetString(array));
 #endif
             }
             return _decodedData;
@@ -479,10 +481,11 @@ public sealed class AudioContentBlock : ContentBlock
         {
             if (_decodedData is null)
             {
-#if NET6_0_OR_GREATER
+#if NET
                 _decodedData = Convert.FromBase64String(System.Text.Encoding.UTF8.GetString(Data.Span));
 #else
-                _decodedData = Convert.FromBase64String(System.Text.Encoding.UTF8.GetString(Data.ToArray()));
+                byte[] array = MemoryMarshal.TryGetArray(Data, out ArraySegment<byte> segment) && segment.Offset == 0 && segment.Count == segment.Array!.Length ? segment.Array : Data.ToArray();
+                _decodedData = Convert.FromBase64String(System.Text.Encoding.UTF8.GetString(array));
 #endif
             }
             return _decodedData;
