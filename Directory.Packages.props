@@ -4,13 +4,13 @@
     <System8Version>8.0.22</System8Version>
     <System9Version>9.0.11</System9Version>
     <System10Version>10.0.1</System10Version>
-    <AI10Version>10.1.0</AI10Version>
+    <ExtensionsVersion>10.1.0</ExtensionsVersion>
   </PropertyGroup>
 
   <!-- Product dependencies shared -->
   <ItemGroup>
-    <PackageVersion Include="Microsoft.Extensions.AI" Version="$(AI10Version)" />
-    <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="$(AI10Version)" />
+    <PackageVersion Include="Microsoft.Extensions.AI" Version="$(ExtensionsVersion)" />
+    <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="$(ExtensionsVersion)" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="$(System10Version)" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="$(System10Version)" />
   </ItemGroup>
@@ -71,7 +71,7 @@
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="$(System10Version)" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="$(System10Version)" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="$(System10Version)" />
-    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="$(AI10Version)" />
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="$(ExtensionsVersion)" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
     <PackageVersion Include="Moq" Version="4.20.72" />
     <PackageVersion Include="OpenTelemetry" Version="1.14.0" />
