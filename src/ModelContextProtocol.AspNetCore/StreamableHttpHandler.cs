@@ -23,6 +23,7 @@ internal sealed class StreamableHttpHandler(
     ILoggerFactory loggerFactory)
 {
     private const string McpSessionIdHeaderName = "Mcp-Session-Id";
+    private const string LastEventIdHeaderName = "Last-Event-ID";
 
     private static readonly JsonTypeInfo<JsonRpcMessage> s_messageTypeInfo = GetRequiredJsonTypeInfo<JsonRpcMessage>();
     private static readonly JsonTypeInfo<JsonRpcError> s_errorTypeInfo = GetRequiredJsonTypeInfo<JsonRpcError>();
@@ -88,10 +89,15 @@ internal sealed class StreamableHttpHandler(
             return;
         }
 
-        if (!session.TryStartGetRequest())
+        // Check for Last-Event-ID header for resumability
+        var lastEventId = context.Request.Headers[LastEventIdHeaderName].ToString();
+        var isResumption = !string.IsNullOrEmpty(lastEventId);
+
+        // Only check TryStartGetRequest for new connections, not resumptions
+        if (!isResumption && !session.TryStartGetRequest())
         {
             await WriteJsonRpcErrorAsync(context,
-                "Bad Request: This server does not support multiple GET requests. Start a new session to get a new GET SSE response.",
+                "Bad Request: This server does not support multiple GET requests. Use Last-Event-ID header to resume or start a new session.",
                 StatusCodes.Status400BadRequest);
             return;
         }
@@ -111,7 +117,7 @@ internal sealed class StreamableHttpHandler(
             // will be sent in response to a different POST request. It might be a while before we send a message
             // over this response body.
             await context.Response.Body.FlushAsync(cancellationToken);
-            await session.Transport.HandleGetRequestAsync(context.Response.Body, cancellationToken);
+            await session.Transport.HandleGetRequestAsync(context.Response.Body, isResumption ? lastEventId : null, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -194,7 +200,10 @@ internal sealed class StreamableHttpHandler(
             {
                 SessionId = sessionId,
                 FlowExecutionContextFromRequests = !HttpServerTransportOptions.PerSessionExecutionContext,
+                EventStore = HttpServerTransportOptions.EventStore,
+                RetryInterval = HttpServerTransportOptions.RetryInterval,
             };
+
             context.Response.Headers[McpSessionIdHeaderName] = sessionId;
         }
         else
