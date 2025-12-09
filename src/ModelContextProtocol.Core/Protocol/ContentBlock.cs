@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Buffers.Text;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -426,7 +427,17 @@ public sealed class ImageContentBlock : ContentBlock
             if (_decodedData is null)
             {
 #if NET
-                _decodedData = Convert.FromBase64String(System.Text.Encoding.UTF8.GetString(Data.Span));
+                // Decode directly from UTF-8 base64 bytes without string intermediate
+                int maxLength = Base64.GetMaxDecodedFromUtf8Length(Data.Length);
+                byte[] buffer = new byte[maxLength];
+                if (Base64.DecodeFromUtf8(Data.Span, buffer, out _, out int bytesWritten) == System.Buffers.OperationStatus.Done)
+                {
+                    _decodedData = bytesWritten == maxLength ? buffer : buffer.AsMemory(0, bytesWritten).ToArray();
+                }
+                else
+                {
+                    throw new FormatException("Invalid base64 data");
+                }
 #else
                 byte[] array = MemoryMarshal.TryGetArray(Data, out ArraySegment<byte> segment) && segment.Offset == 0 && segment.Count == segment.Array!.Length ? segment.Array : Data.ToArray();
                 _decodedData = Convert.FromBase64String(System.Text.Encoding.UTF8.GetString(array));
@@ -491,7 +502,17 @@ public sealed class AudioContentBlock : ContentBlock
             if (_decodedData is null)
             {
 #if NET
-                _decodedData = Convert.FromBase64String(System.Text.Encoding.UTF8.GetString(Data.Span));
+                // Decode directly from UTF-8 base64 bytes without string intermediate
+                int maxLength = Base64.GetMaxDecodedFromUtf8Length(Data.Length);
+                byte[] buffer = new byte[maxLength];
+                if (Base64.DecodeFromUtf8(Data.Span, buffer, out _, out int bytesWritten) == System.Buffers.OperationStatus.Done)
+                {
+                    _decodedData = bytesWritten == maxLength ? buffer : buffer.AsMemory(0, bytesWritten).ToArray();
+                }
+                else
+                {
+                    throw new FormatException("Invalid base64 data");
+                }
 #else
                 byte[] array = MemoryMarshal.TryGetArray(Data, out ArraySegment<byte> segment) && segment.Offset == 0 && segment.Count == segment.Array!.Length ? segment.Array : Data.ToArray();
                 _decodedData = Convert.FromBase64String(System.Text.Encoding.UTF8.GetString(array));
