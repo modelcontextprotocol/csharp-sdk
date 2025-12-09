@@ -59,7 +59,7 @@
 
   <!-- Testing dependencies -->
   <ItemGroup>
-    <PackageVersion Include="Anthropic.SDK" Version="5.8.0" />
+    <PackageVersion Include="Anthropic" Version="11.0.0" />
     <PackageVersion Include="coverlet.collector" Version="6.0.4">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
