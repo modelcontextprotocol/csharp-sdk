@@ -22,6 +22,16 @@ public class ClientConformanceTests //: IAsyncLifetime
     [InlineData("initialize")]
     [InlineData("tools_call")]
     [InlineData("auth/metadata-default")]
+    [InlineData("auth/metadata-var1")]
+    [InlineData("auth/metadata-var2")]
+    [InlineData("auth/metadata-var3")]
+    [InlineData("auth/basic-cimd")]
+    [InlineData("auth/2025-03-26-oauth-metadata-backcompat")]
+    [InlineData("auth/2025-03-26-oauth-endpoint-fallback")]
+    [InlineData("auth/scope-from-www-authenticate")]
+    [InlineData("auth/scope-from-scopes-supported")]
+    [InlineData("auth/scope-omitted-when-undefined")]
+    [InlineData("auth/scope-step-up")]
     public async Task RunConformanceTest(string scenario)
     {
         // Check if Node.js is installed
