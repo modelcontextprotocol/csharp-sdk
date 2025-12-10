@@ -177,4 +177,18 @@ public sealed class ProtectedResourceMetadata
     /// </remarks>
     [JsonPropertyName("dpop_bound_access_tokens_required")]
     public bool? DpopBoundAccessTokensRequired { get; set; }
+
+    /// <summary>
+    /// Used internally by the client to get or set the scope specified as a WWW-Authenticate header parameter.
+    /// This should be preferred over using the ScopesSupported property.
+    ///
+    /// The scopes included in the WWW-Authenticate challenge MAY match scopes_supported, be a subset or superset of it,
+    /// or an alternative collection that is neither a strict subset nor superset. Clients MUST NOT assume any particular
+    /// set relationship between the challenged scope set and scopes_supported. Clients MUST treat the scopes provided
+    /// in the challenge as authoritative for satisfying the current request.
+    ///
+    /// https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization#protected-resource-metadata-discovery-requirements
+    /// </summary>
+    [JsonIgnore]
+    internal string? WwwAuthenticateScope { get; set; }
 }

@@ -185,15 +185,9 @@ public partial class McpAuthenticationHandler : AuthenticationHandler<McpAuthent
         // Get the absolute URI for the resource metadata
         string rawPrmDocumentUri = GetAbsoluteResourceMetadataUri();
 
-        properties ??= new AuthenticationProperties();
-
-        // Store the resource_metadata in properties in case other handlers need it
-        properties.Items["resource_metadata"] = rawPrmDocumentUri;
-
         // Add the WWW-Authenticate header with Bearer scheme and resource metadata
-        string headerValue = $"Bearer realm=\"{Scheme.Name}\", resource_metadata=\"{rawPrmDocumentUri}\"";
+        string headerValue = $"Bearer resource_metadata=\"{rawPrmDocumentUri}\"";
         Response.Headers.Append("WWW-Authenticate", headerValue);
-
         return base.HandleChallengeAsync(properties);
     }
 

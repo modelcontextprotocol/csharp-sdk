@@ -1,9 +1,16 @@
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.AspNetCore.Authentication;
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Server;
 using System.Net;
 using System.Reflection;
+using System.Security.Claims;
 using Xunit.Sdk;
 
 namespace ModelContextProtocol.AspNetCore.Tests.OAuth;
@@ -88,7 +95,6 @@ public class AuthTests : OAuthTestBase
             {
                 RedirectUri = new Uri("http://localhost:1179/callback"),
                 AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
-                Scopes = ["mcp:tools"],
                 DynamicClientRegistration = new()
                 {
                     ClientName = "Test MCP Client",
@@ -139,7 +145,6 @@ public class AuthTests : OAuthTestBase
                 RedirectUri = new Uri("http://localhost:1179/callback"),
                 AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
                 ClientMetadataDocumentUri = new Uri("http://invalid-cimd.example.com"),
-                Scopes = ["mcp:tools"],
                 DynamicClientRegistration = new()
                 {
                     ClientName = "Test MCP Client (No CIMD)",
@@ -203,6 +208,33 @@ public class AuthTests : OAuthTestBase
     [Fact]
     public async Task CanAuthenticate_WithTokenRefresh()
     {
+        var hasForcedRefresh = false;
+
+        Builder.Services.AddHttpContextAccessor();
+        Builder.Services.AddMcpServer(options =>
+            {
+                options.ToolCollection = new();
+            })
+            .AddListToolsFilter(next =>
+            {
+                return async (mcpContext, cancellationToken) =>
+                {
+                    if (!hasForcedRefresh)
+                    {
+                        hasForcedRefresh = true;
+
+                        var httpContext = mcpContext.Services!.GetRequiredService<IHttpContextAccessor>().HttpContext!;
+                        await httpContext.ChallengeAsync(JwtBearerDefaults.AuthenticationScheme);
+                        await httpContext.Response.CompleteAsync();
+                        throw new Exception("This exception will not impact the client because the response has already been completed.");
+                    }
+                    else
+                    {
+                        return await next(mcpContext, cancellationToken);
+                    }
+                };
+            });
+
         await using var app = await StartMcpServerAsync();
 
         await using var transport = new HttpClientTransport(new()
@@ -221,6 +253,8 @@ public class AuthTests : OAuthTestBase
         // then automatically refresh it to get a working token
         await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(TestOAuthServer.HasRefreshedToken);
     }
@@ -325,6 +359,243 @@ public class AuthTests : OAuthTestBase
 
         await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task AuthorizationFlow_UsesScopeFromProtectedResourceMetadata()
+    {
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.ResourceMetadata!.ScopesSupported = ["mcp:tools", "files:read"];
+        });
+
+        await using var app = await StartMcpServerAsync();
+
+        string? requestedScope = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                {
+                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    requestedScope = query["scope"].ToString();
+                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("mcp:tools files:read", requestedScope);
+    }
+
+    [Fact]
+    public async Task AuthorizationFlow_UsesScopeFromChallengeHeader()
+    {
+        var challengeScopes = "challenge:read challenge:write";
+
+        await using var app = Builder.Build();
+        app.Use(next =>
+        {
+            return async context =>
+            {
+                await next(context);
+
+                if (context.Response.StatusCode != 401)
+                {
+                    return;
+                }
+
+                context.Response.Headers.WWWAuthenticate = $"Bearer resource_metadata=\"{McpServerUrl}/.well-known/oauth-protected-resource\", scope=\"{challengeScopes}\"";
+            };
+        });
+        app.UseAuthentication();
+        app.UseAuthorization();
+
+        app.MapMcp().RequireAuthorization();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        string? requestedScope = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                {
+                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    requestedScope = query["scope"].ToString();
+                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(challengeScopes, requestedScope);
+    }
+
+    [Fact]
+    public async Task AuthorizationFlow_UsesScopeFromForbiddenHeader()
+    {
+        var adminScopes = "admin:read admin:write";
+
+        Builder.Services.AddHttpContextAccessor();
+        Builder.Services.AddMcpServer()
+            .WithTools([
+                McpServerTool.Create([McpServerTool(Name = "admin-tool")]
+                async (IServiceProvider serviceProvider, ClaimsPrincipal user) =>
+                {
+                    if (!user.HasClaim("scope", adminScopes))
+                    {
+                        var httpContext = serviceProvider.GetRequiredService<IHttpContextAccessor>().HttpContext!;
+                        httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+                        httpContext.Response.Headers.WWWAuthenticate = $"Bearer error=\"insufficient_scope\", resource_metadata=\"{McpServerUrl}/.well-known/oauth-protected-resource\", scope=\"{adminScopes}\"";
+                        await httpContext.Response.CompleteAsync();
+
+                        throw new Exception("This exception will not impact the client because the response has already been completed.");
+                    }
+
+                    return "Admin tool executed.";
+                }),
+            ]);
+
+        string? requestedScope = null;
+
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                {
+                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    requestedScope = query["scope"].ToString();
+                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("mcp:tools", requestedScope);
+
+        var adminResult = await client.CallToolAsync("admin-tool", cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal("Admin tool executed.", adminResult.Content[0].ToString());
+
+        Assert.Equal(adminScopes, requestedScope);
+    }
+
+    [Fact]
+    public async Task AuthorizationFails_WhenResourceMetadataPortDiffers()
+    {
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.ResourceMetadata!.Resource = new Uri("http://localhost:5999");
+        });
+
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task CanAuthenticate_WithAuthorizationServerPathInsertionMetadata()
+    {
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.ResourceMetadata!.AuthorizationServers = [new Uri($"{OAuthServerUrl}/tenant1")];
+        });
+
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        var requests = TestOAuthServer.MetadataRequests.ToArray();
+        Assert.Contains("/.well-known/oauth-authorization-server/tenant1", requests);
+    }
+
+    [Fact]
+    public async Task CanAuthenticate_WithAuthorizationServerPathFallbacks()
+    {
+        const string issuerPath = "/subdir/tenant2";
+        TestOAuthServer.DisabledMetadataPaths.Add($"/.well-known/oauth-authorization-server{issuerPath}");
+        TestOAuthServer.DisabledMetadataPaths.Add($"/.well-known/openid-configuration{issuerPath}");
+
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.ResourceMetadata!.AuthorizationServers = [new Uri($"{OAuthServerUrl}{issuerPath}")];
+        });
+
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+            [
+                $"/.well-known/oauth-authorization-server{issuerPath}",
+                $"/.well-known/openid-configuration{issuerPath}",
+                $"{issuerPath}/.well-known/openid-configuration",
+                "/.well-known/openid-configuration",
+            ],
+            TestOAuthServer.MetadataRequests);
     }
 
     [Fact]

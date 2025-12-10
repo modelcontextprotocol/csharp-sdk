@@ -53,8 +53,7 @@ public sealed class HttpClientTransport : IClientTransport, IAsyncDisposable
 
         if (transportOptions.OAuth is { } clientOAuthOptions)
         {
-            var oAuthProvider = new ClientOAuthProvider(_options.Endpoint, clientOAuthOptions, httpClient, loggerFactory);
-            _mcpHttpClient = new AuthenticatingMcpHttpClient(httpClient, oAuthProvider);
+            _mcpHttpClient = new ClientOAuthProvider(_options.Endpoint, clientOAuthOptions, httpClient, loggerFactory);
         }
         else
         {

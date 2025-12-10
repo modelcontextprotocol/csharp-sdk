@@ -8,7 +8,6 @@ using ModelContextProtocol.AspNetCore.Authentication;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Authentication;
 using System.Net;
-using Xunit.Sdk;
 
 namespace ModelContextProtocol.AspNetCore.Tests.OAuth;
 
