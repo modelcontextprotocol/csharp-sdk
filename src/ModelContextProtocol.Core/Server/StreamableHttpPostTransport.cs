@@ -1,9 +1,7 @@
 ﻿using ModelContextProtocol.Protocol;
 using System.Diagnostics;
-using System.IO.Pipelines;
 using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
-using System.Security.Claims;
 using System.Text.Json;
 using System.Threading.Channels;
 
@@ -46,10 +44,6 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
         message.Context ??= new JsonRpcMessageContext();
         message.Context.RelatedTransport = this;
 
-        // Provide callbacks for SSE stream control (SEP-1699)
-        message.Context.CloseSseStream = () => _sseWriter.Complete();
-        message.Context.CloseStandaloneSseStream = () => parentTransport.CloseStandaloneSseStream();
-
         if (parentTransport.FlowExecutionContextFromRequests)
         {
             message.Context.ExecutionContext = ExecutionContext.Capture();
@@ -62,16 +56,15 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
             return false;
         }
 
-        // Configure the SSE writer for resumability if we have an event store and the client supports it
-        if (parentTransport.EventStore is not null &&
-            _pendingRequest.Id is not null &&
-            McpSessionHandler.SupportsResumability(parentTransport.NegotiatedProtocolVersion))
+        // Configure the SSE writer for resumability if we have an event store
+        if (parentTransport.EventStore is not null && McpSessionHandler.SupportsPrimingEvent(parentTransport.NegotiatedProtocolVersion))
         {
-            _sseWriter.EventStore = parentTransport.EventStore;
-            _sseWriter.StreamId = _pendingRequest.Id.ToString();
-            _sseWriter.RetryInterval = parentTransport.RetryInterval;
+            _sseWriter.EventStore = new SseStreamEventStore(
+                parentTransport.EventStore,
+                sessionId: parentTransport.SessionId,
+                streamId: _pendingRequest.Id.ToString()!,
+                retryInterval: parentTransport.RetryInterval);
 
-            // Send a priming event to establish resumability for this request
             await _sseWriter.SendPrimingEventAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -89,18 +82,13 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
             throw new InvalidOperationException("Server to client requests are not supported in stateless mode.");
         }
 
+        // SseWriter.SendMessageAsync stores the message in the event store before checking if
+        // the stream is completed, so we don't need to handle storage here.
         bool isAccepted = await _sseWriter.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
         if (!isAccepted)
         {
-            // The underlying SSE writer didn't accept the message because the stream has been closed
-            // (e.g., via CloseSseStream()). If resumability is enabled, store the event so clients
-            // can retrieve it when they reconnect with a Last-Event-ID header.
-            if (_sseWriter.EventStore is not null && _sseWriter.StreamId is not null)
-            {
-                await _sseWriter.EventStore.StoreEventAsync(_sseWriter.StreamId, message, cancellationToken).ConfigureAwait(false);
-            }
-
-            // Fall back to sending via the parent transport's standalone SSE stream.
+            // The stream is closed - fall back to sending via the parent transport's standalone SSE stream.
+            // The message is already stored in the event store by SseWriter.
             await parentTransport.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
         }
     }

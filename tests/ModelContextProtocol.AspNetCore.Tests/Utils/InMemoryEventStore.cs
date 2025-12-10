@@ -1,6 +1,7 @@
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 
 namespace ModelContextProtocol.AspNetCore.Tests.Utils;
 
@@ -8,9 +9,9 @@ namespace ModelContextProtocol.AspNetCore.Tests.Utils;
 /// In-memory event store for testing resumability.
 /// This is a simple implementation intended for testing, not for production use.
 /// </summary>
-public class InMemoryEventStore : IEventStore
+public class InMemoryEventStore : ISseEventStore
 {
-    private readonly ConcurrentDictionary<string, (string StreamId, JsonRpcMessage? Message)> _events = new();
+    private readonly ConcurrentDictionary<string, (string SessionId, string StreamId, JsonRpcMessage? Message)> _events = new();
     private long _eventCounter;
 
     /// <summary>
@@ -24,10 +25,10 @@ public class InMemoryEventStore : IEventStore
     public int StoreEventCallCount => StoredEventIds.Count;
 
     /// <inheritdoc />
-    public ValueTask<string> StoreEventAsync(string streamId, JsonRpcMessage? message, CancellationToken cancellationToken = default)
+    public ValueTask<string> StoreEventAsync(string sessionId, string streamId, JsonRpcMessage? message, CancellationToken cancellationToken = default)
     {
         var eventId = Interlocked.Increment(ref _eventCounter).ToString();
-        _events[eventId] = (streamId, message);
+        _events[eventId] = (sessionId, streamId, message);
         lock (StoredEventIds)
         {
             StoredEventIds.Add(eventId);
@@ -36,33 +37,54 @@ public class InMemoryEventStore : IEventStore
     }
 
     /// <inheritdoc />
-    public async ValueTask<string?> ReplayEventsAfterAsync(
+    public ValueTask<SseReplayResult?> GetEventsAfterAsync(
         string lastEventId,
-        Func<JsonRpcMessage, string, CancellationToken, ValueTask> sendCallback,
         CancellationToken cancellationToken = default)
     {
         if (!_events.TryGetValue(lastEventId, out var lastEvent))
         {
-            return null;
+            return ValueTask.FromResult<SseReplayResult?>(null);
         }
 
+        var sessionId = lastEvent.SessionId;
         var streamId = lastEvent.StreamId;
+
+        return new ValueTask<SseReplayResult?>(new SseReplayResult
+        {
+            SessionId = sessionId,
+            StreamId = streamId,
+            Events = GetEventsAsync(lastEventId, sessionId, streamId, cancellationToken)
+        });
+    }
+
+    private async IAsyncEnumerable<StoredSseEvent> GetEventsAsync(
+        string lastEventId,
+        string sessionId,
+        string streamId,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
         var startReplay = false;
 
         foreach (var kvp in _events.OrderBy(e => long.Parse(e.Key)))
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (kvp.Key == lastEventId)
             {
                 startReplay = true;
                 continue;
             }
 
-            if (startReplay && kvp.Value.StreamId == streamId && kvp.Value.Message is not null)
+            if (startReplay && kvp.Value.SessionId == sessionId && kvp.Value.StreamId == streamId && kvp.Value.Message is not null)
             {
-                await sendCallback(kvp.Value.Message, kvp.Key, cancellationToken).ConfigureAwait(false);
+                yield return new StoredSseEvent
+                {
+                    Message = kvp.Value.Message,
+                    EventId = kvp.Key
+                };
             }
         }
 
-        return streamId;
+        await Task.CompletedTask;
     }
 }

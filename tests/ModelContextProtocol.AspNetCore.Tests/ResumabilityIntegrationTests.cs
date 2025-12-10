@@ -1,5 +1,5 @@
 using System.ComponentModel;
-using System.Diagnostics.CodeAnalysis;
+using System.Net.ServerSentEvents;
 using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,15 +21,12 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
         {"jsonrpc":"2.0","id":"1","method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"TestClient","version":"1.0.0"}}}
         """;
 
-    #region McpClient-based End-to-End Tests
-
     [Fact]
     public async Task Server_StoresEvents_WhenEventStoreConfigured()
     {
         // Arrange
-        var (app, eventStore) = await CreateServerWithEventStoreAsync();
-        await using var _ = app;
-
+        var eventStore = new InMemoryEventStore();
+        await using var app = await CreateServerAsync(eventStore);
         await using var client = await ConnectClientAsync();
 
         // Act - Make a tool call which generates events
@@ -46,9 +43,8 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
     public async Task Server_StoresMultipleEvents_ForMultipleToolCalls()
     {
         // Arrange
-        var (app, eventStore) = await CreateServerWithEventStoreAsync();
-        await using var _ = app;
-
+        var eventStore = new InMemoryEventStore();
+        await using var app = await CreateServerAsync(eventStore);
         await using var client = await ConnectClientAsync();
 
         // Act - Make multiple tool calls
@@ -75,9 +71,8 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
     public async Task Client_CanMakeMultipleRequests_WithResumabilityEnabled()
     {
         // Arrange
-        var (app, eventStore) = await CreateServerWithEventStoreAsync();
-        await using var _ = app;
-
+        var eventStore = new InMemoryEventStore();
+        await using var app = await CreateServerAsync(eventStore);
         await using var client = await ConnectClientAsync();
 
         // Act - Make many requests to verify stability
@@ -99,9 +94,8 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
     public async Task Ping_WorksWithResumabilityEnabled()
     {
         // Arrange
-        var (app, _) = await CreateServerWithEventStoreAsync();
-        await using var _ = app;
-
+        var eventStore = new InMemoryEventStore();
+        await using var app = await CreateServerAsync(eventStore);
         await using var client = await ConnectClientAsync();
 
         // Act & Assert - Ping should work
@@ -112,9 +106,8 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
     public async Task ListTools_WorksWithResumabilityEnabled()
     {
         // Arrange
-        var (app, _) = await CreateServerWithEventStoreAsync();
-        await using var _ = app;
-
+        var eventStore = new InMemoryEventStore();
+        await using var app = await CreateServerAsync(eventStore);
         await using var client = await ConnectClientAsync();
 
         // Act
@@ -122,138 +115,56 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
 
         // Assert
         Assert.NotNull(tools);
-        Assert.Equal(2, tools.Count); // echo and slow_echo
-        Assert.Contains(tools, t => t.Name == "echo");
-        Assert.Contains(tools, t => t.Name == "slow_echo");
+        Assert.Single(tools);
     }
-
-    [Fact]
-    public async Task Tool_CanCloseStandaloneSseStream_ViaRequestContext()
-    {
-        // Arrange
-        Builder.Services.AddMcpServer()
-            .WithHttpTransport(options =>
-            {
-                options.EventStore = new InMemoryEventStore();
-            })
-            .WithTools([McpServerTool.Create(
-                (RequestContext<CallToolRequestParams> context, string message) =>
-                {
-                    // Close the standalone (GET) SSE stream
-                    context.CloseStandaloneSseStream();
-                    return $"Standalone stream closed: {message}";
-                },
-                new() { Name = "close_standalone" })]);
-
-        var app = Builder.Build();
-        app.MapMcp();
-        await app.StartAsync(TestContext.Current.CancellationToken);
-        await using var _ = app;
-
-        await using var client = await ConnectClientAsync();
-
-        // Act - Call the tool that closes the standalone stream
-        var result = await client.CallToolAsync("close_standalone",
-            new Dictionary<string, object?> { ["message"] = "test" },
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        // Assert - Tool call should complete successfully
-        Assert.NotNull(result);
-        var textContent = Assert.Single(result.Content.OfType<TextContentBlock>());
-        Assert.Contains("Standalone stream closed: test", textContent.Text);
-    }
-
-    #endregion
-
-    #region SSE Format Verification Tests (require raw HTTP)
 
     [Fact]
     public async Task Server_IncludesEventIdAndRetry_InSseResponse()
     {
         // Arrange
-        var (app, _) = await CreateServerWithEventStoreAsync(retryInterval: TimeSpan.FromSeconds(5));
-        await using var _ = app;
+        var expectedRetryInterval = TimeSpan.FromSeconds(5);
+        var eventStore = new InMemoryEventStore();
+        await using var app = await CreateServerAsync(eventStore, retryInterval: expectedRetryInterval);
 
         // Act
-        var sseFields = await SendInitializeAndReadSseFieldsAsync();
+        var sseResponse = await SendInitializeAndReadSseResponseAsync(InitializeRequest);
 
         // Assert - Event IDs and retry field should be present in the response
-        Assert.True(sseFields.HasEventId, "Expected SSE response to contain event IDs");
-        Assert.True(sseFields.HasRetry, "Expected SSE response to contain retry field");
-        Assert.Equal("5000", sseFields.RetryValue);
+        Assert.True(sseResponse.LastEventId is not null, "Expected SSE response to contain event IDs");
+        Assert.Equal(expectedRetryInterval, sseResponse.RetryInterval);
     }
 
     [Fact]
     public async Task Server_WithoutEventStore_DoesNotIncludeEventIdAndRetry()
     {
         // Arrange - Server without event store
-        Builder.Services.AddMcpServer()
-            .WithHttpTransport()
-            .WithTools<ResumabilityTestTools>();
-
-        var app = Builder.Build();
-        app.MapMcp();
-        await app.StartAsync(TestContext.Current.CancellationToken);
-        await using var _ = app;
+        await using var app = await CreateServerAsync();
 
         // Act
-        var sseFields = await SendInitializeAndReadSseFieldsAsync();
+        var sseResponse = await SendInitializeAndReadSseResponseAsync(InitializeRequest);
 
         // Assert - No event IDs or retry field when EventStore is not configured
-        Assert.False(sseFields.HasEventId, "Did not expect event IDs when EventStore is not configured");
-        Assert.False(sseFields.HasRetry, "Did not expect retry field when EventStore is not configured");
+        Assert.True(sseResponse.LastEventId is null, "Did not expect event IDs when EventStore is not configured");
+        Assert.True(sseResponse.RetryInterval is null, "Did not expect retry field when EventStore is not configured");
     }
 
     [Fact]
     public async Task Server_DoesNotSendPrimingEvents_ToOlderProtocolVersionClients()
     {
         // Arrange - Server with resumability enabled
-        var (app, eventStore) = await CreateServerWithEventStoreAsync(retryInterval: TimeSpan.FromSeconds(5));
-        await using var _ = app;
+        var eventStore = new InMemoryEventStore();
+        await using var app = await CreateServerAsync(eventStore, retryInterval: TimeSpan.FromSeconds(5));
 
         // Use an older protocol version that doesn't support resumability
-        var oldProtocolInitRequest = """
+        const string OldProtocolInitRequest = """
             {"jsonrpc":"2.0","id":"1","method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"OldClient","version":"1.0.0"}}}
             """;
 
-        using var requestContent = new StringContent(oldProtocolInitRequest, Encoding.UTF8, "application/json");
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/")
-        {
-            Headers =
-            {
-                Accept = { new("application/json"), new("text/event-stream") }
-            },
-            Content = requestContent,
-        };
-
-        using var response = await HttpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead,
-            TestContext.Current.CancellationToken);
-        response.EnsureSuccessStatusCode();
-
-        // Read SSE fields with timeout
-        await using var stream = await response.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
-        using var reader = new StreamReader(stream);
-
-        var sseFields = new SseFields();
-        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-
-        try
-        {
-            while (await reader.ReadLineAsync(timeoutCts.Token) is { } line)
-            {
-                if (string.IsNullOrEmpty(line)) break;
-
-                if (line.StartsWith("id:", StringComparison.Ordinal))
-                    sseFields.EventId = line["id:".Length..].Trim();
-                else if (line.StartsWith("retry:", StringComparison.Ordinal))
-                    sseFields.RetryValue = line["retry:".Length..].Trim();
-            }
-        }
-        catch (OperationCanceledException) { /* Expected - stream may stay open */ }
+        var sseResponse = await SendInitializeAndReadSseResponseAsync(OldProtocolInitRequest);
 
         // Assert - Old clients should not receive event IDs or retry fields (no priming events)
-        Assert.False(sseFields.HasEventId, "Old protocol clients should not receive event IDs");
-        Assert.False(sseFields.HasRetry, "Old protocol clients should not receive retry field");
+        Assert.True(sseResponse.LastEventId is null, "Old protocol clients should not receive event IDs");
+        Assert.True(sseResponse.RetryInterval is null, "Old protocol clients should not receive retry field");
 
         // Event store should not have been called for old clients
         Assert.Equal(0, eventStore.StoreEventCallCount);
@@ -263,44 +174,26 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
     public async Task Client_ReceivesRetryInterval_FromServer()
     {
         // Arrange - Server with specific retry interval
-        var expectedRetryMs = 3000;
-        var (app, _) = await CreateServerWithEventStoreAsync(retryInterval: TimeSpan.FromMilliseconds(expectedRetryMs));
-        await using var _ = app;
+        var expectedRetry = TimeSpan.FromMilliseconds(3000);
+        var eventStore = new InMemoryEventStore();
+        await using var app = await CreateServerAsync(eventStore, retryInterval: expectedRetry);
 
         // Act - Send initialize and read the retry field
-        var sseFields = await SendInitializeAndReadSseFieldsAsync();
+        var sseItem = await SendInitializeAndReadSseResponseAsync(InitializeRequest);
 
         // Assert - Client receives the retry interval from server
-        Assert.True(sseFields.HasRetry, "Expected retry field in SSE response");
-        Assert.Equal(expectedRetryMs.ToString(), sseFields.RetryValue);
+        Assert.Equal(expectedRetry, sseItem.RetryInterval);
     }
-
-    #endregion
-
-    #region Test Tools
 
     [McpServerToolType]
     private class ResumabilityTestTools
     {
         [McpServerTool(Name = "echo"), Description("Echoes the message back")]
         public static string Echo(string message) => $"Echo: {message}";
-
-        [McpServerTool(Name = "slow_echo"), Description("Echoes after a delay")]
-        public static async Task<string> SlowEcho(string message, CancellationToken cancellationToken)
-        {
-            await Task.Delay(100, cancellationToken);
-            return $"Slow Echo: {message}";
-        }
     }
 
-    #endregion
-
-    #region Helpers
-
-    private async Task<(WebApplication App, InMemoryEventStore EventStore)> CreateServerWithEventStoreAsync(TimeSpan? retryInterval = null)
+    private async Task<WebApplication> CreateServerAsync(ISseEventStore? eventStore = null, TimeSpan? retryInterval = null)
     {
-        var eventStore = new InMemoryEventStore();
-
         Builder.Services.AddMcpServer()
             .WithHttpTransport(options =>
             {
@@ -316,8 +209,7 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
         app.MapMcp();
 
         await app.StartAsync(TestContext.Current.CancellationToken);
-
-        return (app, eventStore);
+        return app;
     }
 
     private async Task<McpClient> ConnectClientAsync()
@@ -332,13 +224,9 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
             cancellationToken: TestContext.Current.CancellationToken);
     }
 
-    /// <summary>
-    /// Sends an initialize request and reads SSE fields from the response.
-    /// This is needed for tests that verify SSE format details that McpClient abstracts away.
-    /// </summary>
-    private async Task<SseFields> SendInitializeAndReadSseFieldsAsync()
+    private async Task<SseResponse> SendInitializeAndReadSseResponseAsync(string initializeRequest)
     {
-        using var requestContent = new StringContent(InitializeRequest, Encoding.UTF8, "application/json");
+        using var requestContent = new StringContent(initializeRequest, Encoding.UTF8, "application/json");
         using var request = new HttpRequestMessage(HttpMethod.Post, "/")
         {
             Headers =
@@ -353,62 +241,26 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
 
         response.EnsureSuccessStatusCode();
 
+        var sseResponse = new SseResponse();
         await using var stream = await response.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
-        using var reader = new StreamReader(stream);
-
-        var result = new SseFields();
-        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-
-        try
+        await foreach (var sseItem in SseParser.Create(stream).EnumerateAsync(TestContext.Current.CancellationToken))
         {
-            while (await reader.ReadLineAsync(timeoutCts.Token) is { } line)
+            if (!string.IsNullOrEmpty(sseItem.EventId))
             {
-                if (string.IsNullOrEmpty(line))
-                {
-                    break; // End of first SSE message
-                }
-
-                if (line.StartsWith("id:", StringComparison.Ordinal))
-                {
-                    result.EventId = line["id:".Length..].Trim();
-                }
-                else if (line.StartsWith("retry:", StringComparison.Ordinal))
-                {
-                    result.RetryValue = line["retry:".Length..].Trim();
-                }
-                else if (line.StartsWith("data:", StringComparison.Ordinal))
-                {
-                    result.DataValue = line["data:".Length..].Trim();
-                }
-                else if (line.StartsWith("event:", StringComparison.Ordinal))
-                {
-                    result.EventType = line["event:".Length..].Trim();
-                }
+                sseResponse.LastEventId = sseItem.EventId;
+            }
+            if (sseItem.ReconnectionInterval.HasValue)
+            {
+                sseResponse.RetryInterval = sseItem.ReconnectionInterval.Value;
             }
         }
-        catch (OperationCanceledException) { /* Expected - stream may stay open */ }
 
-        return result;
+        return sseResponse;
     }
 
-    private sealed class SseFields
+    private struct SseResponse
     {
-        [MemberNotNullWhen(true, nameof(EventId))]
-        public bool HasEventId => EventId is not null;
-        public string? EventId { get; set; }
-
-        [MemberNotNullWhen(true, nameof(RetryValue))]
-        public bool HasRetry => RetryValue is not null;
-        public string? RetryValue { get; set; }
-
-        [MemberNotNullWhen(true, nameof(DataValue))]
-        public bool HasData => DataValue is not null;
-        public string? DataValue { get; set; }
-
-        [MemberNotNullWhen(true, nameof(EventType))]
-        public bool HasEvent => EventType is not null;
-        public string? EventType { get; set; }
+        public string? LastEventId { get; set; }
+        public TimeSpan? RetryInterval { get; set; }
     }
-
-    #endregion
 }

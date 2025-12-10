@@ -19,11 +19,14 @@ namespace ModelContextProtocol.Server;
 /// Implementations should be thread-safe, as events may be stored and replayed concurrently.
 /// </para>
 /// </remarks>
-public interface IEventStore
+public interface ISseEventStore
 {
     /// <summary>
     /// Stores an event for later retrieval.
     /// </summary>
+    /// <param name="sessionId">
+    /// The ID of the session, or <c>null</c>.
+    /// </param>
     /// <param name="streamId">
     /// The ID of the stream the event belongs to. This is typically the JSON-RPC request ID
     /// for POST SSE responses, or a special identifier for the standalone GET SSE stream.
@@ -34,23 +37,18 @@ public interface IEventStore
     /// </param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>The generated event ID for the stored event.</returns>
-    ValueTask<string> StoreEventAsync(string streamId, JsonRpcMessage? message, CancellationToken cancellationToken = default);
+    ValueTask<string> StoreEventAsync(string sessionId, string streamId, JsonRpcMessage? message, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Replays events that occurred after the specified event ID.
     /// </summary>
     /// <param name="lastEventId">The ID of the last event the client received.</param>
-    /// <param name="sendCallback">
-    /// A callback function to send each replayed event to the client.
-    /// The callback receives the message and its event ID.
-    /// </param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>
-    /// The stream ID of the replayed events if the event ID was found and events were replayed;
+    /// An <see cref="SseReplayResult"/> containing the events to replay if the event ID was found;
     /// <see langword="null"/> if the event ID was not found in the store.
     /// </returns>
-    ValueTask<string?> ReplayEventsAfterAsync(
+    ValueTask<SseReplayResult?> GetEventsAfterAsync(
         string lastEventId,
-        Func<JsonRpcMessage, string, CancellationToken, ValueTask> sendCallback,
         CancellationToken cancellationToken = default);
 }

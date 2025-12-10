@@ -41,7 +41,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     ];
 
     /// <summary>
-    /// Checks if the given protocol version supports resumability (priming events).
+    /// Checks if the given protocol version supports priming events.
     /// </summary>
     /// <param name="protocolVersion">The protocol version to check.</param>
     /// <returns>True if the protocol version supports resumability.</returns>
@@ -49,7 +49,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     /// Priming events are only supported in protocol version &gt;= 2025-11-25.
     /// Older clients may crash when receiving SSE events with empty data.
     /// </remarks>
-    internal static bool SupportsResumability(string? protocolVersion)
+    internal static bool SupportsPrimingEvent(string? protocolVersion)
     {
         const string MinResumabilityProtocolVersion = "2025-11-25";
         return string.Compare(protocolVersion, MinResumabilityProtocolVersion, StringComparison.Ordinal) >= 0;

@@ -1,5 +1,4 @@
 using ModelContextProtocol.Protocol;
-using System.IO.Pipelines;
 using System.Security.Claims;
 using System.Threading.Channels;
 
@@ -72,13 +71,13 @@ public sealed class StreamableHttpServerTransport : ITransport
     /// Gets or sets the event store for resumability support.
     /// When set, events are stored and can be replayed when clients reconnect with a Last-Event-ID header.
     /// </summary>
-    public IEventStore? EventStore { get; set; }
+    public ISseEventStore? EventStore { get; set; }
 
     /// <summary>
     /// Gets or sets the retry interval to suggest to clients in SSE retry field.
-    /// When set along with <see cref="EventStore"/>, the server will include a retry field in priming events.
+    /// When <see cref="EventStore"/> is set, the server will include a retry field in priming events.
     /// </summary>
-    public TimeSpan? RetryInterval { get; set; }
+    public TimeSpan RetryInterval { get; set; } = TimeSpan.FromSeconds(5);
 
     /// <summary>
     /// Gets or sets the negotiated protocol version for this session.
@@ -126,98 +125,59 @@ public sealed class StreamableHttpServerTransport : ITransport
             throw new InvalidOperationException("GET requests are not supported in stateless mode.");
         }
 
-        // Handle resumption: if Last-Event-ID is provided and we have an event store
+        var isResumingGetStream = false;
+
         if (!string.IsNullOrEmpty(lastEventId) && EventStore is not null)
         {
-            // Replay events and determine which stream they belonged to
-            var streamId = await ReplayEventsToStreamAsync(sseResponseStream, lastEventId!, cancellationToken).ConfigureAwait(false);
+            var eventsToReplay = await EventStore.GetEventsAfterAsync(lastEventId!, cancellationToken);
 
-            if (streamId is null)
+            if (eventsToReplay is not null)
             {
-                // Event ID not found - client should start fresh
-                throw new InvalidOperationException($"Event ID '{lastEventId}' not found in event store.");
-            }
+                if (eventsToReplay.StreamId == GetStreamId)
+                {
+                    isResumingGetStream = true;
 
-            // If this is a POST stream, we're done - the replay was the complete response
-            if (streamId != GetStreamId)
-            {
-                return;
-            }
+                    // Replay messages onto the new background GET stream
+                    await foreach (var e in eventsToReplay.Events)
+                    {
+                        await _sseWriter.SendMessageAsync(e.Message, e.EventId, cancellationToken);
+                    }
+                }
+                else
+                {
+                    // Replay messages onto a new stream specific to this request
+                    await using var newStream = new SseWriter();
+                    await foreach (var e in eventsToReplay.Events)
+                    {
+                        await newStream.SendMessageAsync(e.Message, e.EventId, cancellationToken);
+                    }
 
-            // For GET stream resumption, mark as started and fall through to continue receiving new events
-            // (Don't need to check if already started - resumption is always allowed)
-            Interlocked.Exchange(ref _getRequestStarted, 1);
+                    await newStream.WriteAllAsync(sseResponseStream, cancellationToken);
+                    return;
+                }
+            }
         }
-        else
+
+        // New GET stream (not resumption) - only allow one per session
+        if (Interlocked.Exchange(ref _getRequestStarted, 1) == 1)
         {
-            // New GET stream (not resumption) - only allow one per session
-            if (Interlocked.Exchange(ref _getRequestStarted, 1) == 1)
-            {
-                throw new InvalidOperationException("Only one GET SSE stream is allowed per session. Use Last-Event-ID header to resume.");
-            }
+            throw new InvalidOperationException("Only one GET SSE stream is allowed per session. Use Last-Event-ID header to resume.");
         }
 
-        // Configure the SSE writer for resumability if we have an event store and the client supports it
-        if (EventStore is not null && McpSessionHandler.SupportsResumability(NegotiatedProtocolVersion))
+        // Configure the SSE writer for resumability if we have an event store and the client supports priming
+        if (EventStore is not null && McpSessionHandler.SupportsPrimingEvent(NegotiatedProtocolVersion))
         {
-            _sseWriter.EventStore = EventStore;
-            _sseWriter.StreamId = GetStreamId;
-            _sseWriter.RetryInterval = RetryInterval;
+            _sseWriter.EventStore = new(EventStore, SessionId, GetStreamId, RetryInterval);
 
-            // Send a priming event to establish resumability
-            await _sseWriter.SendPrimingEventAsync(cancellationToken).ConfigureAwait(false);
+            if (!isResumingGetStream)
+            {
+                // Send a priming event to establish resumability
+                await _sseWriter.SendPrimingEventAsync(cancellationToken).ConfigureAwait(false);
+            }
         }
 
         // We do not need to reference _disposeCts like in HandlePostRequest, because the session ending completes the _sseWriter gracefully.
         await _sseWriter.WriteAllAsync(sseResponseStream, cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Replays events from the event store to the response stream.
-    /// For POST streams, this writes the complete replay response.
-    /// For GET streams, this writes replayed events before the caller continues with _sseWriter.
-    /// </summary>
-    /// <returns>The stream ID of the replayed events, or null if the event ID was not found.</returns>
-    private async Task<string?> ReplayEventsToStreamAsync(Stream sseResponseStream, string lastEventId, CancellationToken cancellationToken)
-    {
-        if (EventStore is null)
-        {
-            return null;
-        }
-
-        // Create a writer for replaying events
-        await using var replayWriter = new SseWriter();
-
-        // Replay events from the store - this also tells us which stream the events belong to
-        var streamId = await EventStore.ReplayEventsAfterAsync(
-            lastEventId,
-            async (message, eventId, ct) =>
-            {
-                await replayWriter.SendMessageAsync(message, eventId, ct).ConfigureAwait(false);
-            },
-            cancellationToken).ConfigureAwait(false);
-
-        if (streamId is null)
-        {
-            return null;
-        }
-
-        // For POST streams: configure resumability and write the replay as a complete response
-        // For GET streams: just write the replayed events (caller will continue with _sseWriter for new events)
-        if (streamId != GetStreamId)
-        {
-            // POST stream replay - include resumability info so client can resume again if needed
-            replayWriter.EventStore = EventStore;
-            replayWriter.StreamId = streamId;
-            replayWriter.RetryInterval = RetryInterval;
-            await replayWriter.SendPrimingEventAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        // Complete the replay writer and write all events to the stream
-        replayWriter.Complete();
-        await replayWriter.WriteAllAsync(sseResponseStream, cancellationToken).ConfigureAwait(false);
-
-        return streamId;
     }
 
     /// <summary>
@@ -259,19 +219,6 @@ public sealed class StreamableHttpServerTransport : ITransport
 
         // If the underlying writer has been disposed, just drop the message.
         await _sseWriter.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Closes the standalone SSE stream (from GET requests) gracefully.
-    /// </summary>
-    /// <remarks>
-    /// This implements part of the SSE polling pattern from SEP-1699: the server can close
-    /// the standalone GET SSE stream at will. The client should reconnect with the Last-Event-ID
-    /// header to resume receiving unsolicited server messages.
-    /// </remarks>
-    internal void CloseStandaloneSseStream()
-    {
-        _sseWriter.Complete();
     }
 
     /// <inheritdoc/>
