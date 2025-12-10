@@ -597,25 +597,65 @@ public class AuthTests : OAuthTestBase
     }
 
     [Fact]
-    public async Task JwtBearerChallenge_DoesNotIncludeResourceMetadata()
+    public async Task CanAuthenticate_WithResourceMetadataPathFallbacks()
     {
-        await using var app = await StartMcpServerAsync(authScheme: JwtBearerDefaults.AuthenticationScheme);
+        const string resourcePath = "/mcp";
+        List<string> wellKnownRequests = [];
 
-        using var unauthorizedResponse = await HttpClient.GetAsync(McpServerUrl, HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.Unauthorized, unauthorizedResponse.StatusCode);
+        Builder.Services.Configure<AuthenticationOptions>(options => options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme);
+        await using var app = Builder.Build();
 
-        var headerFound = false;
-        foreach (var header in unauthorizedResponse.Headers.WwwAuthenticate)
+        var metadata = new ProtectedResourceMetadata
         {
-            headerFound = true;
-            Assert.Equal("Bearer", header.Scheme);
-            Assert.True(header.Parameter is null || !header.Parameter.Contains("resource_metadata", StringComparison.OrdinalIgnoreCase));
-        }
+            Resource = new Uri($"{McpServerUrl}{resourcePath}"),
+            AuthorizationServers = { new Uri(OAuthServerUrl) },
+        };
 
-        Assert.True(headerFound);
+        app.Use(async (context, next) =>
+        {
+            if (context.Request.Path.StartsWithSegments("/.well-known/oauth-protected-resource", out var remaining))
+            {
+                wellKnownRequests.Add(context.Request.Path);
+                if (remaining.HasValue)
+                {
+                    context.Response.StatusCode = StatusCodes.Status404NotFound;
+                    return;
+                }
+            }
 
-        using var metadataResponse = await HttpClient.GetAsync(new Uri("/.well-known/oauth-protected-resource", UriKind.Relative), TestContext.Current.CancellationToken);
-        metadataResponse.EnsureSuccessStatusCode();
+            await next();
+        });
+
+        app.UseAuthentication();
+        app.UseAuthorization();
+
+        app.MapMcp(resourcePath).RequireAuthorization();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        var endpoint = new Uri(new Uri(McpServerUrl), resourcePath);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = endpoint,
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+            [
+                $"/.well-known/oauth-protected-resource{resourcePath}",
+                "/.well-known/oauth-protected-resource"
+            ],
+            wellKnownRequests);
     }
 
     [Fact]
