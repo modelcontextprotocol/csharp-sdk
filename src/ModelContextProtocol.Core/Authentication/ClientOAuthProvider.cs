@@ -103,7 +103,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     /// </summary>
     /// <param name="authorizationUrl">The authorization URL to handle.</param>
     /// <param name="redirectUri">The redirect URI where the authorization code will be sent.</param>
-    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
     /// <returns>The authorization code entered by the user, or null if none was provided.</returns>
     private static Task<string?> DefaultAuthorizationUrlHandler(Uri authorizationUrl, Uri redirectUri, CancellationToken cancellationToken)
     {
@@ -117,12 +117,12 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     internal override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, JsonRpcMessage? message, CancellationToken cancellationToken)
     {
-        bool didRefresh = false;
+        bool attemptedRefresh = false;
 
         if (request.Headers.Authorization is null && request.RequestUri is not null)
         {
             string? accessToken;
-            (accessToken, didRefresh) = await GetAccessTokenSilentAsync(request.RequestUri, cancellationToken).ConfigureAwait(false);
+            (accessToken, attemptedRefresh) = await GetAccessTokenSilentAsync(request.RequestUri, cancellationToken).ConfigureAwait(false);
 
             if (!string.IsNullOrEmpty(accessToken))
             {
@@ -134,13 +134,13 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         if (ShouldRetryWithNewAccessToken(response))
         {
-            return await HandleUnauthorizedResponseAsync(request, message, response, didRefresh, cancellationToken).ConfigureAwait(false);
+            return await HandleUnauthorizedResponseAsync(request, message, response, attemptedRefresh, cancellationToken).ConfigureAwait(false);
         }
 
         return response;
     }
 
-    private async Task<(string? AccessToken, bool DidRefresh)> GetAccessTokenSilentAsync(Uri resourceUri, CancellationToken cancellationToken)
+    private async Task<(string? AccessToken, bool AttemptedRefresh)> GetAccessTokenSilentAsync(Uri resourceUri, CancellationToken cancellationToken)
     {
         var tokens = await _tokenCache.GetTokensAsync(cancellationToken).ConfigureAwait(false);
 
@@ -153,11 +153,8 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // Try to refresh the access token if it is invalid and we have a refresh token.
         if (_authServerMetadata is not null && tokens?.RefreshToken is { Length: > 0 } refreshToken)
         {
-            var newTokens = await RefreshAccessTokenAsync(refreshToken, resourceUri, _authServerMetadata, cancellationToken).ConfigureAwait(false);
-            if (newTokens is not null)
-            {
-                return (newTokens.AccessToken, true);
-            }
+            var accessToken = await RefreshTokensAsync(refreshToken, resourceUri, _authServerMetadata, cancellationToken).ConfigureAwait(false);
+            return (accessToken, true);
         }
 
         // No valid token - auth handler will trigger the 401 flow
@@ -199,7 +196,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         HttpRequestMessage originalRequest,
         JsonRpcMessage? originalJsonRpcMessage,
         HttpResponseMessage response,
-        bool didRefresh,
+        bool attemptedRefresh,
         CancellationToken cancellationToken)
     {
         if (response.Headers.WwwAuthenticate.Count == 0)
@@ -212,8 +209,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             throw new McpException($"The server does not support the '{BearerScheme}' authentication scheme. Server supports: [{serverSchemes}].");
         }
 
-        var accessToken = await GetAccessTokenAsync(response, didRefresh, cancellationToken).ConfigureAwait(false);
-        LogOAuthAuthorizationCompleted();
+        var accessToken = await GetAccessTokenAsync(response, attemptedRefresh, cancellationToken).ConfigureAwait(false);
 
         using var retryRequest = new HttpRequestMessage(originalRequest.Method, originalRequest.RequestUri);
 
@@ -233,9 +229,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     /// Handles a 401 Unauthorized or 403 Forbidden response from a resource by completing any required OAuth flows.
     /// </summary>
     /// <param name="response">The HTTP response that triggered the authentication challenge.</param>
-    /// <param name="didRefresh">Indicates whether a token refresh has already been attempted.</param>
-    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    private async Task<string> GetAccessTokenAsync(HttpResponseMessage response, bool didRefresh, CancellationToken cancellationToken = default)
+    /// <param name="attemptedRefresh">Indicates whether a token refresh has already been attempted.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
+    private async Task<string> GetAccessTokenAsync(HttpResponseMessage response, bool attemptedRefresh, CancellationToken cancellationToken)
     {
         // Get available authorization servers from the 401 or 403 response
         var protectedResourceMetadata = await ExtractProtectedResourceMetadata(response, _serverUrl, cancellationToken).ConfigureAwait(false);
@@ -274,15 +270,15 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // Also only attempt a token refresh for a 401 Unauthorized responses. Other response status codes
         // should not be used for expired access tokens. This is important because 403 forbiden responses can
         // be used for incremental consent which cannot be acheived with a simple refresh.
-        if (!didRefresh &&
+        if (!attemptedRefresh &&
             response.StatusCode == System.Net.HttpStatusCode.Unauthorized &&
-            await _tokenCache.GetTokensAsync(cancellationToken).ConfigureAwait(false) is { RefreshToken: { } refreshToken })
+            await _tokenCache.GetTokensAsync(cancellationToken).ConfigureAwait(false) is { RefreshToken: { Length: > 0 } refreshToken })
         {
-            var refreshedTokens = await RefreshAccessTokenAsync(refreshToken, resourceUri, authServerMetadata, cancellationToken).ConfigureAwait(false);
-            if (refreshedTokens is not null)
+            var accessToken = await RefreshTokensAsync(refreshToken, resourceUri, authServerMetadata, cancellationToken).ConfigureAwait(false);
+            if (accessToken is not null)
             {
                 // A non-null result indicates the refresh succeeded and the new tokens have been stored.
-                return refreshedTokens.AccessToken;
+                return accessToken;
             }
         }
 
@@ -323,7 +319,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     private async Task<AuthorizationServerMetadata> GetAuthServerMetadataAsync(Uri authServerUri, CancellationToken cancellationToken)
     {
-        foreach (var wellKnownEndpoint in GetWellKnownMetadataUris(authServerUri))
+        foreach (var wellKnownEndpoint in GetWellKnownAuthorizationServerMetadataUris(authServerUri))
         {
             try
             {
@@ -368,7 +364,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         throw new McpException($"Failed to find .well-known/openid-configuration or .well-known/oauth-authorization-server metadata for authorization server: '{authServerUri}'");
     }
 
-    private static IEnumerable<Uri> GetWellKnownMetadataUris(Uri issuer)
+    private static IEnumerable<Uri> GetWellKnownAuthorizationServerMetadataUris(Uri issuer)
     {
         var builder = new UriBuilder(issuer);
         var hostBase = builder.Uri.GetLeftPart(UriPartial.Authority);
@@ -387,7 +383,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         }
     }
 
-    private async Task<TokenContainer?> RefreshAccessTokenAsync(string refreshToken, Uri resourceUri, AuthorizationServerMetadata authServerMetadata, CancellationToken cancellationToken)
+    private async Task<string?> RefreshTokensAsync(string refreshToken, Uri resourceUri, AuthorizationServerMetadata authServerMetadata, CancellationToken cancellationToken)
     {
         var requestContent = new FormUrlEncodedContent(new Dictionary<string, string>
         {
@@ -410,7 +406,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             return null;
         }
 
-        return await HandleSuccessfulTokenResponseAsync(httpResponse, cancellationToken).ConfigureAwait(false);
+        var tokens = await HandleSuccessfulTokenResponseAsync(httpResponse, cancellationToken).ConfigureAwait(false);
+        LogOAuthTokenRefreshCompleted();
+        return tokens.AccessToken;
     }
 
     private async Task<string> InitiateAuthorizationCodeFlowAsync(
@@ -502,8 +500,10 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
         httpResponse.EnsureSuccessStatusCode();
-        var tokenContainer = await HandleSuccessfulTokenResponseAsync(httpResponse, cancellationToken).ConfigureAwait(false);
-        return tokenContainer.AccessToken;
+
+        var tokens = await HandleSuccessfulTokenResponseAsync(httpResponse, cancellationToken).ConfigureAwait(false);
+        LogOAuthAuthorizationCompleted();
+        return tokens.AccessToken;
     }
 
     private async Task<TokenContainer> HandleSuccessfulTokenResponseAsync(HttpResponseMessage response, CancellationToken cancellationToken)
@@ -536,32 +536,20 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         return tokens;
     }
 
-    private static Uri BuildProtectedResourceMetadataUri(Uri resourceUri)
-    {
-        var builder = new UriBuilder(resourceUri);
-        var pathSuffix = resourceUri.AbsolutePath;
-        if (pathSuffix.Length > 1)
-        {
-            builder.Path = $"{ProtectedResourceMetadataWellKnownPath}{pathSuffix.AsSpan().TrimEnd('/')}";
-        }
-        else
-        {
-            builder.Path = ProtectedResourceMetadataWellKnownPath;
-        }
-
-        return builder.Uri;
-    }
-
     /// <summary>
     /// Fetches the protected resource metadata from the provided URL.
     /// </summary>
-    /// <param name="metadataUrl">The URL to fetch the metadata from.</param>
-    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>The fetched ProtectedResourceMetadata, or null if it couldn't be fetched.</returns>
-    private async Task<ProtectedResourceMetadata?> FetchProtectedResourceMetadataAsync(Uri metadataUrl, CancellationToken cancellationToken = default)
+    private async Task<ProtectedResourceMetadata?> FetchProtectedResourceMetadataAsync(Uri metadataUrl, bool requireSuccess, CancellationToken cancellationToken)
     {
         using var httpResponse = await _httpClient.GetAsync(metadataUrl, cancellationToken).ConfigureAwait(false);
-        httpResponse.EnsureSuccessStatusCode();
+        if (requireSuccess)
+        {
+            httpResponse.EnsureSuccessStatusCode();
+        }
+        else if (!httpResponse.IsSuccessStatusCode)
+        {
+            return null;
+        }
 
         using var stream = await httpResponse.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         return await JsonSerializer.DeserializeAsync(stream, McpJsonUtilities.JsonContext.Default.ProtectedResourceMetadata, cancellationToken).ConfigureAwait(false);
@@ -640,6 +628,30 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         }
     }
 
+    private static Uri GetRequiredResourceUri(ProtectedResourceMetadata protectedResourceMetadata)
+    {
+        if (protectedResourceMetadata.Resource is null)
+        {
+            ThrowFailedToHandleUnauthorizedResponse("Protected resource metadata did not include a 'resource' value.");
+        }
+
+        return protectedResourceMetadata.Resource;
+    }
+
+    private string? GetScopeParameter(ProtectedResourceMetadata protectedResourceMetadata)
+    {
+        if (!string.IsNullOrEmpty(protectedResourceMetadata.WwwAuthenticateScope))
+        {
+            return protectedResourceMetadata.WwwAuthenticateScope;
+        }
+        else if (protectedResourceMetadata.ScopesSupported.Count > 0)
+        {
+            return string.Join(" ", protectedResourceMetadata.ScopesSupported);
+        }
+
+        return _configuredScopes;
+    }
+
     /// <summary>
     /// Verifies that the resource URI in the metadata exactly matches the original request URL as required by the RFC.
     /// Per RFC: The resource value must be identical to the URL that the client used to make the request to the resource server.
@@ -662,16 +674,6 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         string normalizedResourceLocation = NormalizeUri(resourceLocation);
 
         return string.Equals(normalizedMetadataResource, normalizedResourceLocation, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static Uri GetRequiredResourceUri(ProtectedResourceMetadata protectedResourceMetadata)
-    {
-        if (protectedResourceMetadata.Resource is null)
-        {
-            ThrowFailedToHandleUnauthorizedResponse("Protected resource metadata did not include a 'resource' value.");
-        }
-
-        return protectedResourceMetadata.Resource;
     }
 
     /// <summary>
@@ -708,12 +710,11 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     /// </summary>
     /// <param name="response">The HTTP response containing the WWW-Authenticate header.</param>
     /// <param name="serverUrl">The server URL to verify against the resource metadata.</param>
-    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
     /// <returns>The resource metadata if the resource matches the server, otherwise throws an exception.</returns>
     /// <exception cref="InvalidOperationException">Thrown when the response is not a 401, the metadata can't be fetched, or the resource URI doesn't match the server URL.</exception>
-    private async Task<ProtectedResourceMetadata> ExtractProtectedResourceMetadata(HttpResponseMessage response, Uri serverUrl, CancellationToken cancellationToken = default)
+    private async Task<ProtectedResourceMetadata> ExtractProtectedResourceMetadata(HttpResponseMessage response, Uri serverUrl, CancellationToken cancellationToken)
     {
-        Uri metadataUri;
         string? wwwAuthenticateScope = null;
         string? resourceMetadataUrl = null;
 
@@ -738,19 +739,33 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             }
         }
 
-        if (resourceMetadataUrl is null)
+        ProtectedResourceMetadata? metadata = null;
+
+        if (resourceMetadataUrl is not null)
         {
-            metadataUri = BuildProtectedResourceMetadataUri(serverUrl);
-            LogMissingResourceMetadataParameter(metadataUri);
+            metadata = await FetchProtectedResourceMetadataAsync(new(resourceMetadataUrl), requireSuccess: true, cancellationToken).ConfigureAwait(false)
+                ?? throw new McpException($"Failed to fetch resource metadata from {resourceMetadataUrl}");
         }
         else
         {
-            metadataUri = new(resourceMetadataUrl);
+            foreach (var wellKnownUri in GetWellKnownResourceMetadataUris(serverUrl))
+            {
+                LogMissingResourceMetadataParameter(wellKnownUri);
+                metadata = await FetchProtectedResourceMetadataAsync(wellKnownUri, requireSuccess: false, cancellationToken).ConfigureAwait(false);
+                if (metadata is not null)
+                {
+                    break;
+                }
+            }
+
+            if (metadata is null)
+            {
+                throw new McpException($"Failed to find protected resource metadata at a well-known location for {serverUrl}");
+            }
         }
 
-        var metadata = await FetchProtectedResourceMetadataAsync(metadataUri, cancellationToken).ConfigureAwait(false)
-            ?? throw new McpException($"Failed to fetch resource metadata from {metadataUri}");
-
+        // The WWW-Authenticate header parameter should be preferred over using the scopes_supported metadata property.
+        // https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization#protected-resource-metadata-discovery-requirements
         metadata.WwwAuthenticateScope = wwwAuthenticateScope;
 
         // Per RFC: The resource value must be identical to the URL that the client used
@@ -805,18 +820,18 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         return null;
     }
 
-    private string? GetScopeParameter(ProtectedResourceMetadata protectedResourceMetadata)
+    private static IEnumerable<Uri> GetWellKnownResourceMetadataUris(Uri resourceUri)
     {
-        if (!string.IsNullOrEmpty(protectedResourceMetadata.WwwAuthenticateScope))
+        var builder = new UriBuilder(resourceUri);
+        var hostBase = builder.Uri.GetLeftPart(UriPartial.Authority);
+        var trimmedPath = builder.Path?.Trim('/') ?? string.Empty;
+
+        if (!string.IsNullOrEmpty(trimmedPath))
         {
-            return protectedResourceMetadata.WwwAuthenticateScope;
-        }
-        else if (protectedResourceMetadata.ScopesSupported.Count > 0)
-        {
-            return string.Join(" ", protectedResourceMetadata.ScopesSupported);
+            yield return new Uri($"{hostBase}{ProtectedResourceMetadataWellKnownPath}/{trimmedPath}");
         }
 
-        return _configuredScopes;
+        yield return new Uri($"{hostBase}{ProtectedResourceMetadataWellKnownPath}");
     }
 
     private static string GenerateCodeVerifier()
@@ -867,6 +882,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     [LoggerMessage(Level = LogLevel.Information, Message = "OAuth authorization completed successfully")]
     partial void LogOAuthAuthorizationCompleted();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "OAuth token refresh completed successfully")]
+    partial void LogOAuthTokenRefreshCompleted();
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Error fetching auth server metadata from {Endpoint}")]
     partial void LogErrorFetchingAuthServerMetadata(Exception ex, Uri endpoint);

@@ -242,15 +242,13 @@ public class AuthTests : OAuthTestBase
             Endpoint = new(McpServerUrl),
             OAuth = new()
             {
-                ClientId = "test-refresh-client",
-                ClientSecret = "test-refresh-secret",
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
                 AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
             },
         }, HttpClient, LoggerFactory);
 
-        // The test-refresh-client should get an expired token first,
-        // then automatically refresh it to get a working token
         await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 

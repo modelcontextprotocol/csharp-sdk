@@ -115,24 +115,15 @@ public sealed class Program
 
         var app = builder.Build();
 
-        // Set up the demo client
         var clientId = "demo-client";
         var clientSecret = "demo-secret";
+
         _clients[clientId] = new ClientInfo
         {
             ClientId = clientId,
-            RequiresClientSecret = true,
             ClientSecret = clientSecret,
-            RedirectUris = ["http://localhost:1179/callback"],
-        };
 
-        // When this client ID is used, the first token issued will already be expired to make
-        // testing the refresh flow easier.
-        _clients["test-refresh-client"] = new ClientInfo
-        {
-            ClientId = "test-refresh-client",
             RequiresClientSecret = true,
-            ClientSecret = "test-refresh-secret",
             RedirectUris = ["http://localhost:1179/callback"],
         };
 
