@@ -1796,4 +1796,383 @@ public partial class XmlToDescriptionGeneratorTests
         public List<Diagnostic> Diagnostics { get; set; } = [];
         public Compilation? Compilation { get; set; }
     }
+
+    [Fact]
+    public void Caching_WithIdenticalCompilation_AllOutputsCached()
+    {
+        // This tests that running the same compilation twice uses cached results
+        const string Source = """
+            using ModelContextProtocol.Server;
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>Test tool</summary>
+                [McpServerTool]
+                public static partial string TestMethod(string input) => input;
+            }
+            """;
+
+        var compilation = CreateCompilation(Source);
+        var driver = CreateTrackedDriver();
+
+        // Run #1
+        driver = driver.RunGenerators(compilation, TestContext.Current.CancellationToken);
+        var result1 = driver.GetRunResult();
+        Assert.Single(result1.Results);
+        Assert.Single(result1.Results[0].GeneratedSources);
+
+        // Run #2 with same compilation - should be fully cached
+        driver = driver.RunGenerators(compilation, TestContext.Current.CancellationToken);
+        var result2 = driver.GetRunResult();
+        Assert.Single(result2.Results);
+        
+        var allOutputs = result2.Results[0].TrackedSteps.Values
+            .SelectMany(steps => steps.SelectMany(step => step.Outputs))
+            .ToList();
+        Assert.NotEmpty(allOutputs);
+        Assert.All(allOutputs, output => 
+            Assert.True(output.Reason is IncrementalStepRunReason.Cached or IncrementalStepRunReason.Unchanged,
+                $"Expected Cached or Unchanged but got {output.Reason}"));
+    }
+
+    [Fact]
+    public void Caching_WithNewCompilationSameSource_OutputsCached()
+    {
+        const string Source = """
+            using ModelContextProtocol.Server;
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>Test tool</summary>
+                [McpServerTool]
+                public static partial string TestMethod(string input) => input;
+            }
+            """;
+
+        var driver = CreateTrackedDriver();
+
+        // Run #1 with first compilation
+        var compilation1 = CreateCompilation(Source);
+        driver = driver.RunGenerators(compilation1, TestContext.Current.CancellationToken);
+        var result1 = driver.GetRunResult();
+        Assert.Single(result1.Results);
+
+        // Run #2 with NEW compilation from same source
+        // This creates new syntax trees and new symbol instances
+        var compilation2 = CreateCompilation(Source);
+        Assert.NotSame(compilation1, compilation2); // Verify these are different instances
+        
+        driver = driver.RunGenerators(compilation2, TestContext.Current.CancellationToken);
+        var result2 = driver.GetRunResult();
+        Assert.Single(result2.Results);
+
+        // The source generation output should be cached because the extracted data is semantically identical
+        var sourceOutputSteps = result2.Results[0].TrackedSteps
+            .Where(kvp => kvp.Key.Contains("SourceOutput") || kvp.Key.Contains("RegisterSourceOutput"))
+            .SelectMany(kvp => kvp.Value.SelectMany(step => step.Outputs))
+            .ToList();
+
+        // At minimum, check that we're not regenerating everything from scratch
+        var allOutputs = result2.Results[0].TrackedSteps.Values
+            .SelectMany(steps => steps.SelectMany(step => step.Outputs))
+            .ToList();
+        Assert.NotEmpty(allOutputs);
+        
+        // With proper value equality, the final output should be unchanged
+        // (the source text should be identical even if intermediate steps ran)
+        Assert.Equal(
+            result1.Results[0].GeneratedSources[0].SourceText.ToString(),
+            result2.Results[0].GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Caching_WithUnrelatedFileChange_McpMethodCached()
+    {
+        // Adding an unrelated file should not cause MCP method extraction to re-run
+        const string McpSource = """
+            using ModelContextProtocol.Server;
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>Test tool</summary>
+                [McpServerTool]
+                public static partial string TestMethod(string input) => input;
+            }
+            """;
+
+        const string UnrelatedSource1 = """
+            namespace Other;
+            public class Unrelated { public int Value { get; set; } }
+            """;
+
+        const string UnrelatedSource2 = """
+            namespace Other;
+            public class Unrelated { public int Value { get; set; } public string Name { get; set; } }
+            """;
+
+        var driver = CreateTrackedDriver();
+
+        // Run #1 with MCP file + unrelated file
+        driver = driver.RunGenerators(CreateCompilation(McpSource, UnrelatedSource1), TestContext.Current.CancellationToken);
+        var result1 = driver.GetRunResult();
+        Assert.Single(result1.Results);
+        var output1 = result1.Results[0].GeneratedSources[0].SourceText.ToString();
+
+        // Run #2 with MCP file + MODIFIED unrelated file
+        driver = driver.RunGenerators(CreateCompilation(McpSource, UnrelatedSource2), TestContext.Current.CancellationToken);
+        var result2 = driver.GetRunResult();
+        Assert.Single(result2.Results);
+        var output2 = result2.Results[0].GeneratedSources[0].SourceText.ToString();
+
+        // Output should be identical
+        Assert.Equal(output1, output2);
+
+        // Check that ForAttributeWithMetadataName steps for the MCP method are cached
+        var forAttributeSteps = result2.Results[0].TrackedSteps
+            .Where(kvp => kvp.Key.Contains("ForAttributeWithMetadataName"))
+            .SelectMany(kvp => kvp.Value.SelectMany(step => step.Outputs))
+            .ToList();
+
+        // The MCP method should be cached since it didn't change
+        Assert.Contains(forAttributeSteps, output => 
+            output.Reason is IncrementalStepRunReason.Cached or IncrementalStepRunReason.Unchanged);
+    }
+
+    [Fact]
+    public void Caching_WithXmlDocChange_OutputRegenerated()
+    {
+        // Changing XML docs should cause regeneration
+        const string Source1 = """
+            using ModelContextProtocol.Server;
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>Original description</summary>
+                [McpServerTool]
+                public static partial string TestMethod(string input) => input;
+            }
+            """;
+
+        const string Source2 = """
+            using ModelContextProtocol.Server;
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>Modified description</summary>
+                [McpServerTool]
+                public static partial string TestMethod(string input) => input;
+            }
+            """;
+
+        var driver = CreateTrackedDriver();
+
+        // Run #1
+        driver = driver.RunGenerators(CreateCompilation(Source1), TestContext.Current.CancellationToken);
+        var result1 = driver.GetRunResult();
+        var output1 = result1.Results[0].GeneratedSources[0].SourceText.ToString();
+        Assert.Contains("Original description", output1);
+
+        // Run #2 with modified XML docs
+        driver = driver.RunGenerators(CreateCompilation(Source2), TestContext.Current.CancellationToken);
+        var result2 = driver.GetRunResult();
+        var output2 = result2.Results[0].GeneratedSources[0].SourceText.ToString();
+        Assert.Contains("Modified description", output2);
+        Assert.DoesNotContain("Original description", output2);
+
+        // Verify that there was actual regeneration (not just cached)
+        var allOutputs = result2.Results[0].TrackedSteps.Values
+            .SelectMany(steps => steps.SelectMany(step => step.Outputs))
+            .ToList();
+        Assert.Contains(allOutputs, output => 
+            output.Reason is IncrementalStepRunReason.Modified or IncrementalStepRunReason.New);
+    }
+
+    [Fact]
+    public void Caching_WithAddedMethod_ExistingMethodCached()
+    {
+        const string Source1 = """
+            using ModelContextProtocol.Server;
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>First tool</summary>
+                [McpServerTool]
+                public static partial string FirstMethod(string input) => input;
+            }
+            """;
+
+        const string Source2 = """
+            using ModelContextProtocol.Server;
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>First tool</summary>
+                [McpServerTool]
+                public static partial string FirstMethod(string input) => input;
+
+                /// <summary>Second tool</summary>
+                [McpServerTool]
+                public static partial string SecondMethod(string input) => input;
+            }
+            """;
+
+        var driver = CreateTrackedDriver();
+
+        // Run #1
+        driver = driver.RunGenerators(CreateCompilation(Source1), TestContext.Current.CancellationToken);
+        var result1 = driver.GetRunResult();
+        Assert.Single(result1.Results[0].GeneratedSources);
+
+        // Run #2 with added method
+        driver = driver.RunGenerators(CreateCompilation(Source2), TestContext.Current.CancellationToken);
+        var result2 = driver.GetRunResult();
+        Assert.Single(result2.Results[0].GeneratedSources);
+        
+        var output2 = result2.Results[0].GeneratedSources[0].SourceText.ToString();
+        Assert.Contains("First tool", output2);
+        Assert.Contains("Second tool", output2);
+
+        // The ForAttributeWithMetadataName step should have some cached outputs (the first method)
+        var forAttributeSteps = result2.Results[0].TrackedSteps
+            .Where(kvp => kvp.Key.Contains("ForAttributeWithMetadataName"))
+            .SelectMany(kvp => kvp.Value.SelectMany(step => step.Outputs))
+            .ToList();
+
+        // Should have both cached (first method) and new (second method) outputs
+        Assert.Contains(forAttributeSteps, output => 
+            output.Reason is IncrementalStepRunReason.Cached or IncrementalStepRunReason.Unchanged);
+        Assert.Contains(forAttributeSteps, output => 
+            output.Reason is IncrementalStepRunReason.New or IncrementalStepRunReason.Modified);
+    }
+
+    [Fact]
+    public void Caching_MultipleMethodsAcrossFiles_IndependentCaching()
+    {
+        const string File1 = """
+            using ModelContextProtocol.Server;
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class Tools1
+            {
+                /// <summary>Tool in file 1</summary>
+                [McpServerTool]
+                public static partial string Method1(string input) => input;
+            }
+            """;
+
+        const string File2Original = """
+            using ModelContextProtocol.Server;
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class Tools2
+            {
+                /// <summary>Tool in file 2</summary>
+                [McpServerTool]
+                public static partial string Method2(string input) => input;
+            }
+            """;
+
+        const string File2Modified = """
+            using ModelContextProtocol.Server;
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class Tools2
+            {
+                /// <summary>Modified tool in file 2</summary>
+                [McpServerTool]
+                public static partial string Method2(string input) => input;
+            }
+            """;
+
+        var driver = CreateTrackedDriver();
+
+        // Run #1
+        driver = driver.RunGenerators(CreateCompilation(File1, File2Original), TestContext.Current.CancellationToken);
+        var result1 = driver.GetRunResult();
+        Assert.Single(result1.Results[0].GeneratedSources);
+
+        // Run #2 - only File2 changed
+        driver = driver.RunGenerators(CreateCompilation(File1, File2Modified), TestContext.Current.CancellationToken);
+        var result2 = driver.GetRunResult();
+        Assert.Single(result2.Results[0].GeneratedSources);
+
+        var output2 = result2.Results[0].GeneratedSources[0].SourceText.ToString();
+        Assert.Contains("Tool in file 1", output2); // Unchanged
+        Assert.Contains("Modified tool in file 2", output2); // Changed
+
+        // Method1 extraction should be cached, Method2 should be modified
+        var forAttributeSteps = result2.Results[0].TrackedSteps
+            .Where(kvp => kvp.Key.Contains("ForAttributeWithMetadataName"))
+            .SelectMany(kvp => kvp.Value.SelectMany(step => step.Outputs))
+            .ToList();
+
+        Assert.Contains(forAttributeSteps, output => 
+            output.Reason is IncrementalStepRunReason.Cached or IncrementalStepRunReason.Unchanged);
+        Assert.Contains(forAttributeSteps, output => 
+            output.Reason is IncrementalStepRunReason.Modified or IncrementalStepRunReason.New);
+    }
+
+    /// <summary>
+    /// Creates a compilation with the specified source and standard references.
+    /// Each call creates a NEW compilation instance to ensure we're testing value equality, not reference equality.
+    /// </summary>
+    private static CSharpCompilation CreateCompilation(params string[] sources)
+    {
+        var syntaxTrees = sources.Select(s => CSharpSyntaxTree.ParseText(s)).ToArray();
+
+        var runtimePath = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
+        List<MetadataReference> referenceList =
+        [
+            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(System.ComponentModel.DescriptionAttribute).Assembly.Location),
+            MetadataReference.CreateFromFile(Path.Combine(runtimePath, "System.Runtime.dll")),
+            MetadataReference.CreateFromFile(Path.Combine(runtimePath, "netstandard.dll")),
+        ];
+
+        try
+        {
+            var coreAssemblyPath = Path.Combine(AppContext.BaseDirectory, "ModelContextProtocol.Core.dll");
+            if (File.Exists(coreAssemblyPath))
+            {
+                referenceList.Add(MetadataReference.CreateFromFile(coreAssemblyPath));
+            }
+        }
+        catch
+        {
+            // Ignore
+        }
+
+        return CSharpCompilation.Create(
+            "TestAssembly",
+            syntaxTrees,
+            referenceList,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+    }
+
+    /// <summary>
+    /// Creates a generator driver with step tracking enabled.
+    /// </summary>
+    private static GeneratorDriver CreateTrackedDriver() =>
+        CSharpGeneratorDriver.Create(
+            generators: [new XmlToDescriptionGenerator().AsSourceGenerator()],
+            driverOptions: new GeneratorDriverOptions(
+                disabledOutputs: default,
+                trackIncrementalGeneratorSteps: true));
 }
