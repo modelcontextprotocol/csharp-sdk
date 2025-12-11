@@ -55,7 +55,7 @@ public sealed class XmlToDescriptionGenerator : IIncrementalGenerator
             allMethods.Select(static (methods, _) => new EquatableArray<MethodToGenerate>(methods.Where(m => m.NeedsGeneration))),
             static (spc, methods) =>
             {
-                if (!methods.IsDefaultOrEmpty)
+                if (methods.Length > 0)
                 {
                     spc.AddSource(GeneratedFileName, SourceText.From(GenerateSourceFile(methods), Encoding.UTF8));
                 }
@@ -113,7 +113,7 @@ public sealed class XmlToDescriptionGenerator : IIncrementalGenerator
         // For partial methods with invalid XML, report diagnostic but still generate partial declaration.
         EquatableArray<DiagnosticInfo> diagnostics = hasInvalidXml ?
             new EquatableArray<DiagnosticInfo>(ImmutableArray.Create(new DiagnosticInfo("MCP001", methodSymbol.Locations.FirstOrDefault(), methodSymbol.Name))) :
-            EquatableArray<DiagnosticInfo>.Empty;
+            default;
 
         bool needsMethodDescription = xmlDocs is not null &&
             !string.IsNullOrWhiteSpace(xmlDocs.MethodDescription) &&
@@ -191,7 +191,7 @@ public sealed class XmlToDescriptionGenerator : IIncrementalGenerator
     {
         if (typeSymbol is null)
         {
-            return new TypeInfo(string.Empty, EquatableArray<TypeDeclarationInfo>.Empty);
+            return new TypeInfo(string.Empty, default);
         }
 
         // Build list of nested types from innermost to outermost
@@ -475,10 +475,10 @@ public sealed class XmlToDescriptionGenerator : IIncrementalGenerator
             Modifiers: string.Empty,
             ReturnType: string.Empty,
             MethodName: string.Empty,
-            Parameters: EquatableArray<ParameterInfo>.Empty,
+            Parameters: default,
             MethodDescription: null,
             ReturnDescription: null,
-            Diagnostics: EquatableArray<DiagnosticInfo>.Empty);
+            Diagnostics: default);
 
         public static MethodToGenerate CreateDiagnosticOnly(DiagnosticInfo diagnostic) => new(
             NeedsGeneration: false,
@@ -486,10 +486,10 @@ public sealed class XmlToDescriptionGenerator : IIncrementalGenerator
             Modifiers: string.Empty,
             ReturnType: string.Empty,
             MethodName: string.Empty,
-            Parameters: EquatableArray<ParameterInfo>.Empty,
+            Parameters: default,
             MethodDescription: null,
             ReturnDescription: null,
-            Diagnostics: ImmutableArray.Create(diagnostic));
+            Diagnostics: new([diagnostic]));
     }
 
     /// <summary>Holds information about a method parameter.</summary>
@@ -498,20 +498,20 @@ public sealed class XmlToDescriptionGenerator : IIncrementalGenerator
         string Name,
         bool HasDescriptionAttribute,
         string? XmlDescription,
-        string? DefaultValue) : IEquatable<ParameterInfo>;
+        string? DefaultValue);
 
     /// <summary>Holds information about a type containing MCP methods.</summary>
     private readonly record struct TypeInfo(
         string Namespace,
-        EquatableArray<TypeDeclarationInfo> Types) : IEquatable<TypeInfo>;
+        EquatableArray<TypeDeclarationInfo> Types);
 
     /// <summary>Holds information about a type declaration.</summary>
     private readonly record struct TypeDeclarationInfo(
         string Name,
-        string TypeKeyword) : IEquatable<TypeDeclarationInfo>;
+        string TypeKeyword);
 
     /// <summary>Holds diagnostic information to be reported.</summary>
-    private readonly struct DiagnosticInfo : IEquatable<DiagnosticInfo>
+    private readonly struct DiagnosticInfo
     {
         public string Id { get; }
         public Location? Location { get; }
