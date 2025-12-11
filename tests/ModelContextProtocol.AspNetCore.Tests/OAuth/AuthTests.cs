@@ -659,6 +659,100 @@ public class AuthTests : OAuthTestBase
     }
 
     [Fact]
+    public async Task CannotAuthenticate_WhenResourceMetadataResourceIsNonRootParentPath()
+    {
+        const string configuredResourcePath = "/mcp";
+        const string requestedResourcePath = "/mcp/tools";
+
+        // Remove resource_metadata from the WWW-Authenticate header, because we should only fall back at all (even to root) when it's missing.
+        //
+        // If the protected resource metadata was retrieved from a URL returned by the protected resource via the WWW-Authenticate resource_metadata parameter,
+        // then the resource value returned MUST be identical to the URL that the client used to make the request to the resource server.
+        // If these values are not identical, the data contained in the response MUST NOT be used.
+        //
+        // https://datatracker.ietf.org/doc/html/rfc9728/#section-3.3
+        //
+        // CannotAuthenticate_WhenWwwAuthenticateResourceMetadataIsRootPath validates we won't fallback to root in this case.
+        // CanAuthenticate_WithResourceMetadataPathFallbacks validates we will fallback to root when resource_metadata is missing.
+        Builder.Services.Configure<AuthenticationOptions>(options => options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme);
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.ResourceMetadata = new ProtectedResourceMetadata
+            {
+                Resource = new Uri($"{McpServerUrl}{configuredResourcePath}"),
+                AuthorizationServers = { new Uri(OAuthServerUrl) },
+            };
+        });
+
+        await using var app = Builder.Build();
+
+        app.MapMcp(requestedResourcePath).RequireAuthorization();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new Uri($"{McpServerUrl}{requestedResourcePath}"),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        var ex = await Assert.ThrowsAsync<McpException>(async () =>
+        {
+            await McpClient.CreateAsync(
+                transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        });
+
+        Assert.Contains("does not match", ex.Message);
+    }
+
+    [Fact]
+    public async Task CannotAuthenticate_WhenWwwAuthenticateResourceMetadataIsRootPath()
+    {
+        const string requestedResourcePath = "/mcp/tools";
+
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.ResourceMetadata = new ProtectedResourceMetadata
+            {
+                Resource = new Uri($"{McpServerUrl}"),
+                AuthorizationServers = { new Uri(OAuthServerUrl) },
+            };
+        });
+
+        await using var app = Builder.Build();
+
+        app.MapMcp(requestedResourcePath).RequireAuthorization();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new Uri($"{McpServerUrl}{requestedResourcePath}"),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        var ex = await Assert.ThrowsAsync<McpException>(async () =>
+        {
+            await McpClient.CreateAsync(
+                transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        });
+
+        Assert.Contains("does not match", ex.Message);
+    }
+
+    [Fact]
     public void CloneResourceMetadataClonesAllProperties()
     {
         var propertyNames = typeof(ProtectedResourceMetadata).GetProperties().Select(property => property.Name).ToList();

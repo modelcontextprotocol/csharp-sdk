@@ -234,7 +234,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private async Task<string> GetAccessTokenAsync(HttpResponseMessage response, bool attemptedRefresh, CancellationToken cancellationToken)
     {
         // Get available authorization servers from the 401 or 403 response
-        var protectedResourceMetadata = await ExtractProtectedResourceMetadata(response, _serverUrl, cancellationToken).ConfigureAwait(false);
+        var protectedResourceMetadata = await ExtractProtectedResourceMetadata(response, cancellationToken).ConfigureAwait(false);
         var availableAuthorizationServers = protectedResourceMetadata.AuthorizationServers;
 
         if (availableAuthorizationServers.Count == 0)
@@ -657,11 +657,14 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     /// Per RFC: The resource value must be identical to the URL that the client used to make the request to the resource server.
     /// </summary>
     /// <param name="protectedResourceMetadata">The metadata to verify.</param>
-    /// <param name="resourceLocation">The original URL the client used to make the request to the resource server.</param>
+    /// <param name="resourceLocation">
+    /// The original URL the client used to make the request to the resource server or the root Uri for the resource server
+    /// if the metadata was automatically requested from the root well-known location.
+    /// </param>
     /// <returns>True if the resource URI exactly matches the original request URL, otherwise false.</returns>
     private static bool VerifyResourceMatch(ProtectedResourceMetadata protectedResourceMetadata, Uri resourceLocation)
     {
-        if (protectedResourceMetadata.Resource is null || resourceLocation is null)
+        if (protectedResourceMetadata.Resource is null)
         {
             return false;
         }
@@ -695,12 +698,6 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         }
 
         builder.Append(uri.AbsolutePath.TrimEnd('/'));
-
-        if (!string.IsNullOrEmpty(uri.Query))
-        {
-            builder.Append(uri.Query);
-        }
-
         return builder.ToString();
     }
 
@@ -709,12 +706,12 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     /// verifying the resource match, and returning the metadata if valid.
     /// </summary>
     /// <param name="response">The HTTP response containing the WWW-Authenticate header.</param>
-    /// <param name="serverUrl">The server URL to verify against the resource metadata.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
     /// <returns>The resource metadata if the resource matches the server, otherwise throws an exception.</returns>
     /// <exception cref="InvalidOperationException">Thrown when the response is not a 401, the metadata can't be fetched, or the resource URI doesn't match the server URL.</exception>
-    private async Task<ProtectedResourceMetadata> ExtractProtectedResourceMetadata(HttpResponseMessage response, Uri serverUrl, CancellationToken cancellationToken)
+    private async Task<ProtectedResourceMetadata> ExtractProtectedResourceMetadata(HttpResponseMessage response, CancellationToken cancellationToken)
     {
+        Uri resourceUri = _serverUrl;
         string? wwwAuthenticateScope = null;
         string? resourceMetadataUrl = null;
 
@@ -748,19 +745,20 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         }
         else
         {
-            foreach (var wellKnownUri in GetWellKnownResourceMetadataUris(serverUrl))
+            foreach (var (wellKnownUri, expectedResourceUri) in GetWellKnownResourceMetadataUris(resourceUri))
             {
                 LogMissingResourceMetadataParameter(wellKnownUri);
                 metadata = await FetchProtectedResourceMetadataAsync(wellKnownUri, requireSuccess: false, cancellationToken).ConfigureAwait(false);
                 if (metadata is not null)
                 {
+                    resourceUri = expectedResourceUri;
                     break;
                 }
             }
 
             if (metadata is null)
             {
-                throw new McpException($"Failed to find protected resource metadata at a well-known location for {serverUrl}");
+                throw new McpException($"Failed to find protected resource metadata at a well-known location for {resourceUri}");
             }
         }
 
@@ -768,13 +766,12 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization#protected-resource-metadata-discovery-requirements
         metadata.WwwAuthenticateScope = wwwAuthenticateScope;
 
-        // Per RFC: The resource value must be identical to the URL that the client used
-        // to make the request to the resource server
-        LogValidatingResourceMetadata(serverUrl);
+        // Per RFC: The resource value must be identical to the URL that the client used to make the request to the resource server
+        LogValidatingResourceMetadata(resourceUri);
 
-        if (!VerifyResourceMatch(metadata, serverUrl))
+        if (!VerifyResourceMatch(metadata, resourceUri))
         {
-            throw new McpException($"Resource URI in metadata ({metadata.Resource}) does not match the expected URI ({serverUrl})");
+            throw new McpException($"Resource URI in metadata ({metadata.Resource}) does not match the expected URI ({resourceUri})");
         }
 
         return metadata;
@@ -820,7 +817,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         return null;
     }
 
-    private static IEnumerable<Uri> GetWellKnownResourceMetadataUris(Uri resourceUri)
+    private static IEnumerable<(Uri WellKnownUri, Uri ExpectedResourceUri)> GetWellKnownResourceMetadataUris(Uri resourceUri)
     {
         var builder = new UriBuilder(resourceUri);
         var hostBase = builder.Uri.GetLeftPart(UriPartial.Authority);
@@ -828,10 +825,10 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         if (!string.IsNullOrEmpty(trimmedPath))
         {
-            yield return new Uri($"{hostBase}{ProtectedResourceMetadataWellKnownPath}/{trimmedPath}");
+            yield return (new Uri($"{hostBase}{ProtectedResourceMetadataWellKnownPath}/{trimmedPath}"), resourceUri);
         }
 
-        yield return new Uri($"{hostBase}{ProtectedResourceMetadataWellKnownPath}");
+        yield return (new Uri($"{hostBase}{ProtectedResourceMetadataWellKnownPath}"), new Uri(hostBase));
     }
 
     private static string GenerateCodeVerifier()
