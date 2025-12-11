@@ -2,8 +2,9 @@ using System.Diagnostics;
 using System.Net;
 using System.Text;
 using System.Web;
-
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 
 // This program expects the following command-line arguments:
 // 1. The client conformance test scenario to run (e.g., "tools_call")
@@ -27,6 +28,11 @@ McpClientOptions options = new()
     }
 };
 
+var consoleLoggerFactory = LoggerFactory.Create(builder =>
+{
+    builder.AddConsole();
+});
+
 var clientTransport = new HttpClientTransport(new()
 {
     Endpoint = new Uri(endpoint),
@@ -40,33 +46,53 @@ var clientTransport = new HttpClientTransport(new()
             ClientName = "ProtectedMcpClient",
         },
     }
-});
+}, loggerFactory: consoleLoggerFactory);
 
-await using var mcpClient = await McpClient.CreateAsync(clientTransport, options);
+await using var mcpClient = await McpClient.CreateAsync(clientTransport, options, loggerFactory: consoleLoggerFactory);
 
-try {
-    await mcpClient.PingAsync();
-} catch (Exception ex) {
-    Console.WriteLine($"Error during Ping: {ex.Message}");
-}
+bool success = true;
 
-if (scenario == "tools_call")
+switch (scenario)
 {
-    var tools = await mcpClient.ListToolsAsync();
-    Console.WriteLine($"Available tools: {string.Join(", ", tools.Select(t => t.Name))}");
-
-    // Call the "add_numbers" tool
-    var toolName = "add_numbers";
-    Console.WriteLine($"Calling tool: {toolName}");
-    var result = await mcpClient.CallToolAsync(toolName: toolName, arguments: new Dictionary<string, object?>
+    case "tools_call":
     {
-        { "a", 5 },
-        { "b", 10 }
-    });
+        var tools = await mcpClient.ListToolsAsync();
+        Console.WriteLine($"Available tools: {string.Join(", ", tools.Select(t => t.Name))}");
+
+        // Call the "add_numbers" tool
+        var toolName = "add_numbers";
+        Console.WriteLine($"Calling tool: {toolName}");
+        var result = await mcpClient.CallToolAsync(toolName: toolName, arguments: new Dictionary<string, object?>
+        {
+            { "a", 5 },
+            { "b", 10 }
+        });
+        success &= !(result.IsError == true);
+        break;
+    }
+    case "auth/scope-step-up":
+    {
+        // Just testing that we can authenticate and list tools
+        var tools = await mcpClient.ListToolsAsync();
+        Console.WriteLine($"Available tools: {string.Join(", ", tools.Select(t => t.Name))}");
+
+        // Call the "test_tool" tool
+        var toolName = tools.FirstOrDefault()?.Name ?? "test-tool";
+        Console.WriteLine($"Calling tool: {toolName}");
+        var result = await mcpClient.CallToolAsync(toolName: toolName, arguments: new Dictionary<string, object?>
+        {
+            { "foo", "bar" },
+        });
+        success &= !(result.IsError == true);
+        break;
+    }
+    default:
+        // No extra processing for other scenarios
+        break;
 }
 
 // Exit code 0 on success, 1 on failure
-return result.IsError != true ? 0 : 1;
+return success ? 0 : 1;
 
 // Copied from ProtectedMcpClient sample
 static async Task<string?> HandleAuthorizationUrlAsync(Uri authorizationUrl, Uri redirectUri, CancellationToken cancellationToken)
@@ -85,7 +111,7 @@ static async Task<string?> HandleAuthorizationUrlAsync(Uri authorizationUrl, Uri
         listener.Start();
         Console.WriteLine($"Listening for OAuth callback on: {listenerPrefix}");
 
-        OpenBrowser(authorizationUrl);
+        _ = OpenBrowserAsync(authorizationUrl);
 
         var context = await listener.GetContextAsync();
         var query = HttpUtility.ParseQueryString(context.Request.Url?.Query ?? string.Empty);
@@ -125,11 +151,8 @@ static async Task<string?> HandleAuthorizationUrlAsync(Uri authorizationUrl, Uri
     }
 }
 
-/// <summary>
-/// Opens the specified URL in the default browser.
-/// </summary>
-/// <param name="url">The URL to open.</param>
-static void OpenBrowser(Uri url)
+// Simulate a user opening the browser and logging in
+static async Task OpenBrowserAsync(Uri url)
 {
     // Validate the URI scheme - only allow safe protocols
     if (url.Scheme != Uri.UriSchemeHttp && url.Scheme != Uri.UriSchemeHttps)
@@ -140,12 +163,8 @@ static void OpenBrowser(Uri url)
 
     try
     {
-        var psi = new ProcessStartInfo
-        {
-            FileName = url.ToString(),
-            UseShellExecute = true
-        };
-        Process.Start(psi);
+        using var httpClient = new HttpClient();
+        using var authResponse = await httpClient.GetAsync(url);
     }
     catch (Exception ex)
     {

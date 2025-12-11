@@ -16,4 +16,8 @@
     <ProjectReference Include="../../src/ModelContextProtocol.Core/ModelContextProtocol.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" />
+  </ItemGroup>
+
 </Project>
