@@ -672,8 +672,8 @@ public class AuthTests : OAuthTestBase
         //
         // https://datatracker.ietf.org/doc/html/rfc9728/#section-3.3
         //
-        // CannotAuthenticate_WhenWwwAuthenticateResourceMetadataIsRootPath validates we won't fallback to root in this case.
-        // CanAuthenticate_WithResourceMetadataPathFallbacks validates we will fallback to root when resource_metadata is missing.
+        // CannotAuthenticate_WhenWwwAuthenticateResourceMetadataIsRootPath validates we won't fall back to root in this case.
+        // CanAuthenticate_WithResourceMetadataPathFallbacks validates we will fall back to root when resource_metadata is missing.
         Builder.Services.Configure<AuthenticationOptions>(options => options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme);
         Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
         {

@@ -745,7 +745,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         }
         else
         {
-            foreach (var (wellKnownUri, expectedResourceUri) in GetWellKnownResourceMetadataUris(resourceUri))
+            foreach (var (wellKnownUri, expectedResourceUri) in GetWellKnownResourceMetadataUris(_serverUrl))
             {
                 LogMissingResourceMetadataParameter(wellKnownUri);
                 metadata = await FetchProtectedResourceMetadataAsync(wellKnownUri, requireSuccess: false, cancellationToken).ConfigureAwait(false);
@@ -758,7 +758,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
             if (metadata is null)
             {
-                throw new McpException($"Failed to find protected resource metadata at a well-known location for {resourceUri}");
+                throw new McpException($"Failed to find protected resource metadata at a well-known location for {_serverUrl}");
             }
         }
 
