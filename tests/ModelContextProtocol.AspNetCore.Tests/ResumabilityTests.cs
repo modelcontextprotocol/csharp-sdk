@@ -2,229 +2,644 @@ using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
+using System.Net.ServerSentEvents;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
 
 /// <summary>
 /// Tests for SSE resumability and redelivery features.
-/// Tests focus on the ISseEventStore interface and unit-level behavior.
+/// Tests focus on the ISseEventStreamStore interface and unit-level behavior.
 /// </summary>
-public class ResumabilityTests : LoggedTest
+public class ResumabilityTests(ITestOutputHelper testOutputHelper) : LoggedTest(testOutputHelper)
 {
-    private const string TestSessionId = "test-session";
+    private CancellationToken CancellationToken => TestContext.Current.CancellationToken;
 
-    public ResumabilityTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper)
-    {
-    }
+    #region CreateStreamAsync Tests
 
     [Fact]
-    public async Task EventStore_StoresAndRetrievesEvents()
+    public async Task CreateStreamAsync_ReturnsWriter_WithCorrectStreamId()
     {
-        // Arrange
-        var eventStore = new InMemoryEventStore();
-        var ct = TestContext.Current.CancellationToken;
-
-        // Act
-        var eventId1 = await eventStore.StoreEventAsync(TestSessionId, "stream1",
-            new JsonRpcNotification { Method = "test1" }, ct);
-        var eventId2 = await eventStore.StoreEventAsync(TestSessionId, "stream1",
-            new JsonRpcNotification { Method = "test2" }, ct);
-
-        // Assert
-        Assert.Equal("1", eventId1);
-        Assert.Equal("2", eventId2);
-        Assert.Equal(2, eventStore.StoredEventIds.Count);
-    }
-
-    [Fact]
-    public async Task EventStore_TracksMultipleStreams()
-    {
-        // Arrange
-        var eventStore = new InMemoryEventStore();
-        var ct = TestContext.Current.CancellationToken;
-
-        // Store events for different streams
-        var stream1Event1 = await eventStore.StoreEventAsync(TestSessionId, "stream1",
-            new JsonRpcNotification { Method = "test1" }, ct);
-        var stream1Event2 = await eventStore.StoreEventAsync(TestSessionId, "stream1",
-            new JsonRpcNotification { Method = "test2" }, ct);
-        _ = await eventStore.StoreEventAsync(TestSessionId, "stream2",
-            new JsonRpcNotification { Method = "test3" }, ct);
-        var stream1Event3 = await eventStore.StoreEventAsync(TestSessionId, "stream1",
-            new JsonRpcNotification { Method = "test4" }, ct);
-
-        // Act - Get events after stream1Event1
-        var result = await eventStore.GetEventsAfterAsync(stream1Event1, ct);
-
-        // Assert
-        Assert.NotNull(result);
-        Assert.Equal("stream1", result.StreamId);
-        Assert.Equal(TestSessionId, result.SessionId);
-
-        var storedEvents = new List<StoredSseEvent>();
-        await foreach (var evt in result.Events)
+        var store = new TestSseEventStreamStore();
+        var options = new SseEventStreamOptions
         {
-            storedEvents.Add(evt);
-        }
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Default
+        };
 
-        Assert.Equal(2, storedEvents.Count); // Only stream1 events after stream1Event1
+        var writer = await store.CreateStreamAsync(options, CancellationToken);
 
-        var notification1 = Assert.IsType<JsonRpcNotification>(storedEvents[0].Message);
-        Assert.Equal("test2", notification1.Method);
-        Assert.Equal(stream1Event2, storedEvents[0].EventId);
-
-        var notification2 = Assert.IsType<JsonRpcNotification>(storedEvents[1].Message);
-        Assert.Equal("test4", notification2.Method);
-        Assert.Equal(stream1Event3, storedEvents[1].EventId);
+        Assert.NotNull(writer);
+        Assert.Equal("stream-1", writer.StreamId);
     }
 
     [Fact]
-    public async Task EventStore_ReturnsDefault_ForUnknownEventId()
+    public async Task CreateStreamAsync_ReturnsWriter_WithCorrectMode()
     {
-        // Arrange
-        var eventStore = new InMemoryEventStore();
-        var ct = TestContext.Current.CancellationToken;
-        await eventStore.StoreEventAsync(TestSessionId, "stream1", new JsonRpcNotification { Method = "test" }, ct);
+        var store = new TestSseEventStreamStore();
 
-        // Act
-        var result = await eventStore.GetEventsAfterAsync("unknown-event-id", ct);
-
-        // Assert
-        Assert.Null(result);
-    }
-
-    [Fact]
-    public async Task EventStore_ReplaysNoEvents_WhenLastEventIsLatest()
-    {
-        // Arrange
-        var eventStore = new InMemoryEventStore();
-        var ct = TestContext.Current.CancellationToken;
-
-        var eventId1 = await eventStore.StoreEventAsync(TestSessionId, "stream1",
-            new JsonRpcNotification { Method = "test1" }, ct);
-        var eventId2 = await eventStore.StoreEventAsync(TestSessionId, "stream1",
-            new JsonRpcNotification { Method = "test2" }, ct);
-
-        // Act - Get events after the last event
-        var result = await eventStore.GetEventsAfterAsync(eventId2, ct);
-
-        // Assert - No events should be returned
-        Assert.NotNull(result);
-        Assert.Equal("stream1", result.StreamId);
-
-        var storedEvents = new List<StoredSseEvent>();
-        await foreach (var evt in result.Events)
+        var defaultModeOptions = new SseEventStreamOptions
         {
-            storedEvents.Add(evt);
-        }
-        Assert.Empty(storedEvents);
-    }
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Default
+        };
+        var defaultWriter = await store.CreateStreamAsync(defaultModeOptions, CancellationToken);
+        Assert.Equal(SseEventStreamMode.Default, defaultWriter.Mode);
 
-    [Fact]
-    public async Task EventStore_HandlesPrimingEvents()
-    {
-        // Arrange - Priming events have null messages
-        var eventStore = new InMemoryEventStore();
-        var ct = TestContext.Current.CancellationToken;
-
-        // Store a priming event (null message) followed by real events
-        var primingEventId = await eventStore.StoreEventAsync(TestSessionId, "stream1", null, ct);
-        var eventId1 = await eventStore.StoreEventAsync(TestSessionId, "stream1",
-            new JsonRpcNotification { Method = "test1" }, ct);
-        var eventId2 = await eventStore.StoreEventAsync(TestSessionId, "stream1",
-            new JsonRpcNotification { Method = "test2" }, ct);
-
-        // Act - Get events after priming event
-        var result = await eventStore.GetEventsAfterAsync(primingEventId, ct);
-
-        // Assert - Should return the two real events, not the priming event
-        Assert.NotNull(result);
-        Assert.Equal("stream1", result.StreamId);
-
-        var storedEvents = new List<StoredSseEvent>();
-        await foreach (var evt in result.Events)
+        var pollingModeOptions = new SseEventStreamOptions
         {
-            storedEvents.Add(evt);
-        }
-
-        Assert.Equal(2, storedEvents.Count);
-        Assert.Equal(eventId1, storedEvents[0].EventId);
-        Assert.Equal(eventId2, storedEvents[1].EventId);
+            SessionId = "session-2",
+            StreamId = "stream-2",
+            Mode = SseEventStreamMode.Polling
+        };
+        var pollingWriter = await store.CreateStreamAsync(pollingModeOptions, CancellationToken);
+        Assert.Equal(SseEventStreamMode.Polling, pollingWriter.Mode);
     }
 
     [Fact]
-    public async Task EventStore_ReplaysMixedMessageTypes()
+    public async Task CreateStreamAsync_MultipleStreams_CreatesDistinctWriters()
     {
-        // Arrange
-        var eventStore = new InMemoryEventStore();
-        var ct = TestContext.Current.CancellationToken;
+        var store = new TestSseEventStreamStore();
 
-        var eventId1 = await eventStore.StoreEventAsync(TestSessionId, "stream1",
-            new JsonRpcNotification { Method = "notification" }, ct);
-        var eventId2 = await eventStore.StoreEventAsync(TestSessionId, "stream1",
-            new JsonRpcResponse { Id = new RequestId("1"), Result = null }, ct);
-        var eventId3 = await eventStore.StoreEventAsync(TestSessionId, "stream1",
-            new JsonRpcRequest { Id = new RequestId("2"), Method = "request" }, ct);
-
-        // Act
-        var result = await eventStore.GetEventsAfterAsync(eventId1, ct);
-
-        // Assert
-        Assert.NotNull(result);
-        Assert.Equal("stream1", result.StreamId);
-
-        var storedEvents = new List<StoredSseEvent>();
-        await foreach (var evt in result.Events)
+        var writer1 = await store.CreateStreamAsync(new SseEventStreamOptions
         {
-            storedEvents.Add(evt);
-        }
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Default
+        }, CancellationToken);
 
-        Assert.Equal(2, storedEvents.Count);
+        var writer2 = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-2",
+            Mode = SseEventStreamMode.Default
+        }, CancellationToken);
 
-        Assert.IsType<JsonRpcResponse>(storedEvents[0].Message);
-        Assert.Equal(eventId2, storedEvents[0].EventId);
+        Assert.NotSame(writer1, writer2);
+        Assert.Equal("stream-1", writer1.StreamId);
+        Assert.Equal("stream-2", writer2.StreamId);
+    }
 
-        Assert.IsType<JsonRpcRequest>(storedEvents[1].Message);
-        Assert.Equal(eventId3, storedEvents[1].EventId);
+    #endregion
+
+    #region WriteEventAsync Tests
+
+    [Fact]
+    public async Task WriteEventAsync_AssignsEventId_WhenNotPresent()
+    {
+        var store = new TestSseEventStreamStore();
+        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Default
+        }, CancellationToken);
+
+        var message = new JsonRpcRequest { Method = "test", Id = new RequestId("1") };
+        var item = new SseItem<JsonRpcMessage?>(message, "message");
+
+        var result = await writer.WriteEventAsync(item, CancellationToken);
+
+        Assert.NotNull(result.EventId);
+        Assert.Equal("1", result.EventId);
     }
 
     [Fact]
-    public void StreamableHttpServerTransport_HasEventStoreProperty()
+    public async Task WriteEventAsync_SkipsAssigningEventId_WhenAlreadyPresent()
     {
-        // Arrange
-        var transport = new StreamableHttpServerTransport();
+        var store = new TestSseEventStreamStore();
+        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Default
+        }, CancellationToken);
 
-        // Assert - EventStore property exists and is null by default
-        Assert.Null(transport.EventStore);
+        var message = new JsonRpcRequest { Method = "test", Id = new RequestId("1") };
+        var item = new SseItem<JsonRpcMessage?>(message, "message") { EventId = "existing-id" };
 
-        // Act - Can set EventStore
-        var eventStore = new InMemoryEventStore();
-        transport.EventStore = eventStore;
+        var result = await writer.WriteEventAsync(item, CancellationToken);
 
-        // Assert
-        Assert.Same(eventStore, transport.EventStore);
+        Assert.Equal("existing-id", result.EventId);
     }
 
     [Fact]
-    public void StreamableHttpServerTransport_GetStreamIdConstant_IsCorrect()
+    public async Task WriteEventAsync_GeneratesSequentialEventIds()
     {
-        // The GetStreamId constant is internal, but we can test that transports
-        // with resumability configured behave consistently
-        var transport1 = new StreamableHttpServerTransport();
-        var transport2 = new StreamableHttpServerTransport();
+        var store = new TestSseEventStreamStore();
+        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Default
+        }, CancellationToken);
 
-        // Both should have null EventStore by default
-        Assert.Null(transport1.EventStore);
-        Assert.Null(transport2.EventStore);
+        var message1 = new JsonRpcRequest { Method = "test1", Id = new RequestId("1") };
+        var message2 = new JsonRpcRequest { Method = "test2", Id = new RequestId("2") };
+        var message3 = new JsonRpcRequest { Method = "test3", Id = new RequestId("3") };
 
-        // Setting event stores should work independently
-        var store1 = new InMemoryEventStore();
-        var store2 = new InMemoryEventStore();
+        var result1 = await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(message1, "message"), CancellationToken);
+        var result2 = await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(message2, "message"), CancellationToken);
+        var result3 = await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(message3, "message"), CancellationToken);
 
-        transport1.EventStore = store1;
-        transport2.EventStore = store2;
-
-        Assert.Same(store1, transport1.EventStore);
-        Assert.Same(store2, transport2.EventStore);
+        Assert.Equal("1", result1.EventId);
+        Assert.Equal("2", result2.EventId);
+        Assert.Equal("3", result3.EventId);
     }
+
+    [Fact]
+    public async Task WriteEventAsync_TracksStoredEventIds()
+    {
+        var store = new TestSseEventStreamStore();
+        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Default
+        }, CancellationToken);
+
+        var message1 = new JsonRpcRequest { Method = "test1", Id = new RequestId("1") };
+        var message2 = new JsonRpcRequest { Method = "test2", Id = new RequestId("2") };
+
+        await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(message1, "message"), CancellationToken);
+        await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(message2, "message"), CancellationToken);
+
+        Assert.Equal(2, store.StoreEventCallCount);
+        Assert.Equal(["1", "2"], store.StoredEventIds);
+    }
+
+    [Fact]
+    public async Task WriteEventAsync_PreservesEventData()
+    {
+        var store = new TestSseEventStreamStore();
+        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Default
+        }, CancellationToken);
+
+        var message = new JsonRpcRequest { Method = "test-method", Id = new RequestId("req-1") };
+        var item = new SseItem<JsonRpcMessage?>(message, "custom-event");
+
+        var result = await writer.WriteEventAsync(item, CancellationToken);
+
+        Assert.Same(message, result.Data);
+        Assert.Equal("custom-event", result.EventType);
+    }
+
+    [Fact]
+    public async Task WriteEventAsync_HandlesNullData()
+    {
+        var store = new TestSseEventStreamStore();
+        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Default
+        }, CancellationToken);
+
+        var item = new SseItem<JsonRpcMessage?>(null, "priming");
+
+        var result = await writer.WriteEventAsync(item, CancellationToken);
+
+        Assert.NotNull(result.EventId);
+        Assert.Null(result.Data);
+    }
+
+    #endregion
+
+    #region SetModeAsync Tests
+
+    [Fact]
+    public async Task SetModeAsync_ChangesMode_FromDefaultToPolling()
+    {
+        var store = new TestSseEventStreamStore();
+        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Default
+        }, CancellationToken);
+
+        Assert.Equal(SseEventStreamMode.Default, writer.Mode);
+
+        await writer.SetModeAsync(SseEventStreamMode.Polling, CancellationToken);
+
+        Assert.Equal(SseEventStreamMode.Polling, writer.Mode);
+    }
+
+    [Fact]
+    public async Task SetModeAsync_ChangesMode_FromPollingToDefault()
+    {
+        var store = new TestSseEventStreamStore();
+        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Polling
+        }, CancellationToken);
+
+        Assert.Equal(SseEventStreamMode.Polling, writer.Mode);
+
+        await writer.SetModeAsync(SseEventStreamMode.Default, CancellationToken);
+
+        Assert.Equal(SseEventStreamMode.Default, writer.Mode);
+    }
+
+    #endregion
+
+    #region GetStreamReaderAsync Tests
+
+    [Fact]
+    public async Task GetStreamReaderAsync_ReturnsNull_WhenEventIdNotFound()
+    {
+        var store = new TestSseEventStreamStore();
+
+        var reader = await store.GetStreamReaderAsync("nonexistent-id", CancellationToken);
+
+        Assert.Null(reader);
+    }
+
+    [Fact]
+    public async Task GetStreamReaderAsync_ReturnsReader_WhenEventIdExists()
+    {
+        var store = new TestSseEventStreamStore();
+        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Polling
+        }, CancellationToken);
+
+        var message = new JsonRpcRequest { Method = "test", Id = new RequestId("1") };
+        var result = await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(message, "message"), CancellationToken);
+
+        var reader = await store.GetStreamReaderAsync(result.EventId!, CancellationToken);
+
+        Assert.NotNull(reader);
+        Assert.Equal("stream-1", reader.StreamId);
+    }
+
+    [Fact]
+    public async Task GetStreamReaderAsync_ReturnsReader_WhenStreamReplaced()
+    {
+        var store = new TestSseEventStreamStore();
+        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Default
+        }, CancellationToken);
+
+        var message = new JsonRpcRequest { Method = "test", Id = new RequestId("1") };
+        var result = await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(message, "message"), CancellationToken);
+
+        // Create a new stream with the same key, effectively replacing the old one
+        await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Default
+        }, CancellationToken);
+
+        // The old event's stream reference should still work since the new stream replaced it
+        var reader = await store.GetStreamReaderAsync(result.EventId!, CancellationToken);
+        Assert.NotNull(reader);
+    }
+
+    #endregion
+
+    #region ReadEventsAsync Tests
+
+    [Fact]
+    public async Task ReadEventsAsync_ReturnsEventsAfterLastEventId()
+    {
+        var store = new TestSseEventStreamStore();
+        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Polling
+        }, CancellationToken);
+
+        var message1 = new JsonRpcRequest { Method = "test1", Id = new RequestId("1") };
+        var message2 = new JsonRpcRequest { Method = "test2", Id = new RequestId("2") };
+        var message3 = new JsonRpcRequest { Method = "test3", Id = new RequestId("3") };
+
+        var result1 = await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(message1, "message"), CancellationToken);
+        await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(message2, "message"), CancellationToken);
+        await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(message3, "message"), CancellationToken);
+
+        var reader = await store.GetStreamReaderAsync(result1.EventId!, CancellationToken);
+        Assert.NotNull(reader);
+
+        var events = await reader.ReadEventsAsync(CancellationToken).ToListAsync(CancellationToken);
+
+        Assert.Equal(2, events.Count);
+        Assert.Equal("test2", ((JsonRpcRequest)events[0].Data!).Method);
+        Assert.Equal("test3", ((JsonRpcRequest)events[1].Data!).Method);
+    }
+
+    [Fact]
+    public async Task ReadEventsAsync_IncludesNullDataEvents()
+    {
+        var store = new TestSseEventStreamStore();
+        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Polling
+        }, CancellationToken);
+
+        var message1 = new JsonRpcRequest { Method = "test1", Id = new RequestId("1") };
+        var message2 = new JsonRpcRequest { Method = "test2", Id = new RequestId("2") };
+
+        var result1 = await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(message1, "message"), CancellationToken);
+        await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(null, "priming"), CancellationToken); // null data event
+        await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(message2, "message"), CancellationToken);
+
+        var reader = await store.GetStreamReaderAsync(result1.EventId!, CancellationToken);
+        Assert.NotNull(reader);
+
+        var events = await reader.ReadEventsAsync(CancellationToken).ToListAsync(CancellationToken);
+
+        Assert.Equal(2, events.Count);
+        Assert.Null(events[0].Data);
+        Assert.Equal("priming", events[0].EventType);
+        Assert.Equal("test2", ((JsonRpcRequest)events[1].Data!).Method);
+    }
+
+    [Fact]
+    public async Task ReadEventsAsync_ReturnsEmpty_WhenNoEventsAfterLastEventId()
+    {
+        var store = new TestSseEventStreamStore();
+        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Polling
+        }, CancellationToken);
+
+        var message = new JsonRpcRequest { Method = "test", Id = new RequestId("1") };
+        var result = await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(message, "message"), CancellationToken);
+
+        var reader = await store.GetStreamReaderAsync(result.EventId!, CancellationToken);
+        Assert.NotNull(reader);
+
+        var events = await reader.ReadEventsAsync(CancellationToken).ToListAsync(CancellationToken);
+
+        Assert.Empty(events);
+    }
+
+    [Fact]
+    public async Task ReadEventsAsync_InPollingMode_CompletesAfterStoredEvents()
+    {
+        var store = new TestSseEventStreamStore();
+        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Polling
+        }, CancellationToken);
+
+        var message1 = new JsonRpcRequest { Method = "test1", Id = new RequestId("1") };
+        var message2 = new JsonRpcRequest { Method = "test2", Id = new RequestId("2") };
+
+        var result1 = await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(message1, "message"), CancellationToken);
+        await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(message2, "message"), CancellationToken);
+
+        var reader = await store.GetStreamReaderAsync(result1.EventId!, CancellationToken);
+        Assert.NotNull(reader);
+
+        // In polling mode, ReadEventsAsync should complete immediately after returning stored events
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken);
+        cts.CancelAfter(TimeSpan.FromSeconds(1));
+        var events = await reader.ReadEventsAsync(cts.Token).ToListAsync(cts.Token);
+
+        Assert.Single(events);
+    }
+
+    [Fact]
+    public async Task ReadEventsAsync_InDefaultMode_WaitsForNewEvents()
+    {
+        var store = new TestSseEventStreamStore();
+        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Default
+        }, CancellationToken);
+
+        var message1 = new JsonRpcRequest { Method = "test1", Id = new RequestId("1") };
+        var result1 = await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(message1, "message"), CancellationToken);
+
+        var reader = await store.GetStreamReaderAsync(result1.EventId!, CancellationToken);
+        Assert.NotNull(reader);
+
+        var readTask = Task.Run(async () =>
+        {
+            var events = new List<SseItem<JsonRpcMessage?>>();
+            await foreach (var e in reader.ReadEventsAsync(CancellationToken))
+            {
+                events.Add(e);
+                if (events.Count >= 2)
+                {
+                    break;
+                }
+            }
+            return events;
+        }, CancellationToken);
+
+        // Give the read task time to start waiting
+        await Task.Delay(50, CancellationToken);
+
+        // Write new events
+        var message2 = new JsonRpcRequest { Method = "test2", Id = new RequestId("2") };
+        var message3 = new JsonRpcRequest { Method = "test3", Id = new RequestId("3") };
+        await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(message2, "message"), CancellationToken);
+        await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(message3, "message"), CancellationToken);
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken);
+        cts.CancelAfter(TimeSpan.FromSeconds(5));
+        var events = await readTask.WaitAsync(cts.Token);
+
+        Assert.Equal(2, events.Count);
+        Assert.Equal("test2", ((JsonRpcRequest)events[0].Data!).Method);
+        Assert.Equal("test3", ((JsonRpcRequest)events[1].Data!).Method);
+    }
+
+    [Fact]
+    public async Task ReadEventsAsync_InDefaultMode_CompletesWhenWriterDisposed()
+    {
+        var store = new TestSseEventStreamStore();
+        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Default
+        }, CancellationToken);
+
+        var message1 = new JsonRpcRequest { Method = "test1", Id = new RequestId("1") };
+        var result1 = await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(message1, "message"), CancellationToken);
+
+        var reader = await store.GetStreamReaderAsync(result1.EventId!, CancellationToken);
+        Assert.NotNull(reader);
+
+        var readTask = reader.ReadEventsAsync(CancellationToken).ToListAsync(CancellationToken).AsTask();
+
+        // Give the read task time to start waiting
+        await Task.Delay(50, CancellationToken);
+
+        // Dispose the writer
+        await writer.DisposeAsync();
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken);
+        cts.CancelAfter(TimeSpan.FromSeconds(5));
+        var events = await readTask.WaitAsync(cts.Token);
+
+        Assert.Empty(events);
+    }
+
+    [Fact]
+    public async Task ReadEventsAsync_RespectsCancellation()
+    {
+        var store = new TestSseEventStreamStore();
+        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Default
+        }, CancellationToken);
+
+        var message1 = new JsonRpcRequest { Method = "test1", Id = new RequestId("1") };
+        var result1 = await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(message1, "message"), CancellationToken);
+
+        var reader = await store.GetStreamReaderAsync(result1.EventId!, CancellationToken);
+        Assert.NotNull(reader);
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken);
+        cts.CancelAfter(TimeSpan.FromMilliseconds(100));
+
+        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+        {
+            await reader.ReadEventsAsync(cts.Token).ToListAsync(cts.Token);
+        });
+    }
+
+    #endregion
+
+    #region Cross-Session Tests
+
+    [Fact]
+    public async Task EventIds_AreUniqueAcrossSessions()
+    {
+        var store = new TestSseEventStreamStore();
+
+        var writer1 = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Default
+        }, CancellationToken);
+
+        var writer2 = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-2",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Default
+        }, CancellationToken);
+
+        var message1 = new JsonRpcRequest { Method = "test1", Id = new RequestId("1") };
+        var message2 = new JsonRpcRequest { Method = "test2", Id = new RequestId("2") };
+
+        var result1 = await writer1.WriteEventAsync(new SseItem<JsonRpcMessage?>(message1, "message"), CancellationToken);
+        var result2 = await writer2.WriteEventAsync(new SseItem<JsonRpcMessage?>(message2, "message"), CancellationToken);
+
+        Assert.NotEqual(result1.EventId, result2.EventId);
+    }
+
+    [Fact]
+    public async Task GetStreamReaderAsync_ReturnsCorrectStream_ForDifferentSessions()
+    {
+        var store = new TestSseEventStreamStore();
+
+        var writer1 = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Polling
+        }, CancellationToken);
+
+        var writer2 = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-2",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Polling
+        }, CancellationToken);
+
+        var message1 = new JsonRpcRequest { Method = "session1-test", Id = new RequestId("1") };
+        var message2 = new JsonRpcRequest { Method = "session2-test", Id = new RequestId("2") };
+        var message1b = new JsonRpcRequest { Method = "session1-test2", Id = new RequestId("3") };
+        var message2b = new JsonRpcRequest { Method = "session2-test2", Id = new RequestId("4") };
+
+        var result1 = await writer1.WriteEventAsync(new SseItem<JsonRpcMessage?>(message1, "message"), CancellationToken);
+        var result2 = await writer2.WriteEventAsync(new SseItem<JsonRpcMessage?>(message2, "message"), CancellationToken);
+        await writer1.WriteEventAsync(new SseItem<JsonRpcMessage?>(message1b, "message"), CancellationToken);
+        await writer2.WriteEventAsync(new SseItem<JsonRpcMessage?>(message2b, "message"), CancellationToken);
+
+        var reader1 = await store.GetStreamReaderAsync(result1.EventId!, CancellationToken);
+        var reader2 = await store.GetStreamReaderAsync(result2.EventId!, CancellationToken);
+
+        Assert.NotNull(reader1);
+        Assert.NotNull(reader2);
+
+        var events1 = await reader1.ReadEventsAsync(CancellationToken).ToListAsync(CancellationToken);
+        var events2 = await reader2.ReadEventsAsync(CancellationToken).ToListAsync(CancellationToken);
+
+        Assert.Single(events1);
+        Assert.Equal("session1-test2", ((JsonRpcRequest)events1[0].Data!).Method);
+
+        Assert.Single(events2);
+        Assert.Equal("session2-test2", ((JsonRpcRequest)events2[0].Data!).Method);
+    }
+
+    #endregion
+
+    #region DisposeAsync Tests
+
+    [Fact]
+    public async Task DisposeAsync_CompletesWithoutError()
+    {
+        var store = new TestSseEventStreamStore();
+        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Default
+        }, CancellationToken);
+
+        await writer.DisposeAsync();
+        // Should not throw
+    }
+
+    [Fact]
+    public async Task DisposeAsync_CanBeCalledMultipleTimes()
+    {
+        var store = new TestSseEventStreamStore();
+        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Default
+        }, CancellationToken);
+
+        await writer.DisposeAsync();
+        await writer.DisposeAsync();
+        await writer.DisposeAsync();
+        // Should not throw
+    }
+
+    #endregion
 }

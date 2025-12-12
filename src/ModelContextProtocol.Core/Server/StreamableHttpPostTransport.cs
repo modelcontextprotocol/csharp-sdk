@@ -15,13 +15,14 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
 {
     private readonly SseWriter _sseWriter = new();
     private RequestId _pendingRequest;
+    private ISseEventStreamWriter? _eventStreamWriter;
 
     public ChannelReader<JsonRpcMessage> MessageReader => throw new NotSupportedException("JsonRpcMessage.Context.RelatedTransport should only be used for sending messages.");
 
     string? ITransport.SessionId => parentTransport.SessionId;
 
     /// <returns>
-    /// True, if data was written to the respond body.
+    /// True, if data was written to the response body.
     /// False, if nothing was written because the request body did not contain any <see cref="JsonRpcRequest"/> messages to respond to.
     /// The HTTP application should typically respond with an empty "202 Accepted" response in this scenario.
     /// </returns>
@@ -56,20 +57,17 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
             return false;
         }
 
-        // Configure the SSE writer for resumability if we have an event store
-        if (parentTransport.EventStore is not null && McpSessionHandler.SupportsPrimingEvent(parentTransport.NegotiatedProtocolVersion))
-        {
-            _sseWriter.EventStore = new SseStreamEventStore(
-                parentTransport.EventStore,
-                sessionId: parentTransport.SessionId,
-                streamId: _pendingRequest.Id.ToString()!,
-                retryInterval: parentTransport.RetryInterval);
+        // Start the write task immediately so that we don't risk filling up the channel with
+        // messages before they start being consumed.
+        var writeTask = _sseWriter.WriteAllAsync(responseStream, cancellationToken);
 
-            await _sseWriter.SendPrimingEventAsync(cancellationToken).ConfigureAwait(false);
+        var eventStreamWriter = await GetOrCreateEventStreamAsync(cancellationToken).ConfigureAwait(false);
+        if (eventStreamWriter is not null)
+        {
+            await _sseWriter.SendPrimingEventAsync(parentTransport.RetryInterval, eventStreamWriter, cancellationToken).ConfigureAwait(false);
         }
 
-        _sseWriter.MessageFilter = StopOnFinalResponseFilter;
-        await _sseWriter.WriteAllAsync(responseStream, cancellationToken).ConfigureAwait(false);
+        await writeTask.ConfigureAwait(false);
         return true;
     }
 
@@ -82,33 +80,83 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
             throw new InvalidOperationException("Server to client requests are not supported in stateless mode.");
         }
 
-        // SseWriter.SendMessageAsync stores the message in the event store before checking if
-        // the stream is completed, so we don't need to handle storage here.
-        bool isAccepted = await _sseWriter.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
-        if (!isAccepted)
+        var eventStreamWriter = await GetOrCreateEventStreamAsync(cancellationToken).ConfigureAwait(false);
+
+        var isAccepted = await _sseWriter.SendMessageAsync(message, eventStreamWriter, cancellationToken).ConfigureAwait(false);
+        if (!isAccepted && eventStreamWriter is null)
         {
-            // The stream is closed - fall back to sending via the parent transport's standalone SSE stream.
-            // The message is already stored in the event store by SseWriter.
+            // The underlying writer didn't accept the message because the underlying request has completed,
+            // and there isn't a fallback event stream writer.
+            // Rather than drop the message, fall back to sending it via the parent transport.
             await parentTransport.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
         }
+
+        if (message is JsonRpcResponse or JsonRpcError && ((JsonRpcMessageWithId)message).Id == _pendingRequest)
+        {
+            // Complete the SSE response stream and SSE event stream writer now that all pending requests have been processed.
+            await _sseWriter.DisposeAsync().ConfigureAwait(false);
+
+            if (_eventStreamWriter is not null)
+            {
+                await _eventStreamWriter.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+    }
+
+    public async ValueTask EnablePollingAsync(TimeSpan retryInterval, CancellationToken cancellationToken)
+    {
+        var eventStreamWriter = await GetOrCreateEventStreamAsync(cancellationToken).ConfigureAwait(false);
+        if (eventStreamWriter is null)
+        {
+            return;
+        }
+
+        // Set the mode to 'Polling' so that the replay stream ends as soon as all available messages have been sent.
+        // This prevents the client from immediately establishing another long-lived connection.
+        await eventStreamWriter.SetModeAsync(SseEventStreamMode.Polling, cancellationToken).ConfigureAwait(false);
+
+        // Send the priming event with the new retry interval.
+        await _sseWriter.SendPrimingEventAsync(retryInterval, eventStreamWriter, cancellationToken).ConfigureAwait(false);
+
+        // Dispose the writer to close it and force future writes to only apply to the SSE event store.
+        await _sseWriter.DisposeAsync();
     }
 
     public async ValueTask DisposeAsync()
     {
         await _sseWriter.DisposeAsync().ConfigureAwait(false);
+
+        // Don't dispose the event stream writer here, as we may continue to write to the event store
+        // after disposal.
     }
 
-    private async IAsyncEnumerable<SseItem<JsonRpcMessage?>> StopOnFinalResponseFilter(IAsyncEnumerable<SseItem<JsonRpcMessage?>> messages, [EnumeratorCancellation] CancellationToken cancellationToken)
+    private ValueTask<ISseEventStreamWriter?> GetOrCreateEventStreamAsync(CancellationToken cancellationToken)
     {
-        await foreach (var message in messages.WithCancellation(cancellationToken))
+        if (_eventStreamWriter is not null)
         {
-            yield return message;
+            return new ValueTask<ISseEventStreamWriter?>(_eventStreamWriter);
+        }
 
-            if (message.Data is JsonRpcResponse or JsonRpcError && ((JsonRpcMessageWithId)message.Data).Id == _pendingRequest)
+        if (parentTransport.EventStreamStore is null || _pendingRequest.Id is null || !McpSessionHandler.SupportsPrimingEvent(parentTransport.NegotiatedProtocolVersion))
+        {
+            return default;
+        }
+
+        return CreateEventStreamAsync(parentTransport.EventStreamStore, cancellationToken);
+
+        async ValueTask<ISseEventStreamWriter?> CreateEventStreamAsync(ISseEventStreamStore eventStreamStore, CancellationToken cancellationToken)
+        {
+            // We use the 'Default' stream mode so that in the case of an unexpected network disconnection,
+            // the client can continue reading the remaining messages in a single, streamed response.
+            // This may be changed to 'Polling' if the transport is later explicitly switched to polling mode.
+            const SseEventStreamMode Mode = SseEventStreamMode.Default;
+
+            return _eventStreamWriter = await eventStreamStore.CreateStreamAsync(options: new()
             {
-                // Complete the SSE response stream now that all pending requests have been processed.
-                break;
-            }
+                SessionId = parentTransport.SessionId ?? Guid.NewGuid().ToString("N"),
+                StreamId = _pendingRequest.Id.ToString()!,
+                Mode = Mode,
+            }, cancellationToken).ConfigureAwait(false);
         }
     }
 }

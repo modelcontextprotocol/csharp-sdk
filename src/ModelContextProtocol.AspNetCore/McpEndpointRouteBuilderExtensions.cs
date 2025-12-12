@@ -38,12 +38,12 @@ public static class McpEndpointRouteBuilderExtensions
             .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["text/event-stream"]))
             .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status202Accepted));
 
+        streamableHttpGroup.MapGet("", streamableHttpHandler.HandleGetRequestAsync)
+            .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["text/event-stream"]));
+
         if (!streamableHttpHandler.HttpServerTransportOptions.Stateless)
         {
-            // The GET and DELETE endpoints are not mapped in Stateless mode since there's no way to send unsolicited messages
-            // for the GET to handle, and there is no server-side state for the DELETE to clean up.
-            streamableHttpGroup.MapGet("", streamableHttpHandler.HandleGetRequestAsync)
-                .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["text/event-stream"]));
+            // The DELETE endpoints are not mapped in Stateless mode since there's no server-side state to clean up.
             streamableHttpGroup.MapDelete("", streamableHttpHandler.HandleDeleteRequestAsync);
 
             // Map legacy HTTP with SSE endpoints only if not in Stateless mode, because we cannot guarantee the /message requests

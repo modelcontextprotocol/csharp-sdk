@@ -1,4 +1,6 @@
 using System.ComponentModel;
+using System.Diagnostics;
+using System.Net;
 using System.Net.ServerSentEvents;
 using System.Text;
 using Microsoft.AspNetCore.Builder;
@@ -25,8 +27,8 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
     public async Task Server_StoresEvents_WhenEventStoreConfigured()
     {
         // Arrange
-        var eventStore = new InMemoryEventStore();
-        await using var app = await CreateServerAsync(eventStore);
+        var eventStreamStore = new TestSseEventStreamStore();
+        await using var app = await CreateServerAsync(eventStreamStore);
         await using var client = await ConnectClientAsync();
 
         // Act - Make a tool call which generates events
@@ -36,31 +38,31 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
 
         // Assert - Events were stored
         Assert.NotNull(result);
-        Assert.True(eventStore.StoreEventCallCount > 0, "Expected events to be stored when EventStore is configured");
+        Assert.True(eventStreamStore.StoreEventCallCount > 0, "Expected events to be stored when EventStore is configured");
     }
 
     [Fact]
     public async Task Server_StoresMultipleEvents_ForMultipleToolCalls()
     {
         // Arrange
-        var eventStore = new InMemoryEventStore();
-        await using var app = await CreateServerAsync(eventStore);
+        var eventStreamStore = new TestSseEventStreamStore();
+        await using var app = await CreateServerAsync(eventStreamStore);
         await using var client = await ConnectClientAsync();
 
         // Act - Make multiple tool calls
-        var initialCount = eventStore.StoreEventCallCount;
+        var initialCount = eventStreamStore.StoreEventCallCount;
 
         await client.CallToolAsync("echo",
             new Dictionary<string, object?> { ["message"] = "test1" },
             cancellationToken: TestContext.Current.CancellationToken);
 
-        var countAfterFirst = eventStore.StoreEventCallCount;
+        var countAfterFirst = eventStreamStore.StoreEventCallCount;
 
         await client.CallToolAsync("echo",
             new Dictionary<string, object?> { ["message"] = "test2" },
             cancellationToken: TestContext.Current.CancellationToken);
 
-        var countAfterSecond = eventStore.StoreEventCallCount;
+        var countAfterSecond = eventStreamStore.StoreEventCallCount;
 
         // Assert - More events were stored for each call
         Assert.True(countAfterFirst > initialCount, "Expected more events after first call");
@@ -71,8 +73,8 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
     public async Task Client_CanMakeMultipleRequests_WithResumabilityEnabled()
     {
         // Arrange
-        var eventStore = new InMemoryEventStore();
-        await using var app = await CreateServerAsync(eventStore);
+        var eventStreamStore = new TestSseEventStreamStore();
+        await using var app = await CreateServerAsync(eventStreamStore);
         await using var client = await ConnectClientAsync();
 
         // Act - Make many requests to verify stability
@@ -87,15 +89,15 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
         }
 
         // Assert - All requests succeeded and events were stored
-        Assert.True(eventStore.StoreEventCallCount >= 5, "Expected events to be stored for each request");
+        Assert.True(eventStreamStore.StoreEventCallCount >= 5, "Expected events to be stored for each request");
     }
 
     [Fact]
     public async Task Ping_WorksWithResumabilityEnabled()
     {
         // Arrange
-        var eventStore = new InMemoryEventStore();
-        await using var app = await CreateServerAsync(eventStore);
+        var eventStreamStore = new TestSseEventStreamStore();
+        await using var app = await CreateServerAsync(eventStreamStore);
         await using var client = await ConnectClientAsync();
 
         // Act & Assert - Ping should work
@@ -106,8 +108,8 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
     public async Task ListTools_WorksWithResumabilityEnabled()
     {
         // Arrange
-        var eventStore = new InMemoryEventStore();
-        await using var app = await CreateServerAsync(eventStore);
+        var eventStreamStore = new TestSseEventStreamStore();
+        await using var app = await CreateServerAsync(eventStreamStore);
         await using var client = await ConnectClientAsync();
 
         // Act
@@ -123,8 +125,8 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
     {
         // Arrange
         var expectedRetryInterval = TimeSpan.FromSeconds(5);
-        var eventStore = new InMemoryEventStore();
-        await using var app = await CreateServerAsync(eventStore, retryInterval: expectedRetryInterval);
+        var eventStreamStore = new TestSseEventStreamStore();
+        await using var app = await CreateServerAsync(eventStreamStore, retryInterval: expectedRetryInterval);
 
         // Act
         var sseResponse = await SendInitializeAndReadSseResponseAsync(InitializeRequest);
@@ -152,8 +154,8 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
     public async Task Server_DoesNotSendPrimingEvents_ToOlderProtocolVersionClients()
     {
         // Arrange - Server with resumability enabled
-        var eventStore = new InMemoryEventStore();
-        await using var app = await CreateServerAsync(eventStore, retryInterval: TimeSpan.FromSeconds(5));
+        var eventStreamStore = new TestSseEventStreamStore();
+        await using var app = await CreateServerAsync(eventStreamStore, retryInterval: TimeSpan.FromSeconds(5));
 
         // Use an older protocol version that doesn't support resumability
         const string OldProtocolInitRequest = """
@@ -167,7 +169,7 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
         Assert.True(sseResponse.RetryInterval is null, "Old protocol clients should not receive retry field");
 
         // Event store should not have been called for old clients
-        Assert.Equal(0, eventStore.StoreEventCallCount);
+        Assert.Equal(0, eventStreamStore.StoreEventCallCount);
     }
 
     [Fact]
@@ -175,14 +177,198 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
     {
         // Arrange - Server with specific retry interval
         var expectedRetry = TimeSpan.FromMilliseconds(3000);
-        var eventStore = new InMemoryEventStore();
-        await using var app = await CreateServerAsync(eventStore, retryInterval: expectedRetry);
+        var eventStreamStore = new TestSseEventStreamStore();
+        await using var app = await CreateServerAsync(eventStreamStore, retryInterval: expectedRetry);
 
         // Act - Send initialize and read the retry field
         var sseItem = await SendInitializeAndReadSseResponseAsync(InitializeRequest);
 
         // Assert - Client receives the retry interval from server
         Assert.Equal(expectedRetry, sseItem.RetryInterval);
+    }
+
+    [Fact]
+    public async Task Client_CanPollResponse_FromServer()
+    {
+        const string ProgressToolName = "progress_tool";
+        var clientReceivedInitialValueTcs = new TaskCompletionSource();
+        var clientReceivedPolledValueTcs = new TaskCompletionSource();
+        var progressTool = McpServerTool.Create(async (RequestContext<CallToolRequestParams> context, IProgress<ProgressNotificationValue> progress) =>
+        {
+            progress.Report(new() { Progress = 0, Message = "Initial value" });
+
+            await clientReceivedInitialValueTcs.Task;
+
+            await context.EnablePollingAsync(retryInterval: TimeSpan.FromSeconds(1));
+
+            progress.Report(new() { Progress = 50, Message = "Polled value" });
+
+            await clientReceivedPolledValueTcs.Task;
+
+            return "Complete";
+        }, options: new() { Name = ProgressToolName });
+        var eventStreamStore = new TestSseEventStreamStore();
+        await using var app = await CreateServerAsync(eventStreamStore, configureServer: builder =>
+        {
+            builder.WithTools([progressTool]);
+        });
+        await using var client = await ConnectClientAsync();
+
+        var progressHandler = new Progress<ProgressNotificationValue>(value =>
+        {
+            switch (value.Message)
+            {
+                case "Initial value":
+                    Assert.True(clientReceivedInitialValueTcs.TrySetResult(), "Received the initial value more than once.");
+                    break;
+                case "Polled value":
+                    Assert.True(clientReceivedPolledValueTcs.TrySetResult(), "Received the polled value more than once.");
+                    break;
+                default:
+                    throw new UnreachableException($"Unknown progress message '{value.Message}'");
+            }
+        });
+
+        var result = await client.CallToolAsync(ProgressToolName, progress: progressHandler, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsError is true);
+        Assert.Equal("Complete", result.Content.OfType<TextContentBlock>().Single().Text);
+    }
+
+    [Fact]
+    public async Task Client_CanResumePostResponseStream_AfterDisconnection()
+    {
+        var manualStreamHandler = new FaultingStreamHandler();
+        SetHttpMessageHandler(manualStreamHandler);
+
+        const string ProgressToolName = "progress_tool";
+        var clientReceivedInitialValueTcs = new TaskCompletionSource();
+        var clientReceivedReconnectValueTcs = new TaskCompletionSource();
+        var progressTool = McpServerTool.Create(async (RequestContext<CallToolRequestParams> context, IProgress<ProgressNotificationValue> progress, CancellationToken cancellationToken) =>
+        {
+            progress.Report(new() { Progress = 0, Message = "Initial value" });
+
+            // Make sure the client receives one message before we disconnect.
+            await clientReceivedInitialValueTcs.Task;
+
+            // Simulate a network disconnection by faulting the response stream.
+            var reconnectAttempt = await manualStreamHandler.TriggerFaultAsync(TestContext.Current.CancellationToken);
+
+            // Send another message that the client should receive after reconnecting.
+            progress.Report(new() { Progress = 50, Message = "Reconnect value" });
+
+            reconnectAttempt.Continue();
+
+            // Wait for the client to receive the message via replay.
+            await clientReceivedReconnectValueTcs.Task;
+
+            // Return the final result with the client still connected.
+            return "Complete";
+        }, options: new() { Name = ProgressToolName });
+        var eventStreamStore = new TestSseEventStreamStore();
+        await using var app = await CreateServerAsync(eventStreamStore, configureServer: builder =>
+        {
+            builder.WithTools([progressTool]);
+        });
+        await using var client = await ConnectClientAsync();
+
+        var progressHandler = new Progress<ProgressNotificationValue>(value =>
+        {
+            switch (value.Message)
+            {
+                case "Initial value":
+                    clientReceivedInitialValueTcs.SetResult();
+                    break;
+                case "Reconnect value":
+                    clientReceivedReconnectValueTcs.SetResult();
+                    break;
+                default:
+                    throw new UnreachableException($"Unknown progress message '{value.Message}'");
+            }
+        });
+
+        var result = await client.CallToolAsync(ProgressToolName, progress: progressHandler, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsError is true);
+        Assert.Equal("Complete", result.Content.OfType<TextContentBlock>().Single().Text);
+    }
+
+    [Fact]
+    public async Task Client_CanResumeUnsolicitedMessageStream_AfterDisconnection()
+    {
+        var faultingStreamHandler = new FaultingStreamHandler();
+        SetHttpMessageHandler(faultingStreamHandler);
+
+        var eventStreamStore = new TestSseEventStreamStore();
+
+        // Capture the server instance via RunSessionHandler
+        var serverTcs = new TaskCompletionSource<McpServer>();
+
+        await using var app = await CreateServerAsync(eventStreamStore, configureTransport: options =>
+        {
+            options.RunSessionHandler = (httpContext, mcpServer, cancellationToken) =>
+            {
+                serverTcs.TrySetResult(mcpServer);
+                return mcpServer.RunAsync(cancellationToken);
+            };
+        });
+
+        await using var client = await ConnectClientAsync();
+
+        // Get the server instance
+        var server = await serverTcs.Task.WaitAsync(TestContext.Current.CancellationToken);
+
+        // Set up notification tracking
+        var clientReceivedInitialNotificationTcs = new TaskCompletionSource();
+        var clientReceivedReplayedNotificationTcs = new TaskCompletionSource();
+        var clientReceivedReconnectNotificationTcs = new TaskCompletionSource();
+
+        const string CustomNotificationMethod = "test/custom_notification";
+
+        await using var _ = client.RegisterNotificationHandler(CustomNotificationMethod, (notification, cancellationToken) =>
+        {
+            // First notification completes initial TCS, second completes replay TCS, thirdly completes reconnect TCS.
+            if (clientReceivedInitialNotificationTcs.TrySetResult())
+            {
+                return default;
+            }
+
+            if (clientReceivedReplayedNotificationTcs.TrySetResult())
+            {
+                return default;
+            }
+
+            if (clientReceivedReconnectNotificationTcs.TrySetResult())
+            {
+                return default;
+            }
+
+            return default;
+        });
+
+        // Send a custom notification to the client on the unsolicited message stream
+        await server.SendNotificationAsync(CustomNotificationMethod, TestContext.Current.CancellationToken);
+
+        // Wait for client to receive the first notification
+        await clientReceivedInitialNotificationTcs.Task.WaitAsync(TestContext.Current.CancellationToken);
+
+        // Fault the unsolicited message stream (GET SSE)
+        var reconnectAttempt = await faultingStreamHandler.TriggerFaultAsync(TestContext.Current.CancellationToken);
+
+        // Send another notification while the client is disconnected - this should be stored
+        await server.SendNotificationAsync(CustomNotificationMethod, TestContext.Current.CancellationToken);
+
+        // Allow the client to reconnect
+        reconnectAttempt.Continue();
+
+        // Wait for client to receive the notification via replay
+        await clientReceivedReplayedNotificationTcs.Task.WaitAsync(TestContext.Current.CancellationToken);
+
+        // Send a final notification while the client has reconnected - this should be handled by the transport
+        await server.SendNotificationAsync(CustomNotificationMethod, TestContext.Current.CancellationToken);
+
+        // Wait for the client to receive the final notification
+        await clientReceivedReconnectNotificationTcs.Task.WaitAsync(TestContext.Current.CancellationToken);
     }
 
     [McpServerToolType]
@@ -192,18 +378,25 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
         public static string Echo(string message) => $"Echo: {message}";
     }
 
-    private async Task<WebApplication> CreateServerAsync(ISseEventStore? eventStore = null, TimeSpan? retryInterval = null)
+    private async Task<WebApplication> CreateServerAsync(
+        ISseEventStreamStore? eventStreamStore = null,
+        TimeSpan? retryInterval = null,
+        Action<IMcpServerBuilder>? configureServer = null,
+        Action<HttpServerTransportOptions>? configureTransport = null)
     {
-        Builder.Services.AddMcpServer()
+        var serverBuilder = Builder.Services.AddMcpServer()
             .WithHttpTransport(options =>
             {
-                options.EventStore = eventStore;
+                options.EventStreamStore = eventStreamStore;
                 if (retryInterval.HasValue)
                 {
                     options.RetryInterval = retryInterval.Value;
                 }
+                configureTransport?.Invoke(options);
             })
             .WithTools<ResumabilityTestTools>();
+
+        configureServer?.Invoke(serverBuilder);
 
         var app = Builder.Build();
         app.MapMcp();

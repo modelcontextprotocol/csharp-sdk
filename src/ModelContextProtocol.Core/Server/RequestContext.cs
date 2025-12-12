@@ -81,4 +81,21 @@ public sealed class RequestContext<TParams>
     /// including the method name, parameters, request ID, and associated transport and user information.
     /// </remarks>
     public JsonRpcRequest JsonRpcRequest { get; }
+
+    /// <summary>
+    /// Ends the current response and enables polling for updates from the server.
+    /// </summary>
+    /// <param name="retryInterval">The interval at which the client should poll for updates.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A <see cref="ValueTask"/> that completes when polling has been enabled.</returns>
+    public async ValueTask EnablePollingAsync(TimeSpan retryInterval, CancellationToken cancellationToken = default)
+    {
+        if (JsonRpcRequest.Context?.RelatedTransport is not StreamableHttpPostTransport transport)
+        {
+            // Polling is only supported for Streamable HTTP POST transports.
+            return;
+        }
+
+        await transport.EnablePollingAsync(retryInterval, cancellationToken);
+    }
 }
