@@ -79,8 +79,9 @@ public sealed class Icon
     /// Gets or sets the optional theme for this icon.
     /// </summary>
     /// <remarks>
-    /// Can be "light", "dark", or a custom theme identifier.
-    /// The value is used to specify which UI theme the icon is designed for.
+    /// Can be "light" or "dark". "light" indicates the icon is designed to be used with a light
+    /// background, and "dark" indicates the icon is designed to be used with a dark background.
+    /// If not provided, clients should assume the icon can be used with any theme.
     /// </remarks>
     [JsonPropertyName("theme")]
     public string? Theme { get; set; }
