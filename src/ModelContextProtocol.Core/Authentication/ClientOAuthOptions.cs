@@ -19,9 +19,20 @@ public sealed class ClientOAuthOptions
     /// Gets or sets the OAuth client secret.
     /// </summary>
     /// <remarks>
-    /// This is optional for public clients or when using PKCE without client authentication.
+    /// This secret is optional for public clients or when using PKCE without client authentication.
     /// </remarks>
     public string? ClientSecret { get; set; }
+
+    /// <summary>
+    /// Gets or sets the HTTPS URL pointing to this client's metadata document.
+    /// </summary>
+    /// <remarks>
+    /// When specified, and when the authorization server metadata reports
+    /// <c>client_id_metadata_document_supported = true</c>, the OAuth client will respond to
+    /// challenges by sending this URL as the client identifier instead of performing dynamic
+    /// client registration.
+    /// </remarks>
+    public Uri? ClientMetadataDocumentUri { get; set; }
 
     /// <summary>
     /// Gets or sets the OAuth scopes to request.
@@ -32,7 +43,7 @@ public sealed class ClientOAuthOptions
     /// If not specified, the provider will use the scopes from the protected resource metadata.
     /// </para>
     /// <para>
-    /// Common OAuth scopes include "openid", "profile", "email", etc.
+    /// Common OAuth scopes include "openid", "profile", and "email".
     /// </para>
     /// </remarks>
     public IEnumerable<string>? Scopes { get; set; }
@@ -68,22 +79,12 @@ public sealed class ClientOAuthOptions
     public Func<IReadOnlyList<Uri>, Uri?>? AuthServerSelector { get; set; }
 
     /// <summary>
-    /// Gets or sets the client name to use during dynamic client registration.
+    /// Gets or sets the options to use during dynamic client registration.
     /// </summary>
     /// <remarks>
-    /// This is a human-readable name for the client that may be displayed to users during authorization.
-    /// Only used when a <see cref="ClientId"/> is not specified.
+    /// This value is only used when no <see cref="ClientId"/> is specified.
     /// </remarks>
-    public string? ClientName { get; set; }
-
-    /// <summary>
-    /// Gets or sets the client URI to use during dynamic client registration.
-    /// </summary>
-    /// <remarks>
-    /// This should be a URL pointing to the client's home page or information page.
-    /// Only used when a <see cref="ClientId"/> is not specified.
-    /// </remarks>
-    public Uri? ClientUri { get; set; }
+    public DynamicClientRegistrationOptions? DynamicClientRegistration { get; set; }
 
     /// <summary>
     /// Gets or sets additional parameters to include in the query string of the OAuth authorization request
@@ -91,9 +92,15 @@ public sealed class ClientOAuthOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Parameters specified cannot override or append to any automatically set parameters like the "redirect_uri"
+    /// Parameters specified cannot override or append to any automatically set parameters like the "redirect_uri",
     /// which should instead be configured via <see cref="RedirectUri"/>.
     /// </para>
     /// </remarks>
     public IDictionary<string, string> AdditionalAuthorizationParameters { get; set; } = new Dictionary<string, string>();
+
+    /// <summary>
+    /// Gets or sets the token cache to use for storing and retrieving tokens beyond the lifetime of the transport.
+    /// If none is provided, tokens will be cached with the transport.
+    /// </summary>
+    public ITokenCache? TokenCache { get; set; }
 }

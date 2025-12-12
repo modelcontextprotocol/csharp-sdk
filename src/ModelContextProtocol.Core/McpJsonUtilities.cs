@@ -16,7 +16,7 @@ public static partial class McpJsonUtilities
     /// </summary>
     /// <remarks>
     /// <para>
-    /// For Native AOT or applications disabling <see cref="JsonSerializer.IsReflectionEnabledByDefault"/>, this instance 
+    /// For Native AOT or applications disabling <see cref="JsonSerializer.IsReflectionEnabledByDefault"/>, this instance
     /// includes source generated contracts for all common exchange types contained in the ModelContextProtocol library.
     /// </para>
     /// <para>
@@ -47,7 +47,7 @@ public static partial class McpJsonUtilities
         // Add a converter for user-defined enums, if reflection is enabled by default.
         if (JsonSerializer.IsReflectionEnabledByDefault)
         {
-            options.Converters.Add(new CustomizableJsonStringEnumConverter());
+            options.Converters.Add(new JsonStringEnumConverter());
         }
 
         options.MakeReadOnly();
@@ -88,7 +88,7 @@ public static partial class McpJsonUtilities
     [JsonSourceGenerationOptions(JsonSerializerDefaults.Web,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         NumberHandling = JsonNumberHandling.AllowReadingFromString)]
-    
+
     // JSON-RPC
     [JsonSerializable(typeof(JsonRpcMessage))]
     [JsonSerializable(typeof(JsonRpcMessage[]))]
@@ -101,6 +101,7 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(CancelledNotificationParams))]
     [JsonSerializable(typeof(InitializedNotificationParams))]
     [JsonSerializable(typeof(LoggingMessageNotificationParams))]
+    [JsonSerializable(typeof(ElicitationCompleteNotificationParams))]
     [JsonSerializable(typeof(ProgressNotificationParams))]
     [JsonSerializable(typeof(PromptListChangedNotificationParams))]
     [JsonSerializable(typeof(ResourceListChangedNotificationParams))]
@@ -117,6 +118,7 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(CreateMessageResult))]
     [JsonSerializable(typeof(ElicitRequestParams))]
     [JsonSerializable(typeof(ElicitResult))]
+    [JsonSerializable(typeof(UrlElicitationRequiredErrorData))]
     [JsonSerializable(typeof(EmptyResult))]
     [JsonSerializable(typeof(GetPromptRequestParams))]
     [JsonSerializable(typeof(GetPromptResult))]
@@ -132,6 +134,7 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(ListRootsResult))]
     [JsonSerializable(typeof(ListToolsRequestParams))]
     [JsonSerializable(typeof(ListToolsResult))]
+    [JsonSerializable(typeof(PingRequestParams))]
     [JsonSerializable(typeof(PingResult))]
     [JsonSerializable(typeof(ReadResourceRequestParams))]
     [JsonSerializable(typeof(ReadResourceResult))]
@@ -146,6 +149,10 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(AudioContentBlock))]
     [JsonSerializable(typeof(EmbeddedResourceBlock))]
     [JsonSerializable(typeof(ResourceLinkBlock))]
+    [JsonSerializable(typeof(ContentBlock[]))]
+    [JsonSerializable(typeof(IEnumerable<ContentBlock>))]
+    [JsonSerializable(typeof(PromptMessage))]
+    [JsonSerializable(typeof(IEnumerable<PromptMessage>))]
     [JsonSerializable(typeof(PromptReference))]
     [JsonSerializable(typeof(ResourceTemplateReference))]
     [JsonSerializable(typeof(BlobResourceContents))]
@@ -157,7 +164,7 @@ public static partial class McpJsonUtilities
 
     [JsonSerializable(typeof(ProtectedResourceMetadata))]
     [JsonSerializable(typeof(AuthorizationServerMetadata))]
-    [JsonSerializable(typeof(TokenContainer))]
+    [JsonSerializable(typeof(TokenResponse))]
     [JsonSerializable(typeof(DynamicClientRegistrationRequest))]
     [JsonSerializable(typeof(DynamicClientRegistrationResponse))]
 

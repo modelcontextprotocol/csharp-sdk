@@ -14,7 +14,7 @@ The Model Context Protocol (MCP) is an open protocol that standardizes how appli
 For more information about MCP:
 
 - [Official Documentation](https://modelcontextprotocol.io/)
-- [Protocol Specification](https://spec.modelcontextprotocol.io/)
+- [Protocol Specification](https://modelcontextprotocol.io/specification/)
 - [GitHub Organization](https://github.com/modelcontextprotocol)
 
 ## Installation
@@ -27,8 +27,8 @@ dotnet add package ModelContextProtocol.Core --prerelease
 
 ## Getting Started (Client)
 
-To get started writing a client, the `McpClientFactory.CreateAsync` method is used to instantiate and connect an `IMcpClient`
-to a server. Once you have an `IMcpClient`, you can interact with it, such as to enumerate all available tools and invoke tools.
+To get started writing a client, the `McpClient.CreateAsync` method is used to instantiate and connect an `McpClient`
+to a server. Once you have an `McpClient`, you can interact with it, such as to enumerate all available tools and invoke tools.
 
 ```csharp
 var clientTransport = new StdioClientTransport(new StdioClientTransportOptions
@@ -38,7 +38,7 @@ var clientTransport = new StdioClientTransport(new StdioClientTransportOptions
     Arguments = ["-y", "@modelcontextprotocol/server-everything"],
 });
 
-var client = await McpClientFactory.CreateAsync(clientTransport);
+var client = await McpClient.CreateAsync(clientTransport);
 
 // Print the list of tools available from the server.
 foreach (var tool in await client.ListToolsAsync())
@@ -50,7 +50,7 @@ foreach (var tool in await client.ListToolsAsync())
 var result = await client.CallToolAsync(
     "echo",
     new Dictionary<string, object?>() { ["message"] = "Hello MCP!" },
-    cancellationToken:CancellationToken.None);
+    cancellationToken: CancellationToken.None);
 
 // echo always returns one and only one text content object
 Console.WriteLine(result.Content.First(c => c.Type == "text").Text);
@@ -83,13 +83,13 @@ using System.ComponentModel;
 var serverOptions = new McpServerOptions();
 
 // Add tools directly
-serverOptions.Capabilities.Tools = new() 
+serverOptions.Capabilities.Tools = new()
 {
     ListChanged = true,
     ToolCollection = [
         McpServerTool.Create((string message) => $"hello {message}", new()
         {
-            Name = "echo", 
+            Name = "echo",
             Description = "Echoes the message back to the client."
         })
     ]

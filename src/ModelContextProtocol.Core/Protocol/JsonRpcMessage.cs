@@ -22,35 +22,30 @@ public abstract class JsonRpcMessage
     }
 
     /// <summary>
-    /// Gets the JSON-RPC protocol version used.
+    /// Gets or sets the JSON-RPC protocol version used.
     /// </summary>
     /// <inheritdoc />
     [JsonPropertyName("jsonrpc")]
-    public string JsonRpc { get; init; } = "2.0";
+    public string JsonRpc { get; set; } = "2.0";
 
     /// <summary>
-    /// Gets or sets the transport the <see cref="JsonRpcMessage"/> was received on or should be sent over.
+    /// Gets or sets the contextual information for this JSON-RPC message.
     /// </summary>
     /// <remarks>
-    /// This is used to support the Streamable HTTP transport where the specification states that the server
-    /// SHOULD include JSON-RPC responses in the HTTP response body for the POST request containing
-    /// the corresponding JSON-RPC request. It may be <see langword="null"/> for other transports.
+    /// <para>
+    /// This property contains transport-specific and runtime context information that accompanies
+    /// JSON-RPC messages but is not serialized as part of the JSON-RPC payload. This includes
+    /// transport references, execution context, and authenticated user information.
+    /// </para>
+    /// <para>
+    /// This property should only be set when implementing a custom <see cref="ITransport"/>
+    /// that needs to pass additional per-message context or to pass a <see cref="JsonRpcMessageContext.User"/>
+    /// to <see cref="StreamableHttpServerTransport.HandlePostRequestAsync(JsonRpcMessage, Stream, CancellationToken)"/>
+    /// or <see cref="SseResponseStreamTransport.OnMessageReceivedAsync(JsonRpcMessage, CancellationToken)"/> .
+    /// </para>
     /// </remarks>
     [JsonIgnore]
-    public ITransport? RelatedTransport { get; set; }
-
-    /// <summary>
-    /// Gets or sets the <see cref="ExecutionContext"/> that should be used to run any handlers
-    /// </summary>
-    /// <remarks>
-    /// This is used to support the Streamable HTTP transport in its default stateful mode. In this mode,
-    /// the <see cref="IMcpServer"/> outlives the initial HTTP request context it was created on, and new
-    /// JSON-RPC messages can originate from future HTTP requests. This allows the transport to flow the
-    /// context with the JSON-RPC message. This is particularly useful for enabling IHttpContextAccessor
-    /// in tool calls.
-    /// </remarks>
-    [JsonIgnore]
-    public ExecutionContext? ExecutionContext { get; set; }
+    public JsonRpcMessageContext? Context { get; set; }
 
     /// <summary>
     /// Provides a <see cref="JsonConverter"/> for <see cref="JsonRpcMessage"/> messages,

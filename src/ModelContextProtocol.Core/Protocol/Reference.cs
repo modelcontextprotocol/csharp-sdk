@@ -12,8 +12,8 @@ namespace ModelContextProtocol.Protocol;
 /// </summary>
 /// <remarks>
 /// <para>
-/// References are commonly used with <see cref="McpClientExtensions.CompleteAsync"/> to request completion suggestions for arguments,
-/// and with other methods that need to reference resources or prompts.
+/// References are commonly used with <see cref="McpClient.CompleteAsync(Reference, string, string, ModelContextProtocol.RequestOptions?, CancellationToken)"/>
+/// to request completion suggestions for arguments, and with other methods that need to reference resources or prompts.
 /// </para>
 /// <para>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
@@ -23,22 +23,26 @@ namespace ModelContextProtocol.Protocol;
 public abstract class Reference
 {
     /// <summary>Prevent external derivations.</summary>
-    private protected Reference() 
+    private protected Reference()
     {
     }
 
     /// <summary>
-    /// Gets or sets the type of content.
+    /// When overridden in a derived class, gets the type of content.
     /// </summary>
-    /// <remarks>
-    /// This can be "ref/resource" or "ref/prompt".
-    /// </remarks>
+    /// <value>
+    /// "ref/resource" or "ref/prompt".
+    /// </value>
     [JsonPropertyName("type")]
-    public string Type { get; set; } = string.Empty;
+    public abstract string Type { get; }
 
     /// <summary>
     /// Provides a <see cref="JsonConverter"/> for <see cref="Reference"/>.
     /// </summary>
+    /// <remarks>
+    /// Provides a polymorphic converter for the <see cref="Reference"/> class that doesn't  require
+    /// setting <see cref="JsonSerializerOptions.AllowOutOfOrderMetadataProperties"/> explicitly.
+    /// </remarks>
     [EditorBrowsable(EditorBrowsableState.Never)]
     public sealed class Converter : JsonConverter<Reference>
     {
@@ -81,16 +85,19 @@ public abstract class Reference
                         name = reader.GetString();
                         break;
 
+                    case "title":
+                        title = reader.GetString();
+                        break;
+
                     case "uri":
                         uri = reader.GetString();
                         break;
 
                     default:
+                        reader.Skip();
                         break;
                 }
             }
-
-            // TODO: This converter exists due to the lack of downlevel support for AllowOutOfOrderMetadataProperties.
 
             switch (type)
             {
@@ -153,10 +160,8 @@ public abstract class Reference
 /// </summary>
 public sealed class PromptReference : Reference, IBaseMetadata
 {
-    /// <summary>
-    /// Initializes a new instance of the <see cref="PromptReference"/> class.
-    /// </summary>
-    public PromptReference() => Type = "ref/prompt";
+    /// <inheritdoc />
+    public override string Type => "ref/prompt";
 
     /// <inheritdoc />
     [JsonPropertyName("name")]
@@ -175,10 +180,8 @@ public sealed class PromptReference : Reference, IBaseMetadata
 /// </summary>
 public sealed class ResourceTemplateReference : Reference
 {
-    /// <summary>
-    /// Initializes a new instance of the <see cref="ResourceTemplateReference"/> class.
-    /// </summary>
-    public ResourceTemplateReference() => Type = "ref/resource";
+    /// <inheritdoc />
+    public override string Type => "ref/resource";
 
     /// <summary>
     /// Gets or sets the URI or URI template of the resource.

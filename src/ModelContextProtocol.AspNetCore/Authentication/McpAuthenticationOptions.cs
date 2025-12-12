@@ -4,12 +4,10 @@ using ModelContextProtocol.Authentication;
 namespace ModelContextProtocol.AspNetCore.Authentication;
 
 /// <summary>
-/// Options for the MCP authentication handler.
+/// Represents options for the MCP authentication handler.
 /// </summary>
 public class McpAuthenticationOptions : AuthenticationSchemeOptions
 {
-    private static readonly Uri DefaultResourceMetadataUri = new("/.well-known/oauth-protected-resource", UriKind.Relative);
-
     /// <summary>
     /// Initializes a new instance of the <see cref="McpAuthenticationOptions"/> class.
     /// </summary>
@@ -17,7 +15,6 @@ public class McpAuthenticationOptions : AuthenticationSchemeOptions
     {
         // "Bearer" is JwtBearerDefaults.AuthenticationScheme, but we don't have a reference to the JwtBearer package here.
         ForwardAuthenticate = "Bearer";
-        ResourceMetadataUri = DefaultResourceMetadataUri;
         Events = new McpAuthenticationEvents();
     }
 
@@ -26,17 +23,19 @@ public class McpAuthenticationOptions : AuthenticationSchemeOptions
     /// </summary>
     public new McpAuthenticationEvents Events
     {
-        get { return (McpAuthenticationEvents)base.Events!; }
-        set { base.Events = value; }
+        get => (McpAuthenticationEvents)base.Events!;
+        set => base.Events = value;
     }
 
     /// <summary>
-    /// The URI to the resource metadata document.
+    /// Gets or sets the URI to the resource metadata document.
     /// </summary>
     /// <remarks>
-    /// This URI will be included in the WWW-Authenticate header when a 401 response is returned.
+    /// This URI is included in the WWW-Authenticate header when a 401 response is returned.
+    /// When <see langword="null"/>, the handler automatically uses the default
+    /// <c>/.well-known/oauth-protected-resource/&lt;resource-path&gt;</c> endpoint that mirrors the requested resource path.
     /// </remarks>
-    public Uri ResourceMetadataUri { get; set; }
+    public Uri? ResourceMetadataUri { get; set; }
 
     /// <summary>
     /// Gets or sets the protected resource metadata.

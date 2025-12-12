@@ -13,6 +13,7 @@ public abstract class DelegatingMcpServerResource : McpServerResource
 
     /// <summary>Initializes a new instance of the <see cref="DelegatingMcpServerResource"/> class around the specified <paramref name="innerResource"/>.</summary>
     /// <param name="innerResource">The inner resource wrapped by this delegating resource.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="innerResource"/> is <see langword="null"/>.</exception>
     protected DelegatingMcpServerResource(McpServerResource innerResource)
     {
         Throw.IfNull(innerResource);
@@ -26,7 +27,10 @@ public abstract class DelegatingMcpServerResource : McpServerResource
     public override ResourceTemplate ProtocolResourceTemplate => _innerResource.ProtocolResourceTemplate;
 
     /// <inheritdoc />
-    public override ValueTask<ReadResourceResult?> ReadAsync(RequestContext<ReadResourceRequestParams> request, CancellationToken cancellationToken = default) => 
+    public override bool IsMatch(string uri) => _innerResource.IsMatch(uri);
+
+    /// <inheritdoc />
+    public override ValueTask<ReadResourceResult> ReadAsync(RequestContext<ReadResourceRequestParams> request, CancellationToken cancellationToken = default) =>
         _innerResource.ReadAsync(request, cancellationToken);
 
     /// <inheritdoc />

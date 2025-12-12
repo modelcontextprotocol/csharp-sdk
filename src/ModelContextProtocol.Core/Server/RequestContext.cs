@@ -1,3 +1,6 @@
+using System.Security.Claims;
+using ModelContextProtocol.Protocol;
+
 namespace ModelContextProtocol.Server;
 
 /// <summary>
@@ -7,27 +10,32 @@ namespace ModelContextProtocol.Server;
 /// <remarks>
 /// The <see cref="RequestContext{TParams}"/> encapsulates all contextual information for handling an MCP request.
 /// This type is typically received as a parameter in handler delegates registered with IMcpServerBuilder,
-/// and may be injected as parameters into <see cref="McpServerTool"/>s.
+/// and can be injected as parameters into <see cref="McpServerTool"/>s.
 /// </remarks>
 public sealed class RequestContext<TParams>
 {
     /// <summary>The server with which this instance is associated.</summary>
-    private IMcpServer _server;
+    private McpServer _server;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="RequestContext{TParams}"/> class with the specified server.
+    /// Initializes a new instance of the <see cref="RequestContext{TParams}"/> class with the specified server and JSON-RPC request.
     /// </summary>
     /// <param name="server">The server with which this instance is associated.</param>
-    public RequestContext(IMcpServer server)
+    /// <param name="jsonRpcRequest">The JSON-RPC request associated with this context.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="server"/> or <paramref name="jsonRpcRequest"/> is <see langword="null"/>.</exception>
+    public RequestContext(McpServer server, JsonRpcRequest jsonRpcRequest)
     {
         Throw.IfNull(server);
+        Throw.IfNull(jsonRpcRequest);
 
         _server = server;
+        JsonRpcRequest = jsonRpcRequest;
         Services = server.Services;
+        User = jsonRpcRequest.Context?.User;
     }
 
     /// <summary>Gets or sets the server with which this instance is associated.</summary>
-    public IMcpServer Server 
+    public McpServer Server
     {
         get => _server;
         set
@@ -37,15 +45,41 @@ public sealed class RequestContext<TParams>
         }
     }
 
+    /// <summary>
+    /// Gets or sets a key/value collection that can be used to share data within the scope of this request.
+    /// </summary>
+    public IDictionary<string, object?> Items
+    {
+        get => field ??= new Dictionary<string, object?>();
+        set => field = value;
+    }
+
     /// <summary>Gets or sets the services associated with this request.</summary>
     /// <remarks>
-    /// This may not be the same instance stored in <see cref="IMcpServer.Services"/>
+    /// This provider might not be the same instance stored in <see cref="McpServer.Services"/>
     /// if <see cref="McpServerOptions.ScopeRequests"/> was true, in which case this
     /// might be a scoped <see cref="IServiceProvider"/> derived from the server's
-    /// <see cref="IMcpServer.Services"/>.
+    /// <see cref="McpServer.Services"/>.
     /// </remarks>
     public IServiceProvider? Services { get; set; }
 
+    /// <summary>Gets or sets the user associated with this request.</summary>
+    public ClaimsPrincipal? User { get; set; }
+
     /// <summary>Gets or sets the parameters associated with this request.</summary>
     public TParams? Params { get; set; }
+
+    /// <summary>
+    /// Gets or sets the primitive that matched the request.
+    /// </summary>
+    public IMcpServerPrimitive? MatchedPrimitive { get; set; }
+
+    /// <summary>
+    /// Gets the JSON-RPC request associated with this context.
+    /// </summary>
+    /// <remarks>
+    /// This property provides access to the complete JSON-RPC request that initiated this handler invocation,
+    /// including the method name, parameters, request ID, and associated transport and user information.
+    /// </remarks>
+    public JsonRpcRequest JsonRpcRequest { get; }
 }

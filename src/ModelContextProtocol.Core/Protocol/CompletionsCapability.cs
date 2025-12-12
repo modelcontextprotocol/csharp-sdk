@@ -1,5 +1,6 @@
-using ModelContextProtocol.Server;
+using System.ComponentModel;
 using System.Text.Json.Serialization;
+using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Protocol;
 
@@ -9,7 +10,7 @@ namespace ModelContextProtocol.Protocol;
 /// </summary>
 /// <remarks>
 /// <para>
-/// When enabled, this capability allows a Model Context Protocol server to provide 
+/// When enabled, this capability allows a Model Context Protocol server to provide
 /// auto-completion suggestions. This capability is advertised to clients during the initialize handshake.
 /// </para>
 /// <para>
@@ -19,19 +20,12 @@ namespace ModelContextProtocol.Protocol;
 /// <para>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
+/// <para>
+/// This class is intentionally empty as the Model Context Protocol specification does not
+/// currently define additional properties for sampling capabilities. Future versions of the
+/// specification might extend this capability with additional configuration options.
+/// </para>
 /// </remarks>
 public sealed class CompletionsCapability
 {
-    // Currently empty in the spec, but may be extended in the future.
-
-    /// <summary>
-    /// Gets or sets the handler for completion requests.
-    /// </summary>
-    /// <remarks>
-    /// This handler provides auto-completion suggestions for prompt arguments or resource references in the Model Context Protocol.
-    /// The handler receives a reference type (e.g., "ref/prompt" or "ref/resource") and the current argument value,
-    /// and should return appropriate completion suggestions.
-    /// </remarks>
-    [JsonIgnore]
-    public Func<RequestContext<CompleteRequestParams>, CancellationToken, ValueTask<CompleteResult>>? CompleteHandler { get; set; }
 }

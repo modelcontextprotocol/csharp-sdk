@@ -87,8 +87,8 @@ public class DiagnosticTests
             await RunConnected(async (client, server) =>
             {
                 await client.CallToolAsync("Throw", cancellationToken: TestContext.Current.CancellationToken);
-                await Assert.ThrowsAsync<McpException>(async () => await client.CallToolAsync("does-not-exist", cancellationToken: TestContext.Current.CancellationToken));
-            }, new List<string>());
+                await Assert.ThrowsAsync<McpProtocolException>(async () => await client.CallToolAsync("does-not-exist", cancellationToken: TestContext.Current.CancellationToken));
+            }, []);
         }
 
         Assert.NotEmpty(activities);
@@ -128,7 +128,7 @@ public class DiagnosticTests
         Assert.Equal("-32602", doesNotExistToolClient.Tags.Single(t => t.Key == "rpc.jsonrpc.error_code").Value);
     }
 
-    private static async Task RunConnected(Func<IMcpClient, IMcpServer, Task> action, List<string> clientToServerLog)
+    private static async Task RunConnected(Func<McpClient, McpServer, Task> action, List<string> clientToServerLog)
     {
         Pipe clientToServerPipe = new(), serverToClientPipe = new();
         StreamServerTransport serverTransport = new(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream());
@@ -137,23 +137,17 @@ public class DiagnosticTests
 
         Task serverTask;
 
-        await using (IMcpServer server = McpServerFactory.Create(serverTransport, new()
+        await using (McpServer server = McpServer.Create(serverTransport, new()
             {
-                Capabilities = new()
-                {
-                    Tools = new()
-                    {
-                        ToolCollection = [
-                            McpServerTool.Create((int amount) => amount * 2, new() { Name = "DoubleValue", Description = "Doubles the value." }),
-                            McpServerTool.Create(() => { throw new Exception("boom"); }, new() { Name = "Throw", Description = "Throws error." }),
-                        ],
-                    }
-                }
+                ToolCollection = [
+                    McpServerTool.Create((int amount) => amount * 2, new() { Name = "DoubleValue", Description = "Doubles the value." }),
+                    McpServerTool.Create(() => { throw new Exception("boom"); }, new() { Name = "Throw", Description = "Throws error." }),
+                ]
             }))
         {
             serverTask = server.RunAsync(TestContext.Current.CancellationToken);
 
-            await using (IMcpClient client = await McpClientFactory.CreateAsync(
+            await using (McpClient client = await McpClient.CreateAsync(
                 clientTransport,
                 cancellationToken: TestContext.Current.CancellationToken))
             {

@@ -1,9 +1,11 @@
 using Microsoft.Extensions.AI;
+using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 #if !NET
 using System.Runtime.InteropServices;
 #endif
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol;
 
@@ -17,6 +19,140 @@ namespace ModelContextProtocol;
 public static class AIContentExtensions
 {
     /// <summary>
+    /// Creates a sampling handler for use with <see cref="McpClientHandlers.SamplingHandler"/> that will
+    /// satisfy sampling requests using the specified <see cref="IChatClient"/>.
+    /// </summary>
+    /// <param name="chatClient">The <see cref="IChatClient"/> with which to satisfy sampling requests.</param>
+    /// <returns>The created handler delegate that can be assigned to <see cref="McpClientHandlers.SamplingHandler"/>.</returns>
+    /// <remarks>
+    /// <para>
+    /// This method creates a function that converts MCP message requests into chat client calls, enabling
+    /// an MCP client to generate text or other content using an actual AI model via the provided chat client.
+    /// </para>
+    /// <para>
+    /// The handler can process text messages, image messages, resource messages, and tool use/results as defined in the
+    /// Model Context Protocol.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="chatClient"/> is <see langword="null"/>.</exception>
+    public static Func<CreateMessageRequestParams?, IProgress<ProgressNotificationValue>, CancellationToken, ValueTask<CreateMessageResult>> CreateSamplingHandler(
+        this IChatClient chatClient)
+    {
+        Throw.IfNull(chatClient);
+
+        return async (requestParams, progress, cancellationToken) =>
+        {
+            Throw.IfNull(requestParams);
+
+            var (messages, options) = ToChatClientArguments(requestParams);
+            var progressToken = requestParams.ProgressToken;
+
+            List<ChatResponseUpdate> updates = [];
+            await foreach (var update in chatClient.GetStreamingResponseAsync(messages, options, cancellationToken).ConfigureAwait(false))
+            {
+                updates.Add(update);
+
+                if (progressToken is not null)
+                {
+                    progress.Report(new() { Progress = updates.Count });
+                }
+            }
+
+            ChatResponse? chatResponse = updates.ToChatResponse();
+            ChatMessage? lastMessage = chatResponse.Messages.LastOrDefault();
+
+            IList<ContentBlock>? contents = lastMessage?.Contents.Select(c => c.ToContentBlock()).ToList();
+            if (contents is not { Count: > 0 })
+            {
+                (contents ??= []).Add(new TextContentBlock() { Text = "" });
+            }
+
+            return new()
+            {
+                Model = chatResponse.ModelId ?? "",
+                StopReason =
+                    chatResponse.FinishReason == ChatFinishReason.Stop ? CreateMessageResult.StopReasonEndTurn :
+                    chatResponse.FinishReason == ChatFinishReason.Length ? CreateMessageResult.StopReasonMaxTokens :
+                    chatResponse.FinishReason == ChatFinishReason.ToolCalls ? CreateMessageResult.StopReasonToolUse :
+                    chatResponse.FinishReason.ToString(),
+                Meta = chatResponse.AdditionalProperties?.ToJsonObject(),
+                Role = lastMessage?.Role == ChatRole.User ? Role.User : Role.Assistant,
+                Content = contents,
+            };
+
+            static (IList<ChatMessage> Messages, ChatOptions? Options) ToChatClientArguments(CreateMessageRequestParams requestParams)
+            {
+                ChatOptions? options = null;
+
+                if (requestParams.MaxTokens is int maxTokens)
+                {
+                    (options ??= new()).MaxOutputTokens = maxTokens;
+                }
+
+                if (requestParams.Temperature is float temperature)
+                {
+                    (options ??= new()).Temperature = temperature;
+                }
+
+                if (requestParams.StopSequences is { } stopSequences)
+                {
+                    (options ??= new()).StopSequences = stopSequences.ToArray();
+                }
+
+                if (requestParams.SystemPrompt is { } systemPrompt)
+                {
+                    (options ??= new()).Instructions = systemPrompt;
+                }
+
+                if (requestParams.Tools is { } tools)
+                {
+                    foreach (var tool in tools)
+                    {
+                        ((options ??= new()).Tools ??= []).Add(new ToolAIFunctionDeclaration(tool));
+                    }
+
+                    if (options.Tools is { Count: > 0 } && requestParams.ToolChoice is { } toolChoice)
+                    {
+                        options.ToolMode = toolChoice.Mode switch
+                        {
+                            ToolChoice.ModeAuto => ChatToolMode.Auto,
+                            ToolChoice.ModeRequired => ChatToolMode.RequireAny,
+                            ToolChoice.ModeNone => ChatToolMode.None,
+                            _ => null,
+                        };
+                    }
+                }
+
+                List<ChatMessage> messages = [];
+                foreach (var sm in requestParams.Messages)
+                {
+                    if (sm.Content?.Select(b => b.ToAIContent()).OfType<AIContent>().ToList() is { Count: > 0 } aiContents)
+                    {
+                        messages.Add(new ChatMessage(sm.Role is Role.Assistant ? ChatRole.Assistant : ChatRole.User, aiContents));
+                    }
+                }
+
+                return (messages, options);
+            }
+        };
+    }
+
+    /// <summary>Converts the specified dictionary to a <see cref="JsonObject"/>.</summary>
+    internal static JsonObject? ToJsonObject(this IReadOnlyDictionary<string, object?> properties) =>
+        JsonSerializer.SerializeToNode(properties, McpJsonUtilities.JsonContext.Default.IReadOnlyDictionaryStringObject) as JsonObject;
+
+    internal static AdditionalPropertiesDictionary ToAdditionalProperties(this JsonObject obj)
+    {
+        AdditionalPropertiesDictionary d = [];
+        foreach (var kvp in obj)
+        {
+            d.Add(kvp.Key, kvp.Value);
+        }
+
+        return d;
+    }
+
+    /// <summary>
     /// Converts a <see cref="PromptMessage"/> to a <see cref="ChatMessage"/> object.
     /// </summary>
     /// <param name="promptMessage">The prompt message to convert.</param>
@@ -25,6 +161,7 @@ public static class AIContentExtensions
     /// This method transforms a protocol-specific <see cref="PromptMessage"/> from the Model Context Protocol
     /// into a standard <see cref="ChatMessage"/> object that can be used with AI client libraries.
     /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="promptMessage"/> is <see langword="null"/>.</exception>
     public static ChatMessage ToChatMessage(this PromptMessage promptMessage)
     {
         Throw.IfNull(promptMessage);
@@ -51,6 +188,7 @@ public static class AIContentExtensions
     /// <see cref="ChatRole.Tool"/> message containing a <see cref="FunctionResultContent"/> with result as a
     /// serialized <see cref="JsonElement"/>.
     /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="result"/> or <paramref name="callId"/> is <see langword="null"/>.</exception>
     public static ChatMessage ToChatMessage(this CallToolResult result, string callId)
     {
         Throw.IfNull(result);
@@ -71,6 +209,7 @@ public static class AIContentExtensions
     /// This method transforms protocol-specific <see cref="PromptMessage"/> objects from a Model Context Protocol
     /// prompt result into standard <see cref="ChatMessage"/> objects that can be used with AI client libraries.
     /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="promptResult"/> is <see langword="null"/>.</exception>
     public static IList<ChatMessage> ToChatMessages(this GetPromptResult promptResult)
     {
         Throw.IfNull(promptResult);
@@ -88,6 +227,7 @@ public static class AIContentExtensions
     /// protocol-specific <see cref="PromptMessage"/> objects for the Model Context Protocol system.
     /// Only representable content items are processed.
     /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="chatMessage"/> is <see langword="null"/>.</exception>
     public static IList<PromptMessage> ToPromptMessages(this ChatMessage chatMessage)
     {
         Throw.IfNull(chatMessage);
@@ -99,7 +239,7 @@ public static class AIContentExtensions
         {
             if (content is TextContent or DataContent)
             {
-                messages.Add(new PromptMessage { Role = r, Content = content.ToContent() });
+                messages.Add(new PromptMessage { Role = r, Content = content.ToContentBlock() });
             }
         }
 
@@ -115,6 +255,7 @@ public static class AIContentExtensions
     /// This method converts Model Context Protocol content types to the equivalent Microsoft.Extensions.AI 
     /// content types, enabling seamless integration between the protocol and AI client libraries.
     /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="content"/> is <see langword="null"/>.</exception>
     public static AIContent? ToAIContent(this ContentBlock content)
     {
         Throw.IfNull(content);
@@ -122,15 +263,30 @@ public static class AIContentExtensions
         AIContent? ac = content switch
         {
             TextContentBlock textContent => new TextContent(textContent.Text),
+            
             ImageContentBlock imageContent => new DataContent(Convert.FromBase64String(imageContent.Data), imageContent.MimeType),
+            
             AudioContentBlock audioContent => new DataContent(Convert.FromBase64String(audioContent.Data), audioContent.MimeType),
+            
             EmbeddedResourceBlock resourceContent => resourceContent.Resource.ToAIContent(),
+            
+            ToolUseContentBlock toolUse => FunctionCallContent.CreateFromParsedArguments(toolUse.Input, toolUse.Id, toolUse.Name,
+                static json => JsonSerializer.Deserialize(json, McpJsonUtilities.JsonContext.Default.IDictionaryStringObject)),
+            
+            ToolResultContentBlock toolResult => new FunctionResultContent(
+                toolResult.ToolUseId,
+                toolResult.Content.Count == 1 ? toolResult.Content[0].ToAIContent() : toolResult.Content.Select(c => c.ToAIContent()).OfType<AIContent>().ToList())
+            {
+                Exception = toolResult.IsError is true ? new() : null,
+            },
+            
             _ => null,
         };
 
         if (ac is not null)
         {
             ac.RawRepresentation = content;
+            ac.AdditionalProperties = content.Meta?.ToAdditionalProperties();
         }
 
         return ac;
@@ -143,6 +299,8 @@ public static class AIContentExtensions
     /// This method converts Model Context Protocol resource types to the equivalent Microsoft.Extensions.AI 
     /// content types, enabling seamless integration between the protocol and AI client libraries.
     /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="content"/> is <see langword="null"/>.</exception>
+    /// <exception cref="NotSupportedException">The resource type is not supported.</exception>
     public static AIContent ToAIContent(this ResourceContents content)
     {
         Throw.IfNull(content);
@@ -174,6 +332,7 @@ public static class AIContentExtensions
     /// preserving the type-specific conversion logic for text, images, audio, and resources.
     /// </para>
     /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="contents"/> is <see langword="null"/>.</exception>
     public static IList<AIContent> ToAIContents(this IEnumerable<ContentBlock> contents)
     {
         Throw.IfNull(contents);
@@ -196,6 +355,7 @@ public static class AIContentExtensions
     /// binary resources become <see cref="DataContent"/> objects.
     /// </para>
     /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="contents"/> is <see langword="null"/>.</exception>
     public static IList<AIContent> ToAIContents(this IEnumerable<ResourceContents> contents)
     {
         Throw.IfNull(contents);
@@ -203,8 +363,15 @@ public static class AIContentExtensions
         return [.. contents.Select(ToAIContent)];
     }
 
-    internal static ContentBlock ToContent(this AIContent content) =>
-        content switch
+    /// <summary>Creates a new <see cref="ContentBlock"/> from the content of an <see cref="AIContent"/>.</summary>
+    /// <param name="content">The <see cref="AIContent"/> to convert.</param>
+    /// <returns>The created <see cref="ContentBlock"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="content"/> is <see langword="null"/>.</exception>
+    public static ContentBlock ToContentBlock(this AIContent content)
+    {
+        Throw.IfNull(content);
+
+        ContentBlock contentBlock = content switch
         {
             TextContent textContent => new TextContentBlock
             {
@@ -229,7 +396,26 @@ public static class AIContentExtensions
                 {
                     Blob = dataContent.Base64Data.ToString(),
                     MimeType = dataContent.MediaType,
+                    Uri = string.Empty,
                 }
+            },
+
+            FunctionCallContent callContent => new ToolUseContentBlock()
+            {
+                Id = callContent.CallId,
+                Name = callContent.Name,
+                Input = JsonSerializer.SerializeToElement(callContent.Arguments, McpJsonUtilities.DefaultOptions.GetTypeInfo<IDictionary<string, object?>>()!),
+            },
+
+            FunctionResultContent resultContent => new ToolResultContentBlock()
+            {
+                ToolUseId = resultContent.CallId,
+                IsError = resultContent.Exception is not null,
+                Content =
+                    resultContent.Result is AIContent c ? [c.ToContentBlock()] :
+                    resultContent.Result is IEnumerable<AIContent> ec ? [.. ec.Select(c => c.ToContentBlock())] :
+                    [new TextContentBlock { Text = JsonSerializer.Serialize(content, McpJsonUtilities.DefaultOptions.GetTypeInfo<object>()) }],
+                StructuredContent = resultContent.Result is JsonElement je ? je : null,
             },
 
             _ => new TextContentBlock
@@ -237,4 +423,32 @@ public static class AIContentExtensions
                 Text = JsonSerializer.Serialize(content, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(object))),
             }
         };
+
+        contentBlock.Meta = content.AdditionalProperties?.ToJsonObject();
+
+        return contentBlock;
+    }
+
+    private sealed class ToolAIFunctionDeclaration(Tool tool) : AIFunctionDeclaration
+    {
+        public override string Name => tool.Name;
+
+        public override string Description => tool.Description ?? "";
+
+        public override IReadOnlyDictionary<string, object?> AdditionalProperties =>
+            field ??= tool.Meta is { } meta ? meta.ToDictionary(p => p.Key, p => (object?)p.Value) : [];
+
+        public override JsonElement JsonSchema => tool.InputSchema;
+
+        public override JsonElement? ReturnJsonSchema => tool.OutputSchema;
+
+        public override object? GetService(Type serviceType, object? serviceKey = null)
+        {
+            Throw.IfNull(serviceType);
+
+            return
+                serviceKey is null && serviceType.IsInstanceOfType(tool) ? tool :
+                base.GetService(serviceType, serviceKey);
+        }
+    }
 }

@@ -7,7 +7,7 @@ namespace ModelContextProtocol.Protocol;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The <see cref="InitializeResult"/> is sent by the server in response to an <see cref="InitializeRequestParams"/> 
+/// The <see cref="InitializeResult"/> is sent by the server in response to an <see cref="InitializeRequestParams"/>
 /// message from the client. It contains information about the server, its capabilities, and the protocol version
 /// that will be used for the session.
 /// </para>
@@ -26,8 +26,8 @@ public sealed class InitializeResult : Result
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This is the protocol version the server has agreed to use, which should match the client's 
-    /// requested version. If there's a mismatch, the client should throw an exception to prevent 
+    /// This is the protocol version the server has agreed to use, which should match the client's
+    /// requested version. If there's a mismatch, the client should throw an exception to prevent
     /// communication issues due to incompatible protocol versions.
     /// </para>
     /// <para>
@@ -38,27 +38,27 @@ public sealed class InitializeResult : Result
     /// </para>
     /// </remarks>
     [JsonPropertyName("protocolVersion")]
-    public required string ProtocolVersion { get; init; }
+    public required string ProtocolVersion { get; set; }
 
     /// <summary>
     /// Gets or sets the server's capabilities.
     /// </summary>
     /// <remarks>
-    /// This defines the features the server supports, such as "tools", "prompts", "resources", or "logging", 
+    /// This property defines the features the server supports, such as "tools", "prompts", "resources", or "logging",
     /// and other protocol-specific functionality.
     /// </remarks>
     [JsonPropertyName("capabilities")]
-    public required ServerCapabilities Capabilities { get; init; }
+    public required ServerCapabilities Capabilities { get; set; }
 
     /// <summary>
     /// Gets or sets information about the server implementation, including its name and version.
     /// </summary>
     /// <remarks>
     /// This information identifies the server during the initialization handshake.
-    /// Clients may use this information for logging, debugging, or compatibility checks.
+    /// Clients might use this information for logging, debugging, or compatibility checks.
     /// </remarks>
     [JsonPropertyName("serverInfo")]
-    public required Implementation ServerInfo { get; init; }
+    public required Implementation ServerInfo { get; set; }
 
     /// <summary>
     /// Gets or sets optional instructions for using the server and its features.
@@ -75,5 +75,5 @@ public sealed class InitializeResult : Result
     /// </para>
     /// </remarks>
     [JsonPropertyName("instructions")]
-    public string? Instructions { get; init; }
+    public string? Instructions { get; set; }
 }

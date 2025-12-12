@@ -6,8 +6,10 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 namespace ModelContextProtocol.Server;
@@ -17,6 +19,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
 {
     private readonly Regex? _uriParser;
     private readonly string[] _templateVariableNames = [];
+    private readonly IReadOnlyList<object> _metadata;
 
     /// <summary>
     /// Creates an <see cref="AIFunctionMcpServerResource"/> instance for a method, specified via a <see cref="Delegate"/> instance.
@@ -65,7 +68,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
         return Create(
             AIFunctionFactory.Create(method, args =>
             {
-                Debug.Assert(args.Services is RequestServiceProvider<ReadResourceRequestParams>, $"The service provider should be a {nameof(RequestServiceProvider<ReadResourceRequestParams>)} for this method to work correctly.");
+                Debug.Assert(args.Services is RequestServiceProvider<ReadResourceRequestParams>, $"The service provider should be a {nameof(RequestServiceProvider<>)} for this method to work correctly.");
                 return createTargetFunc(((RequestServiceProvider<ReadResourceRequestParams>)args.Services!).Request);
             }, CreateAIFunctionFactoryOptions(method, options)),
             options);
@@ -216,9 +219,13 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
             Title = options?.Title,
             Description = options?.Description,
             MimeType = options?.MimeType ?? "application/octet-stream",
+            Icons = options?.Icons,
+            Meta = function.UnderlyingMethod is not null ?
+                AIFunctionMcpServerTool.CreateMetaFromAttributes(function.UnderlyingMethod, options?.Meta) :
+                options?.Meta,
         };
 
-        return new AIFunctionMcpServerResource(function, resource);
+        return new AIFunctionMcpServerResource(function, resource, options?.Metadata ?? []);
     }
 
     private static McpServerResourceCreateOptions DeriveOptions(MemberInfo member, McpServerResourceCreateOptions? options)
@@ -231,11 +238,23 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
             newOptions.Name ??= resourceAttr.Name;
             newOptions.Title ??= resourceAttr.Title;
             newOptions.MimeType ??= resourceAttr.MimeType;
+
+            // Handle icon from attribute if not already specified in options
+            if (newOptions.Icons is null && resourceAttr.IconSource is { Length: > 0 } iconSource)
+            {
+                newOptions.Icons = [new() { Source = iconSource }];
+            }
         }
 
         if (member.GetCustomAttribute<DescriptionAttribute>() is { } descAttr)
         {
             newOptions.Description ??= descAttr.Description;
+        }
+
+        // Set metadata if not already provided and the member is a MethodInfo
+        if (member is MethodInfo method)
+        {
+            newOptions.Metadata ??= AIFunctionMcpServerTool.CreateMetadata(method);
         }
 
         return newOptions;
@@ -270,11 +289,13 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
     internal AIFunction AIFunction { get; }
 
     /// <summary>Initializes a new instance of the <see cref="McpServerResource"/> class.</summary>
-    private AIFunctionMcpServerResource(AIFunction function, ResourceTemplate resourceTemplate)
+    private AIFunctionMcpServerResource(AIFunction function, ResourceTemplate resourceTemplate, IReadOnlyList<object> metadata)
     {
         AIFunction = function;
         ProtocolResourceTemplate = resourceTemplate;
+        ProtocolResourceTemplate.McpServerResource = this;
         ProtocolResource = resourceTemplate.AsResource();
+        _metadata = metadata;
 
         if (ProtocolResource is null)
         {
@@ -290,7 +311,37 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
     public override Resource? ProtocolResource { get; }
 
     /// <inheritdoc />
-    public override async ValueTask<ReadResourceResult?> ReadAsync(
+    public override IReadOnlyList<object> Metadata => _metadata;
+
+    /// <inheritdoc />
+    public override bool IsMatch(string uri)
+    {
+        Throw.IfNull(uri);
+
+        // For templates, use the Regex to parse. For static resources, we can just compare the URIs.
+        if (_uriParser is null)
+        {
+            // This resource is not templated.
+            return UriTemplate.UriTemplateComparer.Instance.Equals(uri, ProtocolResourceTemplate.UriTemplate);
+        }
+
+        return _uriParser.IsMatch(uri);
+    }
+
+    private bool TryMatch(string uri, out Match? match)
+    {
+        if (_uriParser is null)
+        {
+            match = null;
+            return UriTemplate.UriTemplateComparer.Instance.Equals(uri, ProtocolResourceTemplate.UriTemplate);
+        }
+
+        match = _uriParser.Match(uri);
+        return match.Success;
+    }
+
+    /// <inheritdoc />
+    public override async ValueTask<ReadResourceResult> ReadAsync(
         RequestContext<ReadResourceRequestParams> request, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(request);
@@ -299,24 +350,13 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        // Check to see if this URI template matches the request URI. If it doesn't, return null.
-        // For templates, use the Regex to parse. For static resources, we can just compare the URIs.
-        Match? match = null;
-        if (_uriParser is not null)
+        if (!TryMatch(request.Params.Uri, out Match? match))
         {
-            match = _uriParser.Match(request.Params.Uri);
-            if (!match.Success)
-            {
-                return null;
-            }
-        }
-        else if (!UriTemplate.UriTemplateComparer.Instance.Equals(request.Params.Uri, ProtocolResource!.Uri))
-        {
-            return null;
+            throw new InvalidOperationException($"Resource '{ProtocolResourceTemplate.UriTemplate}' does not match the provided URI '{request.Params.Uri}'.");
         }
 
         // Build up the arguments for the AIFunction call, including all of the name/value pairs from the URI.
-        request.Services = new RequestServiceProvider<ReadResourceRequestParams>(request, request.Services);
+        request.Services = new RequestServiceProvider<ReadResourceRequestParams>(request);
         AIFunctionArguments arguments = new() { Services = request.Services };
 
         // For templates, populate the arguments from the URI template.

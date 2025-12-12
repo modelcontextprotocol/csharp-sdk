@@ -36,4 +36,44 @@ public sealed class Implementation : IBaseMetadata
     /// </remarks>
     [JsonPropertyName("version")]
     public required string Version { get; set; }
+
+    /// <summary>
+    /// Gets or sets an optional description of the implementation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This description helps users and developers understand what the implementation provides
+    /// and its purpose. It should clearly explain the functionality and capabilities offered.
+    /// </para>
+    /// <para>
+    /// The description is typically used in documentation, UI displays, and for providing context
+    /// to users about the server or client they are interacting with.
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+
+    /// <summary>
+    /// Gets or sets an optional list of icons for this implementation.
+    /// </summary>
+    /// <remarks>
+    /// This value can be used by clients to display the implementation's icon in a user interface.
+    /// </remarks>
+    [JsonPropertyName("icons")]
+    public IList<Icon>? Icons { get; set; }
+
+    /// <summary>
+    /// Gets or sets an optional URL of the website for this implementation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This URL can be used by clients to link to documentation or more information about the implementation.
+    /// </para>
+    /// <para>
+    /// Consumers SHOULD take steps to ensure URLs are from the same domain as the client/server
+    /// or a trusted domain to prevent security issues.
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("websiteUrl")]
+    public string? WebsiteUrl { get; set; }
 }

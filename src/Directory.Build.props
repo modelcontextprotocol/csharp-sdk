@@ -2,12 +2,12 @@
   <Import Project="..\Directory.Build.props" />
 
   <PropertyGroup>
-    <PackageProjectUrl>https://github.com/modelcontextprotocol/csharp-sdk</PackageProjectUrl>
+    <PackageProjectUrl>https://modelcontextprotocol.github.io/csharp-sdk</PackageProjectUrl>
     <RepositoryUrl>https://github.com/modelcontextprotocol/csharp-sdk</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <VersionPrefix>0.3.0</VersionPrefix>
-    <VersionSuffix>preview.4</VersionSuffix>
-    <Authors>ModelContextProtocolOfficial</Authors>
+    <VersionPrefix>0.5.0</VersionPrefix>
+    <VersionSuffix>preview.2</VersionSuffix>
+    <Authors>ModelContextProtocol</Authors>
     <Copyright>© Anthropic and Contributors.</Copyright>
     <PackageTags>ModelContextProtocol;mcp;ai;llm</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

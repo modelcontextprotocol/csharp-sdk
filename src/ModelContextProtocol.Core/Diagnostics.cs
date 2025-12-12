@@ -13,13 +13,8 @@ internal static class Diagnostics
     internal static Meter Meter { get; } = new("Experimental.ModelContextProtocol");
 
     internal static Histogram<double> CreateDurationHistogram(string name, string description, bool longBuckets) =>
-        Meter.CreateHistogram<double>(name, "s", description
-#if NET9_0_OR_GREATER
-        , advice: longBuckets ? LongSecondsBucketBoundaries : ShortSecondsBucketBoundaries
-#endif
-        );
+        Meter.CreateHistogram(name, "s", description, advice: longBuckets ? LongSecondsBucketBoundaries : ShortSecondsBucketBoundaries);
 
-#if NET9_0_OR_GREATER
     /// <summary>
     /// Follows boundaries from http.server.request.duration/http.client.request.duration
     /// </summary>
@@ -36,7 +31,6 @@ internal static class Diagnostics
     {
         HistogramBucketBoundaries = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 30, 60, 120, 300],
     };
-#endif
 
     internal static ActivityContext ExtractActivityContext(this DistributedContextPropagator propagator, JsonRpcMessage message)
     {
@@ -93,9 +87,9 @@ internal static class Diagnostics
         {
             if (jsonObject["_meta"] is not JsonObject meta)
             {
-                meta = new JsonObject();
-                jsonObject["_meta"] = meta;
+                jsonObject["_meta"] = meta = [];
             }
+
             meta[key] = value;
         }
     }

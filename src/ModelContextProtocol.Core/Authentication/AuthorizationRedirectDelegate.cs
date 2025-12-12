@@ -6,7 +6,7 @@ namespace ModelContextProtocol.Authentication;
 /// </summary>
 /// <param name="authorizationUri">The authorization URL that the user needs to visit.</param>
 /// <param name="redirectUri">The redirect URI where the authorization code will be sent.</param>
-/// <param name="cancellationToken">The cancellation token.</param>
+/// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
 /// <returns>A task that represents the asynchronous operation. The task result contains the authorization code if successful, or null if the operation failed or was cancelled.</returns>
 /// <remarks>
 /// <para>

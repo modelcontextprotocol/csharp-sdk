@@ -26,6 +26,8 @@ internal sealed class SseWriter(string? messageEndpoint = null, BoundedChannelOp
 
     public Task WriteAllAsync(Stream sseResponseStream, CancellationToken cancellationToken)
     {
+        Throw.IfNull(sseResponseStream);
+
         // When messageEndpoint is set, the very first SSE event isn't really an IJsonRpcMessage, but there's no API to write a single
         // item of a different type, so we fib and special-case the "endpoint" event type in the formatter.
         if (messageEndpoint is not null && !_messages.Writer.TryWrite(new SseItem<JsonRpcMessage?>(null, "endpoint")))
@@ -45,7 +47,7 @@ internal sealed class SseWriter(string? messageEndpoint = null, BoundedChannelOp
         return _writeTask;
     }
 
-    public async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
+    public async Task<bool> SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(message);
 
@@ -53,14 +55,14 @@ internal sealed class SseWriter(string? messageEndpoint = null, BoundedChannelOp
 
         if (_disposed)
         {
-            // Don't throw an ODE, because this is disposed internally when the transport disconnects due to an abort
-            // or sending all the responses for the a give given Streamable HTTP POST request, so the user might not be at fault.
-            // There's precedence for no-oping here similar to writing to the response body of an aborted request in ASP.NET Core.
-            return;
+            // Don't throw ObjectDisposedException here; just return false to indicate the message wasn't sent.
+            // The calling transport can determine what to do in this case (drop the message, or fall back to another transport).
+            return false;
         }
 
         // Emit redundant "event: message" lines for better compatibility with other SDKs.
         await _messages.Writer.WriteAsync(new SseItem<JsonRpcMessage?>(message, SseParser.EventTypeDefault), cancellationToken).ConfigureAwait(false);
+        return true;
     }
 
     public async ValueTask DisposeAsync()

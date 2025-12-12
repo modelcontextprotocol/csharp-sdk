@@ -5,12 +5,14 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Server;
 
 /// <summary>Provides an <see cref="McpServerPrompt"/> that's implemented via an <see cref="AIFunction"/>.</summary>
 internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
 {
+    private readonly IReadOnlyList<object> _metadata;
     /// <summary>
     /// Creates an <see cref="McpServerPrompt"/> instance for a method, specified via a <see cref="Delegate"/> instance.
     /// </summary>
@@ -58,7 +60,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
         return Create(
             AIFunctionFactory.Create(method, args =>
             {
-                Debug.Assert(args.Services is RequestServiceProvider<GetPromptRequestParams>, $"The service provider should be a {nameof(RequestServiceProvider<GetPromptRequestParams>)} for this method to work correctly.");
+                Debug.Assert(args.Services is RequestServiceProvider<GetPromptRequestParams>, $"The service provider should be a {nameof(RequestServiceProvider<>)} for this method to work correctly.");
                 return createTargetFunc(((RequestServiceProvider<GetPromptRequestParams>)args.Services!).Request);
             }, CreateAIFunctionFactoryOptions(method, options)),
             options);
@@ -134,9 +136,15 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
             Title = options?.Title,
             Description = options?.Description ?? function.Description,
             Arguments = args,
+            Icons = options?.Icons,
+
+            // Populate Meta from options and/or McpMetaAttribute instances if a MethodInfo is available
+            Meta = function.UnderlyingMethod is not null ?
+                AIFunctionMcpServerTool.CreateMetaFromAttributes(function.UnderlyingMethod, options?.Meta) :
+                options?.Meta
         };
 
-        return new AIFunctionMcpServerPrompt(function, prompt);
+        return new AIFunctionMcpServerPrompt(function, prompt, options?.Metadata ?? []);
     }
 
     private static McpServerPromptCreateOptions DeriveOptions(MethodInfo method, McpServerPromptCreateOptions? options)
@@ -147,12 +155,21 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
         {
             newOptions.Name ??= promptAttr.Name;
             newOptions.Title ??= promptAttr.Title;
+
+            // Handle icon from attribute if not already specified in options
+            if (newOptions.Icons is null && promptAttr.IconSource is { Length: > 0 } iconSource)
+            {
+                newOptions.Icons = [new() { Source = iconSource }];
+            }
         }
 
         if (method.GetCustomAttribute<DescriptionAttribute>() is { } descAttr)
         {
             newOptions.Description ??= descAttr.Description;
         }
+
+        // Set metadata if not already provided
+        newOptions.Metadata ??= AIFunctionMcpServerTool.CreateMetadata(method);
 
         return newOptions;
     }
@@ -161,14 +178,19 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
     internal AIFunction AIFunction { get; }
 
     /// <summary>Initializes a new instance of the <see cref="McpServerPrompt"/> class.</summary>
-    private AIFunctionMcpServerPrompt(AIFunction function, Prompt prompt)
+    private AIFunctionMcpServerPrompt(AIFunction function, Prompt prompt, IReadOnlyList<object> metadata)
     {
         AIFunction = function;
         ProtocolPrompt = prompt;
+        ProtocolPrompt.McpServerPrompt = this;
+        _metadata = metadata;
     }
 
     /// <inheritdoc />
     public override Prompt ProtocolPrompt { get; }
+
+    /// <inheritdoc />
+    public override IReadOnlyList<object> Metadata => _metadata;
 
     /// <inheritdoc />
     public override async ValueTask<GetPromptResult> GetAsync(
@@ -177,7 +199,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
         Throw.IfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
-        request.Services = new RequestServiceProvider<GetPromptRequestParams>(request, request.Services);
+        request.Services = new RequestServiceProvider<GetPromptRequestParams>(request);
         AIFunctionArguments arguments = new() { Services = request.Services };
 
         if (request.Params?.Arguments is { } argDict)

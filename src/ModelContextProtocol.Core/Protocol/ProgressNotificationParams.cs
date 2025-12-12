@@ -16,7 +16,7 @@ namespace ModelContextProtocol.Protocol;
 public sealed class ProgressNotificationParams : NotificationParams
 {
     /// <summary>
-    /// Gets or sets the progress token which was given in the initial request, used to associate this notification with 
+    /// Gets or sets the progress token that was given in the initial request that's used to associate this notification with
     /// the corresponding request.
     /// </summary>
     /// <remarks>
@@ -24,20 +24,20 @@ public sealed class ProgressNotificationParams : NotificationParams
     /// This token acts as a correlation identifier that links progress updates to their corresponding request.
     /// </para>
     /// <para>
-    /// When an endpoint initiates a request with a <see cref="ProgressToken"/> in its metadata, 
-    /// the receiver can send progress notifications using this same token. This allows both sides to 
+    /// When an endpoint initiates a request with a <see cref="ProgressToken"/> in its metadata,
+    /// the receiver can send progress notifications using this same token. This allows both sides to
     /// correlate the notifications with the original request.
     /// </para>
     /// </remarks>
-    public required ProgressToken ProgressToken { get; init; }
+    public required ProgressToken ProgressToken { get; set; }
 
     /// <summary>
     /// Gets or sets the progress thus far.
     /// </summary>
     /// <remarks>
-    /// This should increase for each notification issued as part of the same request, even if the total is unknown.
+    /// This value should increase for each notification issued as part of the same request, even if the total is unknown.
     /// </remarks>
-    public required ProgressNotificationValue Progress { get; init; }
+    public required ProgressNotificationValue Progress { get; set; }
 
     /// <summary>
     /// Provides a <see cref="JsonConverter"/> for <see cref="ProgressNotificationParams"/>.
@@ -80,6 +80,10 @@ public sealed class ProgressNotificationParams : NotificationParams
 
                         case "_meta":
                             meta = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.JsonObject);
+                            break;
+
+                        default:
+                            reader.Skip();
                             break;
                     }
                 }

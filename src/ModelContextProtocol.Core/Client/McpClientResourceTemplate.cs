@@ -9,16 +9,36 @@ namespace ModelContextProtocol.Client;
 /// <para>
 /// This class provides a client-side wrapper around a resource template defined on an MCP server. It allows
 /// retrieving the resource template's content by sending a request to the server with the resource's URI.
-/// Instances of this class are typically obtained by calling <see cref="McpClientExtensions.ListResourceTemplatesAsync"/>
-/// or <see cref="McpClientExtensions.EnumerateResourceTemplatesAsync"/>.
+/// Instances of this class are typically obtained by calling <see cref="McpClient.ListResourceTemplatesAsync(RequestOptions?, CancellationToken)"/>.
 /// </para>
 /// </remarks>
 public sealed class McpClientResourceTemplate
 {
-    private readonly IMcpClient _client;
+    private readonly McpClient _client;
 
-    internal McpClientResourceTemplate(IMcpClient client, ResourceTemplate resourceTemplate)
+    /// <summary>
+    /// Initializes a new instance of the <see cref="McpClientResourceTemplate"/> class.
+    /// </summary>
+    /// <param name="client">The <see cref="McpClient"/> instance to use for reading the resource template.</param>
+    /// <param name="resourceTemplate">The protocol <see cref="ResourceTemplate"/> definition describing the resource template's metadata.</param>
+    /// <remarks>
+    /// <para>
+    /// This constructor enables reusing cached resource template definitions across different <see cref="McpClient"/> instances
+    /// without needing to call <see cref="McpClient.ListResourceTemplatesAsync(RequestOptions?, CancellationToken)"/> on every reconnect. This is particularly useful
+    /// in scenarios where resource template definitions are stable and network round-trips should be minimized.
+    /// </para>
+    /// <para>
+    /// The provided <paramref name="resourceTemplate"/> must represent a resource template that is actually available on the server
+    /// associated with the <paramref name="client"/>. Attempting to read a resource template that doesn't exist on the
+    /// server will result in an <see cref="McpException"/>.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="client"/> or <paramref name="resourceTemplate"/> is <see langword="null"/>.</exception>
+    public McpClientResourceTemplate(McpClient client, ResourceTemplate resourceTemplate)
     {
+        Throw.IfNull(client);
+        Throw.IfNull(resourceTemplate);
+
         _client = client;
         ProtocolResourceTemplate = resourceTemplate;
     }
@@ -30,7 +50,7 @@ public sealed class McpClientResourceTemplate
     /// which can be useful for advanced scenarios or when implementing custom MCP client extensions.
     /// </para>
     /// <para>
-    /// For most common use cases, you can use the more convenient <see cref="UriTemplate"/> and 
+    /// For most common use cases, you can use the more convenient <see cref="UriTemplate"/> and
     /// <see cref="Description"/> properties instead of accessing the <see cref="ProtocolResourceTemplate"/> directly.
     /// </para>
     /// </remarks>
@@ -45,10 +65,10 @@ public sealed class McpClientResourceTemplate
     /// <summary>Gets the title of the resource template.</summary>
     public string? Title => ProtocolResourceTemplate.Title;
 
-    /// <summary>Gets a description of the resource template.</summary>
+    /// <summary>Gets the description of the resource template.</summary>
     public string? Description => ProtocolResourceTemplate.Description;
 
-    /// <summary>Gets a media (MIME) type of the resource template.</summary>
+    /// <summary>Gets the media (MIME) type of the resource template.</summary>
     public string? MimeType => ProtocolResourceTemplate.MimeType;
 
     /// <summary>
@@ -63,5 +83,5 @@ public sealed class McpClientResourceTemplate
     public ValueTask<ReadResourceResult> ReadAsync(
         IReadOnlyDictionary<string, object?> arguments,
         CancellationToken cancellationToken = default) =>
-        _client.ReadResourceAsync(UriTemplate, arguments, cancellationToken);
+        _client.ReadResourceAsync(UriTemplate, arguments, cancellationToken: cancellationToken);
 }

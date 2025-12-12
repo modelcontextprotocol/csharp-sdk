@@ -10,7 +10,7 @@ namespace ModelContextProtocol.Server;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This attribute is applied to methods that should be exposed as prompts in the Model Context Protocol. When a class 
+/// This attribute is applied to methods that should be exposed as prompts in the Model Context Protocol. When a class
 /// containing methods marked with this attribute is registered with McpServerBuilderExtensions,
 /// these methods become available as prompts that can be called by MCP clients.
 /// </para>
@@ -25,7 +25,7 @@ namespace ModelContextProtocol.Server;
 ///   <item>
 ///     <description>
 ///       <see cref="CancellationToken"/> parameters are automatically bound to a <see cref="CancellationToken"/> provided by the
-///       <see cref="IMcpServer"/> and that respects any <see cref="CancelledNotificationParams"/>s sent by the client for this operation's
+///       <see cref="McpServer"/> and that respects any <see cref="CancelledNotificationParams"/>s sent by the client for this operation's
 ///       <see cref="RequestId"/>.
 ///     </description>
 ///   </item>
@@ -36,8 +36,8 @@ namespace ModelContextProtocol.Server;
 ///   </item>
 ///   <item>
 ///     <description>
-///       <see cref="IMcpServer"/> parameters are bound directly to the <see cref="IMcpServer"/> instance associated
-///       with this request's <see cref="RequestContext{CallPromptRequestParams}"/>. Such parameters may be used to understand
+///       <see cref="McpServer"/> parameters are bound directly to the <see cref="McpServer"/> instance associated
+///       with this request's <see cref="RequestContext{GetPromptRequestParams}"/>. Such parameters may be used to understand
 ///       what server is being used to process the request, and to interact with the client issuing the request to that server.
 ///     </description>
 ///   </item>
@@ -52,15 +52,15 @@ namespace ModelContextProtocol.Server;
 ///   </item>
 ///   <item>
 ///     <description>
-///       When the <see cref="McpServerPrompt"/> is constructed, it may be passed an <see cref="IServiceProvider"/> via 
+///       When the <see cref="McpServerPrompt"/> is constructed, it may be passed an <see cref="IServiceProvider"/> via
 ///       <see cref="McpServerPromptCreateOptions.Services"/>. Any parameter that can be satisfied by that <see cref="IServiceProvider"/>
-///       according to <see cref="IServiceProviderIsService"/> will be resolved from the <see cref="IServiceProvider"/> provided to the 
+///       according to <see cref="IServiceProviderIsService"/> will be resolved from the <see cref="IServiceProvider"/> provided to the
 ///       prompt invocation rather than from the argument collection.
 ///     </description>
 ///   </item>
 ///   <item>
 ///     <description>
-///       Any parameter attributed with <see cref="FromKeyedServicesAttribute"/> will similarly be resolved from the 
+///       Any parameter attributed with <see cref="FromKeyedServicesAttribute"/> will similarly be resolved from the
 ///       <see cref="IServiceProvider"/> provided to the prompt invocation rather than from the argument collection.
 ///     </description>
 ///   </item>
@@ -71,7 +71,7 @@ namespace ModelContextProtocol.Server;
 /// </para>
 /// <para>
 /// In general, the data supplied via the <see cref="GetPromptRequestParams.Arguments"/>'s dictionary is passed along from the caller and
-/// should thus be considered unvalidated and untrusted. To provide validated and trusted data to the invocation of the prompt, consider having 
+/// should thus be considered unvalidated and untrusted. To provide validated and trusted data to the invocation of the prompt, consider having
 /// the prompt be an instance method, referring to data stored in the instance, or using an instance or parameters resolved from the <see cref="IServiceProvider"/>
 /// to provide data to the method.
 /// </para>
@@ -114,10 +114,25 @@ public sealed class McpServerPromptAttribute : Attribute
     {
     }
 
-    /// <summary>Gets the name of the prompt.</summary>
-    /// <remarks>If <see langword="null"/>, the method name will be used.</remarks>
+    /// <summary>Gets or sets the name of the prompt.</summary>
+    /// <remarks>If <see langword="null"/>, the method name is used.</remarks>
     public string? Name { get; set; }
 
     /// <summary>Gets or sets the title of the prompt.</summary>
     public string? Title { get; set; }
+
+    /// <summary>
+    /// Gets or sets the source URI for the prompt's icon.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This value can be an HTTP/HTTPS URL pointing to an image file or a data URI with base64-encoded image data.
+    /// When specified, a single icon will be added to the prompt.
+    /// </para>
+    /// <para>
+    /// For more advanced icon configuration (multiple icons, MIME type specification, size characteristics),
+    /// use <see cref="McpServerPromptCreateOptions.Icons"/> when creating the prompt programmatically.
+    /// </para>
+    /// </remarks>
+    public string? IconSource { get; set; }
 }

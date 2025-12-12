@@ -8,7 +8,38 @@
     <File Path=".github/workflows/release.md" />
     <File Path=".github/workflows/release.yml" />
   </Folder>
+  <Folder Name="/docs/" />
+  <Folder Name="/docs/concepts/" />
+  <Folder Name="/docs/concepts/elicitation/" />
+  <Folder Name="/docs/concepts/elicitation/samples/" />
+  <Folder Name="/docs/concepts/elicitation/samples/client/">
+    <Project Path="docs/concepts/elicitation/samples/client/ElicitationClient.csproj" />
+  </Folder>
+  <Folder Name="/docs/concepts/elicitation/samples/server/">
+    <Project Path="docs/concepts/elicitation/samples/server/Elicitation.csproj" />
+  </Folder>
+  <Folder Name="/docs/concepts/httpcontext/" />
+  <Folder Name="/docs/concepts/httpcontext/samples/">
+    <Project Path="docs/concepts/httpcontext/samples/HttpContext.csproj" />
+  </Folder>
+  <Folder Name="/docs/concepts/logging/" />
+  <Folder Name="/docs/concepts/logging/samples/" />
+  <Folder Name="/docs/concepts/logging/samples/client/">
+    <Project Path="docs/concepts/logging/samples/client/LoggingClient.csproj" />
+  </Folder>
+  <Folder Name="/docs/concepts/logging/samples/server/">
+    <Project Path="docs/concepts/logging/samples/server/Logging.csproj" />
+  </Folder>
+  <Folder Name="/docs/concepts/progress/" />
+  <Folder Name="/docs/concepts/progress/samples/" />
+  <Folder Name="/docs/concepts/progress/samples/client/">
+    <Project Path="docs/concepts/progress/samples/client/ProgressClient.csproj" />
+  </Folder>
+  <Folder Name="/docs/concepts/progress/samples/server/">
+    <Project Path="docs/concepts/progress/samples/server/Progress.csproj" />
+  </Folder>
   <Folder Name="/samples/">
+    <Project Path="samples/AspNetCoreMcpPerSessionTools/AspNetCoreMcpPerSessionTools.csproj" />
     <Project Path="samples/AspNetCoreMcpServer/AspNetCoreMcpServer.csproj" />
     <Project Path="samples/ChatWithTools/ChatWithTools.csproj" />
     <Project Path="samples/EverythingServer/EverythingServer.csproj" />
@@ -25,17 +56,21 @@
     <File Path="global.json" />
     <File Path="LICENSE" />
     <File Path="logo.png" />
+    <File Path="Makefile" />
     <File Path="nuget.config" />
     <File Path="README.MD" />
   </Folder>
   <Folder Name="/src/">
     <File Path="src/Directory.Build.props" />
+    <Project Path="src/ModelContextProtocol.Analyzers/ModelContextProtocol.Analyzers.csproj" />
     <Project Path="src/ModelContextProtocol.AspNetCore/ModelContextProtocol.AspNetCore.csproj" />
     <Project Path="src/ModelContextProtocol.Core/ModelContextProtocol.Core.csproj" />
     <Project Path="src/ModelContextProtocol/ModelContextProtocol.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/ModelContextProtocol.Analyzers.Tests/ModelContextProtocol.Analyzers.Tests.csproj" />
     <Project Path="tests/ModelContextProtocol.AspNetCore.Tests/ModelContextProtocol.AspNetCore.Tests.csproj" />
+    <Project Path="tests/ModelContextProtocol.ConformanceServer/ModelContextProtocol.ConformanceServer.csproj" />
     <Project Path="tests/ModelContextProtocol.TestOAuthServer/ModelContextProtocol.TestOAuthServer.csproj" />
     <Project Path="tests/ModelContextProtocol.Tests/ModelContextProtocol.Tests.csproj" />
     <Project Path="tests/ModelContextProtocol.TestServer/ModelContextProtocol.TestServer.csproj" />

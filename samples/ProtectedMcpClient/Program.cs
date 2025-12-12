@@ -25,19 +25,22 @@ var consoleLoggerFactory = LoggerFactory.Create(builder =>
     builder.AddConsole();
 });
 
-var transport = new SseClientTransport(new()
+var transport = new HttpClientTransport(new()
 {
     Endpoint = new Uri(serverUrl),
     Name = "Secure Weather Client",
     OAuth = new()
     {
-        ClientName = "ProtectedMcpClient",
         RedirectUri = new Uri("http://localhost:1179/callback"),
         AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+        DynamicClientRegistration = new()
+        {
+            ClientName = "ProtectedMcpClient",
+        },
     }
 }, httpClient, consoleLoggerFactory);
 
-var client = await McpClientFactory.CreateAsync(transport, loggerFactory: consoleLoggerFactory);
+var client = await McpClient.CreateAsync(transport, loggerFactory: consoleLoggerFactory);
 
 var tools = await client.ListToolsAsync();
 if (tools.Count == 0)
@@ -67,7 +70,7 @@ if (tools.Any(t => t.Name == "get_alerts"))
 /// </summary>
 /// <param name="authorizationUrl">The authorization URL to open in the browser.</param>
 /// <param name="redirectUri">The redirect URI where the authorization code will be sent.</param>
-/// <param name="cancellationToken">The cancellation token.</param>
+/// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
 /// <returns>The authorization code extracted from the callback, or null if the operation failed.</returns>
 static async Task<string?> HandleAuthorizationUrlAsync(Uri authorizationUrl, Uri redirectUri, CancellationToken cancellationToken)
 {
@@ -131,6 +134,13 @@ static async Task<string?> HandleAuthorizationUrlAsync(Uri authorizationUrl, Uri
 /// <param name="url">The URL to open.</param>
 static void OpenBrowser(Uri url)
 {
+    // Validate the URI scheme - only allow safe protocols
+    if (url.Scheme != Uri.UriSchemeHttp && url.Scheme != Uri.UriSchemeHttps)
+    {
+        Console.WriteLine($"Error: Only HTTP and HTTPS URLs are allowed.");
+        return;
+    }
+
     try
     {
         var psi = new ProcessStartInfo
@@ -142,7 +152,7 @@ static void OpenBrowser(Uri url)
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"Error opening browser. {ex.Message}");
+        Console.WriteLine($"Error opening browser: {ex.Message}");
         Console.WriteLine($"Please manually open this URL: {url}");
     }
 }

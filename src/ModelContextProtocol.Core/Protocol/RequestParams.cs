@@ -26,7 +26,7 @@ public abstract class RequestParams
     public JsonObject? Meta { get; set; }
 
     /// <summary>
-    /// Gets or sets an opaque token that will be attached to any subsequent progress notifications.
+    /// Gets the opaque token that will be attached to any subsequent progress notifications.
     /// </summary>
     [JsonIgnore]
     public ProgressToken? ProgressToken
@@ -47,22 +47,6 @@ public abstract class RequestParams
             }
 
             return null;
-        }
-        set
-        {
-            if (value is null)
-            {
-                Meta?.Remove("progressToken");
-            }
-            else
-            {
-                (Meta ??= [])["progressToken"] = value.Value.Token switch
-                {
-                    string s => JsonValue.Create(s),
-                    long l => JsonValue.Create(l),
-                    _ => throw new InvalidOperationException("ProgressToken must be a string or a long.")
-                };
-            }
         }
     }
 }

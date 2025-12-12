@@ -21,16 +21,21 @@ test: build
 		--configuration $(CONFIGURATION) \
 		--filter '(Execution!=Manual)' \
 		--blame \
+		--blame-crash \
+		--blame-hang-timeout 7m \
 		--diag "$(ARTIFACT_PATH)/diag.txt" \
 		--logger "trx" \
-		--collect "Code Coverage;Format=cobertura" \
-		--results-directory $(ARTIFACT_PATH)/test-results \
+		--collect "XPlat Code Coverage" \
+		--results-directory $(ARTIFACT_PATH)/testresults \
 		-- \
 		RunConfiguration.CollectSourceInformation=true
 
-generate-docs: clean restore
-	dotnet build --no-restore --configuration Release
-	dotnet docfx $(DOCS_PATH)/docfx.json
+pack: restore
+	dotnet pack --no-restore --configuration $(CONFIGURATION)
+
+generate-docs: restore
+	dotnet build -c Release
+	dotnet docfx $(DOCS_PATH)/docfx.json --warningsAsErrors true
 
 serve-docs: generate-docs
 	dotnet docfx serve $(ARTIFACT_PATH)/_site --port 8080

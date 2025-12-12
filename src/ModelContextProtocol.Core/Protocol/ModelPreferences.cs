@@ -25,35 +25,35 @@ namespace ModelContextProtocol.Protocol;
 public sealed class ModelPreferences
 {
     /// <summary>
-    /// Gets or sets how much to prioritize cost when selecting a model.
+    /// Gets or sets a value that indicates how much to prioritize cost when selecting a model.
     /// </summary>
     /// <remarks>
     /// A value of 0 means cost is not important, while a value of 1 means cost is the most important factor.
     /// </remarks>
     [JsonPropertyName("costPriority")]
-    public float? CostPriority { get; init; }
+    public float? CostPriority { get; set; }
 
     /// <summary>
     /// Gets or sets optional hints to use for model selection.
     /// </summary>
     [JsonPropertyName("hints")]
-    public IReadOnlyList<ModelHint>? Hints { get; init; }
+    public IList<ModelHint>? Hints { get; set; }
 
     /// <summary>
-    /// Gets or sets how much to prioritize sampling speed (latency) when selecting a model.
+    /// Gets or sets a value that indicates how much to prioritize sampling speed (latency) when selecting a model.
     /// </summary>
     /// <remarks>
     /// A value of 0 means speed is not important, while a value of 1 means speed is the most important factor.
     /// </remarks>
     [JsonPropertyName("speedPriority")]
-    public float? SpeedPriority { get; init; }
+    public float? SpeedPriority { get; set; }
 
     /// <summary>
-    /// Gets or sets how much to prioritize intelligence and capabilities when selecting a model.
+    /// Gets or sets a value that indicates how much to prioritize intelligence and capabilities when selecting a model.
     /// </summary>
     /// <remarks>
     /// A value of 0 means intelligence is not important, while a value of 1 means intelligence is the most important factor.
     /// </remarks>
     [JsonPropertyName("intelligencePriority")]
-    public float? IntelligencePriority { get; init; }
+    public float? IntelligencePriority { get; set; }
 }

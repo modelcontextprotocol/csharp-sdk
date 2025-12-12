@@ -8,13 +8,14 @@ namespace ModelContextProtocol.Protocol;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Any errors that originate from the tool should be reported inside the result
-/// object, with <see cref="IsError"/> set to true, rather than as a <see cref="JsonRpcError"/>.
+/// Tool execution errors (including input validation errors, API failures, and business logic errors)
+/// should be reported inside the result object with <see cref="IsError"/> set to <see langword="true"/>,
+/// rather than as a <see cref="JsonRpcError"/>. This allows language models to see error details
+/// and potentially self-correct in subsequent requests.
 /// </para>
 /// <para>
-/// However, any errors in finding the tool, an error indicating that the
-/// server does not support tool calls, or any other exceptional conditions,
-/// should be reported as an MCP error response.
+/// Protocol-level errors (such as unknown tool names, malformed requests that fail schema validation,
+/// or server errors) should be reported as MCP protocol error responses using <see cref="McpErrorCode"/>.
 /// </para>
 /// <para>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
@@ -35,13 +36,23 @@ public sealed class CallToolResult : Result
     public JsonNode? StructuredContent { get; set; }
 
     /// <summary>
-    /// Gets or sets an indication of whether the tool call was unsuccessful.
+    /// Gets or sets a value that indicates whether the tool call was unsuccessful.
     /// </summary>
+    /// <value>
+    /// <see langword="true"/> to signify that the tool execution failed; <see langword="false"/> if it was successful.
+    /// </value>
     /// <remarks>
-    /// When set to <see langword="true"/>, it signifies that the tool execution failed.
-    /// Tool errors are reported with this property set to <see langword="true"/> and details in the <see cref="Content"/>
-    /// property, rather than as protocol-level errors. This allows LLMs to see that an error occurred
-    /// and potentially self-correct in subsequent requests.
+    /// <para>
+    /// Tool execution errors (including input validation errors, API failures, and business logic errors)
+    /// are reported with this property set to <see langword="true"/> and details in the <see cref="Content"/>
+    /// property, rather than as protocol-level errors.
+    /// </para>
+    /// <para>
+    /// This design allows language models to receive detailed error feedback and potentially self-correct
+    /// in subsequent requests. For example, if a date parameter is in the wrong format or out of range,
+    /// the error message in <see cref="Content"/> can explain the issue, enabling the model to retry
+    /// with corrected parameters.
+    /// </para>
     /// </remarks>
     [JsonPropertyName("isError")]
     public bool? IsError { get; set; }

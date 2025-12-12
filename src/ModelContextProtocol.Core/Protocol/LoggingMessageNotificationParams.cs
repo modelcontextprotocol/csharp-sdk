@@ -13,7 +13,7 @@ namespace ModelContextProtocol.Protocol;
 /// Clients can filter these messages based on the <see cref="Level"/> and <see cref="Logger"/> properties.
 /// </para>
 /// <para>
-/// If no <see cref="RequestMethods.LoggingSetLevel"/> request has been sent from the client, the server may decide which
+/// If no <see cref="RequestMethods.LoggingSetLevel"/> request has been sent from the client, the server can decide which
 /// messages to send automatically.
 /// </para>
 /// <para>
@@ -26,7 +26,7 @@ public sealed class LoggingMessageNotificationParams : NotificationParams
     /// Gets or sets the severity of this log message.
     /// </summary>
     [JsonPropertyName("level")]
-    public LoggingLevel Level { get; init; }
+    public required LoggingLevel Level { get; set; }
 
     /// <summary>
     /// Gets or sets an optional name of the logger issuing this message.
@@ -42,11 +42,11 @@ public sealed class LoggingMessageNotificationParams : NotificationParams
     /// </para>
     /// </remarks>
     [JsonPropertyName("logger")]
-    public string? Logger { get; init; }
+    public string? Logger { get; set; }
 
     /// <summary>
     /// Gets or sets the data to be logged, such as a string message.
     /// </summary>
     [JsonPropertyName("data")]
-    public JsonElement? Data { get; init; }
+    public JsonElement? Data { get; set; }
 }

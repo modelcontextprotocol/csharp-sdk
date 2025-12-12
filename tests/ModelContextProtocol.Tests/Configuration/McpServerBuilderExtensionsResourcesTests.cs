@@ -4,8 +4,11 @@ using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using Moq;
+using System.Collections;
 using System.ComponentModel;
 using System.Threading.Channels;
+using static ModelContextProtocol.Tests.Configuration.McpServerBuilderExtensionsPromptsTests;
 
 namespace ModelContextProtocol.Tests.Configuration;
 
@@ -58,7 +61,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
                                 };
 
                             default:
-                                throw new McpException($"Unexpected cursor: '{cursor}'", McpErrorCode.InvalidParams);
+                                throw new McpProtocolException($"Unexpected cursor: '{cursor}'", McpErrorCode.InvalidParams);
                         }
                     })
                 .WithListResourceTemplatesHandler(async (request, cancellationToken) =>
@@ -87,7 +90,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
                                     }],
                                 };
                             default:
-                                throw new McpException($"Unexpected cursor: '{cursor}'", McpErrorCode.InvalidParams);
+                                throw new McpProtocolException($"Unexpected cursor: '{cursor}'", McpErrorCode.InvalidParams);
                         }
                     })
         .WithReadResourceHandler(async (request, cancellationToken) =>
@@ -101,11 +104,11 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
                 case "test://ResourceTemplate2":
                     return new ReadResourceResult
                     {
-                        Contents = [new TextResourceContents { Text = request.Params?.Uri ?? "(null)" }]
+                        Contents = [new TextResourceContents { Text = request.Params?.Uri ?? "(null)", Uri = request.Params?.Uri ?? "(null)" }]
                     };
             }
 
-            throw new McpException($"Resource not found: {request.Params?.Uri}");
+            throw new McpProtocolException($"Resource not found: {request.Params?.Uri}", McpErrorCode.ResourceNotFound);
         })
         .WithResources<SimpleResources>();
     }
@@ -114,7 +117,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     public void Adds_Resources_To_Server()
     {
         var serverOptions = ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
-        var resources = serverOptions?.Capabilities?.Resources?.ResourceCollection;
+        var resources = serverOptions.ResourceCollection;
         Assert.NotNull(resources);
         Assert.NotEmpty(resources);
     }
@@ -122,11 +125,11 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     [Fact]
     public async Task Can_List_And_Call_Registered_Resources()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         Assert.NotNull(client.ServerCapabilities.Resources);
 
-        var resources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
+        var resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(5, resources.Count);
 
         var resource = resources.First(t => t.Name == "some_neat_direct_resource");
@@ -141,9 +144,9 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     [Fact]
     public async Task Can_List_And_Call_Registered_ResourceTemplates()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
-        var resources = await client.ListResourceTemplatesAsync(TestContext.Current.CancellationToken);
+        var resources = await client.ListResourceTemplatesAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(3, resources.Count);
 
         var resource = resources.First(t => t.Name == "some_neat_templated_resource");
@@ -158,9 +161,9 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     [Fact]
     public async Task Can_Be_Notified_Of_Resource_Changes()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
-        var resources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
+        var resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(5, resources.Count);
 
         Channel<JsonRpcNotification> listChanged = Channel.CreateUnbounded<JsonRpcNotification>();
@@ -168,7 +171,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
         Assert.False(notificationRead.IsCompleted);
 
         var serverOptions = ServiceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
-        var serverResources = serverOptions.Capabilities?.Resources?.ResourceCollection;
+        var serverResources = serverOptions.ResourceCollection;
         Assert.NotNull(serverResources);
 
         var newResource = McpServerResource.Create([McpServerResource(Name = "NewResource")] () => "42");
@@ -181,7 +184,7 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
             serverResources.Add(newResource);
             await notificationRead;
 
-            resources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
+            resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(6, resources.Count);
             Assert.Contains(resources, t => t.Name == "NewResource");
 
@@ -191,15 +194,15 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
             await notificationRead;
         }
 
-        resources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
+        resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(5, resources.Count);
         Assert.DoesNotContain(resources, t => t.Name == "NewResource");
     }
 
     [Fact]
-    public async Task TitleAttributeProperty_PropagatedToTitle()
+    public async Task AttributeProperties_Propagated()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
         var resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(resources);
@@ -207,19 +210,31 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
         McpClientResource resource = resources.First(t => t.Name == "some_neat_direct_resource");
         Assert.Equal("This is a title", resource.Title);
 
+        Assert.NotNull(resource.ProtocolResource.Icons);
+        Assert.NotEmpty(resource.ProtocolResource.Icons);
+        var resourceIcon = Assert.Single(resource.ProtocolResource.Icons);
+        Assert.Equal("https://example.com/direct-resource-icon.svg", resourceIcon.Source);
+        Assert.Null(resourceIcon.Theme);
+
         var resourceTemplates = await client.ListResourceTemplatesAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(resourceTemplates);
         Assert.NotEmpty(resourceTemplates);
         McpClientResourceTemplate resourceTemplate = resourceTemplates.First(t => t.Name == "some_neat_templated_resource");
         Assert.Equal("This is another title", resourceTemplate.Title);
+
+        Assert.NotNull(resourceTemplate.ProtocolResourceTemplate.Icons);
+        Assert.NotEmpty(resourceTemplate.ProtocolResourceTemplate.Icons);
+        var templateIcon = Assert.Single(resourceTemplate.ProtocolResourceTemplate.Icons);
+        Assert.Equal("https://example.com/templated-resource-icon.svg", templateIcon.Source);
+        Assert.Null(templateIcon.Theme);
     }
 
     [Fact]
     public async Task Throws_When_Resource_Fails()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
-        await Assert.ThrowsAsync<McpException>(async () => await client.ReadResourceAsync(
+        await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ReadResourceAsync(
             $"resource://mcp/{nameof(SimpleResources.ThrowsException)}",
             cancellationToken: TestContext.Current.CancellationToken));
     }
@@ -227,13 +242,14 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     [Fact]
     public async Task Throws_Exception_On_Unknown_Resource()
     {
-        await using IMcpClient client = await CreateMcpClientForServer();
+        await using McpClient client = await CreateMcpClientForServer();
 
-        var e = await Assert.ThrowsAsync<McpException>(async () => await client.ReadResourceAsync(
+        var e = await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ReadResourceAsync(
             "test:///NotRegisteredResource",
             cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains("Resource not found", e.Message);
+        Assert.Equal(McpErrorCode.ResourceNotFound, e.ErrorCode);
     }
 
     [Fact]
@@ -243,11 +259,57 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
 
         Assert.Throws<ArgumentNullException>("resourceTemplates", () => builder.WithResources((IEnumerable<McpServerResource>)null!));
         Assert.Throws<ArgumentNullException>("resourceTemplateTypes", () => builder.WithResources((IEnumerable<Type>)null!));
+        Assert.Throws<ArgumentNullException>("target", () => builder.WithResources<object>(target: null!));
 
         IMcpServerBuilder nullBuilder = null!;
         Assert.Throws<ArgumentNullException>("builder", () => nullBuilder.WithResources<object>());
+        Assert.Throws<ArgumentNullException>("builder", () => nullBuilder.WithResources(new object()));
         Assert.Throws<ArgumentNullException>("builder", () => nullBuilder.WithResources(Array.Empty<Type>()));
         Assert.Throws<ArgumentNullException>("builder", () => nullBuilder.WithResourcesFromAssembly());
+    }
+
+    [Fact]
+    public async Task WithResources_TargetInstance_UsesTarget()
+    {
+        ServiceCollection sc = new();
+
+        var target = new ResourceWithId(new ObjectWithId() { Id = "42" });
+        sc.AddMcpServer().WithResources(target);
+
+        McpServerResource resource = sc.BuildServiceProvider().GetServices<McpServerResource>().First(t => t.ProtocolResource?.Name == "returns_string");
+        var result = await resource.ReadAsync(new RequestContext<ReadResourceRequestParams>(new Mock<McpServer>().Object, new JsonRpcRequest { Method = "test", Id = new RequestId("1") })
+        {
+            Params = new()
+            {
+                Uri = "returns://string"
+            }
+        }, TestContext.Current.CancellationToken);
+
+        Assert.Equal(target.ReturnsString(), (result?.Contents[0] as TextResourceContents)?.Text);
+    }
+
+    [Fact]
+    public async Task WithResources_TargetInstance_UsesEnumerableImplementation()
+    {
+        ServiceCollection sc = new();
+
+        sc.AddMcpServer().WithResources(new MyResourceProvider());
+
+        var resources = sc.BuildServiceProvider().GetServices<McpServerResource>().ToArray();
+        Assert.Equal(2, resources.Length);
+        Assert.Contains(resources, t => t.ProtocolResource?.Name == "Returns42");
+        Assert.Contains(resources, t => t.ProtocolResource?.Name == "Returns43");
+    }
+
+    private sealed class MyResourceProvider : IEnumerable<McpServerResource>
+    {
+        public IEnumerator<McpServerResource> GetEnumerator()
+        {
+            yield return McpServerResource.Create(() => "42", new() { Name = "Returns42" });
+            yield return McpServerResource.Create(() => "43", new() { Name = "Returns43" });
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
     [Fact]
@@ -291,10 +353,10 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     [McpServerResourceType]
     public sealed class SimpleResources
     {
-        [McpServerResource(Title = "This is a title"), Description("Some neat direct resource")]
+        [McpServerResource(Title = "This is a title", IconSource = "https://example.com/direct-resource-icon.svg"), Description("Some neat direct resource")]
         public static string SomeNeatDirectResource() => "This is a neat resource";
 
-        [McpServerResource(Title = "This is another title"), Description("Some neat resource with parameters")]
+        [McpServerResource(Title = "This is another title", IconSource = "https://example.com/templated-resource-icon.svg"), Description("Some neat resource with parameters")]
         public static string SomeNeatTemplatedResource(string name) => $"This is a neat resource with parameters: {name}";
 
         [McpServerResource]
@@ -306,5 +368,12 @@ public partial class McpServerBuilderExtensionsResourcesTests : ClientServerTest
     {
         [McpServerResource, Description("Another neat direct resource")]
         public static string AnotherNeatDirectResource() => "This is a neat resource";
+    }
+
+    [McpServerResourceType]
+    public sealed class ResourceWithId(ObjectWithId id)
+    {
+        [McpServerResource(UriTemplate = "returns://string")]
+        public string ReturnsString() => $"Id: {id.Id}";
     }
 }

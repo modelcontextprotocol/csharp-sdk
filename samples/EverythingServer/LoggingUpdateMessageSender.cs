@@ -5,7 +5,7 @@ using ModelContextProtocol.Server;
 
 namespace EverythingServer;
 
-public class LoggingUpdateMessageSender(IMcpServer server, Func<LoggingLevel> getMinLevel) : BackgroundService
+public class LoggingUpdateMessageSender(McpServer server) : BackgroundService
 {
     readonly Dictionary<LoggingLevel, string> _loggingLevelMap = new()
     {
@@ -23,15 +23,15 @@ public class LoggingUpdateMessageSender(IMcpServer server, Func<LoggingLevel> ge
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            var newLevel = (LoggingLevel)Random.Shared.Next(_loggingLevelMap.Count);
+            var msgLevel = (LoggingLevel)Random.Shared.Next(_loggingLevelMap.Count);
 
             var message = new
                 {
-                    Level = newLevel.ToString().ToLower(),
-                    Data = _loggingLevelMap[newLevel],
+                    Level = msgLevel.ToString().ToLower(),
+                    Data = _loggingLevelMap[msgLevel],
                 };
 
-            if (newLevel > getMinLevel())
+            if (msgLevel > server.LoggingLevel)
             {
                 await server.SendNotificationAsync("notifications/message", message, cancellationToken: stoppingToken);
             }

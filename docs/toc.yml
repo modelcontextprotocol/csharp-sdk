@@ -1,5 +1,9 @@
 items:
-- name: API Docs
+- name: Documentation
+  href: concepts/index.md
+- name: API Reference
   href: api/ModelContextProtocol.yml
-- name: Github
+- name: Versioning
+  href: versioning.md
+- name: GitHub
   href: https://github.com/ModelContextProtocol/csharp-sdk

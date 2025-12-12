@@ -12,14 +12,14 @@ namespace ModelContextProtocol.Client;
 /// </summary>
 internal sealed partial class AutoDetectingClientSessionTransport : ITransport
 {
-    private readonly SseClientTransportOptions _options;
+    private readonly HttpClientTransportOptions _options;
     private readonly McpHttpClient _httpClient;
     private readonly ILoggerFactory? _loggerFactory;
     private readonly ILogger _logger;
     private readonly string _name;
     private readonly Channel<JsonRpcMessage> _messageChannel;
 
-    public AutoDetectingClientSessionTransport(string endpointName, SseClientTransportOptions transportOptions, McpHttpClient httpClient, ILoggerFactory? loggerFactory)
+    public AutoDetectingClientSessionTransport(string endpointName, HttpClientTransportOptions transportOptions, McpHttpClient httpClient, ILoggerFactory? loggerFactory)
     {
         Throw.IfNull(transportOptions);
         Throw.IfNull(httpClient);
@@ -93,6 +93,11 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
 
     private async Task InitializeSseTransportAsync(JsonRpcMessage message, CancellationToken cancellationToken)
     {
+        if (_options.KnownSessionId is not null)
+        {
+            throw new InvalidOperationException("Streamable HTTP transport is required to resume an existing session.");
+        }
+
         var sseTransport = new SseClientSessionTransport(_name, _options, _httpClient, _messageChannel, _loggerFactory);
 
         try

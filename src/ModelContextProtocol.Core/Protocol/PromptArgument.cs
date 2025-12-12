@@ -8,7 +8,7 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// <para>
 /// The <see cref="PromptArgument"/> class defines metadata for arguments that can be provided
-/// to a prompt. These arguments are used to customize or parameterize prompts when they are 
+/// to a prompt. These arguments are used to customize or parameterize prompts when they are
 /// retrieved using <see cref="RequestMethods.PromptsGet"/> requests.
 /// </para>
 /// <para>
@@ -33,10 +33,10 @@ public sealed class PromptArgument : IBaseMetadata
     /// for this argument and how it will affect the generated prompt.
     /// </remarks>
     [JsonPropertyName("description")]
-    public string? Description { get; set; } = string.Empty;
+    public string? Description { get; set; }
 
     /// <summary>
-    /// Gets or sets an indication as to whether this argument must be provided when requesting the prompt.
+    /// Gets or sets a value that indicates whether this argument must be provided when requesting the prompt.
     /// </summary>
     /// <remarks>
     /// When set to <see langword="true"/>, the client must include this argument when making a <see cref="RequestMethods.PromptsGet"/> request.

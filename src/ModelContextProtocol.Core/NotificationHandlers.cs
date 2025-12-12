@@ -94,7 +94,7 @@ internal sealed class NotificationHandlers
     /// </summary>
     /// <param name="method">The notification method name to invoke handlers for.</param>
     /// <param name="notification">The notification object to pass to each handler.</param>
-    /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <remarks>
     /// Handlers are invoked in reverse order of registration (newest first).
     /// If any handler throws an exception, all handlers will still be invoked, and an <see cref="AggregateException"/> 
@@ -240,14 +240,8 @@ internal sealed class NotificationHandlers
                     // to point past this one. Importantly, we do not modify this node's Next or Prev.
                     // We want to ensure that an enumeration through all of the registrations can still
                     // progress through this one.
-                    if (Prev is not null)
-                    {
-                        Prev.Next = Next;
-                    }
-                    if (Next is not null)
-                    {
-                        Next.Prev = Prev;
-                    }
+                    Prev?.Next = Next;
+                    Next?.Prev = Prev;
 
                     // Decrement the ref count. In the common case, there's no in-flight invocation for
                     // this handler. However, in the uncommon case that there is, we need to wait for

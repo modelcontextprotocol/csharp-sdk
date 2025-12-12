@@ -20,11 +20,11 @@ public abstract class JsonRpcMessageWithId : JsonRpcMessage
     }
 
     /// <summary>
-    /// Gets the message identifier.
+    /// Gets or sets the message identifier.
     /// </summary>
     /// <remarks>
     /// Each ID is expected to be unique within the context of a given session.
     /// </remarks>
     [JsonPropertyName("id")]
-    public RequestId Id { get; init; }
+    public RequestId Id { get; set; }
 }

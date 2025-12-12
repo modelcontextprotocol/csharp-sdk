@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -12,8 +13,9 @@ namespace ModelContextProtocol.Protocol;
 public sealed class ReadResourceRequestParams : RequestParams
 {
     /// <summary>
-    /// The URI of the resource to read. The URI can use any protocol; it is up to the server how to interpret it.
+    /// Gets or sets the URI of the resource to read. The URI can use any protocol; it is up to the server how to interpret it.
     /// </summary>
     [JsonPropertyName("uri")]
-    public required string Uri { get; init; }
+    [StringSyntax(StringSyntaxAttribute.Uri)]
+    public required string Uri { get; set; }
 }

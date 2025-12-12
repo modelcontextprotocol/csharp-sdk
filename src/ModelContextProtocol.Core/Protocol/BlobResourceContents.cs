@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -20,11 +21,23 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for more details.
 /// </para>
 /// </remarks>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class BlobResourceContents : ResourceContents
 {
     /// <summary>
     /// Gets or sets the base64-encoded string representing the binary data of the item.
     /// </summary>
     [JsonPropertyName("blob")]
-    public string Blob { get; set; } = string.Empty;
+    public required string Blob { get; set; }
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay
+    {
+        get
+        {
+            string lengthDisplay = DebuggerDisplayHelper.GetBase64LengthDisplay(Blob);
+            string mimeInfo = MimeType is not null ? $", MimeType = {MimeType}" : "";
+            return $"Uri = \"{Uri}\"{mimeInfo}, Length = {lengthDisplay}";
+        }
+    }
 }

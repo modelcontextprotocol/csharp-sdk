@@ -18,7 +18,7 @@ public static partial class McpServerBuilderExtensions
     #region WithTools
     private const string WithToolsRequiresUnreferencedCodeMessage =
         $"The non-generic {nameof(WithTools)} and {nameof(WithToolsFromAssembly)} methods require dynamic lookup of method metadata" +
-        $"and may not work in Native AOT. Use the generic {nameof(WithTools)} method instead.";
+        $"and might not work in Native AOT. Use the generic {nameof(WithTools)} method instead.";
 
     /// <summary>Adds <see cref="McpServerTool"/> instances to the service collection backing <paramref name="builder"/>.</summary>
     /// <typeparam name="TToolType">The tool type.</typeparam>
@@ -29,7 +29,7 @@ public static partial class McpServerBuilderExtensions
     /// <remarks>
     /// This method discovers all instance and static methods (public and non-public) on the specified <typeparamref name="TToolType"/>
     /// type, where the methods are attributed as <see cref="McpServerToolAttribute"/>, and adds an <see cref="McpServerTool"/>
-    /// instance for each. For instance methods, an instance will be constructed for each invocation of the tool.
+    /// instance for each. For instance methods, an instance is constructed for each invocation of the tool.
     /// </remarks>
     public static IMcpServerBuilder WithTools<[DynamicallyAccessedMembers(
         DynamicallyAccessedMemberTypes.PublicMethods |
@@ -54,11 +54,57 @@ public static partial class McpServerBuilderExtensions
     }
 
     /// <summary>Adds <see cref="McpServerTool"/> instances to the service collection backing <paramref name="builder"/>.</summary>
+    /// <typeparam name="TToolType">The tool type.</typeparam>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="target">The target instance from which the tools should be sourced.</param>
+    /// <param name="serializerOptions">The serializer options governing tool parameter marshalling.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="target"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This method discovers all methods (public and non-public) on the specified <typeparamref name="TToolType"/>
+    /// type, where the methods are attributed as <see cref="McpServerToolAttribute"/>, and adds an <see cref="McpServerTool"/>
+    /// instance for each, using <paramref name="target"/> as the associated instance for instance methods.
+    /// </para>
+    /// <para>
+    /// However, if <typeparamref name="TToolType"/> is itself an <see cref="IEnumerable{T}"/> of <see cref="McpServerTool"/>,
+    /// this method registers those tools directly without scanning for methods on <typeparamref name="TToolType"/>.
+    /// </para>
+    /// </remarks>
+    public static IMcpServerBuilder WithTools<[DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicMethods |
+        DynamicallyAccessedMemberTypes.NonPublicMethods)] TToolType>(
+        this IMcpServerBuilder builder,
+        TToolType target,
+        JsonSerializerOptions? serializerOptions = null)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(target);
+
+        if (target is IEnumerable<McpServerTool> tools)
+        {
+            return builder.WithTools(tools);
+        }
+
+        foreach (var toolMethod in typeof(TToolType).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
+        {
+            if (toolMethod.GetCustomAttribute<McpServerToolAttribute>() is not null)
+            {
+                builder.Services.AddSingleton(services => McpServerTool.Create(
+                    toolMethod,
+                    toolMethod.IsStatic ? null : target,
+                    new() { Services = services, SerializerOptions = serializerOptions }));
+            }
+        }
+
+        return builder;
+    }
+
+    /// <summary>Adds <see cref="McpServerTool"/> instances to the service collection backing <paramref name="builder"/>.</summary>
     /// <param name="builder">The builder instance.</param>
     /// <param name="tools">The <see cref="McpServerTool"/> instances to add to the server.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentNullException"><paramref name="tools"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="tools"/> is <see langword="null"/>.</exception>
     public static IMcpServerBuilder WithTools(this IMcpServerBuilder builder, IEnumerable<McpServerTool> tools)
     {
         Throw.IfNull(builder);
@@ -80,12 +126,11 @@ public static partial class McpServerBuilderExtensions
     /// <param name="toolTypes">Types with <see cref="McpServerToolAttribute"/>-attributed methods to add as tools to the server.</param>
     /// <param name="serializerOptions">The serializer options governing tool parameter marshalling.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentNullException"><paramref name="toolTypes"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="toolTypes"/> is <see langword="null"/>.</exception>
     /// <remarks>
     /// This method discovers all instance and static methods (public and non-public) on the specified <paramref name="toolTypes"/>
     /// types, where the methods are attributed as <see cref="McpServerToolAttribute"/>, and adds an <see cref="McpServerTool"/>
-    /// instance for each. For instance methods, an instance will be constructed for each invocation of the tool.
+    /// instance for each. For instance methods, an instance is constructed for each invocation of the tool.
     /// </remarks>
     [RequiresUnreferencedCode(WithToolsRequiresUnreferencedCodeMessage)]
     public static IMcpServerBuilder WithTools(this IMcpServerBuilder builder, IEnumerable<Type> toolTypes, JsonSerializerOptions? serializerOptions = null)
@@ -102,8 +147,8 @@ public static partial class McpServerBuilderExtensions
                     if (toolMethod.GetCustomAttribute<McpServerToolAttribute>() is not null)
                     {
                         builder.Services.AddSingleton((Func<IServiceProvider, McpServerTool>)(toolMethod.IsStatic ?
-                            services => McpServerTool.Create(toolMethod, options: new() { Services = services , SerializerOptions = serializerOptions }) :
-                            services => McpServerTool.Create(toolMethod, r => CreateTarget(r.Services, toolType), new() { Services = services , SerializerOptions = serializerOptions })));
+                            services => McpServerTool.Create(toolMethod, options: new() { Services = services, SerializerOptions = serializerOptions }) :
+                            services => McpServerTool.Create(toolMethod, r => CreateTarget(r.Services, toolType), new() { Services = services, SerializerOptions = serializerOptions })));
                     }
                 }
             }
@@ -117,7 +162,7 @@ public static partial class McpServerBuilderExtensions
     /// </summary>
     /// <param name="builder">The builder instance.</param>
     /// <param name="serializerOptions">The serializer options governing tool parameter marshalling.</param>
-    /// <param name="toolAssembly">The assembly to load the types from. If <see langword="null"/>, the calling assembly will be used.</param>
+    /// <param name="toolAssembly">The assembly to load the types from. If <see langword="null"/>, the calling assembly is used.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     /// <remarks>
@@ -129,15 +174,15 @@ public static partial class McpServerBuilderExtensions
     /// </para>
     /// <para>
     /// The method automatically handles both static and instance methods. For instance methods, a new instance
-    /// of the containing class will be constructed for each invocation of the tool.
+    /// of the containing class is constructed for each invocation of the tool.
     /// </para>
     /// <para>
     /// Tools registered through this method can be discovered by clients using the <c>list_tools</c> request
     /// and invoked using the <c>call_tool</c> request.
     /// </para>
     /// <para>
-    /// Note that this method performs reflection at runtime and may not work in Native AOT scenarios. For
-    /// Native AOT compatibility, consider using the generic <see cref="WithTools{TToolType}"/> method instead.
+    /// Note that this method performs reflection at runtime and might not work in Native AOT scenarios. For
+    /// Native AOT compatibility, consider using the generic <see cref="M:WithTools"/> method instead.
     /// </para>
     /// </remarks>
     [RequiresUnreferencedCode(WithToolsRequiresUnreferencedCodeMessage)]
@@ -158,7 +203,7 @@ public static partial class McpServerBuilderExtensions
     #region WithPrompts
     private const string WithPromptsRequiresUnreferencedCodeMessage =
         $"The non-generic {nameof(WithPrompts)} and {nameof(WithPromptsFromAssembly)} methods require dynamic lookup of method metadata" +
-        $"and may not work in Native AOT. Use the generic {nameof(WithPrompts)} method instead.";
+        $"and might not work in Native AOT. Use the generic {nameof(WithPrompts)} method instead.";
 
     /// <summary>Adds <see cref="McpServerPrompt"/> instances to the service collection backing <paramref name="builder"/>.</summary>
     /// <typeparam name="TPromptType">The prompt type.</typeparam>
@@ -169,7 +214,7 @@ public static partial class McpServerBuilderExtensions
     /// <remarks>
     /// This method discovers all instance and static methods (public and non-public) on the specified <typeparamref name="TPromptType"/>
     /// type, where the methods are attributed as <see cref="McpServerPromptAttribute"/>, and adds an <see cref="McpServerPrompt"/>
-    /// instance for each. For instance methods, an instance will be constructed for each invocation of the prompt.
+    /// instance for each. For instance methods, an instance is constructed for each invocation of the prompt.
     /// </remarks>
     public static IMcpServerBuilder WithPrompts<[DynamicallyAccessedMembers(
         DynamicallyAccessedMemberTypes.PublicMethods |
@@ -194,11 +239,54 @@ public static partial class McpServerBuilderExtensions
     }
 
     /// <summary>Adds <see cref="McpServerPrompt"/> instances to the service collection backing <paramref name="builder"/>.</summary>
+    /// <typeparam name="TPromptType">The prompt type.</typeparam>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="target">The target instance from which the prompts should be sourced.</param>
+    /// <param name="serializerOptions">The serializer options governing prompt parameter marshalling.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="target"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This method discovers all methods (public and non-public) on the specified <typeparamref name="TPromptType"/>
+    /// type, where the methods are attributed as <see cref="McpServerPromptAttribute"/>, and adds an <see cref="McpServerPrompt"/>
+    /// instance for each, using <paramref name="target"/> as the associated instance for instance methods.
+    /// </para>
+    /// <para>
+    /// However, if <typeparamref name="TPromptType"/> is itself an <see cref="IEnumerable{T}"/> of <see cref="McpServerPrompt"/>,
+    /// this method registers those prompts directly without scanning for methods on <typeparamref name="TPromptType"/>.
+    /// </para>
+    /// </remarks>
+    public static IMcpServerBuilder WithPrompts<[DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicMethods |
+        DynamicallyAccessedMemberTypes.NonPublicMethods)] TPromptType>(
+        this IMcpServerBuilder builder,
+        TPromptType target,
+        JsonSerializerOptions? serializerOptions = null)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(target);
+
+        if (target is IEnumerable<McpServerPrompt> prompts)
+        {
+            return builder.WithPrompts(prompts);
+        }
+
+        foreach (var promptMethod in typeof(TPromptType).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
+        {
+            if (promptMethod.GetCustomAttribute<McpServerPromptAttribute>() is not null)
+            {
+                builder.Services.AddSingleton(services => McpServerPrompt.Create(promptMethod, target, new() { Services = services, SerializerOptions = serializerOptions }));
+            }
+        }
+
+        return builder;
+    }
+
+    /// <summary>Adds <see cref="McpServerPrompt"/> instances to the service collection backing <paramref name="builder"/>.</summary>
     /// <param name="builder">The builder instance.</param>
     /// <param name="prompts">The <see cref="McpServerPrompt"/> instances to add to the server.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentNullException"><paramref name="prompts"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="prompts"/> is <see langword="null"/>.</exception>
     public static IMcpServerBuilder WithPrompts(this IMcpServerBuilder builder, IEnumerable<McpServerPrompt> prompts)
     {
         Throw.IfNull(builder);
@@ -220,12 +308,11 @@ public static partial class McpServerBuilderExtensions
     /// <param name="promptTypes">Types with marked methods to add as prompts to the server.</param>
     /// <param name="serializerOptions">The serializer options governing prompt parameter marshalling.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentNullException"><paramref name="promptTypes"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="promptTypes"/> is <see langword="null"/>.</exception>
     /// <remarks>
     /// This method discovers all instance and static methods (public and non-public) on the specified <paramref name="promptTypes"/>
     /// types, where the methods are attributed as <see cref="McpServerPromptAttribute"/>, and adds an <see cref="McpServerPrompt"/>
-    /// instance for each. For instance methods, an instance will be constructed for each invocation of the prompt.
+    /// instance for each. For instance methods, an instance is constructed for each invocation of the prompt.
     /// </remarks>
     [RequiresUnreferencedCode(WithPromptsRequiresUnreferencedCodeMessage)]
     public static IMcpServerBuilder WithPrompts(this IMcpServerBuilder builder, IEnumerable<Type> promptTypes, JsonSerializerOptions? serializerOptions = null)
@@ -257,7 +344,7 @@ public static partial class McpServerBuilderExtensions
     /// </summary>
     /// <param name="builder">The builder instance.</param>
     /// <param name="serializerOptions">The serializer options governing prompt parameter marshalling.</param>
-    /// <param name="promptAssembly">The assembly to load the types from. If <see langword="null"/>, the calling assembly will be used.</param>
+    /// <param name="promptAssembly">The assembly to load the types from. If <see langword="null"/>, the calling assembly is used.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     /// <remarks>
@@ -269,15 +356,15 @@ public static partial class McpServerBuilderExtensions
     /// </para>
     /// <para>
     /// The method automatically handles both static and instance methods. For instance methods, a new instance
-    /// of the containing class will be constructed for each invocation of the prompt.
+    /// of the containing class is constructed for each invocation of the prompt.
     /// </para>
     /// <para>
     /// Prompts registered through this method can be discovered by clients using the <c>list_prompts</c> request
     /// and invoked using the <c>call_prompt</c> request.
     /// </para>
     /// <para>
-    /// Note that this method performs reflection at runtime and may not work in Native AOT scenarios. For
-    /// Native AOT compatibility, consider using the generic <see cref="WithPrompts{TPromptType}"/> method instead.
+    /// Note that this method performs reflection at runtime and might not work in Native AOT scenarios. For
+    /// Native AOT compatibility, consider using the generic <see cref="M:WithPrompts"/> method instead.
     /// </para>
     /// </remarks>
     [RequiresUnreferencedCode(WithPromptsRequiresUnreferencedCodeMessage)]
@@ -298,7 +385,7 @@ public static partial class McpServerBuilderExtensions
     #region WithResources
     private const string WithResourcesRequiresUnreferencedCodeMessage =
         $"The non-generic {nameof(WithResources)} and {nameof(WithResourcesFromAssembly)} methods require dynamic lookup of member metadata" +
-        $"and may not work in Native AOT. Use the generic {nameof(WithResources)} method instead.";
+        $"and might not work in Native AOT. Use the generic {nameof(WithResources)} method instead.";
 
     /// <summary>Adds <see cref="McpServerResource"/> instances to the service collection backing <paramref name="builder"/>.</summary>
     /// <typeparam name="TResourceType">The resource type.</typeparam>
@@ -308,10 +395,11 @@ public static partial class McpServerBuilderExtensions
     /// <remarks>
     /// This method discovers all instance and static methods (public and non-public) on the specified <typeparamref name="TResourceType"/>
     /// type, where the members are attributed as <see cref="McpServerResourceAttribute"/>, and adds an <see cref="McpServerResource"/>
-    /// instance for each. For instance members, an instance will be constructed for each invocation of the resource.
+    /// instance for each. For instance members, an instance is constructed for each invocation of the resource.
     /// </remarks>
     public static IMcpServerBuilder WithResources<[DynamicallyAccessedMembers(
-        DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods |
+        DynamicallyAccessedMemberTypes.PublicMethods |
+        DynamicallyAccessedMemberTypes.NonPublicMethods |
         DynamicallyAccessedMemberTypes.PublicConstructors)] TResourceType>(
         this IMcpServerBuilder builder)
     {
@@ -331,11 +419,52 @@ public static partial class McpServerBuilderExtensions
     }
 
     /// <summary>Adds <see cref="McpServerResource"/> instances to the service collection backing <paramref name="builder"/>.</summary>
+    /// <typeparam name="TResourceType">The resource type.</typeparam>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="target">The target instance from which the prompts should be sourced.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="target"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This method discovers all methods (public and non-public) on the specified <typeparamref name="TResourceType"/>
+    /// type, where the methods are attributed as <see cref="McpServerResourceAttribute"/>, and adds an <see cref="McpServerResource"/>
+    /// instance for each, using <paramref name="target"/> as the associated instance for instance methods.
+    /// </para>
+    /// <para>
+    /// However, if <typeparamref name="TResourceType"/> is itself an <see cref="IEnumerable{T}"/> of <see cref="McpServerResource"/>,
+    /// this method registers those resources directly without scanning for methods on <typeparamref name="TResourceType"/>.
+    /// </para>
+    /// </remarks>
+    public static IMcpServerBuilder WithResources<[DynamicallyAccessedMembers(
+        DynamicallyAccessedMemberTypes.PublicMethods |
+        DynamicallyAccessedMemberTypes.NonPublicMethods)] TResourceType>(
+        this IMcpServerBuilder builder,
+        TResourceType target)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(target);
+
+        if (target is IEnumerable<McpServerResource> resources)
+        {
+            return builder.WithResources(resources);
+        }
+
+        foreach (var resourceTemplateMethod in typeof(TResourceType).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance))
+        {
+            if (resourceTemplateMethod.GetCustomAttribute<McpServerResourceAttribute>() is not null)
+            {
+                builder.Services.AddSingleton(services => McpServerResource.Create(resourceTemplateMethod, target, new() { Services = services }));
+            }
+        }
+
+        return builder;
+    }
+
+    /// <summary>Adds <see cref="McpServerResource"/> instances to the service collection backing <paramref name="builder"/>.</summary>
     /// <param name="builder">The builder instance.</param>
     /// <param name="resourceTemplates">The <see cref="McpServerResource"/> instances to add to the server.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentNullException"><paramref name="resourceTemplates"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="resourceTemplates"/> is <see langword="null"/>.</exception>
     public static IMcpServerBuilder WithResources(this IMcpServerBuilder builder, IEnumerable<McpServerResource> resourceTemplates)
     {
         Throw.IfNull(builder);
@@ -356,12 +485,11 @@ public static partial class McpServerBuilderExtensions
     /// <param name="builder">The builder instance.</param>
     /// <param name="resourceTemplateTypes">Types with marked methods to add as resources to the server.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentNullException"><paramref name="resourceTemplateTypes"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="resourceTemplateTypes"/> is <see langword="null"/>.</exception>
     /// <remarks>
     /// This method discovers all instance and static methods (public and non-public) on the specified <paramref name="resourceTemplateTypes"/>
     /// types, where the methods are attributed as <see cref="McpServerResourceAttribute"/>, and adds an <see cref="McpServerResource"/>
-    /// instance for each. For instance methods, an instance will be constructed for each invocation of the resource.
+    /// instance for each. For instance methods, an instance is constructed for each invocation of the resource.
     /// </remarks>
     [RequiresUnreferencedCode(WithResourcesRequiresUnreferencedCodeMessage)]
     public static IMcpServerBuilder WithResources(this IMcpServerBuilder builder, IEnumerable<Type> resourceTemplateTypes)
@@ -392,7 +520,7 @@ public static partial class McpServerBuilderExtensions
     /// Adds types marked with the <see cref="McpServerResourceTypeAttribute"/> attribute from the given assembly as resources to the server.
     /// </summary>
     /// <param name="builder">The builder instance.</param>
-    /// <param name="resourceAssembly">The assembly to load the types from. If <see langword="null"/>, the calling assembly will be used.</param>
+    /// <param name="resourceAssembly">The assembly to load the types from. If <see langword="null"/>, the calling assembly is used.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
     /// <remarks>
@@ -404,15 +532,15 @@ public static partial class McpServerBuilderExtensions
     /// </para>
     /// <para>
     /// The method automatically handles both static and instance members. For instance members, a new instance
-    /// of the containing class will be constructed for each invocation of the resource.
+    /// of the containing class is constructed for each invocation of the resource.
     /// </para>
     /// <para>
     /// Resource templates registered through this method can be discovered by clients using the <c>list_resourceTemplates</c> request
     /// and invoked using the <c>read_resource</c> request.
     /// </para>
     /// <para>
-    /// Note that this method performs reflection at runtime and may not work in Native AOT scenarios. For
-    /// Native AOT compatibility, consider using the generic <see cref="WithResources{TResourceType}"/> method instead.
+    /// Note that this method performs reflection at runtime and might not work in Native AOT scenarios. For
+    /// Native AOT compatibility, consider using the generic <see cref="M:WithResources"/> method instead.
     /// </para>
     /// </remarks>
     [RequiresUnreferencedCode(WithResourcesRequiresUnreferencedCodeMessage)]
@@ -451,7 +579,7 @@ public static partial class McpServerBuilderExtensions
     /// resource system where templates define the URI patterns and the read handler provides the actual content.
     /// </para>
     /// </remarks>
-    public static IMcpServerBuilder WithListResourceTemplatesHandler(this IMcpServerBuilder builder, Func<RequestContext<ListResourceTemplatesRequestParams>, CancellationToken, ValueTask<ListResourceTemplatesResult>> handler)
+    public static IMcpServerBuilder WithListResourceTemplatesHandler(this IMcpServerBuilder builder, McpRequestHandler<ListResourceTemplatesRequestParams, ListResourceTemplatesResult> handler)
     {
         Throw.IfNull(builder);
 
@@ -470,7 +598,7 @@ public static partial class McpServerBuilderExtensions
     /// <para>
     /// This handler is called when a client requests a list of available tools. It should return all tools
     /// that can be invoked through the server, including their names, descriptions, and parameter specifications.
-    /// The handler can optionally support pagination via the cursor mechanism for large or dynamically-generated
+    /// The handler can optionally support pagination via the cursor mechanism for large or dynamically generated
     /// tool collections.
     /// </para>
     /// <para>
@@ -484,7 +612,7 @@ public static partial class McpServerBuilderExtensions
     /// executes them when invoked by clients.
     /// </para>
     /// </remarks>
-    public static IMcpServerBuilder WithListToolsHandler(this IMcpServerBuilder builder, Func<RequestContext<ListToolsRequestParams>, CancellationToken, ValueTask<ListToolsResult>> handler)
+    public static IMcpServerBuilder WithListToolsHandler(this IMcpServerBuilder builder, McpRequestHandler<ListToolsRequestParams, ListToolsResult> handler)
     {
         Throw.IfNull(builder);
 
@@ -504,7 +632,7 @@ public static partial class McpServerBuilderExtensions
     /// This method is typically paired with <see cref="WithListToolsHandler"/> to provide a complete tools implementation,
     /// where <see cref="WithListToolsHandler"/> advertises available tools and this handler executes them.
     /// </remarks>
-    public static IMcpServerBuilder WithCallToolHandler(this IMcpServerBuilder builder, Func<RequestContext<CallToolRequestParams>, CancellationToken, ValueTask<CallToolResult>> handler)
+    public static IMcpServerBuilder WithCallToolHandler(this IMcpServerBuilder builder, McpRequestHandler<CallToolRequestParams, CallToolResult> handler)
     {
         Throw.IfNull(builder);
 
@@ -537,7 +665,7 @@ public static partial class McpServerBuilderExtensions
     /// produces them when invoked by clients.
     /// </para>
     /// </remarks>
-    public static IMcpServerBuilder WithListPromptsHandler(this IMcpServerBuilder builder, Func<RequestContext<ListPromptsRequestParams>, CancellationToken, ValueTask<ListPromptsResult>> handler)
+    public static IMcpServerBuilder WithListPromptsHandler(this IMcpServerBuilder builder, McpRequestHandler<ListPromptsRequestParams, ListPromptsResult> handler)
     {
         Throw.IfNull(builder);
 
@@ -552,7 +680,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="handler">The handler function that processes prompt requests.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    public static IMcpServerBuilder WithGetPromptHandler(this IMcpServerBuilder builder, Func<RequestContext<GetPromptRequestParams>, CancellationToken, ValueTask<GetPromptResult>> handler)
+    public static IMcpServerBuilder WithGetPromptHandler(this IMcpServerBuilder builder, McpRequestHandler<GetPromptRequestParams, GetPromptResult> handler)
     {
         Throw.IfNull(builder);
 
@@ -573,7 +701,7 @@ public static partial class McpServerBuilderExtensions
     /// where this handler advertises available resources and the read handler provides their content when requested.
     /// </para>
     /// </remarks>
-    public static IMcpServerBuilder WithListResourcesHandler(this IMcpServerBuilder builder, Func<RequestContext<ListResourcesRequestParams>, CancellationToken, ValueTask<ListResourcesResult>> handler)
+    public static IMcpServerBuilder WithListResourcesHandler(this IMcpServerBuilder builder, McpRequestHandler<ListResourcesRequestParams, ListResourcesResult> handler)
     {
         Throw.IfNull(builder);
 
@@ -592,7 +720,7 @@ public static partial class McpServerBuilderExtensions
     /// This handler is typically paired with <see cref="WithListResourcesHandler"/> to provide a complete resources implementation,
     /// where the list handler advertises available resources and the read handler provides their content when requested.
     /// </remarks>
-    public static IMcpServerBuilder WithReadResourceHandler(this IMcpServerBuilder builder, Func<RequestContext<ReadResourceRequestParams>, CancellationToken, ValueTask<ReadResourceResult>> handler)
+    public static IMcpServerBuilder WithReadResourceHandler(this IMcpServerBuilder builder, McpRequestHandler<ReadResourceRequestParams, ReadResourceResult> handler)
     {
         Throw.IfNull(builder);
 
@@ -611,7 +739,7 @@ public static partial class McpServerBuilderExtensions
     /// The completion handler is invoked when clients request suggestions for argument values.
     /// This enables auto-complete functionality for both prompt arguments and resource references.
     /// </remarks>
-    public static IMcpServerBuilder WithCompleteHandler(this IMcpServerBuilder builder, Func<RequestContext<CompleteRequestParams>, CancellationToken, ValueTask<CompleteResult>> handler)
+    public static IMcpServerBuilder WithCompleteHandler(this IMcpServerBuilder builder, McpRequestHandler<CompleteRequestParams, CompleteResult> handler)
     {
         Throw.IfNull(builder);
 
@@ -641,7 +769,7 @@ public static partial class McpServerBuilderExtensions
     /// resources and to send appropriate notifications through the connection when resources change.
     /// </para>
     /// </remarks>
-    public static IMcpServerBuilder WithSubscribeToResourcesHandler(this IMcpServerBuilder builder, Func<RequestContext<SubscribeRequestParams>, CancellationToken, ValueTask<EmptyResult>> handler)
+    public static IMcpServerBuilder WithSubscribeToResourcesHandler(this IMcpServerBuilder builder, McpRequestHandler<SubscribeRequestParams, EmptyResult> handler)
     {
         Throw.IfNull(builder);
 
@@ -671,7 +799,7 @@ public static partial class McpServerBuilderExtensions
     /// to the specified resource.
     /// </para>
     /// </remarks>
-    public static IMcpServerBuilder WithUnsubscribeFromResourcesHandler(this IMcpServerBuilder builder, Func<RequestContext<UnsubscribeRequestParams>, CancellationToken, ValueTask<EmptyResult>> handler)
+    public static IMcpServerBuilder WithUnsubscribeFromResourcesHandler(this IMcpServerBuilder builder, McpRequestHandler<UnsubscribeRequestParams, EmptyResult> handler)
     {
         Throw.IfNull(builder);
 
@@ -690,19 +818,291 @@ public static partial class McpServerBuilderExtensions
     /// <para>
     /// When a client sends a <c>logging/setLevel</c> request, this handler will be invoked to process
     /// the requested level change. The server typically adjusts its internal logging level threshold
-    /// and may begin sending log messages at or above the specified level to the client.
+    /// and might begin sending log messages at or above the specified level to the client.
     /// </para>
     /// <para>
-    /// Regardless of whether a handler is provided, an <see cref="IMcpServer"/> should itself handle
-    /// such notifications by updating its <see cref="IMcpServer.LoggingLevel"/> property to return the
+    /// Regardless of whether a handler is provided, an <see cref="McpServer"/> should itself handle
+    /// such notifications by updating its <see cref="McpServer.LoggingLevel"/> property to return the
     /// most recently set level.
     /// </para>
     /// </remarks>
-    public static IMcpServerBuilder WithSetLoggingLevelHandler(this IMcpServerBuilder builder, Func<RequestContext<SetLevelRequestParams>, CancellationToken, ValueTask<EmptyResult>> handler)
+    public static IMcpServerBuilder WithSetLoggingLevelHandler(this IMcpServerBuilder builder, McpRequestHandler<SetLevelRequestParams, EmptyResult> handler)
     {
         Throw.IfNull(builder);
 
         builder.Services.Configure<McpServerHandlers>(s => s.SetLoggingLevelHandler = handler);
+        return builder;
+    }
+    #endregion
+
+    #region Filters
+    /// <summary>
+    /// Adds a filter to the list resource templates handler pipeline.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="filter">The filter function that wraps the handler.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This filter wraps handlers that return a list of available resource templates when requested by a client.
+    /// The filter can modify, log, or perform additional operations on requests and responses for
+    /// <see cref="RequestMethods.ResourcesTemplatesList"/> requests. It supports pagination through the cursor mechanism,
+    /// where the client can make repeated calls with the cursor returned by the previous call to retrieve more resource templates.
+    /// </para>
+    /// </remarks>
+    public static IMcpServerBuilder AddListResourceTemplatesFilter(this IMcpServerBuilder builder, McpRequestFilter<ListResourceTemplatesRequestParams, ListResourceTemplatesResult> filter)
+    {
+        Throw.IfNull(builder);
+
+        builder.Services.Configure<McpServerOptions>(options => options.Filters.ListResourceTemplatesFilters.Add(filter));
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds a filter to the list tools handler pipeline.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="filter">The filter function that wraps the handler.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This filter wraps handlers that return a list of available tools when requested by a client.
+    /// The filter can modify, log, or perform additional operations on requests and responses for
+    /// <see cref="RequestMethods.ToolsList"/> requests. It supports pagination through the cursor mechanism,
+    /// where the client can make repeated calls with the cursor returned by the previous call to retrieve more tools.
+    /// </para>
+    /// <para>
+    /// This filter works alongside any tools defined in the <see cref="McpServerTool"/> collection.
+    /// Tools from both sources will be combined when returning results to clients.
+    /// </para>
+    /// </remarks>
+    public static IMcpServerBuilder AddListToolsFilter(this IMcpServerBuilder builder, McpRequestFilter<ListToolsRequestParams, ListToolsResult> filter)
+    {
+        Throw.IfNull(builder);
+
+        builder.Services.Configure<McpServerOptions>(options => options.Filters.ListToolsFilters.Add(filter));
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds a filter to the call tool handler pipeline.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="filter">The filter function that wraps the handler.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This filter wraps handlers that are invoked when a client makes a call to a tool that isn't found in the <see cref="McpServerTool"/> collection.
+    /// The filter can modify, log, or perform additional operations on requests and responses for
+    /// <see cref="RequestMethods.ToolsCall"/> requests. The handler should implement logic to execute the requested tool and return appropriate results.
+    /// </para>
+    /// </remarks>
+    public static IMcpServerBuilder AddCallToolFilter(this IMcpServerBuilder builder, McpRequestFilter<CallToolRequestParams, CallToolResult> filter)
+    {
+        Throw.IfNull(builder);
+
+        builder.Services.Configure<McpServerOptions>(options => options.Filters.CallToolFilters.Add(filter));
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds a filter to the list prompts handler pipeline.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="filter">The filter function that wraps the handler.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This filter wraps handlers that return a list of available prompts when requested by a client.
+    /// The filter can modify, log, or perform additional operations on requests and responses for
+    /// <see cref="RequestMethods.PromptsList"/> requests. It supports pagination through the cursor mechanism,
+    /// where the client can make repeated calls with the cursor returned by the previous call to retrieve more prompts.
+    /// </para>
+    /// <para>
+    /// This filter works alongside any prompts defined in the <see cref="McpServerPrompt"/> collection.
+    /// Prompts from both sources will be combined when returning results to clients.
+    /// </para>
+    /// </remarks>
+    public static IMcpServerBuilder AddListPromptsFilter(this IMcpServerBuilder builder, McpRequestFilter<ListPromptsRequestParams, ListPromptsResult> filter)
+    {
+        Throw.IfNull(builder);
+
+        builder.Services.Configure<McpServerOptions>(options => options.Filters.ListPromptsFilters.Add(filter));
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds a filter to the get prompt handler pipeline.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="filter">The filter function that wraps the handler.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This filter wraps handlers that are invoked when a client requests details for a specific prompt that isn't found in the <see cref="McpServerPrompt"/> collection.
+    /// The filter can modify, log, or perform additional operations on requests and responses for
+    /// <see cref="RequestMethods.PromptsGet"/> requests. The handler should implement logic to fetch or generate the requested prompt and return appropriate results.
+    /// </para>
+    /// </remarks>
+    public static IMcpServerBuilder AddGetPromptFilter(this IMcpServerBuilder builder, McpRequestFilter<GetPromptRequestParams, GetPromptResult> filter)
+    {
+        Throw.IfNull(builder);
+
+        builder.Services.Configure<McpServerOptions>(options => options.Filters.GetPromptFilters.Add(filter));
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds a filter to the list resources handler pipeline.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="filter">The filter function that wraps the handler.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This filter wraps handlers that return a list of available resources when requested by a client.
+    /// The filter can modify, log, or perform additional operations on requests and responses for
+    /// <see cref="RequestMethods.ResourcesList"/> requests. It supports pagination through the cursor mechanism,
+    /// where the client can make repeated calls with the cursor returned by the previous call to retrieve more resources.
+    /// </para>
+    /// </remarks>
+    public static IMcpServerBuilder AddListResourcesFilter(this IMcpServerBuilder builder, McpRequestFilter<ListResourcesRequestParams, ListResourcesResult> filter)
+    {
+        Throw.IfNull(builder);
+
+        builder.Services.Configure<McpServerOptions>(options => options.Filters.ListResourcesFilters.Add(filter));
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds a filter to the read resource handler pipeline.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="filter">The filter function that wraps the handler.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This filter wraps handlers that are invoked when a client requests the content of a specific resource identified by its URI.
+    /// The filter can modify, log, or perform additional operations on requests and responses for
+    /// <see cref="RequestMethods.ResourcesRead"/> requests. The handler should implement logic to locate and retrieve the requested resource.
+    /// </para>
+    /// </remarks>
+    public static IMcpServerBuilder AddReadResourceFilter(this IMcpServerBuilder builder, McpRequestFilter<ReadResourceRequestParams, ReadResourceResult> filter)
+    {
+        Throw.IfNull(builder);
+
+        builder.Services.Configure<McpServerOptions>(options => options.Filters.ReadResourceFilters.Add(filter));
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds a filter to the complete handler pipeline.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="filter">The filter function that wraps the handler.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This filter wraps handlers that provide auto-completion suggestions for prompt arguments or resource references in the Model Context Protocol.
+    /// The filter can modify, log, or perform additional operations on requests and responses for
+    /// <see cref="RequestMethods.CompletionComplete"/> requests. The handler processes auto-completion requests, returning a list of suggestions based on the
+    /// reference type and current argument value.
+    /// </para>
+    /// </remarks>
+    public static IMcpServerBuilder AddCompleteFilter(this IMcpServerBuilder builder, McpRequestFilter<CompleteRequestParams, CompleteResult> filter)
+    {
+        Throw.IfNull(builder);
+
+        builder.Services.Configure<McpServerOptions>(options => options.Filters.CompleteFilters.Add(filter));
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds a filter to the subscribe-to-resources handler pipeline.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="filter">The filter function that wraps the handler.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This filter wraps handlers that are invoked when a client wants to receive notifications about changes to specific resources or resource patterns.
+    /// The filter can modify, log, or perform additional operations on requests and responses for
+    /// <see cref="RequestMethods.ResourcesSubscribe"/> requests. The handler should implement logic to register the client's interest in the specified resources
+    /// and set up the necessary infrastructure to send notifications when those resources change.
+    /// </para>
+    /// <para>
+    /// After a successful subscription, the server should send resource change notifications to the client
+    /// whenever a relevant resource is created, updated, or deleted.
+    /// </para>
+    /// </remarks>
+    public static IMcpServerBuilder AddSubscribeToResourcesFilter(this IMcpServerBuilder builder, McpRequestFilter<SubscribeRequestParams, EmptyResult> filter)
+    {
+        Throw.IfNull(builder);
+
+        builder.Services.Configure<McpServerOptions>(options => options.Filters.SubscribeToResourcesFilters.Add(filter));
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds a filter to the unsubscribe-from-resources handler pipeline.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="filter">The filter function that wraps the handler.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This filter wraps handlers that are invoked when a client wants to stop receiving notifications about previously subscribed resources.
+    /// The filter can modify, log, or perform additional operations on requests and responses for
+    /// <see cref="RequestMethods.ResourcesUnsubscribe"/> requests. The handler should implement logic to remove the client's subscriptions to the specified resources
+    /// and clean up any associated resources.
+    /// </para>
+    /// <para>
+    /// After a successful unsubscription, the server should no longer send resource change notifications
+    /// to the client for the specified resources.
+    /// </para>
+    /// </remarks>
+    public static IMcpServerBuilder AddUnsubscribeFromResourcesFilter(this IMcpServerBuilder builder, McpRequestFilter<UnsubscribeRequestParams, EmptyResult> filter)
+    {
+        Throw.IfNull(builder);
+
+        builder.Services.Configure<McpServerOptions>(options => options.Filters.UnsubscribeFromResourcesFilters.Add(filter));
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds a filter to the set logging level handler pipeline.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="filter">The filter function that wraps the handler.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This filter wraps handlers that process <see cref="RequestMethods.LoggingSetLevel"/> requests from clients. When set, it enables
+    /// clients to control which log messages they receive by specifying a minimum severity threshold.
+    /// The filter can modify, log, or perform additional operations on requests and responses for
+    /// <see cref="RequestMethods.LoggingSetLevel"/> requests.
+    /// </para>
+    /// <para>
+    /// After handling a level change request, the server typically begins sending log messages
+    /// at or above the specified level to the client as notifications or message notifications.
+    /// </para>
+    /// </remarks>
+    public static IMcpServerBuilder AddSetLoggingLevelFilter(this IMcpServerBuilder builder, McpRequestFilter<SetLevelRequestParams, EmptyResult> filter)
+    {
+        Throw.IfNull(builder);
+
+        builder.Services.Configure<McpServerOptions>(options => options.Filters.SetLoggingLevelFilters.Add(filter));
         return builder;
     }
     #endregion
@@ -748,9 +1148,7 @@ public static partial class McpServerBuilderExtensions
     /// <param name="inputStream">The input <see cref="Stream"/> to use as standard input.</param>
     /// <param name="outputStream">The output <see cref="Stream"/> to use as standard output.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentNullException"><paramref name="inputStream"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentNullException"><paramref name="outputStream"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="inputStream"/> or <paramref name="outputStream"/> is <see langword="null"/>.</exception>
     public static IMcpServerBuilder WithStreamServerTransport(
         this IMcpServerBuilder builder,
         Stream inputStream,
@@ -774,7 +1172,7 @@ public static partial class McpServerBuilderExtensions
             ITransport serverTransport = services.GetRequiredService<ITransport>();
             IOptions<McpServerOptions> options = services.GetRequiredService<IOptions<McpServerOptions>>();
             ILoggerFactory? loggerFactory = services.GetService<ILoggerFactory>();
-            return McpServerFactory.Create(serverTransport, options.Value, loggerFactory, services);
+            return McpServer.Create(serverTransport, options.Value, loggerFactory, services);
         });
     }
     #endregion

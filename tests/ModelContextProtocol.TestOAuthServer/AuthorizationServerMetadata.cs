@@ -29,7 +29,7 @@ internal sealed class AuthorizationServerMetadata
     /// Gets the introspection endpoint URL.
     /// </summary>
     [JsonPropertyName("introspection_endpoint")]
-    public Uri? IntrospectionEndpoint => new Uri($"{Issuer}/introspect");
+    public Uri? IntrospectionEndpoint => new($"{Issuer}/introspect");
 
     /// <summary>
     /// Gets or sets the response types supported by this server.
@@ -60,4 +60,10 @@ internal sealed class AuthorizationServerMetadata
     /// </summary>
     [JsonPropertyName("scopes_supported")]
     public List<string>? ScopesSupported { get; init; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether CIMD client IDs are supported.
+    /// </summary>
+    [JsonPropertyName("client_id_metadata_document_supported")]
+    public bool ClientIdMetadataDocumentSupported { get; init; }
 }

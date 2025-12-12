@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -20,7 +21,9 @@ public abstract class ClientServerTestBase : LoggedTest, IAsyncDisposable
         : base(testOutputHelper)
     {
         ServiceCollection sc = new();
-        sc.AddSingleton(LoggerFactory);
+        sc.AddLogging();
+        sc.AddSingleton(XunitLoggerProvider);
+        sc.AddSingleton<ILoggerProvider>(MockLoggerProvider);
         _builder = sc
             .AddMcpServer()
             .WithStreamServerTransport(_clientToServerPipe.Reader.AsStream(), _serverToClientPipe.Writer.AsStream());
@@ -28,11 +31,11 @@ public abstract class ClientServerTestBase : LoggedTest, IAsyncDisposable
         ServiceProvider = sc.BuildServiceProvider(validateScopes: true);
 
         _cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-        Server = ServiceProvider.GetRequiredService<IMcpServer>();
+        Server = ServiceProvider.GetRequiredService<McpServer>();
         _serverTask = Server.RunAsync(_cts.Token);
     }
 
-    protected IMcpServer Server { get; }
+    protected McpServer Server { get; }
 
     protected IServiceProvider ServiceProvider { get; }
 
@@ -62,9 +65,9 @@ public abstract class ClientServerTestBase : LoggedTest, IAsyncDisposable
         Dispose();
     }
 
-    protected async Task<IMcpClient> CreateMcpClientForServer(McpClientOptions? clientOptions = null)
+    protected async Task<McpClient> CreateMcpClientForServer(McpClientOptions? clientOptions = null)
     {
-        return await McpClientFactory.CreateAsync(
+        return await McpClient.CreateAsync(
             new StreamClientTransport(
                 serverInput: _clientToServerPipe.Writer.AsStream(),
                 _serverToClientPipe.Reader.AsStream(),

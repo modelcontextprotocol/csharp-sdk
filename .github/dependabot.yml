@@ -1,0 +1,73 @@
+# Configuration for Dependabot automatic dependency updates
+# See https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  # Monitor testing dependencies only
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    # Dependencies are controlled via the groups below
+    # Group dependencies to reduce PR noise
+    groups:
+      testing-frameworks:
+        patterns:
+          - "xunit.*"
+          - "Microsoft.NET.Test.Sdk"
+          - "coverlet.*"
+          - "GitHubActionsTestLogger"
+          - "Moq"
+      opentelemetry-testing:
+        patterns:
+          - "OpenTelemetry*"
+      serilog-testing:
+        patterns:
+          - "Serilog*"
+      other-testing:
+        patterns:
+          - "Anthropic.SDK"
+          - "System.Linq.AsyncEnumerable"
+          - "System.Net.Http"
+          - "JsonSchema.Net"
+    # Ignore product dependencies - only allow testing dependencies in groups above
+    ignore:
+      # Ignore all Microsoft product dependencies except those explicitly defined in groups.
+      - dependency-name: "Microsoft.Extensions.Hosting.Abstractions"
+      - dependency-name: "Microsoft.Extensions.Logging.Abstractions"
+      - dependency-name: "Microsoft.Extensions.AI.OpenAI"
+      - dependency-name: "Microsoft.Extensions.TimeProvider.Testing" 
+      - dependency-name: "Microsoft.AspNetCore.*"
+      - dependency-name: "Microsoft.IdentityModel.*"
+      - dependency-name: "Microsoft.Bcl.*"
+      - dependency-name: "Microsoft.SourceLink.*"
+      # Ignore Roslyn/CodeAnalysis dependencies to maintain VS 2022 compatibility
+      - dependency-name: "Microsoft.CodeAnalysis.*"
+      # Ignore all System product dependencies except those explicitly in testing groups
+      - dependency-name: "System.Diagnostics.*"
+      - dependency-name: "System.IO.*"
+      - dependency-name: "System.Text.*"
+      - dependency-name: "System.Threading.*"
+      - dependency-name: "System.Net.ServerSentEvents"
+    # Limit the number of open pull requests for testing dependencies
+    open-pull-requests-limit: 5
+    # Add labels to dependency update PRs
+    labels:
+      - "dependencies"
+      - "testing"
+
+  # Monitor GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    # Limit the number of open pull requests for GitHub Actions to 5
+    open-pull-requests-limit: 5
+    # Add labels to GitHub Actions update PRs
+    labels:
+      - "dependencies"
+      - "github-actions"

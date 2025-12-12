@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Protocol;
 
@@ -9,6 +11,7 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class Prompt : IBaseMetadata
 {
     /// <inheritdoc />
@@ -45,11 +48,20 @@ public sealed class Prompt : IBaseMetadata
     /// </para>
     /// <para>
     /// When a client makes a <see cref="RequestMethods.PromptsGet"/> request, it can provide values for these arguments
-    /// which will be substituted into the prompt template or otherwise used to render the prompt.
+    /// that will be substituted into the prompt template or otherwise used to render the prompt.
     /// </para>
     /// </remarks>
     [JsonPropertyName("arguments")]
     public IList<PromptArgument>? Arguments { get; set; }
+
+    /// <summary>
+    /// Gets or sets an optional list of icons for this prompt.
+    /// </summary>
+    /// <remarks>
+    /// This list can be used by clients to display the prompt's icon in a user interface.
+    /// </remarks>
+    [JsonPropertyName("icons")]
+    public IList<Icon>? Icons { get; set; }
 
     /// <summary>
     /// Gets or sets metadata reserved by MCP for protocol-level metadata.
@@ -59,4 +71,20 @@ public sealed class Prompt : IBaseMetadata
     /// </remarks>
     [JsonPropertyName("_meta")]
     public JsonObject? Meta { get; set; }
+
+    /// <summary>
+    /// Gets or sets the callable server prompt corresponding to this metadata if any.
+    /// </summary>
+    [JsonIgnore]
+    public McpServerPrompt? McpServerPrompt { get; set; }
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay
+    {
+        get
+        {
+            string desc = Description is not null ? $", Description = \"{Description}\"" : "";
+            return $"Name = {Name}{desc}";
+        }
+    }
 }

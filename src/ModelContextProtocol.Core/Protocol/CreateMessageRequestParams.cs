@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace ModelContextProtocol.Protocol;
 
 /// <summary>
-/// Represents the parameters used with a <see cref="RequestMethods.SamplingCreateMessage"/> 
+/// Represents the parameters used with a <see cref="RequestMethods.SamplingCreateMessage"/>
 /// request from a server to sample an LLM via the client.
 /// </summary>
 /// <remarks>
@@ -16,44 +16,52 @@ public sealed class CreateMessageRequestParams : RequestParams
     /// Gets or sets an indication as to which server contexts should be included in the prompt.
     /// </summary>
     /// <remarks>
-    /// The client may ignore this request.
+    /// <para>
+    /// The client might ignore this request.
+    /// </para>
+    /// <para>
+    /// <see cref="ContextInclusion"/>, and in particular <see cref="ContextInclusion.ThisServer"/> and
+    /// <see cref="ContextInclusion.AllServers"/>, are deprecated. Servers should only use these values if the client
+    /// declares <see cref="ClientCapabilities.Sampling"/> with <see cref="SamplingCapability.Context"/> set.
+    /// These values might be removed in future spec releases.
+    /// </para>
     /// </remarks>
     [JsonPropertyName("includeContext")]
-    public ContextInclusion? IncludeContext { get; init; }
+    public ContextInclusion? IncludeContext { get; set; }
 
     /// <summary>
     /// Gets or sets the maximum number of tokens to generate in the LLM response, as requested by the server.
     /// </summary>
     /// <remarks>
-    /// A token is generally a word or part of a word in the text. Setting this value helps control 
-    /// response length and computation time. The client may choose to sample fewer tokens than requested.
+    /// A token is generally a word or part of a word in the text. Setting this value helps control
+    /// response length and computation time. The client can choose to sample fewer tokens than requested.
     /// </remarks>
     [JsonPropertyName("maxTokens")]
-    public int? MaxTokens { get; init; }
+    public required int MaxTokens { get; set; }
 
     /// <summary>
     /// Gets or sets the messages requested by the server to be included in the prompt.
     /// </summary>
     [JsonPropertyName("messages")]
-    public required IReadOnlyList<SamplingMessage> Messages { get; init; }
+    public IList<SamplingMessage> Messages { get; set; } = [];
 
     /// <summary>
     /// Gets or sets optional metadata to pass through to the LLM provider.
     /// </summary>
     /// <remarks>
     /// The format of this metadata is provider-specific and can include model-specific settings or
-    /// configuration that isn't covered by standard parameters. This allows for passing custom parameters 
+    /// configuration that isn't covered by standard parameters. This allows for passing custom parameters
     /// that are specific to certain AI models or providers.
     /// </remarks>
     [JsonPropertyName("metadata")]
-    public JsonElement? Metadata { get; init; }
+    public JsonElement? Metadata { get; set; }
 
     /// <summary>
     /// Gets or sets the server's preferences for which model to select.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The client may ignore these preferences.
+    /// The client might ignore these preferences.
     /// </para>
     /// <para>
     /// These preferences help the client make an appropriate model selection based on the server's priorities
@@ -66,7 +74,7 @@ public sealed class CreateMessageRequestParams : RequestParams
     /// </para>
     /// </remarks>
     [JsonPropertyName("modelPreferences")]
-    public ModelPreferences? ModelPreferences { get; init; }
+    public ModelPreferences? ModelPreferences { get; set; }
 
     /// <summary>
     /// Gets or sets optional sequences of characters that signal the LLM to stop generating text when encountered.
@@ -74,30 +82,42 @@ public sealed class CreateMessageRequestParams : RequestParams
     /// <remarks>
     /// <para>
     /// When the model generates any of these sequences during sampling, text generation stops immediately,
-    /// even if the maximum token limit hasn't been reached. This is useful for controlling generation 
+    /// even if the maximum token limit hasn't been reached. This behavior is useful for controlling generation
     /// endings or preventing the model from continuing beyond certain points.
     /// </para>
     /// <para>
-    /// Stop sequences are typically case-sensitive, and typically the LLM will only stop generation when a produced
+    /// Stop sequences are typically case-sensitive, and the LLM will only stop generation when a produced
     /// sequence exactly matches one of the provided sequences. Common uses include ending markers like "END", punctuation
     /// like ".", or special delimiter sequences like "###".
     /// </para>
     /// </remarks>
     [JsonPropertyName("stopSequences")]
-    public IReadOnlyList<string>? StopSequences { get; init; }
+    public IList<string>? StopSequences { get; set; }
 
     /// <summary>
     /// Gets or sets an optional system prompt the server wants to use for sampling.
     /// </summary>
     /// <remarks>
-    /// The client may modify or omit this prompt.
+    /// The client might modify or omit this prompt.
     /// </remarks>
     [JsonPropertyName("systemPrompt")]
-    public string? SystemPrompt { get; init; }
+    public string? SystemPrompt { get; set; }
 
     /// <summary>
     /// Gets or sets the temperature to use for sampling, as requested by the server.
     /// </summary>
     [JsonPropertyName("temperature")]
-    public float? Temperature { get; init; }
+    public float? Temperature { get; set; }
+
+    /// <summary>
+    /// Gets or sets tools that the model can use during generation.
+    /// </summary>
+    [JsonPropertyName("tools")]
+    public IList<Tool>? Tools { get; set; }
+
+    /// <summary>
+    /// Gets or sets controls for how the model uses tools.
+    /// </summary>
+    [JsonPropertyName("toolChoice")]
+    public ToolChoice? ToolChoice { get; set; }
 }

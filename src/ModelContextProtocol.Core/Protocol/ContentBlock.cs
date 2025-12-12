@@ -1,6 +1,6 @@
-using Microsoft.Extensions.AI;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -24,7 +24,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for more details.
 /// </para>
 /// </remarks>
-[JsonConverter(typeof(Converter))] // TODO: This converter exists due to the lack of downlevel support for AllowOutOfOrderMetadataProperties.
+[JsonConverter(typeof(Converter))]
 public abstract class ContentBlock
 {
     /// <summary>Prevent external derivations.</summary>
@@ -33,13 +33,16 @@ public abstract class ContentBlock
     }
 
     /// <summary>
-    /// Gets or sets the type of content.
+    /// When overridden in a derived class, gets the type of content.
     /// </summary>
+    /// <value>
+    /// The type of content. Valid values include "image", "audio", "text", "resource", "resource_link", "tool_use", and "tool_result".
+    /// </value>
     /// <remarks>
-    /// This determines the structure of the content object. Valid values include "image", "audio", "text", "resource", and "resource_link".
+    /// This value determines the structure of the content object.
     /// </remarks>
     [JsonPropertyName("type")]
-    public string Type { get; set; } = string.Empty;
+    public abstract string Type { get; }
 
     /// <summary>
     /// Gets or sets optional annotations for the content.
@@ -49,11 +52,22 @@ public abstract class ContentBlock
     /// and the priority level of the content. Clients can use this information to filter or prioritize content for different roles.
     /// </remarks>
     [JsonPropertyName("annotations")]
-    public Annotations? Annotations { get; init; }
+    public Annotations? Annotations { get; set; }
+
+    /// <summary>
+    /// Gets or sets metadata reserved by MCP for protocol-level metadata.
+    /// </summary>
+    /// <remarks>
+    /// Implementations must not make assumptions about its contents.
+    /// </remarks>
+    [JsonPropertyName("_meta")]
+    public JsonObject? Meta { get; set; }
 
     /// <summary>
     /// Provides a <see cref="JsonConverter"/> for <see cref="ContentBlock"/>.
     /// </summary>
+    /// Provides a polymorphic converter for the <see cref="ContentBlock"/> class that doesn't  require
+    /// setting <see cref="JsonSerializerOptions.AllowOutOfOrderMetadataProperties"/> explicitly.
     [EditorBrowsable(EditorBrowsableState.Never)]
     public class Converter : JsonConverter<ContentBlock>
     {
@@ -81,6 +95,12 @@ public abstract class ContentBlock
             ResourceContents? resource = null;
             Annotations? annotations = null;
             JsonObject? meta = null;
+            string? id = null;
+            JsonElement? input = null;
+            string? toolUseId = null;
+            List<ContentBlock>? content = null;
+            JsonElement? structuredContent = null;
+            bool? isError = null;
 
             while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
             {
@@ -139,41 +159,71 @@ public abstract class ContentBlock
                         meta = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.JsonObject);
                         break;
 
+                    case "id":
+                        id = reader.GetString();
+                        break;
+
+                    case "input":
+                        input = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.JsonElement);
+                        break;
+
+                    case "toolUseId":
+                        toolUseId = reader.GetString();
+                        break;
+
+                    case "content":
+                        if (reader.TokenType == JsonTokenType.StartArray)
+                        {
+                            content = [];
+                            while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
+                            {
+                                content.Add(Read(ref reader, typeof(ContentBlock), options) ??
+                                    throw new JsonException("Unexpected null item in content array."));
+                            }
+                        }
+                        else
+                        {
+                            content = [Read(ref reader, typeof(ContentBlock), options) ??
+                                throw new JsonException("Unexpected null content item.")];
+                        }
+                        break;
+
+                    case "structuredContent":
+                        structuredContent = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.JsonElement);
+                        break;
+
+                    case "isError":
+                        isError = reader.GetBoolean();
+                        break;
+
                     default:
+                        reader.Skip();
                         break;
                 }
             }
 
-            return type switch
+            ContentBlock block = type switch
             {
                 "text" => new TextContentBlock
                 {
                     Text = text ?? throw new JsonException("Text contents must be provided for 'text' type."),
-                    Annotations = annotations,
-                    Meta = meta,
                 },
 
                 "image" => new ImageContentBlock
                 {
                     Data = data ?? throw new JsonException("Image data must be provided for 'image' type."),
                     MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'image' type."),
-                    Annotations = annotations,
-                    Meta = meta,
                 },
 
                 "audio" => new AudioContentBlock
                 {
                     Data = data ?? throw new JsonException("Audio data must be provided for 'audio' type."),
                     MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'audio' type."),
-                    Annotations = annotations,
-                    Meta = meta,
                 },
 
                 "resource" => new EmbeddedResourceBlock
                 {
                     Resource = resource ?? throw new JsonException("Resource contents must be provided for 'resource' type."),
-                    Annotations = annotations,
-                    Meta = meta,
                 },
 
                 "resource_link" => new ResourceLinkBlock
@@ -183,11 +233,30 @@ public abstract class ContentBlock
                     Description = description,
                     MimeType = mimeType,
                     Size = size,
-                    Annotations = annotations,
+                },
+
+                "tool_use" => new ToolUseContentBlock
+                {
+                    Id = id ?? throw new JsonException("ID must be provided for 'tool_use' type."),
+                    Name = name ?? throw new JsonException("Name must be provided for 'tool_use' type."),
+                    Input = input ?? throw new JsonException("Input must be provided for 'tool_use' type."),
+                },
+
+                "tool_result" => new ToolResultContentBlock
+                {
+                    ToolUseId = toolUseId ?? throw new JsonException("ToolUseId must be provided for 'tool_result' type."),
+                    Content = content ?? throw new JsonException("Content must be provided for 'tool_result' type."),
+                    StructuredContent = structuredContent,
+                    IsError = isError,
                 },
 
                 _ => throw new JsonException($"Unknown content type: '{type}'"),
             };
+
+            block.Annotations = annotations;
+            block.Meta = meta;
+
+            return block;
         }
 
         /// <inheritdoc/>
@@ -207,41 +276,21 @@ public abstract class ContentBlock
             {
                 case TextContentBlock textContent:
                     writer.WriteString("text", textContent.Text);
-                    if (textContent.Meta is not null)
-                    {
-                        writer.WritePropertyName("_meta");
-                        JsonSerializer.Serialize(writer, textContent.Meta, McpJsonUtilities.JsonContext.Default.JsonObject);
-                    }
                     break;
 
                 case ImageContentBlock imageContent:
                     writer.WriteString("data", imageContent.Data);
                     writer.WriteString("mimeType", imageContent.MimeType);
-                    if (imageContent.Meta is not null)
-                    {
-                        writer.WritePropertyName("_meta");
-                        JsonSerializer.Serialize(writer, imageContent.Meta, McpJsonUtilities.JsonContext.Default.JsonObject);
-                    }
                     break;
 
                 case AudioContentBlock audioContent:
                     writer.WriteString("data", audioContent.Data);
                     writer.WriteString("mimeType", audioContent.MimeType);
-                    if (audioContent.Meta is not null)
-                    {
-                        writer.WritePropertyName("_meta");
-                        JsonSerializer.Serialize(writer, audioContent.Meta, McpJsonUtilities.JsonContext.Default.JsonObject);
-                    }
                     break;
 
                 case EmbeddedResourceBlock embeddedResource:
                     writer.WritePropertyName("resource");
                     JsonSerializer.Serialize(writer, embeddedResource.Resource, McpJsonUtilities.JsonContext.Default.ResourceContents);
-                    if (embeddedResource.Meta is not null)
-                    {
-                        writer.WritePropertyName("_meta");
-                        JsonSerializer.Serialize(writer, embeddedResource.Meta, McpJsonUtilities.JsonContext.Default.JsonObject);
-                    }
                     break;
 
                 case ResourceLinkBlock resourceLink:
@@ -260,6 +309,33 @@ public abstract class ContentBlock
                         writer.WriteNumber("size", resourceLink.Size.Value);
                     }
                     break;
+
+                case ToolUseContentBlock toolUse:
+                    writer.WriteString("id", toolUse.Id);
+                    writer.WriteString("name", toolUse.Name);
+                    writer.WritePropertyName("input");
+                    JsonSerializer.Serialize(writer, toolUse.Input, McpJsonUtilities.JsonContext.Default.JsonElement);
+                    break;
+
+                case ToolResultContentBlock toolResult:
+                    writer.WriteString("toolUseId", toolResult.ToolUseId);
+                    writer.WritePropertyName("content");
+                    writer.WriteStartArray();
+                    foreach (var item in toolResult.Content)
+                    {
+                        Write(writer, item, options);
+                    }
+                    writer.WriteEndArray();
+                    if (toolResult.StructuredContent.HasValue)
+                    {
+                        writer.WritePropertyName("structuredContent");
+                        JsonSerializer.Serialize(writer, toolResult.StructuredContent.Value, McpJsonUtilities.JsonContext.Default.JsonElement);
+                    }
+                    if (toolResult.IsError.HasValue)
+                    {
+                        writer.WriteBoolean("isError", toolResult.IsError.Value);
+                    }
+                    break;
             }
 
             if (value.Annotations is { } annotations)
@@ -268,16 +344,23 @@ public abstract class ContentBlock
                 JsonSerializer.Serialize(writer, annotations, McpJsonUtilities.JsonContext.Default.Annotations);
             }
 
+            if (value.Meta is not null)
+            {
+                writer.WritePropertyName("_meta");
+                JsonSerializer.Serialize(writer, value.Meta, McpJsonUtilities.JsonContext.Default.JsonObject);
+            }
+
             writer.WriteEndObject();
         }
     }
 }
 
 /// <summary>Represents text provided to or from an LLM.</summary>
+[DebuggerDisplay("Text = \"{Text}\"")]
 public sealed class TextContentBlock : ContentBlock
 {
-    /// <summary>Initializes the instance of the <see cref="TextContentBlock"/> class.</summary>
-    public TextContentBlock() => Type = "text";
+    /// <inheritdoc/>
+    public override string Type => "text";
 
     /// <summary>
     /// Gets or sets the text content of the message.
@@ -285,21 +368,16 @@ public sealed class TextContentBlock : ContentBlock
     [JsonPropertyName("text")]
     public required string Text { get; set; }
 
-    /// <summary>
-    /// Gets or sets metadata reserved by MCP for protocol-level metadata.
-    /// </summary>
-    /// <remarks>
-    /// Implementations must not make assumptions about its contents.
-    /// </remarks>
-    [JsonPropertyName("_meta")]
-    public JsonObject? Meta { get; set; }
+    /// <inheritdoc/>
+    public override string ToString() => Text ?? "";
 }
 
 /// <summary>Represents an image provided to or from an LLM.</summary>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class ImageContentBlock : ContentBlock
 {
-    /// <summary>Initializes the instance of the <see cref="ImageContentBlock"/> class.</summary>
-    public ImageContentBlock() => Type = "image";
+    /// <inheritdoc/>
+    public override string Type => "image";
 
     /// <summary>
     /// Gets or sets the base64-encoded image data.
@@ -311,28 +389,21 @@ public sealed class ImageContentBlock : ContentBlock
     /// Gets or sets the MIME type (or "media type") of the content, specifying the format of the data.
     /// </summary>
     /// <remarks>
-    /// <para>
     /// Common values include "image/png" and "image/jpeg".
-    /// </para>
     /// </remarks>
     [JsonPropertyName("mimeType")]
     public required string MimeType { get; set; }
 
-    /// <summary>
-    /// Gets or sets metadata reserved by MCP for protocol-level metadata.
-    /// </summary>
-    /// <remarks>
-    /// Implementations must not make assumptions about its contents.
-    /// </remarks>
-    [JsonPropertyName("_meta")]
-    public JsonObject? Meta { get; set; }
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay => $"MimeType = {MimeType}, Length = {DebuggerDisplayHelper.GetBase64LengthDisplay(Data)}";
 }
 
 /// <summary>Represents audio provided to or from an LLM.</summary>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class AudioContentBlock : ContentBlock
 {
-    /// <summary>Initializes the instance of the <see cref="AudioContentBlock"/> class.</summary>
-    public AudioContentBlock() => Type = "audio";
+    /// <inheritdoc/>
+    public override string Type => "audio";
 
     /// <summary>
     /// Gets or sets the base64-encoded audio data.
@@ -344,38 +415,31 @@ public sealed class AudioContentBlock : ContentBlock
     /// Gets or sets the MIME type (or "media type") of the content, specifying the format of the data.
     /// </summary>
     /// <remarks>
-    /// <para>
     /// Common values include "audio/wav" and "audio/mp3".
-    /// </para>
     /// </remarks>
     [JsonPropertyName("mimeType")]
     public required string MimeType { get; set; }
 
-    /// <summary>
-    /// Gets or sets metadata reserved by MCP for protocol-level metadata.
-    /// </summary>
-    /// <remarks>
-    /// Implementations must not make assumptions about its contents.
-    /// </remarks>
-    [JsonPropertyName("_meta")]
-    public JsonObject? Meta { get; set; }
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay => $"MimeType = {MimeType}, Length = {DebuggerDisplayHelper.GetBase64LengthDisplay(Data)}";
 }
 
 /// <summary>Represents the contents of a resource, embedded into a prompt or tool call result.</summary>
 /// <remarks>
 /// It is up to the client how best to render embedded resources for the benefit of the LLM and/or the user.
 /// </remarks>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class EmbeddedResourceBlock : ContentBlock
 {
-    /// <summary>Initializes the instance of the <see cref="ResourceLinkBlock"/> class.</summary>
-    public EmbeddedResourceBlock() => Type = "resource";
+    /// <inheritdoc/>
+    public override string Type => "resource";
 
     /// <summary>
     /// Gets or sets the resource content of the message when <see cref="Type"/> is "resource".
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Resources can be either text-based (<see cref="TextResourceContents"/>) or 
+    /// Resources can be either text-based (<see cref="TextResourceContents"/>) or
     /// binary (<see cref="BlobResourceContents"/>), allowing for flexible data representation.
     /// Each resource has a URI that can be used for identification and retrieval.
     /// </para>
@@ -383,43 +447,39 @@ public sealed class EmbeddedResourceBlock : ContentBlock
     [JsonPropertyName("resource")]
     public required ResourceContents Resource { get; set; }
 
-    /// <summary>
-    /// Gets or sets metadata reserved by MCP for protocol-level metadata.
-    /// </summary>
-    /// <remarks>
-    /// Implementations must not make assumptions about its contents.
-    /// </remarks>
-    [JsonPropertyName("_meta")]
-    public JsonObject? Meta { get; set; }
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay => $"Uri = \"{Resource.Uri}\"";
 }
 
 /// <summary>Represents a resource that the server is capable of reading, included in a prompt or tool call result.</summary>
 /// <remarks>
 /// Resource links returned by tools are not guaranteed to appear in the results of `resources/list` requests.
 /// </remarks>
+[DebuggerDisplay("Name = {Name}, Uri = \"{Uri}\"")]
 public sealed class ResourceLinkBlock : ContentBlock
 {
-    /// <summary>Initializes the instance of the <see cref="ResourceLinkBlock"/> class.</summary>
-    public ResourceLinkBlock() => Type = "resource_link";
+    /// <inheritdoc/>
+    public override string Type => "resource_link";
 
     /// <summary>
     /// Gets or sets the URI of this resource.
     /// </summary>
     [JsonPropertyName("uri")]
-    public required string Uri { get; init; }
+    [StringSyntax(StringSyntaxAttribute.Uri)]
+    public required string Uri { get; set; }
 
     /// <summary>
     /// Gets or sets a human-readable name for this resource.
     /// </summary>
     [JsonPropertyName("name")]
-    public required string Name { get; init; }
+    public required string Name { get; set; }
 
     /// <summary>
     /// Gets or sets a description of what this resource represents.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This can be used by clients to improve the LLM's understanding of available resources. It can be thought of like a \"hint\" to the model.
+    /// This description can be used by clients to improve the LLM's understanding of available resources. It can be thought of like a \"hint\" to the model.
     /// </para>
     /// <para>
     /// The description should provide clear context about the resource's content, format, and purpose.
@@ -431,7 +491,7 @@ public sealed class ResourceLinkBlock : ContentBlock
     /// </para>
     /// </remarks>
     [JsonPropertyName("description")]
-    public string? Description { get; init; }
+    public string? Description { get; set; }
 
     /// <summary>
     /// Gets or sets the MIME type of this resource.
@@ -443,18 +503,128 @@ public sealed class ResourceLinkBlock : ContentBlock
     /// "image/png" for PNG images, and "application/json" for JSON data.
     /// </para>
     /// <para>
-    /// This property may be <see langword="null"/> if the MIME type is unknown or not applicable for the resource.
+    /// This property can be <see langword="null"/> if the MIME type is unknown or not applicable for the resource.
     /// </para>
     /// </remarks>
     [JsonPropertyName("mimeType")]
-    public string? MimeType { get; init; }
+    public string? MimeType { get; set; }
 
     /// <summary>
     /// Gets or sets the size of the raw resource content (before base64 encoding), in bytes, if known.
     /// </summary>
     /// <remarks>
-    /// This can be used by applications to display file sizes and estimate context window usage.
+    /// This value can be used by applications to display file sizes and estimate context window usage.
     /// </remarks>
     [JsonPropertyName("size")]
-    public long? Size { get; init; }
+    public long? Size { get; set; }
+}
+
+/// <summary>Represents a request from the assistant to call a tool.</summary>
+[DebuggerDisplay("Name = {Name}, Id = {Id}")]
+public sealed class ToolUseContentBlock : ContentBlock
+{
+    /// <inheritdoc/>
+    public override string Type => "tool_use";
+
+    /// <summary>
+    /// Gets or sets a unique identifier for this tool use.
+    /// </summary>
+    /// <remarks>
+    /// This ID is used to match tool results to their corresponding tool uses.
+    /// </remarks>
+    [JsonPropertyName("id")]
+    public required string Id { get; set; }
+
+    /// <summary>
+    /// Gets or sets the name of the tool to call.
+    /// </summary>
+    [JsonPropertyName("name")]
+    public required string Name { get; set; }
+
+    /// <summary>
+    /// Gets or sets the arguments to pass to the tool, conforming to the tool's input schema.
+    /// </summary>
+    [JsonPropertyName("input")]
+    public required JsonElement Input { get; set; }
+}
+
+/// <summary>Represents the result of a tool use, provided by the user back to the assistant.</summary>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
+public sealed class ToolResultContentBlock : ContentBlock
+{
+    /// <inheritdoc/>
+    public override string Type => "tool_result";
+
+    /// <summary>
+    /// Gets or sets the ID of the tool use this result corresponds to.
+    /// </summary>
+    /// <remarks>
+    /// This value must match the ID from a previous <see cref="ToolUseContentBlock"/>.
+    /// </remarks>
+    [JsonPropertyName("toolUseId")]
+    public required string ToolUseId { get; set; }
+
+    /// <summary>
+    /// Gets or sets the unstructured result content of the tool use.
+    /// </summary>
+    /// <remarks>
+    /// This value has the same format as CallToolResult.Content and can include text, images,
+    /// audio, resource links, and embedded resources.
+    /// </remarks>
+    [JsonPropertyName("content")]
+    public required List<ContentBlock> Content { get; set; }
+
+    /// <summary>
+    /// Gets or sets an optional structured result object.
+    /// </summary>
+    /// <remarks>
+    /// If the tool defined an outputSchema, this object should conform to that schema.
+    /// </remarks>
+    [JsonPropertyName("structuredContent")]
+    public JsonElement? StructuredContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value that indicates whether the tool use resulted in an error.
+    /// </summary>
+    /// <value>
+    /// <see langword="true"/> if the tool use resulted in an error; <see langword="false"/> if it succeeded. The default is <see langword="false"/>.
+    /// </value>
+    /// <remarks>
+    /// If <see langword="true"/>, the content typically describes the error that occurred.
+    /// </remarks>
+    [JsonPropertyName("isError")]
+    public bool? IsError { get; set; }
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay
+    {
+        get
+        {
+            if (IsError == true)
+            {
+                return $"ToolUseId = {ToolUseId}, IsError = true";
+            }
+
+            // Try to show the result content
+            if (Content.Count == 1 && Content[0] is TextContentBlock textBlock)
+            {
+                return $"ToolUseId = {ToolUseId}, Result = \"{textBlock.Text}\"";
+            }
+
+            if (StructuredContent.HasValue)
+            {
+                try
+                {
+                    string json = StructuredContent.Value.GetRawText();
+                    return $"ToolUseId = {ToolUseId}, Result = {json}";
+                }
+                catch
+                {
+                    // Fall back to content count if GetRawText fails
+                }
+            }
+
+            return $"ToolUseId = {ToolUseId}, ContentCount = {Content.Count}";
+        }
+    }
 }

@@ -1,4 +1,4 @@
-﻿using ModelContextProtocol.Client;
+using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Tests.Utils;
 
@@ -21,9 +21,9 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         base.Dispose();
     }
 
-    protected abstract SseClientTransportOptions ClientTransportOptions { get; }
+    protected abstract HttpClientTransportOptions ClientTransportOptions { get; }
 
-    private Task<IMcpClient> GetClientAsync(McpClientOptions? options = null)
+    private Task<McpClient> GetClientAsync(McpClientOptions? options = null)
     {
         return _fixture.ConnectMcpClientAsync(options, LoggerFactory);
     }
@@ -35,7 +35,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
 
         // Act
         await using var client = await GetClientAsync();
-        await client.PingAsync(TestContext.Current.CancellationToken);
+        await client.PingAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(client);
@@ -52,9 +52,12 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         // Assert
         Assert.NotNull(client.ServerCapabilities);
         Assert.NotNull(client.ServerInfo);
+        Assert.NotNull(client.NegotiatedProtocolVersion);
 
-        if (ClientTransportOptions.Endpoint.AbsolutePath.EndsWith("/sse"))
+        if (ClientTransportOptions.Endpoint.AbsolutePath.EndsWith("/sse") ||
+            ClientTransportOptions.Endpoint.AbsolutePath.EndsWith("/stateless"))
         {
+            // In SSE and in Streamable HTTP's stateless mode, no protocol-defined session IDs are used.:w
             Assert.Null(client.SessionId);
         }
         else
@@ -136,7 +139,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         // act
         await using var client = await GetClientAsync();
 
-        IList<McpClientResource> allResources = await client.ListResourcesAsync(TestContext.Current.CancellationToken);
+        IList<McpClientResource> allResources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // The everything server provides 100 test resources
         Assert.Equal(100, allResources.Count);
@@ -152,7 +155,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         // Odd numbered resources are text in the everything server (despite the docs saying otherwise)
         // 1 is index 0, which is "even" in the 0-based index
         // We copied this oddity to the test server
-        var result = await client.ReadResourceAsync("test://static/resource/1", TestContext.Current.CancellationToken);
+        var result = await client.ReadResourceAsync("test://static/resource/1", null, TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
         Assert.Single(result.Contents);
@@ -171,7 +174,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         // Even numbered resources are binary in the everything server (despite the docs saying otherwise)
         // 2 is index 1, which is "odd" in the 0-based index
         // We copied this oddity to the test server
-        var result = await client.ReadResourceAsync("test://static/resource/2", TestContext.Current.CancellationToken);
+        var result = await client.ReadResourceAsync("test://static/resource/2", null, TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
         Assert.Single(result.Contents);
@@ -187,7 +190,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
 
         // act
         await using var client = await GetClientAsync();
-        var prompts = await client.ListPromptsAsync(TestContext.Current.CancellationToken);
+        var prompts = await client.ListPromptsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(prompts);
@@ -237,7 +240,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
 
         // act
         await using var client = await GetClientAsync();
-        await Assert.ThrowsAsync<McpException>(async () => await client.GetPromptAsync("non_existent_prompt", null, cancellationToken: TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<McpProtocolException>(async () => await client.GetPromptAsync("non_existent_prompt", null, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -250,16 +253,13 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         int samplingHandlerCalls = 0;
 #pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
         McpClientOptions options = new();
-        options.Capabilities = new();
-        options.Capabilities.Sampling ??= new();
-        options.Capabilities.Sampling.SamplingHandler = async (_, _, _) =>
+        options.Handlers.SamplingHandler = async (_, _, _) =>
         {
             samplingHandlerCalls++;
             return new CreateMessageResult
             {
                 Model = "test-model",
-                Role = Role.Assistant,
-                Content = new TextContentBlock { Text = "Test response" },
+                Content = [new TextContentBlock { Text = "Test response" }],
             };
         };
         await using var client = await GetClientAsync(options);

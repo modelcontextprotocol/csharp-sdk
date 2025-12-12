@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace ModelContextProtocol.Protocol;
 
 /// <summary>
-/// A successful response message in the JSON-RPC protocol.
+/// Represents a successful response message in the JSON-RPC protocol.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -19,11 +19,11 @@ namespace ModelContextProtocol.Protocol;
 public sealed class JsonRpcResponse : JsonRpcMessageWithId
 {
     /// <summary>
-    /// Gets the result of the method invocation.
+    /// Gets or sets the result of the method invocation.
     /// </summary>
     /// <remarks>
     /// This property contains the result data returned by the server in response to the JSON-RPC method request.
     /// </remarks>
     [JsonPropertyName("result")]
-    public required JsonNode? Result { get; init; }
+    public required JsonNode? Result { get; set; }
 }

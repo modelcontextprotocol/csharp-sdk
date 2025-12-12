@@ -30,7 +30,7 @@ public sealed class InitializeRequestParams : RequestParams
     /// The client and server must agree on a protocol version to communicate successfully.
     /// </para>
     /// <para>
-    /// During initialization, the server will check if it supports this requested version. If there's a 
+    /// During initialization, the server will check if it supports this requested version. If there's a
     /// mismatch, the server will reject the connection with a version mismatch error.
     /// </para>
     /// <para>
@@ -38,7 +38,7 @@ public sealed class InitializeRequestParams : RequestParams
     /// </para>
     /// </remarks>
     [JsonPropertyName("protocolVersion")]
-    public required string ProtocolVersion { get; init; }
+    public required string ProtocolVersion { get; set; }
 
     /// <summary>
     /// Gets or sets the client's capabilities.
@@ -47,15 +47,15 @@ public sealed class InitializeRequestParams : RequestParams
     /// Capabilities define the features the client supports, such as "sampling" or "roots".
     /// </remarks>
     [JsonPropertyName("capabilities")]
-    public ClientCapabilities? Capabilities { get; init; }
+    public required ClientCapabilities Capabilities { get; set; }
 
     /// <summary>
     /// Gets or sets information about the client implementation, including its name and version.
     /// </summary>
     /// <remarks>
     /// This information is required during the initialization handshake to identify the client.
-    /// Servers may use this information for logging, debugging, or compatibility checks.
+    /// Servers might use this information for logging, debugging, or compatibility checks.
     /// </remarks>
     [JsonPropertyName("clientInfo")]
-    public required Implementation ClientInfo { get; init; }
+    public required Implementation ClientInfo { get; set; }
 }

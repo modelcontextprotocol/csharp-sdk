@@ -1,7 +1,8 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Connections;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Tests.Utils;
 
 namespace ModelContextProtocol.AspNetCore.Tests.Utils;
@@ -11,12 +12,14 @@ public class KestrelInMemoryTest : LoggedTest
     public KestrelInMemoryTest(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
     {
-        // Use SlimBuilder instead of EmptyBuilder to avoid having to call UseRouting() and UseEndpoints(_ => { })
-        // or a helper that does the same every test. But clear out the existing socket transport to avoid potential port conflicts.
-        Builder = WebApplication.CreateSlimBuilder();
-        Builder.Services.RemoveAll<IConnectionListenerFactory>();
+        Builder = WebApplication.CreateEmptyBuilder(new());
         Builder.Services.AddSingleton<IConnectionListenerFactory>(KestrelInMemoryTransport);
+        Builder.WebHost.UseKestrelCore();
+        Builder.Services.AddRoutingCore();
+        Builder.Services.AddLogging();
+        Builder.Services.AddSingleton<ILoggerProvider>(MockLoggerProvider);
         Builder.Services.AddSingleton(XunitLoggerProvider);
+        Builder.Logging.SetMinimumLevel(LogLevel.Debug);
 
         SocketsHttpHandler.ConnectCallback = (context, token) =>
         {

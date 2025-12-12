@@ -11,13 +11,13 @@ namespace ModelContextProtocol.Server;
 /// <remarks>
 /// <para>
 /// <see cref="McpServerResource"/> is an abstract base class that represents an MCP resource for use in the server (as opposed
-/// to <see cref="Resource"/> or <see cref="ResourceTemplate"/>, which provide the protocol representations of a resource). Instances of 
+/// to <see cref="Resource"/> or <see cref="ResourceTemplate"/>, which provide the protocol representations of a resource). Instances of
 /// <see cref="McpServerResource"/> can be added into a <see cref="IServiceCollection"/> to be picked up automatically when
-/// <see cref="McpServerFactory"/> is used to create an <see cref="IMcpServer"/>, or added into a <see cref="McpServerPrimitiveCollection{McpServerResource}"/>.
+/// <see cref="McpServer"/> is used to create an <see cref="McpServer"/>, or added into a <see cref="McpServerPrimitiveCollection{McpServerResource}"/>.
 /// </para>
 /// <para>
 /// Most commonly, <see cref="McpServerResource"/> instances are created using the static <see cref="M:McpServerResource.Create"/> methods.
-/// These methods enable creating an <see cref="McpServerResource"/> for a method, specified via a <see cref="Delegate"/> or 
+/// These methods enable creating an <see cref="McpServerResource"/> for a method, specified via a <see cref="Delegate"/> or
 /// <see cref="MethodInfo"/>, and are what are used implicitly by WithResourcesFromAssembly and
 /// <see cref="M:McpServerBuilderExtensions.WithResources"/>. The <see cref="M:McpServerResource.Create"/> methods
 /// create <see cref="McpServerResource"/> instances capable of working with a large variety of .NET method signatures, automatically handling
@@ -25,8 +25,8 @@ namespace ModelContextProtocol.Server;
 /// into the <see cref="ReadResourceResult"/> that's then serialized and sent back to the client.
 /// </para>
 /// <para>
-/// <see cref="McpServerResource"/> is used to represent both direct resources (e.g. "resource://example") and templated
-/// resources (e.g. "resource://example/{id}").
+/// <see cref="McpServerResource"/> is used to represent both direct resources (for example,"resource://example") and templated
+/// resources (for example,"resource://example/{id}").
 /// </para>
 /// <para>
 /// Read resource requests do not contain separate arguments, only a URI. However, for templated resources, portions of that URI may be considered
@@ -35,7 +35,7 @@ namespace ModelContextProtocol.Server;
 ///   <item>
 ///     <description>
 ///       <see cref="CancellationToken"/> parameters are automatically bound to a <see cref="CancellationToken"/> provided by the
-///       <see cref="IMcpServer"/> and that respects any <see cref="CancelledNotificationParams"/>s sent by the client for this operation's
+///       <see cref="McpServer"/> and that respects any <see cref="CancelledNotificationParams"/>s sent by the client for this operation's
 ///       <see cref="RequestId"/>.
 ///     </description>
 ///   </item>
@@ -46,7 +46,7 @@ namespace ModelContextProtocol.Server;
 ///   </item>
 ///   <item>
 ///     <description>
-///       <see cref="IMcpServer"/> parameters are bound directly to the <see cref="IMcpServer"/> instance associated
+///       <see cref="McpServer"/> parameters are bound directly to the <see cref="McpServer"/> instance associated
 ///       with this request's <see cref="RequestContext{ReadResourceRequestParams}"/>. Such parameters may be used to understand
 ///       what server is being used to process the request, and to interact with the client issuing the request to that server.
 ///     </description>
@@ -62,15 +62,15 @@ namespace ModelContextProtocol.Server;
 ///   </item>
 ///   <item>
 ///     <description>
-///       When the <see cref="McpServerResource"/> is constructed, it may be passed an <see cref="IServiceProvider"/> via 
+///       When the <see cref="McpServerResource"/> is constructed, it may be passed an <see cref="IServiceProvider"/> via
 ///       <see cref="McpServerResourceCreateOptions.Services"/>. Any parameter that can be satisfied by that <see cref="IServiceProvider"/>
-///       according to <see cref="IServiceProviderIsService"/> will be resolved from the <see cref="IServiceProvider"/> provided to the 
+///       according to <see cref="IServiceProviderIsService"/> will be resolved from the <see cref="IServiceProvider"/> provided to the
 ///       resource invocation rather than from the argument collection.
 ///     </description>
 ///   </item>
 ///   <item>
 ///     <description>
-///       Any parameter attributed with <see cref="FromKeyedServicesAttribute"/> will similarly be resolved from the 
+///       Any parameter attributed with <see cref="FromKeyedServicesAttribute"/> will similarly be resolved from the
 ///       <see cref="IServiceProvider"/> provided to the resource invocation rather than from the argument collection.
 ///     </description>
 ///   </item>
@@ -90,7 +90,7 @@ namespace ModelContextProtocol.Server;
 ///     <description>Wrapped in a list containing the single <see cref="ResourceContents"/>.</description>
 ///   </item>
 ///   <item>
-///     <term><see cref="TextContentBlock"/></term>
+///     <term><see cref="TextContent"/></term>
 ///     <description>Converted to a list containing a single <see cref="TextResourceContents"/>.</description>
 ///   </item>
 ///   <item>
@@ -113,6 +113,10 @@ namespace ModelContextProtocol.Server;
 ///     <term><see cref="IEnumerable{String}"/> of <see cref="string"/></term>
 ///     <description>Converted to a list containing a <see cref="TextResourceContents"/>, one for each <see cref="string"/>.</description>
 ///   </item>
+///   <item>
+///     <term><see cref="ReadResourceResult"/></term>
+///     <description>Returned directly without modification.</description>
+///   </item>
 /// </list>
 /// <para>
 /// Other returned types will result in an <see cref="InvalidOperationException"/> being thrown.
@@ -125,7 +129,7 @@ public abstract class McpServerResource : IMcpServerPrimitive
     {
     }
 
-    /// <summary>Gets whether this resource is a URI template with parameters as opposed to a direct resource.</summary>
+    /// <summary>Gets a value that indicates whether this resource is a URI template with parameters as opposed to a direct resource.</summary>
     public bool IsTemplated => ProtocolResourceTemplate.UriTemplate.Contains('{');
 
     /// <summary>Gets the protocol <see cref="ResourceTemplate"/> type for this instance.</summary>
@@ -136,7 +140,7 @@ public abstract class McpServerResource : IMcpServerPrimitive
     /// </para>
     /// <para>
     /// Every valid resource URI is a valid resource URI template, and thus this property always returns an instance.
-    /// In contrast, the <see cref="ProtocolResource"/> property may return <see langword="null"/> if the resource template
+    /// In contrast, the <see cref="ProtocolResource"/> property might return <see langword="null"/> if the resource template
     /// contains a parameter, in which case the resource template URI is not a valid resource URI.
     /// </para>
     /// </remarks>
@@ -150,6 +154,26 @@ public abstract class McpServerResource : IMcpServerPrimitive
     public virtual Resource? ProtocolResource => ProtocolResourceTemplate.AsResource();
 
     /// <summary>
+    /// Gets the metadata for this resource instance.
+    /// </summary>
+    /// <remarks>
+    /// Contains attributes from the associated MethodInfo and declaring class (if any),
+    /// with class-level attributes appearing before method-level attributes.
+    /// </remarks>
+    public abstract IReadOnlyList<object> Metadata { get; }
+
+    /// <summary>
+    /// Evaluates whether the <paramref name="uri"/> matches the <see cref="ProtocolResourceTemplate"/>
+    /// and can be used as the <see cref="ReadResourceRequestParams.Uri"/> passed to <see cref="ReadAsync"/>.
+    /// </summary>
+    /// <param name="uri">The URI being evaluated for this resource.</param>
+    /// <returns>
+    /// <see langword="true"/> if the <paramref name="uri"/> matches the <see cref="ProtocolResourceTemplate"/>; otherwise, <see langword="false"/>.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
+    public abstract bool IsMatch(string uri);
+
+    /// <summary>
     /// Gets the resource, rendering it with the provided request parameters and returning the resource result.
     /// </summary>
     /// <param name="request">
@@ -161,12 +185,14 @@ public abstract class McpServerResource : IMcpServerPrimitive
     /// </param>
     /// <returns>
     /// A <see cref="ValueTask{ReadResourceResult}"/> representing the asynchronous operation, containing a <see cref="ReadResourceResult"/> with
-    /// the resource content and messages. If and only if this <see cref="McpServerResource"/> doesn't match the <see cref="ReadResourceRequestParams.Uri"/>,
-    /// the method returns <see langword="null"/>.
+    /// the resource content and messages.
     /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is <see langword="null"/>.</exception>
-    /// <exception cref="InvalidOperationException">The resource implementation returned <see langword="null"/> or an unsupported result type.</exception>
-    public abstract ValueTask<ReadResourceResult?> ReadAsync(
+    /// <exception cref="InvalidOperationException">
+    /// The <see cref="ReadResourceRequestParams.Uri"/> did not match the <see cref="ProtocolResourceTemplate"/> for this resource,
+    /// the resource implementation returned <see langword="null"/>, or the resource implementation returned an unsupported result type.
+    /// </exception>
+    public abstract ValueTask<ReadResourceResult> ReadAsync(
         RequestContext<ReadResourceRequestParams> request,
         CancellationToken cancellationToken = default);
 
@@ -192,25 +218,25 @@ public abstract class McpServerResource : IMcpServerPrimitive
     /// <exception cref="ArgumentNullException"><paramref name="method"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="method"/> is an instance method but <paramref name="target"/> is <see langword="null"/>.</exception>
     public static McpServerResource Create(
-        MethodInfo method, 
+        MethodInfo method,
         object? target = null,
         McpServerResourceCreateOptions? options = null) =>
         AIFunctionMcpServerResource.Create(method, target, options);
 
     /// <summary>
     /// Creates an <see cref="McpServerResource"/> instance for a method, specified via an <see cref="MethodInfo"/> for
-    /// and instance method, along with a <see cref="Type"/> representing the type of the target object to
+    /// an instance method, along with a <see cref="Type"/> representing the type of the target object to
     /// instantiate each time the method is invoked.
     /// </summary>
     /// <param name="method">The instance method to be represented via the created <see cref="AIFunction"/>.</param>
     /// <param name="createTargetFunc">
-    /// Callback used on each function invocation to create an instance of the type on which the instance method <paramref name="method"/>
+    /// The callback used on each function invocation to create an instance of the type on which the instance method <paramref name="method"/>
     /// will be invoked. If the returned instance is <see cref="IAsyncDisposable"/> or <see cref="IDisposable"/>, it will
     /// be disposed of after method completes its invocation.
     /// </param>
     /// <param name="options">Optional options used in the creation of the <see cref="McpServerResource"/> to control its behavior.</param>
     /// <returns>The created <see cref="AIFunction"/> for invoking <paramref name="method"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="method"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="method"/> or <paramref name="createTargetFunc"/> is <see langword="null"/>.</exception>
     public static McpServerResource Create(
         MethodInfo method,
         Func<RequestContext<ReadResourceRequestParams>, object> createTargetFunc,
@@ -223,7 +249,7 @@ public abstract class McpServerResource : IMcpServerPrimitive
     /// <exception cref="ArgumentNullException"><paramref name="function"/> is <see langword="null"/>.</exception>
     /// <remarks>
     /// Unlike the other overloads of Create, the <see cref="McpServerResource"/> created by <see cref="Create(AIFunction, McpServerResourceCreateOptions)"/>
-    /// does not provide all of the special parameter handling for MCP-specific concepts, like <see cref="IMcpServer"/>.
+    /// does not provide all of the special parameter handling for MCP-specific concepts, like <see cref="McpServer"/>.
     /// </remarks>
     public static McpServerResource Create(
         AIFunction function,
