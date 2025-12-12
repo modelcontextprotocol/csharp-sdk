@@ -79,7 +79,7 @@ public sealed class Icon
     /// Gets or sets the optional theme for this icon.
     /// </summary>
     /// <remarks>
-    /// Can be "light" or "dark". "light" indicates the icon is designed to be used with a light
+    /// <see cref="Theme"/> may be "light" or "dark". "light" indicates the icon is designed to be used with a light
     /// background, and "dark" indicates the icon is designed to be used with a dark background.
     /// If not provided, clients should assume the icon can be used with any theme.
     /// </remarks>
