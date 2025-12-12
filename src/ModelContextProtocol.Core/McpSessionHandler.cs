@@ -357,8 +357,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         LogRequestHandlerCalled(EndpointName, request.Method);
         long startingTimestamp = Stopwatch.GetTimestamp();
         JsonNode? result = await handler(request, cancellationToken).ConfigureAwait(false);
-        TimeSpan elapsed = GetElapsed(startingTimestamp);
-        LogRequestHandlerCompleted(EndpointName, request.Method, elapsed.TotalMilliseconds);
+        LogRequestHandlerCompleted(EndpointName, request.Method, GetElapsed(startingTimestamp).TotalMilliseconds);
 
         await SendMessageAsync(new JsonRpcResponse
         {
