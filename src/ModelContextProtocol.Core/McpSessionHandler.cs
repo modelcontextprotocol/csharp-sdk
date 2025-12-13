@@ -280,6 +280,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             switch (message)
             {
                 case JsonRpcRequest request:
+                    LogRequestHandlerCalled(EndpointName, request.Method);
                     long requestStartingTimestamp = Stopwatch.GetTimestamp();
                     try
                     {
@@ -362,7 +363,6 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             throw new McpProtocolException($"Method '{request.Method}' is not available.", McpErrorCode.MethodNotFound);
         }
 
-        LogRequestHandlerCalled(EndpointName, request.Method);
         JsonNode? result = await handler(request, cancellationToken).ConfigureAwait(false);
 
         await SendMessageAsync(new JsonRpcResponse
