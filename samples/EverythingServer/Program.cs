@@ -21,7 +21,33 @@ var builder = WebApplication.CreateBuilder(args);
 ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> subscriptions = new();
 
 builder.Services
-    .AddMcpServer()
+    .AddMcpServer(options =>
+    {
+        // Configure server implementation details with icons and website
+        options.ServerInfo = new Implementation
+        {
+            Name = "Everything Server",
+            Version = "1.0.0",
+            Title = "MCP Everything Server",
+            Description = "A comprehensive MCP server demonstrating tools, prompts, resources, sampling, and all MCP features",
+            WebsiteUrl = "https://github.com/modelcontextprotocol/csharp-sdk",
+            Icons = [
+                new Icon
+                {
+                    Source = "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Gear/Flat/gear_flat.svg",
+                    MimeType = "image/svg+xml",
+                    Sizes = ["any"],
+                    Theme = "light"
+                },
+                new Icon
+                {
+                    Source = "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Gear/3D/gear_3d.png",
+                    MimeType = "image/png",
+                    Sizes = ["256x256"]
+                }
+            ]
+        };
+    })
     .WithHttpTransport(options =>
     {
         // Add a RunSessionHandler to remove all subscriptions for the session when it ends
