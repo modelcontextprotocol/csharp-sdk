@@ -21,6 +21,19 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>An <see cref="McpClient"/> that's connected to the specified server.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="clientTransport"/> is <see langword="null"/>.</exception>
+    /// <exception cref="HttpRequestException">An error occurred while connecting to the server over HTTP.</exception>
+    /// <remarks>
+    /// <para>
+    /// When using an HTTP-based transport (such as <see cref="HttpClientTransport"/>), this method may throw
+    /// <see cref="HttpRequestException"/> if there is a problem establishing the connection to the MCP server.
+    /// </para>
+    /// <para>
+    /// If the server requires authentication and credentials are not provided or are invalid, an
+    /// <see cref="HttpRequestException"/> with an HTTP 401 Unauthorized status code will be thrown.
+    /// To authenticate with a protected server, configure the <see cref="HttpClientTransportOptions.OAuth"/>
+    /// property of the transport with appropriate credentials before calling this method.
+    /// </para>
+    /// </remarks>
     public static async Task<McpClient> CreateAsync(
         IClientTransport clientTransport,
         McpClientOptions? clientOptions = null,
