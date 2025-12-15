@@ -86,6 +86,8 @@ public abstract partial class McpSession : IAsyncDisposable
     /// <param name="method">The notification method.</param>
     /// <param name="handler">The handler to be invoked.</param>
     /// <returns>An <see cref="IDisposable"/> that will remove the registered handler when disposed.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="method"/> or <paramref name="handler"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="method"/> is empty or composed entirely of whitespace.</exception>
     public abstract IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler);
 
     /// <inheritdoc/>

@@ -52,6 +52,7 @@ public abstract partial class McpServer : McpSession
     /// <returns>A task containing the sampling result from the client.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
+    /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
     public ValueTask<CreateMessageResult> SampleAsync(
         CreateMessageRequestParams requestParams,
         CancellationToken cancellationToken = default)
@@ -76,6 +77,7 @@ public abstract partial class McpServer : McpSession
     /// <returns>A task containing the chat response from the model.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="messages"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
+    /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
     public async Task<ChatResponse> SampleAsync(
         IEnumerable<ChatMessage> messages, ChatOptions? chatOptions = default, CancellationToken cancellationToken = default)
     {
@@ -222,6 +224,7 @@ public abstract partial class McpServer : McpSession
     /// <returns>A task containing the list of roots exposed by the client.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The client does not support roots.</exception>
+    /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
     public ValueTask<ListRootsResult> RequestRootsAsync(
         ListRootsRequestParams requestParams,
         CancellationToken cancellationToken = default)
@@ -245,6 +248,7 @@ public abstract partial class McpServer : McpSession
     /// <returns>A task containing the elicitation result.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The client does not support elicitation.</exception>
+    /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
     public ValueTask<ElicitResult> ElicitAsync(
         ElicitRequestParams requestParams, 
         CancellationToken cancellationToken = default)
@@ -272,6 +276,7 @@ public abstract partial class McpServer : McpSession
     /// <exception cref="ArgumentNullException"><paramref name="message"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="message"/> is empty or composed entirely of whitespace.</exception>
     /// <exception cref="InvalidOperationException">The client does not support elicitation.</exception>
+    /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
     /// <remarks>
     /// Elicitation uses a constrained subset of JSON Schema and only supports strings, numbers/integers, booleans and string enums.
     /// Unsupported member types are ignored when constructing the schema.
