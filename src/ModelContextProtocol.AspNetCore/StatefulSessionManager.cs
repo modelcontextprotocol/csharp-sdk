@@ -18,8 +18,17 @@ internal sealed partial class StatefulSessionManager(
 
     private readonly TimeProvider _timeProvider = httpServerTransportOptions.Value.TimeProvider;
     private readonly TimeSpan _idleTimeout = httpServerTransportOptions.Value.IdleTimeout;
-    private readonly long _idleTimeoutTicks = httpServerTransportOptions.Value.IdleTimeout.Ticks;
+    private readonly long _idleTimeoutTicks = GetIdleTimeoutInTimestampTicks(httpServerTransportOptions.Value.IdleTimeout, httpServerTransportOptions.Value.TimeProvider);
     private readonly int _maxIdleSessionCount = httpServerTransportOptions.Value.MaxIdleSessionCount;
+
+    private static long GetIdleTimeoutInTimestampTicks(TimeSpan idleTimeout, TimeProvider timeProvider)
+    {
+        // Convert TimeSpan.Ticks (100-nanosecond intervals) to timestamp ticks based on TimeProvider.TimestampFrequency.
+        // TimeSpan.Ticks uses a fixed frequency of 10,000,000 ticks per second (100ns intervals).
+        // TimeProvider.GetTimestamp() returns ticks based on TimeProvider.TimestampFrequency, which varies by platform
+        // (e.g., ~1,000,000,000 on macOS using nanoseconds, ~10,000,000 on Windows using 100ns intervals).
+        return (long)(idleTimeout.Ticks * timeProvider.TimestampFrequency / (double)TimeSpan.TicksPerSecond);
+    }
 
     private readonly object _idlePruningLock = new();
     private readonly List<long> _idleTimestamps = [];
