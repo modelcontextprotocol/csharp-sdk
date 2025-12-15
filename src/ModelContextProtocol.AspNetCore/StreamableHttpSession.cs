@@ -58,6 +58,8 @@ internal sealed class StreamableHttpSession(
                     {
                         sessionManager.DecrementIdleSessionCount();
                     }
+                    // Update LastActivityTicks whenever a request is made to keep the session alive
+                    LastActivityTicks = sessionManager.TimeProvider.GetTimestamp();
                     break;
                 case SessionState.Disposed:
                     throw new ObjectDisposedException(nameof(StreamableHttpSession));
