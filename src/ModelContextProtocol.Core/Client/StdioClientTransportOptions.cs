@@ -8,6 +8,7 @@ public sealed class StdioClientTransportOptions
     /// <summary>
     /// Gets or sets the command to execute to start the server process.
     /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="value"/> is <see langword="null"/>, empty, or composed entirely of whitespace.</exception>
     public required string Command
     {
         get;
