@@ -10,8 +10,8 @@ public sealed class HttpClientTransportOptions
     /// <summary>
     /// Gets or sets the base address of the server for SSE connections.
     /// </summary>
-    /// <exception cref="ArgumentNullException"><paramref name="value"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException"><paramref name="value"/> is not an absolute URI, or does not use the HTTP or HTTPS scheme.</exception>
+    /// <exception cref="ArgumentNullException">The value is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">The value is not an absolute URI, or does not use the HTTP or HTTPS scheme.</exception>
     public required Uri Endpoint
     {
         get;
