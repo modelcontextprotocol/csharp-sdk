@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using System.Web;
 using Microsoft.Extensions.Logging;
@@ -31,14 +32,37 @@ var consoleLoggerFactory = LoggerFactory.Create(builder =>
     builder.AddConsole();
 });
 
+// Configure OAuth callback port via environment or pick an ephemeral port.
+var callbackPortEnv = Environment.GetEnvironmentVariable("OAUTH_CALLBACK_PORT");
+int callbackPort = 0;
+if (!string.IsNullOrEmpty(callbackPortEnv) && int.TryParse(callbackPortEnv, out var parsedPort))
+{
+    callbackPort = parsedPort;
+}
+
+if (callbackPort == 0)
+{
+    var tcp = new TcpListener(IPAddress.Loopback, 0);
+    tcp.Start();
+    callbackPort = ((IPEndPoint)tcp.LocalEndpoint).Port;
+    tcp.Stop();
+}
+
+var listenerPrefix = $"http://localhost:{callbackPort}/";
+var preStartedListener = new HttpListener();
+preStartedListener.Prefixes.Add(listenerPrefix);
+preStartedListener.Start();
+
+var clientRedirectUri = new Uri($"http://localhost:{callbackPort}/callback");
+
 var clientTransport = new HttpClientTransport(new()
 {
     Endpoint = new Uri(endpoint),
     TransportMode = HttpTransportMode.StreamableHttp,
     OAuth = new()
     {
-        RedirectUri = new Uri("http://localhost:1179/callback"),
-        AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+        RedirectUri = clientRedirectUri,
+        AuthorizationRedirectDelegate = (authUrl, redirectUri, ct) => HandleAuthorizationUrlWithListenerAsync(authUrl, redirectUri, preStartedListener, ct),
         DynamicClientRegistration = new()
         {
             ClientName = "ProtectedMcpClient",
@@ -93,25 +117,18 @@ switch (scenario)
 return success ? 0 : 1;
 
 // Copied from ProtectedMcpClient sample
-static async Task<string?> HandleAuthorizationUrlAsync(Uri authorizationUrl, Uri redirectUri, CancellationToken cancellationToken)
+static async Task<string?> HandleAuthorizationUrlWithListenerAsync(Uri authorizationUrl, Uri redirectUri, HttpListener listener, CancellationToken cancellationToken)
 {
     Console.WriteLine("Starting OAuth authorization flow...");
     Console.WriteLine($"Opening browser to: {authorizationUrl}");
 
-    var listenerPrefix = redirectUri.GetLeftPart(UriPartial.Authority);
-    if (!listenerPrefix.EndsWith("/")) listenerPrefix += "/";
-
-    using var listener = new HttpListener();
-    listener.Prefixes.Add(listenerPrefix);
-
     try
     {
-        listener.Start();
-        Console.WriteLine($"Listening for OAuth callback on: {listenerPrefix}");
-
         _ = OpenBrowserAsync(authorizationUrl);
 
-        var context = await listener.GetContextAsync();
+        Console.WriteLine($"Listening for OAuth callback on: {listener.Prefixes.Cast<string>().FirstOrDefault()}");
+        var contextTask = listener.GetContextAsync();
+        var context = await contextTask.WaitAsync(cancellationToken);
         var query = HttpUtility.ParseQueryString(context.Request.Url?.Query ?? string.Empty);
         var code = query["code"];
         var error = query["error"];
@@ -145,7 +162,7 @@ static async Task<string?> HandleAuthorizationUrlAsync(Uri authorizationUrl, Uri
     }
     finally
     {
-        if (listener.IsListening) listener.Stop();
+        try { if (listener.IsListening) listener.Stop(); } catch { }
     }
 }
 
