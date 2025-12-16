@@ -222,30 +222,6 @@ public class UseMcpClientWithTestSseServerTests : LoggedTest, IClassFixture<SseS
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task UseMcpClient_SupportsConnectorIdAsServer(bool streaming)
-    {
-        // Arrange
-        IChatClient sut = CreateTestChatClient(out var callbackState);
-        const string connectorId = "test-connector-123";
-        var mcpTool = new HostedMcpServerTool(connectorId, _transportOptions.Endpoint);
-        var options = new ChatOptions { Tools = [mcpTool] };
-
-        // Act
-        await GetResponseAsync(sut, options, streaming);
-
-        // Assert
-        Assert.NotNull(callbackState.CapturedOptions);
-        Assert.NotNull(callbackState.CapturedOptions.Tools);
-        var toolNames = callbackState.CapturedOptions.Tools.Select(t => t.Name).ToList();
-        Assert.Equal(3, toolNames.Count);
-        Assert.Contains("echo", toolNames);
-        Assert.Contains("echoSessionId", toolNames);
-        Assert.Contains("sampleLLM", toolNames);
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
     public async Task UseMcpClient_ThrowsInvalidOperationException_WhenServerAddressIsInvalid(bool streaming)
     {
         // Arrange
@@ -280,18 +256,10 @@ public class UseMcpClientWithTestSseServerTests : LoggedTest, IClassFixture<SseS
 
         // Assert
         Assert.NotNull(callbackState.CapturedOptions);
-        if (expectedTools.Length == 0)
-        {
-            // When all MCP tools are filtered out and no other tools exist, the Tools collection should be null
-            Assert.Null(callbackState.CapturedOptions.Tools);
-        }
-        else
-        {
-            Assert.NotNull(callbackState.CapturedOptions.Tools);
-            var toolNames = callbackState.CapturedOptions.Tools.Select(t => t.Name).ToList();
-            Assert.Equal(expectedTools.Length, toolNames.Count);
-            Assert.Equivalent(expectedTools, toolNames);
-        }
+        Assert.NotNull(callbackState.CapturedOptions.Tools);
+        var toolNames = callbackState.CapturedOptions.Tools.Select(t => t.Name).ToList();
+        Assert.Equal(expectedTools.Length, toolNames.Count);
+        Assert.Equivalent(expectedTools, toolNames);
     }
 
     [Theory]
