@@ -192,13 +192,7 @@ public partial class McpAuthenticationHandler : AuthenticationHandler<McpAuthent
         return base.HandleChallengeAsync(properties);
     }
 
-    /// <summary>
-    /// Creates a deep copy of the specified <see cref="ProtectedResourceMetadata"/>, optionally overriding the Resource property.
-    /// </summary>
-    /// <param name="resourceMetadata">The metadata to clone. If null, returns null.</param>
-    /// <param name="derivedResourceUri">Optional URI to use for the Resource property if the original Resource is null.</param>
-    /// <returns>A new instance of <see cref="ProtectedResourceMetadata"/> with cloned values, or null if the input is null.</returns>
-    public static ProtectedResourceMetadata? CloneResourceMetadata(ProtectedResourceMetadata? resourceMetadata, Uri? derivedResourceUri = null)
+    internal static ProtectedResourceMetadata? CloneResourceMetadata(ProtectedResourceMetadata? resourceMetadata, Uri? derivedResourceUri = null)
     {
         if (resourceMetadata is null)
         {
