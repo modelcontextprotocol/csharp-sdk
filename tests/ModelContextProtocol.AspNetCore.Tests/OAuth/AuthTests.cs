@@ -9,7 +9,6 @@ using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Server;
 using System.Net;
-using System.Reflection;
 using System.Security.Claims;
 using Xunit.Sdk;
 
@@ -776,12 +775,8 @@ public class AuthTests : OAuthTestBase
             DpopBoundAccessTokensRequired = true
         };
 
-        // Use reflection to call the internal CloneResourceMetadata method
-        var handlerType = typeof(McpAuthenticationHandler);
-        var cloneMethod = handlerType.GetMethod("CloneResourceMetadata", BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.NotNull(cloneMethod);
-
-        var clonedMetadata = (ProtectedResourceMetadata?)cloneMethod.Invoke(null, [metadata, null]);
+        // Call the public CloneResourceMetadata method
+        var clonedMetadata = McpAuthenticationHandler.CloneResourceMetadata(metadata, null);
         Assert.NotNull(clonedMetadata);
 
         // Ensure the cloned metadata is not the same instance
