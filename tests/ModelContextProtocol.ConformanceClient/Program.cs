@@ -1,10 +1,8 @@
-using System.Diagnostics;
 using System.Net;
 using System.Text;
 using System.Web;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol;
 
 // This program expects the following command-line arguments:
 // 1. The client conformance test scenario to run (e.g., "tools_call")
