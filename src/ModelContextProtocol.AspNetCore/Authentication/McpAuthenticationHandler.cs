@@ -130,7 +130,7 @@ public partial class McpAuthenticationHandler : AuthenticationHandler<McpAuthent
 
     private async Task<bool> HandleResourceMetadataRequestAsync(Uri? derivedResourceUri = null)
     {
-        var resourceMetadata = CloneResourceMetadata(Options.ResourceMetadata, derivedResourceUri);
+        var resourceMetadata = Options.ResourceMetadata?.Clone(derivedResourceUri);
 
         if (Options.Events.OnResourceMetadataRequest is not null)
         {
@@ -190,32 +190,6 @@ public partial class McpAuthenticationHandler : AuthenticationHandler<McpAuthent
         string headerValue = $"Bearer resource_metadata=\"{rawPrmDocumentUri}\"";
         Response.Headers.Append(HeaderNames.WWWAuthenticate, headerValue);
         return base.HandleChallengeAsync(properties);
-    }
-
-    internal static ProtectedResourceMetadata? CloneResourceMetadata(ProtectedResourceMetadata? resourceMetadata, Uri? derivedResourceUri = null)
-    {
-        if (resourceMetadata is null)
-        {
-            return null;
-        }
-
-        return new ProtectedResourceMetadata
-        {
-            Resource = resourceMetadata.Resource ?? derivedResourceUri,
-            AuthorizationServers = [.. resourceMetadata.AuthorizationServers],
-            BearerMethodsSupported = [.. resourceMetadata.BearerMethodsSupported],
-            ScopesSupported = [.. resourceMetadata.ScopesSupported],
-            JwksUri = resourceMetadata.JwksUri,
-            ResourceSigningAlgValuesSupported = resourceMetadata.ResourceSigningAlgValuesSupported is not null ? [.. resourceMetadata.ResourceSigningAlgValuesSupported] : null,
-            ResourceName = resourceMetadata.ResourceName,
-            ResourceDocumentation = resourceMetadata.ResourceDocumentation,
-            ResourcePolicyUri = resourceMetadata.ResourcePolicyUri,
-            ResourceTosUri = resourceMetadata.ResourceTosUri,
-            TlsClientCertificateBoundAccessTokens = resourceMetadata.TlsClientCertificateBoundAccessTokens,
-            AuthorizationDetailsTypesSupported = resourceMetadata.AuthorizationDetailsTypesSupported is not null ? [.. resourceMetadata.AuthorizationDetailsTypesSupported] : null,
-            DpopSigningAlgValuesSupported = resourceMetadata.DpopSigningAlgValuesSupported is not null ? [.. resourceMetadata.DpopSigningAlgValuesSupported] : null,
-            DpopBoundAccessTokensRequired = resourceMetadata.DpopBoundAccessTokensRequired
-        };
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Resource metadata request host did not match configured host '{ConfiguredHost}'.")]

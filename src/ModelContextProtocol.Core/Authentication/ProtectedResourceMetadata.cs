@@ -191,4 +191,30 @@ public sealed class ProtectedResourceMetadata
     /// </summary>
     [JsonIgnore]
     internal string? WwwAuthenticateScope { get; set; }
+
+    /// <summary>
+    /// Creates a deep copy of this <see cref="ProtectedResourceMetadata"/> instance, optionally overriding the Resource property.
+    /// </summary>
+    /// <param name="derivedResourceUri">Optional URI to use for the Resource property if the original Resource is null.</param>
+    /// <returns>A new instance of <see cref="ProtectedResourceMetadata"/> with cloned values.</returns>
+    public ProtectedResourceMetadata Clone(Uri? derivedResourceUri = null)
+    {
+        return new ProtectedResourceMetadata
+        {
+            Resource = Resource ?? derivedResourceUri,
+            AuthorizationServers = [.. AuthorizationServers],
+            BearerMethodsSupported = [.. BearerMethodsSupported],
+            ScopesSupported = [.. ScopesSupported],
+            JwksUri = JwksUri,
+            ResourceSigningAlgValuesSupported = ResourceSigningAlgValuesSupported is not null ? [.. ResourceSigningAlgValuesSupported] : null,
+            ResourceName = ResourceName,
+            ResourceDocumentation = ResourceDocumentation,
+            ResourcePolicyUri = ResourcePolicyUri,
+            ResourceTosUri = ResourceTosUri,
+            TlsClientCertificateBoundAccessTokens = TlsClientCertificateBoundAccessTokens,
+            AuthorizationDetailsTypesSupported = AuthorizationDetailsTypesSupported is not null ? [.. AuthorizationDetailsTypesSupported] : null,
+            DpopSigningAlgValuesSupported = DpopSigningAlgValuesSupported is not null ? [.. DpopSigningAlgValuesSupported] : null,
+            DpopBoundAccessTokensRequired = DpopBoundAccessTokensRequired
+        };
+    }
 }
