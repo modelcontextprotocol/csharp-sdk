@@ -106,4 +106,17 @@ public sealed class HttpClientTransportOptions
     /// Gets sor sets the authorization provider to use for authentication.
     /// </summary>
     public ClientOAuthOptions? OAuth { get; set; }
+
+    /// <summary>
+    /// Gets or sets the maximum number of reconnection attempts when an SSE stream is disconnected.
+    /// </summary>
+    /// <value>
+    /// The maximum number of reconnection attempts. The default is 2.
+    /// </value>
+    /// <remarks>
+    /// When an SSE stream is disconnected (e.g., due to a network issue), the client will attempt to
+    /// reconnect using the Last-Event-ID header to resume from where it left off. This property controls
+    /// how many reconnection attempts are made before giving up.
+    /// </remarks>
+    public int MaxReconnectionAttempts { get; set; } = 2;
 }
