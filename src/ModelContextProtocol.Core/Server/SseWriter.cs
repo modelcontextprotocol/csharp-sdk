@@ -22,8 +22,6 @@ internal sealed class SseWriter(string? messageEndpoint = null, BoundedChannelOp
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private bool _disposed;
 
-    public Func<IAsyncEnumerable<SseItem<JsonRpcMessage?>>, CancellationToken, IAsyncEnumerable<SseItem<JsonRpcMessage?>>>? MessageFilter { get; set; }
-
     public Task WriteAllAsync(Stream sseResponseStream, CancellationToken cancellationToken)
     {
         Throw.IfNull(sseResponseStream);
@@ -38,20 +36,39 @@ internal sealed class SseWriter(string? messageEndpoint = null, BoundedChannelOp
         _writeCancellationToken = cancellationToken;
 
         var messages = _messages.Reader.ReadAllAsync(cancellationToken);
-        if (MessageFilter is not null)
-        {
-            messages = MessageFilter(messages, cancellationToken);
-        }
-
         _writeTask = SseFormatter.WriteAsync(messages, sseResponseStream, WriteJsonRpcMessageToBuffer, cancellationToken);
         return _writeTask;
     }
 
-    public async Task<bool> SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
+    public Task<bool> SendPrimingEventAsync(TimeSpan retryInterval, ISseEventStreamWriter eventStreamWriter, CancellationToken cancellationToken = default)
+    {
+        // Create a priming event: empty data with an event ID
+        var primingItem = new SseItem<JsonRpcMessage?>(null, "prime")
+        {
+            ReconnectionInterval = retryInterval,
+        };
+
+        return SendMessageAsync(primingItem, eventStreamWriter, cancellationToken);
+    }
+
+    public Task<bool> SendMessageAsync(JsonRpcMessage message, ISseEventStreamWriter? eventStreamWriter, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(message);
 
+        // Emit redundant "event: message" lines for better compatibility with other SDKs.
+        return SendMessageAsync(new SseItem<JsonRpcMessage?>(message, SseParser.EventTypeDefault), eventStreamWriter, cancellationToken);
+    }
+
+    private async Task<bool> SendMessageAsync(SseItem<JsonRpcMessage?> item, ISseEventStreamWriter? eventStreamWriter, CancellationToken cancellationToken = default)
+    {
         using var _ = await _disposeLock.LockAsync(cancellationToken).ConfigureAwait(false);
+
+        if (eventStreamWriter is not null && item.EventId is null)
+        {
+            // Store the event first, even if the underlying writer has completed, so that
+            // messages can still be retrieved from the event store.
+            item = await eventStreamWriter.WriteEventAsync(item, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
 
         if (_disposed)
         {
@@ -60,8 +77,7 @@ internal sealed class SseWriter(string? messageEndpoint = null, BoundedChannelOp
             return false;
         }
 
-        // Emit redundant "event: message" lines for better compatibility with other SDKs.
-        await _messages.Writer.WriteAsync(new SseItem<JsonRpcMessage?>(message, SseParser.EventTypeDefault), cancellationToken).ConfigureAwait(false);
+        await _messages.Writer.WriteAsync(item, cancellationToken).ConfigureAwait(false);
         return true;
     }
 
@@ -101,7 +117,10 @@ internal sealed class SseWriter(string? messageEndpoint = null, BoundedChannelOp
             return;
         }
 
-        JsonSerializer.Serialize(GetUtf8JsonWriter(writer), item.Data, McpJsonUtilities.JsonContext.Default.JsonRpcMessage!);
+        if (item.Data is not null)
+        {
+            JsonSerializer.Serialize(GetUtf8JsonWriter(writer), item.Data, McpJsonUtilities.JsonContext.Default.JsonRpcMessage!);
+        }
     }
 
     private Utf8JsonWriter GetUtf8JsonWriter(IBufferWriter<byte> writer)
@@ -118,3 +137,4 @@ internal sealed class SseWriter(string? messageEndpoint = null, BoundedChannelOp
         return _jsonWriter;
     }
 }
+

@@ -44,6 +44,34 @@ public class HttpServerTransportOptions
     public bool Stateless { get; set; }
 
     /// <summary>
+    /// Gets or sets the event store for resumability support.
+    /// When set, events are stored and can be replayed when clients reconnect with a Last-Event-ID header.
+    /// </summary>
+    /// <remarks>
+    /// When configured, the server will:
+    /// <list type="bullet">
+    /// <item><description>Generate unique event IDs for each SSE message</description></item>
+    /// <item><description>Store events for later replay</description></item>
+    /// <item><description>Replay missed events when a client reconnects with a Last-Event-ID header</description></item>
+    /// <item><description>Send priming events to establish resumability before any actual messages</description></item>
+    /// </list>
+    /// </remarks>
+    public ISseEventStreamStore? EventStreamStore { get; set; }
+
+    /// <summary>
+    /// Gets or sets the retry interval to suggest to clients in SSE retry field.
+    /// </summary>
+    /// <value>
+    /// The retry interval. The default is 1 second.
+    /// </value>
+    /// <remarks>
+    /// When <see cref="EventStreamStore"/> is set, the server will include a retry field in priming events.
+    /// This value suggests to clients how long to wait before attempting to reconnect after a connection is lost.
+    /// Clients may use this value to implement polling behavior during long-running operations.
+    /// </remarks>
+    public TimeSpan RetryInterval { get; set; } = TimeSpan.FromSeconds(1);
+
+    /// <summary>
     /// Gets or sets a value that indicates whether the server uses a single execution context for the entire session.
     /// </summary>
     /// <value>

@@ -29,15 +29,31 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         "mcp.server.operation.duration", "Measures the duration of inbound message processing.", longBuckets: false);
 
     /// <summary>The latest version of the protocol supported by this implementation.</summary>
-    internal const string LatestProtocolVersion = "2025-06-18";
+    internal const string LatestProtocolVersion = "2025-11-25";
 
     /// <summary>All protocol versions supported by this implementation.</summary>
     internal static readonly string[] SupportedProtocolVersions =
     [
         "2024-11-05",
         "2025-03-26",
+        "2025-06-18",
         LatestProtocolVersion,
     ];
+
+    /// <summary>
+    /// Checks if the given protocol version supports priming events.
+    /// </summary>
+    /// <param name="protocolVersion">The protocol version to check.</param>
+    /// <returns>True if the protocol version supports resumability.</returns>
+    /// <remarks>
+    /// Priming events are only supported in protocol version &gt;= 2025-11-25.
+    /// Older clients may crash when receiving SSE events with empty data.
+    /// </remarks>
+    internal static bool SupportsPrimingEvent(string? protocolVersion)
+    {
+        const string MinResumabilityProtocolVersion = "2025-11-25";
+        return string.Compare(protocolVersion, MinResumabilityProtocolVersion, StringComparison.Ordinal) >= 0;
+    }
 
     private readonly bool _isServer;
     private readonly string _transportKind;

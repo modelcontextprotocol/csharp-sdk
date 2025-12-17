@@ -85,12 +85,9 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     }
 
     [Fact]
-    public async Task EnablingStatelessMode_Disables_GetAndDeleteEndpoints()
+    public async Task EnablingStatelessMode_Disables_DeleteEndpoint()
     {
         await StartAsync();
-
-        using var getResponse = await HttpClient.GetAsync("/", TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.MethodNotAllowed, getResponse.StatusCode);
 
         using var deleteResponse = await HttpClient.DeleteAsync("/", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.MethodNotAllowed, deleteResponse.StatusCode);
