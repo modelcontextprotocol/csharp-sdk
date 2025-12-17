@@ -2,8 +2,10 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using System.Threading;
 
 namespace ModelContextProtocol.Analyzers;
 
@@ -51,6 +53,9 @@ public sealed class CS1066Suppressor : DiagnosticSuppressor
     /// <inheritdoc/>
     public override void ReportSuppressions(SuppressionAnalysisContext context)
     {
+        // Cache semantic models per syntax tree to avoid redundant calls
+        Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null;
+
         foreach (Diagnostic diagnostic in context.ReportedDiagnostics)
         {
             Location? location = diagnostic.Location;
@@ -70,8 +75,16 @@ public sealed class CS1066Suppressor : DiagnosticSuppressor
                 continue;
             }
 
+            // Get or cache the semantic model for this tree
+            semanticModelCache ??= new Dictionary<SyntaxTree, SemanticModel>();
+            if (!semanticModelCache.TryGetValue(tree, out SemanticModel? semanticModel))
+            {
+                semanticModel = context.GetSemanticModel(tree);
+                semanticModelCache[tree] = semanticModel;
+            }
+
             // Check for MCP attributes
-            SuppressionDescriptor? suppression = GetSuppressionForMethod(method, context);
+            SuppressionDescriptor? suppression = GetSuppressionForMethod(method, semanticModel, context.CancellationToken);
             if (suppression is not null)
             {
                 context.ReportSuppression(Suppression.Create(suppression, diagnostic));
@@ -79,10 +92,9 @@ public sealed class CS1066Suppressor : DiagnosticSuppressor
         }
     }
 
-    private static SuppressionDescriptor? GetSuppressionForMethod(MethodDeclarationSyntax method, SuppressionAnalysisContext context)
+    private static SuppressionDescriptor? GetSuppressionForMethod(MethodDeclarationSyntax method, SemanticModel semanticModel, CancellationToken cancellationToken)
     {
-        SemanticModel? semanticModel = context.GetSemanticModel(method.SyntaxTree);
-        IMethodSymbol? methodSymbol = semanticModel.GetDeclaredSymbol(method, context.CancellationToken);
+        IMethodSymbol? methodSymbol = semanticModel.GetDeclaredSymbol(method, cancellationToken);
 
         if (methodSymbol is null)
         {

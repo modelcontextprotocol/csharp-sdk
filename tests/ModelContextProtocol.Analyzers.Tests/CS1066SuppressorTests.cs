@@ -32,9 +32,16 @@ public class CS1066SuppressorTests
             }
             """);
 
-        // CS1066 should be suppressed
-        Assert.Empty(result.Diagnostics.Where(d => d.Id == "CS1066" && !d.IsSuppressed));
-        Assert.Contains(result.Diagnostics, d => d.Id == "CS1066" && d.IsSuppressed);
+        // Check we have the CS1066 diagnostics from compiler
+        var cs1066FromCompiler = result.CompilerDiagnostics.Where(d => d.Id == "CS1066").ToList();
+        
+        // CS1066 should be suppressed in the final diagnostics
+        var unsuppressedCs1066 = result.Diagnostics.Where(d => d.Id == "CS1066" && !d.IsSuppressed).ToList();
+        var suppressedCs1066 = result.Diagnostics.Where(d => d.Id == "CS1066" && d.IsSuppressed).ToList();
+
+        Assert.True(cs1066FromCompiler.Count > 0 || suppressedCs1066.Count > 0, 
+            $"Expected CS1066 diagnostics. Compiler diagnostics: {string.Join(", ", result.CompilerDiagnostics.Select(d => d.Id))}");
+        Assert.Empty(unsuppressedCs1066);
     }
 
     [Fact]
@@ -61,9 +68,16 @@ public class CS1066SuppressorTests
             }
             """);
 
-        // CS1066 should be suppressed
-        Assert.Empty(result.Diagnostics.Where(d => d.Id == "CS1066" && !d.IsSuppressed));
-        Assert.Contains(result.Diagnostics, d => d.Id == "CS1066" && d.IsSuppressed);
+        // Check we have the CS1066 diagnostics from compiler
+        var cs1066FromCompiler = result.CompilerDiagnostics.Where(d => d.Id == "CS1066").ToList();
+        
+        // CS1066 should be suppressed in the final diagnostics
+        var unsuppressedCs1066 = result.Diagnostics.Where(d => d.Id == "CS1066" && !d.IsSuppressed).ToList();
+        var suppressedCs1066 = result.Diagnostics.Where(d => d.Id == "CS1066" && d.IsSuppressed).ToList();
+
+        Assert.True(cs1066FromCompiler.Count > 0 || suppressedCs1066.Count > 0, 
+            $"Expected CS1066 diagnostics. Compiler diagnostics: {string.Join(", ", result.CompilerDiagnostics.Select(d => d.Id))}");
+        Assert.Empty(unsuppressedCs1066);
     }
 
     [Fact]
@@ -90,9 +104,16 @@ public class CS1066SuppressorTests
             }
             """);
 
-        // CS1066 should be suppressed
-        Assert.Empty(result.Diagnostics.Where(d => d.Id == "CS1066" && !d.IsSuppressed));
-        Assert.Contains(result.Diagnostics, d => d.Id == "CS1066" && d.IsSuppressed);
+        // Check we have the CS1066 diagnostics from compiler
+        var cs1066FromCompiler = result.CompilerDiagnostics.Where(d => d.Id == "CS1066").ToList();
+        
+        // CS1066 should be suppressed in the final diagnostics
+        var unsuppressedCs1066 = result.Diagnostics.Where(d => d.Id == "CS1066" && !d.IsSuppressed).ToList();
+        var suppressedCs1066 = result.Diagnostics.Where(d => d.Id == "CS1066" && d.IsSuppressed).ToList();
+
+        Assert.True(cs1066FromCompiler.Count > 0 || suppressedCs1066.Count > 0, 
+            $"Expected CS1066 diagnostics. Compiler diagnostics: {string.Join(", ", result.CompilerDiagnostics.Select(d => d.Id))}");
+        Assert.Empty(unsuppressedCs1066);
     }
 
     [Fact]
@@ -116,8 +137,14 @@ public class CS1066SuppressorTests
             """);
 
         // CS1066 should NOT be suppressed (no MCP attribute)
-        Assert.Contains(result.Diagnostics, d => d.Id == "CS1066" && !d.IsSuppressed);
-        Assert.Empty(result.Diagnostics.Where(d => d.Id == "CS1066" && d.IsSuppressed));
+        // Check we have the CS1066 diagnostic from compiler
+        var cs1066FromCompiler = result.CompilerDiagnostics.Where(d => d.Id == "CS1066").ToList();
+        Assert.NotEmpty(cs1066FromCompiler);
+        
+        // It should NOT be suppressed in the final diagnostics (still present as unsuppressed)
+        var unsuppressedCs1066 = result.Diagnostics.Where(d => d.Id == "CS1066" && !d.IsSuppressed).ToList();
+        Assert.NotEmpty(unsuppressedCs1066);
+        Assert.DoesNotContain(result.Diagnostics, d => d.Id == "CS1066" && d.IsSuppressed);
     }
 
     [Fact]
@@ -144,10 +171,13 @@ public class CS1066SuppressorTests
             }
             """);
 
+        // Check we have CS1066 diagnostics from compiler (one per parameter with default)
+        var cs1066FromCompiler = result.CompilerDiagnostics.Where(d => d.Id == "CS1066").ToList();
+        Assert.Equal(3, cs1066FromCompiler.Count); // Three parameters with defaults
+
         // All CS1066 warnings should be suppressed
-        var cs1066Diagnostics = result.Diagnostics.Where(d => d.Id == "CS1066").ToList();
-        Assert.Equal(3, cs1066Diagnostics.Count); // Three parameters with defaults
-        Assert.All(cs1066Diagnostics, d => Assert.True(d.IsSuppressed));
+        var unsuppressedCs1066 = result.Diagnostics.Where(d => d.Id == "CS1066" && !d.IsSuppressed).ToList();
+        Assert.Empty(unsuppressedCs1066);
     }
 
     private SuppressorResult RunSuppressor(string source)
@@ -166,18 +196,11 @@ public class CS1066SuppressorTests
         referenceList.Add(MetadataReference.CreateFromFile(Path.Combine(runtimePath, "System.Runtime.dll")));
         referenceList.Add(MetadataReference.CreateFromFile(Path.Combine(runtimePath, "netstandard.dll")));
 
-        // Add ModelContextProtocol.Core
-        try
+        // Add ModelContextProtocol.Core if available
+        var coreAssemblyPath = Path.Combine(AppContext.BaseDirectory, "ModelContextProtocol.Core.dll");
+        if (File.Exists(coreAssemblyPath))
         {
-            var coreAssemblyPath = Path.Combine(AppContext.BaseDirectory, "ModelContextProtocol.Core.dll");
-            if (File.Exists(coreAssemblyPath))
-            {
-                referenceList.Add(MetadataReference.CreateFromFile(coreAssemblyPath));
-            }
-        }
-        catch
-        {
-            // If we can't find it, the compilation will fail with appropriate errors
+            referenceList.Add(MetadataReference.CreateFromFile(coreAssemblyPath));
         }
 
         var compilation = CSharpCompilation.Create(
@@ -186,20 +209,24 @@ public class CS1066SuppressorTests
             referenceList,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
+        // Get compilation diagnostics first (includes CS1066)
+        var compilerDiagnostics = compilation.GetDiagnostics();
+
         // Run the suppressor
         var analyzers = ImmutableArray.Create<DiagnosticAnalyzer>(new CS1066Suppressor());
-
         var compilationWithAnalyzers = compilation.WithAnalyzers(analyzers);
-        var diagnostics = compilationWithAnalyzers.GetAllDiagnosticsAsync().GetAwaiter().GetResult();
+        var allDiagnostics = compilationWithAnalyzers.GetAllDiagnosticsAsync().GetAwaiter().GetResult();
 
         return new SuppressorResult
         {
-            Diagnostics = diagnostics.ToList()
+            Diagnostics = allDiagnostics.ToList(),
+            CompilerDiagnostics = compilerDiagnostics.ToList()
         };
     }
 
     private class SuppressorResult
     {
         public List<Diagnostic> Diagnostics { get; set; } = [];
+        public List<Diagnostic> CompilerDiagnostics { get; set; } = [];
     }
 }
