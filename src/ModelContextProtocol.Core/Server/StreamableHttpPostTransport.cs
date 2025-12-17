@@ -104,6 +104,12 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
 
     public async ValueTask EnablePollingAsync(TimeSpan retryInterval, CancellationToken cancellationToken)
     {
+        if (parentTransport.Stateless)
+        {
+            // Polling is currently not supported in stateless mode.
+            return;
+        }
+
         var eventStreamWriter = await GetOrCreateEventStreamAsync(cancellationToken).ConfigureAwait(false);
         if (eventStreamWriter is null)
         {
