@@ -8,6 +8,8 @@ namespace ModelContextProtocol.AspNetCore.Tests.Utils;
 
 public class KestrelInMemoryTest : LoggedTest
 {
+    private readonly TestHttpMessageHandler _httpMessageHandler;
+
     public KestrelInMemoryTest(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
     {
@@ -24,7 +26,9 @@ public class KestrelInMemoryTest : LoggedTest
             return new(connection.ClientStream);
         };
 
-        HttpClient = new HttpClient(SocketsHttpHandler)
+        _httpMessageHandler = new(SocketsHttpHandler);
+
+        HttpClient = new HttpClient(_httpMessageHandler)
         {
             BaseAddress = new Uri("http://localhost:5000/"),
             Timeout = TimeSpan.FromSeconds(10),
@@ -39,9 +43,33 @@ public class KestrelInMemoryTest : LoggedTest
 
     public KestrelInMemoryTransport KestrelInMemoryTransport { get; } = new();
 
+    protected void SetHttpMessageHandler(DelegatingHandler? handler)
+    {
+        if (handler is null)
+        {
+            _httpMessageHandler.InnerHandler = SocketsHttpHandler;
+        }
+        else
+        {
+            _httpMessageHandler.InnerHandler = handler;
+            handler.InnerHandler = SocketsHttpHandler;
+        }
+    }
+
     public override void Dispose()
     {
         HttpClient.Dispose();
         base.Dispose();
+    }
+
+    private sealed class TestHttpMessageHandler : DelegatingHandler
+    {
+        public TestHttpMessageHandler(HttpMessageHandler innerHandler)
+        {
+            InnerHandler = innerHandler;
+        }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => base.SendAsync(request, cancellationToken);
     }
 }
