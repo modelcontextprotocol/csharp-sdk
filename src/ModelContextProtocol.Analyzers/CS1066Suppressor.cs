@@ -4,7 +4,6 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Linq;
 using System.Threading;
 
 namespace ModelContextProtocol.Analyzers;
@@ -53,8 +52,12 @@ public sealed class CS1066Suppressor : DiagnosticSuppressor
     /// <inheritdoc/>
     public override void ReportSuppressions(SuppressionAnalysisContext context)
     {
-        // Cache semantic models per syntax tree to avoid redundant calls
+        // Cache semantic models and attribute symbols per syntax tree/compilation to avoid redundant calls
         Dictionary<SyntaxTree, SemanticModel>? semanticModelCache = null;
+        INamedTypeSymbol? mcpToolAttribute = null;
+        INamedTypeSymbol? mcpPromptAttribute = null;
+        INamedTypeSymbol? mcpResourceAttribute = null;
+        bool attributesResolved = false;
 
         foreach (Diagnostic diagnostic in context.ReportedDiagnostics)
         {
@@ -83,8 +86,17 @@ public sealed class CS1066Suppressor : DiagnosticSuppressor
                 semanticModelCache[tree] = semanticModel;
             }
 
+            // Resolve attribute symbols once per compilation
+            if (!attributesResolved)
+            {
+                mcpToolAttribute = semanticModel.Compilation.GetTypeByMetadataName(McpAttributeNames.McpServerToolAttribute);
+                mcpPromptAttribute = semanticModel.Compilation.GetTypeByMetadataName(McpAttributeNames.McpServerPromptAttribute);
+                mcpResourceAttribute = semanticModel.Compilation.GetTypeByMetadataName(McpAttributeNames.McpServerResourceAttribute);
+                attributesResolved = true;
+            }
+
             // Check for MCP attributes
-            SuppressionDescriptor? suppression = GetSuppressionForMethod(method, semanticModel, context.CancellationToken);
+            SuppressionDescriptor? suppression = GetSuppressionForMethod(method, semanticModel, mcpToolAttribute, mcpPromptAttribute, mcpResourceAttribute, context.CancellationToken);
             if (suppression is not null)
             {
                 context.ReportSuppression(Suppression.Create(suppression, diagnostic));
@@ -92,7 +104,13 @@ public sealed class CS1066Suppressor : DiagnosticSuppressor
         }
     }
 
-    private static SuppressionDescriptor? GetSuppressionForMethod(MethodDeclarationSyntax method, SemanticModel semanticModel, CancellationToken cancellationToken)
+    private static SuppressionDescriptor? GetSuppressionForMethod(
+        MethodDeclarationSyntax method,
+        SemanticModel semanticModel,
+        INamedTypeSymbol? mcpToolAttribute,
+        INamedTypeSymbol? mcpPromptAttribute,
+        INamedTypeSymbol? mcpResourceAttribute,
+        CancellationToken cancellationToken)
     {
         IMethodSymbol? methodSymbol = semanticModel.GetDeclaredSymbol(method, cancellationToken);
 
@@ -103,23 +121,23 @@ public sealed class CS1066Suppressor : DiagnosticSuppressor
 
         foreach (AttributeData attribute in methodSymbol.GetAttributes())
         {
-            string? fullName = attribute.AttributeClass?.ToDisplayString();
-            if (fullName is null)
+            INamedTypeSymbol? attributeClass = attribute.AttributeClass;
+            if (attributeClass is null)
             {
                 continue;
             }
 
-            if (fullName == "ModelContextProtocol.Server.McpServerToolAttribute")
+            if (mcpToolAttribute is not null && SymbolEqualityComparer.Default.Equals(attributeClass, mcpToolAttribute))
             {
                 return McpToolSuppression;
             }
 
-            if (fullName == "ModelContextProtocol.Server.McpServerPromptAttribute")
+            if (mcpPromptAttribute is not null && SymbolEqualityComparer.Default.Equals(attributeClass, mcpPromptAttribute))
             {
                 return McpPromptSuppression;
             }
 
-            if (fullName == "ModelContextProtocol.Server.McpServerResourceAttribute")
+            if (mcpResourceAttribute is not null && SymbolEqualityComparer.Default.Equals(attributeClass, mcpResourceAttribute))
             {
                 return McpResourceSuppression;
             }

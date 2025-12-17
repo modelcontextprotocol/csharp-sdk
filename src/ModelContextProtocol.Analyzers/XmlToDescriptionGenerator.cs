@@ -18,18 +18,14 @@ namespace ModelContextProtocol.Analyzers;
 public sealed class XmlToDescriptionGenerator : IIncrementalGenerator
 {
     private const string GeneratedFileName = "ModelContextProtocol.Descriptions.g.cs";
-    private const string McpServerToolAttributeName = "ModelContextProtocol.Server.McpServerToolAttribute";
-    private const string McpServerPromptAttributeName = "ModelContextProtocol.Server.McpServerPromptAttribute";
-    private const string McpServerResourceAttributeName = "ModelContextProtocol.Server.McpServerResourceAttribute";
-    private const string DescriptionAttributeName = "System.ComponentModel.DescriptionAttribute";
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         // Extract method information for all MCP tools, prompts, and resources.
         // The transform extracts all necessary data upfront so the output doesn't depend on the compilation.
-        var allMethods = CreateProviderForAttribute(context, McpServerToolAttributeName).Collect()
-            .Combine(CreateProviderForAttribute(context, McpServerPromptAttributeName).Collect())
-            .Combine(CreateProviderForAttribute(context, McpServerResourceAttributeName).Collect())
+        var allMethods = CreateProviderForAttribute(context, McpAttributeNames.McpServerToolAttribute).Collect()
+            .Combine(CreateProviderForAttribute(context, McpAttributeNames.McpServerPromptAttribute).Collect())
+            .Combine(CreateProviderForAttribute(context, McpAttributeNames.McpServerResourceAttribute).Collect())
             .Select(static (tuple, _) =>
             {
                 var ((tools, prompts), resources) = tuple;
@@ -84,7 +80,7 @@ public sealed class XmlToDescriptionGenerator : IIncrementalGenerator
         Compilation compilation)
     {
         bool isPartial = methodDeclaration.Modifiers.Any(SyntaxKind.PartialKeyword);
-        var descriptionAttribute = compilation.GetTypeByMetadataName(DescriptionAttributeName);
+        var descriptionAttribute = compilation.GetTypeByMetadataName(McpAttributeNames.DescriptionAttribute);
 
         // Try to extract XML documentation
         var (xmlDocs, hasInvalidXml) = TryExtractXmlDocumentation(methodSymbol);
