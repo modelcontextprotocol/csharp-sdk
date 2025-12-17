@@ -1,12 +1,9 @@
 using ConformanceServer.Prompts;
 using ConformanceServer.Resources;
 using ConformanceServer.Tools;
-using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol;
 using System.Collections.Concurrent;
 using System.Text.Json;
-using System.Text.Json.Nodes;
-using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.ConformanceServer;
 
@@ -41,18 +38,8 @@ public class Program
                 }
                 if (ctx.Params?.Uri is { } uri)
                 {
-                    subscriptions[ctx.Server.SessionId].TryAdd(uri, 0);
-
-                    await ctx.Server.SampleAsync([
-                        new ChatMessage(ChatRole.System, "You are a helpful test server"),
-                        new ChatMessage(ChatRole.User, $"Resource {uri}, context: A new subscription was started"),
-                    ],
-                    chatOptions: new ChatOptions
-                    {
-                        MaxOutputTokens = 100,
-                        Temperature = 0.7f,
-                    },
-                    cancellationToken: ct);
+                    var sessionSubscriptions = subscriptions.GetOrAdd(ctx.Server.SessionId, _ => new());
+                    sessionSubscriptions.TryAdd(uri, 0);
                 }
 
                 return new EmptyResult();
@@ -67,6 +54,7 @@ public class Program
                 {
                     subscriptions[ctx.Server.SessionId].TryRemove(uri, out _);
                 }
+
                 return new EmptyResult();
             })
             .WithCompleteHandler(async (ctx, ct) =>

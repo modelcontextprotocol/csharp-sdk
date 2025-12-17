@@ -33,7 +33,7 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
             switch (toolName)
             {
                 case "throw_with_serializable_data":
-                    throw new McpProtocolException("Resource not found", (McpErrorCode)(-32002))
+                    throw new McpProtocolException("Resource not found", McpErrorCode.ResourceNotFound)
                     {
                         Data =
                         {
@@ -43,7 +43,7 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
                     };
 
                 case "throw_with_nonserializable_data":
-                    throw new McpProtocolException("Resource not found", (McpErrorCode)(-32002))
+                    throw new McpProtocolException("Resource not found", McpErrorCode.ResourceNotFound)
                     {
                         Data =
                         {
@@ -55,7 +55,7 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
                     };
 
                 case "throw_with_only_nonserializable_data":
-                    throw new McpProtocolException("Resource not found", (McpErrorCode)(-32002))
+                    throw new McpProtocolException("Resource not found", McpErrorCode.ResourceNotFound)
                     {
                         Data =
                         {
@@ -79,7 +79,7 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
             await client.CallToolAsync("throw_with_serializable_data", cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Equal("Request failed (remote): Resource not found", exception.Message);
-        Assert.Equal((McpErrorCode)(-32002), exception.ErrorCode);
+        Assert.Equal(McpErrorCode.ResourceNotFound, exception.ErrorCode);
 
         // Verify the data was propagated to the exception
         // The Data collection should contain the expected keys
@@ -113,7 +113,7 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
             await client.CallToolAsync("throw_with_nonserializable_data", cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Equal("Request failed (remote): Resource not found", exception.Message);
-        Assert.Equal((McpErrorCode)(-32002), exception.ErrorCode);
+        Assert.Equal(McpErrorCode.ResourceNotFound, exception.ErrorCode);
 
         // Verify that only the serializable data was propagated (non-serializable was filtered out)
         var hasUri = false;
@@ -142,7 +142,7 @@ public class McpProtocolExceptionDataTests : ClientServerTestBase
             await client.CallToolAsync("throw_with_only_nonserializable_data", cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Equal("Request failed (remote): Resource not found", exception.Message);
-        Assert.Equal((McpErrorCode)(-32002), exception.ErrorCode);
+        Assert.Equal(McpErrorCode.ResourceNotFound, exception.ErrorCode);
         
         // When all data is non-serializable, the Data collection should be empty
         // (the server's ConvertExceptionData returns null when no serializable data exists)

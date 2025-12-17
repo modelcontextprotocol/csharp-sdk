@@ -18,6 +18,9 @@ public abstract partial class McpSession : IAsyncDisposable
     /// <param name="serializerOptions">The options governing request serialization.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous operation. The task result contains the deserialized result.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="method"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="method"/> is empty or composed entirely of whitespace.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public ValueTask<TResult> SendRequestAsync<TParameters, TResult>(
         string method,
         TParameters parameters,
@@ -29,9 +32,13 @@ public abstract partial class McpSession : IAsyncDisposable
         serializerOptions ??= McpJsonUtilities.DefaultOptions;
         serializerOptions.MakeReadOnly();
 
-        JsonTypeInfo<TParameters> paramsTypeInfo = serializerOptions.GetTypeInfo<TParameters>();
-        JsonTypeInfo<TResult> resultTypeInfo = serializerOptions.GetTypeInfo<TResult>();
-        return SendRequestAsync(method, parameters, paramsTypeInfo, resultTypeInfo, requestId, cancellationToken);
+        return SendRequestAsync(
+            method, 
+            parameters,
+            serializerOptions.GetTypeInfo<TParameters>(),
+            serializerOptions.GetTypeInfo<TResult>(),
+            requestId,
+            cancellationToken);
     }
 
     /// <summary>
@@ -76,6 +83,8 @@ public abstract partial class McpSession : IAsyncDisposable
     /// <param name="method">The notification method name.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous send operation.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="method"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="method"/> is empty or composed entirely of whitespace.</exception>
     /// <remarks>
     /// <para>
     /// This method sends a notification without any parameters. Notifications are one-way messages
@@ -86,6 +95,7 @@ public abstract partial class McpSession : IAsyncDisposable
     public Task SendNotificationAsync(string method, CancellationToken cancellationToken = default)
     {
         Throw.IfNullOrWhiteSpace(method);
+
         return SendMessageAsync(new JsonRpcNotification { Method = method }, cancellationToken);
     }
 
@@ -98,6 +108,8 @@ public abstract partial class McpSession : IAsyncDisposable
     /// <param name="serializerOptions">The options governing parameter serialization. If null, default options are used.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous send operation.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="method"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="method"/> is empty or composed entirely of whitespace.</exception>
     /// <remarks>
     /// <para>
     /// This method sends a notification with parameters to the connected session. Notifications are one-way
@@ -153,7 +165,7 @@ public abstract partial class McpSession : IAsyncDisposable
     /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task representing the completion of the notification operation (not the operation being tracked).</returns>
-    /// <exception cref="ArgumentNullException">The current session instance is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="progress"/> is <see langword="null"/>.</exception>
     /// <remarks>
     /// <para>
     /// This method sends a progress notification to the connected session using the Model Context Protocol's
@@ -170,14 +182,44 @@ public abstract partial class McpSession : IAsyncDisposable
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        return SendNotificationAsync(
-            NotificationMethods.ProgressNotification,
+        Throw.IfNull(progress);
+
+        return NotifyProgressAsync(
             new ProgressNotificationParams
             {
                 ProgressToken = progressToken,
                 Progress = progress,
-                Meta = options?.Meta,
+                Meta = options?.GetMetaForRequest(),
             },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Notifies the connected session of progress for a long-running operation.
+    /// </summary>
+    /// <param name="requestParams">The request parameters to send in the request.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A task representing the completion of the notification operation (not the operation being tracked).</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This method sends a progress notification to the connected session using the Model Context Protocol's
+    /// standardized progress notification format. Progress updates are identified by a <see cref="ProgressToken"/>
+    /// that allows the recipient to correlate multiple updates with a specific long-running operation.
+    /// </para>
+    /// <para>
+    /// Progress notifications are sent asynchronously and don't block the operation from continuing.
+    /// </para>
+    /// </remarks>
+    public Task NotifyProgressAsync(
+        ProgressNotificationParams requestParams,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(requestParams);
+
+        return SendNotificationAsync(
+            NotificationMethods.ProgressNotification,
+            requestParams,
             McpJsonUtilities.JsonContext.Default.ProgressNotificationParams,
             cancellationToken);
     }

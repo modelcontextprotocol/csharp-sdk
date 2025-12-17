@@ -94,7 +94,7 @@ internal sealed class NotificationHandlers
     /// </summary>
     /// <param name="method">The notification method name to invoke handlers for.</param>
     /// <param name="notification">The notification object to pass to each handler.</param>
-    /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <remarks>
     /// Handlers are invoked in reverse order of registration (newest first).
     /// If any handler throws an exception, all handlers will still be invoked, and an <see cref="AggregateException"/> 

@@ -178,6 +178,7 @@ internal static partial class UriTemplate
     /// <summary>
     /// Expand a URI template using the given variable values.
     /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="uriTemplate"/> is <see langword="null"/>.</exception>
     public static string FormatUri(string uriTemplate, IReadOnlyDictionary<string, object?> arguments)
     {
         Throw.IfNull(uriTemplate);

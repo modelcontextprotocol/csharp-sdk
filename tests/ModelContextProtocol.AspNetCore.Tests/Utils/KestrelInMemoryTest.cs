@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Tests.Utils;
 
 namespace ModelContextProtocol.AspNetCore.Tests.Utils;
@@ -18,7 +19,9 @@ public class KestrelInMemoryTest : LoggedTest
         Builder.WebHost.UseKestrelCore();
         Builder.Services.AddRoutingCore();
         Builder.Services.AddLogging();
+        Builder.Services.AddSingleton<ILoggerProvider>(MockLoggerProvider);
         Builder.Services.AddSingleton(XunitLoggerProvider);
+        Builder.Logging.SetMinimumLevel(LogLevel.Debug);
 
         SocketsHttpHandler.ConnectCallback = (context, token) =>
         {

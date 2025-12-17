@@ -201,7 +201,7 @@ public abstract class McpServerPrompt : IMcpServerPrimitive
     /// </param>
     /// <param name="options">Optional options used in the creation of the <see cref="McpServerPrompt"/> to control its behavior.</param>
     /// <returns>The created <see cref="AIFunction"/> for invoking <paramref name="method"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="method"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="method"/> or <paramref name="createTargetFunc"/> is <see langword="null"/>.</exception>
     public static McpServerPrompt Create(
         MethodInfo method,
         Func<RequestContext<GetPromptRequestParams>, object> createTargetFunc,

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -11,6 +12,7 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
+[DebuggerDisplay("Name = {Name}, Uri = {Uri}")]
 public sealed class Resource : IBaseMetadata
 {
     /// <inheritdoc />

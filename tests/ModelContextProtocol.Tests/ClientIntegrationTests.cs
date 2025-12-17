@@ -34,7 +34,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
 
         // Act
         await using var client = await _fixture.CreateClientAsync(clientId);
-        await client.PingAsync(null, TestContext.Current.CancellationToken);
+        await client.PingAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(client);
@@ -141,7 +141,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
 
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
-        var prompts = await client.ListPromptsAsync(null, TestContext.Current.CancellationToken);
+        var prompts = await client.ListPromptsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotEmpty(prompts);
@@ -206,7 +206,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
 
-        IList<McpClientResourceTemplate> allResourceTemplates = await client.ListResourceTemplatesAsync(null, TestContext.Current.CancellationToken);
+        IList<McpClientResourceTemplate> allResourceTemplates = await client.ListResourceTemplatesAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // The server provides a single test resource template
         Assert.Single(allResourceTemplates);
@@ -221,7 +221,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         // act
         await using var client = await _fixture.CreateClientAsync(clientId);
 
-        IList<McpClientResource> allResources = await client.ListResourcesAsync(null, TestContext.Current.CancellationToken);
+        IList<McpClientResource> allResources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // The server provides 100 test resources
         Assert.Equal(100, allResources.Count);
@@ -339,7 +339,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         var result = await client.CompleteAsync(
             new ResourceTemplateReference { Uri = "test://static/resource/1" },
             "argument_name", "1",
-            TestContext.Current.CancellationToken
+            cancellationToken: TestContext.Current.CancellationToken
         );
 
         Assert.NotNull(result);
@@ -358,7 +358,7 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         var result = await client.CompleteAsync(
             new PromptReference { Name = "irrelevant" },
             argumentName: "style", argumentValue: "fo",
-            TestContext.Current.CancellationToken
+            cancellationToken: TestContext.Current.CancellationToken
         );
 
         Assert.NotNull(result);
@@ -573,10 +573,197 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         });
 
         // act
-        await client.SetLoggingLevel(LoggingLevel.Debug, options: null, TestContext.Current.CancellationToken);
+        await client.SetLoggingLevelAsync(LoggingLevel.Debug, options: null, TestContext.Current.CancellationToken);
 
         // assert
         await receivedNotification.Task;
+    }
+
+    [Theory]
+    [MemberData(nameof(GetClients))]
+    public async Task ListToolsAsync_WithRequestParams_ReturnsRawResult(string clientId)
+    {
+        await using var client = await _fixture.CreateClientAsync(clientId);
+
+        var result = await client.ListToolsAsync(new ListToolsRequestParams(), TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.NotEmpty(result.Tools);
+        Assert.Contains(result.Tools, t => t.Name == "echo");
+    }
+
+    [Theory]
+    [MemberData(nameof(GetClients))]
+    public async Task ListPromptsAsync_WithRequestParams_ReturnsRawResult(string clientId)
+    {
+        await using var client = await _fixture.CreateClientAsync(clientId);
+
+        var result = await client.ListPromptsAsync(new ListPromptsRequestParams(), TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.NotEmpty(result.Prompts);
+        Assert.Contains(result.Prompts, p => p.Name == "simple_prompt");
+    }
+
+    [Theory]
+    [MemberData(nameof(GetClients))]
+    public async Task GetPromptAsync_WithRequestParams_ReturnsRawResult(string clientId)
+    {
+        await using var client = await _fixture.CreateClientAsync(clientId);
+
+        var result = await client.GetPromptAsync(
+            new GetPromptRequestParams { Name = "simple_prompt" },
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.NotEmpty(result.Messages);
+    }
+
+    [Theory]
+    [MemberData(nameof(GetClients))]
+    public async Task ListResourceTemplatesAsync_WithRequestParams_ReturnsRawResult(string clientId)
+    {
+        await using var client = await _fixture.CreateClientAsync(clientId);
+
+        var result = await client.ListResourceTemplatesAsync(
+            new ListResourceTemplatesRequestParams(),
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.Single(result.ResourceTemplates);
+    }
+
+    [Theory]
+    [MemberData(nameof(GetClients))]
+    public async Task ListResourcesAsync_WithRequestParams_ReturnsRawResult(string clientId)
+    {
+        await using var client = await _fixture.CreateClientAsync(clientId);
+
+        var result = await client.ListResourcesAsync(
+            new ListResourcesRequestParams(),
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        // Low-level API returns only one page; the server provides 100 resources but paginates
+        Assert.NotEmpty(result.Resources);
+        Assert.True(result.Resources.Count <= 100);
+    }
+
+    [Theory]
+    [MemberData(nameof(GetClients))]
+    public async Task ReadResourceAsync_WithRequestParams_ReturnsRawResult(string clientId)
+    {
+        await using var client = await _fixture.CreateClientAsync(clientId);
+
+        var result = await client.ReadResourceAsync(
+            new ReadResourceRequestParams { Uri = "test://static/resource/1" },
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.Single(result.Contents);
+    }
+
+    [Theory]
+    [MemberData(nameof(GetClients))]
+    public async Task CompleteAsync_WithRequestParams_ReturnsRawResult(string clientId)
+    {
+        await using var client = await _fixture.CreateClientAsync(clientId);
+
+        var result = await client.CompleteAsync(
+            new CompleteRequestParams
+            {
+                Ref = new PromptReference { Name = "irrelevant" },
+                Argument = new Argument { Name = "style", Value = "fo" }
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.Single(result.Completion.Values);
+        Assert.Equal("formal", result.Completion.Values[0]);
+    }
+
+    [Theory]
+    [MemberData(nameof(GetClients))]
+    public async Task CallToolAsync_WithRequestParams_ReturnsRawResult(string clientId)
+    {
+        await using var client = await _fixture.CreateClientAsync(clientId);
+
+        var result = await client.CallToolAsync(
+            new CallToolRequestParams
+            {
+                Name = "echo",
+                Arguments = new Dictionary<string, JsonElement>
+                {
+                    ["message"] = JsonSerializer.SerializeToElement("Hello from RequestParams!", McpJsonUtilities.DefaultOptions)
+                }
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.Null(result.IsError);
+        var textContent = Assert.Single(result.Content.OfType<TextContentBlock>());
+        Assert.Equal("Echo: Hello from RequestParams!", textContent.Text);
+    }
+
+    // Not supported by "everything" server version on npx
+    [Fact]
+    public async Task SubscribeToResourceAsync_WithRequestParams_Succeeds()
+    {
+        var clientId = "test_server";
+
+        TaskCompletionSource<bool> tcs = new();
+        await using var client = await _fixture.CreateClientAsync(clientId, new()
+        {
+            Handlers = new()
+            {
+                NotificationHandlers =
+                [
+                    new(NotificationMethods.ResourceUpdatedNotification, (notification, cancellationToken) =>
+                    {
+                        tcs.TrySetResult(true);
+                        return default;
+                    })
+                ]
+            }
+        });
+
+        await client.SubscribeToResourceAsync(
+            new SubscribeRequestParams { Uri = "test://static/resource/1" },
+            TestContext.Current.CancellationToken);
+
+        await tcs.Task;
+    }
+
+    // Not supported by "everything" server version on npx
+    [Fact]
+    public async Task UnsubscribeFromResourceAsync_WithRequestParams_Succeeds()
+    {
+        var clientId = "test_server";
+
+        TaskCompletionSource<bool> receivedNotification = new();
+        await using var client = await _fixture.CreateClientAsync(clientId, new()
+        {
+            Handlers = new()
+            {
+                NotificationHandlers =
+                [
+                    new(NotificationMethods.ResourceUpdatedNotification, (notification, cancellationToken) =>
+                    {
+                        receivedNotification.TrySetResult(true);
+                        return default;
+                    })
+                ]
+            }
+        });
+        await client.SubscribeToResourceAsync(
+            new SubscribeRequestParams { Uri = "test://static/resource/1" },
+            TestContext.Current.CancellationToken);
+
+        await receivedNotification.Task;
+
+        await client.UnsubscribeFromResourceAsync(
+            new UnsubscribeRequestParams { Uri = "test://static/resource/1" },
+            TestContext.Current.CancellationToken);
     }
 
     [JsonSerializable(typeof(TestNotification))]

@@ -70,8 +70,6 @@ public sealed class ElicitationCapability
             }
 
             var capability = new ElicitationCapability();
-            bool hasForm = false;
-            bool hasUrl = false;
 
             foreach (var property in document.RootElement.EnumerateObject())
             {
@@ -80,19 +78,18 @@ public sealed class ElicitationCapability
                     capability.Form = property.Value.ValueKind == JsonValueKind.Null
                         ? null
                         : capability.Form ?? new FormElicitationCapability();
-                    hasForm = true;
                 }
                 else if (property.NameEquals("url"))
                 {
                     capability.Url = property.Value.ValueKind == JsonValueKind.Null
                         ? null
                         : capability.Url ?? new UrlElicitationCapability();
-                    hasUrl = capability.Url is not null;
                 }
             }
 
-            if (!hasForm && !hasUrl)
+            if (capability.Form is null && capability.Url is null)
             {
+                // If both modes are null, default to form mode for backward compatibility.
                 capability.Form = new FormElicitationCapability();
             }
 

@@ -19,6 +19,8 @@ public sealed class UrlElicitationRequiredException : McpProtocolException
     /// </summary>
     /// <param name="message">A description of why the elicitation is required.</param>
     /// <param name="elicitations">One or more URL-mode elicitation requests that must complete before retrying the original request.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="elicitations"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="elicitations"/> is empty or contains invalid elicitations.</exception>
     public UrlElicitationRequiredException(string message, IEnumerable<ElicitRequestParams> elicitations)
         : base(message, McpErrorCode.UrlElicitationRequired)
     {
@@ -66,7 +68,7 @@ public sealed class UrlElicitationRequiredException : McpProtocolException
 
     private static bool TryParseElicitations(JsonElement dataElement, out IReadOnlyList<ElicitRequestParams> elicitations)
     {
-        elicitations = Array.Empty<ElicitRequestParams>();
+        elicitations = [];
 
         if (dataElement.ValueKind is not JsonValueKind.Object)
         {

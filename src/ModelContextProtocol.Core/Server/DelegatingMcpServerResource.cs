@@ -13,6 +13,7 @@ public abstract class DelegatingMcpServerResource : McpServerResource
 
     /// <summary>Initializes a new instance of the <see cref="DelegatingMcpServerResource"/> class around the specified <paramref name="innerResource"/>.</summary>
     /// <param name="innerResource">The inner resource wrapped by this delegating resource.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="innerResource"/> is <see langword="null"/>.</exception>
     protected DelegatingMcpServerResource(McpServerResource innerResource)
     {
         Throw.IfNull(innerResource);

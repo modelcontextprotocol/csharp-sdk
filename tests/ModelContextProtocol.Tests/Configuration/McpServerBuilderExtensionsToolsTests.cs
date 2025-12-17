@@ -5,7 +5,6 @@ using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using ModelContextProtocol.Tests.Utils;
 using Moq;
 using System.Collections;
 using System.Collections.Concurrent;
@@ -25,8 +24,6 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         : base(testOutputHelper)
     {
     }
-
-    private MockLoggerProvider _mockLoggerProvider = new();
 
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
@@ -113,7 +110,6 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
             .WithTools<EchoTool>(serializerOptions: BuilderToolsJsonContext.Default.Options);
 
         services.AddSingleton(new ObjectWithId());
-        services.AddSingleton<ILoggerProvider>(_mockLoggerProvider);
     }
 
     [Fact]
@@ -378,7 +374,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
         Assert.NotEmpty(result.Content);
         Assert.Contains("An error occurred", (result.Content[0] as TextContentBlock)?.Text);
 
-        var errorLog = Assert.Single(_mockLoggerProvider.LogMessages, m => m.LogLevel == LogLevel.Error);
+        var errorLog = Assert.Single(MockLoggerProvider.LogMessages, m => m.LogLevel == LogLevel.Error);
         Assert.Equal($"\"throw_exception\" threw an unhandled exception.", errorLog.Message);
         Assert.IsType<InvalidOperationException>(errorLog.Exception);
         Assert.Equal("Test error", errorLog.Exception.Message);
@@ -682,8 +678,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
             return default;
         }))
         {
-            var result = await client.SendRequestAsync<CallToolRequestParams, CallToolResult>(
-                RequestMethods.ToolsCall,
+            var result = await client.CallToolAsync(
                 new CallToolRequestParams
                 {
                     Name = progressTool.ProtocolTool.Name,

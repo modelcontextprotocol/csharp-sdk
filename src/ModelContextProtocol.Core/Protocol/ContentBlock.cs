@@ -356,6 +356,7 @@ public abstract class ContentBlock
 }
 
 /// <summary>Represents text provided to or from an LLM.</summary>
+[DebuggerDisplay("Text = \"{Text}\"")]
 public sealed class TextContentBlock : ContentBlock
 {
     /// <inheritdoc/>
@@ -366,9 +367,13 @@ public sealed class TextContentBlock : ContentBlock
     /// </summary>
     [JsonPropertyName("text")]
     public required string Text { get; set; }
+
+    /// <inheritdoc/>
+    public override string ToString() => Text ?? "";
 }
 
 /// <summary>Represents an image provided to or from an LLM.</summary>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class ImageContentBlock : ContentBlock
 {
     /// <inheritdoc/>
@@ -388,9 +393,13 @@ public sealed class ImageContentBlock : ContentBlock
     /// </remarks>
     [JsonPropertyName("mimeType")]
     public required string MimeType { get; set; }
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay => $"MimeType = {MimeType}, Length = {DebuggerDisplayHelper.GetBase64LengthDisplay(Data)}";
 }
 
 /// <summary>Represents audio provided to or from an LLM.</summary>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class AudioContentBlock : ContentBlock
 {
     /// <inheritdoc/>
@@ -410,12 +419,16 @@ public sealed class AudioContentBlock : ContentBlock
     /// </remarks>
     [JsonPropertyName("mimeType")]
     public required string MimeType { get; set; }
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay => $"MimeType = {MimeType}, Length = {DebuggerDisplayHelper.GetBase64LengthDisplay(Data)}";
 }
 
 /// <summary>Represents the contents of a resource, embedded into a prompt or tool call result.</summary>
 /// <remarks>
 /// It is up to the client how best to render embedded resources for the benefit of the LLM and/or the user.
 /// </remarks>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class EmbeddedResourceBlock : ContentBlock
 {
     /// <inheritdoc/>
@@ -433,12 +446,16 @@ public sealed class EmbeddedResourceBlock : ContentBlock
     /// </remarks>
     [JsonPropertyName("resource")]
     public required ResourceContents Resource { get; set; }
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay => $"Uri = \"{Resource.Uri}\"";
 }
 
 /// <summary>Represents a resource that the server is capable of reading, included in a prompt or tool call result.</summary>
 /// <remarks>
 /// Resource links returned by tools are not guaranteed to appear in the results of `resources/list` requests.
 /// </remarks>
+[DebuggerDisplay("Name = {Name}, Uri = \"{Uri}\"")]
 public sealed class ResourceLinkBlock : ContentBlock
 {
     /// <inheritdoc/>
@@ -503,6 +520,7 @@ public sealed class ResourceLinkBlock : ContentBlock
 }
 
 /// <summary>Represents a request from the assistant to call a tool.</summary>
+[DebuggerDisplay("Name = {Name}, Id = {Id}")]
 public sealed class ToolUseContentBlock : ContentBlock
 {
     /// <inheritdoc/>
@@ -531,6 +549,7 @@ public sealed class ToolUseContentBlock : ContentBlock
 }
 
 /// <summary>Represents the result of a tool use, provided by the user back to the assistant.</summary>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class ToolResultContentBlock : ContentBlock
 {
     /// <inheritdoc/>
@@ -575,4 +594,37 @@ public sealed class ToolResultContentBlock : ContentBlock
     /// </remarks>
     [JsonPropertyName("isError")]
     public bool? IsError { get; set; }
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay
+    {
+        get
+        {
+            if (IsError == true)
+            {
+                return $"ToolUseId = {ToolUseId}, IsError = true";
+            }
+
+            // Try to show the result content
+            if (Content.Count == 1 && Content[0] is TextContentBlock textBlock)
+            {
+                return $"ToolUseId = {ToolUseId}, Result = \"{textBlock.Text}\"";
+            }
+
+            if (StructuredContent.HasValue)
+            {
+                try
+                {
+                    string json = StructuredContent.Value.GetRawText();
+                    return $"ToolUseId = {ToolUseId}, Result = {json}";
+                }
+                catch
+                {
+                    // Fall back to content count if GetRawText fails
+                }
+            }
+
+            return $"ToolUseId = {ToolUseId}, ContentCount = {Content.Count}";
+        }
+    }
 }

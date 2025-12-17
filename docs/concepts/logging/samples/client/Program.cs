@@ -30,7 +30,7 @@ if (firstArgument is not null)
     if (Enum.TryParse<LoggingLevel>(firstArgument, true, out var loggingLevel))
     {
         // <snippet_LoggingLevel>
-        await mcpClient.SetLoggingLevel(loggingLevel);
+        await mcpClient.SetLoggingLevelAsync(loggingLevel);
         // </snippet_LoggingLevel>
     }
     else

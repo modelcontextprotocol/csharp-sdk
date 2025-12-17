@@ -118,7 +118,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         Tool tool = new()
         {
             Name = options?.Name ?? function.Name,
-            Description = options?.Description ?? function.Description,
+            Description = GetToolDescription(function, options),
             InputSchema = function.JsonSchema,
             OutputSchema = CreateOutputSchema(function, options, out bool structuredOutputRequiresWrapping),
             Icons = options?.Icons,
@@ -146,7 +146,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
             // Populate Meta from options and/or McpMetaAttribute instances if a MethodInfo is available
             tool.Meta = function.UnderlyingMethod is not null ?
-                CreateMetaFromAttributes(function.UnderlyingMethod, options.Meta, options.SerializerOptions) :
+                CreateMetaFromAttributes(function.UnderlyingMethod, options.Meta) :
                 options.Meta;
         }
 
@@ -361,9 +361,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     /// <summary>Creates a Meta <see cref="JsonObject"/> from <see cref="McpMetaAttribute"/> instances on the specified method.</summary>
     /// <param name="method">The method to extract <see cref="McpMetaAttribute"/> instances from.</param>
     /// <param name="meta">Optional <see cref="JsonObject"/> to seed the Meta with. Properties from this object take precedence over attributes.</param>
-    /// <param name="serializerOptions">Optional <see cref="JsonSerializerOptions"/> to use for serialization. This parameter is ignored when parsing JSON strings from attributes.</param>
     /// <returns>A <see cref="JsonObject"/> with metadata, or null if no metadata is present.</returns>
-    internal static JsonObject? CreateMetaFromAttributes(MethodInfo method, JsonObject? meta = null, JsonSerializerOptions? serializerOptions = null)
+    internal static JsonObject? CreateMetaFromAttributes(MethodInfo method, JsonObject? meta = null)
     {
         // Transfer all McpMetaAttribute instances to the Meta JsonObject, ignoring any that would overwrite existing properties.
         foreach (var attr in method.GetCustomAttributes<McpMetaAttribute>())
@@ -404,6 +403,57 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         {
             throw new ArgumentException($"The tool name '{name}' is invalid. Tool names must match the regular expression '{ValidateToolNameRegex()}'");
         }
+    }
+
+    /// <summary>
+    /// Gets the tool description, synthesizing from both the function description and return description when appropriate.
+    /// </summary>
+    /// <remarks>
+    /// When UseStructuredContent is true, the return description is included in the output schema.
+    /// When UseStructuredContent is false (default), if there's a return description in the ReturnJsonSchema,
+    /// it will be appended to the tool description so the information is still available to consumers.
+    /// </remarks>
+    private static string? GetToolDescription(AIFunction function, McpServerToolCreateOptions? options)
+    {
+        string? description = options?.Description ?? function.Description;
+
+        // If structured content is enabled, the return description will be in the output schema
+        if (options?.UseStructuredContent is true)
+        {
+            return description;
+        }
+
+        // When structured content is disabled, try to extract the return description from ReturnJsonSchema
+        // and append it to the tool description so the information is available to consumers
+        string? returnDescription = GetReturnDescription(function.ReturnJsonSchema);
+        if (string.IsNullOrWhiteSpace(returnDescription))
+        {
+            return description;
+        }
+
+        // Synthesize a combined description
+        if (string.IsNullOrWhiteSpace(description))
+        {
+            return $"Returns: {returnDescription}";
+        }
+
+        return $"{description}\nReturns: {returnDescription}";
+    }
+
+    /// <summary>
+    /// Extracts the description property from a ReturnJsonSchema if present.
+    /// </summary>
+    private static string? GetReturnDescription(JsonElement? returnJsonSchema)
+    {
+        if (returnJsonSchema is not JsonElement schema ||
+            schema.ValueKind is not JsonValueKind.Object ||
+            !schema.TryGetProperty("description", out JsonElement descriptionElement) ||
+            descriptionElement.ValueKind is not JsonValueKind.String)
+        {
+            return null;
+        }
+
+        return descriptionElement.GetString();
     }
 
     private static JsonElement? CreateOutputSchema(AIFunction function, McpServerToolCreateOptions? toolCreateOptions, out bool structuredOutputRequiresWrapping)

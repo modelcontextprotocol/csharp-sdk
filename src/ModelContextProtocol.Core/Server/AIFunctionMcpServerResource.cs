@@ -221,7 +221,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
             MimeType = options?.MimeType ?? "application/octet-stream",
             Icons = options?.Icons,
             Meta = function.UnderlyingMethod is not null ?
-                AIFunctionMcpServerTool.CreateMetaFromAttributes(function.UnderlyingMethod, options?.Meta, options?.SerializerOptions) :
+                AIFunctionMcpServerTool.CreateMetaFromAttributes(function.UnderlyingMethod, options?.Meta) :
                 options?.Meta,
         };
 

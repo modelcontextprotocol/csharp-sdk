@@ -13,6 +13,7 @@ public abstract class DelegatingMcpServerTool : McpServerTool
 
     /// <summary>Initializes a new instance of the <see cref="DelegatingMcpServerTool"/> class around the specified <paramref name="innerTool"/>.</summary>
     /// <param name="innerTool">The inner tool wrapped by this delegating tool.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="innerTool"/> is <see langword="null"/>.</exception>
     protected DelegatingMcpServerTool(McpServerTool innerTool)
     {
         Throw.IfNull(innerTool);

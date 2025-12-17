@@ -161,6 +161,7 @@ public static class AIContentExtensions
     /// This method transforms a protocol-specific <see cref="PromptMessage"/> from the Model Context Protocol
     /// into a standard <see cref="ChatMessage"/> object that can be used with AI client libraries.
     /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="promptMessage"/> is <see langword="null"/>.</exception>
     public static ChatMessage ToChatMessage(this PromptMessage promptMessage)
     {
         Throw.IfNull(promptMessage);
@@ -187,6 +188,7 @@ public static class AIContentExtensions
     /// <see cref="ChatRole.Tool"/> message containing a <see cref="FunctionResultContent"/> with result as a
     /// serialized <see cref="JsonElement"/>.
     /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="result"/> or <paramref name="callId"/> is <see langword="null"/>.</exception>
     public static ChatMessage ToChatMessage(this CallToolResult result, string callId)
     {
         Throw.IfNull(result);
@@ -207,6 +209,7 @@ public static class AIContentExtensions
     /// This method transforms protocol-specific <see cref="PromptMessage"/> objects from a Model Context Protocol
     /// prompt result into standard <see cref="ChatMessage"/> objects that can be used with AI client libraries.
     /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="promptResult"/> is <see langword="null"/>.</exception>
     public static IList<ChatMessage> ToChatMessages(this GetPromptResult promptResult)
     {
         Throw.IfNull(promptResult);
@@ -224,6 +227,7 @@ public static class AIContentExtensions
     /// protocol-specific <see cref="PromptMessage"/> objects for the Model Context Protocol system.
     /// Only representable content items are processed.
     /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="chatMessage"/> is <see langword="null"/>.</exception>
     public static IList<PromptMessage> ToPromptMessages(this ChatMessage chatMessage)
     {
         Throw.IfNull(chatMessage);
@@ -251,6 +255,7 @@ public static class AIContentExtensions
     /// This method converts Model Context Protocol content types to the equivalent Microsoft.Extensions.AI 
     /// content types, enabling seamless integration between the protocol and AI client libraries.
     /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="content"/> is <see langword="null"/>.</exception>
     public static AIContent? ToAIContent(this ContentBlock content)
     {
         Throw.IfNull(content);
@@ -294,6 +299,8 @@ public static class AIContentExtensions
     /// This method converts Model Context Protocol resource types to the equivalent Microsoft.Extensions.AI 
     /// content types, enabling seamless integration between the protocol and AI client libraries.
     /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="content"/> is <see langword="null"/>.</exception>
+    /// <exception cref="NotSupportedException">The resource type is not supported.</exception>
     public static AIContent ToAIContent(this ResourceContents content)
     {
         Throw.IfNull(content);
@@ -325,6 +332,7 @@ public static class AIContentExtensions
     /// preserving the type-specific conversion logic for text, images, audio, and resources.
     /// </para>
     /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="contents"/> is <see langword="null"/>.</exception>
     public static IList<AIContent> ToAIContents(this IEnumerable<ContentBlock> contents)
     {
         Throw.IfNull(contents);
@@ -347,6 +355,7 @@ public static class AIContentExtensions
     /// binary resources become <see cref="DataContent"/> objects.
     /// </para>
     /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="contents"/> is <see langword="null"/>.</exception>
     public static IList<AIContent> ToAIContents(this IEnumerable<ResourceContents> contents)
     {
         Throw.IfNull(contents);
@@ -357,8 +366,11 @@ public static class AIContentExtensions
     /// <summary>Creates a new <see cref="ContentBlock"/> from the content of an <see cref="AIContent"/>.</summary>
     /// <param name="content">The <see cref="AIContent"/> to convert.</param>
     /// <returns>The created <see cref="ContentBlock"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="content"/> is <see langword="null"/>.</exception>
     public static ContentBlock ToContentBlock(this AIContent content)
     {
+        Throw.IfNull(content);
+
         ContentBlock contentBlock = content switch
         {
             TextContent textContent => new TextContentBlock

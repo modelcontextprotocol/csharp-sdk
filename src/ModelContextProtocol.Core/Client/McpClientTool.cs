@@ -1,7 +1,7 @@
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol;
-using System.Collections.ObjectModel;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Client;
 
@@ -19,23 +19,17 @@ namespace ModelContextProtocol.Client;
 /// <see cref="WithName"/> and <see cref="WithDescription"/> without changing the underlying tool functionality.
 /// </para>
 /// <para>
-/// Typically, you would get instances of this class by calling the <see cref="McpClient.ListToolsAsync"/>
+/// Typically, you would get instances of this class by calling the <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/>
 /// method on an <see cref="McpClient"/> instance.
 /// </para>
 /// </remarks>
 public sealed class McpClientTool : AIFunction
 {
-    /// <summary>Additional properties exposed from tools.</summary>
-    private static readonly ReadOnlyDictionary<string, object?> s_additionalProperties =
-        new(new Dictionary<string, object?>()
-        {
-            ["Strict"] = false, // some MCP schemas may not meet "strict" requirements
-        });
-
     private readonly McpClient _client;
     private readonly string _name;
     private readonly string _description;
     private readonly IProgress<ProgressNotificationValue>? _progress;
+    private readonly JsonObject? _meta;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="McpClientTool"/> class.
@@ -49,8 +43,8 @@ public sealed class McpClientTool : AIFunction
     /// <remarks>
     /// <para>
     /// This constructor enables reusing cached tool definitions across different <see cref="McpClient"/> instances
-    /// without needing to call <see cref="McpClient.ListToolsAsync"/> on every reconnect. This is particularly useful
-    /// in scenarios where tool definitions are stable and network round-trips should be minimized.
+    /// without needing to call <see cref="McpClient.ListToolsAsync(RequestOptions?, CancellationToken)"/> on every reconnect. 
+    /// This is particularly useful in scenarios where tool definitions are stable and network round-trips should be minimized.
     /// </para>
     /// <para>
     /// The provided <paramref name="tool"/> must represent a tool that is actually available on the server
@@ -73,6 +67,7 @@ public sealed class McpClientTool : AIFunction
         _name = tool.Name;
         _description = tool.Description ?? string.Empty;
         _progress = null;
+        _meta = null;
     }
 
     internal McpClientTool(
@@ -81,7 +76,8 @@ public sealed class McpClientTool : AIFunction
         JsonSerializerOptions serializerOptions,
         string? name = null,
         string? description = null,
-        IProgress<ProgressNotificationValue>? progress = null)
+        IProgress<ProgressNotificationValue>? progress = null,
+        JsonObject? meta = null)
     {
         _client = client;
         ProtocolTool = tool;
@@ -89,6 +85,7 @@ public sealed class McpClientTool : AIFunction
         _name = name ?? tool.Name;
         _description = description ?? tool.Description ?? string.Empty;
         _progress = progress;
+        _meta = meta;
     }
 
     /// <summary>
@@ -120,9 +117,6 @@ public sealed class McpClientTool : AIFunction
 
     /// <inheritdoc/>
     public override JsonSerializerOptions JsonSerializerOptions { get; }
-
-    /// <inheritdoc/>
-    public override IReadOnlyDictionary<string, object?> AdditionalProperties => s_additionalProperties;
 
     /// <inheritdoc/>
     protected async override ValueTask<object?> InvokeCoreAsync(
@@ -196,15 +190,38 @@ public sealed class McpClientTool : AIFunction
         IReadOnlyDictionary<string, object?>? arguments = null,
         IProgress<ProgressNotificationValue>? progress = null,
         RequestOptions? options = null,
-        CancellationToken cancellationToken = default) =>
-        _client.CallToolAsync(
+        CancellationToken cancellationToken = default)
+    {
+        // If there's any metadata provided with WithMeta, we can't just pass along the options as-is,
+        // and instead need to create new options that merges in _meta.
+        if (_meta is { } meta)
+        {
+            // Create a new RequestOptions, as we're going to need to store a new JsonObject for Meta (either
+            // _meta or _meta+options.Meta), and we don't want to mutate the user's options object.
+            RequestOptions newOptions = options?.Clone() ?? new();
+
+            // If we also have newOptions.Meta, merge that with _meta into a new JsonObject, preferring
+            // the objects from newOptions.Meta in case of conflicts.
+            if (newOptions.Meta is { } newOptionsMeta)
+            {
+                meta = (JsonObject)meta.DeepClone();
+                foreach (var p in newOptionsMeta)
+                {
+                    meta[p.Key] = p.Value?.DeepClone();
+                }
+            }
+            
+            newOptions.Meta = meta;
+            options = newOptions;
+        }
+
+        return _client.CallToolAsync(
             ProtocolTool.Name,
             arguments,
             progress,
-            options ?? new RequestOptions() {
-                JsonSerializerOptions = JsonSerializerOptions
-            },
+            options,
             cancellationToken);
+    }
 
     /// <summary>
     /// Creates a new instance of the tool but modified to return the specified name from its <see cref="Name"/> property.
@@ -232,7 +249,7 @@ public sealed class McpClientTool : AIFunction
     /// </remarks>
     /// <returns>A new instance of <see cref="McpClientTool"/> with the provided name.</returns>
     public McpClientTool WithName(string name) =>
-        new(_client, ProtocolTool, JsonSerializerOptions, name, _description, _progress);
+        new(_client, ProtocolTool, JsonSerializerOptions, name, _description, _progress, _meta);
 
     /// <summary>
     /// Creates a new instance of the tool but modified to return the specified description from its <see cref="Description"/> property.
@@ -256,7 +273,7 @@ public sealed class McpClientTool : AIFunction
     /// </remarks>
     /// <returns>A new instance of <see cref="McpClientTool"/> with the provided description.</returns>
     public McpClientTool WithDescription(string description) =>
-        new(_client, ProtocolTool, JsonSerializerOptions, _name, description, _progress);
+        new(_client, ProtocolTool, JsonSerializerOptions, _name, description, _progress, _meta);
 
     /// <summary>
     /// Creates a new instance of the tool but modified to report progress via the specified <see cref="IProgress{T}"/>.
@@ -275,10 +292,40 @@ public sealed class McpClientTool : AIFunction
     /// </para>
     /// </remarks>
     /// <returns>A new instance of <see cref="McpClientTool"/>, configured with the provided progress instance.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="progress"/> is <see langword="null"/>.</exception>
     public McpClientTool WithProgress(IProgress<ProgressNotificationValue> progress)
     {
         Throw.IfNull(progress);
 
-        return new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, _name, _description, progress);
+        return new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, _name, _description, progress, _meta);
     }
+
+    /// <summary>
+    /// Creates a new instance of the tool but modified to include the specified metadata in tool call requests.
+    /// </summary>
+    /// <param name="meta">
+    /// The metadata to include in tool call requests. This will be serialized as the <c>_meta</c> field
+    /// in the JSON-RPC request parameters.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// Adding metadata to the tool allows you to pass additional protocol-level information with each tool call.
+    /// This can be useful for tracing, logging, or passing context information to the server.
+    /// </para>
+    /// <para>
+    /// Only one metadata object can be specified at a time. Calling <see cref="WithMeta"/> again
+    /// will overwrite any previously specified metadata object. If passed <see langword="null"/>,
+    /// any previously supplied metadata will be removed.
+    /// </para>
+    /// <para>
+    /// The metadata is passed through to the server as-is, merged with any protocol-level metadata
+    /// such as progress tokens when <see cref="WithProgress"/> is also used. If a <see cref="RequestOptions"/>
+    /// is passed to <see cref="CallAsync"/>, the metadata from both <paramref name="meta"/> and its
+    /// <see cref="RequestOptions"/> will be merged, preferring values from the <see cref="RequestOptions"/> in
+    /// case of conflicts.
+    /// </para>
+    /// </remarks>
+    /// <returns>A new instance of <see cref="McpClientTool"/>, configured with the provided metadata.</returns>
+    public McpClientTool WithMeta(JsonObject? meta) =>
+        new McpClientTool(_client, ProtocolTool, JsonSerializerOptions, _name, _description, _progress, meta);
 }

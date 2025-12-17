@@ -35,7 +35,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
 
         // Act
         await using var client = await GetClientAsync();
-        await client.PingAsync(null, TestContext.Current.CancellationToken);
+        await client.PingAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(client);
@@ -139,7 +139,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         // act
         await using var client = await GetClientAsync();
 
-        IList<McpClientResource> allResources = await client.ListResourcesAsync(null, TestContext.Current.CancellationToken);
+        IList<McpClientResource> allResources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // The everything server provides 100 test resources
         Assert.Equal(100, allResources.Count);
@@ -190,7 +190,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
 
         // act
         await using var client = await GetClientAsync();
-        var prompts = await client.ListPromptsAsync(null, TestContext.Current.CancellationToken);
+        var prompts = await client.ListPromptsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // assert
         Assert.NotNull(prompts);

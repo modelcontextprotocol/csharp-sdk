@@ -91,4 +91,12 @@ public class TestServerTransport : ITransport
     {
         await _messageChannel.Writer.WriteAsync(message, cancellationToken);
     }
+
+    /// <summary>
+    /// Sends a message from the client to the server (simulating client-to-server communication).
+    /// </summary>
+    public async Task SendClientMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
+    {
+        await _messageChannel.Writer.WriteAsync(message, cancellationToken);
+    }
 }

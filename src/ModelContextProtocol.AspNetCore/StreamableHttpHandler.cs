@@ -364,6 +364,7 @@ internal sealed class StreamableHttpHandler(
         RandomNumberGenerator.Fill(buffer);
         return WebEncoders.Base64UrlEncode(buffer);
     }
+
     internal static async Task<JsonRpcMessage?> ReadJsonRpcMessageAsync(HttpContext context)
     {
         // Implementation for reading a JSON-RPC message from the request body
@@ -379,7 +380,6 @@ internal sealed class StreamableHttpHandler(
 
         return message;
     }
-
 
     internal static Task RunSessionAsync(HttpContext httpContext, McpServer session, CancellationToken requestAborted)
         => session.RunAsync(requestAborted);

@@ -137,12 +137,12 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
             Description = options?.Description ?? function.Description,
             Arguments = args,
             Icons = options?.Icons,
-        };
 
-        // Populate Meta from options and/or McpMetaAttribute instances if a MethodInfo is available
-        prompt.Meta = function.UnderlyingMethod is not null ?
-            AIFunctionMcpServerTool.CreateMetaFromAttributes(function.UnderlyingMethod, options?.Meta, options?.SerializerOptions) :
-            options?.Meta;
+            // Populate Meta from options and/or McpMetaAttribute instances if a MethodInfo is available
+            Meta = function.UnderlyingMethod is not null ?
+                AIFunctionMcpServerTool.CreateMetaFromAttributes(function.UnderlyingMethod, options?.Meta) :
+                options?.Meta
+        };
 
         return new AIFunctionMcpServerPrompt(function, prompt, options?.Metadata ?? []);
     }

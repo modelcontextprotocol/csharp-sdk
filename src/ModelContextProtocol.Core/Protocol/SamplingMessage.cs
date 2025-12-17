@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
@@ -26,6 +27,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </para>
 /// </remarks>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class SamplingMessage
 {
     /// <summary>
@@ -49,4 +51,22 @@ public sealed class SamplingMessage
     /// </remarks>
     [JsonPropertyName("_meta")]
     public JsonObject? Meta { get; set; }
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay
+    {
+        get
+        {
+            // Show actual text content if it's a single TextContentBlock
+            if (Content.Count == 1 && Content[0] is TextContentBlock textBlock)
+            {
+                return $"Role = {Role}, Text = \"{textBlock.Text}\"";
+            }
+
+            string contentTypes = Content.Count == 1 
+                ? Content[0].Type 
+                : $"{Content.Count} items";
+            return $"Role = {Role}, Content = {contentTypes}";
+        }
+    }
 }

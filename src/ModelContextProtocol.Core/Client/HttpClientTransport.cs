@@ -41,6 +41,7 @@ public sealed class HttpClientTransport : IClientTransport, IAsyncDisposable
     /// <see langword="true"/> to dispose of <paramref name="httpClient"/> when the transport is disposed;
     /// <see langword="false"/> if the caller is retaining ownership of the <paramref name="httpClient"/>'s lifetime.
     /// </param>
+    /// <exception cref="ArgumentNullException"><paramref name="transportOptions"/> or <paramref name="httpClient"/> is <see langword="null"/>.</exception>
     public HttpClientTransport(HttpClientTransportOptions transportOptions, HttpClient httpClient, ILoggerFactory? loggerFactory = null, bool ownsHttpClient = false)
     {
         Throw.IfNull(transportOptions);
@@ -52,8 +53,7 @@ public sealed class HttpClientTransport : IClientTransport, IAsyncDisposable
 
         if (transportOptions.OAuth is { } clientOAuthOptions)
         {
-            var oAuthProvider = new ClientOAuthProvider(_options.Endpoint, clientOAuthOptions, httpClient, loggerFactory);
-            _mcpHttpClient = new AuthenticatingMcpHttpClient(httpClient, oAuthProvider);
+            _mcpHttpClient = new ClientOAuthProvider(_options.Endpoint, clientOAuthOptions, httpClient, loggerFactory);
         }
         else
         {

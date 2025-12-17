@@ -13,6 +13,7 @@ public readonly struct RequestId : IEquatable<RequestId>
 {
     /// <summary>Initializes a new instance of the <see cref="RequestId"/> with a specified value.</summary>
     /// <param name="value">The required ID value.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="value"/> is <see langword="null"/>.</exception>
     public RequestId(string value)
     {
         Throw.IfNull(value);

@@ -195,8 +195,6 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
                         if (!isUserCancellation && message is JsonRpcRequest request)
                         {
-                            LogRequestHandlerException(EndpointName, request.Method, ex);
-
                             JsonRpcErrorDetail detail = ex switch
                             {
                                 UrlElicitationRequiredException urlException => new()
@@ -298,8 +296,19 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             switch (message)
             {
                 case JsonRpcRequest request:
-                    var result = await HandleRequest(request, cancellationToken).ConfigureAwait(false);
-                    AddResponseTags(ref tags, activity, result, method);
+                    LogRequestHandlerCalled(EndpointName, request.Method);
+                    long requestStartingTimestamp = Stopwatch.GetTimestamp();
+                    try
+                    {
+                        var result = await HandleRequest(request, cancellationToken).ConfigureAwait(false);
+                        LogRequestHandlerCompleted(EndpointName, request.Method, GetElapsed(requestStartingTimestamp).TotalMilliseconds);
+                        AddResponseTags(ref tags, activity, result, method);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogRequestHandlerException(EndpointName, request.Method, GetElapsed(requestStartingTimestamp).TotalMilliseconds, ex);
+                        throw;
+                    }
                     break;
 
                 case JsonRpcNotification notification:
@@ -370,9 +379,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             throw new McpProtocolException($"Method '{request.Method}' is not available.", McpErrorCode.MethodNotFound);
         }
 
-        LogRequestHandlerCalled(EndpointName, request.Method);
         JsonNode? result = await handler(request, cancellationToken).ConfigureAwait(false);
-        LogRequestHandlerCompleted(EndpointName, request.Method);
 
         await SendMessageAsync(new JsonRpcResponse
         {
@@ -898,11 +905,11 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} method '{Method}' request handler called.")]
     private partial void LogRequestHandlerCalled(string endpointName, string method);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} method '{Method}' request handler completed.")]
-    private partial void LogRequestHandlerCompleted(string endpointName, string method);
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} method '{Method}' request handler completed in {ElapsedMilliseconds}ms.")]
+    private partial void LogRequestHandlerCompleted(string endpointName, string method, double elapsedMilliseconds);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} method '{Method}' request handler failed.")]
-    private partial void LogRequestHandlerException(string endpointName, string method, Exception exception);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} method '{Method}' request handler failed in {ElapsedMilliseconds}ms.")]
+    private partial void LogRequestHandlerException(string endpointName, string method, double elapsedMilliseconds, Exception exception);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} received request for unknown request ID '{RequestId}'.")]
     private partial void LogNoRequestFoundForMessageWithId(string endpointName, RequestId requestId);

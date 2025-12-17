@@ -39,6 +39,7 @@ public sealed partial class StdioClientTransport : IClientTransport
     /// </summary>
     /// <param name="options">Configuration options for the transport, including the command to execute, arguments, working directory, and environment variables.</param>
     /// <param name="loggerFactory">A logger factory for creating loggers used for diagnostic output during transport operations.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is <see langword="null"/>.</exception>
     public StdioClientTransport(StdioClientTransportOptions options, ILoggerFactory? loggerFactory = null)
     {
         Throw.IfNull(options);

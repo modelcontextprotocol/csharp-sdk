@@ -6,12 +6,29 @@ namespace ModelContextProtocol;
 public enum McpErrorCode
 {
     /// <summary>
-    /// Indicates that the JSON received could not be parsed.
+    /// Indicates that the requested resource could not be found.
     /// </summary>
     /// <remarks>
-    /// This error occurs when the input contains malformed JSON or incorrect syntax.
+    /// This error should be used when a resource URI does not match any available resource on the server.
+    /// It allows clients to distinguish between missing resources and other types of errors.
     /// </remarks>
-    ParseError = -32700,
+    ResourceNotFound = -32002,
+
+    /// <summary>
+    /// Indicates that URL-mode elicitation is required to complete the requested operation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This error is returned when a server operation requires additional user input through URL-mode elicitation
+    /// before it can proceed. The error data must include the `data.elicitations` payload describing the pending
+    /// elicitation(s) for the client to present to the user.
+    /// </para>
+    /// <para>
+    /// Common scenarios include OAuth authorization and other out-of-band flows that cannot be completed inside
+    /// the MCP client.
+    /// </para>
+    /// </remarks>
+    UrlElicitationRequired = -32042,
 
     /// <summary>
     /// Indicates that the JSON payload does not conform to the expected Request object structure.
@@ -58,18 +75,10 @@ public enum McpErrorCode
     InternalError = -32603,
 
     /// <summary>
-    /// Indicates that URL-mode elicitation is required to complete the requested operation.
+    /// Indicates that the JSON received could not be parsed.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// This error is returned when a server operation requires additional user input through URL-mode elicitation
-    /// before it can proceed. The error data must include the `data.elicitations` payload describing the pending
-    /// elicitation(s) for the client to present to the user.
-    /// </para>
-    /// <para>
-    /// Common scenarios include OAuth authorization and other out-of-band flows that cannot be completed inside
-    /// the MCP client.
-    /// </para>
+    /// This error occurs when the input contains malformed JSON or incorrect syntax.
     /// </remarks>
-    UrlElicitationRequired = -32042,
+    ParseError = -32700,
 }

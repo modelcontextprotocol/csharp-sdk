@@ -22,6 +22,7 @@ public sealed class RequestContext<TParams>
     /// </summary>
     /// <param name="server">The server with which this instance is associated.</param>
     /// <param name="jsonRpcRequest">The JSON-RPC request associated with this context.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="server"/> or <paramref name="jsonRpcRequest"/> is <see langword="null"/>.</exception>
     public RequestContext(McpServer server, JsonRpcRequest jsonRpcRequest)
     {
         Throw.IfNull(server);

@@ -407,7 +407,7 @@ public class McpClientTests : ClientServerTestBase
         Assert.False(logger.IsEnabled(LogLevel.Error));
         Assert.False(logger.IsEnabled(LogLevel.Critical));
 
-        await client.SetLoggingLevel(LoggingLevel.Info, options: null, TestContext.Current.CancellationToken);
+        await client.SetLoggingLevelAsync(LoggingLevel.Info, options: null, TestContext.Current.CancellationToken);
 
         DateTime start = DateTime.UtcNow;
         while (Server.LoggingLevel is null)
@@ -609,5 +609,85 @@ public class McpClientTests : ClientServerTestBase
 
         object? IChatClient.GetService(Type serviceType, object? serviceKey) => null;
         void IDisposable.Dispose() { }
+    }
+
+    [Fact]
+    public async Task ListToolsAsync_WithRequestParams_ReturnsTools()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var result = await client.ListToolsAsync(new ListToolsRequestParams(), TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.Equal(12, result.Tools.Count);
+        Assert.Contains(result.Tools, t => t.Name == "Method4");
+    }
+
+    [Fact]
+    public async Task ListToolsAsync_WithRequestParams_NullThrows()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        await Assert.ThrowsAsync<ArgumentNullException>("requestParams",
+            () => client.ListToolsAsync((ListToolsRequestParams)null!, TestContext.Current.CancellationToken).AsTask());
+    }
+
+    [Fact]
+    public async Task CallToolAsync_WithRequestParams_ExecutesTool()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var result = await client.CallToolAsync(
+            new CallToolRequestParams
+            {
+                Name = "Method4",
+                Arguments = new Dictionary<string, JsonElement>
+                {
+                    ["i"] = JsonSerializer.SerializeToElement(42, McpJsonUtilities.DefaultOptions)
+                }
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.Contains("Method4 Result 42", result.Content.OfType<TextContentBlock>().FirstOrDefault()?.Text);
+    }
+
+    [Fact]
+    public async Task CallToolAsync_WithRequestParams_NullThrows()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        await Assert.ThrowsAsync<ArgumentNullException>("requestParams",
+            () => client.CallToolAsync((CallToolRequestParams)null!, TestContext.Current.CancellationToken).AsTask());
+    }
+
+    [Fact]
+    public async Task SetLoggingLevelAsync_WithRequestParams_SetsLevel()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        // Should not throw
+        await client.SetLoggingLevelAsync(
+            new SetLevelRequestParams { Level = LoggingLevel.Warning },
+            TestContext.Current.CancellationToken);
+
+        // Wait a bit for the server to process
+        DateTime start = DateTime.UtcNow;
+        while (Server.LoggingLevel is null)
+        {
+            await Task.Delay(1, TestContext.Current.CancellationToken);
+            Assert.True(DateTime.UtcNow - start < TimeSpan.FromSeconds(10), "Timed out waiting for logging level to be set");
+        }
+
+        Assert.Equal(LoggingLevel.Warning, Server.LoggingLevel);
+    }
+
+    [Fact]
+    public async Task SetLoggingLevelAsync_WithRequestParams_NullThrows()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        await Assert.ThrowsAsync<ArgumentNullException>("requestParams",
+            () => client.SetLoggingLevelAsync((SetLevelRequestParams)null!, TestContext.Current.CancellationToken));
     }
 }

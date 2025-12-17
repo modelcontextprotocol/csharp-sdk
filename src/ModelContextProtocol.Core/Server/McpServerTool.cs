@@ -195,7 +195,7 @@ public abstract class McpServerTool : IMcpServerPrimitive
     /// </param>
     /// <param name="options">Optional options used in the creation of the <see cref="McpServerTool"/> to control its behavior.</param>
     /// <returns>The created <see cref="AIFunction"/> for invoking <paramref name="method"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="method"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="method"/> or <paramref name="createTargetFunc"/> is <see langword="null"/>.</exception>
     public static McpServerTool Create(
         MethodInfo method,
         Func<RequestContext<CallToolRequestParams>, object> createTargetFunc,
