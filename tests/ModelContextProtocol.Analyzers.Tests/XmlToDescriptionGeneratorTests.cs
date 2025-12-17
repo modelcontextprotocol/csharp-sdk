@@ -1,5 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Diagnostics;
+using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using Xunit;
 
@@ -1755,15 +1757,28 @@ public partial class XmlToDescriptionGeneratorTests
 
         var driver = (CSharpGeneratorDriver)CSharpGeneratorDriver
             .Create(new XmlToDescriptionGenerator())
-            .RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var diagnostics);
+            .RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var generatorDiagnostics);
 
         var runResult = driver.GetRunResult();
 
+        // Check for generator errors (the original check)
+        var hasGeneratorErrors = generatorDiagnostics.Any(d => d.Severity == DiagnosticSeverity.Error);
+
+        // Run the suppressor and check specifically for unsuppressed CS1066 warnings
+        var analyzers = ImmutableArray.Create<DiagnosticAnalyzer>(new CS1066Suppressor());
+        var compilationWithAnalyzers = outputCompilation.WithAnalyzers(analyzers);
+        var allDiagnostics = compilationWithAnalyzers.GetAllDiagnosticsAsync().GetAwaiter().GetResult();
+        
+        // Check for any unsuppressed CS1066 warnings (these should be suppressed by our suppressor)
+        var unsuppressedCs1066 = allDiagnostics
+            .Where(d => d.Id == "CS1066" && !d.IsSuppressed)
+            .ToList();
+
         return new GeneratorRunResult
         {
-            Success = !diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error),
+            Success = !hasGeneratorErrors && unsuppressedCs1066.Count == 0,
             GeneratedSources = runResult.GeneratedTrees.Select(t => (t.FilePath, t.GetText())).ToList(),
-            Diagnostics = diagnostics.ToList(),
+            Diagnostics = generatorDiagnostics.Concat(unsuppressedCs1066).ToList(),
             Compilation = outputCompilation
         };
     }
