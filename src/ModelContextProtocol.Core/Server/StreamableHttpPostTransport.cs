@@ -102,6 +102,25 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
         }
     }
 
+    public async ValueTask EnablePollingAsync(TimeSpan retryInterval, CancellationToken cancellationToken)
+    {
+        var eventStreamWriter = await GetOrCreateEventStreamAsync(cancellationToken).ConfigureAwait(false);
+        if (eventStreamWriter is null)
+        {
+            return;
+        }
+
+        // Set the mode to 'Polling' so that the replay stream ends as soon as all available messages have been sent.
+        // This prevents the client from immediately establishing another long-lived connection.
+        await eventStreamWriter.SetModeAsync(SseEventStreamMode.Polling, cancellationToken).ConfigureAwait(false);
+
+        // Send the priming event with the new retry interval.
+        await _sseWriter.SendPrimingEventAsync(retryInterval, eventStreamWriter, cancellationToken).ConfigureAwait(false);
+
+        // Dispose the writer to close it and force future writes to only apply to the SSE event store.
+        await _sseWriter.DisposeAsync();
+    }
+
     public async ValueTask DisposeAsync()
     {
         await _sseWriter.DisposeAsync().ConfigureAwait(false);
