@@ -110,7 +110,7 @@ public sealed class HttpClientTransportOptions
     public ClientOAuthOptions? OAuth { get; set; }
 
     /// <summary>
-    /// Gets or sets the maximum number of reconnection attempts when an SSE stream is disconnected.
+    /// Gets or sets the maximum number of consecutive reconnection attempts when an SSE stream is disconnected.
     /// </summary>
     /// <value>
     /// The maximum number of reconnection attempts. The default is 2.
