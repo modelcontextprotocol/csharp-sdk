@@ -22,6 +22,8 @@ internal sealed class SseWriter(string? messageEndpoint = null, BoundedChannelOp
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
     private bool _disposed;
 
+    public Func<IAsyncEnumerable<SseItem<JsonRpcMessage?>>, CancellationToken, IAsyncEnumerable<SseItem<JsonRpcMessage?>>>? MessageFilter { get; set; }
+
     public Task WriteAllAsync(Stream sseResponseStream, CancellationToken cancellationToken)
     {
         Throw.IfNull(sseResponseStream);
@@ -36,6 +38,11 @@ internal sealed class SseWriter(string? messageEndpoint = null, BoundedChannelOp
         _writeCancellationToken = cancellationToken;
 
         var messages = _messages.Reader.ReadAllAsync(cancellationToken);
+        if (MessageFilter is not null)
+        {
+            messages = MessageFilter(messages, cancellationToken);
+        }
+
         _writeTask = SseFormatter.WriteAsync(messages, sseResponseStream, WriteJsonRpcMessageToBuffer, cancellationToken);
         return _writeTask;
     }

@@ -1,5 +1,7 @@
 ﻿using ModelContextProtocol.Protocol;
 using System.Diagnostics;
+using System.Net.ServerSentEvents;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading.Channels;
 
@@ -58,6 +60,7 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
 
         // Start the write task immediately so that we don't risk filling up the channel with
         // messages before they start being consumed.
+        _sseWriter.MessageFilter = StopOnFinalResponseFilter;
         var writeTask = _sseWriter.WriteAllAsync(responseStream, cancellationToken);
 
         var eventStreamWriter = await GetOrCreateEventStreamAsync(cancellationToken).ConfigureAwait(false);
@@ -90,15 +93,10 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
             await parentTransport.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
         }
 
-        if (message is JsonRpcResponse or JsonRpcError && ((JsonRpcMessageWithId)message).Id == _pendingRequest)
+        if (_eventStreamWriter is not null && IsFinalResponse(message))
         {
-            // Complete the SSE response stream and SSE event stream writer now that all pending requests have been processed.
-            await _sseWriter.DisposeAsync().ConfigureAwait(false);
-
-            if (_eventStreamWriter is not null)
-            {
-                await _eventStreamWriter.DisposeAsync().ConfigureAwait(false);
-            }
+            // Complete the SSE event stream writer now that all pending requests have been processed.
+            await _eventStreamWriter.DisposeAsync().ConfigureAwait(false);
         }
     }
 
@@ -134,6 +132,23 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
         // Don't dispose the event stream writer here, as we may continue to write to the event store
         // after disposal.
     }
+
+    private async IAsyncEnumerable<SseItem<JsonRpcMessage?>> StopOnFinalResponseFilter(IAsyncEnumerable<SseItem<JsonRpcMessage?>> messages, [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await foreach (var message in messages.WithCancellation(cancellationToken))
+        {
+            yield return message;
+
+            if (IsFinalResponse(message.Data))
+            {
+                // Complete the SSE response stream now that all pending requests have been processed.
+                break;
+            }
+        }
+    }
+
+    private bool IsFinalResponse(JsonRpcMessage? message)
+        => (message is JsonRpcResponse or JsonRpcError) && ((JsonRpcMessageWithId)message).Id == _pendingRequest;
 
     private async ValueTask<ISseEventStreamWriter?> GetOrCreateEventStreamAsync(CancellationToken cancellationToken)
     {

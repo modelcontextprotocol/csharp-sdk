@@ -140,7 +140,7 @@ internal sealed class StreamableHttpHandler(
         {
             await WriteJsonRpcErrorAsync(context,
                 "Bad Request: Unsolicited messages are not supported in stateless mode.",
-                StatusCodes.Status400BadRequest);
+                StatusCodes.Status405MethodNotAllowed);
             return;
         }
 
