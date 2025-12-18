@@ -1,7 +1,6 @@
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
-using System.Diagnostics.CodeAnalysis;
 #if !NET
 using System.Runtime.InteropServices;
 #endif
@@ -139,10 +138,8 @@ public static class AIContentExtensions
     }
 
     /// <summary>Converts the specified dictionary to a <see cref="JsonObject"/>.</summary>
-    [UnconditionalSuppressMessage("Trimming", "IL2026:Members annotated with 'RequiresUnreferencedCodeAttribute' require dynamic access", Justification = "DefaultOptions includes fallback to reflection-based serialization when available.")]
-    [UnconditionalSuppressMessage("ReflectionAnalysis", "IL3050:RequiresDynamicCode", Justification = "DefaultOptions includes fallback to reflection-based serialization when available.")]
     internal static JsonObject? ToJsonObject(this IReadOnlyDictionary<string, object?> properties) =>
-        JsonSerializer.SerializeToNode(properties, typeof(IReadOnlyDictionary<string, object?>), McpJsonUtilities.DefaultOptions) as JsonObject;
+        JsonSerializer.SerializeToNode(properties, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(IReadOnlyDictionary<string, object?>))) as JsonObject;
 
     internal static AdditionalPropertiesDictionary ToAdditionalProperties(this JsonObject obj)
     {
@@ -370,8 +367,6 @@ public static class AIContentExtensions
     /// <param name="content">The <see cref="AIContent"/> to convert.</param>
     /// <returns>The created <see cref="ContentBlock"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="content"/> is <see langword="null"/>.</exception>
-    [UnconditionalSuppressMessage("Trimming", "IL2026:Members annotated with 'RequiresUnreferencedCodeAttribute' require dynamic access", Justification = "DefaultOptions includes fallback to reflection-based serialization when available.")]
-    [UnconditionalSuppressMessage("ReflectionAnalysis", "IL3050:RequiresDynamicCode", Justification = "DefaultOptions includes fallback to reflection-based serialization when available.")]
     public static ContentBlock ToContentBlock(this AIContent content)
     {
         Throw.IfNull(content);
@@ -419,13 +414,13 @@ public static class AIContentExtensions
                 Content =
                     resultContent.Result is AIContent c ? [c.ToContentBlock()] :
                     resultContent.Result is IEnumerable<AIContent> ec ? [.. ec.Select(c => c.ToContentBlock())] :
-                    [new TextContentBlock { Text = JsonSerializer.Serialize(resultContent.Result, resultContent.Result?.GetType() ?? typeof(object), McpJsonUtilities.DefaultOptions) }],
+                    [new TextContentBlock { Text = JsonSerializer.Serialize(content, McpJsonUtilities.DefaultOptions.GetTypeInfo<object>()) }],
                 StructuredContent = resultContent.Result is JsonElement je ? je : null,
             },
 
             _ => new TextContentBlock
             {
-                Text = $"[Unsupported AIContent type: {content.GetType().Name}]",
+                Text = JsonSerializer.Serialize(content, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(object))),
             }
         };
 

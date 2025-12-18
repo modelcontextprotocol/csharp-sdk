@@ -1,17 +1,24 @@
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol;
+using System.Text.Json;
 
 namespace ModelContextProtocol.Tests;
 
 /// <summary>
 /// Tests for AIContentExtensions with anonymous types in AdditionalProperties.
 /// This validates the fix for the sampling pipeline regression in 0.5.0-preview.1.
+/// These tests require reflection-based serialization and will be skipped when reflection is disabled.
 /// </summary>
 public class AIContentExtensionsAnonymousTypeTests
 {
     [Fact]
     public void ToContentBlock_WithAnonymousTypeInAdditionalProperties_DoesNotThrow()
     {
+        if (!JsonSerializer.IsReflectionEnabledByDefault)
+        {
+            return;
+        }
+
         // This is the minimal repro from the issue
         AIContent c = new()
         {
@@ -32,6 +39,11 @@ public class AIContentExtensionsAnonymousTypeTests
     [Fact]
     public void ToContentBlock_WithMultipleAnonymousTypes_DoesNotThrow()
     {
+        if (!JsonSerializer.IsReflectionEnabledByDefault)
+        {
+            return;
+        }
+
         AIContent c = new()
         {
             AdditionalProperties = new()
@@ -52,6 +64,11 @@ public class AIContentExtensionsAnonymousTypeTests
     [Fact]
     public void ToContentBlock_WithNestedAnonymousTypes_DoesNotThrow()
     {
+        if (!JsonSerializer.IsReflectionEnabledByDefault)
+        {
+            return;
+        }
+
         AIContent c = new()
         {
             AdditionalProperties = new()
@@ -74,6 +91,11 @@ public class AIContentExtensionsAnonymousTypeTests
     [Fact]
     public void ToContentBlock_WithMixedTypesInAdditionalProperties_DoesNotThrow()
     {
+        if (!JsonSerializer.IsReflectionEnabledByDefault)
+        {
+            return;
+        }
+
         AIContent c = new()
         {
             AdditionalProperties = new()
@@ -96,6 +118,11 @@ public class AIContentExtensionsAnonymousTypeTests
     [Fact]
     public void TextContent_ToContentBlock_WithAnonymousTypeInAdditionalProperties_PreservesData()
     {
+        if (!JsonSerializer.IsReflectionEnabledByDefault)
+        {
+            return;
+        }
+
         TextContent textContent = new("Hello, world!")
         {
             AdditionalProperties = new()
@@ -115,6 +142,11 @@ public class AIContentExtensionsAnonymousTypeTests
     [Fact]
     public void DataContent_ToContentBlock_WithAnonymousTypeInAdditionalProperties_PreservesData()
     {
+        if (!JsonSerializer.IsReflectionEnabledByDefault)
+        {
+            return;
+        }
+
         byte[] imageData = [1, 2, 3, 4, 5];
         DataContent dataContent = new(imageData, "image/png")
         {

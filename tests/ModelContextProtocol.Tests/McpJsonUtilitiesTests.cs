@@ -18,15 +18,12 @@ public static class McpJsonUtilitiesTests
     }
 
     [Fact]
-    public static void DefaultOptions_SupportsAnonymousTypes()
+    public static void DefaultOptions_UseReflectionWhenEnabled()
     {
-        // DefaultOptions includes a fallback DefaultJsonTypeInfoResolver to support
-        // serialization of user-defined types including anonymous types, regardless
-        // of the IsReflectionEnabledByDefault setting.
         var options = McpJsonUtilities.DefaultOptions;
         Type anonType = new { Id = 42 }.GetType();
 
-        Assert.True(options.TryGetTypeInfo(anonType, out _));
+        Assert.Equal(JsonSerializer.IsReflectionEnabledByDefault, options.TryGetTypeInfo(anonType, out _));
     }
 
     [Fact]

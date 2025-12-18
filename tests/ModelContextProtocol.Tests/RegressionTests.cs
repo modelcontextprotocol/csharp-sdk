@@ -1,4 +1,5 @@
 using Microsoft.Extensions.AI;
+using System.Text.Json;
 
 namespace ModelContextProtocol.Tests;
 
@@ -14,6 +15,12 @@ public class RegressionTests
     [Fact]
     public void Issue_AnonymousTypes_InAdditionalProperties_ShouldNotThrow()
     {
+        // Anonymous types require reflection-based serialization
+        if (!JsonSerializer.IsReflectionEnabledByDefault)
+        {
+            return;
+        }
+
         // Exact minimal repro from the issue
         AIContent c = new()
         {
