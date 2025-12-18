@@ -370,6 +370,8 @@ public static class AIContentExtensions
     /// <param name="content">The <see cref="AIContent"/> to convert.</param>
     /// <returns>The created <see cref="ContentBlock"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="content"/> is <see langword="null"/>.</exception>
+    [UnconditionalSuppressMessage("Trimming", "IL2026:Members annotated with 'RequiresUnreferencedCodeAttribute' require dynamic access", Justification = "DefaultOptions includes fallback to reflection-based serialization when available.")]
+    [UnconditionalSuppressMessage("ReflectionAnalysis", "IL3050:RequiresDynamicCode", Justification = "DefaultOptions includes fallback to reflection-based serialization when available.")]
     public static ContentBlock ToContentBlock(this AIContent content)
     {
         Throw.IfNull(content);
@@ -417,7 +419,7 @@ public static class AIContentExtensions
                 Content =
                     resultContent.Result is AIContent c ? [c.ToContentBlock()] :
                     resultContent.Result is IEnumerable<AIContent> ec ? [.. ec.Select(c => c.ToContentBlock())] :
-                    [new TextContentBlock { Text = JsonSerializer.Serialize(resultContent.Result, McpJsonUtilities.DefaultOptions.GetTypeInfo(resultContent.Result?.GetType() ?? typeof(object))) }],
+                    [new TextContentBlock { Text = JsonSerializer.Serialize(resultContent.Result, resultContent.Result?.GetType() ?? typeof(object), McpJsonUtilities.DefaultOptions) }],
                 StructuredContent = resultContent.Result is JsonElement je ? je : null,
             },
 
