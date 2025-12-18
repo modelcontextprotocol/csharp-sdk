@@ -123,29 +123,7 @@ public sealed class StreamableHttpServerTransport : ITransport
     /// <exception cref="InvalidOperationException">
     /// <see cref="Stateless"/> is <see langword="true"/> and GET requests are not supported in stateless mode.
     /// </exception>
-    public Task HandleGetRequestAsync(Stream sseResponseStream, CancellationToken cancellationToken = default)
-        => HandleGetRequestAsync(sseResponseStream, eventStreamReader: null, cancellationToken);
-
-    /// <summary>
-    /// Handles an optional SSE GET request a client using the Streamable HTTP transport might make by
-    /// writing any unsolicited JSON-RPC messages sent via <see cref="SendMessageAsync"/>
-    /// to the SSE response stream until cancellation is requested or the transport is disposed.
-    /// </summary>
-    /// <param name="sseResponseStream">The response stream to write MCP JSON-RPC messages as SSE events to.</param>
-    /// <param name="eventStreamReader">The <see cref="ISseEventStreamReader"/> to replay events from before writing this transport's messages to the response stream.</param>
-    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>A task representing the send loop that writes JSON-RPC messages to the SSE response stream.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="sseResponseStream"/> is <see langword="null"/>.</exception>
-    /// <exception cref="InvalidOperationException">
-    /// <see cref="Stateless"/> is <see langword="true"/> and GET requests are not supported in stateless mode.
-    /// </exception>
-    public async Task HandleGetRequestAsync(Stream sseResponseStream, ISseEventStreamReader? eventStreamReader, CancellationToken cancellationToken = default)
-    {
-        var writeTask = await StartGetRequestAsync(sseResponseStream, eventStreamReader, cancellationToken).ConfigureAwait(false);
-        await writeTask.ConfigureAwait(false);
-    }
-
-    private async Task<Task> StartGetRequestAsync(Stream sseResponseStream, ISseEventStreamReader? eventStreamReader, CancellationToken cancellationToken)
+    public async Task HandleGetRequestAsync(Stream sseResponseStream, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(sseResponseStream);
 
@@ -154,41 +132,27 @@ public sealed class StreamableHttpServerTransport : ITransport
             throw new InvalidOperationException("GET requests are not supported in stateless mode.");
         }
 
-        using var _ = await _sendLock.LockAsync(cancellationToken);
-
-        ThrowIfDisposed();
-
-        if (_getRequestStarted)
+        Task writeTask;
+        using (await _sendLock.LockAsync(cancellationToken))
         {
-            await _sseWriter.DisposeAsync().ConfigureAwait(false);
-            _sseWriter = new();
-        }
-
-        _getRequestStarted = true;
-
-        if (eventStreamReader is not null)
-        {
-            if (eventStreamReader.SessionId != SessionId)
+            if (_getRequestStarted)
             {
-                throw new InvalidOperationException("The provided SSE event stream reader relates to a different session.");
+                throw new InvalidOperationException("Session resumption is not yet supported. Please start a new session.");
             }
 
-            if (eventStreamReader.StreamId != UnsolicitedMessageStreamId)
+            _getRequestStarted = true;
+
+            // We do not need to reference _disposeCts like in HandlePostRequest, because the session ending completes the _sseWriter gracefully.
+            writeTask = _sseWriter.WriteAllAsync(sseResponseStream, cancellationToken);
+
+            var eventStreamWriter = await GetOrCreateEventStreamAsync(cancellationToken).ConfigureAwait(false);
+            if (eventStreamWriter is not null)
             {
-                throw new InvalidOperationException("The event stream reader does not relate to the unsolicited message stream.");
+                await _sseWriter.SendPrimingEventAsync(RetryInterval, eventStreamWriter, cancellationToken).ConfigureAwait(false);
             }
-
-            await eventStreamReader.CopyToAsync(sseResponseStream, cancellationToken);
         }
 
-        var eventStreamWriter = await GetOrCreateEventStreamAsync(cancellationToken).ConfigureAwait(false);
-        if (eventStreamWriter is not null)
-        {
-            await _sseWriter.SendPrimingEventAsync(RetryInterval, eventStreamWriter, cancellationToken).ConfigureAwait(false);
-        }
-
-        // We do not need to reference _disposeCts like in HandlePostRequest, because the session ending completes the _sseWriter gracefully.
-        return _sseWriter.WriteAllAsync(sseResponseStream, cancellationToken);
+        await writeTask.ConfigureAwait(false);
     }
 
     /// <summary>
@@ -230,8 +194,6 @@ public sealed class StreamableHttpServerTransport : ITransport
         }
 
         using var _ = await _sendLock.LockAsync(cancellationToken);
-
-        ThrowIfDisposed();
 
         // If the underlying writer has been disposed, rely on the event stream writer, if present.
         // Otherwise, just drop the message.
@@ -285,9 +247,9 @@ public sealed class StreamableHttpServerTransport : ITransport
             return null;
         }
 
-        // We set the mode to 'Polling' so that the transport can take over writing to the response stream after
-        // messages have been replayed.
-        const SseEventStreamMode Mode = SseEventStreamMode.Polling;
+        // We use the 'Default' stream mode so that in the case of an unexpected network disconnection,
+        // the client can continue reading the remaining messages in a single, streamed response.
+        const SseEventStreamMode Mode = SseEventStreamMode.Default;
 
         _eventStreamWriter = await EventStreamStore.CreateStreamAsync(options: new()
         {
@@ -297,17 +259,5 @@ public sealed class StreamableHttpServerTransport : ITransport
         }, cancellationToken).ConfigureAwait(false);
 
         return _eventStreamWriter;
-    }
-
-    private void ThrowIfDisposed()
-    {
-#if NET
-        ObjectDisposedException.ThrowIf(_disposed, this);
-#else
-        if (_disposed)
-        {
-            throw new ObjectDisposedException(GetType().Name);
-        }
-#endif
     }
 }

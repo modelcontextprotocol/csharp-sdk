@@ -82,41 +82,42 @@ internal sealed class StreamableHttpHandler(
             return;
         }
 
-        StreamableHttpSession? session = null;
-        ISseEventStreamReader? eventStreamReader = null;
-
         var sessionId = context.Request.Headers[McpSessionIdHeaderName].ToString();
-        var lastEventId = context.Request.Headers[LastEventIdHeaderName].ToString();
-
-        if (!string.IsNullOrEmpty(sessionId))
+        var session = await GetSessionAsync(context, sessionId);
+        if (session is null)
         {
-            session = await GetSessionAsync(context, sessionId);
-            if (session is null)
-            {
-                // There was an error obtaining the session; consider the request failed.
-                return;
-            }
+            return;
         }
 
+        var lastEventId = context.Request.Headers[LastEventIdHeaderName].ToString();
         if (!string.IsNullOrEmpty(lastEventId))
         {
-            if (HttpServerTransportOptions.Stateless)
-            {
-                await WriteJsonRpcErrorAsync(context,
-                    "Bad Request: The Last-Event-ID header is not supported in stateless mode.",
-                    StatusCodes.Status400BadRequest);
-                return;
-            }
+            await HandleResumedStreamAsync(context, session, lastEventId);
+        }
+        else
+        {
+            await HandleUnsolicitedMessageStreamAsync(context, session);
+        }
+    }
 
-            eventStreamReader = await GetEventStreamReaderAsync(context, lastEventId);
-            if (eventStreamReader is null)
-            {
-                // There was an error obtaining the event stream; consider the request failed.
-                return;
-            }
+    private async Task HandleResumedStreamAsync(HttpContext context, StreamableHttpSession session, string lastEventId)
+    {
+        if (HttpServerTransportOptions.Stateless)
+        {
+            await WriteJsonRpcErrorAsync(context,
+                "Bad Request: The Last-Event-ID header is not supported in stateless mode.",
+                StatusCodes.Status400BadRequest);
+            return;
         }
 
-        if (session is not null && eventStreamReader is not null && !string.Equals(session.Id, eventStreamReader.SessionId, StringComparison.Ordinal))
+        var eventStreamReader = await GetEventStreamReaderAsync(context, lastEventId);
+        if (eventStreamReader is null)
+        {
+            // There was an error obtaining the event stream; consider the request failed.
+            return;
+        }
+
+        if (!string.Equals(session.Id, eventStreamReader.SessionId, StringComparison.Ordinal))
         {
             await WriteJsonRpcErrorAsync(context,
                 "Bad Request: The Last-Event-ID header refers to a session with a different session ID.",
@@ -124,17 +125,16 @@ internal sealed class StreamableHttpHandler(
             return;
         }
 
-        if (eventStreamReader is null || string.Equals(eventStreamReader.StreamId, StreamableHttpServerTransport.UnsolicitedMessageStreamId, StringComparison.Ordinal))
-        {
-            await HandleUnsolicitedMessageStreamAsync(context, session, eventStreamReader);
-        }
-        else
-        {
-            await HandleResumePostResponseStreamAsync(context, eventStreamReader);
-        }
+        using var sseCts = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, hostApplicationLifetime.ApplicationStopping);
+        var cancellationToken = sseCts.Token;
+
+        await using var _ = await session.AcquireReferenceAsync(cancellationToken);
+
+        InitializeSseResponse(context);
+        await eventStreamReader.CopyToAsync(context.Response.Body, context.RequestAborted);
     }
 
-    private async Task HandleUnsolicitedMessageStreamAsync(HttpContext context, StreamableHttpSession? session, ISseEventStreamReader? eventStreamReader)
+    private async Task HandleUnsolicitedMessageStreamAsync(HttpContext context, StreamableHttpSession session)
     {
         if (HttpServerTransportOptions.Stateless)
         {
@@ -144,18 +144,10 @@ internal sealed class StreamableHttpHandler(
             return;
         }
 
-        if (session is null)
+        if (!session.TryStartGetRequest())
         {
             await WriteJsonRpcErrorAsync(context,
-                "Bad Request: Mcp-Session-Id header is required",
-                StatusCodes.Status400BadRequest);
-            return;
-        }
-
-        if (eventStreamReader is null && !session.TryStartGetRequest())
-        {
-            await WriteJsonRpcErrorAsync(context,
-                "Bad Request: This server does not support multiple GET requests. Use Last-Event-ID header to resume or start a new session.",
+                "Bad Request: This server does not support multiple GET requests. Start a new session or use Last-Event-ID header to resume.",
                 StatusCodes.Status400BadRequest);
             return;
         }
@@ -175,7 +167,7 @@ internal sealed class StreamableHttpHandler(
             // will be sent in response to a different POST request. It might be a while before we send a message
             // over this response body.
             await context.Response.Body.FlushAsync(cancellationToken);
-            await session.Transport.HandleGetRequestAsync(context.Response.Body, eventStreamReader, cancellationToken);
+            await session.Transport.HandleGetRequestAsync(context.Response.Body, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -201,6 +193,12 @@ internal sealed class StreamableHttpHandler(
 
     private async ValueTask<StreamableHttpSession?> GetSessionAsync(HttpContext context, string sessionId)
     {
+        if (string.IsNullOrEmpty(sessionId))
+        {
+            await WriteJsonRpcErrorAsync(context, "Bad Request: Mcp-Session-Id header is required", StatusCodes.Status400BadRequest);
+            return null;
+        }
+
         if (!sessionManager.TryGetValue(sessionId, out var session))
         {
             // -32001 isn't part of the MCP standard, but this is what the typescript-sdk currently does.
