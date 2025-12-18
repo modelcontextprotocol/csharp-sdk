@@ -136,14 +136,6 @@ internal sealed class StreamableHttpHandler(
 
     private async Task HandleUnsolicitedMessageStreamAsync(HttpContext context, StreamableHttpSession session)
     {
-        if (HttpServerTransportOptions.Stateless)
-        {
-            await WriteJsonRpcErrorAsync(context,
-                "Bad Request: Unsolicited messages are not supported in stateless mode.",
-                StatusCodes.Status405MethodNotAllowed);
-            return;
-        }
-
         if (!session.TryStartGetRequest())
         {
             await WriteJsonRpcErrorAsync(context,
