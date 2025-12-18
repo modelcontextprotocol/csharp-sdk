@@ -1761,15 +1761,16 @@ public partial class XmlToDescriptionGeneratorTests
 
         var runResult = driver.GetRunResult();
 
-        // Check for generator errors (the original check)
+        // Check for generator errors (warnings are allowed as some tests explicitly expect them, e.g., MCP001)
         var hasGeneratorErrors = generatorDiagnostics.Any(d => d.Severity == DiagnosticSeverity.Error);
 
-        // Run the suppressor and check specifically for unsuppressed CS1066 warnings
+        // Run the suppressor to check that CS1066 warnings for MCP methods are suppressed
         var analyzers = ImmutableArray.Create<DiagnosticAnalyzer>(new CS1066Suppressor());
         var compilationWithAnalyzers = outputCompilation.WithAnalyzers(analyzers);
         var allDiagnostics = compilationWithAnalyzers.GetAllDiagnosticsAsync().GetAwaiter().GetResult();
         
-        // Check for any unsuppressed CS1066 warnings (these should be suppressed by our suppressor)
+        // Check for any unsuppressed CS1066 warnings - these should be suppressed by our suppressor
+        // This is specifically what we're testing - that the suppressor works correctly
         var unsuppressedCs1066 = allDiagnostics
             .Where(d => d.Id == "CS1066" && !d.IsSuppressed)
             .ToList();
