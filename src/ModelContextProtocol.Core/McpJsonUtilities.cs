@@ -34,8 +34,8 @@ public static partial class McpJsonUtilities
     /// Creates default options to use for MCP-related serialization.
     /// </summary>
     /// <returns>The configured options.</returns>
-    [UnconditionalSuppressMessage("ReflectionAnalysis", "IL3050:RequiresDynamicCode", Justification = "Converter is guarded by IsReflectionEnabledByDefault check.")]
-    [UnconditionalSuppressMessage("Trimming", "IL2026:Members annotated with 'RequiresUnreferencedCodeAttribute' require dynamic access", Justification = "Converter is guarded by IsReflectionEnabledByDefault check.")]
+    [UnconditionalSuppressMessage("ReflectionAnalysis", "IL3050:RequiresDynamicCode", Justification = "Fallback resolver is added only when reflection is enabled or when processing user-defined types that may require reflection.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2026:Members annotated with 'RequiresUnreferencedCodeAttribute' require dynamic access", Justification = "Fallback resolver is added only when reflection is enabled or when processing user-defined types that may require reflection.")]
     private static JsonSerializerOptions CreateDefaultOptions()
     {
         // Copy the configuration from the source generated context.
@@ -43,6 +43,10 @@ public static partial class McpJsonUtilities
 
         // Chain with all supported types from MEAI.
         options.TypeInfoResolverChain.Add(AIJsonUtilities.DefaultOptions.TypeInfoResolver!);
+
+        // Add a fallback reflection-based resolver for types not covered by source generators.
+        // This allows serialization of user-defined types, including anonymous types in AdditionalProperties.
+        options.TypeInfoResolverChain.Add(new DefaultJsonTypeInfoResolver());
 
         // Add a converter for user-defined enums, if reflection is enabled by default.
         if (JsonSerializer.IsReflectionEnabledByDefault)

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using System.Diagnostics.CodeAnalysis;
 #if !NET
 using System.Runtime.InteropServices;
 #endif
@@ -138,8 +139,10 @@ public static class AIContentExtensions
     }
 
     /// <summary>Converts the specified dictionary to a <see cref="JsonObject"/>.</summary>
+    [UnconditionalSuppressMessage("Trimming", "IL2026:Members annotated with 'RequiresUnreferencedCodeAttribute' require dynamic access", Justification = "DefaultOptions includes fallback to reflection-based serialization when available.")]
+    [UnconditionalSuppressMessage("ReflectionAnalysis", "IL3050:RequiresDynamicCode", Justification = "DefaultOptions includes fallback to reflection-based serialization when available.")]
     internal static JsonObject? ToJsonObject(this IReadOnlyDictionary<string, object?> properties) =>
-        JsonSerializer.SerializeToNode(properties, McpJsonUtilities.JsonContext.Default.IReadOnlyDictionaryStringObject) as JsonObject;
+        JsonSerializer.SerializeToNode(properties, typeof(IReadOnlyDictionary<string, object?>), McpJsonUtilities.DefaultOptions) as JsonObject;
 
     internal static AdditionalPropertiesDictionary ToAdditionalProperties(this JsonObject obj)
     {
@@ -271,7 +274,7 @@ public static class AIContentExtensions
             EmbeddedResourceBlock resourceContent => resourceContent.Resource.ToAIContent(),
             
             ToolUseContentBlock toolUse => FunctionCallContent.CreateFromParsedArguments(toolUse.Input, toolUse.Id, toolUse.Name,
-                static json => JsonSerializer.Deserialize(json, McpJsonUtilities.JsonContext.Default.IDictionaryStringObject)),
+                static json => JsonSerializer.Deserialize(json, McpJsonUtilities.DefaultOptions.GetTypeInfo<IDictionary<string, object?>>())),
             
             ToolResultContentBlock toolResult => new FunctionResultContent(
                 toolResult.ToolUseId,
@@ -414,13 +417,13 @@ public static class AIContentExtensions
                 Content =
                     resultContent.Result is AIContent c ? [c.ToContentBlock()] :
                     resultContent.Result is IEnumerable<AIContent> ec ? [.. ec.Select(c => c.ToContentBlock())] :
-                    [new TextContentBlock { Text = JsonSerializer.Serialize(content, McpJsonUtilities.DefaultOptions.GetTypeInfo<object>()) }],
+                    [new TextContentBlock { Text = JsonSerializer.Serialize(resultContent.Result, McpJsonUtilities.DefaultOptions.GetTypeInfo(resultContent.Result?.GetType() ?? typeof(object))) }],
                 StructuredContent = resultContent.Result is JsonElement je ? je : null,
             },
 
             _ => new TextContentBlock
             {
-                Text = JsonSerializer.Serialize(content, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(object))),
+                Text = $"[Unsupported AIContent type: {content.GetType().Name}]",
             }
         };
 
