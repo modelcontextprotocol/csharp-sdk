@@ -51,23 +51,21 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
             message.Context.ExecutionContext = ExecutionContext.Capture();
         }
 
-        // When applicable, we start the write task as soon as possible so that:
-        // 1. We don't risk processing the final response message and closing the _sseWriter channel before starting to write to the response stream.
-        // 2. We don't risk deadlocking by filling up the _sseWriter channel with messages before they start being consumed.
-        var shouldWriteToResponseStream = _pendingRequest.Id is not null;
-        var writeTask = shouldWriteToResponseStream
-            ? _sseWriter.WriteAllAsync(responseStream, cancellationToken)
-            : Task.CompletedTask;
-
-        await parentTransport.MessageWriter.WriteAsync(message, cancellationToken).ConfigureAwait(false);
-
-        if (!shouldWriteToResponseStream)
+        if (_pendingRequest.Id is null)
         {
+            await parentTransport.MessageWriter.WriteAsync(message, cancellationToken).ConfigureAwait(false);
             return false;
         }
 
+        // We start the write task as soon as possible so that:
+        // 1. We don't risk processing the final response message and closing the _sseWriter channel before starting to write to the response stream.
+        // 2. We don't risk deadlocking by filling up the _sseWriter channel with messages before they start being consumed.
+        var writeTask = _sseWriter.WriteAllAsync(responseStream, cancellationToken);
+
         using (await _sendLock.LockAsync(cancellationToken).ConfigureAwait(false))
         {
+            await parentTransport.MessageWriter.WriteAsync(message, cancellationToken).ConfigureAwait(false);
+
             var eventStreamWriter = await GetOrCreateEventStreamAsync(cancellationToken).ConfigureAwait(false);
             if (eventStreamWriter is not null)
             {
