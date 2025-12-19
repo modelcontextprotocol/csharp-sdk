@@ -406,6 +406,105 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
         Assert.Equal(1, reconnectNotificationReceivedCount);
     }
 
+    [Fact]
+    public async Task Server_Returns400_WhenLastEventIdRefersToWrongSession()
+    {
+        // Arrange - Create server with event store
+        var eventStreamStore = new TestSseEventStreamStore();
+        await using var app = await CreateServerAsync(eventStreamStore);
+
+        // First, initialize a session and make a call to generate some events
+        using var initRequest = new HttpRequestMessage(HttpMethod.Post, "/")
+        {
+            Headers =
+            {
+                Accept = { new("application/json"), new("text/event-stream") }
+            },
+            Content = new StringContent(InitializeRequest, Encoding.UTF8, "application/json"),
+        };
+        var initResponse = await HttpClient.SendAsync(initRequest, HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+        initResponse.EnsureSuccessStatusCode();
+
+        // Get the session ID from the response
+        var sessionId = initResponse.Headers.GetValues("Mcp-Session-Id").First();
+
+        // Read the SSE response to get an event ID
+        await using var initStream = await initResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
+        string? eventId = null;
+        await foreach (var sseItem in SseParser.Create(initStream).EnumerateAsync(TestContext.Current.CancellationToken))
+        {
+            if (!string.IsNullOrEmpty(sseItem.EventId))
+            {
+                eventId = sseItem.EventId;
+            }
+        }
+
+        Assert.NotNull(eventId);
+
+        // Act - Try to resume with a different session ID but the same event ID
+        var wrongSessionId = "wrong-session-id";
+        using var resumeRequest = new HttpRequestMessage(HttpMethod.Get, "/")
+        {
+            Headers =
+            {
+                Accept = { new("text/event-stream") },
+            }
+        };
+        resumeRequest.Headers.Add("Mcp-Session-Id", wrongSessionId);
+        resumeRequest.Headers.Add("Last-Event-ID", eventId);
+
+        var resumeResponse = await HttpClient.SendAsync(resumeRequest, HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+
+        // Assert - First we get 404 because the wrong session doesn't exist
+        Assert.Equal(HttpStatusCode.NotFound, resumeResponse.StatusCode);
+
+        // Now test with an existing session but event ID from a different session
+        // Create a second session
+        using var initRequest2 = new HttpRequestMessage(HttpMethod.Post, "/")
+        {
+            Headers =
+            {
+                Accept = { new("application/json"), new("text/event-stream") }
+            },
+            Content = new StringContent(InitializeRequest, Encoding.UTF8, "application/json"),
+        };
+        var initResponse2 = await HttpClient.SendAsync(initRequest2, HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+        initResponse2.EnsureSuccessStatusCode();
+
+        var sessionId2 = initResponse2.Headers.GetValues("Mcp-Session-Id").First();
+        Assert.NotEqual(sessionId, sessionId2);
+
+        // Read the second session's response
+        await using var initStream2 = await initResponse2.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
+        await foreach (var _ in SseParser.Create(initStream2).EnumerateAsync(TestContext.Current.CancellationToken))
+        {
+            // Consume the stream
+        }
+
+        // Try to use session 2's ID but with an event ID from session 1
+        using var mismatchRequest = new HttpRequestMessage(HttpMethod.Get, "/")
+        {
+            Headers =
+            {
+                Accept = { new("text/event-stream") },
+            }
+        };
+        mismatchRequest.Headers.Add("Mcp-Session-Id", sessionId2);
+        mismatchRequest.Headers.Add("Last-Event-ID", eventId);  // This event ID belongs to session 1
+
+        var mismatchResponse = await HttpClient.SendAsync(mismatchRequest, HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+
+        // Assert - Should get 400 Bad Request because the event ID doesn't match the session
+        Assert.Equal(HttpStatusCode.BadRequest, mismatchResponse.StatusCode);
+
+        // Verify the error message
+        var responseBody = await mismatchResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var errorResponse = JsonNode.Parse(responseBody);
+        Assert.NotNull(errorResponse);
+        var errorMessage = errorResponse["error"]?["message"]?.GetValue<string>();
+        Assert.Equal("Bad Request: The Last-Event-ID header refers to a session with a different session ID.", errorMessage);
+    }
+
     [McpServerToolType]
     private class ResumabilityTestTools
     {
