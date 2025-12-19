@@ -14,7 +14,7 @@ namespace ModelContextProtocol.Server;
 internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport parentTransport, Stream responseStream) : ITransport
 {
     private readonly SseWriter _sseWriter = new();
-    private readonly SemaphoreSlim _eventStreamLock = new(1, 1);
+    private readonly SemaphoreSlim _sendLock = new(1, 1);
     private ISseEventStreamWriter? _eventStreamWriter;
     private RequestId _pendingRequest;
 
@@ -66,10 +66,13 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
             return false;
         }
 
-        var eventStreamWriter = await GetOrCreateEventStreamAsync(cancellationToken).ConfigureAwait(false);
-        if (eventStreamWriter is not null)
+        using (await _sendLock.LockAsync(cancellationToken).ConfigureAwait(false))
         {
-            await _sseWriter.SendPrimingEventAsync(parentTransport.RetryInterval, eventStreamWriter, cancellationToken).ConfigureAwait(false);
+            var eventStreamWriter = await GetOrCreateEventStreamAsync(cancellationToken).ConfigureAwait(false);
+            if (eventStreamWriter is not null)
+            {
+                await _sseWriter.SendPrimingEventAsync(parentTransport.RetryInterval, eventStreamWriter, cancellationToken).ConfigureAwait(false);
+            }
         }
 
         await writeTask.ConfigureAwait(false);
@@ -84,6 +87,8 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
         {
             throw new InvalidOperationException("Server to client requests are not supported in stateless mode.");
         }
+
+        using var _ = await _sendLock.LockAsync(cancellationToken).ConfigureAwait(false);
 
         var eventStreamWriter = await GetOrCreateEventStreamAsync(cancellationToken).ConfigureAwait(false);
 
@@ -118,6 +123,8 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
             return;
         }
 
+        using var _ = await _sendLock.LockAsync(cancellationToken).ConfigureAwait(false);
+
         var eventStreamWriter = await GetOrCreateEventStreamAsync(cancellationToken).ConfigureAwait(false);
         if (eventStreamWriter is null)
         {
@@ -137,6 +144,8 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
 
     public async ValueTask DisposeAsync()
     {
+        using var _ = await _sendLock.LockAsync().ConfigureAwait(false);
+
         await _sseWriter.DisposeAsync().ConfigureAwait(false);
 
         // Don't dispose the event stream writer here, as we may continue to write to the event store
@@ -145,8 +154,6 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
 
     private async ValueTask<ISseEventStreamWriter?> GetOrCreateEventStreamAsync(CancellationToken cancellationToken)
     {
-        using var _ = await _eventStreamLock.LockAsync(cancellationToken).ConfigureAwait(false);
-
         if (_eventStreamWriter is not null)
         {
             return _eventStreamWriter;
