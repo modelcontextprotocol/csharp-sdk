@@ -514,7 +514,7 @@ public class SseEventStreamStoreTests(ITestOutputHelper testOutputHelper) : Logg
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken);
         cts.CancelAfter(TimeSpan.FromMilliseconds(100));
 
-        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+        await Assert.ThrowsAsync<TaskCanceledException>(async () =>
         {
             await reader.ReadEventsAsync(cts.Token).ToListAsync(cts.Token);
         });

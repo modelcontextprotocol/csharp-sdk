@@ -3,7 +3,6 @@ using ModelContextProtocol.Server;
 using System.Collections.Concurrent;
 using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
-using System.Threading.Channels;
 
 namespace ModelContextProtocol.AspNetCore.Tests.Utils;
 
@@ -84,9 +83,9 @@ public sealed class TestSseEventStreamStore : ISseEventStreamStore
     /// </summary>
     private sealed class StreamState
     {
-        private readonly Channel<(SseItem<JsonRpcMessage?> Item, long Sequence)> _channel;
         private readonly List<(SseItem<JsonRpcMessage?> Item, long Sequence)> _events = [];
         private readonly object _lock = new();
+        private TaskCompletionSource _newEventSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private long _sequence;
 
         public StreamState(string sessionId, string streamId, SseEventStreamMode mode)
@@ -94,7 +93,6 @@ public sealed class TestSseEventStreamStore : ISseEventStreamStore
             SessionId = sessionId;
             StreamId = streamId;
             Mode = mode;
-            _channel = Channel.CreateUnbounded<(SseItem<JsonRpcMessage?>, long)>();
         }
 
         public string SessionId { get; }
@@ -106,40 +104,48 @@ public sealed class TestSseEventStreamStore : ISseEventStreamStore
 
         public void AddEvent(SseItem<JsonRpcMessage?> item, long sequence)
         {
-            if (IsCompleted)
-            {
-                throw new InvalidOperationException("Cannot add events to a completed stream.");
-            }
-
             lock (_lock)
             {
+                if (IsCompleted)
+                {
+                    throw new InvalidOperationException("Cannot add events to a completed stream.");
+                }
+
                 _events.Add((item, sequence));
+
+                var oldSignal = _newEventSignal;
+                _newEventSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                oldSignal.TrySetResult();
             }
-            _channel.Writer.TryWrite((item, sequence));
         }
 
-        public List<SseItem<JsonRpcMessage?>> GetEventsAfter(long sequence)
+        public (List<SseItem<JsonRpcMessage?>> Events, long LastSequence, Task NewEventSignal) GetEventsAfter(long sequence)
         {
             lock (_lock)
             {
                 var result = new List<SseItem<JsonRpcMessage?>>();
+                long lastSequence = sequence;
+
                 foreach (var (item, seq) in _events)
                 {
                     if (seq > sequence)
                     {
                         result.Add(item);
+                        lastSequence = seq;
                     }
                 }
-                return result;
+
+                return (result, lastSequence, _newEventSignal.Task);
             }
         }
 
-        public ChannelReader<(SseItem<JsonRpcMessage?> Item, long Sequence)> Reader => _channel.Reader;
-
         public void Complete()
         {
-            IsCompleted = true;
-            _channel.Writer.TryComplete();
+            lock (_lock)
+            {
+                IsCompleted = true;
+                _newEventSignal.TrySetResult();
+            }
         }
     }
 
@@ -211,35 +217,35 @@ public sealed class TestSseEventStreamStore : ISseEventStreamStore
 
         public async IAsyncEnumerable<SseItem<JsonRpcMessage?>> ReadEventsAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
-            // First, return any events that were already written after the start sequence
-            var existingEvents = _state.GetEventsAfter(_startSequence);
             long lastSeenSequence = _startSequence;
-            foreach (var evt in existingEvents)
-            {
-                yield return evt;
-            }
 
-            // If in polling mode, stop after returning currently available events
-            if (_state.Mode == SseEventStreamMode.Polling)
+            while (true)
             {
-                yield break;
-            }
+                // Get events after the last seen sequence
+                var (events, lastSequence, newEventSignal) = _state.GetEventsAfter(lastSeenSequence);
 
-            // If the stream is already completed, stop
-            if (_state.IsCompleted)
-            {
-                yield break;
-            }
-
-            // Wait for new events from the channel
-            await foreach (var (item, sequence) in _state.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
-            {
-                // Only yield events we haven't seen yet
-                if (sequence > lastSeenSequence)
+                foreach (var evt in events)
                 {
-                    lastSeenSequence = sequence;
-                    yield return item;
+                    yield return evt;
                 }
+
+                // Update to the sequence we actually retrieved
+                lastSeenSequence = lastSequence;
+
+                // If in polling mode, stop after returning currently available events
+                if (_state.Mode == SseEventStreamMode.Polling)
+                {
+                    yield break;
+                }
+
+                // If the stream is completed, stop
+                if (_state.IsCompleted)
+                {
+                    yield break;
+                }
+
+                // Wait for new events or cancellation
+                await newEventSignal.WaitAsync(cancellationToken).ConfigureAwait(false);
             }
         }
     }

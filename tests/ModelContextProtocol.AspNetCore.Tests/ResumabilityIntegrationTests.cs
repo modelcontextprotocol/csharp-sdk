@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.ServerSentEvents;
 using System.Text;
+using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
@@ -238,24 +239,28 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
     [Fact]
     public async Task Client_CanResumePostResponseStream_AfterDisconnection()
     {
-        var manualStreamHandler = new FaultingStreamHandler();
-        SetHttpMessageHandler(manualStreamHandler);
+        var faultingStreamHandler = new FaultingStreamHandler();
+        SetHttpMessageHandler(faultingStreamHandler);
 
         const string ProgressToolName = "progress_tool";
+        const string InitialMessage = "Initial notification";
+        const string ReplayedMessage = "Replayed notification";
+        const string ResultMessage = "Complete";
+
         var clientReceivedInitialValueTcs = new TaskCompletionSource();
         var clientReceivedReconnectValueTcs = new TaskCompletionSource();
         var progressTool = McpServerTool.Create(async (RequestContext<CallToolRequestParams> context, IProgress<ProgressNotificationValue> progress, CancellationToken cancellationToken) =>
         {
-            progress.Report(new() { Progress = 0, Message = "Initial value" });
+            progress.Report(new() { Progress = 0, Message = InitialMessage });
 
             // Make sure the client receives one message before we disconnect.
             await clientReceivedInitialValueTcs.Task;
 
             // Simulate a network disconnection by faulting the response stream.
-            var reconnectAttempt = await manualStreamHandler.TriggerFaultAsync(TestContext.Current.CancellationToken);
+            var reconnectAttempt = await faultingStreamHandler.TriggerFaultAsync(TestContext.Current.CancellationToken);
 
             // Send another message that the client should receive after reconnecting.
-            progress.Report(new() { Progress = 50, Message = "Reconnect value" });
+            progress.Report(new() { Progress = 50, Message = ReplayedMessage });
 
             reconnectAttempt.Continue();
 
@@ -263,7 +268,7 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
             await clientReceivedReconnectValueTcs.Task;
 
             // Return the final result with the client still connected.
-            return "Complete";
+            return ResultMessage;
         }, options: new() { Name = ProgressToolName });
         var eventStreamStore = new TestSseEventStreamStore();
         await using var app = await CreateServerAsync(eventStreamStore, configureServer: builder =>
@@ -272,15 +277,19 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
         });
         await using var client = await ConnectClientAsync();
 
+        var initialNotificationReceivedCount = 0;
+        var replayedNotificationReceivedCount = 0;
         var progressHandler = new Progress<ProgressNotificationValue>(value =>
         {
             switch (value.Message)
             {
-                case "Initial value":
-                    clientReceivedInitialValueTcs.SetResult();
+                case InitialMessage:
+                    initialNotificationReceivedCount++;
+                    clientReceivedInitialValueTcs.TrySetResult();
                     break;
-                case "Reconnect value":
-                    clientReceivedReconnectValueTcs.SetResult();
+                case ReplayedMessage:
+                    replayedNotificationReceivedCount++;
+                    clientReceivedReconnectValueTcs.TrySetResult();
                     break;
                 default:
                     throw new UnreachableException($"Unknown progress message '{value.Message}'");
@@ -290,7 +299,9 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
         var result = await client.CallToolAsync(ProgressToolName, progress: progressHandler, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(result.IsError is true);
-        Assert.Equal("Complete", result.Content.OfType<TextContentBlock>().Single().Text);
+        Assert.Equal(1, initialNotificationReceivedCount);
+        Assert.Equal(1, replayedNotificationReceivedCount);
+        Assert.Equal(ResultMessage, result.Content.OfType<TextContentBlock>().Single().Text);
     }
 
     [Fact]
@@ -318,36 +329,45 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
         // Get the server instance
         var server = await serverTcs.Task.WaitAsync(TestContext.Current.CancellationToken);
 
-        // Set up notification tracking
+        // Set up notification tracking with unique messages
         var clientReceivedInitialNotificationTcs = new TaskCompletionSource();
         var clientReceivedReplayedNotificationTcs = new TaskCompletionSource();
         var clientReceivedReconnectNotificationTcs = new TaskCompletionSource();
 
         const string CustomNotificationMethod = "test/custom_notification";
+        const string InitialMessage = "Initial notification";
+        const string ReplayedMessage = "Replayed notification";
+        const string ReconnectMessage = "Reconnect notification";
+
+        var initialNotificationReceivedCount = 0;
+        var replayedNotificationReceivedCount = 0;
+        var reconnectNotificationReceivedCount = 0;
 
         await using var _ = client.RegisterNotificationHandler(CustomNotificationMethod, (notification, cancellationToken) =>
         {
-            // First notification completes initial TCS, second completes replay TCS, thirdly completes reconnect TCS.
-            if (clientReceivedInitialNotificationTcs.TrySetResult())
+            var message = notification.Params?["message"]?.GetValue<string>();
+            switch (message)
             {
-                return default;
+                case InitialMessage:
+                    initialNotificationReceivedCount++;
+                    clientReceivedInitialNotificationTcs.TrySetResult();
+                    break;
+                case ReplayedMessage:
+                    replayedNotificationReceivedCount++;
+                    clientReceivedReplayedNotificationTcs.TrySetResult();
+                    break;
+                case ReconnectMessage:
+                    reconnectNotificationReceivedCount++;
+                    clientReceivedReconnectNotificationTcs.TrySetResult();
+                    break;
+                default:
+                    throw new UnreachableException($"Unknown notification message '{message}'");
             }
-
-            if (clientReceivedReplayedNotificationTcs.TrySetResult())
-            {
-                return default;
-            }
-
-            if (clientReceivedReconnectNotificationTcs.TrySetResult())
-            {
-                return default;
-            }
-
             return default;
         });
 
         // Send a custom notification to the client on the unsolicited message stream
-        await server.SendNotificationAsync(CustomNotificationMethod, TestContext.Current.CancellationToken);
+        await server.SendNotificationAsync(CustomNotificationMethod, new JsonObject { ["message"] = InitialMessage }, cancellationToken: TestContext.Current.CancellationToken);
 
         // Wait for client to receive the first notification
         await clientReceivedInitialNotificationTcs.Task.WaitAsync(TestContext.Current.CancellationToken);
@@ -356,7 +376,7 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
         var reconnectAttempt = await faultingStreamHandler.TriggerFaultAsync(TestContext.Current.CancellationToken);
 
         // Send another notification while the client is disconnected - this should be stored
-        await server.SendNotificationAsync(CustomNotificationMethod, TestContext.Current.CancellationToken);
+        await server.SendNotificationAsync(CustomNotificationMethod, new JsonObject { ["message"] = ReplayedMessage }, cancellationToken: TestContext.Current.CancellationToken);
 
         // Allow the client to reconnect
         reconnectAttempt.Continue();
@@ -365,10 +385,15 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
         await clientReceivedReplayedNotificationTcs.Task.WaitAsync(TestContext.Current.CancellationToken);
 
         // Send a final notification while the client has reconnected - this should be handled by the transport
-        await server.SendNotificationAsync(CustomNotificationMethod, TestContext.Current.CancellationToken);
+        await server.SendNotificationAsync(CustomNotificationMethod, new JsonObject { ["message"] = ReconnectMessage }, cancellationToken: TestContext.Current.CancellationToken);
 
         // Wait for the client to receive the final notification
         await clientReceivedReconnectNotificationTcs.Task.WaitAsync(TestContext.Current.CancellationToken);
+
+        // Assert each notification was received exactly once
+        Assert.Equal(1, initialNotificationReceivedCount);
+        Assert.Equal(1, replayedNotificationReceivedCount);
+        Assert.Equal(1, reconnectNotificationReceivedCount);
     }
 
     [McpServerToolType]
