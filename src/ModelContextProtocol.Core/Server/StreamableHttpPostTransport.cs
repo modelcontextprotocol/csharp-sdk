@@ -14,9 +14,9 @@ namespace ModelContextProtocol.Server;
 internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport parentTransport, Stream responseStream) : ITransport
 {
     private readonly SseWriter _sseWriter = new();
-    private RequestId _pendingRequest;
+    private readonly SemaphoreSlim _eventStreamLock = new(1, 1);
     private ISseEventStreamWriter? _eventStreamWriter;
-    private SemaphoreSlim _eventStreamLock = new(1, 1);
+    private RequestId _pendingRequest;
 
     public ChannelReader<JsonRpcMessage> MessageReader => throw new NotSupportedException("JsonRpcMessage.Context.RelatedTransport should only be used for sending messages.");
 
@@ -51,17 +51,20 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
             message.Context.ExecutionContext = ExecutionContext.Capture();
         }
 
+        // When applicable, we start the write task as soon as possible so that:
+        // 1. We don't risk processing the final response message and closing the _sseWriter channel before starting to write to the response stream.
+        // 2. We don't risk deadlocking by filling up the _sseWriter channel with messages before they start being consumed.
+        var shouldWriteToResponseStream = _pendingRequest.Id is not null;
+        var writeTask = shouldWriteToResponseStream
+            ? _sseWriter.WriteAllAsync(responseStream, cancellationToken)
+            : Task.CompletedTask;
+
         await parentTransport.MessageWriter.WriteAsync(message, cancellationToken).ConfigureAwait(false);
 
-        if (_pendingRequest.Id is null)
+        if (!shouldWriteToResponseStream)
         {
             return false;
         }
-
-        // Start the write task immediately so that we don't risk filling up the channel with
-        // messages before they start being consumed.
-        _sseWriter.MessageFilter = StopOnFinalResponseFilter;
-        var writeTask = _sseWriter.WriteAllAsync(responseStream, cancellationToken);
 
         var eventStreamWriter = await GetOrCreateEventStreamAsync(cancellationToken).ConfigureAwait(false);
         if (eventStreamWriter is not null)
@@ -93,10 +96,17 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
             await parentTransport.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
         }
 
-        if (_eventStreamWriter is not null && IsFinalResponse(message))
+        if ((message is JsonRpcResponse or JsonRpcError) && ((JsonRpcMessageWithId)message).Id == _pendingRequest)
         {
-            // Complete the SSE event stream writer now that all pending requests have been processed.
-            await _eventStreamWriter.DisposeAsync().ConfigureAwait(false);
+            // Complete the SSE response stream and event stream writer now that all pending requests have been processed.
+            Debug.Assert(_sseWriter.WriteTask is not null, "Unexpectedly processed the final response message without writing to the response stream.");
+
+            await _sseWriter.CompleteAsync(cancellationToken).ConfigureAwait(false);
+
+            if (_eventStreamWriter is not null)
+            {
+                await _eventStreamWriter.DisposeAsync().ConfigureAwait(false);
+            }
         }
     }
 
@@ -121,8 +131,8 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
         // Send the priming event with the new retry interval.
         await _sseWriter.SendPrimingEventAsync(retryInterval, eventStreamWriter, cancellationToken).ConfigureAwait(false);
 
-        // Dispose the writer to close it and force future writes to only apply to the SSE event store.
-        await _sseWriter.DisposeAsync();
+        // Close the writer and force future writes to only apply to the SSE event store.
+        await _sseWriter.CompleteAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask DisposeAsync()
@@ -132,23 +142,6 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
         // Don't dispose the event stream writer here, as we may continue to write to the event store
         // after disposal.
     }
-
-    private async IAsyncEnumerable<SseItem<JsonRpcMessage?>> StopOnFinalResponseFilter(IAsyncEnumerable<SseItem<JsonRpcMessage?>> messages, [EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        await foreach (var message in messages.WithCancellation(cancellationToken))
-        {
-            yield return message;
-
-            if (IsFinalResponse(message.Data))
-            {
-                // Complete the SSE response stream now that all pending requests have been processed.
-                break;
-            }
-        }
-    }
-
-    private bool IsFinalResponse(JsonRpcMessage? message)
-        => (message is JsonRpcResponse or JsonRpcError) && ((JsonRpcMessageWithId)message).Id == _pendingRequest;
 
     private async ValueTask<ISseEventStreamWriter?> GetOrCreateEventStreamAsync(CancellationToken cancellationToken)
     {
