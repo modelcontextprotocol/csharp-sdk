@@ -52,6 +52,12 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     internal static bool SupportsPrimingEvent(string? protocolVersion)
     {
         const string MinResumabilityProtocolVersion = "2025-11-25";
+
+        if (protocolVersion is null)
+        {
+            return false;
+        }
+
         return string.Compare(protocolVersion, MinResumabilityProtocolVersion, StringComparison.Ordinal) >= 0;
     }
 
