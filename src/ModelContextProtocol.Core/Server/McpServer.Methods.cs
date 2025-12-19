@@ -148,7 +148,7 @@ public abstract partial class McpServer : McpSession
                         Name = af.Name,
                         Description = af.Description,
                         InputSchema = af.JsonSchema,
-                        Meta = af.AdditionalProperties.ToJsonObject(),
+                        Meta = af.AdditionalProperties.ToJsonObject(McpJsonUtilities.DefaultOptions),
                     });
                 }
             }
@@ -172,7 +172,7 @@ public abstract partial class McpServer : McpSession
             Temperature = chatOptions?.Temperature,
             ToolChoice = toolChoice,
             Tools = tools,
-            Meta = chatOptions?.AdditionalProperties?.ToJsonObject(),
+            Meta = chatOptions?.AdditionalProperties?.ToJsonObject(McpJsonUtilities.DefaultOptions),
         }, cancellationToken).ConfigureAwait(false);
 
         List<AIContent> responseContents = [];

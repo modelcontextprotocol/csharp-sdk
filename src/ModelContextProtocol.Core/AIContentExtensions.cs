@@ -75,7 +75,7 @@ public static class AIContentExtensions
                     chatResponse.FinishReason == ChatFinishReason.Length ? CreateMessageResult.StopReasonMaxTokens :
                     chatResponse.FinishReason == ChatFinishReason.ToolCalls ? CreateMessageResult.StopReasonToolUse :
                     chatResponse.FinishReason.ToString(),
-                Meta = chatResponse.AdditionalProperties?.ToJsonObject(),
+                Meta = chatResponse.AdditionalProperties?.ToJsonObject(McpJsonUtilities.DefaultOptions),
                 Role = lastMessage?.Role == ChatRole.User ? Role.User : Role.Assistant,
                 Content = contents,
             };
@@ -138,9 +138,8 @@ public static class AIContentExtensions
     }
 
     /// <summary>Converts the specified dictionary to a <see cref="JsonObject"/>.</summary>
-    internal static JsonObject? ToJsonObject(this IReadOnlyDictionary<string, object?> properties, JsonSerializerOptions? options = null)
+    internal static JsonObject? ToJsonObject(this IReadOnlyDictionary<string, object?> properties, JsonSerializerOptions options)
     {
-        options ??= McpJsonUtilities.DefaultOptions;
         return JsonSerializer.SerializeToNode(properties, options.GetTypeInfo(typeof(IReadOnlyDictionary<string, object?>))) as JsonObject;
     }
 
