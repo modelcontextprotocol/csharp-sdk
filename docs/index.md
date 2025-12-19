@@ -4,7 +4,7 @@ _layout: landing
 
 # Overview
 
-The official C# SDK for the [Model Context Protocol](https://modelcontextprotocol.io/), enabling .NET applications, services, and libraries to implement and interact with MCP clients and servers. For more details on available functionality, please see the [API documentation](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.html).
+This SDK is the official C# SDK for the [Model Context Protocol](https://modelcontextprotocol.io/), enabling .NET applications, services, and libraries to implement and interact with MCP clients and servers. For more details on available functionality, see the [Conceptual documentation](https://modelcontextprotocol.github.io/csharp-sdk/concepts/index.html) [API documentation](https://modelcontextprotocol.github.io/csharp-sdk/api/ModelContextProtocol.html).
 
 ## About MCP
 
