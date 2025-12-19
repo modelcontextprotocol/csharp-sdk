@@ -138,8 +138,11 @@ public static class AIContentExtensions
     }
 
     /// <summary>Converts the specified dictionary to a <see cref="JsonObject"/>.</summary>
-    internal static JsonObject? ToJsonObject(this IReadOnlyDictionary<string, object?> properties) =>
-        JsonSerializer.SerializeToNode(properties, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(IReadOnlyDictionary<string, object?>))) as JsonObject;
+    internal static JsonObject? ToJsonObject(this IReadOnlyDictionary<string, object?> properties, JsonSerializerOptions? options = null)
+    {
+        options ??= McpJsonUtilities.DefaultOptions;
+        return JsonSerializer.SerializeToNode(properties, options.GetTypeInfo(typeof(IReadOnlyDictionary<string, object?>))) as JsonObject;
+    }
 
     internal static AdditionalPropertiesDictionary ToAdditionalProperties(this JsonObject obj)
     {
@@ -365,11 +368,14 @@ public static class AIContentExtensions
 
     /// <summary>Creates a new <see cref="ContentBlock"/> from the content of an <see cref="AIContent"/>.</summary>
     /// <param name="content">The <see cref="AIContent"/> to convert.</param>
+    /// <param name="options">The <see cref="JsonSerializerOptions"/> to use for serialization. If <see langword="null"/>, <see cref="McpJsonUtilities.DefaultOptions"/> is used.</param>
     /// <returns>The created <see cref="ContentBlock"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="content"/> is <see langword="null"/>.</exception>
-    public static ContentBlock ToContentBlock(this AIContent content)
+    public static ContentBlock ToContentBlock(this AIContent content, JsonSerializerOptions? options = null)
     {
         Throw.IfNull(content);
+
+        options ??= McpJsonUtilities.DefaultOptions;
 
         ContentBlock contentBlock = content switch
         {
@@ -404,7 +410,7 @@ public static class AIContentExtensions
             {
                 Id = callContent.CallId,
                 Name = callContent.Name,
-                Input = JsonSerializer.SerializeToElement(callContent.Arguments, McpJsonUtilities.DefaultOptions.GetTypeInfo<IDictionary<string, object?>>()!),
+                Input = JsonSerializer.SerializeToElement(callContent.Arguments, options.GetTypeInfo<IDictionary<string, object?>>()!),
             },
 
             FunctionResultContent resultContent => new ToolResultContentBlock()
@@ -412,19 +418,19 @@ public static class AIContentExtensions
                 ToolUseId = resultContent.CallId,
                 IsError = resultContent.Exception is not null,
                 Content =
-                    resultContent.Result is AIContent c ? [c.ToContentBlock()] :
-                    resultContent.Result is IEnumerable<AIContent> ec ? [.. ec.Select(c => c.ToContentBlock())] :
-                    [new TextContentBlock { Text = JsonSerializer.Serialize(content, McpJsonUtilities.DefaultOptions.GetTypeInfo<object>()) }],
+                    resultContent.Result is AIContent c ? [c.ToContentBlock(options)] :
+                    resultContent.Result is IEnumerable<AIContent> ec ? [.. ec.Select(c => c.ToContentBlock(options))] :
+                    [new TextContentBlock { Text = JsonSerializer.Serialize(content, options.GetTypeInfo<object>()) }],
                 StructuredContent = resultContent.Result is JsonElement je ? je : null,
             },
 
             _ => new TextContentBlock
             {
-                Text = JsonSerializer.Serialize(content, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(object))),
+                Text = JsonSerializer.Serialize(content, options.GetTypeInfo(typeof(object))),
             }
         };
 
-        contentBlock.Meta = content.AdditionalProperties?.ToJsonObject();
+        contentBlock.Meta = content.AdditionalProperties?.ToJsonObject(options);
 
         return contentBlock;
     }

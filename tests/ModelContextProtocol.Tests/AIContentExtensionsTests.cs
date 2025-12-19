@@ -305,4 +305,36 @@ public class AIContentExtensionsTests
         Assert.NotNull(imageBlock.Meta);
         Assert.True(imageBlock.Meta.ContainsKey("dimensions"));
     }
+
+    [Fact]
+    public void ToContentBlock_WithCustomSerializerOptions_UsesProvidedOptions()
+    {
+        if (!JsonSerializer.IsReflectionEnabledByDefault)
+        {
+            return;
+        }
+
+        // Create custom options with specific settings
+        var customOptions = new JsonSerializerOptions(McpJsonUtilities.DefaultOptions)
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+        };
+
+        AIContent c = new()
+        {
+            AdditionalProperties = new()
+            {
+                ["TestData"] = new { MyProperty = "value" }
+            }
+        };
+
+        var contentBlock = c.ToContentBlock(customOptions);
+
+        Assert.NotNull(contentBlock);
+        Assert.NotNull(contentBlock.Meta);
+        
+        // Verify that the custom naming policy was applied
+        var json = contentBlock.Meta.ToString();
+        Assert.Contains("my_property", json.ToLowerInvariant());
+    }
 }
