@@ -165,6 +165,14 @@ public class McpClientToolTests : ClientServerTestBase
             var metaJson = meta?.ToJsonString() ?? "{}";
             return new TextContentBlock { Text = metaJson };
         }
+
+        // Tool that accepts arbitrary JsonElement parameter to test anonymous type serialization
+        [McpServerTool]
+        public static TextContentBlock ArgumentEchoTool(string text, JsonElement coordinates)
+        {
+            var result = new { text, coordinates };
+            return new TextContentBlock { Text = JsonSerializer.Serialize(result) };
+        }
     }
 
     [Fact]
@@ -817,5 +825,33 @@ public class McpClientToolTests : ClientServerTestBase
         var receivedMetadata = JsonNode.Parse(textBlock.Text)?.AsObject();
         Assert.NotNull(receivedMetadata);
         Assert.Equal("requestOnlyValue", receivedMetadata["requestOnlyKey"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task CallToolAsync_WithAnonymousTypeArguments_Works()
+    {
+        if (!JsonSerializer.IsReflectionEnabledByDefault)
+        {
+            return;
+        }
+
+        await using McpClient client = await CreateMcpClientForServer();
+
+        // Call with dictionary containing anonymous type values
+        var arguments = new Dictionary<string, object?>
+        {
+            ["text"] = "test",
+            ["coordinates"] = new { X = 1.0, Y = 2.0 }  // Anonymous type
+        };
+
+        // This should not throw NotSupportedException
+        var result = await client.CallToolAsync("argument_echo_tool", arguments, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.NotEmpty(result.Content);
+        
+        // Verify the anonymous type was serialized correctly
+        var textBlock = Assert.IsType<TextContentBlock>(result.Content[0]);
+        Assert.Contains("coordinates", textBlock.Text);
     }
 }

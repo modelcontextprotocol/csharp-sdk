@@ -375,6 +375,33 @@ public class AIContentExtensionsTests
         Assert.Contains("1", json);
         Assert.Contains("2", json);
     }
+
+    [Fact]
+    public void ToChatMessage_CallToolResult_WithAnonymousTypeInContent_Works()
+    {
+        if (!JsonSerializer.IsReflectionEnabledByDefault)
+        {
+            return;
+        }
+
+        // Create a CallToolResult with anonymous type data in the content
+        var result = new CallToolResult
+        {
+            Content = new List<ContentBlock>
+            {
+                new TextContentBlock 
+                { 
+                    Text = "Result with metadata",
+                    Meta = JsonSerializer.SerializeToNode(new { Status = "success", Code = 200 }) as System.Text.Json.Nodes.JsonObject
+                }
+            }
+        };
+
+        // This should not throw NotSupportedException
+        var exception = Record.Exception(() => result.ToChatMessage("call_123"));
+        
+        Assert.Null(exception);
+    }
 }
 
 // Test type for named user-defined type test
