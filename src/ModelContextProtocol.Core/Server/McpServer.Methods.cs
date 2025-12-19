@@ -73,15 +73,18 @@ public abstract partial class McpServer : McpSession
     /// </summary>
     /// <param name="messages">The messages to send as part of the request.</param>
     /// <param name="chatOptions">The options to use for the request, including model parameters and constraints.</param>
+    /// <param name="serializerOptions">The <see cref="JsonSerializerOptions"/> to use for serializing user-provided objects. If <see langword="null"/>, <see cref="McpJsonUtilities.DefaultOptions"/> is used.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task containing the chat response from the model.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="messages"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
     /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
     public async Task<ChatResponse> SampleAsync(
-        IEnumerable<ChatMessage> messages, ChatOptions? chatOptions = default, CancellationToken cancellationToken = default)
+        IEnumerable<ChatMessage> messages, ChatOptions? chatOptions = default, JsonSerializerOptions? serializerOptions = null, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(messages);
+
+        serializerOptions ??= McpJsonUtilities.DefaultOptions;
 
         StringBuilder? systemPrompt = null;
 
@@ -148,7 +151,7 @@ public abstract partial class McpServer : McpSession
                         Name = af.Name,
                         Description = af.Description,
                         InputSchema = af.JsonSchema,
-                        Meta = af.AdditionalProperties.ToJsonObject(McpJsonUtilities.DefaultOptions),
+                        Meta = af.AdditionalProperties.ToJsonObject(serializerOptions),
                     });
                 }
             }
@@ -172,7 +175,7 @@ public abstract partial class McpServer : McpSession
             Temperature = chatOptions?.Temperature,
             ToolChoice = toolChoice,
             Tools = tools,
-            Meta = chatOptions?.AdditionalProperties?.ToJsonObject(McpJsonUtilities.DefaultOptions),
+            Meta = chatOptions?.AdditionalProperties?.ToJsonObject(serializerOptions),
         }, cancellationToken).ConfigureAwait(false);
 
         List<AIContent> responseContents = [];
@@ -526,7 +529,7 @@ public abstract partial class McpServer : McpSession
 
         /// <inheritdoc/>
         public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? chatOptions = null, CancellationToken cancellationToken = default) =>
-            _server.SampleAsync(messages, chatOptions, cancellationToken);
+            _server.SampleAsync(messages, chatOptions, serializerOptions: null, cancellationToken);
 
         /// <inheritdoc/>
         async IAsyncEnumerable<ChatResponseUpdate> IChatClient.GetStreamingResponseAsync(

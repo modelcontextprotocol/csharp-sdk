@@ -23,6 +23,7 @@ public static class AIContentExtensions
     /// satisfy sampling requests using the specified <see cref="IChatClient"/>.
     /// </summary>
     /// <param name="chatClient">The <see cref="IChatClient"/> with which to satisfy sampling requests.</param>
+    /// <param name="serializerOptions">The <see cref="JsonSerializerOptions"/> to use for serializing user-provided objects. If <see langword="null"/>, <see cref="McpJsonUtilities.DefaultOptions"/> is used.</param>
     /// <returns>The created handler delegate that can be assigned to <see cref="McpClientHandlers.SamplingHandler"/>.</returns>
     /// <remarks>
     /// <para>
@@ -36,9 +37,12 @@ public static class AIContentExtensions
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="chatClient"/> is <see langword="null"/>.</exception>
     public static Func<CreateMessageRequestParams?, IProgress<ProgressNotificationValue>, CancellationToken, ValueTask<CreateMessageResult>> CreateSamplingHandler(
-        this IChatClient chatClient)
+        this IChatClient chatClient,
+        JsonSerializerOptions? serializerOptions = null)
     {
         Throw.IfNull(chatClient);
+
+        serializerOptions ??= McpJsonUtilities.DefaultOptions;
 
         return async (requestParams, progress, cancellationToken) =>
         {
@@ -75,7 +79,7 @@ public static class AIContentExtensions
                     chatResponse.FinishReason == ChatFinishReason.Length ? CreateMessageResult.StopReasonMaxTokens :
                     chatResponse.FinishReason == ChatFinishReason.ToolCalls ? CreateMessageResult.StopReasonToolUse :
                     chatResponse.FinishReason.ToString(),
-                Meta = chatResponse.AdditionalProperties?.ToJsonObject(McpJsonUtilities.DefaultOptions),
+                Meta = chatResponse.AdditionalProperties?.ToJsonObject(serializerOptions),
                 Role = lastMessage?.Role == ChatRole.User ? Role.User : Role.Assistant,
                 Content = contents,
             };
