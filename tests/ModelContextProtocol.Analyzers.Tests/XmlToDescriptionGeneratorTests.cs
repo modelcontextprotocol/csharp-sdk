@@ -1,5 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Diagnostics;
+using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using Xunit;
 
@@ -347,7 +349,7 @@ public partial class XmlToDescriptionGeneratorTests
                     return input;
                 }
             }
-            """);
+            """, "MCP002");
 
         Assert.True(result.Success);
         Assert.Empty(result.GeneratedSources);
@@ -374,7 +376,7 @@ public partial class XmlToDescriptionGeneratorTests
                     return input;
                 }
             }
-            """);
+            """, "MCP002");
 
         Assert.True(result.Success);
         Assert.Empty(result.GeneratedSources);
@@ -405,7 +407,7 @@ public partial class XmlToDescriptionGeneratorTests
                     return input;
                 }
             }
-            """);
+            """, "MCP002");
 
         Assert.True(result.Success);
         Assert.Empty(result.GeneratedSources);
@@ -434,7 +436,7 @@ public partial class XmlToDescriptionGeneratorTests
                     return input;
                 }
             }
-            """);
+            """, "MCP002");
 
         Assert.True(result.Success);
         Assert.Empty(result.GeneratedSources);
@@ -552,7 +554,7 @@ public partial class XmlToDescriptionGeneratorTests
                     return input;
                 }
             }
-            """);
+            """, "MCP002");
 
         Assert.True(result.Success);
         Assert.Empty(result.GeneratedSources);
@@ -583,7 +585,7 @@ public partial class XmlToDescriptionGeneratorTests
                     return input;
                 }
             }
-            """);
+            """, "MCP002");
 
         Assert.True(result.Success);
         Assert.Empty(result.GeneratedSources);
@@ -614,7 +616,7 @@ public partial class XmlToDescriptionGeneratorTests
                     return input;
                 }
             }
-            """);
+            """, "MCP002");
 
         Assert.True(result.Success);
         Assert.Empty(result.GeneratedSources);
@@ -695,7 +697,7 @@ public partial class XmlToDescriptionGeneratorTests
                     return input;
                 }
             }
-            """);
+            """, "MCP001");
 
         // Should not throw, generates partial implementation without Description attributes
         Assert.True(result.Success);
@@ -1717,7 +1719,7 @@ public partial class XmlToDescriptionGeneratorTests
         AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
     }
 
-    private GeneratorRunResult RunGenerator([StringSyntax("C#-test")] string source)
+    private GeneratorRunResult RunGenerator([StringSyntax("C#-test")] string source, params string[] expectedDiagnosticIds)
     {
         var syntaxTree = CSharpSyntaxTree.ParseText(source);
 
@@ -1755,15 +1757,34 @@ public partial class XmlToDescriptionGeneratorTests
 
         var driver = (CSharpGeneratorDriver)CSharpGeneratorDriver
             .Create(new XmlToDescriptionGenerator())
-            .RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var diagnostics);
+            .RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var generatorDiagnostics);
 
         var runResult = driver.GetRunResult();
 
+        // Run the suppressor to check that CS1066 warnings for MCP methods are suppressed
+        var analyzers = ImmutableArray.Create<DiagnosticAnalyzer>(new CS1066Suppressor());
+        var compilationWithAnalyzers = outputCompilation.WithAnalyzers(analyzers);
+        var allDiagnostics = compilationWithAnalyzers.GetAllDiagnosticsAsync().GetAwaiter().GetResult();
+        
+        // Check for any unsuppressed CS1066 warnings - these should be suppressed by our suppressor
+        var unsuppressedCs1066 = allDiagnostics
+            .Where(d => d.Id == "CS1066" && !d.IsSuppressed)
+            .ToList();
+
+        // Collect all diagnostics from the generator (any verbosity level)
+        var allGeneratorDiagnostics = generatorDiagnostics.Concat(unsuppressedCs1066).ToList();
+        
+        // Check for unexpected diagnostics - any diagnostic that isn't in the expected list
+        var expectedSet = new HashSet<string>(expectedDiagnosticIds);
+        var unexpectedDiagnostics = allGeneratorDiagnostics
+            .Where(d => !expectedSet.Contains(d.Id))
+            .ToList();
+
         return new GeneratorRunResult
         {
-            Success = !diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error),
+            Success = unexpectedDiagnostics.Count == 0,
             GeneratedSources = runResult.GeneratedTrees.Select(t => (t.FilePath, t.GetText())).ToList(),
-            Diagnostics = diagnostics.ToList(),
+            Diagnostics = allGeneratorDiagnostics,
             Compilation = outputCompilation
         };
     }
