@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Tests;
 
@@ -337,4 +338,53 @@ public class AIContentExtensionsTests
         var json = contentBlock.Meta.ToString();
         Assert.Contains("my_property", json.ToLowerInvariant());
     }
+
+    [Fact]
+    public void ToContentBlock_WithNamedUserDefinedTypeInAdditionalProperties_Works()
+    {
+        // This test should work regardless of reflection being enabled/disabled
+        // because named types can be handled by source generators
+
+        // Create options with source generation support for the test type
+        var options = new JsonSerializerOptions(McpJsonUtilities.DefaultOptions);
+        options.TypeInfoResolverChain.Add(NamedTypeTestJsonContext.Default);
+        
+        // Define a simple named type
+        var testData = new TestCoordinates { X = 1.0, Y = 2.0 };
+        
+        AIContent c = new()
+        {
+            AdditionalProperties = new()
+            {
+                ["coordinates"] = testData
+            }
+        };
+
+        // Should not throw NotSupportedException
+        var contentBlock = c.ToContentBlock(options);
+
+        Assert.NotNull(contentBlock);
+        Assert.NotNull(contentBlock.Meta);
+        Assert.True(contentBlock.Meta.ContainsKey("coordinates"));
+        
+        // Verify the data was serialized correctly
+        var coordinatesNode = contentBlock.Meta["coordinates"];
+        Assert.NotNull(coordinatesNode);
+        
+        var json = coordinatesNode.ToString();
+        Assert.Contains("1", json);
+        Assert.Contains("2", json);
+    }
 }
+
+// Test type for named user-defined type test
+internal record TestCoordinates
+{
+    public double X { get; init; }
+    public double Y { get; init; }
+}
+
+// Source generation context for the test type
+[JsonSerializable(typeof(TestCoordinates))]
+[JsonSerializable(typeof(IReadOnlyDictionary<string, object>))]
+internal partial class NamedTypeTestJsonContext : JsonSerializerContext;
