@@ -184,6 +184,7 @@ public static class AIContentExtensions
     /// </summary>
     /// <param name="result">The tool result to convert.</param>
     /// <param name="callId">The identifier for the function call request that triggered the tool invocation.</param>
+    /// <param name="options">The <see cref="JsonSerializerOptions"/> to use for serialization. If <see langword="null"/>, <see cref="McpJsonUtilities.DefaultOptions"/> is used.</param>
     /// <returns>A <see cref="ChatMessage"/> object created from the tool result.</returns>
     /// <remarks>
     /// This method transforms a protocol-specific <see cref="CallToolResult"/> from the Model Context Protocol
@@ -192,12 +193,14 @@ public static class AIContentExtensions
     /// serialized <see cref="JsonElement"/>.
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="result"/> or <paramref name="callId"/> is <see langword="null"/>.</exception>
-    public static ChatMessage ToChatMessage(this CallToolResult result, string callId)
+    public static ChatMessage ToChatMessage(this CallToolResult result, string callId, JsonSerializerOptions? options = null)
     {
         Throw.IfNull(result);
         Throw.IfNull(callId);
 
-        return new(ChatRole.Tool, [new FunctionResultContent(callId, JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.CallToolResult))
+        options ??= McpJsonUtilities.DefaultOptions;
+
+        return new(ChatRole.Tool, [new FunctionResultContent(callId, JsonSerializer.SerializeToElement(result, options.GetTypeInfo<CallToolResult>()))
         {
              RawRepresentation = result,
         }]);
