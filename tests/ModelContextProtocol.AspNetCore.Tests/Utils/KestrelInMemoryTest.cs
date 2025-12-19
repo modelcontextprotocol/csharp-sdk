@@ -9,8 +9,6 @@ namespace ModelContextProtocol.AspNetCore.Tests.Utils;
 
 public class KestrelInMemoryTest : LoggedTest
 {
-    private readonly TestHttpMessageHandler _httpMessageHandler;
-
     public KestrelInMemoryTest(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
     {
@@ -29,50 +27,27 @@ public class KestrelInMemoryTest : LoggedTest
             return new(connection.ClientStream);
         };
 
-        _httpMessageHandler = new(SocketsHttpHandler);
-
-        HttpClient = new HttpClient(_httpMessageHandler)
-        {
-            BaseAddress = new Uri("http://localhost:5000/"),
-            Timeout = TimeSpan.FromSeconds(10),
-        };
+        HttpClient = new HttpClient(SocketsHttpHandler);
+        ConfigureHttpClient(HttpClient);
     }
 
     public WebApplicationBuilder Builder { get; }
 
-    public HttpClient HttpClient { get; }
+    public HttpClient HttpClient { get; set; }
 
     public SocketsHttpHandler SocketsHttpHandler { get; } = new();
 
     public KestrelInMemoryTransport KestrelInMemoryTransport { get; } = new();
 
-    protected void SetHttpMessageHandler(DelegatingHandler? handler)
+    protected static void ConfigureHttpClient(HttpClient httpClient)
     {
-        if (handler is null)
-        {
-            _httpMessageHandler.InnerHandler = SocketsHttpHandler;
-        }
-        else
-        {
-            _httpMessageHandler.InnerHandler = handler;
-            handler.InnerHandler = SocketsHttpHandler;
-        }
+        httpClient.BaseAddress = new Uri("http://localhost:5000/");
+        httpClient.Timeout = TimeSpan.FromSeconds(10);
     }
 
     public override void Dispose()
     {
         HttpClient.Dispose();
         base.Dispose();
-    }
-
-    private sealed class TestHttpMessageHandler : DelegatingHandler
-    {
-        public TestHttpMessageHandler(HttpMessageHandler innerHandler)
-        {
-            InnerHandler = innerHandler;
-        }
-
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-            => base.SendAsync(request, cancellationToken);
     }
 }

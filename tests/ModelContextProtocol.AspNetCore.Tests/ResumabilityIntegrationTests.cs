@@ -239,8 +239,13 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
     [Fact]
     public async Task Client_CanResumePostResponseStream_AfterDisconnection()
     {
-        var faultingStreamHandler = new FaultingStreamHandler();
-        SetHttpMessageHandler(faultingStreamHandler);
+        using var faultingStreamHandler = new FaultingStreamHandler()
+        {
+            InnerHandler = SocketsHttpHandler,
+        };
+
+        HttpClient = new(faultingStreamHandler);
+        ConfigureHttpClient(HttpClient);
 
         const string ProgressToolName = "progress_tool";
         const string InitialMessage = "Initial notification";
@@ -307,8 +312,13 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
     [Fact]
     public async Task Client_CanResumeUnsolicitedMessageStream_AfterDisconnection()
     {
-        var faultingStreamHandler = new FaultingStreamHandler();
-        SetHttpMessageHandler(faultingStreamHandler);
+        using var faultingStreamHandler = new FaultingStreamHandler()
+        {
+            InnerHandler = SocketsHttpHandler,
+        };
+
+        HttpClient = new(faultingStreamHandler);
+        ConfigureHttpClient(HttpClient);
 
         var eventStreamStore = new TestSseEventStreamStore();
 
