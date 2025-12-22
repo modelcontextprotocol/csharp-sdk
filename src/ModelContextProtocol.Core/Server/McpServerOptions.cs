@@ -160,7 +160,7 @@ public sealed class McpServerOptions
     /// The default maximum number of tokens to use for sampling requests. The default value is 1000 tokens.
     /// </value>
     /// <remarks>
-    /// This value is used in <see cref="McpServer.SampleAsync(IEnumerable{Microsoft.Extensions.AI.ChatMessage}, Microsoft.Extensions.AI.ChatOptions?, CancellationToken)"/>
+    /// This value is used in <see cref="McpServer.SampleAsync(IEnumerable{Microsoft.Extensions.AI.ChatMessage}, Microsoft.Extensions.AI.ChatOptions?, System.Text.Json.JsonSerializerOptions?, CancellationToken)"/>
     /// when <see cref="Microsoft.Extensions.AI.ChatOptions.MaxOutputTokens"/> is not set in the request options.
     /// </remarks>
     public int MaxSamplingOutputTokens { get; set; } = 1000;
