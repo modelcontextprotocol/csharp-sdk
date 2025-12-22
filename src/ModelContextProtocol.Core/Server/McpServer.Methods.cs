@@ -181,7 +181,7 @@ public abstract partial class McpServer : McpSession
         List<AIContent> responseContents = [];
         foreach (var block in result.Content)
         {
-            if (block.ToAIContent() is { } content)
+            if (block.ToAIContent(serializerOptions) is { } content)
             {
                 responseContents.Add(content);
             }
@@ -205,13 +205,14 @@ public abstract partial class McpServer : McpSession
     /// <summary>
     /// Creates an <see cref="IChatClient"/> wrapper that can be used to send sampling requests to the client.
     /// </summary>
+    /// <param name="serializerOptions">The <see cref="JsonSerializerOptions"/> to use for serialization. If <see langword="null"/>, <see cref="McpJsonUtilities.DefaultOptions"/> is used.</param>
     /// <returns>The <see cref="IChatClient"/> that can be used to issue sampling requests to the client.</returns>
     /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
-    public IChatClient AsSamplingChatClient()
+    public IChatClient AsSamplingChatClient(JsonSerializerOptions? serializerOptions = null)
     {
         ThrowIfSamplingUnsupported();
 
-        return new SamplingChatClient(this);
+        return new SamplingChatClient(this, serializerOptions ?? McpJsonUtilities.DefaultOptions);
     }
 
     /// <summary>Gets an <see cref="ILogger"/> on which logged messages will be sent as notifications to the client.</summary>
@@ -523,13 +524,14 @@ public abstract partial class McpServer : McpSession
     }
 
     /// <summary>Provides an <see cref="IChatClient"/> implementation that's implemented via client sampling.</summary>
-    private sealed class SamplingChatClient(McpServer server) : IChatClient
+    private sealed class SamplingChatClient(McpServer server, JsonSerializerOptions serializerOptions) : IChatClient
     {
         private readonly McpServer _server = server;
+        private readonly JsonSerializerOptions _serializerOptions = serializerOptions;
 
         /// <inheritdoc/>
         public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? chatOptions = null, CancellationToken cancellationToken = default) =>
-            _server.SampleAsync(messages, chatOptions, serializerOptions: null, cancellationToken);
+            _server.SampleAsync(messages, chatOptions, _serializerOptions, cancellationToken);
 
         /// <inheritdoc/>
         async IAsyncEnumerable<ChatResponseUpdate> IChatClient.GetStreamingResponseAsync(

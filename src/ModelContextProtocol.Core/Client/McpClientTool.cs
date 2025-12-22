@@ -139,10 +139,10 @@ public sealed class McpClientTool : AIFunction
         {
             switch (result.Content.Count)
             {
-                case 1 when result.Content[0].ToAIContent() is { } aiContent:
+                case 1 when result.Content[0].ToAIContent(JsonSerializerOptions) is { } aiContent:
                     return aiContent;
 
-                case > 1 when result.Content.Select(c => c.ToAIContent()).ToArray() is { } aiContents && aiContents.All(static c => c is not null):
+                case > 1 when result.Content.Select(c => c.ToAIContent(JsonSerializerOptions)).ToArray() is { } aiContents && aiContents.All(static c => c is not null):
                     return aiContents;
             }
         }
