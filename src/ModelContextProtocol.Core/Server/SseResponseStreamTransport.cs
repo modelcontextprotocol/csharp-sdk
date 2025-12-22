@@ -67,7 +67,7 @@ public sealed class SseResponseStreamTransport(Stream sseResponseStream, string?
     {
         Throw.IfNull(message);
         // If the underlying writer has been disposed, just drop the message.
-        await _sseWriter.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
+        await _sseWriter.SendMessageAsync(message, eventStreamWriter: null, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

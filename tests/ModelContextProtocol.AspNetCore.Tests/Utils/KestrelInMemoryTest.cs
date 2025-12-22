@@ -27,20 +27,23 @@ public class KestrelInMemoryTest : LoggedTest
             return new(connection.ClientStream);
         };
 
-        HttpClient = new HttpClient(SocketsHttpHandler)
-        {
-            BaseAddress = new Uri("http://localhost:5000/"),
-            Timeout = TimeSpan.FromSeconds(10),
-        };
+        HttpClient = new HttpClient(SocketsHttpHandler);
+        ConfigureHttpClient(HttpClient);
     }
 
     public WebApplicationBuilder Builder { get; }
 
-    public HttpClient HttpClient { get; }
+    public HttpClient HttpClient { get; set; }
 
     public SocketsHttpHandler SocketsHttpHandler { get; } = new();
 
     public KestrelInMemoryTransport KestrelInMemoryTransport { get; } = new();
+
+    protected static void ConfigureHttpClient(HttpClient httpClient)
+    {
+        httpClient.BaseAddress = new Uri("http://localhost:5000/");
+        httpClient.Timeout = TimeSpan.FromSeconds(10);
+    }
 
     public override void Dispose()
     {
