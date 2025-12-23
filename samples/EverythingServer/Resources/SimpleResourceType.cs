@@ -7,7 +7,7 @@ namespace EverythingServer.Resources;
 [McpServerResourceType]
 public class SimpleResourceType
 {
-    [McpServerResource(UriTemplate = "test://direct/text/resource", Name = "Direct Text Resource", MimeType = "text/plain")]
+    [McpServerResource(UriTemplate = "test://direct/text/resource", Name = "Direct Text Resource", MimeType = "text/plain", IconSource = "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Memo/Flat/memo_flat.svg")]
     [Description("A direct text resource")]
     public static string DirectTextResource() => "This is a direct resource";
 
