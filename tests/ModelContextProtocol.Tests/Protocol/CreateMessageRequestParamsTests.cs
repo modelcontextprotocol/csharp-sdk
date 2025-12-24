@@ -5,8 +5,10 @@ namespace ModelContextProtocol.Tests.Protocol;
 
 public class CreateMessageRequestParamsTests
 {
-    [Fact]
-    public void WithTools_SerializationRoundtrips()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WithTools_SerializationRoundtrips(bool materializeUtf8TextContentBlocks)
     {
         CreateMessageRequestParams requestParams = new()
         {
@@ -39,8 +41,9 @@ public class CreateMessageRequestParamsTests
             ToolChoice = new ToolChoice { Mode = "auto" }
         };
 
-        var json = JsonSerializer.Serialize(requestParams, McpJsonUtilities.DefaultOptions);
-        var deserialized = JsonSerializer.Deserialize<CreateMessageRequestParams>(json, McpJsonUtilities.DefaultOptions);
+        var options = TextMaterializationTestHelpers.GetOptions(materializeUtf8TextContentBlocks);
+        var json = JsonSerializer.Serialize(requestParams, options);
+        var deserialized = JsonSerializer.Deserialize<CreateMessageRequestParams>(json, options);
 
         Assert.NotNull(deserialized);
         Assert.Equal(1000, deserialized.MaxTokens);
@@ -48,8 +51,7 @@ public class CreateMessageRequestParamsTests
         Assert.Single(deserialized.Messages);
         Assert.Equal(Role.User, deserialized.Messages[0].Role);
         Assert.Single(deserialized.Messages[0].Content);
-        var textContent = Assert.IsType<TextContentBlock>(deserialized.Messages[0].Content[0]);
-        Assert.Equal("What's the weather in Paris?", textContent.Text);
+        Assert.Equal("What's the weather in Paris?", TextMaterializationTestHelpers.GetText(deserialized.Messages[0].Content[0], materializeUtf8TextContentBlocks));
         Assert.NotNull(deserialized.Tools);
         Assert.Single(deserialized.Tools);
         Assert.Equal("get_weather", deserialized.Tools[0].Name);
@@ -63,8 +65,10 @@ public class CreateMessageRequestParamsTests
         Assert.Equal("auto", deserialized.ToolChoice.Mode);
     }
 
-    [Fact]
-    public void WithToolChoiceRequired_SerializationRoundtrips()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WithToolChoiceRequired_SerializationRoundtrips(bool materializeUtf8TextContentBlocks)
     {
         CreateMessageRequestParams requestParams = new()
         {
@@ -95,8 +99,9 @@ public class CreateMessageRequestParamsTests
             ToolChoice = new ToolChoice { Mode = "required" }
         };
 
-        var json = JsonSerializer.Serialize(requestParams, McpJsonUtilities.DefaultOptions);
-        var deserialized = JsonSerializer.Deserialize<CreateMessageRequestParams>(json, McpJsonUtilities.DefaultOptions);
+        var options = TextMaterializationTestHelpers.GetOptions(materializeUtf8TextContentBlocks);
+        var json = JsonSerializer.Serialize(requestParams, options);
+        var deserialized = JsonSerializer.Deserialize<CreateMessageRequestParams>(json, options);
 
         Assert.NotNull(deserialized);
         Assert.Equal(1000, deserialized.MaxTokens);
@@ -104,8 +109,7 @@ public class CreateMessageRequestParamsTests
         Assert.Single(deserialized.Messages);
         Assert.Equal(Role.User, deserialized.Messages[0].Role);
         Assert.Single(deserialized.Messages[0].Content);
-        var textContent = Assert.IsType<TextContentBlock>(deserialized.Messages[0].Content[0]);
-        Assert.Equal("What's the weather?", textContent.Text);
+        Assert.Equal("What's the weather?", TextMaterializationTestHelpers.GetText(deserialized.Messages[0].Content[0], materializeUtf8TextContentBlocks));
         Assert.NotNull(deserialized.Tools);
         Assert.Single(deserialized.Tools);
         Assert.Equal("get_weather", deserialized.Tools[0].Name);
@@ -115,8 +119,10 @@ public class CreateMessageRequestParamsTests
         Assert.Equal("required", deserialized.ToolChoice.Mode);
     }
 
-    [Fact]
-    public void WithToolChoiceNone_SerializationRoundtrips()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WithToolChoiceNone_SerializationRoundtrips(bool materializeUtf8TextContentBlocks)
     {
         CreateMessageRequestParams requestParams = new()
         {
@@ -147,8 +153,9 @@ public class CreateMessageRequestParamsTests
             ToolChoice = new ToolChoice { Mode = "none" }
         };
 
-        var json = JsonSerializer.Serialize(requestParams, McpJsonUtilities.DefaultOptions);
-        var deserialized = JsonSerializer.Deserialize<CreateMessageRequestParams>(json, McpJsonUtilities.DefaultOptions);
+        var options = TextMaterializationTestHelpers.GetOptions(materializeUtf8TextContentBlocks);
+        var json = JsonSerializer.Serialize(requestParams, options);
+        var deserialized = JsonSerializer.Deserialize<CreateMessageRequestParams>(json, options);
 
         Assert.NotNull(deserialized);
         Assert.Equal(1000, deserialized.MaxTokens);
@@ -156,8 +163,7 @@ public class CreateMessageRequestParamsTests
         Assert.Single(deserialized.Messages);
         Assert.Equal(Role.User, deserialized.Messages[0].Role);
         Assert.Single(deserialized.Messages[0].Content);
-        var textContent = Assert.IsType<TextContentBlock>(deserialized.Messages[0].Content[0]);
-        Assert.Equal("What's the weather in Paris?", textContent.Text);
+        Assert.Equal("What's the weather in Paris?", TextMaterializationTestHelpers.GetText(deserialized.Messages[0].Content[0], materializeUtf8TextContentBlocks));
         Assert.NotNull(deserialized.Tools);
         Assert.Single(deserialized.Tools);
         Assert.Equal("get_weather", deserialized.Tools[0].Name);

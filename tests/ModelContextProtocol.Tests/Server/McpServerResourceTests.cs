@@ -575,7 +575,7 @@ public partial class McpServerResourceTests
             return (IList<ResourceContents>)
             [
                 new TextResourceContents { Text = "hello", Uri = "" },
-                new BlobResourceContents { Blob = System.Text.Encoding.UTF8.GetBytes(Convert.ToBase64String(new byte[] { 1, 2, 3 })), Uri = "" },
+                new BlobResourceContents { Blob = Convert.ToBase64String(new byte[] { 1, 2, 3 }), Uri = "" },
             ];
         }, new() { Name = "Test" });
         var result = await resource.ReadAsync(
@@ -584,7 +584,7 @@ public partial class McpServerResourceTests
         Assert.NotNull(result);
         Assert.Equal(2, result.Contents.Count);
         Assert.Equal("hello", ((TextResourceContents)result.Contents[0]).Text);
-        Assert.Equal(Convert.ToBase64String(new byte[] { 1, 2, 3 }), System.Text.Encoding.UTF8.GetString(((BlobResourceContents)result.Contents[1]).Blob.ToArray()));
+        Assert.Equal(Convert.ToBase64String(new byte[] { 1, 2, 3 }), ((BlobResourceContents)result.Contents[1]).Blob);
     }
 
     [Fact]
@@ -636,7 +636,7 @@ public partial class McpServerResourceTests
             TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.Single(result.Contents);
-        Assert.Equal(Convert.ToBase64String(new byte[] { 0, 1, 2 }), System.Text.Encoding.UTF8.GetString(((BlobResourceContents)result.Contents[0]).Blob.ToArray()));
+        Assert.Equal(Convert.ToBase64String(new byte[] { 0, 1, 2 }), ((BlobResourceContents)result.Contents[0]).Blob);
         Assert.Equal("application/octet-stream", ((BlobResourceContents)result.Contents[0]).MimeType);
     }
 
@@ -659,7 +659,7 @@ public partial class McpServerResourceTests
         Assert.NotNull(result);
         Assert.Equal(2, result.Contents.Count);
         Assert.Equal("hello!", ((TextResourceContents)result.Contents[0]).Text);
-        Assert.Equal(Convert.ToBase64String(new byte[] { 4, 5, 6 }), System.Text.Encoding.UTF8.GetString(((BlobResourceContents)result.Contents[1]).Blob.ToArray()));
+        Assert.Equal(Convert.ToBase64String(new byte[] { 4, 5, 6 }), ((BlobResourceContents)result.Contents[1]).Blob);
         Assert.Equal("application/json", ((BlobResourceContents)result.Contents[1]).MimeType);
     }
 

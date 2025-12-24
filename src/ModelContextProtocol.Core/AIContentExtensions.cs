@@ -1,9 +1,8 @@
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
-#if !NET
+using System.Buffers.Text;
 using System.Runtime.InteropServices;
-#endif
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -267,6 +266,8 @@ public static class AIContentExtensions
         AIContent? ac = content switch
         {
             TextContentBlock textContent => new TextContent(textContent.Text),
+
+            Utf8TextContentBlock utf8TextContent => new TextContent(utf8TextContent.Text),
             
             ImageContentBlock imageContent => new DataContent(imageContent.DecodedData, imageContent.MimeType),
             
@@ -279,7 +280,9 @@ public static class AIContentExtensions
             
             ToolResultContentBlock toolResult => new FunctionResultContent(
                 toolResult.ToolUseId,
-                toolResult.Content.Count == 1 ? toolResult.Content[0].ToAIContent() : toolResult.Content.Select(c => c.ToAIContent()).OfType<AIContent>().ToList())
+                toolResult.StructuredContent is JsonElement structured ? structured :
+                toolResult.Content.Count == 1 ? toolResult.Content[0].ToAIContent() :
+                toolResult.Content.Select(c => c.ToAIContent()).OfType<AIContent>().ToList())
             {
                 Exception = toolResult.IsError is true ? new() : null,
             },
@@ -311,7 +314,7 @@ public static class AIContentExtensions
 
         AIContent ac = content switch
         {
-            BlobResourceContents blobResource => new DataContent(blobResource.Data, blobResource.MimeType ?? "application/octet-stream"),
+            BlobResourceContents blobResource => new DataContent(blobResource.DecodedData, blobResource.MimeType ?? "application/octet-stream"),
             TextResourceContents textResource => new TextContent(textResource.Text),
             _ => throw new NotSupportedException($"Resource type '{content.GetType().Name}' is not supported.")
         };
@@ -384,13 +387,17 @@ public static class AIContentExtensions
 
             DataContent dataContent when dataContent.HasTopLevelMediaType("image") => new ImageContentBlock
             {
-                Data = System.Text.Encoding.UTF8.GetBytes(dataContent.Base64Data.ToString()),
+                Data = MemoryMarshal.TryGetArray(dataContent.Base64Data, out ArraySegment<char> segment)
+                    ? new string(segment.Array!, segment.Offset, segment.Count)
+                    : new string(dataContent.Base64Data.ToArray()),
                 MimeType = dataContent.MediaType,
             },
 
             DataContent dataContent when dataContent.HasTopLevelMediaType("audio") => new AudioContentBlock
             {
-                Data = System.Text.Encoding.UTF8.GetBytes(dataContent.Base64Data.ToString()),
+                Data = MemoryMarshal.TryGetArray(dataContent.Base64Data, out ArraySegment<char> segment)
+                    ? new string(segment.Array!, segment.Offset, segment.Count)
+                    : new string(dataContent.Base64Data.ToArray()),
                 MimeType = dataContent.MediaType,
             },
 
@@ -398,7 +405,7 @@ public static class AIContentExtensions
             {
                 Resource = new BlobResourceContents
                 {
-                    Blob = System.Text.Encoding.UTF8.GetBytes(dataContent.Base64Data.ToString()),
+                    DecodedData = dataContent.Data,
                     MimeType = dataContent.MediaType,
                     Uri = string.Empty,
                 }
@@ -418,20 +425,50 @@ public static class AIContentExtensions
                 Content =
                     resultContent.Result is AIContent c ? [c.ToContentBlock()] :
                     resultContent.Result is IEnumerable<AIContent> ec ? [.. ec.Select(c => c.ToContentBlock())] :
-                    [new TextContentBlock { Text = JsonSerializer.Serialize(content, McpJsonUtilities.DefaultOptions.GetTypeInfo<object>()) }],
-                StructuredContent = resultContent.Result is JsonElement je ? je : null,
+                    [new TextContentBlock { Text = "" }],
+                StructuredContent =
+                    resultContent.Result is JsonElement je ? je :
+                    resultContent.Result is null ? null :
+                    JsonSerializer.SerializeToElement(resultContent.Result, McpJsonUtilities.DefaultOptions.GetTypeInfo<object>()),
             },
 
-            _ => new TextContentBlock
-            {
-                Text = JsonSerializer.Serialize(content, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(object))),
-            }
+            _ => CreateJsonResourceContentBlock(content)
         };
+
+        static ContentBlock CreateJsonResourceContentBlock(AIContent content)
+        {
+            byte[] jsonUtf8 = JsonSerializer.SerializeToUtf8Bytes(content, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(object)));
+
+#if NET
+            int maxLength = Base64.GetMaxEncodedToUtf8Length(jsonUtf8.Length);
+#else
+            int maxLength = ((jsonUtf8.Length + 2) / 3) * 4;
+#endif
+
+            byte[] base64 = new byte[maxLength];
+            if (Base64.EncodeToUtf8(jsonUtf8, base64, out _, out int bytesWritten) != System.Buffers.OperationStatus.Done)
+            {
+                throw new InvalidOperationException("Failed to base64-encode JSON payload.");
+            }
+
+            ReadOnlyMemory<byte> blob = base64.AsMemory(0, bytesWritten);
+
+            return new EmbeddedResourceBlock
+            {
+                Resource = new BlobResourceContents
+                {
+                    Uri = string.Empty,
+                    MimeType = "application/json",
+                    BlobUtf8 = blob,
+                },
+            };
+        }
 
         contentBlock.Meta = content.AdditionalProperties?.ToJsonObject();
 
         return contentBlock;
     }
+
 
     private sealed class ToolAIFunctionDeclaration(Tool tool) : AIFunctionDeclaration
     {

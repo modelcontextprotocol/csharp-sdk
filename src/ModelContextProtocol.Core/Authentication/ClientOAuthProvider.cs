@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using System.Buffers.Text;
 #endif
 using System.Diagnostics.CodeAnalysis;
+using ModelContextProtocol.Internal;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
@@ -581,8 +582,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             Scope = GetScopeParameter(protectedResourceMetadata),
         };
 
-        var requestJson = JsonSerializer.Serialize(registrationRequest, McpJsonUtilities.JsonContext.Default.DynamicClientRegistrationRequest);
-        using var requestContent = new StringContent(requestJson, Encoding.UTF8, "application/json");
+        using var requestContent = new JsonTypeInfoHttpContent<DynamicClientRegistrationRequest>(
+            registrationRequest,
+            McpJsonUtilities.JsonContext.Default.DynamicClientRegistrationRequest);
 
         using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.RegistrationEndpoint)
         {

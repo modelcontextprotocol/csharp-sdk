@@ -142,8 +142,27 @@ public sealed class McpClientTool : AIFunction
                 case 1 when result.Content[0].ToAIContent() is { } aiContent:
                     return aiContent;
 
-                case > 1 when result.Content.Select(c => c.ToAIContent()).ToArray() is { } aiContents && aiContents.All(static c => c is not null):
-                    return aiContents;
+                case > 1:
+                    AIContent[] aiContents = new AIContent[result.Content.Count];
+                    bool allConverted = true;
+
+                    for (int i = 0; i < aiContents.Length; i++)
+                    {
+                        if (result.Content[i].ToAIContent() is not { } c)
+                        {
+                            allConverted = false;
+                            break;
+                        }
+
+                        aiContents[i] = c;
+                    }
+
+                    if (allConverted)
+                    {
+                        return aiContents;
+                    }
+
+                    break;
             }
         }
 

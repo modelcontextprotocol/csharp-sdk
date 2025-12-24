@@ -54,7 +54,7 @@ public class ConformancePrompts
                 Content = new ImageContentBlock
                 {
                     MimeType = "image/png",
-                    Data = System.Text.Encoding.UTF8.GetBytes(TestImageBase64)
+                    Data = TestImageBase64
                 }
             },
             new PromptMessage
