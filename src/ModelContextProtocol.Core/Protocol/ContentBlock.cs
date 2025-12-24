@@ -1,3 +1,5 @@
+using System.Buffers;
+using System.Buffers.Text;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -13,8 +15,8 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// <para>
 /// The <see cref="ContentBlock"/> class is a fundamental type in the MCP that can represent different forms of content
-/// based on the <see cref="Type"/> property. Derived types like <see cref="TextContentBlock"/>, <see cref="ImageContentBlock"/>,
-/// and <see cref="EmbeddedResourceBlock"/> provide the type-specific content.
+/// based on the <see cref="Type"/> property. Derived types like <see cref="TextContentBlock"/>, <see cref="Utf8TextContentBlock"/>,
+/// <see cref="ImageContentBlock"/>, and <see cref="EmbeddedResourceBlock"/> provide the type-specific content.
 /// </para>
 /// <para>
 /// This class is used throughout the MCP for representing content in messages, tool responses,
@@ -71,6 +73,16 @@ public abstract class ContentBlock
     [EditorBrowsable(EditorBrowsableState.Never)]
     public class Converter : JsonConverter<ContentBlock>
     {
+        private readonly bool _materializeUtf8TextContentBlocks;
+
+        /// <summary>Initializes a new instance of the <see cref="Converter"/> class.</summary>
+        public Converter()
+        {
+        }
+
+        internal Converter(bool materializeUtf8TextContentBlocks) =>
+            _materializeUtf8TextContentBlocks = materializeUtf8TextContentBlocks;
+
         /// <inheritdoc/>
         public override ContentBlock? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
@@ -85,9 +97,9 @@ public abstract class ContentBlock
             }
 
             string? type = null;
-            string? text = null;
+            ReadOnlyMemory<byte>? utf8Text = null;
             string? name = null;
-            string? data = null;
+            ReadOnlyMemory<byte>? dataUtf8 = null;
             string? mimeType = null;
             string? uri = null;
             string? description = null;
@@ -120,7 +132,9 @@ public abstract class ContentBlock
                         break;
 
                     case "text":
-                        text = reader.GetString();
+                        // Always read the JSON string token into UTF-8 bytes directly (including unescaping) without
+                        // allocating an intermediate UTF-16 string. The choice of materialized type happens later.
+                        utf8Text = ReadUtf8StringValueAsBytes(ref reader);
                         break;
 
                     case "name":
@@ -128,7 +142,7 @@ public abstract class ContentBlock
                         break;
 
                     case "data":
-                        data = reader.GetString();
+                        dataUtf8 = ReadUtf8StringValueAsBytes(ref reader);
                         break;
 
                     case "mimeType":
@@ -204,20 +218,25 @@ public abstract class ContentBlock
 
             ContentBlock block = type switch
             {
-                "text" => new TextContentBlock
-                {
-                    Text = text ?? throw new JsonException("Text contents must be provided for 'text' type."),
-                },
+                "text" => _materializeUtf8TextContentBlocks
+                    ? new Utf8TextContentBlock
+                    {
+                        Utf8Text = utf8Text ?? throw new JsonException("Text contents must be provided for 'text' type."),
+                    }
+                    : new TextContentBlock
+                    {
+                        Utf8Text = utf8Text ?? throw new JsonException("Text contents must be provided for 'text' type."),
+                    },
 
                 "image" => new ImageContentBlock
                 {
-                    Data = data ?? throw new JsonException("Image data must be provided for 'image' type."),
+                    DataUtf8 = dataUtf8 ?? throw new JsonException("Image data must be provided for 'image' type."),
                     MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'image' type."),
                 },
 
                 "audio" => new AudioContentBlock
                 {
-                    Data = data ?? throw new JsonException("Audio data must be provided for 'audio' type."),
+                    DataUtf8 = dataUtf8 ?? throw new JsonException("Audio data must be provided for 'audio' type."),
                     MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'audio' type."),
                 },
 
@@ -259,6 +278,24 @@ public abstract class ContentBlock
             return block;
         }
 
+        internal static ReadOnlyMemory<byte> ReadUtf8StringValueAsBytes(ref Utf8JsonReader reader)
+        {
+            if (reader.TokenType != JsonTokenType.String)
+            {
+                throw new JsonException();
+            }
+
+            // If the JSON string contained no escape sequences, STJ exposes the UTF-8 bytes directly.
+            if (!reader.ValueIsEscaped)
+            {
+                return reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan.ToArray();
+            }
+
+            // The value is escaped (e.g. contains \uXXXX or \n); unescape into UTF-8 bytes.
+            ReadOnlySpan<byte> escaped = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
+            return Core.McpTextUtilities.UnescapeJsonStringToUtf8(escaped);
+        }
+
         /// <inheritdoc/>
         public override void Write(Utf8JsonWriter writer, ContentBlock value, JsonSerializerOptions options)
         {
@@ -274,17 +311,43 @@ public abstract class ContentBlock
 
             switch (value)
             {
+                case Utf8TextContentBlock utf8TextContent:
+                    writer.WriteString("text", utf8TextContent.Utf8Text.Span);
+                    break;
+
                 case TextContentBlock textContent:
-                    writer.WriteString("text", textContent.Text);
+                    // Prefer UTF-8 bytes to avoid materializing a UTF-16 string for serialization.
+                    if (!textContent.Utf8Text.IsEmpty)
+                    {
+                        writer.WriteString("text", textContent.Utf8Text.Span);
+                    }
+                    else
+                    {
+                        writer.WriteString("text", textContent.Text);
+                    }
                     break;
 
                 case ImageContentBlock imageContent:
-                    writer.WriteString("data", imageContent.Data);
+                    if (imageContent.HasDataUtf8)
+                    {
+                        writer.WriteString("data", imageContent.GetDataUtf8Span());
+                    }
+                    else
+                    {
+                        writer.WriteString("data", imageContent.Data);
+                    }
                     writer.WriteString("mimeType", imageContent.MimeType);
                     break;
 
                 case AudioContentBlock audioContent:
-                    writer.WriteString("data", audioContent.Data);
+                    if (audioContent.HasDataUtf8)
+                    {
+                        writer.WriteString("data", audioContent.GetDataUtf8Span());
+                    }
+                    else
+                    {
+                        writer.WriteString("data", audioContent.Data);
+                    }
                     writer.WriteString("mimeType", audioContent.MimeType);
                     break;
 
@@ -359,23 +422,118 @@ public abstract class ContentBlock
 [DebuggerDisplay("Text = \"{Text}\"")]
 public sealed class TextContentBlock : ContentBlock
 {
+    private string? _text;
+    private ReadOnlyMemory<byte> _utf8Text;
+
     /// <inheritdoc/>
     public override string Type => "text";
 
     /// <summary>
+    /// Gets or sets the UTF-8 encoded text content.
+    /// </summary>
+    /// <remarks>
+    /// This enables avoiding intermediate UTF-16 string materialization when deserializing JSON.
+    /// Setting this value will invalidate any cached value of <see cref="Text"/>.
+    /// </remarks>
+    [JsonIgnore]
+    public ReadOnlyMemory<byte> Utf8Text
+    {
+        get => _utf8Text;
+        set
+        {
+            _utf8Text = value;
+            _text = null; // Invalidate cache
+        }
+    }
+
+    /// <summary>
     /// Gets or sets the text content of the message.
     /// </summary>
+    /// <remarks>
+    /// The getter lazily materializes and caches a UTF-16 string from <see cref="Utf8Text"/>.
+    /// The setter updates <see cref="Utf8Text"/>.
+    /// </remarks>
     [JsonPropertyName("text")]
-    public required string Text { get; set; }
+    public string Text
+    {
+        get => _text ??= Core.McpTextUtilities.GetStringFromUtf8(_utf8Text.Span);
+        set
+        {
+            _text = value;
+            _utf8Text = string.IsNullOrEmpty(value) ? null : System.Text.Encoding.UTF8.GetBytes(value);
+        }
+    }
 
     /// <inheritdoc/>
     public override string ToString() => Text ?? "";
+}
+
+/// <summary>
+/// Represents text provided to or from an LLM in pre-encoded UTF-8 form.
+/// </summary>
+/// <remarks>
+/// This type exists to avoid materializing UTF-16 strings in hot paths when the text content is already
+/// available as UTF-8 bytes (for example, JSON serialized tool results).
+/// </remarks>
+[DebuggerDisplay("Utf8TextLength = {Utf8Text.Length}")]
+public sealed class Utf8TextContentBlock : ContentBlock
+{
+    /// <inheritdoc/>
+    [JsonPropertyName("type")]
+    public override string Type => "text";
+
+    /// <summary>Gets or sets the UTF-8 encoded text content.</summary>
+    [JsonIgnore]
+    public required ReadOnlyMemory<byte> Utf8Text { get; set; }
+
+    /// <summary>Gets the UTF-16 string representation of <see cref="Utf8Text"/>.</summary>
+    [JsonPropertyName("text")]
+    public string Text
+    {
+        get
+        {
+            return Core.McpTextUtilities.GetStringFromUtf8(Utf8Text.Span);
+        }
+    }
+
+    /// <summary>Converts a <see cref="Utf8TextContentBlock"/> to a <see cref="TextContentBlock"/>.</summary>
+    public static implicit operator TextContentBlock(Utf8TextContentBlock utf8)
+    {
+        Throw.IfNull(utf8);
+
+        return new TextContentBlock
+        {
+            Text = utf8.Text,
+            Annotations = utf8.Annotations,
+            Meta = utf8.Meta,
+        };
+    }
+
+    /// <summary>Converts a <see cref="TextContentBlock"/> to a <see cref="Utf8TextContentBlock"/>.</summary>
+    public static implicit operator Utf8TextContentBlock(TextContentBlock text)
+    {
+        Throw.IfNull(text);
+
+        return new Utf8TextContentBlock
+        {
+            Utf8Text = System.Text.Encoding.UTF8.GetBytes(text.Text),
+            Annotations = text.Annotations,
+            Meta = text.Meta,
+        };
+    }
+
+    /// <inheritdoc/>
+    public override string ToString() => Text;
 }
 
 /// <summary>Represents an image provided to or from an LLM.</summary>
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class ImageContentBlock : ContentBlock
 {
+    private ReadOnlyMemory<byte> _dataUtf8;
+    private ReadOnlyMemory<byte> _decodedData;
+    private string? _data;
+
     /// <inheritdoc/>
     public override string Type => "image";
 
@@ -383,7 +541,73 @@ public sealed class ImageContentBlock : ContentBlock
     /// Gets or sets the base64-encoded image data.
     /// </summary>
     [JsonPropertyName("data")]
-    public required string Data { get; set; }
+    public string Data
+    {
+        get => _data ??= !_dataUtf8.IsEmpty
+            ? Core.McpTextUtilities.GetStringFromUtf8(_dataUtf8.Span)
+            : string.Empty;
+        set
+        {
+            _data = value;
+            _dataUtf8 = System.Text.Encoding.UTF8.GetBytes(value);
+            _decodedData = default; // Invalidate cache
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the base64-encoded UTF-8 bytes representing the value of <see cref="Data"/>.
+    /// </summary>
+    [JsonIgnore]
+    public ReadOnlyMemory<byte> DataUtf8
+    {
+        get => _dataUtf8.IsEmpty
+            ? _data is null
+                ? ReadOnlyMemory<byte>.Empty
+                : System.Text.Encoding.UTF8.GetBytes(_data)
+            : _dataUtf8;
+        set
+        {
+            _data = null;
+            _dataUtf8 = value;
+            _decodedData = default; // Invalidate cache
+        }
+    }
+
+    /// <summary>
+    /// Gets the decoded image data represented by <see cref="DataUtf8"/>.
+    /// </summary>
+    /// <remarks>
+    /// Accessing this member will decode the value in <see cref="DataUtf8"/> and cache the result.
+    /// Subsequent accesses return the cached value unless <see cref="Data"/> or <see cref="DataUtf8"/> is modified.
+    /// </remarks>
+    [JsonIgnore]
+    public ReadOnlyMemory<byte> DecodedData
+    {
+        get
+        {
+            if (_decodedData.IsEmpty)
+            {
+                if (_data is not null)
+                {
+                    _decodedData = Convert.FromBase64String(_data);
+                    return _decodedData;
+                }
+
+                int maxLength = Base64.GetMaxDecodedFromUtf8Length(DataUtf8.Length);
+                byte[] buffer = new byte[maxLength];
+                if (Base64.DecodeFromUtf8(DataUtf8.Span, buffer, out _, out int bytesWritten) == OperationStatus.Done)
+                {
+                    _decodedData = bytesWritten == maxLength ? buffer : buffer.AsMemory(0, bytesWritten).ToArray();
+                }
+                else
+                {
+                    throw new FormatException("Invalid base64 data");
+                }
+            }
+
+            return _decodedData;
+        }
+    }
 
     /// <summary>
     /// Gets or sets the MIME type (or "media type") of the content, specifying the format of the data.
@@ -394,6 +618,10 @@ public sealed class ImageContentBlock : ContentBlock
     [JsonPropertyName("mimeType")]
     public required string MimeType { get; set; }
 
+    internal bool HasDataUtf8 => !_dataUtf8.IsEmpty;
+
+    internal ReadOnlySpan<byte> GetDataUtf8Span() => _dataUtf8.Span;
+
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     private string DebuggerDisplay => $"MimeType = {MimeType}, Length = {DebuggerDisplayHelper.GetBase64LengthDisplay(Data)}";
 }
@@ -402,6 +630,10 @@ public sealed class ImageContentBlock : ContentBlock
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class AudioContentBlock : ContentBlock
 {
+    private ReadOnlyMemory<byte> _dataUtf8;
+    private ReadOnlyMemory<byte> _decodedData;
+    private string? _data;
+
     /// <inheritdoc/>
     public override string Type => "audio";
 
@@ -409,7 +641,73 @@ public sealed class AudioContentBlock : ContentBlock
     /// Gets or sets the base64-encoded audio data.
     /// </summary>
     [JsonPropertyName("data")]
-    public required string Data { get; set; }
+    public string Data
+    {
+        get => _data ??= !_dataUtf8.IsEmpty
+            ? Core.McpTextUtilities.GetStringFromUtf8(_dataUtf8.Span)
+            : string.Empty;
+        set
+        {
+            _data = value;
+            _dataUtf8 = System.Text.Encoding.UTF8.GetBytes(value);
+            _decodedData = default; // Invalidate cache
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the base64-encoded UTF-8 bytes representing the value of <see cref="Data"/>.
+    /// </summary>
+    [JsonIgnore]
+    public ReadOnlyMemory<byte> DataUtf8
+    {
+        get => _dataUtf8.IsEmpty
+            ? _data is null
+                ? ReadOnlyMemory<byte>.Empty
+                : System.Text.Encoding.UTF8.GetBytes(_data)
+            : _dataUtf8;
+        set
+        {
+            _data = null;
+            _dataUtf8 = value;
+            _decodedData = default; // Invalidate cache
+        }
+    }
+
+    /// <summary>
+    /// Gets the decoded audio data represented by <see cref="DataUtf8"/>.
+    /// </summary>
+    /// <remarks>
+    /// Accessing this member will decode the value in <see cref="DataUtf8"/> and cache the result.
+    /// Subsequent accesses return the cached value unless <see cref="Data"/> or <see cref="DataUtf8"/> is modified.
+    /// </remarks>
+    [JsonIgnore]
+    public ReadOnlyMemory<byte> DecodedData
+    {
+        get
+        {
+            if (_decodedData.IsEmpty)
+            {
+                if (_data is not null)
+                {
+                    _decodedData = Convert.FromBase64String(_data);
+                    return _decodedData;
+                }
+
+                int maxLength = Base64.GetMaxDecodedFromUtf8Length(DataUtf8.Length);
+                byte[] buffer = new byte[maxLength];
+                if (Base64.DecodeFromUtf8(DataUtf8.Span, buffer, out _, out int bytesWritten) == OperationStatus.Done)
+                {
+                    _decodedData = bytesWritten == maxLength ? buffer : buffer.AsMemory(0, bytesWritten).ToArray();
+                }
+                else
+                {
+                    throw new FormatException("Invalid base64 data");
+                }
+            }
+
+            return _decodedData;
+        }
+    }
 
     /// <summary>
     /// Gets or sets the MIME type (or "media type") of the content, specifying the format of the data.
@@ -419,6 +717,10 @@ public sealed class AudioContentBlock : ContentBlock
     /// </remarks>
     [JsonPropertyName("mimeType")]
     public required string MimeType { get; set; }
+
+    internal bool HasDataUtf8 => !_dataUtf8.IsEmpty;
+
+    internal ReadOnlySpan<byte> GetDataUtf8Span() => _dataUtf8.Span;
 
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     private string DebuggerDisplay => $"MimeType = {MimeType}, Length = {DebuggerDisplayHelper.GetBase64LengthDisplay(Data)}";

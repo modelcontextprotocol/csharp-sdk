@@ -78,7 +78,7 @@ public abstract class ResourceContents
 
             string? uri = null;
             string? mimeType = null;
-            string? blob = null;
+            ReadOnlyMemory<byte>? blobUtf8 = null;
             string? text = null;
             JsonObject? meta = null;
 
@@ -104,7 +104,7 @@ public abstract class ResourceContents
                         break;
 
                     case "blob":
-                        blob = reader.GetString();
+                        blobUtf8 = ContentBlock.Converter.ReadUtf8StringValueAsBytes(ref reader);
                         break;
 
                     case "text":
@@ -121,13 +121,13 @@ public abstract class ResourceContents
                 }
             }
 
-            if (blob is not null)
+            if (blobUtf8 is not null)
             {
                 return new BlobResourceContents
                 {
                     Uri = uri ?? string.Empty,
                     MimeType = mimeType,
-                    Blob = blob,
+                    BlobUtf8 = blobUtf8.Value,
                     Meta = meta,
                 };
             }
@@ -162,7 +162,14 @@ public abstract class ResourceContents
             Debug.Assert(value is BlobResourceContents or TextResourceContents);
             if (value is BlobResourceContents blobResource)
             {
-                writer.WriteString("blob", blobResource.Blob);
+                if (blobResource.HasBlobUtf8)
+                {
+                    writer.WriteString("blob", blobResource.GetBlobUtf8Span());
+                }
+                else
+                {
+                    writer.WriteString("blob", blobResource.Blob);
+                }
             }
             else if (value is TextResourceContents textResource)
             {

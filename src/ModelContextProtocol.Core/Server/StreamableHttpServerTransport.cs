@@ -1,3 +1,4 @@
+using ModelContextProtocol.Core;
 using ModelContextProtocol.Protocol;
 using System.IO.Pipelines;
 using System.Security.Claims;
@@ -33,7 +34,7 @@ public sealed class StreamableHttpServerTransport : ITransport
         SingleReader = true,
         SingleWriter = false,
     });
-    private readonly CancellationTokenSource _disposeCts = new();
+    private CancellationTokenSource _disposeCts = new();
 
     private int _getRequestStarted;
 
@@ -157,7 +158,7 @@ public sealed class StreamableHttpServerTransport : ITransport
             }
             finally
             {
-                _disposeCts.Dispose();
+                CanceledTokenSource.Defuse(ref _disposeCts);
             }
         }
     }

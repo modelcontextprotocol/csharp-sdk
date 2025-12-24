@@ -17,6 +17,13 @@ namespace ModelContextProtocol.Tests.Server;
 
 public partial class McpServerToolTests
 {
+    private static string GetText(ContentBlock content) => content switch
+    {
+        TextContentBlock text => text.Text,
+        Utf8TextContentBlock utf8 => utf8.Text,
+        _ => throw new XunitException($"Expected a text content block, got '{content.GetType()}'."),
+    };
+
     private static JsonRpcRequest CreateTestJsonRpcRequest()
     {
         return new JsonRpcRequest
@@ -64,7 +71,7 @@ public partial class McpServerToolTests
         var result = await tool.InvokeAsync(
             new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest()),
             TestContext.Current.CancellationToken);
-        Assert.Equal("42", (result.Content[0] as TextContentBlock)?.Text);
+        Assert.Equal("42", GetText(result.Content[0]));
     }
 
     [Fact]
@@ -93,7 +100,7 @@ public partial class McpServerToolTests
         Assert.NotNull(result);
         Assert.NotNull(result.Content);
         Assert.Single(result.Content);
-        Assert.Equal("True True True True", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
+        Assert.Equal("True True True True", GetText(result.Content[0]));
     }
 
     private sealed class HasCtorWithSpecialParameters
@@ -174,7 +181,7 @@ public partial class McpServerToolTests
         var result = await tool.InvokeAsync(
             new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest()) { Services = services },
             TestContext.Current.CancellationToken);
-        Assert.Equal("42", (result.Content[0] as TextContentBlock)?.Text);
+        Assert.Equal("42", GetText(result.Content[0]));
     }
 
     [Fact]
@@ -195,7 +202,7 @@ public partial class McpServerToolTests
         var result = await tool.InvokeAsync(
             new RequestContext<CallToolRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()),
             TestContext.Current.CancellationToken);
-        Assert.Equal("42", (result.Content[0] as TextContentBlock)?.Text);
+        Assert.Equal("42", GetText(result.Content[0]));
     }
 
     [Fact]
@@ -210,7 +217,7 @@ public partial class McpServerToolTests
         var result = await tool1.InvokeAsync(
             new RequestContext<CallToolRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()),
             TestContext.Current.CancellationToken);
-        Assert.Equal("""{"disposals":1}""", (result.Content[0] as TextContentBlock)?.Text);
+        Assert.Equal("""{"disposals":1}""", GetText(result.Content[0]));
     }
 
     [Fact]
@@ -225,7 +232,7 @@ public partial class McpServerToolTests
         var result = await tool1.InvokeAsync(
             new RequestContext<CallToolRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()),
             TestContext.Current.CancellationToken);
-        Assert.Equal("""{"asyncDisposals":1}""", (result.Content[0] as TextContentBlock)?.Text);
+        Assert.Equal("""{"asyncDisposals":1}""", GetText(result.Content[0]));
     }
 
     [Fact]
@@ -244,7 +251,7 @@ public partial class McpServerToolTests
         var result = await tool1.InvokeAsync(
             new RequestContext<CallToolRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest()) { Services = services },
             TestContext.Current.CancellationToken);
-        Assert.Equal("""{"asyncDisposals":1,"disposals":0}""", (result.Content[0] as TextContentBlock)?.Text);
+        Assert.Equal("""{"asyncDisposals":1,"disposals":0}""", GetText(result.Content[0]));
     }
 
 
@@ -268,12 +275,12 @@ public partial class McpServerToolTests
 
         Assert.Equal(3, result.Content.Count);
 
-        Assert.Equal("text", (result.Content[0] as TextContentBlock)?.Text);
+        Assert.Equal("text", GetText(result.Content[0]));
 
-        Assert.Equal("1234", (result.Content[1] as ImageContentBlock)?.Data);
+        Assert.Equal("1234", Assert.IsType<ImageContentBlock>(result.Content[1]).Data);
         Assert.Equal("image/png", (result.Content[1] as ImageContentBlock)?.MimeType);
 
-        Assert.Equal("1234", (result.Content[2] as AudioContentBlock)?.Data);
+        Assert.Equal("1234", Assert.IsType<AudioContentBlock>(result.Content[2]).Data);
         Assert.Equal("audio/wav", (result.Content[2] as AudioContentBlock)?.MimeType);
     }
 
@@ -367,7 +374,7 @@ public partial class McpServerToolTests
             new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest()),
             TestContext.Current.CancellationToken);
         Assert.Single(result.Content);
-        Assert.Equal("""["42","43"]""", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
+        Assert.Equal("""["42","43"]""", GetText(result.Content[0]));
     }
 
     [Fact]
@@ -430,7 +437,7 @@ public partial class McpServerToolTests
         Assert.Same(response, result);
 
         Assert.Equal(2, result.Content.Count);
-        Assert.Equal("text", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
+        Assert.Equal("text", GetText(result.Content[0]));
         Assert.Equal("1234", Assert.IsType<ImageContentBlock>(result.Content[1]).Data);
     }
 

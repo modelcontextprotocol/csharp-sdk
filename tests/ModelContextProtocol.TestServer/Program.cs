@@ -382,7 +382,7 @@ internal static class Program
             {
                 try
                 {
-                    var startIndexAsString = Encoding.UTF8.GetString(Convert.FromBase64String(request.Params.Cursor));
+                    var startIndexAsString = Core.McpTextUtilities.GetStringFromUtf8(Convert.FromBase64String(request.Params.Cursor));
                     startIndex = Convert.ToInt32(startIndexAsString);
                 }
                 catch (Exception e)

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using ModelContextProtocol.Core;
 using System.Net.Http.Headers;
 using System.Net.ServerSentEvents;
 using System.Text.Json;
@@ -18,7 +19,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
     private readonly McpHttpClient _httpClient;
     private readonly HttpClientTransportOptions _options;
-    private readonly CancellationTokenSource _connectionCts;
+    private CancellationTokenSource _connectionCts;
     private readonly ILogger _logger;
 
     private string? _negotiatedProtocolVersion;
@@ -172,7 +173,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
             }
             finally
             {
-                _connectionCts.Dispose();
+                CanceledTokenSource.Defuse(ref _connectionCts, dispose: true);
             }
         }
         finally

@@ -17,15 +17,14 @@ public class StdioServerIntegrationTests(ITestOutputHelper testOutputHelper) : L
     {
         using var process = new Process
         {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = "dotnet",
-                Arguments = "TestServerWithHosting.dll",
-                RedirectStandardInput = true,
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            }
+            StartInfo = ProcessStartInfoUtilities.CreateOnPath(
+                "dotnet",
+                "TestServerWithHosting.dll",
+                redirectStandardInput: true,
+                redirectStandardOutput: true,
+                redirectStandardError: true,
+                useShellExecute: false,
+                createNoWindow: true)
         };
 
         process.Start();

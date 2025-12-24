@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using ModelContextProtocol.Protocol;
 
@@ -9,8 +11,10 @@ namespace ModelContextProtocol.Tests.Protocol;
 /// </summary>
 public class UnknownPropertiesTests
 {
-    [Fact]
-    public void ContentBlock_DeserializationWithUnknownProperty_SkipsProperty()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ContentBlock_DeserializationWithUnknownProperty_SkipsProperty(bool materializeUtf8TextContentBlocks)
     {
         // Arrange - JSON with unknown "unknownField" property
         const string Json = """
@@ -22,16 +26,18 @@ public class UnknownPropertiesTests
             """;
 
         // Act
-        var deserialized = JsonSerializer.Deserialize<ContentBlock>(Json, McpJsonUtilities.DefaultOptions);
+        var options = TextMaterializationTestHelpers.GetOptions(materializeUtf8TextContentBlocks);
+        var deserialized = JsonSerializer.Deserialize<ContentBlock>(Json, options);
 
         // Assert
         Assert.NotNull(deserialized);
-        var textBlock = Assert.IsType<TextContentBlock>(deserialized);
-        Assert.Equal("Hello, world!", textBlock.Text);
+        Assert.Equal("Hello, world!", TextMaterializationTestHelpers.GetText(deserialized, materializeUtf8TextContentBlocks));
     }
 
-    [Fact]
-    public void ContentBlock_DeserializationWithStructuredContentInContent_SkipsProperty()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ContentBlock_DeserializationWithStructuredContentInContent_SkipsProperty(bool materializeUtf8TextContentBlocks)
     {
         // Arrange - This was the actual bug case: structuredContent incorrectly placed
         // inside a ContentBlock instead of at CallToolResult level
@@ -46,12 +52,12 @@ public class UnknownPropertiesTests
             """;
 
         // Act - Should not throw
-        var deserialized = JsonSerializer.Deserialize<ContentBlock>(Json, McpJsonUtilities.DefaultOptions);
+        var options = TextMaterializationTestHelpers.GetOptions(materializeUtf8TextContentBlocks);
+        var deserialized = JsonSerializer.Deserialize<ContentBlock>(Json, options);
 
         // Assert
         Assert.NotNull(deserialized);
-        var textBlock = Assert.IsType<TextContentBlock>(deserialized);
-        Assert.Equal("Result text", textBlock.Text);
+        Assert.Equal("Result text", TextMaterializationTestHelpers.GetText(deserialized, materializeUtf8TextContentBlocks));
     }
 
     [Fact]
@@ -195,8 +201,10 @@ public class UnknownPropertiesTests
         Assert.Equal("A test string", stringSchema.Description);
     }
 
-    [Fact]
-    public void CallToolResult_WithContentBlockContainingUnknownProperties_Succeeds()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CallToolResult_WithContentBlockContainingUnknownProperties_Succeeds(bool materializeUtf8TextContentBlocks)
     {
         // Arrange - Simulates the real-world bug scenario: a malformed response where
         // structuredContent was incorrectly nested inside content blocks
@@ -216,13 +224,13 @@ public class UnknownPropertiesTests
             """;
 
         // Act - Should not throw an exception
-        var deserialized = JsonSerializer.Deserialize<CallToolResult>(Json, McpJsonUtilities.DefaultOptions);
+        var options = TextMaterializationTestHelpers.GetOptions(materializeUtf8TextContentBlocks);
+        var deserialized = JsonSerializer.Deserialize<CallToolResult>(Json, options);
 
         // Assert
         Assert.NotNull(deserialized);
         Assert.Single(deserialized.Content);
-        var textBlock = Assert.IsType<TextContentBlock>(deserialized.Content[0]);
-        Assert.Equal("Tool executed successfully", textBlock.Text);
+        Assert.Equal("Tool executed successfully", TextMaterializationTestHelpers.GetText(deserialized.Content[0], materializeUtf8TextContentBlocks));
         Assert.False(deserialized.IsError);
     }
 

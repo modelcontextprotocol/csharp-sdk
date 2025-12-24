@@ -32,10 +32,9 @@ internal class McpHttpClient(HttpClient httpClient)
 #if NET
         return JsonContent.Create(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage);
 #else
-        return new StringContent(
-            JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage),
-            Encoding.UTF8,
-            "application/json"
+        return new ModelContextProtocol.Internal.JsonTypeInfoHttpContent<JsonRpcMessage>(
+            message,
+            McpJsonUtilities.JsonContext.Default.JsonRpcMessage
         );
 #endif
     }

@@ -1,9 +1,10 @@
+using System.Text;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Core;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -11,6 +12,9 @@ namespace ModelContextProtocol.Tests.Client;
 
 public class McpClientToolTests : ClientServerTestBase
 {
+    private static string GetUtf8String(ReadOnlyMemory<byte> bytes) =>
+        McpTextUtilities.GetStringFromUtf8(bytes.Span);
+
     public McpClientToolTests(ITestOutputHelper outputHelper)
         : base(outputHelper)
     {
@@ -23,6 +27,10 @@ public class McpClientToolTests : ClientServerTestBase
 
     private class TestTools
     {
+        private static readonly string Base64FakeImageData = Convert.ToBase64String("fake-image-data"u8.ToArray());
+        private static readonly string Base64FakeAudioData = Convert.ToBase64String("fake-audio-data"u8.ToArray());
+        private static readonly string Base64ImageData = Convert.ToBase64String("image-data"u8.ToArray());
+
         // Tool that returns only text content
         [McpServerTool]
         public static TextContentBlock TextOnlyTool() =>
@@ -37,13 +45,13 @@ public class McpClientToolTests : ClientServerTestBase
         [McpServerTool]
         public static ImageContentBlock ImageTool() =>
             new()
-            { Data = Convert.ToBase64String(Encoding.UTF8.GetBytes("fake-image-data")), MimeType = "image/png" };
+            { Data = Base64FakeImageData, MimeType = "image/png" };
 
         // Tool that returns audio content as single ContentBlock
         [McpServerTool]
         public static AudioContentBlock AudioTool() =>
             new()
-            { Data = Convert.ToBase64String(Encoding.UTF8.GetBytes("fake-audio-data")), MimeType = "audio/mp3" };
+            { Data = Base64FakeAudioData, MimeType = "audio/mp3" };
 
         // Tool that returns embedded resource
         [McpServerTool]
@@ -56,15 +64,15 @@ public class McpClientToolTests : ClientServerTestBase
         public static IEnumerable<AIContent> MixedContentTool()
         {
             yield return new TextContent("Description of the image");
-            yield return new DataContent(Encoding.UTF8.GetBytes("fake-image-data"), "image/png");
+            yield return new DataContent("fake-image-data"u8.ToArray(), "image/png");
         }
 
         // Tool that returns multiple images using IEnumerable<AIContent>
         [McpServerTool]
         public static IEnumerable<AIContent> MultipleImagesTool()
         {
-            yield return new DataContent(Encoding.UTF8.GetBytes("image1"), "image/png");
-            yield return new DataContent(Encoding.UTF8.GetBytes("image2"), "image/jpeg");
+            yield return new DataContent("image1"u8.ToArray(), "image/png");
+            yield return new DataContent("image2"u8.ToArray(), "image/jpeg");
         }
 
         // Tool that returns audio + text using IEnumerable<AIContent>
@@ -72,7 +80,7 @@ public class McpClientToolTests : ClientServerTestBase
         public static IEnumerable<AIContent> AudioWithTextTool()
         {
             yield return new TextContent("Audio transcription");
-            yield return new DataContent(Encoding.UTF8.GetBytes("fake-audio"), "audio/wav");
+            yield return new DataContent("fake-audio"u8.ToArray(), "audio/wav");
         }
 
         // Tool that returns embedded resource + text using IEnumerable<ContentBlock>
@@ -88,9 +96,9 @@ public class McpClientToolTests : ClientServerTestBase
         public static IEnumerable<AIContent> AllContentTypesTool()
         {
             yield return new TextContent("Mixed content");
-            yield return new DataContent(Encoding.UTF8.GetBytes("image"), "image/png");
-            yield return new DataContent(Encoding.UTF8.GetBytes("audio"), "audio/mp3");
-            yield return new DataContent(Encoding.UTF8.GetBytes("blob"), "application/octet-stream");
+            yield return new DataContent("image"u8.ToArray(), "image/png");
+            yield return new DataContent("audio"u8.ToArray(), "audio/mp3");
+            yield return new DataContent("blob"u8.ToArray(), "application/octet-stream");
         }
 
         // Tool that returns content that can't be converted to AIContent (ResourceLinkBlock)
@@ -103,7 +111,7 @@ public class McpClientToolTests : ClientServerTestBase
         [McpServerTool]
         public static IEnumerable<ContentBlock> MixedWithNonConvertibleTool()
         {
-            yield return new ImageContentBlock { Data = Convert.ToBase64String(Encoding.UTF8.GetBytes("image-data")), MimeType = "image/png" };
+            yield return new ImageContentBlock { Data = Base64ImageData, MimeType = "image/png" };
             yield return new ResourceLinkBlock { Uri = "file://linked.txt", Name = "linked.txt" };
         }
 
@@ -152,7 +160,7 @@ public class McpClientToolTests : ClientServerTestBase
                 Resource = new BlobResourceContents
                 {
                     Uri = "data://blob",
-                    Blob = Convert.ToBase64String(Encoding.UTF8.GetBytes("binary-data")),
+                    Blob = Convert.ToBase64String("binary-data"u8.ToArray()), 
                     MimeType = "application/octet-stream"
                 }
             };
@@ -207,7 +215,7 @@ public class McpClientToolTests : ClientServerTestBase
 
         var dataContent = Assert.IsType<DataContent>(result);
         Assert.Equal("image/png", dataContent.MediaType);
-        Assert.Equal("fake-image-data", Encoding.UTF8.GetString(dataContent.Data.ToArray()));
+        Assert.Equal("fake-image-data", GetUtf8String(dataContent.Data));
     }
 
     [Fact]
@@ -221,7 +229,7 @@ public class McpClientToolTests : ClientServerTestBase
 
         var dataContent = Assert.IsType<DataContent>(result);
         Assert.Equal("audio/mp3", dataContent.MediaType);
-        Assert.Equal("fake-audio-data", Encoding.UTF8.GetString(dataContent.Data.ToArray()));
+        Assert.Equal("fake-audio-data", GetUtf8String(dataContent.Data));
     }
 
     [Fact]
@@ -270,11 +278,11 @@ public class McpClientToolTests : ClientServerTestBase
 
         var dataContent0 = Assert.IsType<DataContent>(aiContents[0]);
         Assert.Equal("image/png", dataContent0.MediaType);
-        Assert.Equal("image1", Encoding.UTF8.GetString(dataContent0.Data.ToArray()));
+        Assert.Equal("image1", GetUtf8String(dataContent0.Data));
 
         var dataContent1 = Assert.IsType<DataContent>(aiContents[1]);
         Assert.Equal("image/jpeg", dataContent1.MediaType);
-        Assert.Equal("image2", Encoding.UTF8.GetString(dataContent1.Data.ToArray()));
+        Assert.Equal("image2", GetUtf8String(dataContent1.Data));
     }
 
     [Fact]
@@ -479,7 +487,7 @@ public class McpClientToolTests : ClientServerTestBase
 
         var dataContent = Assert.IsType<DataContent>(result);
         Assert.Equal("application/octet-stream", dataContent.MediaType);
-        Assert.Equal("binary-data", Encoding.UTF8.GetString(dataContent.Data.ToArray()));
+        Assert.Equal("binary-data", GetUtf8String(dataContent.Data));
     }
 
     [Fact]

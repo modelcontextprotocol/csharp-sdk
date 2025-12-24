@@ -7,7 +7,7 @@ namespace ModelContextProtocol.Client;
 /// <summary>Provides the client side of a stdio-based session transport.</summary>
 internal sealed class StdioClientSessionTransport(
     StdioClientTransportOptions options, Process process, string endpointName, Queue<string> stderrRollingLog, ILoggerFactory? loggerFactory) :
-    StreamClientSessionTransport(process.StandardInput.BaseStream, process.StandardOutput.BaseStream, encoding: null, endpointName, loggerFactory)
+    StreamClientSessionTransport(process.StandardInput.BaseStream, process.StandardOutput.BaseStream, endpointName, loggerFactory)
 {
     private readonly StdioClientTransportOptions _options = options;
     private readonly Process _process = process;
