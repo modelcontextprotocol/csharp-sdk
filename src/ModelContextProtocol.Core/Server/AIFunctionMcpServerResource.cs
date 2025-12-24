@@ -7,7 +7,6 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -396,9 +395,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
                 { 
                     Uri = request.Params!.Uri, 
                     MimeType = dc.MediaType, 
-                    Blob = MemoryMarshal.TryGetArray(dc.Base64Data, out ArraySegment<char> segment)
-                        ? System.Text.Encoding.UTF8.GetBytes(segment.Array!, segment.Offset, segment.Count) 
-                        : System.Text.Encoding.UTF8.GetBytes(dc.Base64Data.ToString()) 
+                    DecodedData = dc.Data
                 }],
             },
 
@@ -428,9 +425,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
                         {
                             Uri = request.Params!.Uri,
                             MimeType = dc.MediaType,
-                            Blob = MemoryMarshal.TryGetArray(dc.Base64Data, out ArraySegment<char> segment)
-                                ? System.Text.Encoding.UTF8.GetBytes(segment.Array!, segment.Offset, segment.Count) 
-                                : System.Text.Encoding.UTF8.GetBytes(dc.Base64Data.ToString())
+                            DecodedData = dc.Data
                         },
 
                         _ => throw new InvalidOperationException($"Unsupported AIContent type '{ac.GetType()}' returned from resource function."),
@@ -452,4 +447,5 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
             _ => throw new InvalidOperationException($"Unsupported result type '{result.GetType()}' returned from resource function."),
         };
     }
+
 }

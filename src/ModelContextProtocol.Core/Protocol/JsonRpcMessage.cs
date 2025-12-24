@@ -78,22 +78,69 @@ public abstract class JsonRpcMessage
                 throw new JsonException("Expected StartObject token");
             }
 
-            using var doc = JsonDocument.ParseValue(ref reader);
-            var root = doc.RootElement;
+            // We need to determine the concrete message type without round-tripping the payload
+            // through a UTF-16 string (e.g. JsonElement.GetRawText()).
+            var lookahead = reader;
+
+            bool hasId = false;
+            bool hasMethod = false;
+            bool hasError = false;
+            bool hasResult = false;
+            bool foundJsonRpc = false;
+
+            // Scan the top-level object using a copy of the reader.
+            while (lookahead.Read())
+            {
+                if (lookahead.TokenType == JsonTokenType.EndObject)
+                {
+                    break;
+                }
+
+                if (lookahead.TokenType != JsonTokenType.PropertyName)
+                {
+                    throw new JsonException("Expected PropertyName token");
+                }
+
+                bool isJsonRpc = lookahead.ValueTextEquals("jsonrpc"u8);
+                bool isId = lookahead.ValueTextEquals("id"u8);
+                bool isMethod = lookahead.ValueTextEquals("method"u8);
+                bool isError = lookahead.ValueTextEquals("error"u8);
+                bool isResult = lookahead.ValueTextEquals("result"u8);
+
+                if (!lookahead.Read())
+                {
+                    throw new JsonException("Unexpected end of JSON");
+                }
+
+                if (isJsonRpc)
+                {
+                    foundJsonRpc = lookahead.TokenType == JsonTokenType.String && lookahead.ValueTextEquals("2.0"u8);
+                }
+                else if (isId)
+                {
+                    hasId = true;
+                }
+                else if (isMethod)
+                {
+                    hasMethod = true;
+                }
+                else if (isError)
+                {
+                    hasError = true;
+                }
+                else if (isResult)
+                {
+                    hasResult = true;
+                }
+
+                SkipValue(ref lookahead);
+            }
 
             // All JSON-RPC messages must have a jsonrpc property with value "2.0"
-            if (!root.TryGetProperty("jsonrpc", out var versionProperty) ||
-                versionProperty.GetString() != "2.0")
+            if (!foundJsonRpc)
             {
                 throw new JsonException("Invalid or missing jsonrpc version");
             }
-
-            // Determine the message type based on the presence of id, method, and error properties
-            bool hasId = root.TryGetProperty("id", out _);
-            bool hasMethod = root.TryGetProperty("method", out _);
-            bool hasError = root.TryGetProperty("error", out _);
-
-            var rawText = root.GetRawText();
 
             // Messages with an id but no method are responses
             if (hasId && !hasMethod)
@@ -101,13 +148,13 @@ public abstract class JsonRpcMessage
                 // Messages with an error property are error responses
                 if (hasError)
                 {
-                    return JsonSerializer.Deserialize(rawText, options.GetTypeInfo<JsonRpcError>());
+                    return JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<JsonRpcError>());
                 }
 
                 // Messages with a result property are success responses
-                if (root.TryGetProperty("result", out _))
+                if (hasResult)
                 {
-                    return JsonSerializer.Deserialize(rawText, options.GetTypeInfo<JsonRpcResponse>());
+                    return JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<JsonRpcResponse>());
                 }
 
                 throw new JsonException("Response must have either result or error");
@@ -116,16 +163,36 @@ public abstract class JsonRpcMessage
             // Messages with a method but no id are notifications
             if (hasMethod && !hasId)
             {
-                return JsonSerializer.Deserialize(rawText, options.GetTypeInfo<JsonRpcNotification>());
+                return JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<JsonRpcNotification>());
             }
 
             // Messages with both method and id are requests
             if (hasMethod && hasId)
             {
-                return JsonSerializer.Deserialize(rawText, options.GetTypeInfo<JsonRpcRequest>());
+                return JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<JsonRpcRequest>());
             }
 
             throw new JsonException("Invalid JSON-RPC message format");
+        }
+
+        private static void SkipValue(ref Utf8JsonReader reader)
+        {
+            if (reader.TokenType is JsonTokenType.StartObject or JsonTokenType.StartArray)
+            {
+                int depth = 0;
+                do
+                {
+                    if (reader.TokenType is JsonTokenType.StartObject or JsonTokenType.StartArray)
+                    {
+                        depth++;
+                    }
+                    else if (reader.TokenType is JsonTokenType.EndObject or JsonTokenType.EndArray)
+                    {
+                        depth--;
+                    }
+                }
+                while (depth > 0 && reader.Read());
+            }
         }
 
         /// <inheritdoc/>

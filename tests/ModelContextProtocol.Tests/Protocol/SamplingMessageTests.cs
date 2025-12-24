@@ -5,8 +5,10 @@ namespace ModelContextProtocol.Tests.Protocol;
 
 public class SamplingMessageTests
 {
-    [Fact]
-    public void WithToolResults_SerializationRoundtrips()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WithToolResults_SerializationRoundtrips(bool materializeUtf8TextContentBlocks)
     {
         SamplingMessage message = new()
         {
@@ -24,8 +26,9 @@ public class SamplingMessageTests
             ]
         };
 
-        var json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions);
-        var deserialized = JsonSerializer.Deserialize<SamplingMessage>(json, McpJsonUtilities.DefaultOptions);
+        var options = TextMaterializationTestHelpers.GetOptions(materializeUtf8TextContentBlocks);
+        var json = JsonSerializer.Serialize(message, options);
+        var deserialized = JsonSerializer.Deserialize<SamplingMessage>(json, options);
 
         Assert.NotNull(deserialized);
         Assert.Equal(Role.User, deserialized.Role);
@@ -35,12 +38,13 @@ public class SamplingMessageTests
         Assert.Equal("call_123", toolResult.ToolUseId);
         Assert.Single(toolResult.Content);
         
-        var textBlock = Assert.IsType<TextContentBlock>(toolResult.Content[0]);
-        Assert.Equal("Weather in Paris: 18°C, partly cloudy", textBlock.Text);
+        Assert.Equal("Weather in Paris: 18°C, partly cloudy", TextMaterializationTestHelpers.GetText(toolResult.Content[0], materializeUtf8TextContentBlocks));
     }
 
-    [Fact]
-    public void WithMultipleToolResults_SerializationRoundtrips()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WithMultipleToolResults_SerializationRoundtrips(bool materializeUtf8TextContentBlocks)
     {
         SamplingMessage message = new()
         {
@@ -60,8 +64,9 @@ public class SamplingMessageTests
             ]
         };
 
-        var json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions);
-        var deserialized = JsonSerializer.Deserialize<SamplingMessage>(json, McpJsonUtilities.DefaultOptions);
+        var options = TextMaterializationTestHelpers.GetOptions(materializeUtf8TextContentBlocks);
+        var json = JsonSerializer.Serialize(message, options);
+        var deserialized = JsonSerializer.Deserialize<SamplingMessage>(json, options);
 
         Assert.NotNull(deserialized);
         Assert.Equal(Role.User, deserialized.Role);
@@ -70,18 +75,18 @@ public class SamplingMessageTests
         var toolResult1 = Assert.IsType<ToolResultContentBlock>(deserialized.Content[0]);
         Assert.Equal("call_abc123", toolResult1.ToolUseId);
         Assert.Single(toolResult1.Content);
-        var textBlock1 = Assert.IsType<TextContentBlock>(toolResult1.Content[0]);
-        Assert.Equal("Weather in Paris: 18°C, partly cloudy", textBlock1.Text);
+        Assert.Equal("Weather in Paris: 18°C, partly cloudy", TextMaterializationTestHelpers.GetText(toolResult1.Content[0], materializeUtf8TextContentBlocks));
         
         var toolResult2 = Assert.IsType<ToolResultContentBlock>(deserialized.Content[1]);
         Assert.Equal("call_def456", toolResult2.ToolUseId);
         Assert.Single(toolResult2.Content);
-        var textBlock2 = Assert.IsType<TextContentBlock>(toolResult2.Content[0]);
-        Assert.Equal("Weather in London: 15°C, rainy", textBlock2.Text);
+        Assert.Equal("Weather in London: 15°C, rainy", TextMaterializationTestHelpers.GetText(toolResult2.Content[0], materializeUtf8TextContentBlocks));
     }
 
-    [Fact]
-    public void WithToolResultOnly_SerializationRoundtrips()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WithToolResultOnly_SerializationRoundtrips(bool materializeUtf8TextContentBlocks)
     {
         SamplingMessage message = new()
         {
@@ -96,8 +101,9 @@ public class SamplingMessageTests
             ]
         };
 
-        var json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions);
-        var deserialized = JsonSerializer.Deserialize<SamplingMessage>(json, McpJsonUtilities.DefaultOptions);
+        var options = TextMaterializationTestHelpers.GetOptions(materializeUtf8TextContentBlocks);
+        var json = JsonSerializer.Serialize(message, options);
+        var deserialized = JsonSerializer.Deserialize<SamplingMessage>(json, options);
 
         Assert.NotNull(deserialized);
         Assert.Equal(Role.User, deserialized.Role);
@@ -105,7 +111,6 @@ public class SamplingMessageTests
         var toolResult = Assert.IsType<ToolResultContentBlock>(deserialized.Content[0]);
         Assert.Equal("call_123", toolResult.ToolUseId);
         Assert.Single(toolResult.Content);
-        var textBlock = Assert.IsType<TextContentBlock>(toolResult.Content[0]);
-        Assert.Equal("Result", textBlock.Text);
+        Assert.Equal("Result", TextMaterializationTestHelpers.GetText(toolResult.Content[0], materializeUtf8TextContentBlocks));
     }
 }

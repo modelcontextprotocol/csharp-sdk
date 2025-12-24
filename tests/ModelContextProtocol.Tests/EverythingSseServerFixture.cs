@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using ModelContextProtocol.Tests.Utils;
 
 namespace ModelContextProtocol.Tests;
 
@@ -18,15 +19,14 @@ public class EverythingSseServerFixture : IAsyncDisposable
 
     public async Task StartAsync()
     {
-        var processStartInfo = new ProcessStartInfo
-        {
-            FileName = "docker",
-            Arguments = $"run -p {_port}:3001 --name {_containerName} --rm tzolov/mcp-everything-server:v1",
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-        };
+        var processStartInfo = ProcessStartInfoUtilities.CreateOnPath(
+            "docker",
+            $"run -p {_port}:3001 --name {_containerName} --rm tzolov/mcp-everything-server:v1",
+            redirectStandardInput: true,
+            redirectStandardOutput: true,
+            redirectStandardError: true,
+            useShellExecute: false,
+            createNoWindow: true);
 
         _ = Process.Start(processStartInfo)
             ?? throw new InvalidOperationException($"Could not start process for {processStartInfo.FileName} with '{processStartInfo.Arguments}'.");
@@ -40,12 +40,13 @@ public class EverythingSseServerFixture : IAsyncDisposable
         {
 
             // Stop the container
-            var stopInfo = new ProcessStartInfo
-            {
-                FileName = "docker",
-                Arguments = $"stop {_containerName}",
-                UseShellExecute = false
-            };
+            var stopInfo = ProcessStartInfoUtilities.CreateOnPath(
+                "docker",
+                $"stop {_containerName}",
+                redirectStandardOutput: false,
+                redirectStandardError: false,
+                useShellExecute: false,
+                createNoWindow: true);
 
             using var stopProcess = Process.Start(stopInfo)
                 ?? throw new InvalidOperationException($"Could not stop process for {stopInfo.FileName} with '{stopInfo.Arguments}'.");
@@ -63,13 +64,13 @@ public class EverythingSseServerFixture : IAsyncDisposable
 #if NET
         try
         {
-            ProcessStartInfo processStartInfo = new()
-            {
-                FileName = "docker",
-                // "docker info" returns a non-zero exit code if docker engine is not running.
-                Arguments = "info",
-                UseShellExecute = false,
-            };
+            ProcessStartInfo processStartInfo = ProcessStartInfoUtilities.CreateOnPath(
+                "docker",
+                "info",
+                redirectStandardOutput: false,
+                redirectStandardError: false,
+                useShellExecute: false,
+                createNoWindow: true);
 
             using var process = Process.Start(processStartInfo);
             process?.WaitForExit();

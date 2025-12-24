@@ -280,7 +280,7 @@ internal static class Program
                     Role = Role.User,
                     Content = new ImageContentBlock
                     {
-                        Data = System.Text.Encoding.UTF8.GetBytes(MCP_TINY_IMAGE),
+                        Data = MCP_TINY_IMAGE,
                         MimeType = "image/png"
                     }
                 });
@@ -354,7 +354,7 @@ internal static class Program
                 {
                     Uri = uri,
                     MimeType = "application/octet-stream",
-                    Blob = System.Text.Encoding.UTF8.GetBytes(Convert.ToBase64String(buffer))
+                    Blob = Convert.ToBase64String(buffer)
                 });
             }
         }
@@ -382,7 +382,7 @@ internal static class Program
             {
                 try
                 {
-                    var startIndexAsString = Encoding.UTF8.GetString(Convert.FromBase64String(request.Params.Cursor));
+                    var startIndexAsString = Core.McpTextUtilities.GetStringFromUtf8(Convert.FromBase64String(request.Params.Cursor));
                     startIndex = Convert.ToInt32(startIndexAsString);
                 }
                 catch (Exception e)

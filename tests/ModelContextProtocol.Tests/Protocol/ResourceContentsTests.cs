@@ -1,3 +1,4 @@
+using ModelContextProtocol.Core;
 using ModelContextProtocol.Protocol;
 using System.Text.Json;
 
@@ -5,6 +6,9 @@ namespace ModelContextProtocol.Tests.Protocol;
 
 public static class ResourceContentsTests
 {
+    private static string GetUtf8String(ReadOnlyMemory<byte> bytes) =>
+        McpTextUtilities.GetStringFromUtf8(bytes.Span);
+
     [Fact]
     public static void TextResourceContents_UnknownArrayProperty_IsIgnored()
     {
@@ -70,7 +74,7 @@ public static class ResourceContentsTests
         var blobResource = Assert.IsType<BlobResourceContents>(result);
         Assert.Equal("file:///test.bin", blobResource.Uri);
         Assert.Equal("application/octet-stream", blobResource.MimeType);
-        Assert.Equal("AQIDBA==", System.Text.Encoding.UTF8.GetString(blobResource.Blob.ToArray()));
+        Assert.Equal("AQIDBA==", blobResource.Blob);
     }
 
     [Fact]
@@ -134,7 +138,7 @@ public static class ResourceContentsTests
         Assert.NotNull(result);
         var blobResource = Assert.IsType<BlobResourceContents>(result);
         Assert.Equal("blob://test", blobResource.Uri);
-        Assert.Equal("SGVsbG8=", System.Text.Encoding.UTF8.GetString(blobResource.Blob.ToArray()));
+        Assert.Equal("SGVsbG8=", blobResource.Blob);
         Assert.Equal("application/custom", blobResource.MimeType);
     }
 
@@ -193,7 +197,7 @@ public static class ResourceContentsTests
         Assert.NotNull(result);
         var blobResource = Assert.IsType<BlobResourceContents>(result);
         Assert.Equal("http://example.com/blob", blobResource.Uri);
-        Assert.Equal("Zm9v", System.Text.Encoding.UTF8.GetString(blobResource.Blob.ToArray()));
+        Assert.Equal("Zm9v", blobResource.Blob);
     }
 
     [Fact]
@@ -239,7 +243,7 @@ public static class ResourceContentsTests
         Assert.NotNull(result);
         var blobResource = Assert.IsType<BlobResourceContents>(result);
         Assert.Equal("test://blob", blobResource.Uri);
-        Assert.Equal("YmFy", System.Text.Encoding.UTF8.GetString(blobResource.Blob.ToArray()));
+        Assert.Equal("YmFy", blobResource.Blob);
     }
 
     [Fact]
@@ -301,7 +305,7 @@ public static class ResourceContentsTests
         Assert.NotNull(result);
         var blobResource = Assert.IsType<BlobResourceContents>(result);
         Assert.Equal("deep://blob", blobResource.Uri);
-        Assert.Equal("ZGVlcA==", System.Text.Encoding.UTF8.GetString(blobResource.Blob.ToArray()));
+        Assert.Equal("ZGVlcA==", blobResource.Blob);
     }
 
     [Fact]
@@ -363,7 +367,7 @@ public static class ResourceContentsTests
         {
             Uri = "file:///test.bin",
             MimeType = "application/octet-stream",
-            Blob = System.Text.Encoding.UTF8.GetBytes("AQIDBA==")
+            Blob = "AQIDBA=="
         };
 
         var json = JsonSerializer.Serialize<ResourceContents>(original, McpJsonUtilities.DefaultOptions);
@@ -373,7 +377,7 @@ public static class ResourceContentsTests
         var blobResource = Assert.IsType<BlobResourceContents>(deserialized);
         Assert.Equal(original.Uri, blobResource.Uri);
         Assert.Equal(original.MimeType, blobResource.MimeType);
-        Assert.True(original.Blob.Span.SequenceEqual(blobResource.Blob.Span));
+        Assert.Equal(original.Blob, blobResource.Blob);
     }
 
     [Fact]
@@ -415,7 +419,7 @@ public static class ResourceContentsTests
         Assert.NotNull(result);
         var blobResource = Assert.IsType<BlobResourceContents>(result);
         Assert.Equal("test://both", blobResource.Uri);
-        Assert.Equal("YmxvYg==", System.Text.Encoding.UTF8.GetString(blobResource.Blob.ToArray()));
+        Assert.Equal("YmxvYg==", blobResource.Blob);
     }
 
     [Fact]
@@ -457,6 +461,6 @@ public static class ResourceContentsTests
         Assert.NotNull(result);
         var blobResource = Assert.IsType<BlobResourceContents>(result);
         Assert.Equal(string.Empty, blobResource.Uri);
-        Assert.Equal("YmxvYg==", System.Text.Encoding.UTF8.GetString(blobResource.Blob.ToArray()));
+        Assert.Equal("YmxvYg==", blobResource.Blob);
     }
 }

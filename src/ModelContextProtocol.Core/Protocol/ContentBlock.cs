@@ -3,7 +3,6 @@ using System.Buffers.Text;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -16,8 +15,8 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// <para>
 /// The <see cref="ContentBlock"/> class is a fundamental type in the MCP that can represent different forms of content
-/// based on the <see cref="Type"/> property. Derived types like <see cref="TextContentBlock"/>, <see cref="ImageContentBlock"/>,
-/// and <see cref="EmbeddedResourceBlock"/> provide the type-specific content.
+/// based on the <see cref="Type"/> property. Derived types like <see cref="TextContentBlock"/>, <see cref="Utf8TextContentBlock"/>,
+/// <see cref="ImageContentBlock"/>, and <see cref="EmbeddedResourceBlock"/> provide the type-specific content.
 /// </para>
 /// <para>
 /// This class is used throughout the MCP for representing content in messages, tool responses,
@@ -74,6 +73,16 @@ public abstract class ContentBlock
     [EditorBrowsable(EditorBrowsableState.Never)]
     public class Converter : JsonConverter<ContentBlock>
     {
+        private readonly bool _materializeUtf8TextContentBlocks;
+
+        /// <summary>Initializes a new instance of the <see cref="Converter"/> class.</summary>
+        public Converter()
+        {
+        }
+
+        internal Converter(bool materializeUtf8TextContentBlocks) =>
+            _materializeUtf8TextContentBlocks = materializeUtf8TextContentBlocks;
+
         /// <inheritdoc/>
         public override ContentBlock? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
@@ -88,9 +97,9 @@ public abstract class ContentBlock
             }
 
             string? type = null;
-            string? text = null;
+            ReadOnlyMemory<byte>? utf8Text = null;
             string? name = null;
-            ReadOnlyMemory<byte>? data = null;
+            ReadOnlyMemory<byte>? dataUtf8 = null;
             string? mimeType = null;
             string? uri = null;
             string? description = null;
@@ -123,7 +132,9 @@ public abstract class ContentBlock
                         break;
 
                     case "text":
-                        text = reader.GetString();
+                        // Always read the JSON string token into UTF-8 bytes directly (including unescaping) without
+                        // allocating an intermediate UTF-16 string. The choice of materialized type happens later.
+                        utf8Text = ReadUtf8StringValueAsBytes(ref reader);
                         break;
 
                     case "name":
@@ -131,15 +142,7 @@ public abstract class ContentBlock
                         break;
 
                     case "data":
-                        // Read the base64-encoded UTF-8 bytes directly without string allocation
-                        if (reader.HasValueSequence)
-                        {
-                            data = reader.ValueSequence.ToArray();
-                        }
-                        else
-                        {
-                            data = reader.ValueSpan.ToArray();
-                        }
+                        dataUtf8 = ReadUtf8StringValueAsBytes(ref reader);
                         break;
 
                     case "mimeType":
@@ -215,20 +218,25 @@ public abstract class ContentBlock
 
             ContentBlock block = type switch
             {
-                "text" => new TextContentBlock
-                {
-                    Text = text ?? throw new JsonException("Text contents must be provided for 'text' type."),
-                },
+                "text" => _materializeUtf8TextContentBlocks
+                    ? new Utf8TextContentBlock
+                    {
+                        Utf8Text = utf8Text ?? throw new JsonException("Text contents must be provided for 'text' type."),
+                    }
+                    : new TextContentBlock
+                    {
+                        Utf8Text = utf8Text ?? throw new JsonException("Text contents must be provided for 'text' type."),
+                    },
 
                 "image" => new ImageContentBlock
                 {
-                    Data = data ?? throw new JsonException("Image data must be provided for 'image' type."),
+                    DataUtf8 = dataUtf8 ?? throw new JsonException("Image data must be provided for 'image' type."),
                     MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'image' type."),
                 },
 
                 "audio" => new AudioContentBlock
                 {
-                    Data = data ?? throw new JsonException("Audio data must be provided for 'audio' type."),
+                    DataUtf8 = dataUtf8 ?? throw new JsonException("Audio data must be provided for 'audio' type."),
                     MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'audio' type."),
                 },
 
@@ -270,6 +278,185 @@ public abstract class ContentBlock
             return block;
         }
 
+        internal static ReadOnlyMemory<byte> ReadUtf8StringValueAsBytes(ref Utf8JsonReader reader)
+        {
+            if (reader.TokenType != JsonTokenType.String)
+            {
+                throw new JsonException();
+            }
+
+            // If the JSON string contained no escape sequences, STJ exposes the UTF-8 bytes directly.
+            if (!reader.ValueIsEscaped)
+            {
+                return reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan.ToArray();
+            }
+
+            // The value is escaped (e.g. contains \uXXXX or \n); unescape into UTF-8 bytes.
+            ReadOnlySpan<byte> escaped = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
+            return UnescapeJsonStringToUtf8(escaped);
+        }
+
+        private static byte[] UnescapeJsonStringToUtf8(ReadOnlySpan<byte> escaped)
+        {
+            // Two-pass: first compute output length, then write, to avoid intermediate buffers/copies.
+            int outputLength = 0;
+            for (int i = 0; i < escaped.Length; i++)
+            {
+                byte b = escaped[i];
+                if (b != (byte)'\\')
+                {
+                    outputLength++;
+                    continue;
+                }
+
+                if (++i >= escaped.Length)
+                {
+                    throw new JsonException();
+                }
+
+                switch (escaped[i])
+                {
+                    case (byte)'"':
+                    case (byte)'\\':
+                    case (byte)'/':
+                    case (byte)'b':
+                    case (byte)'f':
+                    case (byte)'n':
+                    case (byte)'r':
+                    case (byte)'t':
+                        outputLength++;
+                        break;
+
+                    case (byte)'u':
+                        outputLength += GetUtf8ByteCountForEscapedUnicode(escaped, ref i);
+                        break;
+
+                    default:
+                        throw new JsonException();
+                }
+            }
+
+            byte[] result = new byte[outputLength];
+            int dst = 0;
+
+            for (int i = 0; i < escaped.Length; i++)
+            {
+                byte b = escaped[i];
+                if (b != (byte)'\\')
+                {
+                    result[dst++] = b;
+                    continue;
+                }
+
+                if (++i >= escaped.Length)
+                {
+                    throw new JsonException();
+                }
+
+                byte esc = escaped[i];
+                switch (esc)
+                {
+                    case (byte)'"': result[dst++] = (byte)'"'; break;
+                    case (byte)'\\': result[dst++] = (byte)'\\'; break;
+                    case (byte)'/': result[dst++] = (byte)'/'; break;
+                    case (byte)'b': result[dst++] = 0x08; break;
+                    case (byte)'f': result[dst++] = 0x0C; break;
+                    case (byte)'n': result[dst++] = 0x0A; break;
+                    case (byte)'r': result[dst++] = 0x0D; break;
+                    case (byte)'t': result[dst++] = 0x09; break;
+
+                    case (byte)'u':
+                        uint scalar = ReadEscapedUnicodeScalar(escaped, ref i);
+                        WriteUtf8Scalar(scalar, result, ref dst);
+                        break;
+
+                    default:
+                        throw new JsonException();
+                }
+            }
+
+            Debug.Assert(dst == result.Length);
+            return result;
+        }
+
+        private static int GetUtf8ByteCountForEscapedUnicode(ReadOnlySpan<byte> escaped, ref int i)
+        {
+            uint scalar = ReadEscapedUnicodeScalar(escaped, ref i);
+            return scalar <= 0x7F ? 1 :
+                scalar <= 0x7FF ? 2 :
+                scalar <= 0xFFFF ? 3 :
+                4;
+        }
+
+        private static uint ReadEscapedUnicodeScalar(ReadOnlySpan<byte> escaped, ref int i)
+        {
+            // i points at 'u'.
+            if (i + 4 >= escaped.Length)
+            {
+                throw new JsonException();
+            }
+
+            uint codeUnit = (uint)(FromHex(escaped[i + 1]) << 12 |
+                                   FromHex(escaped[i + 2]) << 8 |
+                                   FromHex(escaped[i + 3]) << 4 |
+                                   FromHex(escaped[i + 4]));
+            i += 4;
+
+            // Surrogate pair: \uD800-\uDBFF followed by \uDC00-\uDFFF
+            if (codeUnit is >= 0xD800 and <= 0xDBFF)
+            {
+                int lookahead = i + 1;
+                if (lookahead + 5 < escaped.Length && escaped[lookahead] == (byte)'\\' && escaped[lookahead + 1] == (byte)'u')
+                {
+                    uint low = (uint)(FromHex(escaped[lookahead + 2]) << 12 |
+                                      FromHex(escaped[lookahead + 3]) << 8 |
+                                      FromHex(escaped[lookahead + 4]) << 4 |
+                                      FromHex(escaped[lookahead + 5]));
+
+                    if (low is >= 0xDC00 and <= 0xDFFF)
+                    {
+                        i = lookahead + 5;
+                        return 0x10000u + ((codeUnit - 0xD800u) << 10) + (low - 0xDC00u);
+                    }
+                }
+            }
+
+            return codeUnit;
+        }
+
+        private static int FromHex(byte b)
+        {
+            if ((uint)(b - '0') <= 9) return b - '0';
+            if ((uint)((b | 0x20) - 'a') <= 5) return (b | 0x20) - 'a' + 10;
+            throw new JsonException();
+        }
+
+        private static void WriteUtf8Scalar(uint scalar, byte[] destination, ref int dst)
+        {
+            if (scalar <= 0x7F)
+            {
+                destination[dst++] = (byte)scalar;
+            }
+            else if (scalar <= 0x7FF)
+            {
+                destination[dst++] = (byte)(0xC0 | (scalar >> 6));
+                destination[dst++] = (byte)(0x80 | (scalar & 0x3F));
+            }
+            else if (scalar <= 0xFFFF)
+            {
+                destination[dst++] = (byte)(0xE0 | (scalar >> 12));
+                destination[dst++] = (byte)(0x80 | ((scalar >> 6) & 0x3F));
+                destination[dst++] = (byte)(0x80 | (scalar & 0x3F));
+            }
+            else
+            {
+                destination[dst++] = (byte)(0xF0 | (scalar >> 18));
+                destination[dst++] = (byte)(0x80 | ((scalar >> 12) & 0x3F));
+                destination[dst++] = (byte)(0x80 | ((scalar >> 6) & 0x3F));
+                destination[dst++] = (byte)(0x80 | (scalar & 0x3F));
+            }
+        }
+
         /// <inheritdoc/>
         public override void Write(Utf8JsonWriter writer, ContentBlock value, JsonSerializerOptions options)
         {
@@ -285,19 +472,43 @@ public abstract class ContentBlock
 
             switch (value)
             {
+                case Utf8TextContentBlock utf8TextContent:
+                    writer.WriteString("text", utf8TextContent.Utf8Text.Span);
+                    break;
+
                 case TextContentBlock textContent:
-                    writer.WriteString("text", textContent.Text);
+                    // Prefer UTF-8 bytes to avoid materializing a UTF-16 string for serialization.
+                    if (!textContent.Utf8Text.IsEmpty)
+                    {
+                        writer.WriteString("text", textContent.Utf8Text.Span);
+                    }
+                    else
+                    {
+                        writer.WriteString("text", textContent.Text);
+                    }
                     break;
 
                 case ImageContentBlock imageContent:
-                    // Write the UTF-8 bytes directly as a string value
-                    writer.WriteString("data", imageContent.Data.Span);
+                    if (imageContent.HasDataUtf8)
+                    {
+                        writer.WriteString("data", imageContent.GetDataUtf8Span());
+                    }
+                    else
+                    {
+                        writer.WriteString("data", imageContent.Data);
+                    }
                     writer.WriteString("mimeType", imageContent.MimeType);
                     break;
 
                 case AudioContentBlock audioContent:
-                    // Write the UTF-8 bytes directly as a string value
-                    writer.WriteString("data", audioContent.Data.Span);
+                    if (audioContent.HasDataUtf8)
+                    {
+                        writer.WriteString("data", audioContent.GetDataUtf8Span());
+                    }
+                    else
+                    {
+                        writer.WriteString("data", audioContent.Data);
+                    }
                     writer.WriteString("mimeType", audioContent.MimeType);
                     break;
 
@@ -372,65 +583,179 @@ public abstract class ContentBlock
 [DebuggerDisplay("Text = \"{Text}\"")]
 public sealed class TextContentBlock : ContentBlock
 {
+    private string? _text;
+    private ReadOnlyMemory<byte> _utf8Text;
+
     /// <inheritdoc/>
     public override string Type => "text";
 
     /// <summary>
+    /// Gets or sets the UTF-8 encoded text content.
+    /// </summary>
+    /// <remarks>
+    /// This enables avoiding intermediate UTF-16 string materialization when deserializing JSON.
+    /// Setting this value will invalidate any cached value of <see cref="Text"/>.
+    /// </remarks>
+    [JsonIgnore]
+    public ReadOnlyMemory<byte> Utf8Text
+    {
+        get => _utf8Text;
+        set
+        {
+            _utf8Text = value;
+            _text = null; // Invalidate cache
+        }
+    }
+
+    /// <summary>
     /// Gets or sets the text content of the message.
     /// </summary>
+    /// <remarks>
+    /// The getter lazily materializes and caches a UTF-16 string from <see cref="Utf8Text"/>.
+    /// The setter updates <see cref="Utf8Text"/>.
+    /// </remarks>
     [JsonPropertyName("text")]
-    public required string Text { get; set; }
+    public string Text
+    {
+        get => _text ??= Core.McpTextUtilities.GetStringFromUtf8(_utf8Text.Span);
+        set
+        {
+            _text = value;
+            _utf8Text = string.IsNullOrEmpty(value) ? null : System.Text.Encoding.UTF8.GetBytes(value);
+        }
+    }
 
     /// <inheritdoc/>
     public override string ToString() => Text ?? "";
+}
+
+/// <summary>
+/// Represents text provided to or from an LLM in pre-encoded UTF-8 form.
+/// </summary>
+/// <remarks>
+/// This type exists to avoid materializing UTF-16 strings in hot paths when the text content is already
+/// available as UTF-8 bytes (for example, JSON serialized tool results).
+/// </remarks>
+[DebuggerDisplay("Utf8TextLength = {Utf8Text.Length}")]
+public sealed class Utf8TextContentBlock : ContentBlock
+{
+    /// <inheritdoc/>
+    public override string Type => "text";
+
+    /// <summary>Gets or sets the UTF-8 encoded text content.</summary>
+    [JsonIgnore]
+    public required ReadOnlyMemory<byte> Utf8Text { get; set; }
+
+    /// <summary>Gets the UTF-16 string representation of <see cref="Utf8Text"/>.</summary>
+    [JsonIgnore]
+    public string Text
+    {
+        get
+        {
+            return Core.McpTextUtilities.GetStringFromUtf8(Utf8Text.Span);
+        }
+    }
+
+    /// <summary>Converts a <see cref="Utf8TextContentBlock"/> to a <see cref="TextContentBlock"/>.</summary>
+    public static implicit operator TextContentBlock(Utf8TextContentBlock utf8)
+    {
+        Throw.IfNull(utf8);
+
+        return new TextContentBlock
+        {
+            Text = utf8.Text,
+            Annotations = utf8.Annotations,
+            Meta = utf8.Meta,
+        };
+    }
+
+    /// <summary>Converts a <see cref="TextContentBlock"/> to a <see cref="Utf8TextContentBlock"/>.</summary>
+    public static implicit operator Utf8TextContentBlock(TextContentBlock text)
+    {
+        Throw.IfNull(text);
+
+        return new Utf8TextContentBlock
+        {
+            Utf8Text = System.Text.Encoding.UTF8.GetBytes(text.Text),
+            Annotations = text.Annotations,
+            Meta = text.Meta,
+        };
+    }
+
+    /// <inheritdoc/>
+    public override string ToString() => Text;
 }
 
 /// <summary>Represents an image provided to or from an LLM.</summary>
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class ImageContentBlock : ContentBlock
 {
-    private byte[]? _decodedData;
-    private ReadOnlyMemory<byte> _data;
+    private ReadOnlyMemory<byte> _dataUtf8;
+    private ReadOnlyMemory<byte> _decodedData;
+    private string? _data;
 
     /// <inheritdoc/>
     public override string Type => "image";
 
     /// <summary>
-    /// Gets or sets the base64-encoded UTF-8 bytes representing the image data.
+    /// Gets or sets the base64-encoded image data.
     /// </summary>
-    /// <remarks>
-    /// This is a zero-copy representation of the wire payload of this item. Setting this value will invalidate any cached value of <see cref="DecodedData"/>.
-    /// </remarks>
     [JsonPropertyName("data")]
-    public required ReadOnlyMemory<byte> Data
+    public string Data
     {
-        get => _data;
+        get => _data ??= !_dataUtf8.IsEmpty
+            ? Core.McpTextUtilities.GetStringFromUtf8(_dataUtf8.Span)
+            : string.Empty;
         set
         {
             _data = value;
-            _decodedData = null; // Invalidate cache
+            _dataUtf8 = System.Text.Encoding.UTF8.GetBytes(value);
+            _decodedData = default; // Invalidate cache
         }
     }
 
     /// <summary>
-    /// Gets the decoded image data represented by <see cref="Data"/>.
+    /// Gets or sets the base64-encoded UTF-8 bytes representing the value of <see cref="Data"/>.
+    /// </summary>
+    [JsonIgnore]
+    public ReadOnlyMemory<byte> DataUtf8
+    {
+        get => _dataUtf8.IsEmpty
+            ? _data is null
+                ? ReadOnlyMemory<byte>.Empty
+                : System.Text.Encoding.UTF8.GetBytes(_data)
+            : _dataUtf8;
+        set
+        {
+            _data = null;
+            _dataUtf8 = value;
+            _decodedData = default; // Invalidate cache
+        }
+    }
+
+    /// <summary>
+    /// Gets the decoded image data represented by <see cref="DataUtf8"/>.
     /// </summary>
     /// <remarks>
-    /// Accessing this member will decode the value in <see cref="Data"/> and cache the result.
-    /// Subsequent accesses return the cached value unless <see cref="Data"/> is modified.
+    /// Accessing this member will decode the value in <see cref="DataUtf8"/> and cache the result.
+    /// Subsequent accesses return the cached value unless <see cref="Data"/> or <see cref="DataUtf8"/> is modified.
     /// </remarks>
     [JsonIgnore]
     public ReadOnlyMemory<byte> DecodedData
     {
         get
         {
-            if (_decodedData is null)
+            if (_decodedData.IsEmpty)
             {
-#if NET
-                // Decode directly from UTF-8 base64 bytes without string intermediate
-                int maxLength = Base64.GetMaxDecodedFromUtf8Length(Data.Length);
+                if (_data is not null)
+                {
+                    _decodedData = Convert.FromBase64String(_data);
+                    return _decodedData;
+                }
+
+                int maxLength = Base64.GetMaxDecodedFromUtf8Length(DataUtf8.Length);
                 byte[] buffer = new byte[maxLength];
-                if (Base64.DecodeFromUtf8(Data.Span, buffer, out _, out int bytesWritten) == System.Buffers.OperationStatus.Done)
+                if (Base64.DecodeFromUtf8(DataUtf8.Span, buffer, out _, out int bytesWritten) == OperationStatus.Done)
                 {
                     _decodedData = bytesWritten == maxLength ? buffer : buffer.AsMemory(0, bytesWritten).ToArray();
                 }
@@ -438,11 +763,8 @@ public sealed class ImageContentBlock : ContentBlock
                 {
                     throw new FormatException("Invalid base64 data");
                 }
-#else
-                byte[] array = MemoryMarshal.TryGetArray(Data, out ArraySegment<byte> segment) && segment.Offset == 0 && segment.Count == segment.Array!.Length ? segment.Array : Data.ToArray();
-                _decodedData = Convert.FromBase64String(System.Text.Encoding.UTF8.GetString(array));
-#endif
             }
+
             return _decodedData;
         }
     }
@@ -456,6 +778,10 @@ public sealed class ImageContentBlock : ContentBlock
     [JsonPropertyName("mimeType")]
     public required string MimeType { get; set; }
 
+    internal bool HasDataUtf8 => !_dataUtf8.IsEmpty;
+
+    internal ReadOnlySpan<byte> GetDataUtf8Span() => _dataUtf8.Span;
+
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     private string DebuggerDisplay => $"MimeType = {MimeType}, Length = {DebuggerDisplayHelper.GetBase64LengthDisplay(Data)}";
 }
@@ -464,48 +790,72 @@ public sealed class ImageContentBlock : ContentBlock
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class AudioContentBlock : ContentBlock
 {
-    private byte[]? _decodedData;
-    private ReadOnlyMemory<byte> _data;
+    private ReadOnlyMemory<byte> _dataUtf8;
+    private ReadOnlyMemory<byte> _decodedData;
+    private string? _data;
 
     /// <inheritdoc/>
     public override string Type => "audio";
 
     /// <summary>
-    /// Gets or sets the base64-encoded UTF-8 bytes representing the audio data.
+    /// Gets or sets the base64-encoded audio data.
     /// </summary>
-    /// <remarks>
-    /// This is a zero-copy representation of the wire payload of this item. Setting this value will invalidate any cached value of <see cref="DecodedData"/>.
-    /// </remarks>
     [JsonPropertyName("data")]
-    public required ReadOnlyMemory<byte> Data
+    public string Data
     {
-        get => _data;
+        get => _data ??= !_dataUtf8.IsEmpty
+            ? Core.McpTextUtilities.GetStringFromUtf8(_dataUtf8.Span)
+            : string.Empty;
         set
         {
             _data = value;
-            _decodedData = null; // Invalidate cache
+            _dataUtf8 = System.Text.Encoding.UTF8.GetBytes(value);
+            _decodedData = default; // Invalidate cache
         }
     }
 
     /// <summary>
-    /// Gets the decoded audio data represented by <see cref="Data"/>.
+    /// Gets or sets the base64-encoded UTF-8 bytes representing the value of <see cref="Data"/>.
+    /// </summary>
+    [JsonIgnore]
+    public ReadOnlyMemory<byte> DataUtf8
+    {
+        get => _dataUtf8.IsEmpty
+            ? _data is null
+                ? ReadOnlyMemory<byte>.Empty
+                : System.Text.Encoding.UTF8.GetBytes(_data)
+            : _dataUtf8;
+        set
+        {
+            _data = null;
+            _dataUtf8 = value;
+            _decodedData = default; // Invalidate cache
+        }
+    }
+
+    /// <summary>
+    /// Gets the decoded audio data represented by <see cref="DataUtf8"/>.
     /// </summary>
     /// <remarks>
-    /// Accessing this member will decode the value in <see cref="Data"/> and cache the result.
-    /// Subsequent accesses return the cached value unless <see cref="Data"/> is modified.
+    /// Accessing this member will decode the value in <see cref="DataUtf8"/> and cache the result.
+    /// Subsequent accesses return the cached value unless <see cref="Data"/> or <see cref="DataUtf8"/> is modified.
     /// </remarks>
     [JsonIgnore]
     public ReadOnlyMemory<byte> DecodedData
     {
         get
         {
-            if (_decodedData is null)
+            if (_decodedData.IsEmpty)
             {
-#if NET
-                // Decode directly from UTF-8 base64 bytes without string intermediate
-                int maxLength = Base64.GetMaxDecodedFromUtf8Length(Data.Length);
+                if (_data is not null)
+                {
+                    _decodedData = Convert.FromBase64String(_data);
+                    return _decodedData;
+                }
+
+                int maxLength = Base64.GetMaxDecodedFromUtf8Length(DataUtf8.Length);
                 byte[] buffer = new byte[maxLength];
-                if (Base64.DecodeFromUtf8(Data.Span, buffer, out _, out int bytesWritten) == System.Buffers.OperationStatus.Done)
+                if (Base64.DecodeFromUtf8(DataUtf8.Span, buffer, out _, out int bytesWritten) == OperationStatus.Done)
                 {
                     _decodedData = bytesWritten == maxLength ? buffer : buffer.AsMemory(0, bytesWritten).ToArray();
                 }
@@ -513,11 +863,8 @@ public sealed class AudioContentBlock : ContentBlock
                 {
                     throw new FormatException("Invalid base64 data");
                 }
-#else
-                byte[] array = MemoryMarshal.TryGetArray(Data, out ArraySegment<byte> segment) && segment.Offset == 0 && segment.Count == segment.Array!.Length ? segment.Array : Data.ToArray();
-                _decodedData = Convert.FromBase64String(System.Text.Encoding.UTF8.GetString(array));
-#endif
             }
+
             return _decodedData;
         }
     }
@@ -530,6 +877,10 @@ public sealed class AudioContentBlock : ContentBlock
     /// </remarks>
     [JsonPropertyName("mimeType")]
     public required string MimeType { get; set; }
+
+    internal bool HasDataUtf8 => !_dataUtf8.IsEmpty;
+
+    internal ReadOnlySpan<byte> GetDataUtf8Span() => _dataUtf8.Span;
 
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     private string DebuggerDisplay => $"MimeType = {MimeType}, Length = {DebuggerDisplayHelper.GetBase64LengthDisplay(Data)}";

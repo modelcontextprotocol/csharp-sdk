@@ -316,13 +316,25 @@ public abstract partial class McpServer : McpSession
             return new ElicitResult<T> { Action = raw.Action, Content = default };
         }
 
-        JsonObject obj = [];
-        foreach (var kvp in raw.Content)
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
         {
-            obj[kvp.Key] = JsonNode.Parse(kvp.Value.GetRawText());
+            writer.WriteStartObject();
+            foreach (var kvp in raw.Content)
+            {
+                writer.WritePropertyName(kvp.Key);
+                kvp.Value.WriteTo(writer);
+            }
+            writer.WriteEndObject();
+            writer.Flush();
         }
 
-        T? typed = JsonSerializer.Deserialize(obj, serializerOptions.GetTypeInfo<T>());
+        if (!stream.TryGetBuffer(out ArraySegment<byte> segment))
+        {
+            throw new InvalidOperationException("Expected MemoryStream to expose its buffer.");
+        }
+
+        T? typed = JsonSerializer.Deserialize(new ReadOnlySpan<byte>(segment.Array!, segment.Offset, (int)stream.Length), serializerOptions.GetTypeInfo<T>());
         return new ElicitResult<T> { Action = raw.Action, Content = typed };
     }
 

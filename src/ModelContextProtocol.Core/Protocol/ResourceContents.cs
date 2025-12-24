@@ -1,4 +1,3 @@
-using System.Buffers;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -79,7 +78,7 @@ public abstract class ResourceContents
 
             string? uri = null;
             string? mimeType = null;
-            ReadOnlyMemory<byte>? blob = null;
+            ReadOnlyMemory<byte>? blobUtf8 = null;
             string? text = null;
             JsonObject? meta = null;
 
@@ -105,15 +104,7 @@ public abstract class ResourceContents
                         break;
 
                     case "blob":
-                        // Read the base64-encoded UTF-8 bytes directly without string allocation
-                        if (reader.HasValueSequence)
-                        {
-                            blob = reader.ValueSequence.ToArray();
-                        }
-                        else
-                        {
-                            blob = reader.ValueSpan.ToArray();
-                        }
+                        blobUtf8 = ContentBlock.Converter.ReadUtf8StringValueAsBytes(ref reader);
                         break;
 
                     case "text":
@@ -130,13 +121,13 @@ public abstract class ResourceContents
                 }
             }
 
-            if (blob is not null)
+            if (blobUtf8 is not null)
             {
                 return new BlobResourceContents
                 {
                     Uri = uri ?? string.Empty,
                     MimeType = mimeType,
-                    Blob = blob.Value,
+                    BlobUtf8 = blobUtf8.Value,
                     Meta = meta,
                 };
             }
@@ -171,8 +162,14 @@ public abstract class ResourceContents
             Debug.Assert(value is BlobResourceContents or TextResourceContents);
             if (value is BlobResourceContents blobResource)
             {
-                // Write the UTF-8 bytes directly as a string value
-                writer.WriteString("blob", blobResource.Blob.Span);
+                if (blobResource.HasBlobUtf8)
+                {
+                    writer.WriteString("blob", blobResource.GetBlobUtf8Span());
+                }
+                else
+                {
+                    writer.WriteString("blob", blobResource.Blob);
+                }
             }
             else if (value is TextResourceContents textResource)
             {

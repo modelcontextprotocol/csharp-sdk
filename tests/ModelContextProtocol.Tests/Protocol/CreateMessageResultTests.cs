@@ -6,8 +6,10 @@ namespace ModelContextProtocol.Tests.Protocol;
 
 public class CreateMessageResultTests
 {
-    [Fact]
-    public void CreateMessageResult_WithSingleContent_Serializes()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CreateMessageResult_WithSingleContent_Serializes(bool materializeUtf8TextContentBlocks)
     {
         CreateMessageResult result = new()
         {
@@ -17,12 +19,13 @@ public class CreateMessageResultTests
             StopReason = "endTurn"
         };
 
-        var json = JsonSerializer.Serialize(result, McpJsonUtilities.DefaultOptions);
-        var deserialized = JsonSerializer.Deserialize<CreateMessageResult>(json, McpJsonUtilities.DefaultOptions);
+        var options = TextMaterializationTestHelpers.GetOptions(materializeUtf8TextContentBlocks);
+        var json = JsonSerializer.Serialize(result, options);
+        var deserialized = JsonSerializer.Deserialize<CreateMessageResult>(json, options);
 
         Assert.NotNull(deserialized);
         Assert.Single(deserialized.Content);
-        Assert.IsType<TextContentBlock>(deserialized.Content[0]);
+        Assert.Equal("Hello", TextMaterializationTestHelpers.GetText(deserialized.Content[0], materializeUtf8TextContentBlocks));
     }
 
     [Fact]
@@ -60,8 +63,10 @@ public class CreateMessageResultTests
         Assert.Equal("call_2", ((ToolUseContentBlock)deserialized.Content[1]).Id);
     }
 
-    [Fact]
-    public void CreateMessageResult_WithMixedContent_Serializes()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CreateMessageResult_WithMixedContent_Serializes(bool materializeUtf8TextContentBlocks)
     {
         CreateMessageResult result = new()
         {
@@ -80,12 +85,13 @@ public class CreateMessageResultTests
             StopReason = "toolUse"
         };
 
-        var json = JsonSerializer.Serialize(result, McpJsonUtilities.DefaultOptions);
-        var deserialized = JsonSerializer.Deserialize<CreateMessageResult>(json, McpJsonUtilities.DefaultOptions);
+        var options = TextMaterializationTestHelpers.GetOptions(materializeUtf8TextContentBlocks);
+        var json = JsonSerializer.Serialize(result, options);
+        var deserialized = JsonSerializer.Deserialize<CreateMessageResult>(json, options);
 
         Assert.NotNull(deserialized);
         Assert.Equal(2, deserialized.Content.Count);
-        Assert.IsType<TextContentBlock>(deserialized.Content[0]);
+        Assert.Equal("Let me check that.", TextMaterializationTestHelpers.GetText(deserialized.Content[0], materializeUtf8TextContentBlocks));
         Assert.IsType<ToolUseContentBlock>(deserialized.Content[1]);
     }
 
@@ -118,7 +124,7 @@ public class CreateMessageResultTests
             [
                 new ImageContentBlock
                 {
-                    Data = System.Text.Encoding.UTF8.GetBytes(Convert.ToBase64String([1, 2, 3, 4, 5])),
+                    Data = Convert.ToBase64String([1, 2, 3, 4, 5]),
                     MimeType = "image/png"
                 }
             ],

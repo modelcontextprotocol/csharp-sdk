@@ -37,7 +37,7 @@ public class ConformanceTools
     {
         return new ImageContentBlock
         {
-            Data = System.Text.Encoding.UTF8.GetBytes(TestImageBase64),
+            Data = TestImageBase64,
             MimeType = "image/png"
         };
     }
@@ -51,7 +51,7 @@ public class ConformanceTools
     {
         return new AudioContentBlock
         {
-            Data = System.Text.Encoding.UTF8.GetBytes(TestAudioBase64),
+            Data = TestAudioBase64,
             MimeType = "audio/wav"
         };
     }
@@ -84,7 +84,7 @@ public class ConformanceTools
         return
         [
             new TextContentBlock { Text = "Multiple content types test:" },
-            new ImageContentBlock { Data = System.Text.Encoding.UTF8.GetBytes(TestImageBase64), MimeType = "image/png" },
+            new ImageContentBlock { Data = TestImageBase64, MimeType = "image/png" },
             new EmbeddedResourceBlock
             {
                 Resource = new TextResourceContents

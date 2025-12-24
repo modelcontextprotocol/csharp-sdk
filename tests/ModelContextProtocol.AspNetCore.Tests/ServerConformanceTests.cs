@@ -117,15 +117,7 @@ public class ServerConformanceTests : IAsyncLifetime
 
     private async Task<(bool Success, string Output, string Error)> RunNpxConformanceTests()
     {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "npx",
-            Arguments = $"-y @modelcontextprotocol/conformance server --url {_serverUrl}",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
+        var startInfo = CreateNpxStartInfo($"-y @modelcontextprotocol/conformance server --url {_serverUrl}");
 
         var outputBuilder = new StringBuilder();
         var errorBuilder = new StringBuilder();
@@ -167,17 +159,9 @@ public class ServerConformanceTests : IAsyncLifetime
     {
         try
         {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "npx",   // Check specifically for npx because windows seems unable to find it
-                Arguments = "--version",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = Process.Start(startInfo);
+            // Check specifically for npx because on Windows the npm install provides npx.cmd and
+            // CreateProcess won't resolve it from just "npx".
+            using var process = Process.Start(CreateNpxStartInfo("--version"));
             if (process == null)
             {
                 return false;
@@ -191,4 +175,7 @@ public class ServerConformanceTests : IAsyncLifetime
             return false;
         }
     }
+
+    private static ProcessStartInfo CreateNpxStartInfo(string npxArguments) =>
+        ProcessStartInfoUtilities.CreateOnPath("npx", npxArguments);
 }

@@ -28,7 +28,17 @@ public static partial class McpJsonUtilities
     /// </list>
     /// </para>
     /// </remarks>
-    public static JsonSerializerOptions DefaultOptions { get; } = CreateDefaultOptions();
+    public static JsonSerializerOptions DefaultOptions { get; } = CreateOptionsCore();
+
+    /// <summary>
+    /// Creates MCP serialization options.
+    /// </summary>
+    /// <param name="materializeUtf8TextContentBlocks">
+    /// When <see langword="true"/>, deserializing a <c>"type":"text"</c> content block will materialize a
+    /// <see cref="Utf8TextContentBlock"/> instead of a <see cref="TextContentBlock"/>.
+    /// </param>
+    public static JsonSerializerOptions CreateOptions(bool materializeUtf8TextContentBlocks = false) =>
+        CreateOptionsCore(materializeUtf8TextContentBlocks);
 
     /// <summary>
     /// Creates default options to use for MCP-related serialization.
@@ -36,13 +46,19 @@ public static partial class McpJsonUtilities
     /// <returns>The configured options.</returns>
     [UnconditionalSuppressMessage("ReflectionAnalysis", "IL3050:RequiresDynamicCode", Justification = "Converter is guarded by IsReflectionEnabledByDefault check.")]
     [UnconditionalSuppressMessage("Trimming", "IL2026:Members annotated with 'RequiresUnreferencedCodeAttribute' require dynamic access", Justification = "Converter is guarded by IsReflectionEnabledByDefault check.")]
-    private static JsonSerializerOptions CreateDefaultOptions()
+    private static JsonSerializerOptions CreateOptionsCore(bool materializeUtf8TextContentBlocks = false)
     {
         // Copy the configuration from the source generated context.
         JsonSerializerOptions options = new(JsonContext.Default.Options);
 
         // Chain with all supported types from MEAI.
         options.TypeInfoResolverChain.Add(AIJsonUtilities.DefaultOptions.TypeInfoResolver!);
+
+        // Override the per-type converter if requested.
+        if (materializeUtf8TextContentBlocks)
+        {
+            options.Converters.Insert(0, new ContentBlock.Converter(materializeUtf8TextContentBlocks: true));
+        }
 
         // Add a converter for user-defined enums, if reflection is enabled by default.
         if (JsonSerializer.IsReflectionEnabledByDefault)

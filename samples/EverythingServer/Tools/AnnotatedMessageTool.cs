@@ -41,7 +41,7 @@ public class AnnotatedMessageTool
         {
             contents.Add(new ImageContentBlock
             {
-                Data = System.Text.Encoding.UTF8.GetBytes(TinyImageTool.MCP_TINY_IMAGE.Split(",").Last()),
+                Data = TinyImageTool.MCP_TINY_IMAGE.Split(",").Last(),
                 MimeType = "image/png",
                 Annotations = new() { Audience = [Role.User], Priority = 0.5f }
             });

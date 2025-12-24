@@ -282,9 +282,14 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
             CallToolResult callToolResponse => callToolResponse,
 
-            _ => new()
+            _ => structuredContent is not null ? new()
             {
-                Content = [new TextContentBlock { Text = JsonSerializer.Serialize(result, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))) }],
+                Content = [],
+                StructuredContent = structuredContent,
+            } : new()
+            {
+                // Avoid staging the JSON payload as a UTF-16 string.
+                Content = [new Utf8TextContentBlock { Utf8Text = JsonSerializer.SerializeToUtf8Bytes(result, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))) }],
                 StructuredContent = structuredContent,
             },
         };
