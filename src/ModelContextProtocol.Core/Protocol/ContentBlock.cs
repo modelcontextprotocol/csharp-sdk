@@ -479,6 +479,7 @@ public sealed class TextContentBlock : ContentBlock
 public sealed class Utf8TextContentBlock : ContentBlock
 {
     /// <inheritdoc/>
+    [JsonPropertyName("type")]
     public override string Type => "text";
 
     /// <summary>Gets or sets the UTF-8 encoded text content.</summary>
@@ -486,7 +487,7 @@ public sealed class Utf8TextContentBlock : ContentBlock
     public required ReadOnlyMemory<byte> Utf8Text { get; set; }
 
     /// <summary>Gets the UTF-16 string representation of <see cref="Utf8Text"/>.</summary>
-    [JsonIgnore]
+    [JsonPropertyName("text")]
     public string Text
     {
         get
