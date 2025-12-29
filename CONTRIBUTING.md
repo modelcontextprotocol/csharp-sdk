@@ -23,7 +23,7 @@ If you can't find an existing issue, please [open a new issue on GitHub](https:/
 
 Before you begin, ensure you have the following installed:
 
-- **.NET SDK 8.0 or later** - Required to build and test the project
+- **.NET SDK 10.0 or later** - Required to build and test the project
   - Download from [dotnet.microsoft.com/download](https://dotnet.microsoft.com/download)
   - Verify installation: `dotnet --version`
 
@@ -34,7 +34,6 @@ The dev container configuration in this repository includes all the necessary to
 From the root directory of the repository, run:
 
 ```bash
-dotnet restore
 dotnet build
 ```
 
@@ -49,6 +48,8 @@ From the root directory, run:
 ```bash
 dotnet test
 ```
+
+Some tests require Docker to be installed and running locally. If Docker is not available, those tests will be skipped.
 
 Some tests require credentials for external services. When these are not available, those tests will be skipped.
 
