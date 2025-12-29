@@ -79,43 +79,46 @@ builder.Services
     })
     .WithTools<AddTool>()
     .WithTools<AnnotatedMessageTool>()
-    .WithTools<EchoTool>()
-    .WithTools<LongRunningTool>()
-    .WithTools<PrintEnvTool>()
-    .WithTools<SampleLlmTool>()
-    .WithTools<TinyImageTool>()
     .WithTools([
-        // A tool with multiple complex icons demonstrating different themes, sizes, and MIME types
+        // EchoTool with complex icon configuration demonstrating multiple icons,
+        // MIME types, size specifications, and theme preferences
         McpServerTool.Create(
-            WeatherTool.GetWeather,
-            new McpServerToolCreateOptions
+            typeof(EchoTool).GetMethod(nameof(EchoTool.Echo))!,
+            options: new McpServerToolCreateOptions
             {
-                Name = "get_weather",
-                Title = "Get Weather Information",
                 Icons = [
+                    // High-resolution PNG icon for light theme
                     new Icon
                     {
-                        Source = "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Sun/Flat/sun_flat.svg",
+                        Source = "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Loudspeaker/Flat/loudspeaker_flat.svg",
                         MimeType = "image/svg+xml",
                         Sizes = ["any"],
                         Theme = "light"
                     },
+                    // 3D icon for dark theme
                     new Icon
                     {
-                        Source = "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Sun/Flat/sun_flat.svg",
-                        MimeType = "image/svg+xml",
-                        Sizes = ["any"],
+                        Source = "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Loudspeaker/3D/loudspeaker_3d.png",
+                        MimeType = "image/png",
+                        Sizes = ["256x256"],
                         Theme = "dark"
                     },
+                    // WebP format for modern browsers
+                    // Demonstrates Data URI representation with the smallest possible valid WebP image (1x1 pixel).
+                    // This will appear as a white box when rendered by a browser at 32x32
                     new Icon
                     {
-                        Source = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-                        MimeType = "image/png",
-                        Sizes = ["16x16", "32x32"]
+                        Source = "data:image/webp;base64,UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAwA0JaQAA3AA/vuUAAA=",
+                        MimeType = "image/webp",
+                        Sizes = ["32x32"]
                     }
                 ]
             })
     ])
+    .WithTools<LongRunningTool>()
+    .WithTools<PrintEnvTool>()
+    .WithTools<SampleLlmTool>()
+    .WithTools<TinyImageTool>()
     .WithPrompts<ComplexPromptType>()
     .WithPrompts<SimplePromptType>()
     .WithResources<SimpleResourceType>()
