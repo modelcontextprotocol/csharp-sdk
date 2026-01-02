@@ -281,7 +281,7 @@ public class McpClientTests : ClientServerTestBase
                     {
                         Id = "call_weather_123",
                         Name = "get_weather",
-                        Input = JsonSerializer.SerializeToElement(new { location = "Paris" }, McpJsonUtilities.DefaultOptions)
+                        Input = JsonElement.Parse("""{"location":"Paris"}""")
                     }]
                 },
                 new SamplingMessage
