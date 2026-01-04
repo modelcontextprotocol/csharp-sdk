@@ -217,7 +217,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
     {
         const string sessionId = "resume-session-123";
         const string resumeInstructions = "Use cached instructions";
-        const string resumeProtocolVersion = "2025-06-18";
+        const string resumeProtocolVersion = "2025-11-25";
         var resumeServer = await StartResumeServerAsync(sessionId);
 
         await using var transport = new HttpClientTransport(new()

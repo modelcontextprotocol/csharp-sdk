@@ -6,10 +6,10 @@ namespace ModelContextProtocol.AspNetCore;
 /// <summary>
 /// Represents configuration options for <see cref="M:McpEndpointRouteBuilderExtensions.MapMcp"/>,
 /// which implements the Streaming HTTP transport for the Model Context Protocol.
-/// See the protocol specification for details on the Streamable HTTP transport. <see href="https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http"/>
+/// See the protocol specification for details on the Streamable HTTP transport. <see href="https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http"/>
 /// </summary>
 /// <remarks>
-/// For details on the Streamable HTTP transport, see the <see href="https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http">protocol specification</see>.
+/// For details on the Streamable HTTP transport, see the <see href="https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http">protocol specification</see>.
 /// </remarks>
 public class HttpServerTransportOptions
 {

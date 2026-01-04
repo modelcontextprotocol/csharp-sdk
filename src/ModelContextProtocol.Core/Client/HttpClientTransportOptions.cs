@@ -44,7 +44,7 @@ public sealed class HttpClientTransportOptions
     /// When set to <see cref="HttpTransportMode.AutoDetect"/> (the default), the client will first attempt to use
     /// Streamable HTTP transport and automatically fall back to SSE transport if the server doesn't support it.
     /// </remarks>
-    /// <seealso href="https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http">Streamable HTTP transport specification</seealso>.
+    /// <seealso href="https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http">Streamable HTTP transport specification</seealso>.
     /// <seealso href="https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse">HTTP with SSE transport specification</seealso>.
     public HttpTransportMode TransportMode { get; set; } = HttpTransportMode.AutoDetect;
 
