@@ -128,7 +128,8 @@ public static class AIContentExtensions
                 {
                     if (sm.Content?.Select(b => b.ToAIContent()).OfType<AIContent>().ToList() is { Count: > 0 } aiContents)
                     {
-                        ChatRole role = aiContents.All(c => c is FunctionResultContent) ? ChatRole.Tool :
+                        ChatRole role =
+                            aiContents.All(static c => c is FunctionResultContent) ? ChatRole.Tool :
                             sm.Role is Role.Assistant ? ChatRole.Assistant :
                             ChatRole.User;
                         messages.Add(new ChatMessage(role, aiContents));
