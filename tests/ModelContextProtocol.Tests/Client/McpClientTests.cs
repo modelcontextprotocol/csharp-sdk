@@ -293,7 +293,6 @@ public class McpClientTests : ClientServerTestBase
                         Content = [new TextContentBlock { Text = "Weather: 18°C, sunny" }]
                     }]
                 },
-                // Mixed content: ToolResultContentBlock + TextContentBlock should use User role
                 new SamplingMessage
                 {
                     Role = Role.User,
