@@ -66,7 +66,7 @@ public class StdioServerTransportTests : LoggedTest
 
         await transport.SendMessageAsync(message, TestContext.Current.CancellationToken);
 
-        var result = Encoding.UTF8.GetString(output.ToArray()).Trim();
+        var result = Core.McpTextUtilities.GetStringFromUtf8(output.GetBuffer().AsSpan(0, (int)output.Length)).Trim();
         var expected = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions);
 
         Assert.Equal(expected, result);
@@ -153,7 +153,7 @@ public class StdioServerTransportTests : LoggedTest
         await transport.SendMessageAsync(chineseMessage, TestContext.Current.CancellationToken);
 
         // Verify Chinese characters preserved but encoded
-        var chineseResult = Encoding.UTF8.GetString(output.ToArray()).Trim();
+        var chineseResult = Core.McpTextUtilities.GetStringFromUtf8(output.GetBuffer().AsSpan(0, (int)output.Length)).Trim();
         var expectedChinese = JsonSerializer.Serialize(chineseMessage, McpJsonUtilities.DefaultOptions);
         Assert.Equal(expectedChinese, chineseResult);
         Assert.Contains(JsonSerializer.Serialize(chineseText, McpJsonUtilities.DefaultOptions), chineseResult);
@@ -175,7 +175,7 @@ public class StdioServerTransportTests : LoggedTest
         await transport.SendMessageAsync(emojiMessage, TestContext.Current.CancellationToken);
 
         // Verify emoji preserved - might be as either direct characters or escape sequences
-        var emojiResult = Encoding.UTF8.GetString(output.ToArray()).Trim();
+        var emojiResult = Core.McpTextUtilities.GetStringFromUtf8(output.GetBuffer().AsSpan(0, (int)output.Length)).Trim();
         var expectedEmoji = JsonSerializer.Serialize(emojiMessage, McpJsonUtilities.DefaultOptions);
         Assert.Equal(expectedEmoji, emojiResult);
 

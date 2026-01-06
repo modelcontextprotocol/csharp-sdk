@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using ModelContextProtocol.Core;
 using ModelContextProtocol.Protocol;
 using System.Diagnostics;
 using System.Net.Http.Headers;
@@ -18,7 +19,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
     private readonly HttpClientTransportOptions _options;
     private readonly Uri _sseEndpoint;
     private Uri? _messageEndpoint;
-    private readonly CancellationTokenSource _connectionCts;
+    private CancellationTokenSource _connectionCts;
     private Task? _receiveTask;
     private readonly ILogger _logger;
     private readonly TaskCompletionSource<bool> _connectionEstablished;
@@ -114,7 +115,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
             }
             finally
             {
-                _connectionCts.Dispose();
+                CanceledTokenSource.Defuse(ref _connectionCts, dispose: true);
             }
         }
         finally

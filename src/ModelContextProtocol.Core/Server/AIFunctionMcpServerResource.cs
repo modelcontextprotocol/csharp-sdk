@@ -391,7 +391,12 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
 
             DataContent dc => new()
             {
-                Contents = [new BlobResourceContents { Uri = request.Params!.Uri, MimeType = dc.MediaType, Blob = dc.Base64Data.ToString() }],
+                Contents = [new BlobResourceContents 
+                { 
+                    Uri = request.Params!.Uri, 
+                    MimeType = dc.MediaType, 
+                    DecodedData = dc.Data
+                }],
             },
 
             string text => new()
@@ -420,7 +425,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
                         {
                             Uri = request.Params!.Uri,
                             MimeType = dc.MediaType,
-                            Blob = dc.Base64Data.ToString()
+                            DecodedData = dc.Data
                         },
 
                         _ => throw new InvalidOperationException($"Unsupported AIContent type '{ac.GetType()}' returned from resource function."),
@@ -442,4 +447,5 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
             _ => throw new InvalidOperationException($"Unsupported result type '{result.GetType()}' returned from resource function."),
         };
     }
+
 }

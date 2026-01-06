@@ -2,18 +2,22 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Core;
 using ModelContextProtocol.Protocol;
 using System.Buffers;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Client;
 
-/// <summary>Provides the client side of a stream-based session transport using raw streams.</summary>
-internal class StreamClientSessionTransport : TransportBase
+/// <summary>Provides the client side of a text-based session transport.</summary>
+internal class TextStreamClientSessionTransport : TransportBase
 {
+    internal static UTF8Encoding NoBomUtf8Encoding { get; } = new(encoderShouldEmitUTF8Identifier: false);
+
     private static readonly byte[] NewlineUtf8 = [(byte)'\n'];
 
-    private readonly Stream _serverInput;
-    private readonly Stream _serverOutput;
+    private readonly TextWriter _serverInput;
+    private readonly TextReader? _serverOutput;
+    private readonly Stream? _serverOutputStream;
 
     private readonly SemaphoreSlim _sendLock = new(1, 1);
 
@@ -22,16 +26,39 @@ internal class StreamClientSessionTransport : TransportBase
 
     private Task? _readTask;
 
-    internal static UTF8Encoding NoBomUtf8Encoding { get; } = new(encoderShouldEmitUTF8Identifier: false);
-
-    public StreamClientSessionTransport(Stream serverInput, Stream serverOutput, string endpointName, ILoggerFactory? loggerFactory)
+    public TextStreamClientSessionTransport(
+        TextWriter serverInput, TextReader serverOutput, string endpointName, ILoggerFactory? loggerFactory)
         : base(endpointName, loggerFactory)
     {
         Throw.IfNull(serverInput);
         Throw.IfNull(serverOutput);
 
         _serverInput = serverInput;
-        _serverOutput = serverOutput;
+
+        if (serverOutput is StreamReader sr && sr.CurrentEncoding.CodePage == Encoding.UTF8.CodePage)
+        {
+            _serverOutput = null;
+            _serverOutputStream = sr.BaseStream;
+        }
+        else
+        {
+            _serverOutput = serverOutput;
+            _serverOutputStream = null;
+        }
+
+        SetConnected();
+        StartReadLoop();
+    }
+
+    public TextStreamClientSessionTransport(Stream serverInput, Stream serverOutput, Encoding? encoding, string endpointName, ILoggerFactory? loggerFactory)
+        : base(endpointName, loggerFactory)
+    {
+        Throw.IfNull(serverInput);
+        Throw.IfNull(serverOutput);
+
+        _serverInput = new StreamWriter(serverInput, encoding ?? NoBomUtf8Encoding);
+        _serverOutput = null;
+        _serverOutputStream = serverOutput;
 
         SetConnected();
         StartReadLoop();
@@ -43,14 +70,14 @@ internal class StreamClientSessionTransport : TransportBase
         // in order to ensure that the body of the task will always see _readTask initialized.
         // It is then able to reliably null it out on completion.
         var readTask = new Task<Task>(
-            thisRef => ((StreamClientSessionTransport)thisRef!).ReadMessagesAsync(_shutdownCts.Token),
+            thisRef => ((TextStreamClientSessionTransport)thisRef!).ReadMessagesAsync(_shutdownCts.Token),
             this,
             TaskCreationOptions.DenyChildAttach);
-
         _readTask = readTask.Unwrap();
         readTask.Start();
     }
 
+    /// <inheritdoc/>
     public override async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         string id = "(no id)";
@@ -62,14 +89,34 @@ internal class StreamClientSessionTransport : TransportBase
         using var _ = await _sendLock.LockAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await JsonSerializer.SerializeAsync(
-                _serverInput,
-                message,
-                McpJsonUtilities.JsonContext.Default.JsonRpcMessage,
-                cancellationToken).ConfigureAwait(false);
+            // Prefer writing UTF-8 directly to avoid staging JSON in UTF-16.
+            if (_serverInput is StreamWriter sw)
+            {
+                using var jsonWriter = new Utf8JsonWriter(sw.BaseStream);
+                JsonSerializer.Serialize(jsonWriter, message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage);
+                await jsonWriter.FlushAsync(cancellationToken).ConfigureAwait(false);
 
-            await _serverInput.WriteAsync(NewlineUtf8, cancellationToken).ConfigureAwait(false);
-            await _serverInput.FlushAsync(cancellationToken).ConfigureAwait(false);
+                await sw.BaseStream.WriteAsync(NewlineUtf8, cancellationToken).ConfigureAwait(false);
+                await sw.BaseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            // Fallback for arbitrary TextWriter instances: avoid allocating a UTF-16 string.
+            byte[] utf8JsonBytes = JsonSerializer.SerializeToUtf8Bytes(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage);
+
+            int charCount = Encoding.UTF8.GetCharCount(utf8JsonBytes);
+            char[] rented = ArrayPool<char>.Shared.Rent(charCount);
+            try
+            {
+                int charsWritten = Encoding.UTF8.GetChars(utf8JsonBytes, 0, utf8JsonBytes.Length, rented, 0);
+                await _serverInput.WriteAsync(rented, 0, charsWritten).ConfigureAwait(false);
+                await _serverInput.WriteAsync('\n').ConfigureAwait(false);
+                await _serverInput.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                ArrayPool<char>.Shared.Return(rented);
+            }
         }
         catch (Exception ex)
         {
@@ -78,6 +125,7 @@ internal class StreamClientSessionTransport : TransportBase
         }
     }
 
+    /// <inheritdoc/>
     public override ValueTask DisposeAsync() =>
         CleanupAsync(cancellationToken: CancellationToken.None);
 
@@ -87,7 +135,31 @@ internal class StreamClientSessionTransport : TransportBase
         try
         {
             LogTransportEnteringReadMessagesLoop(Name);
-            await ReadMessagesFromStreamAsync(_serverOutput, cancellationToken).ConfigureAwait(false);
+
+            if (_serverOutputStream is not null)
+            {
+                await ReadMessagesFromStreamAsync(_serverOutputStream, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            TextReader serverOutput = _serverOutput ?? throw new InvalidOperationException("No output stream configured.");
+            while (true)
+            {
+                if (await serverOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false) is not string line)
+                {
+                    LogTransportEndOfStream(Name);
+                    break;
+                }
+
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+
+                LogTransportReceivedMessageSensitive(Name, line);
+
+                await ProcessMessageAsync(line, cancellationToken).ConfigureAwait(false);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -107,7 +179,7 @@ internal class StreamClientSessionTransport : TransportBase
 
     private async Task ReadMessagesFromStreamAsync(Stream stream, CancellationToken cancellationToken)
     {
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(16 * 1024);
+        byte[] buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(16 * 1024);
         try
         {
             using var lineStream = new MemoryStream();
@@ -127,18 +199,14 @@ internal class StreamClientSessionTransport : TransportBase
                     int newlineIndex = Array.IndexOf(buffer, (byte)'\n', offset, bytesRead - offset);
                     if (newlineIndex < 0)
                     {
-#pragma warning disable CA1849 // WriteAsync on MemoryStream is not necessary
                         lineStream.Write(buffer, offset, bytesRead - offset);
-#pragma warning restore CA1849
                         break;
                     }
 
                     int partLength = newlineIndex - offset;
                     if (partLength > 0)
                     {
-#pragma warning disable CA1849 // WriteAsync on MemoryStream is not necessary
                         lineStream.Write(buffer, offset, partLength);
-#pragma warning restore CA1849
                     }
 
                     offset = newlineIndex + 1;
@@ -148,16 +216,6 @@ internal class StreamClientSessionTransport : TransportBase
                         throw new InvalidOperationException("Expected MemoryStream to expose its buffer.");
                     }
 
-                    // IMPORTANT: `lineBytes` is a slice over `lineStream`'s underlying buffer.
-                    // This is intentionally copy-free.
-                    //
-                    // Safety / lifetime:
-                    // - `lineStream` stays alive for the duration of this read loop.
-                    // - `lineStream.SetLength(0)` does not clear, overwrite, or reallocate the underlying array.
-                    // - We do not write to `lineStream` again until after `await ProcessMessageAsync(...)` completes,
-                    //   so the bytes referenced by `lineBytes` are not mutated while they're being parsed.
-                    //
-                    // Do not store `lineBytes` (or `segment.Array`) anywhere or queue it for later processing.
                     ReadOnlyMemory<byte> lineBytes = new(segment.Array!, segment.Offset, (int)lineStream.Length);
 
                     if (!lineBytes.IsEmpty && lineBytes.Span[^1] == (byte)'\r')
@@ -165,7 +223,6 @@ internal class StreamClientSessionTransport : TransportBase
                         lineBytes = lineBytes[..^1];
                     }
 
-                    // Reset for buffering the next line. This only updates the length; it does not clear the buffer.
                     lineStream.SetLength(0);
 
                     if (McpTextUtilities.IsWhiteSpace(lineBytes.Span))
@@ -173,22 +230,18 @@ internal class StreamClientSessionTransport : TransportBase
                         continue;
                     }
 
-                    // Keep the await inline to ensure no subsequent writes to `lineStream` occur until the message
-                    // parsing/dispatch is complete (otherwise the underlying buffer could be overwritten).
                     await ProcessMessageAsync(lineBytes, cancellationToken).ConfigureAwait(false);
                 }
             }
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(buffer);
+            System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
         }
     }
 
     private async Task ProcessMessageAsync(ReadOnlyMemory<byte> lineBytes, CancellationToken cancellationToken)
     {
-        // `lineBytes` may be backed by a reusable buffer owned by the read loop.
-        // This method must not let the buffer escape (e.g., store/capture `span` across awaits).
         ReadOnlySpan<byte> span = lineBytes.Span;
 
         string? lineForLogs = null;
@@ -220,6 +273,33 @@ lineForLogs = McpTextUtilities.GetStringFromUtf8(span);
             if (Logger.IsEnabled(LogLevel.Trace) && lineForLogs is not null)
             {
                 LogTransportMessageParseFailedSensitive(Name, lineForLogs, ex);
+            }
+            else
+            {
+                LogTransportMessageParseFailed(Name, ex);
+            }
+        }
+    }
+
+    private async Task ProcessMessageAsync(string line, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var message = (JsonRpcMessage?)JsonSerializer.Deserialize(line.AsSpan().Trim(), McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)));
+            if (message != null)
+            {
+                await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                LogTransportMessageParseUnexpectedTypeSensitive(Name, line);
+            }
+        }
+        catch (JsonException ex)
+        {
+            if (Logger.IsEnabled(LogLevel.Trace))
+            {
+                LogTransportMessageParseFailedSensitive(Name, line, ex);
             }
             else
             {

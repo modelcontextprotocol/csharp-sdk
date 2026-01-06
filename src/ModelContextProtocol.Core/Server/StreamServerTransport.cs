@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using ModelContextProtocol.Core;
 using ModelContextProtocol.Protocol;
 using System.Text;
 using System.Text.Json;
@@ -20,11 +21,13 @@ public class StreamServerTransport : TransportBase
 
     private readonly ILogger _logger;
 
-    private readonly TextReader _inputReader;
+    private readonly Stream _inputStream;
     private readonly Stream _outputStream;
 
     private readonly SemaphoreSlim _sendLock = new(1, 1);
-    private readonly CancellationTokenSource _shutdownCts = new();
+    
+    // Intentionally not disposed; once this transport instance is collectable, CTS finalization will clean up.
+    private CancellationTokenSource _shutdownCts = new();
 
     private readonly Task _readLoopCompleted;
     private int _disposed = 0;
@@ -45,11 +48,7 @@ public class StreamServerTransport : TransportBase
 
         _logger = loggerFactory?.CreateLogger(GetType()) ?? NullLogger.Instance;
 
-#if NET
-        _inputReader = new StreamReader(inputStream, Encoding.UTF8);
-#else
-        _inputReader = new CancellableStreamReader(inputStream, Encoding.UTF8);
-#endif
+        _inputStream = inputStream;
         _outputStream = outputStream;
 
         SetConnected();
@@ -87,52 +86,104 @@ public class StreamServerTransport : TransportBase
 
     private async Task ReadMessagesAsync()
     {
-        CancellationToken shutdownToken = _shutdownCts.Token;
+        //CancellationToken shutdownToken = _shutdownCts.Token; // the cts field is not read-only, will be defused
         Exception? error = null;
         try
         {
             LogTransportEnteringReadMessagesLoop(Name);
 
-            while (!shutdownToken.IsCancellationRequested)
+            byte[] buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(16 * 1024);
+            try
             {
-                var line = await _inputReader.ReadLineAsync(shutdownToken).ConfigureAwait(false);
-                if (string.IsNullOrWhiteSpace(line))
+                using var lineStream = new MemoryStream();
+
+                while (!_shutdownCts.Token.IsCancellationRequested)
                 {
-                    if (line is null)
+                    int bytesRead = await _inputStream.ReadAsync(buffer, 0, buffer.Length, _shutdownCts.Token).ConfigureAwait(false);
+                    if (bytesRead == 0)
                     {
                         LogTransportEndOfStream(Name);
                         break;
                     }
 
-                    continue;
-                }
+                    int offset = 0;
+                    while (offset < bytesRead)
+                    {
+                        int newlineIndex = Array.IndexOf(buffer, (byte)'\n', offset, bytesRead - offset);
+                        if (newlineIndex < 0)
+                        {
+                            lineStream.Write(buffer, offset, bytesRead - offset);
+                            break;
+                        }
 
-                LogTransportReceivedMessageSensitive(Name, line);
+                        int partLength = newlineIndex - offset;
+                        if (partLength > 0)
+                        {
+                            lineStream.Write(buffer, offset, partLength);
+                        }
 
-                try
-                {
-                    if (JsonSerializer.Deserialize(line, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage))) is JsonRpcMessage message)
-                    {
-                        await WriteMessageAsync(message, shutdownToken).ConfigureAwait(false);
-                    }
-                    else
-                    {
-                        LogTransportMessageParseUnexpectedTypeSensitive(Name, line);
+                        offset = newlineIndex + 1;
+
+                        if (!lineStream.TryGetBuffer(out ArraySegment<byte> segment))
+                        {
+                            throw new InvalidOperationException("Expected MemoryStream to expose its buffer.");
+                        }
+
+                        ReadOnlySpan<byte> lineBytes = new(segment.Array!, segment.Offset, (int)lineStream.Length);
+
+                        if (!lineBytes.IsEmpty && lineBytes[^1] == (byte)'\r')
+                        {
+                            lineBytes = lineBytes[..^1];
+                        }
+
+                        lineStream.SetLength(0);
+
+                        if (McpTextUtilities.IsWhiteSpace(lineBytes))
+                        {
+                            continue;
+                        }
+
+                        string? lineForLogs = null;
+                        if (Logger.IsEnabled(LogLevel.Trace))
+                        {
+lineForLogs = McpTextUtilities.GetStringFromUtf8(lineBytes);
+                        }
+                        if (lineForLogs is not null)
+                        {
+                            LogTransportReceivedMessageSensitive(Name, lineForLogs);
+                        }
+
+                        try
+                        {
+                            var reader = new Utf8JsonReader(lineBytes);
+                            if (JsonSerializer.Deserialize(ref reader, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage))) is JsonRpcMessage message)
+                            {
+                                await WriteMessageAsync(message, _shutdownCts.Token).ConfigureAwait(false);
+                            }
+                            else if (lineForLogs is not null)
+                            {
+                                LogTransportMessageParseUnexpectedTypeSensitive(Name, lineForLogs);
+                            }
+                        }
+                        catch (JsonException ex)
+                        {
+                            if (Logger.IsEnabled(LogLevel.Trace) && lineForLogs is not null)
+                            {
+                                LogTransportMessageParseFailedSensitive(Name, lineForLogs, ex);
+                            }
+                            else
+                            {
+                                LogTransportMessageParseFailed(Name, ex);
+                            }
+
+                            // Continue reading even if we fail to parse a message
+                        }
                     }
                 }
-                catch (JsonException ex)
-                {
-                    if (Logger.IsEnabled(LogLevel.Trace))
-                    {
-                        LogTransportMessageParseFailedSensitive(Name, line, ex);
-                    }
-                    else
-                    {
-                        LogTransportMessageParseFailed(Name, ex);
-                    }
-
-                    // Continue reading even if we fail to parse a message
-                }
+            }
+            finally
+            {
+                System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
             }
         }
         catch (OperationCanceledException)
@@ -164,11 +215,11 @@ public class StreamServerTransport : TransportBase
 
             // Signal to the stdin reading loop to stop.
             await _shutdownCts.CancelAsync().ConfigureAwait(false);
-            _shutdownCts.Dispose();
+            CanceledTokenSource.Defuse(ref _shutdownCts, dispose: true);
 
             // Dispose of stdin/out. Cancellation may not be able to wake up operations
             // synchronously blocked in a syscall; we need to forcefully close the handle / file descriptor.
-            _inputReader?.Dispose();
+            _inputStream?.Dispose();
             _outputStream?.Dispose();
 
             // Make sure the work has quiesced.

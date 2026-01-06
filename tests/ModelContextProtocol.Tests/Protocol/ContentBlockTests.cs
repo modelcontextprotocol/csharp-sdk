@@ -1,3 +1,4 @@
+using ModelContextProtocol.Core;
 using ModelContextProtocol.Protocol;
 using System.Text.Json;
 
@@ -5,6 +6,19 @@ namespace ModelContextProtocol.Tests.Protocol;
 
 public class ContentBlockTests
 {
+    private static string GetUtf8String(ReadOnlyMemory<byte> bytes) =>
+        McpTextUtilities.GetStringFromUtf8(bytes.Span);
+
+    private static JsonSerializerOptions GetOptions(bool materializeUtf8TextContentBlocks) =>
+        materializeUtf8TextContentBlocks
+            ? McpJsonUtilities.CreateOptions(materializeUtf8TextContentBlocks: true)
+            : McpJsonUtilities.DefaultOptions;
+
+    private static string AssertTextBlock(ContentBlock contentBlock, bool materializeUtf8TextContentBlocks) =>
+        materializeUtf8TextContentBlocks
+            ? Assert.IsType<Utf8TextContentBlock>(contentBlock).Text
+            : Assert.IsType<TextContentBlock>(contentBlock).Text;
+
     [Fact]
     public void ResourceLinkBlock_SerializationRoundTrip_PreservesAllProperties()
     {
@@ -81,8 +95,10 @@ public class ContentBlockTests
         Assert.Contains("Name must be provided for 'resource_link' type", exception.Message);
     }
 
-    [Fact]
-    public void Deserialize_IgnoresUnknownArrayProperty()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Deserialize_IgnoresUnknownArrayProperty(bool materializeUtf8TextContentBlocks)
     {
         // This is a regression test where a server returned an unexpected response with
         // `structuredContent` as an array nested inside a content block. This should be
@@ -97,15 +113,17 @@ public class ContentBlockTests
             ]
         }";
 
-        var contentBlock = JsonSerializer.Deserialize<ContentBlock>(responseJson, McpJsonUtilities.DefaultOptions);
+        var options = GetOptions(materializeUtf8TextContentBlocks);
+        var contentBlock = JsonSerializer.Deserialize<ContentBlock>(responseJson, options);
         Assert.NotNull(contentBlock);
 
-        var textBlock = Assert.IsType<TextContentBlock>(contentBlock);
-        Assert.Contains("1234567890", textBlock.Text);
+        Assert.Contains("1234567890", AssertTextBlock(contentBlock, materializeUtf8TextContentBlocks));
     }
 
-    [Fact]
-    public void Deserialize_IgnoresUnknownObjectProperties()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Deserialize_IgnoresUnknownObjectProperties(bool materializeUtf8TextContentBlocks)
     {
         string responseJson = @"{
             ""type"": ""text"",
@@ -118,15 +136,17 @@ public class ContentBlockTests
             }
         }";
 
-        var contentBlock = JsonSerializer.Deserialize<ContentBlock>(responseJson, McpJsonUtilities.DefaultOptions);
+        var options = GetOptions(materializeUtf8TextContentBlocks);
+        var contentBlock = JsonSerializer.Deserialize<ContentBlock>(responseJson, options);
         Assert.NotNull(contentBlock);
 
-        var textBlock = Assert.IsType<TextContentBlock>(contentBlock);
-        Assert.Contains("Sample text", textBlock.Text);
+        Assert.Contains("Sample text", AssertTextBlock(contentBlock, materializeUtf8TextContentBlocks));
     }
 
-    [Fact]
-    public void ToolResultContentBlock_WithError_SerializationRoundtrips()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ToolResultContentBlock_WithError_SerializationRoundtrips(bool materializeUtf8TextContentBlocks)
     {
         ToolResultContentBlock toolResult = new()
         {
@@ -135,19 +155,21 @@ public class ContentBlockTests
             IsError = true
         };
 
-        var json = JsonSerializer.Serialize<ContentBlock>(toolResult, McpJsonUtilities.DefaultOptions);
-        var deserialized = JsonSerializer.Deserialize<ContentBlock>(json, McpJsonUtilities.DefaultOptions);
+        var options = GetOptions(materializeUtf8TextContentBlocks);
+        var json = JsonSerializer.Serialize<ContentBlock>(toolResult, options);
+        var deserialized = JsonSerializer.Deserialize<ContentBlock>(json, options);
 
         var result = Assert.IsType<ToolResultContentBlock>(deserialized);
         Assert.Equal("call_123", result.ToolUseId);
         Assert.True(result.IsError);
         Assert.Single(result.Content);
-        var textBlock = Assert.IsType<TextContentBlock>(result.Content[0]);
-        Assert.Equal("Error: City not found", textBlock.Text);
+        Assert.Equal("Error: City not found", AssertTextBlock(result.Content[0], materializeUtf8TextContentBlocks));
     }
 
-    [Fact]
-    public void ToolResultContentBlock_WithStructuredContent_SerializationRoundtrips()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ToolResultContentBlock_WithStructuredContent_SerializationRoundtrips(bool materializeUtf8TextContentBlocks)
     {
         ToolResultContentBlock toolResult = new()
         {
@@ -160,22 +182,24 @@ public class ContentBlockTests
             IsError = false
         };
 
-        var json = JsonSerializer.Serialize<ContentBlock>(toolResult, McpJsonUtilities.DefaultOptions);
-        var deserialized = JsonSerializer.Deserialize<ContentBlock>(json, McpJsonUtilities.DefaultOptions);
+        var options = GetOptions(materializeUtf8TextContentBlocks);
+        var json = JsonSerializer.Serialize<ContentBlock>(toolResult, options);
+        var deserialized = JsonSerializer.Deserialize<ContentBlock>(json, options);
 
         var result = Assert.IsType<ToolResultContentBlock>(deserialized);
         Assert.Equal("call_123", result.ToolUseId);
         Assert.Single(result.Content);
-        var textBlock = Assert.IsType<TextContentBlock>(result.Content[0]);
-        Assert.Equal("Result data", textBlock.Text);
+        Assert.Equal("Result data", AssertTextBlock(result.Content[0], materializeUtf8TextContentBlocks));
         Assert.NotNull(result.StructuredContent);
         Assert.Equal(18, result.StructuredContent.Value.GetProperty("temperature").GetInt32());
         Assert.Equal("cloudy", result.StructuredContent.Value.GetProperty("condition").GetString());
         Assert.False(result.IsError);
     }
 
-    [Fact]
-    public void ToolResultContentBlock_SerializationRoundTrip()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ToolResultContentBlock_SerializationRoundTrip(bool materializeUtf8TextContentBlocks)
     {
         ToolResultContentBlock toolResult = new()
         {
@@ -189,14 +213,14 @@ public class ContentBlockTests
             IsError = false
         };
 
-        var json = JsonSerializer.Serialize<ContentBlock>(toolResult, McpJsonUtilities.DefaultOptions);
-        var deserialized = JsonSerializer.Deserialize<ContentBlock>(json, McpJsonUtilities.DefaultOptions);
+        var options = GetOptions(materializeUtf8TextContentBlocks);
+        var json = JsonSerializer.Serialize<ContentBlock>(toolResult, options);
+        var deserialized = JsonSerializer.Deserialize<ContentBlock>(json, options);
 
         var result = Assert.IsType<ToolResultContentBlock>(deserialized);
         Assert.Equal("call_123", result.ToolUseId);
         Assert.Equal(2, result.Content.Count);
-        var textBlock = Assert.IsType<TextContentBlock>(result.Content[0]);
-        Assert.Equal("Result data", textBlock.Text);
+        Assert.Equal("Result data", AssertTextBlock(result.Content[0], materializeUtf8TextContentBlocks));
         var imageBlock = Assert.IsType<ImageContentBlock>(result.Content[1]);
         Assert.Equal("base64data", imageBlock.Data);
         Assert.Equal("image/png", imageBlock.MimeType);
@@ -224,5 +248,53 @@ public class ContentBlockTests
         Assert.Equal("get_weather", result.Name);
         Assert.Equal("Paris", result.Input.GetProperty("city").GetString());
         Assert.Equal("metric", result.Input.GetProperty("units").GetString());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Utf8TextContentBlock_SerializesAsText_AndDeserializesAsTextContentBlock(bool materializeUtf8TextContentBlocks)
+    {
+        // Utf8TextContentBlock is an optimization for write paths; the wire format is still a normal "text" block.
+        ContentBlock original = new Utf8TextContentBlock
+        {
+            Utf8Text = "Sample text"u8.ToArray()
+        };
+
+        var options = GetOptions(materializeUtf8TextContentBlocks);
+
+        string json = JsonSerializer.Serialize(original, options);
+        Assert.Contains("\"type\":\"text\"", json);
+        Assert.Contains("\"text\":\"Sample text\"", json);
+
+        ContentBlock? deserialized = JsonSerializer.Deserialize<ContentBlock>(json, options);
+        Assert.NotNull(deserialized);
+        Assert.Equal("Sample text", AssertTextBlock(deserialized, materializeUtf8TextContentBlocks));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ToolResultContentBlock_WithUtf8TextContent_SerializationRoundtrips(bool materializeUtf8TextContentBlocks)
+    {
+        ToolResultContentBlock toolResult = new()
+        {
+            ToolUseId = "call_123",
+            Content =
+            [
+                new Utf8TextContentBlock { Utf8Text = "Result data"u8.ToArray() }
+            ],
+            IsError = false
+        };
+
+        var options = GetOptions(materializeUtf8TextContentBlocks);
+        var json = JsonSerializer.Serialize<ContentBlock>(toolResult, options);
+        var deserialized = JsonSerializer.Deserialize<ContentBlock>(json, options);
+
+        var result = Assert.IsType<ToolResultContentBlock>(deserialized);
+        Assert.Equal("call_123", result.ToolUseId);
+        Assert.Single(result.Content);
+        Assert.Equal("Result data", AssertTextBlock(result.Content[0], materializeUtf8TextContentBlocks));
+        Assert.False(result.IsError);
     }
 }

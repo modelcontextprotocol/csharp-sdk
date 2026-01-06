@@ -388,6 +388,8 @@ internal static partial class UriTemplate
         }
     }
 
+    public static ReadOnlySpan<char> HexDigits => "0123456789ABCDEF";
+
     private static string Encode(string value, bool allowReserved)
     {
         if (!allowReserved)
@@ -423,36 +425,60 @@ internal static partial class UriTemplate
             }
             else
             {
-                AppendHex(ref builder, c);
+                if (c <= 0x7F)
+                {
+                    AppendHexAscii(ref builder, c);
+                }
+                else if (char.IsHighSurrogate(c) && i + 1 < value.Length && char.IsLowSurrogate(value[i + 1]))
+                {
+                    AppendHexUtf8(ref builder, value.AsSpan(i, 2));
+                    i++;
+                }
+                else
+                {
+                    AppendHexUtf8(ref builder, value.AsSpan(i, 1));
+                }
             }
         }
 
         return builder.ToStringAndClear();
 
-        static void AppendHex(ref DefaultInterpolatedStringHandler builder, char c)
+        static void AppendHexAscii(ref DefaultInterpolatedStringHandler builder, char c)
         {
-            ReadOnlySpan<char> hexDigits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'];
+            builder.AppendFormatted('%');
+            builder.AppendFormatted(HexDigits[c >> 4]);
+            builder.AppendFormatted(HexDigits[c & 0xF]);
+        }
 
-            if (c <= 0x7F)
-            {
-                builder.AppendFormatted('%');
-                builder.AppendFormatted(hexDigits[c >> 4]);
-                builder.AppendFormatted(hexDigits[c & 0xF]);
-            }
-            else
-            {
+        static void AppendHexUtf8(ref DefaultInterpolatedStringHandler builder, ReadOnlySpan<char> chars)
+        {
+            Span<byte> utf8 = stackalloc byte[4];
+
 #if NET
-                Span<byte> utf8 = stackalloc byte[Encoding.UTF8.GetMaxByteCount(1)];
-                foreach (byte b in utf8.Slice(0, new Rune(c).EncodeToUtf8(utf8)))
+            int bytesWritten = Encoding.UTF8.GetBytes(chars, utf8);
+            for (int j = 0; j < bytesWritten; j++)
+            {
+                byte b = utf8[j];
+                builder.AppendFormatted('%');
+                builder.AppendFormatted(HexDigits[b >> 4]);
+                builder.AppendFormatted(HexDigits[b & 0xF]);
+            }
 #else
-                foreach (byte b in Encoding.UTF8.GetBytes([c]))
-#endif
+            unsafe {
+                fixed (char* pChars = chars)
+                fixed (byte* pUtf8 = utf8)
                 {
-                    builder.AppendFormatted('%');
-                    builder.AppendFormatted(hexDigits[b >> 4]);
-                    builder.AppendFormatted(hexDigits[b & 0xF]);
+                    int bytesWritten = Encoding.UTF8.GetBytes(pChars, chars.Length, pUtf8, utf8.Length);
+                    for (int j = 0; j < bytesWritten; j++)
+                    {
+                        byte b = utf8[j];
+                        builder.AppendFormatted('%');
+                        builder.AppendFormatted(HexDigits[b >> 4]);
+                        builder.AppendFormatted(HexDigits[b & 0xF]);
+                    }
                 }
             }
+#endif
         }
     }
 

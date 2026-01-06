@@ -1,3 +1,4 @@
+using ModelContextProtocol.Core;
 using ModelContextProtocol.Protocol;
 using System.Text.Json;
 
@@ -5,6 +6,9 @@ namespace ModelContextProtocol.Tests.Protocol;
 
 public static class ResourceContentsTests
 {
+    private static string GetUtf8String(ReadOnlyMemory<byte> bytes) =>
+        McpTextUtilities.GetStringFromUtf8(bytes.Span);
+
     [Fact]
     public static void TextResourceContents_UnknownArrayProperty_IsIgnored()
     {

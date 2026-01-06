@@ -1,4 +1,5 @@
-﻿using ModelContextProtocol.Server;
+﻿using ModelContextProtocol.Core;
+using ModelContextProtocol.Server;
 using System.Diagnostics;
 using System.Security.Claims;
 
@@ -16,7 +17,7 @@ internal sealed class StreamableHttpSession(
     private readonly object _stateLock = new();
 
     private int _getRequestStarted;
-    private readonly CancellationTokenSource _disposeCts = new();
+    private CancellationTokenSource _disposeCts = new();
 
     public string Id => sessionId;
     public StreamableHttpServerTransport Transport => transport;
@@ -124,7 +125,8 @@ internal sealed class StreamableHttpSession(
             {
                 sessionManager.DecrementIdleSessionCount();
             }
-            _disposeCts.Dispose();
+
+            CanceledTokenSource.Defuse(ref _disposeCts);
         }
     }
 

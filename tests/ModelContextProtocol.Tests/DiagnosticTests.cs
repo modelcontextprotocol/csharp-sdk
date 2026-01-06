@@ -163,6 +163,7 @@ public class LoggingStream : Stream
 {
     private readonly Stream _innerStream;
     private readonly Action<string> _logAction;
+    private readonly MemoryStream _pending = new();
 
     public LoggingStream(Stream innerStream, Action<string> logAction)
     {
@@ -172,9 +173,88 @@ public class LoggingStream : Stream
 
     public override void Write(byte[] buffer, int offset, int count)
     {
-        var data = Encoding.UTF8.GetString(buffer, offset, count);
-        _logAction(data);
+        Log(buffer, offset, count);
         _innerStream.Write(buffer, offset, count);
+    }
+
+    public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+    {
+        Log(buffer, offset, count);
+        return _innerStream.WriteAsync(buffer, offset, count, cancellationToken);
+    }
+
+#if NET
+    public override void Write(ReadOnlySpan<byte> buffer)
+    {
+        Log(buffer);
+        _innerStream.Write(buffer);
+    }
+
+    public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+    {
+        Log(buffer.Span);
+        return _innerStream.WriteAsync(buffer, cancellationToken);
+    }
+#endif
+
+    private void Log(byte[] buffer, int offset, int count)
+    {
+        int end = offset + count;
+        int segmentStart = offset;
+
+        for (int i = offset; i < end; i++)
+        {
+            if (buffer[i] == (byte)'\n')
+            {
+                int segmentLen = i - segmentStart + 1;
+                if (segmentLen > 0)
+                {
+                    _pending.Write(buffer, segmentStart, segmentLen);
+                }
+
+                FlushPending();
+                segmentStart = i + 1;
+            }
+        }
+
+        if (segmentStart < end)
+        {
+            _pending.Write(buffer, segmentStart, end - segmentStart);
+        }
+    }
+
+#if NET
+    private void Log(ReadOnlySpan<byte> buffer)
+    {
+        while (!buffer.IsEmpty)
+        {
+            int newlineIndex = buffer.IndexOf((byte)'\n');
+            if (newlineIndex < 0)
+            {
+                _pending.Write(buffer);
+                return;
+            }
+
+            int len = newlineIndex + 1;
+            _pending.Write(buffer.Slice(0, len));
+            FlushPending();
+            buffer = buffer.Slice(len);
+        }
+    }
+#endif
+
+    private void FlushPending()
+    {
+        if (_pending.Length == 0)
+        {
+            return;
+        }
+
+        // MemoryStream created by this test is expandable, so GetBuffer() is supported and avoids a ToArray() allocation.
+        byte[] buffer = _pending.GetBuffer();
+        _logAction(Core.McpTextUtilities.GetStringFromUtf8(buffer.AsSpan(0, (int)_pending.Length)));
+
+        _pending.SetLength(0);
     }
 
     public override bool CanRead => _innerStream.CanRead;
