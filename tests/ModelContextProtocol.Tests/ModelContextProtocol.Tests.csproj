@@ -29,6 +29,10 @@
     <Compile Include="..\Common\**\*.cs" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\..\src\ModelContextProtocol.Core\Server\DistributedCacheEventIdFormatter.cs" Link="DistributedCacheEventIdFormatter.cs" />
+  </ItemGroup>
+
   <ItemGroup Condition="'$(TargetFramework)' == 'net472'">
     <Compile Include="..\..\src\Common\Throw.cs" Link="Throw.cs" />
     <Compile Include="..\..\src\Common\Polyfills\**\*.cs" />

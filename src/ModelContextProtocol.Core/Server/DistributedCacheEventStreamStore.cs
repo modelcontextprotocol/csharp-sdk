@@ -51,7 +51,7 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
         Throw.IfNull(lastEventId);
 
         // Parse the event ID to get session, stream, and sequence information
-        if (!EventIdCodec.TryParse(lastEventId, out var sessionId, out var streamId, out var sequence))
+        if (!DistributedCacheEventIdFormatter.TryParse(lastEventId, out var sessionId, out var streamId, out var sequence))
         {
             return null;
         }
@@ -70,54 +70,8 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
             return null;
         }
 
-        return new DistributedCacheEventStreamReader(_cache, sessionId, streamId, sequence, metadata, _options);
-    }
-
-    /// <summary>
-    /// Provides methods for encoding and decoding event IDs.
-    /// </summary>
-    internal static class EventIdCodec
-    {
-        private const char Separator = ':';
-
-        /// <summary>
-        /// Encodes session ID, stream ID, and sequence number into an event ID string.
-        /// </summary>
-        public static string Encode(string sessionId, string streamId, long sequence)
-        {
-            // Base64-encode session and stream IDs so the event ID can be parsed
-            // even if the original IDs contain the ':' separator character
-            var sessionBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(sessionId));
-            var streamBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(streamId));
-            return $"{sessionBase64}{Separator}{streamBase64}{Separator}{sequence}";
-        }
-
-        /// <summary>
-        /// Attempts to parse an event ID into its component parts.
-        /// </summary>
-        public static bool TryParse(string eventId, out string sessionId, out string streamId, out long sequence)
-        {
-            sessionId = string.Empty;
-            streamId = string.Empty;
-            sequence = 0;
-
-            var parts = eventId.Split(Separator);
-            if (parts.Length != 3)
-            {
-                return false;
-            }
-
-            try
-            {
-                sessionId = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(parts[0]));
-                streamId = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(parts[1]));
-                return long.TryParse(parts[2], out sequence);
-            }
-            catch
-            {
-                return false;
-            }
-        }
+        var startSequence = sequence + 1;
+        return new DistributedCacheEventStreamReader(_cache, sessionId, streamId, startSequence, metadata, _options);
     }
 
     /// <summary>
@@ -198,7 +152,7 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
 
             // Generate a new sequence number and event ID
             var sequence = Interlocked.Increment(ref _sequence);
-            var eventId = EventIdCodec.Encode(SessionId, StreamId, sequence);
+            var eventId = DistributedCacheEventIdFormatter.Format(SessionId, StreamId, sequence);
             var newItem = sseItem with { EventId = eventId };
 
             // Store the event in the cache
@@ -261,7 +215,7 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
     {
         private readonly IDistributedCache _cache;
         private readonly long _startSequence;
-        private readonly StreamMetadata _metadata;
+        private readonly StreamMetadata _initialMetadata;
         private readonly DistributedCacheEventStreamStoreOptions _options;
 
         public DistributedCacheEventStreamReader(
@@ -269,14 +223,14 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
             string sessionId,
             string streamId,
             long startSequence,
-            StreamMetadata metadata,
+            StreamMetadata initialMetadata,
             DistributedCacheEventStreamStoreOptions options)
         {
             _cache = cache;
             SessionId = sessionId;
             StreamId = streamId;
             _startSequence = startSequence;
-            _metadata = metadata;
+            _initialMetadata = initialMetadata;
             _options = options;
         }
 
@@ -288,36 +242,25 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
             // Start from the sequence after the last received event
             var currentSequence = _startSequence;
 
+            // Use the initial metadata passed to the constructor for the first read.
+            var lastSequence = _initialMetadata.LastSequence;
+            var isCompleted = _initialMetadata.IsCompleted;
+            var mode = _initialMetadata.Mode;
+
             while (!cancellationToken.IsCancellationRequested)
             {
-                // Refresh metadata to get the latest sequence and completion status
-                var metadataKey = CacheKeys.StreamMetadata(SessionId, StreamId);
-                var metadataBytes = await _cache.GetAsync(metadataKey, cancellationToken).ConfigureAwait(false);
-
-                StreamMetadata? currentMetadata = null;
-                if (metadataBytes is not null)
-                {
-                    currentMetadata = JsonSerializer.Deserialize(metadataBytes, McpJsonUtilities.JsonContext.Default.StreamMetadata);
-                }
-
-                var lastSequence = currentMetadata?.LastSequence ?? _metadata.LastSequence;
-                var isCompleted = currentMetadata?.IsCompleted ?? _metadata.IsCompleted;
-                var mode = currentMetadata?.Mode ?? _metadata.Mode;
-
                 // Read all available events from currentSequence + 1 to lastSequence
-                while (currentSequence < lastSequence)
+                for (; currentSequence <= lastSequence; currentSequence++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    var nextSequence = currentSequence + 1;
-                    var eventId = EventIdCodec.Encode(SessionId, StreamId, nextSequence);
+                    var eventId = DistributedCacheEventIdFormatter.Format(SessionId, StreamId, currentSequence);
                     var eventKey = CacheKeys.Event(eventId);
                     var eventBytes = await _cache.GetAsync(eventKey, cancellationToken).ConfigureAwait(false);
 
                     if (eventBytes is null)
                     {
                         // Event may have expired; skip to next
-                        currentSequence = nextSequence;
                         continue;
                     }
 
@@ -329,8 +272,6 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
                             EventId = storedEvent.EventId,
                         };
                     }
-
-                    currentSequence = nextSequence;
                 }
 
                 // If in polling mode, stop after returning currently available events
@@ -339,7 +280,7 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
                     yield break;
                 }
 
-                // If the stream is completed, stop
+                // If the stream is completed and we've read all events, stop
                 if (isCompleted)
                 {
                     yield break;
@@ -347,6 +288,26 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
 
                 // Wait before polling again for new events
                 await Task.Delay(_options.PollingInterval, cancellationToken).ConfigureAwait(false);
+
+                // Refresh metadata to get the latest sequence and completion status
+                var metadataKey = CacheKeys.StreamMetadata(SessionId, StreamId);
+                var metadataBytes = await _cache.GetAsync(metadataKey, cancellationToken).ConfigureAwait(false);
+
+                if (metadataBytes is null)
+                {
+                    // Metadata expired - treat stream as complete to avoid infinite loop
+                    yield break;
+                }
+
+                var currentMetadata = JsonSerializer.Deserialize(metadataBytes, McpJsonUtilities.JsonContext.Default.StreamMetadata);
+                if (currentMetadata is null)
+                {
+                    yield break;
+                }
+
+                lastSequence = currentMetadata.LastSequence;
+                isCompleted = currentMetadata.IsCompleted;
+                mode = currentMetadata.Mode;
             }
         }
     }
