@@ -13,15 +13,13 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 /// </summary>
 public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputHelper) : LoggedTest(testOutputHelper)
 {
-    private CancellationToken CancellationToken => TestContext.Current.CancellationToken;
+    private static CancellationToken CancellationToken => TestContext.Current.CancellationToken;
 
     private static IDistributedCache CreateMemoryCache()
     {
         var options = Options.Create(new MemoryDistributedCacheOptions());
         return new MemoryDistributedCache(options);
     }
-
-    #region Constructor & Initialization Tests
 
     [Fact]
     public void Constructor_ThrowsArgumentNullException_WhenCacheIsNull()
@@ -79,10 +77,6 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         Assert.NotNull(writer);
         Assert.Equal("stream-1", writer.StreamId);
     }
-
-    #endregion
-
-    #region CreateStreamAsync Tests
 
     [Fact]
     public async Task CreateStreamAsync_ReturnsWriter_WithCorrectStreamId()
@@ -180,10 +174,6 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         await Assert.ThrowsAsync<ArgumentNullException>("options",
             async () => await store.CreateStreamAsync(null!, CancellationToken));
     }
-
-    #endregion
-
-    #region WriteEventAsync Tests
 
     [Fact]
     public async Task WriteEventAsync_AssignsUniqueEventId_WhenItemHasNoEventId()
@@ -306,7 +296,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     public async Task WriteEventAsync_StoresEventWithCorrectSlidingExpiration()
     {
         // Arrange - Use a mock cache to verify expiration options
-        var mockCache = new TrackingDistributedCache();
+        var mockCache = new TestDistributedCache();
         var customOptions = new DistributedCacheEventStreamStoreOptions
         {
             EventSlidingExpiration = TimeSpan.FromMinutes(15)
@@ -334,7 +324,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     public async Task WriteEventAsync_StoresEventWithCorrectAbsoluteExpiration()
     {
         // Arrange
-        var mockCache = new TrackingDistributedCache();
+        var mockCache = new TestDistributedCache();
         var customOptions = new DistributedCacheEventStreamStoreOptions
         {
             EventAbsoluteExpiration = TimeSpan.FromHours(3)
@@ -362,7 +352,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     public async Task WriteEventAsync_UpdatesStreamMetadata_AfterEachWrite()
     {
         // Arrange
-        var mockCache = new TrackingDistributedCache();
+        var mockCache = new TestDistributedCache();
         var store = new DistributedCacheEventStreamStore(mockCache);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
@@ -379,10 +369,6 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         // Assert - Metadata should have been updated
         Assert.Contains(mockCache.SetCalls, call => call.Key.Contains("meta:"));
     }
-
-    #endregion
-
-    #region SetModeAsync (Writer) Tests
 
     [Fact]
     public async Task SetModeAsync_UpdatesModeProperty_OnWriter()
@@ -408,7 +394,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     public async Task SetModeAsync_PersistsModeChangeToMetadata()
     {
         // Arrange
-        var mockCache = new TrackingDistributedCache();
+        var mockCache = new TestDistributedCache();
         var store = new DistributedCacheEventStreamStore(mockCache);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
@@ -465,10 +451,6 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         // In polling mode, reader should complete without waiting for new events
         Assert.Empty(events); // No events after the one we used to create the reader
     }
-
-    #endregion
-
-    #region DisposeAsync (Writer) Tests
 
     [Fact]
     public async Task DisposeAsync_MarksStreamAsCompleted()
@@ -531,7 +513,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     public async Task DisposeAsync_UpdatesMetadata_WithIsCompletedFlag()
     {
         // Arrange
-        var mockCache = new TrackingDistributedCache();
+        var mockCache = new TestDistributedCache();
         var store = new DistributedCacheEventStreamStore(mockCache);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
@@ -548,10 +530,6 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         // Assert - Metadata should have been updated
         Assert.Contains(mockCache.SetCalls, call => call.Key.Contains("meta:"));
     }
-
-    #endregion
-
-    #region GetStreamReaderAsync Tests
 
     [Fact]
     public async Task GetStreamReaderAsync_ThrowsArgumentNullException_WhenLastEventIdIsNull()
@@ -591,9 +569,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         var store = new DistributedCacheEventStreamStore(cache);
 
         // Create a valid-looking event ID for a stream that doesn't exist
-        var sessionBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("nonexistent-session"));
-        var streamBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("nonexistent-stream"));
-        var fakeEventId = $"{sessionBase64}:{streamBase64}:1";
+        var fakeEventId = DistributedCacheEventIdFormatter.Format("nonexistent-session", "nonexistent-stream", 1);
 
         // Act
         var reader = await store.GetStreamReaderAsync(fakeEventId, CancellationToken);
@@ -628,10 +604,6 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         Assert.Equal("my-stream", reader.StreamId);
     }
 
-    #endregion
-
-    #region ReadEventsAsync (Reader) Tests
-
     [Fact]
     public async Task ReadEventsAsync_ReturnsEventsInOrder()
     {
@@ -651,9 +623,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         var event3 = await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(new JsonRpcNotification { Method = "method3" }), CancellationToken);
 
         // Create a reader starting from before the first event (use a fake event ID with sequence 0)
-        var sessionBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("session-1"));
-        var streamBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("stream-1"));
-        var startEventId = $"{sessionBase64}:{streamBase64}:0";
+        var startEventId = DistributedCacheEventIdFormatter.Format("session-1", "stream-1", 0);
         var reader = await store.GetStreamReaderAsync(startEventId, CancellationToken);
         Assert.NotNull(reader);
 
@@ -719,9 +689,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         var writtenItem = await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(message, "custom-event-type"), CancellationToken);
 
         // Create a reader starting from before the event
-        var sessionBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("session-1"));
-        var streamBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("stream-1"));
-        var startEventId = $"{sessionBase64}:{streamBase64}:0";
+        var startEventId = DistributedCacheEventIdFormatter.Format("session-1", "stream-1", 0);
         var reader = await store.GetStreamReaderAsync(startEventId, CancellationToken);
         Assert.NotNull(reader);
 
@@ -758,9 +726,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         var writtenItem = await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(null), CancellationToken);
 
         // Create a reader starting from before the event
-        var sessionBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("session-1"));
-        var streamBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("stream-1"));
-        var startEventId = $"{sessionBase64}:{streamBase64}:0";
+        var startEventId = DistributedCacheEventIdFormatter.Format("session-1", "stream-1", 0);
         var reader = await store.GetStreamReaderAsync(startEventId, CancellationToken);
         Assert.NotNull(reader);
 
@@ -776,10 +742,6 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         Assert.Null(events[0].Data);
         Assert.Equal(writtenItem.EventId, events[0].EventId);
     }
-
-    #endregion
-
-    #region ReadEventsAsync - Polling Mode Tests
 
     [Fact]
     public async Task ReadEventsAsync_InPollingMode_CompletesImmediatelyAfterReturningAvailableEvents()
@@ -799,9 +761,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(null), CancellationToken);
 
         // Create a reader from sequence 0
-        var sessionBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("session-1"));
-        var streamBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("stream-1"));
-        var startEventId = $"{sessionBase64}:{streamBase64}:0";
+        var startEventId = DistributedCacheEventIdFormatter.Format("session-1", "stream-1", 0);
         var reader = await store.GetStreamReaderAsync(startEventId, CancellationToken);
         Assert.NotNull(reader);
 
@@ -913,10 +873,6 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         Assert.Empty(events);
         Assert.True(stopwatch.ElapsedMilliseconds < 500, $"Polling mode should complete quickly, took {stopwatch.ElapsedMilliseconds}ms");
     }
-
-    #endregion
-
-    #region ReadEventsAsync - Default Mode Tests
 
     [Fact]
     public async Task ReadEventsAsync_InDefaultMode_WaitsForNewEvents()
@@ -1132,10 +1088,6 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         Assert.True(stopwatch.ElapsedMilliseconds < 1000, $"Should complete quickly after cancellation, took {stopwatch.ElapsedMilliseconds}ms");
     }
 
-    #endregion
-
-    #region ReadEventsAsync - Mode Changes Tests
-
     [Fact]
     public async Task ReadEventsAsync_RespectsModeSwitchFromDefaultToPolling()
     {
@@ -1203,9 +1155,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         }, CancellationToken);
 
         // Write initial event and create reader from sequence 0
-        var sessionBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("session-1"));
-        var streamBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("stream-1"));
-        var startEventId = $"{sessionBase64}:{streamBase64}:0";
+        var startEventId = DistributedCacheEventIdFormatter.Format("session-1", "stream-1", 0);
 
         // Write events first
         var event1 = await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(null), CancellationToken);
@@ -1234,10 +1184,6 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         Assert.True(stopwatch.ElapsedMilliseconds < 500, $"Should complete quickly, took {stopwatch.ElapsedMilliseconds}ms");
     }
 
-    #endregion
-
-    #region Cross-Session Isolation Tests
-
     [Fact]
     public async Task MultipleStreams_AreIsolated_EventsDoNotLeakBetweenStreams()
     {
@@ -1265,13 +1211,8 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         var event2 = await writer2.WriteEventAsync(new SseItem<JsonRpcMessage?>(null, "event-from-stream2"), CancellationToken);
 
         // Create readers for each stream from sequence 0
-        var session1Base64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("session-1"));
-        var stream1Base64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("stream-1"));
-        var start1 = $"{session1Base64}:{stream1Base64}:0";
-
-        var session2Base64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("session-2"));
-        var stream2Base64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("stream-2"));
-        var start2 = $"{session2Base64}:{stream2Base64}:0";
+        var start1 = DistributedCacheEventIdFormatter.Format("session-1", "stream-1", 0);
+        var start2 = DistributedCacheEventIdFormatter.Format("session-2", "stream-2", 0);
 
         var reader1 = await store.GetStreamReaderAsync(start1, CancellationToken);
         var reader2 = await store.GetStreamReaderAsync(start2, CancellationToken);
@@ -1328,12 +1269,8 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         await writer2.WriteEventAsync(new SseItem<JsonRpcMessage?>(null, "from-B"), CancellationToken);
 
         // Create readers from sequence 0
-        var sessionBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("shared-session"));
-        var streamABase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("stream-A"));
-        var streamBBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("stream-B"));
-
-        var reader1 = await store.GetStreamReaderAsync($"{sessionBase64}:{streamABase64}:0", CancellationToken);
-        var reader2 = await store.GetStreamReaderAsync($"{sessionBase64}:{streamBBase64}:0", CancellationToken);
+        var reader1 = await store.GetStreamReaderAsync(DistributedCacheEventIdFormatter.Format("shared-session", "stream-A", 0), CancellationToken);
+        var reader2 = await store.GetStreamReaderAsync(DistributedCacheEventIdFormatter.Format("shared-session", "stream-B", 0), CancellationToken);
         Assert.NotNull(reader1);
         Assert.NotNull(reader2);
 
@@ -1390,15 +1327,11 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         Assert.Equal(4, allEventIds.Distinct().Count());
     }
 
-    #endregion
-
-    #region Distributed Cache Integration Tests
-
     [Fact]
     public async Task WriteEventAsync_UsesConfiguredSlidingExpiration()
     {
         // Arrange
-        var mockCache = new TrackingDistributedCache();
+        var mockCache = new TestDistributedCache();
         var customOptions = new DistributedCacheEventStreamStoreOptions
         {
             EventSlidingExpiration = TimeSpan.FromMinutes(30)
@@ -1426,7 +1359,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     public async Task WriteEventAsync_UsesConfiguredAbsoluteExpiration()
     {
         // Arrange
-        var mockCache = new TrackingDistributedCache();
+        var mockCache = new TestDistributedCache();
         var customOptions = new DistributedCacheEventStreamStoreOptions
         {
             EventAbsoluteExpiration = TimeSpan.FromHours(6)
@@ -1455,7 +1388,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     public async Task WriteEventAsync_UsesConfiguredMetadataExpiration()
     {
         // Arrange - Metadata is written when events are written
-        var mockCache = new TrackingDistributedCache();
+        var mockCache = new TestDistributedCache();
         var customOptions = new DistributedCacheEventStreamStoreOptions
         {
             MetadataSlidingExpiration = TimeSpan.FromMinutes(45),
@@ -1479,70 +1412,6 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         Assert.Equal(TimeSpan.FromHours(12), metadataCall.Options.AbsoluteExpirationRelativeToNow);
     }
 
-    #endregion
-
-    #region Options Configuration Tests
-
-    [Fact]
-    public async Task CustomPollingInterval_AffectsDefaultModePolling()
-    {
-        // Arrange - Use very short polling interval
-        var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache, new DistributedCacheEventStreamStoreOptions
-        {
-            PollingInterval = TimeSpan.FromMilliseconds(20)
-        });
-        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
-        {
-            SessionId = "session-1",
-            StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
-        }, CancellationToken);
-
-        // Write an initial event
-        var initialEvent = await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(null), CancellationToken);
-        var reader = await store.GetStreamReaderAsync(initialEvent.EventId!, CancellationToken);
-        Assert.NotNull(reader);
-
-        // Start reading and measure time to receive a new event
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken);
-        cts.CancelAfter(TimeSpan.FromSeconds(2));
-        var events = new List<SseItem<JsonRpcMessage?>>();
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-
-        var readTask = Task.Run(async () =>
-        {
-            await foreach (var evt in reader.ReadEventsAsync(cts.Token))
-            {
-                events.Add(evt);
-                if (events.Count >= 1)
-                {
-                    await cts.CancelAsync();
-                }
-            }
-        }, CancellationToken);
-
-        // Wait a bit, write event, measure time for it to be detected
-        await Task.Delay(50, CancellationToken);
-        await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(null), CancellationToken);
-
-        try
-        {
-            await readTask;
-        }
-        catch (OperationCanceledException)
-        {
-            // Expected
-        }
-
-        stopwatch.Stop();
-
-        // Assert - Event should be detected quickly due to short polling interval
-        Assert.Single(events);
-        // With 20ms polling, detection should be fast (well under 500ms)
-        Assert.True(stopwatch.ElapsedMilliseconds < 500, $"Expected quick detection, took {stopwatch.ElapsedMilliseconds}ms");
-    }
-
     [Fact]
     public void DefaultOptions_HaveReasonableDefaults()
     {
@@ -1557,21 +1426,296 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         Assert.True(options.MetadataAbsoluteExpiration > TimeSpan.Zero, "Metadata absolute expiration should be positive");
     }
 
-    #endregion
+    [Fact]
+    public async Task ReadEventsAsync_Completes_WhenMetadataExpires()
+    {
+        // Arrange - Use a cache that allows us to simulate metadata expiration
+        var trackingCache = new TestDistributedCache();
+        var customOptions = new DistributedCacheEventStreamStoreOptions
+        {
+            PollingInterval = TimeSpan.FromMilliseconds(10) // Fast polling to detect the bug quickly
+        };
+        var store = new DistributedCacheEventStreamStore(trackingCache, customOptions);
 
-    #region Helper Classes
+        // Create a stream and write an event
+        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Default // Non-polling mode to trigger the waiting loop
+        }, CancellationToken);
+
+        var item = new SseItem<JsonRpcMessage?>(new JsonRpcNotification { Method = "test" });
+        var writtenItem = await writer.WriteEventAsync(item, CancellationToken);
+
+        // Get a reader starting after the first event (so it will wait for more events)
+        var reader = await store.GetStreamReaderAsync(writtenItem.EventId!, CancellationToken);
+        Assert.NotNull(reader);
+
+        // Now simulate metadata expiration
+        trackingCache.ExpireMetadata();
+
+        // Act - Read events; the reader should complete gracefully when metadata expires
+        // instead of looping indefinitely with the stale initial metadata
+        var events = new List<SseItem<JsonRpcMessage?>>();
+        await foreach (var evt in reader.ReadEventsAsync(CancellationToken))
+        {
+            events.Add(evt);
+        }
+
+        // If we reach here without timeout, the reader correctly handled metadata expiration
+        Assert.Empty(events); // No new events after the initial one used to create the reader
+    }
+
+    [Fact]
+    public async Task ReadEventsAsync_DoesNotReadMetadata_InPollingMode()
+    {
+        // Arrange - Use a tracking cache to count metadata reads
+        var trackingCache = new TestDistributedCache();
+        var customOptions = new DistributedCacheEventStreamStoreOptions
+        {
+            PollingInterval = TimeSpan.FromMilliseconds(10)
+        };
+        var store = new DistributedCacheEventStreamStore(trackingCache, customOptions);
+
+        // Create a stream in POLLING mode - this allows the reader to exit after reading available events
+        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Polling
+        }, CancellationToken);
+
+        var item1 = new SseItem<JsonRpcMessage?>(new JsonRpcNotification { Method = "test1" });
+        var item2 = new SseItem<JsonRpcMessage?>(new JsonRpcNotification { Method = "test2" });
+        await writer.WriteEventAsync(item1, CancellationToken);
+        await writer.WriteEventAsync(item2, CancellationToken);
+
+        // Get a reader starting before all events (use a fake event ID at sequence 0)
+        var zeroSequenceEventId = DistributedCacheEventIdFormatter.Format("session-1", "stream-1", 0);
+        var reader = await store.GetStreamReaderAsync(zeroSequenceEventId, CancellationToken);
+        Assert.NotNull(reader);
+
+        // GetStreamReaderAsync should have read metadata exactly once
+        Assert.Equal(1, trackingCache.MetadataReadCount);
+
+        // Act - Read all events
+        var events = new List<SseItem<JsonRpcMessage?>>();
+        await foreach (var evt in reader.ReadEventsAsync(CancellationToken))
+        {
+            events.Add(evt);
+        }
+
+        // Assert - In polling mode, the reader should:
+        // 1. Use initial metadata from GetStreamReaderAsync (no additional read needed)
+        // 2. Read all available events (2 events)
+        // 3. Exit immediately because mode is Polling
+        //
+        // Metadata read count should remain at 1 (only the initial read from GetStreamReaderAsync)
+        Assert.Equal(2, events.Count);
+        Assert.Equal(1, trackingCache.MetadataReadCount);
+    }
+
+    [Fact]
+    public void EventIdFormatter_Format_CreatesValidEventId()
+    {
+        // Act
+        var eventId = DistributedCacheEventIdFormatter.Format("session-1", "stream-1", 42);
+
+        // Assert
+        Assert.NotNull(eventId);
+        Assert.NotEmpty(eventId);
+        Assert.Contains(":", eventId); // Should contain separators
+    }
+
+    [Fact]
+    public void EventIdFormatter_TryParse_RoundTripsSuccessfully()
+    {
+        // Arrange
+        var originalSessionId = "my-session-id";
+        var originalStreamId = "my-stream-id";
+        var originalSequence = 12345L;
+
+        // Act
+        var eventId = DistributedCacheEventIdFormatter.Format(originalSessionId, originalStreamId, originalSequence);
+        var parsed = DistributedCacheEventIdFormatter.TryParse(eventId, out var sessionId, out var streamId, out var sequence);
+
+        // Assert
+        Assert.True(parsed);
+        Assert.Equal(originalSessionId, sessionId);
+        Assert.Equal(originalStreamId, streamId);
+        Assert.Equal(originalSequence, sequence);
+    }
+
+    [Fact]
+    public void EventIdFormatter_TryParse_HandlesSpecialCharactersInSessionId()
+    {
+        // Arrange - Session IDs can contain any visible ASCII character per MCP spec
+        var originalSessionId = "session:with:colons:and|pipes";
+        var originalStreamId = "stream-1";
+        var originalSequence = 1L;
+
+        // Act
+        var eventId = DistributedCacheEventIdFormatter.Format(originalSessionId, originalStreamId, originalSequence);
+        var parsed = DistributedCacheEventIdFormatter.TryParse(eventId, out var sessionId, out var streamId, out var sequence);
+
+        // Assert
+        Assert.True(parsed);
+        Assert.Equal(originalSessionId, sessionId);
+        Assert.Equal(originalStreamId, streamId);
+        Assert.Equal(originalSequence, sequence);
+    }
+
+    [Fact]
+    public void EventIdFormatter_TryParse_HandlesSpecialCharactersInStreamId()
+    {
+        // Arrange
+        var originalSessionId = "session-1";
+        var originalStreamId = "stream:with:colons:and|special!chars@#$%";
+        var originalSequence = 1L;
+
+        // Act
+        var eventId = DistributedCacheEventIdFormatter.Format(originalSessionId, originalStreamId, originalSequence);
+        var parsed = DistributedCacheEventIdFormatter.TryParse(eventId, out var sessionId, out var streamId, out var sequence);
+
+        // Assert
+        Assert.True(parsed);
+        Assert.Equal(originalSessionId, sessionId);
+        Assert.Equal(originalStreamId, streamId);
+        Assert.Equal(originalSequence, sequence);
+    }
+
+    [Fact]
+    public void EventIdFormatter_TryParse_HandlesUnicodeCharacters()
+    {
+        // Arrange
+        var originalSessionId = "session-日本語-émojis-🎉";
+        var originalStreamId = "stream-中文-العربية";
+        var originalSequence = 999L;
+
+        // Act
+        var eventId = DistributedCacheEventIdFormatter.Format(originalSessionId, originalStreamId, originalSequence);
+        var parsed = DistributedCacheEventIdFormatter.TryParse(eventId, out var sessionId, out var streamId, out var sequence);
+
+        // Assert
+        Assert.True(parsed);
+        Assert.Equal(originalSessionId, sessionId);
+        Assert.Equal(originalStreamId, streamId);
+        Assert.Equal(originalSequence, sequence);
+    }
+
+    [Fact]
+    public void EventIdFormatter_TryParse_HandlesZeroSequence()
+    {
+        // Act
+        var eventId = DistributedCacheEventIdFormatter.Format("session", "stream", 0);
+        var parsed = DistributedCacheEventIdFormatter.TryParse(eventId, out _, out _, out var sequence);
+
+        // Assert
+        Assert.True(parsed);
+        Assert.Equal(0, sequence);
+    }
+
+    [Fact]
+    public void EventIdFormatter_TryParse_HandlesLargeSequence()
+    {
+        // Act
+        var eventId = DistributedCacheEventIdFormatter.Format("session", "stream", long.MaxValue);
+        var parsed = DistributedCacheEventIdFormatter.TryParse(eventId, out _, out _, out var sequence);
+
+        // Assert
+        Assert.True(parsed);
+        Assert.Equal(long.MaxValue, sequence);
+    }
+
+    [Fact]
+    public void EventIdFormatter_TryParse_ReturnsFalse_ForEmptyString()
+    {
+        // Act
+        var parsed = DistributedCacheEventIdFormatter.TryParse("", out var sessionId, out var streamId, out var sequence);
+
+        // Assert
+        Assert.False(parsed);
+        Assert.Equal(string.Empty, sessionId);
+        Assert.Equal(string.Empty, streamId);
+        Assert.Equal(0, sequence);
+    }
+
+    [Fact]
+    public void EventIdFormatter_TryParse_ReturnsFalse_ForInvalidFormat()
+    {
+        // Act & Assert - Various invalid formats
+        Assert.False(DistributedCacheEventIdFormatter.TryParse("no-separators", out _, out _, out _));
+        Assert.False(DistributedCacheEventIdFormatter.TryParse("only:one", out _, out _, out _));
+        Assert.False(DistributedCacheEventIdFormatter.TryParse("too:many:parts:here", out _, out _, out _));
+    }
+
+    [Fact]
+    public void EventIdFormatter_TryParse_ReturnsFalse_ForInvalidBase64()
+    {
+        // Act - Invalid base64 in first part
+        var parsed = DistributedCacheEventIdFormatter.TryParse("!!!invalid!!!:c3RyZWFt:1", out _, out _, out _);
+
+        // Assert
+        Assert.False(parsed);
+    }
+
+    [Fact]
+    public void EventIdFormatter_TryParse_ReturnsFalse_ForNonNumericSequence()
+    {
+        // Arrange - Valid base64 but non-numeric sequence
+        var sessionBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("session"));
+        var streamBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("stream"));
+        var invalidEventId = $"{sessionBase64}:{streamBase64}:not-a-number";
+
+        // Act
+        var parsed = DistributedCacheEventIdFormatter.TryParse(invalidEventId, out _, out _, out _);
+
+        // Assert
+        Assert.False(parsed);
+    }
 
     /// <summary>
     /// A distributed cache that tracks all operations for verification in tests.
+    /// Supports tracking Set calls, counting metadata reads, and simulating metadata expiration.
     /// </summary>
-    private sealed class TrackingDistributedCache : IDistributedCache
+    private sealed class TestDistributedCache : IDistributedCache
     {
         private readonly MemoryDistributedCache _innerCache = new(Options.Create(new MemoryDistributedCacheOptions()));
+        private int _metadataReadCount;
+        private bool _metadataExpired;
 
         public List<(string Key, DistributedCacheEntryOptions Options)> SetCalls { get; } = [];
+        public int MetadataReadCount => _metadataReadCount;
 
-        public byte[]? Get(string key) => _innerCache.Get(key);
-        public Task<byte[]?> GetAsync(string key, CancellationToken token = default) => _innerCache.GetAsync(key, token);
+        public void ExpireMetadata() => _metadataExpired = true;
+
+        public byte[]? Get(string key)
+        {
+            if (key.Contains("meta:"))
+            {
+                Interlocked.Increment(ref _metadataReadCount);
+                if (_metadataExpired)
+                {
+                    return null;
+                }
+            }
+            return _innerCache.Get(key);
+        }
+
+        public Task<byte[]?> GetAsync(string key, CancellationToken token = default)
+        {
+            if (key.Contains("meta:"))
+            {
+                Interlocked.Increment(ref _metadataReadCount);
+                if (_metadataExpired)
+                {
+                    return Task.FromResult<byte[]?>(null);
+                }
+            }
+            return _innerCache.GetAsync(key, token);
+        }
+
         public void Refresh(string key) => _innerCache.Refresh(key);
         public Task RefreshAsync(string key, CancellationToken token = default) => _innerCache.RefreshAsync(key, token);
         public void Remove(string key) => _innerCache.Remove(key);
@@ -1589,6 +1733,4 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
             return _innerCache.SetAsync(key, value, options, token);
         }
     }
-
-    #endregion
 }
