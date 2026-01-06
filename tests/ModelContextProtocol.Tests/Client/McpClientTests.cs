@@ -339,6 +339,67 @@ public class McpClientTests : ClientServerTestBase
     }
 
     [Fact]
+    public async Task CreateSamplingHandler_MixedContentWithToolResult_ShouldUseUserRole()
+    {
+        // Arrange - Tests that when Content contains both ToolResultContentBlock and other content,
+        // the message should use ChatRole.User (not ChatRole.Tool)
+        var mockChatClient = new Mock<IChatClient>();
+        var requestParams = new CreateMessageRequestParams
+        {
+            Messages =
+            [
+                new SamplingMessage
+                {
+                    Role = Role.User,
+                    Content =
+                    [
+                        new ToolResultContentBlock
+                        {
+                            ToolUseId = "call_123",
+                            Content = [new TextContentBlock { Text = "Tool result" }]
+                        },
+                        new TextContentBlock { Text = "Additional text content" }
+                    ]
+                }
+            ],
+            MaxTokens = 100
+        };
+
+        IEnumerable<ChatMessage>? capturedMessages = null;
+        var cancellationToken = CancellationToken.None;
+        var expectedResponse = new[] {
+            new ChatResponseUpdate
+            {
+                ModelId = "test-model",
+                FinishReason = ChatFinishReason.Stop,
+                Role = ChatRole.Assistant,
+                Contents = [new TextContent("Response")]
+            }
+        }.ToAsyncEnumerable();
+
+        mockChatClient
+            .Setup(client => client.GetStreamingResponseAsync(It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<ChatOptions>(), cancellationToken))
+            .Callback<IEnumerable<ChatMessage>, ChatOptions?, CancellationToken>((messages, _, _) => capturedMessages = messages.ToList())
+            .Returns(expectedResponse);
+
+        var handler = mockChatClient.Object.CreateSamplingHandler();
+
+        // Act
+        var result = await handler(requestParams, Mock.Of<IProgress<ProgressNotificationValue>>(), cancellationToken);
+
+        // Assert
+        Assert.NotNull(capturedMessages);
+        var messagesList = capturedMessages.ToList();
+        Assert.Single(messagesList);
+
+        // Mixed content (ToolResultContentBlock + TextContentBlock) should use User role, not Tool role
+        Assert.Equal(ChatRole.User, messagesList[0].Role);
+        Assert.Equal(2, messagesList[0].Contents.Count);
+        Assert.Contains(messagesList[0].Contents, c => c is FunctionResultContent);
+        Assert.Contains(messagesList[0].Contents, c => c is TextContent);
+    }
+
+    [Fact]
     public async Task ListToolsAsync_AllToolsReturned()
     {
         await using McpClient client = await CreateMcpClientForServer();
