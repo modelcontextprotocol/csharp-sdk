@@ -62,6 +62,8 @@ var clientTransport = new HttpClientTransport(new()
     OAuth = new()
     {
         RedirectUri = clientRedirectUri,
+        // Configure the metadata document URI for CIMD.
+        ClientMetadataDocumentUri = new Uri("https://conformance-test.local/client-metadata.json"),
         AuthorizationRedirectDelegate = (authUrl, redirectUri, ct) => HandleAuthorizationUrlWithListenerAsync(authUrl, redirectUri, preStartedListener, ct),
         DynamicClientRegistration = new()
         {
