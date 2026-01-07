@@ -658,11 +658,11 @@ public partial class McpServerToolTests
     {
         JsonSchema schema = JsonSerializer.Deserialize(schemaDoc, JsonContext2.Default.JsonSchema)!;
         EvaluationOptions options = new() { OutputFormat = OutputFormat.List };
-        EvaluationResults results = schema.Evaluate(value, options);
+        EvaluationResults results = schema.Evaluate(JsonSerializer.SerializeToElement(value, JsonContext2.Default.JsonNode), options);
         if (!results.IsValid)
         {
-            IEnumerable<string> errors = results.Details
-                .Where(d => d.HasErrors)
+            IEnumerable<string> errors = (results.Details ?? [])
+                .Where(d => d.Errors?.Count > 0)
                 .SelectMany(d => d.Errors!.Select(error => $"Path:${d.InstanceLocation} {error.Key}:{error.Value}"));
 
             throw new XunitException($"""
@@ -826,6 +826,7 @@ public partial class McpServerToolTests
     private static string ToolWithoutReturnDescription() => "result";
 
     [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+    [JsonSerializable(typeof(JsonNode))]
     [JsonSerializable(typeof(DisposableToolType))]
     [JsonSerializable(typeof(AsyncDisposableToolType))]
     [JsonSerializable(typeof(AsyncDisposableAndDisposableToolType))]

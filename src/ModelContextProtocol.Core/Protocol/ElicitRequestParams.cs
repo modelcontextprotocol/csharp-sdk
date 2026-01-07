@@ -20,6 +20,7 @@ public sealed class ElicitRequestParams : RequestParams
     ///   <item><description><b>url</b>: Client navigates user to a URL for out-of-band interaction. Sensitive data is not exposed to the client.</description></item>
     /// </list>
     /// </remarks>
+    /// <exception cref="ArgumentException">The value is not "form" or "url".</exception>
     [JsonPropertyName("mode")]
     [field: MaybeNull]
     public string Mode

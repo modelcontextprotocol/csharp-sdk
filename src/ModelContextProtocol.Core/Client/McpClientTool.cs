@@ -1,6 +1,5 @@
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol;
-using System.Collections.ObjectModel;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -26,13 +25,6 @@ namespace ModelContextProtocol.Client;
 /// </remarks>
 public sealed class McpClientTool : AIFunction
 {
-    /// <summary>Additional properties exposed from tools.</summary>
-    private static readonly ReadOnlyDictionary<string, object?> s_additionalProperties =
-        new(new Dictionary<string, object?>()
-        {
-            ["Strict"] = false, // some MCP schemas may not meet "strict" requirements
-        });
-
     private readonly McpClient _client;
     private readonly string _name;
     private readonly string _description;
@@ -125,9 +117,6 @@ public sealed class McpClientTool : AIFunction
 
     /// <inheritdoc/>
     public override JsonSerializerOptions JsonSerializerOptions { get; }
-
-    /// <inheritdoc/>
-    public override IReadOnlyDictionary<string, object?> AdditionalProperties => s_additionalProperties;
 
     /// <inheritdoc/>
     protected async override ValueTask<object?> InvokeCoreAsync(

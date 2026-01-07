@@ -10,8 +10,9 @@ uid: elicitation
 The **elicitation** feature allows servers to request additional information from users during interactions. This enables more dynamic and interactive AI experiences, making it easier to gather necessary context before executing tasks.
 
 The protocol supports two modes of elicitation:
-- **Form (In-Band)**: The server requests structured data (strings, numbers, booleans, enums) which the client collects via a form interface and returns to the server.
-- **URL Mode**: The server provides a URL for the user to visit (e.g., for OAuth, payments, or sensitive data entry). The interaction happens outside the MCP client.
+
+- **Form (In-Band)**: The server requests structured data (strings, numbers, Booleans, enums) which the client collects via a form interface and returns to the server.
+- **URL Mode**: The server provides a URL for the user to visit (for example, for OAuth, payments, or sensitive data entry). The interaction happens outside the MCP client.
 
 ### Server Support for Elicitation
 
@@ -208,6 +209,7 @@ await using var completionHandler = client.RegisterNotificationHandler(
 ```
 
 This pattern is particularly useful for:
+
 - **Third-party OAuth flows**: When the MCP server needs to obtain tokens from external services on behalf of the user
 - **Payment processing**: When user confirmation is required through a secure payment interface
 - **Sensitive credential collection**: When API keys or other secrets must be entered directly on a trusted server page rather than through the MCP client

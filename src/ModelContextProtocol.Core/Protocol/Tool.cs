@@ -39,6 +39,7 @@ public sealed class Tool : IBaseMetadata
     /// <summary>
     /// Gets or sets a JSON Schema object defining the expected parameters for the tool.
     /// </summary>
+    /// <exception cref="ArgumentException">The value is not a valid MCP tool JSON schema.</exception>
     /// <remarks>
     /// <para>
     /// The schema must be a valid JSON Schema object with the "type" property set to "object".
@@ -73,6 +74,7 @@ public sealed class Tool : IBaseMetadata
     /// <summary>
     /// Gets or sets a JSON Schema object defining the expected structured outputs for the tool.
     /// </summary>
+    /// <exception cref="ArgumentException">The value is not a valid MCP tool JSON schema.</exception>
     /// <remarks>
     /// <para>
     /// The schema must be a valid JSON Schema object with the "type" property set to "object".

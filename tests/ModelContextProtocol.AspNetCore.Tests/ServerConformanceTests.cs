@@ -110,21 +110,6 @@ public class ServerConformanceTests : IAsyncLifetime
 
     private void StartConformanceServer()
     {
-        // The ConformanceServer binary is in a parallel directory to the test binary
-        // Test binary is in: artifacts/bin/ModelContextProtocol.ConformanceTests/Debug/{tfm}/
-        // ConformanceServer binary is in: artifacts/bin/ModelContextProtocol.ConformanceServer/Debug/{tfm}/
-        var testBinaryDir = AppContext.BaseDirectory; // e.g., .../net10.0/
-        var configuration = Path.GetFileName(Path.GetDirectoryName(testBinaryDir.TrimEnd(Path.DirectorySeparatorChar))!);
-        var targetFramework = Path.GetFileName(testBinaryDir.TrimEnd(Path.DirectorySeparatorChar));
-        var conformanceServerDir = Path.GetFullPath(
-            Path.Combine(testBinaryDir, "..", "..", "..", "ModelContextProtocol.ConformanceServer", configuration, targetFramework));
-
-        if (!Directory.Exists(conformanceServerDir))
-        {
-            throw new DirectoryNotFoundException(
-                $"ConformanceServer directory not found at: {conformanceServerDir}");
-        }
-
         // Start the server in a background task
         _serverCts = new CancellationTokenSource();
         _serverTask = Task.Run(() => ConformanceServer.Program.MainAsync(["--urls", _serverUrl], new XunitLoggerProvider(_output), cancellationToken: _serverCts.Token));

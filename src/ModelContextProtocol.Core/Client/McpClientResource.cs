@@ -76,6 +76,7 @@ public sealed class McpClientResource
     /// </summary>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A <see cref="ValueTask{ReadResourceResult}"/> containing the resource's result with content and messages.</returns>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     /// <remarks>
     /// <para>
     /// This is a convenience method that internally calls <see cref="McpClient.ReadResourceAsync(string, RequestOptions, CancellationToken)"/>.

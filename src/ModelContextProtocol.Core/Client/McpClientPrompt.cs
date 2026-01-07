@@ -77,6 +77,7 @@ public sealed class McpClientPrompt
     /// <param name="serializerOptions">The serialization options governing argument serialization.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A <see cref="ValueTask"/> containing the prompt's result with content and messages.</returns>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     /// <remarks>
     /// <para>
     /// This method sends a request to the MCP server to execute this prompt with the provided arguments.
