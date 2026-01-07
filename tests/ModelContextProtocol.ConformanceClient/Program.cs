@@ -160,10 +160,7 @@ static async Task<string?> HandleAuthorizationUrlWithListenerAsync(Uri authoriza
         Console.WriteLine($"Error getting auth code: {ex.Message}");
         return null;
     }
-    finally
-    {
-        try { if (listener.IsListening) listener.Stop(); } catch { }
-    }
+    // Note: Don't stop the listener here - it may be reused for scope step-up or re-authentication
 }
 
 // Simulate a user opening the browser and logging in
