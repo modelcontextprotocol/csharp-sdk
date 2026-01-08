@@ -167,16 +167,16 @@ public class UseMcpClientTests : KestrelInMemoryTest
         var mockInnerClient = new Mock<IChatClient>();
         mockInnerClient
             .Setup(c => c.GetResponseAsync(
-                It.IsAny<IEnumerable<ChatMessage>>(), 
-                It.IsAny<ChatOptions>(), 
+                It.IsAny<IEnumerable<ChatMessage>>(),
+                It.IsAny<ChatOptions>(),
                 It.IsAny<CancellationToken>()))
-            .Returns((IEnumerable<ChatMessage> messages, ChatOptions? options, CancellationToken ct) => 
+            .Returns((IEnumerable<ChatMessage> messages, ChatOptions? options, CancellationToken ct) =>
                 GetStreamingResponseAsync(messages, options, ct).ToChatResponseAsync(ct));
 
         mockInnerClient
             .Setup(c => c.GetStreamingResponseAsync(
-                It.IsAny<IEnumerable<ChatMessage>>(), 
-                It.IsAny<ChatOptions>(), 
+                It.IsAny<IEnumerable<ChatMessage>>(),
+                It.IsAny<ChatOptions>(),
                 It.IsAny<CancellationToken>()))
             .Returns(GetStreamingResponseAsync);
 
@@ -184,12 +184,12 @@ public class UseMcpClientTests : KestrelInMemoryTest
         return mockInnerClient.Object.AsBuilder()
             .UseMcpClient(HttpClient, LoggerFactory, configureTransportOptions)
             // Placement is important, must be after UseMcpClient, otherwise, UseFunctionInvocation won't see the MCP tools.
-            .UseFunctionInvocation() 
+            .UseFunctionInvocation()
             .Build();
 
         async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
-            IEnumerable<ChatMessage> messages, 
-            ChatOptions? options, 
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             state.CapturedOptions = options;
@@ -240,15 +240,15 @@ public class UseMcpClientTests : KestrelInMemoryTest
     {
         Assert.NotNull(response);
         Assert.Equal(3, response.Messages.Count);
-        
+
         Assert.Equal(ChatRole.Assistant, response.Messages[0].Role);
         Assert.Single(response.Messages[0].Contents);
         Assert.IsType<FunctionCallContent>(response.Messages[0].Contents[0]);
-        
+
         Assert.Equal(ChatRole.Tool, response.Messages[1].Role);
         Assert.Single(response.Messages[1].Contents);
         Assert.IsType<FunctionResultContent>(response.Messages[1].Contents[0]);
-        
+
         Assert.Equal(ChatRole.Assistant, response.Messages[2].Role);
         Assert.Equal("Final response", response.Messages[2].Text);
     }
@@ -263,15 +263,15 @@ public class UseMcpClientTests : KestrelInMemoryTest
         // Arrange
         await using var _ = await StartServerAsync();
         using IChatClient sut = CreateTestChatClient(out var leafClientState);
-        var mcpTool = useUrl ? 
-            new HostedMcpServerTool("serverName", HttpClient.BaseAddress!) : 
+        var mcpTool = useUrl ?
+            new HostedMcpServerTool("serverName", HttpClient.BaseAddress!) :
             new HostedMcpServerTool("serverName", HttpClient.BaseAddress!.ToString());
         mcpTool.ApprovalMode = HostedMcpServerToolApprovalMode.NeverRequire;
         var options = new ChatOptions { Tools = [mcpTool] };
 
         // Act
-        var response = streaming ? 
-            await sut.GetStreamingResponseAsync("Test message", options, TestContext.Current.CancellationToken).ToChatResponseAsync(TestContext.Current.CancellationToken) : 
+        var response = streaming ?
+            await sut.GetStreamingResponseAsync("Test message", options, TestContext.Current.CancellationToken).ToChatResponseAsync(TestContext.Current.CancellationToken) :
             await sut.GetResponseAsync("Test message", options, TestContext.Current.CancellationToken);
 
         // Assert
@@ -305,8 +305,8 @@ public class UseMcpClientTests : KestrelInMemoryTest
         };
 
         // Act
-        var response = streaming ? 
-            await sut.GetStreamingResponseAsync("Test message", options, TestContext.Current.CancellationToken).ToChatResponseAsync(TestContext.Current.CancellationToken) : 
+        var response = streaming ?
+            await sut.GetStreamingResponseAsync("Test message", options, TestContext.Current.CancellationToken).ToChatResponseAsync(TestContext.Current.CancellationToken) :
             await sut.GetResponseAsync("Test message", options, TestContext.Current.CancellationToken);
 
         // Assert
@@ -353,7 +353,7 @@ public class UseMcpClientTests : KestrelInMemoryTest
         var options = new ChatOptions { Tools = [mcpTool] };
 
         // Act
-        var response = streaming ? 
+        var response = streaming ?
             await sut.GetStreamingResponseAsync("Test message", options, TestContext.Current.CancellationToken).ToChatResponseAsync(TestContext.Current.CancellationToken) :
             await sut.GetResponseAsync("Test message", options, TestContext.Current.CancellationToken);
 
@@ -398,7 +398,7 @@ public class UseMcpClientTests : KestrelInMemoryTest
         // Act
         List<ChatMessage> chatHistory = [];
         chatHistory.Add(new ChatMessage(ChatRole.User, "Test message"));
-        var response = streaming ? 
+        var response = streaming ?
             await sut.GetStreamingResponseAsync(chatHistory, options, TestContext.Current.CancellationToken).ToChatResponseAsync(TestContext.Current.CancellationToken) :
             await sut.GetResponseAsync(chatHistory, options, TestContext.Current.CancellationToken);
 
@@ -435,7 +435,7 @@ public class UseMcpClientTests : KestrelInMemoryTest
         var options = new ChatOptions { Tools = [mcpTool] };
 
         // Act
-        var response = streaming ? 
+        var response = streaming ?
             await sut.GetStreamingResponseAsync("Test message", options, TestContext.Current.CancellationToken).ToChatResponseAsync(TestContext.Current.CancellationToken) :
             await sut.GetResponseAsync("Test message", options, TestContext.Current.CancellationToken);
 
@@ -445,7 +445,7 @@ public class UseMcpClientTests : KestrelInMemoryTest
         var toolNames = leafClientState.CapturedOptions.Tools.Select(t => t.Name).ToList();
         Assert.Equal(expectedTools.Length, toolNames.Count);
         Assert.Equivalent(expectedTools, toolNames);
-        
+
         if (expectedTools.Contains("echo"))
         {
             AssertResponseWithInvocation(response);
@@ -489,12 +489,12 @@ public class UseMcpClientTests : KestrelInMemoryTest
 
                         context.Request.EnableBuffering();
                         JsonRpcRequest? rpcRequest = await JsonSerializer.DeserializeAsync<JsonRpcRequest>(
-                            context.Request.Body, 
-                            McpJsonUtilities.DefaultOptions, 
+                            context.Request.Body,
+                            McpJsonUtilities.DefaultOptions,
                             context.RequestAborted);
                         context.Request.Body.Position = 0;
                         Assert.NotNull(rpcRequest);
-                        
+
                         switch (rpcRequest.Method)
                         {
                             case "initialize":
@@ -514,7 +514,7 @@ public class UseMcpClientTests : KestrelInMemoryTest
                     await next();
                 });
             });
-        
+
         using IChatClient sut = CreateTestChatClient(out var leafClientState);
         var mcpTool = new HostedMcpServerTool("serverName", HttpClient.BaseAddress!)
         {
@@ -527,8 +527,8 @@ public class UseMcpClientTests : KestrelInMemoryTest
         };
 
         // Act
-        var response = streaming ? 
-            await sut.GetStreamingResponseAsync("Test message", options, TestContext.Current.CancellationToken).ToChatResponseAsync(TestContext.Current.CancellationToken) : 
+        var response = streaming ?
+            await sut.GetStreamingResponseAsync("Test message", options, TestContext.Current.CancellationToken).ToChatResponseAsync(TestContext.Current.CancellationToken) :
             await sut.GetResponseAsync("Test message", options, TestContext.Current.CancellationToken);
 
         // Assert
@@ -576,7 +576,7 @@ public class UseMcpClientTests : KestrelInMemoryTest
                 await next();
             });
         });
-        
+
         using IChatClient sut = CreateTestChatClient(out var leafClientState);
         var mcpTool = new HostedMcpServerTool("serverName", HttpClient.BaseAddress!)
         {
@@ -585,7 +585,7 @@ public class UseMcpClientTests : KestrelInMemoryTest
         var options = new ChatOptions { Tools = [mcpTool] };
 
         // Act
-        var response = streaming ? 
+        var response = streaming ?
             await sut.GetStreamingResponseAsync("Test message", options, TestContext.Current.CancellationToken).ToChatResponseAsync(TestContext.Current.CancellationToken) :
             await sut.GetResponseAsync("Test message", options, TestContext.Current.CancellationToken);
 
@@ -606,7 +606,7 @@ public class UseMcpClientTests : KestrelInMemoryTest
         leafClientState.Clear();
 
         // Act
-        var secondResponse = streaming ? 
+        var secondResponse = streaming ?
             await sut.GetStreamingResponseAsync("Test message", options, TestContext.Current.CancellationToken).ToChatResponseAsync(TestContext.Current.CancellationToken) :
             await sut.GetResponseAsync("Test message", options, TestContext.Current.CancellationToken);
 
@@ -633,7 +633,7 @@ public class UseMcpClientTests : KestrelInMemoryTest
         // Arrange
         string? firstSessionId = null;
         string? secondSessionId = null;
-        
+
         await using var app = await StartServerAsync(
             configureApp: app =>
             {
@@ -643,14 +643,14 @@ public class UseMcpClientTests : KestrelInMemoryTest
                     {
                         context.Request.EnableBuffering();
                         var rpcRequest = await JsonSerializer.DeserializeAsync<JsonRpcRequest>(
-                            context.Request.Body, 
+                            context.Request.Body,
                             McpJsonUtilities.DefaultOptions);
                         context.Request.Body.Position = 0;
-                        
+
                         if (rpcRequest?.Method == "tools/call" && context.Request.Headers.TryGetValue("Mcp-Session-Id", out var sessionIdHeader))
                         {
                             var sessionId = sessionIdHeader.ToString();
-                            
+
                             if (firstSessionId == null)
                             {
                                 // First tool call - capture session and return 404 to revoke it
@@ -668,19 +668,19 @@ public class UseMcpClientTests : KestrelInMemoryTest
                     await next();
                 });
             });
-        
+
         using IChatClient sut = CreateTestChatClient(out var leafClientState);
         var mcpTool = new HostedMcpServerTool("serverName", HttpClient.BaseAddress!)
         {
             ApprovalMode = HostedMcpServerToolApprovalMode.NeverRequire
         };
         var options = new ChatOptions { Tools = [mcpTool] };
-    
+
         // Act
-        var response = streaming ? 
+        var response = streaming ?
             await sut.GetStreamingResponseAsync("Test message", options, TestContext.Current.CancellationToken).ToChatResponseAsync(TestContext.Current.CancellationToken) :
             await sut.GetResponseAsync("Test message", options, TestContext.Current.CancellationToken);
-    
+
         // Assert
         Assert.NotNull(firstSessionId);
         Assert.NotNull(secondSessionId);
@@ -745,7 +745,7 @@ public class UseMcpClientTests : KestrelInMemoryTest
         HostedMcpServerTool? capturedTool = null;
         HttpClientTransportOptions? capturedTransportOptions = null;
         await using var _ = await StartServerAsync();
-        
+
         using IChatClient sut = CreateTestChatClient(out var leafClientState, (tool, transportOptions) =>
         {
             capturedTool = tool;
@@ -760,7 +760,7 @@ public class UseMcpClientTests : KestrelInMemoryTest
         var options = new ChatOptions { Tools = [mcpTool] };
 
         // Act
-        var response = streaming ? 
+        var response = streaming ?
             await sut.GetStreamingResponseAsync("Test message", options, TestContext.Current.CancellationToken).ToChatResponseAsync(TestContext.Current.CancellationToken) :
             await sut.GetResponseAsync("Test message", options, TestContext.Current.CancellationToken);
 

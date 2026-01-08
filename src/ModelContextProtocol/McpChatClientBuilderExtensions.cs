@@ -14,7 +14,7 @@ namespace ModelContextProtocol.Client;
 public static class McpChatClientBuilderExtensions
 {
     /// <summary>
-    /// Adds a chat client to the chat client pipeline that creates an <see cref="McpClient"/> for each <see cref="HostedMcpServerTool"/> 
+    /// Adds a chat client to the chat client pipeline that creates an <see cref="McpClient"/> for each <see cref="HostedMcpServerTool"/>
     /// in <see cref="ChatOptions.Tools"/> and augments it with the tools from MCP servers as <see cref="AIFunction"/> instances.
     /// </summary>
     /// <param name="builder">The <see cref="ChatClientBuilder"/> to configure.</param>
@@ -24,7 +24,7 @@ public static class McpChatClientBuilderExtensions
     /// <returns>The <see cref="ChatClientBuilder"/> for method chaining.</returns>
     /// <remarks>
     /// <para>
-    /// When a <c>HostedMcpServerTool</c> is encountered in the tools collection, the client 
+    /// When a <c>HostedMcpServerTool</c> is encountered in the tools collection, the client
     /// connects to the MCP server, retrieves available tools, and expands them into callable AI functions.
     /// Connections are cached by server address to avoid redundant connections.
     /// </para>
@@ -220,7 +220,7 @@ public static class McpChatClientBuilderExtensions
                     await client.DisposeAsync().ConfigureAwait(false);
                 }
                 catch { } // allow the original exception to propagate
-                
+
                 throw;
             }
         }
@@ -269,16 +269,16 @@ public static class McpChatClientBuilderExtensions
             var freshTool = await GetCurrentToolAsync().ConfigureAwait(false);
             return await freshTool.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false);
         }
-        
+
         private async Task<AIFunction> GetCurrentToolAsync()
         {
             Debug.Assert(Uri.TryCreate(_hostedMcpTool.ServerAddress, UriKind.Absolute, out var parsedAddress) &&
                         (parsedAddress.Scheme == Uri.UriSchemeHttp || parsedAddress.Scheme == Uri.UriSchemeHttps),
                         "Server address should have been validated before construction");
 
-            var (client, tools) = await _chatClient.GetClientAndToolsAsync(_hostedMcpTool, _serverAddressUri!).ConfigureAwait(false);
-            
-            return tools.FirstOrDefault(t => t.Name == Name) ?? 
+            var (_, tools) = await _chatClient.GetClientAndToolsAsync(_hostedMcpTool, _serverAddressUri!).ConfigureAwait(false);
+
+            return tools.FirstOrDefault(t => t.Name == Name) ??
                 throw new McpProtocolException($"Tool '{Name}' no longer exists on the MCP server.", McpErrorCode.InvalidParams);
         }
     }

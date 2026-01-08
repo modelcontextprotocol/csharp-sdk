@@ -71,7 +71,7 @@ internal sealed class McpClientTasksLruCache : IDisposable
             return false;
         }
     }
-    
+
     public void Dispose()
     {
         lock (_lock)
