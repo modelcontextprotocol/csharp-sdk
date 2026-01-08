@@ -34,14 +34,14 @@ builder.Services
             Icons = [
                 new Icon
                 {
-                    Source = "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Gear/Flat/gear_flat.svg",
+                    Source = "https://raw.githubusercontent.com/microsoft/fluentui-emoji/62ecdc0d7ca5c6df32148c169556bc8d3782fca4/assets/Gear/Flat/gear_flat.svg",
                     MimeType = "image/svg+xml",
                     Sizes = ["any"],
                     Theme = "light"
                 },
                 new Icon
                 {
-                    Source = "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Gear/3D/gear_3d.png",
+                    Source = "https://raw.githubusercontent.com/microsoft/fluentui-emoji/62ecdc0d7ca5c6df32148c169556bc8d3782fca4/assets/Gear/3D/gear_3d.png",
                     MimeType = "image/png",
                     Sizes = ["256x256"]
                 }
@@ -90,7 +90,7 @@ builder.Services
                     // High-resolution PNG icon for light theme
                     new Icon
                     {
-                        Source = "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Loudspeaker/Flat/loudspeaker_flat.svg",
+                        Source = "https://raw.githubusercontent.com/microsoft/fluentui-emoji/62ecdc0d7ca5c6df32148c169556bc8d3782fca4/assets/Loudspeaker/Flat/loudspeaker_flat.svg",
                         MimeType = "image/svg+xml",
                         Sizes = ["any"],
                         Theme = "light"
@@ -98,7 +98,7 @@ builder.Services
                     // 3D icon for dark theme
                     new Icon
                     {
-                        Source = "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Loudspeaker/3D/loudspeaker_3d.png",
+                        Source = "https://raw.githubusercontent.com/microsoft/fluentui-emoji/62ecdc0d7ca5c6df32148c169556bc8d3782fca4/assets/Loudspeaker/3D/loudspeaker_3d.png",
                         MimeType = "image/png",
                         Sizes = ["256x256"],
                         Theme = "dark"
