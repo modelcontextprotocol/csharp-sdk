@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+#pragma warning disable MEAI001 // Type is for evaluation purposes only and is subject to change or removal in future updates.
 
 namespace ModelContextProtocol.Client;
 
@@ -31,7 +32,7 @@ public static class McpChatClientBuilderExtensions
     /// Use this method as an alternative when working with chat providers that don't have built-in support for hosted MCP servers.
     /// </para>
     /// </remarks>
-    [Experimental("MEAI001")]
+    [Experimental(Experimentals.UseMcpClient_DiagnosticId)]
     public static ChatClientBuilder UseMcpClient(
         this ChatClientBuilder builder,
         HttpClient? httpClient = null,
@@ -46,7 +47,6 @@ public static class McpChatClientBuilderExtensions
         });
     }
 
-    [Experimental("MEAI001")]
     private sealed class McpChatClient : DelegatingChatClient
     {
         private readonly ILoggerFactory? _loggerFactory;
@@ -240,7 +240,6 @@ public static class McpChatClientBuilderExtensions
     /// An AI function wrapper that retries the invocation by recreating an MCP client when an <see cref="HttpRequestException"/> occurs.
     /// For example, this can happen if a session is revoked or a server error occurs. The retry evicts the cached MCP client.
     /// </summary>
-    [Experimental("MEAI001")]
     private sealed class McpRetriableAIFunction : DelegatingAIFunction
     {
         private readonly HostedMcpServerTool _hostedMcpTool;

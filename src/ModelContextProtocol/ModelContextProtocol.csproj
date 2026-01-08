@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <Compile Include="..\Common\Throw.cs" Link="Throw.cs" />
+    <Compile Include="..\Common\Experimentals.cs" Link="Experimentals.cs" />
   </ItemGroup>
 
   <ItemGroup>
