@@ -98,7 +98,7 @@ public class ServerConformanceTests : IAsyncLifetime
     public async Task RunConformanceTests()
     {
         // Check if Node.js is installed
-        Assert.SkipWhen(!IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
+        Assert.SkipWhen(!NodeHelpers.IsNpxInstalled(), "Node.js is not installed. Skipping conformance tests.");
 
         // Run the conformance test suite
         var result = await RunNpxConformanceTests();
@@ -117,15 +117,7 @@ public class ServerConformanceTests : IAsyncLifetime
 
     private async Task<(bool Success, string Output, string Error)> RunNpxConformanceTests()
     {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "npx",
-            Arguments = $"-y @modelcontextprotocol/conformance server --url {_serverUrl}",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
+        var startInfo = NodeHelpers.NpxStartInfo($"-y @modelcontextprotocol/conformance server --url {_serverUrl}");
 
         var outputBuilder = new StringBuilder();
         var errorBuilder = new StringBuilder();
@@ -161,34 +153,5 @@ public class ServerConformanceTests : IAsyncLifetime
             Output: outputBuilder.ToString(),
             Error: errorBuilder.ToString()
         );
-    }
-
-    private static bool IsNodeInstalled()
-    {
-        try
-        {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "npx",   // Check specifically for npx because windows seems unable to find it
-                Arguments = "--version",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = Process.Start(startInfo);
-            if (process == null)
-            {
-                return false;
-            }
-
-            process.WaitForExit(5000);
-            return process.ExitCode == 0;
-        }
-        catch
-        {
-            return false;
-        }
     }
 }

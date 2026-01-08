@@ -13,6 +13,9 @@ public class ClientConformanceTests //: IAsyncLifetime
 {
     private readonly ITestOutputHelper _output;
 
+    // Public static property required for SkipUnless attribute
+    public static bool IsNpxInstalled => NodeHelpers.IsNpxInstalled();
+
     public ClientConformanceTests(ITestOutputHelper output)
     {
         _output = output;
@@ -34,9 +37,6 @@ public class ClientConformanceTests //: IAsyncLifetime
     [InlineData("auth/scope-step-up")]
     public async Task RunConformanceTest(string scenario)
     {
-        // Check if Node.js is installed
-        Assert.SkipWhen(!IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
-
         // Run the conformance test suite
         var result = await RunClientConformanceScenario(scenario);
 
@@ -59,15 +59,7 @@ public class ClientConformanceTests //: IAsyncLifetime
                 $"ConformanceClient executable not found at: {conformanceClientPath}");
         }
 
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "npx",
-            Arguments = $"-y @modelcontextprotocol/conformance client --scenario {scenario} --command \"{conformanceClientPath} {scenario}\"",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
+        var startInfo = NodeHelpers.NpxStartInfo($"-y @modelcontextprotocol/conformance client --scenario {scenario} --command \"{conformanceClientPath} {scenario}\"");
 
         var outputBuilder = new StringBuilder();
         var errorBuilder = new StringBuilder();
@@ -103,34 +95,5 @@ public class ClientConformanceTests //: IAsyncLifetime
             Output: outputBuilder.ToString(),
             Error: errorBuilder.ToString()
         );
-    }
-
-    private static bool IsNodeInstalled()
-    {
-        try
-        {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "npx",   // Check specifically for npx because windows seems unable to find it
-                Arguments = "--version",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = Process.Start(startInfo);
-            if (process == null)
-            {
-                return false;
-            }
-
-            process.WaitForExit(5000);
-            return process.ExitCode == 0;
-        }
-        catch
-        {
-            return false;
-        }
     }
 }

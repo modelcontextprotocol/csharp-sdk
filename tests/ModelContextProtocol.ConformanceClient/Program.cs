@@ -48,11 +48,6 @@ if (callbackPort == 0)
     tcp.Stop();
 }
 
-var listenerPrefix = $"http://localhost:{callbackPort}/";
-var preStartedListener = new HttpListener();
-preStartedListener.Prefixes.Add(listenerPrefix);
-preStartedListener.Start();
-
 var clientRedirectUri = new Uri($"http://localhost:{callbackPort}/callback");
 
 var clientTransport = new HttpClientTransport(new()
@@ -64,7 +59,7 @@ var clientTransport = new HttpClientTransport(new()
         RedirectUri = clientRedirectUri,
         // Configure the metadata document URI for CIMD.
         ClientMetadataDocumentUri = new Uri("https://conformance-test.local/client-metadata.json"),
-        AuthorizationRedirectDelegate = (authUrl, redirectUri, ct) => HandleAuthorizationUrlWithListenerAsync(authUrl, redirectUri, preStartedListener, ct),
+        AuthorizationRedirectDelegate = (authUrl, redirectUri, ct) => HandleAuthorizationUrlAsync(authUrl, redirectUri, ct),
         DynamicClientRegistration = new()
         {
             ClientName = "ProtectedMcpClient",
@@ -136,8 +131,16 @@ static async Task<string?> HandleAuthorizationUrlAsync(Uri authorizationUrl, Uri
 
     if (location is not null && !string.IsNullOrEmpty(location.Query))
     {
-        var queryParams = QueryHelpers.ParseQuery(location.Query);
-        return queryParams["code"];
+        // Parse query string to extract "code" parameter
+        var query = location.Query.TrimStart('?');
+        foreach (var pair in query.Split('&'))
+        {
+            var parts = pair.Split('=', 2);
+            if (parts.Length == 2 && parts[0] == "code")
+            {
+                return HttpUtility.UrlDecode(parts[1]);
+            }
+        }
     }
 
     return null;
