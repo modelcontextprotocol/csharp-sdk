@@ -18,7 +18,7 @@ public class ClientConformanceTests //: IAsyncLifetime
         _output = output;
     }
 
-    [Theory]
+    [Theory(Skip = "npx is not installed. Skipping client conformance tests.", SkipUnless = nameof(IsNpxInstalled))]
     [InlineData("initialize")]
     [InlineData("tools_call")]
     [InlineData("auth/metadata-default")]
