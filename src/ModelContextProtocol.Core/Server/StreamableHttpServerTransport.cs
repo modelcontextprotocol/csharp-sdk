@@ -247,9 +247,9 @@ public sealed class StreamableHttpServerTransport : ITransport
             return null;
         }
 
-        // We use the 'Default' stream mode so that in the case of an unexpected network disconnection,
+        // We use the 'Streaming' stream mode so that in the case of an unexpected network disconnection,
         // the client can continue reading the remaining messages in a single, streamed response.
-        const SseEventStreamMode Mode = SseEventStreamMode.Default;
+        const SseEventStreamMode Mode = SseEventStreamMode.Streaming;
 
         _eventStreamWriter = await EventStreamStore.CreateStreamAsync(options: new()
         {

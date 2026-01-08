@@ -9,7 +9,7 @@ public enum SseEventStreamMode
     /// Causes the event stream returned by <see cref="ISseEventStreamReader.ReadEventsAsync(System.Threading.CancellationToken)"/> to only end when
     /// the associated <see cref="ISseEventStreamWriter"/> gets disposed.
     /// </summary>
-    Default = 0,
+    Streaming = 0,
 
     /// <summary>
     /// Causes the event stream returned by <see cref="ISseEventStreamReader.ReadEventsAsync(System.Threading.CancellationToken)"/> to end

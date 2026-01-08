@@ -16,7 +16,7 @@ public sealed class SseEventStreamOptions
     public required string StreamId { get; set; }
 
     /// <summary>
-    /// Gets or sets the mode of the event stream. Defaults to <see cref="SseEventStreamMode.Default"/>.
+    /// Gets or sets the mode of the event stream. Defaults to <see cref="SseEventStreamMode.Streaming"/>.
     /// </summary>
     public SseEventStreamMode Mode { get; set; }
 }

@@ -198,13 +198,13 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
         {
             progress.Report(new() { Progress = 0, Message = "Initial value" });
 
-            await clientReceivedInitialValueTcs.Task;
+            await clientReceivedInitialValueTcs.Task.WaitAsync(TestContext.Current.CancellationToken);
 
             await context.EnablePollingAsync(retryInterval: TimeSpan.FromSeconds(1));
 
             progress.Report(new() { Progress = 50, Message = "Polled value" });
 
-            await clientReceivedPolledValueTcs.Task;
+            await clientReceivedPolledValueTcs.Task.WaitAsync(TestContext.Current.CancellationToken);;
 
             return "Complete";
         }, options: new() { Name = ProgressToolName });

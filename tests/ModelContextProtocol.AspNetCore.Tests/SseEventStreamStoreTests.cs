@@ -23,7 +23,7 @@ public class SseEventStreamStoreTests(ITestOutputHelper testOutputHelper) : Logg
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         };
 
         var writer = await store.CreateStreamAsync(options, CancellationToken);
@@ -41,10 +41,10 @@ public class SseEventStreamStoreTests(ITestOutputHelper testOutputHelper) : Logg
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         };
         var defaultWriter = await store.CreateStreamAsync(defaultModeOptions, CancellationToken);
-        Assert.Equal(SseEventStreamMode.Default, defaultWriter.Mode);
+        Assert.Equal(SseEventStreamMode.Streaming, defaultWriter.Mode);
 
         var pollingModeOptions = new SseEventStreamOptions
         {
@@ -65,14 +65,14 @@ public class SseEventStreamStoreTests(ITestOutputHelper testOutputHelper) : Logg
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         var writer2 = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-1",
             StreamId = "stream-2",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         Assert.NotSame(writer1, writer2);
@@ -92,7 +92,7 @@ public class SseEventStreamStoreTests(ITestOutputHelper testOutputHelper) : Logg
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         var message = new JsonRpcRequest { Method = "test", Id = new RequestId("1") };
@@ -112,7 +112,7 @@ public class SseEventStreamStoreTests(ITestOutputHelper testOutputHelper) : Logg
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         var message = new JsonRpcRequest { Method = "test", Id = new RequestId("1") };
@@ -131,7 +131,7 @@ public class SseEventStreamStoreTests(ITestOutputHelper testOutputHelper) : Logg
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         var message1 = new JsonRpcRequest { Method = "test1", Id = new RequestId("1") };
@@ -155,7 +155,7 @@ public class SseEventStreamStoreTests(ITestOutputHelper testOutputHelper) : Logg
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         var message1 = new JsonRpcRequest { Method = "test1", Id = new RequestId("1") };
@@ -176,7 +176,7 @@ public class SseEventStreamStoreTests(ITestOutputHelper testOutputHelper) : Logg
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         var message = new JsonRpcRequest { Method = "test-method", Id = new RequestId("req-1") };
@@ -196,7 +196,7 @@ public class SseEventStreamStoreTests(ITestOutputHelper testOutputHelper) : Logg
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         var item = new SseItem<JsonRpcMessage?>(null, "priming");
@@ -219,10 +219,10 @@ public class SseEventStreamStoreTests(ITestOutputHelper testOutputHelper) : Logg
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
-        Assert.Equal(SseEventStreamMode.Default, writer.Mode);
+        Assert.Equal(SseEventStreamMode.Streaming, writer.Mode);
 
         await writer.SetModeAsync(SseEventStreamMode.Polling, CancellationToken);
 
@@ -242,9 +242,9 @@ public class SseEventStreamStoreTests(ITestOutputHelper testOutputHelper) : Logg
 
         Assert.Equal(SseEventStreamMode.Polling, writer.Mode);
 
-        await writer.SetModeAsync(SseEventStreamMode.Default, CancellationToken);
+        await writer.SetModeAsync(SseEventStreamMode.Streaming, CancellationToken);
 
-        Assert.Equal(SseEventStreamMode.Default, writer.Mode);
+        Assert.Equal(SseEventStreamMode.Streaming, writer.Mode);
     }
 
     #endregion
@@ -289,7 +289,7 @@ public class SseEventStreamStoreTests(ITestOutputHelper testOutputHelper) : Logg
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         // Create a new stream with the same key, effectively replacing the old one
@@ -297,7 +297,7 @@ public class SseEventStreamStoreTests(ITestOutputHelper testOutputHelper) : Logg
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken));
     }
 
@@ -421,7 +421,7 @@ public class SseEventStreamStoreTests(ITestOutputHelper testOutputHelper) : Logg
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         var message1 = new JsonRpcRequest { Method = "test1", Id = new RequestId("1") };
@@ -470,7 +470,7 @@ public class SseEventStreamStoreTests(ITestOutputHelper testOutputHelper) : Logg
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         var message1 = new JsonRpcRequest { Method = "test1", Id = new RequestId("1") };
@@ -502,7 +502,7 @@ public class SseEventStreamStoreTests(ITestOutputHelper testOutputHelper) : Logg
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         var message1 = new JsonRpcRequest { Method = "test1", Id = new RequestId("1") };
@@ -533,14 +533,14 @@ public class SseEventStreamStoreTests(ITestOutputHelper testOutputHelper) : Logg
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         var writer2 = await store.CreateStreamAsync(new SseEventStreamOptions
         {
             SessionId = "session-2",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         var message1 = new JsonRpcRequest { Method = "test1", Id = new RequestId("1") };
@@ -609,7 +609,7 @@ public class SseEventStreamStoreTests(ITestOutputHelper testOutputHelper) : Logg
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         await writer.DisposeAsync();
@@ -624,7 +624,7 @@ public class SseEventStreamStoreTests(ITestOutputHelper testOutputHelper) : Logg
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         await writer.DisposeAsync();
