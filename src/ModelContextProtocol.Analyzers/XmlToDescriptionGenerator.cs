@@ -23,7 +23,7 @@ public sealed class XmlToDescriptionGenerator : IIncrementalGenerator
     /// A display format that produces fully-qualified type names with "global::" prefix
     /// and includes nullability annotations.
     /// </summary>
-    private static readonly SymbolDisplayFormat FullyQualifiedFormatWithNullability =
+    private static readonly SymbolDisplayFormat s_fullyQualifiedFormatWithNullability =
         SymbolDisplayFormat.FullyQualifiedFormat.AddMiscellaneousOptions(
             SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
 
@@ -133,7 +133,7 @@ public sealed class XmlToDescriptionGenerator : IIncrementalGenerator
             .Where(m => !m.IsKind(SyntaxKind.AsyncKeyword))
             .Select(m => m.Text);
         string modifiersStr = string.Join(" ", modifiers);
-        string returnType = methodSymbol.ReturnType.ToDisplayString(FullyQualifiedFormatWithNullability);
+        string returnType = methodSymbol.ReturnType.ToDisplayString(s_fullyQualifiedFormatWithNullability);
         string methodName = methodSymbol.Name;
 
         // Extract parameters
@@ -145,7 +145,7 @@ public sealed class XmlToDescriptionGenerator : IIncrementalGenerator
             var paramSyntax = i < parameterSyntaxList.Count ? parameterSyntaxList[i] : null;
 
             parameters[i] = new ParameterInfo(
-                ParameterType: param.Type.ToDisplayString(FullyQualifiedFormatWithNullability),
+                ParameterType: param.Type.ToDisplayString(s_fullyQualifiedFormatWithNullability),
                 Name: param.Name,
                 HasDescriptionAttribute: descriptionAttribute is not null && HasAttribute(param, descriptionAttribute),
                 XmlDescription: xmlDocs?.Parameters.TryGetValue(param.Name, out var pd) == true && !string.IsNullOrWhiteSpace(pd) ? pd : null,
