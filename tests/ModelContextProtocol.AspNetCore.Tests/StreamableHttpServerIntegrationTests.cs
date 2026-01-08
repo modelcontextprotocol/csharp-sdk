@@ -3,7 +3,7 @@ using System.Text;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
 
-public class StreamableHttpServerIntegrationTests(SseServerWithXunitLoggerFixture fixture, ITestOutputHelper testOutputHelper)
+public class StreamableHttpServerIntegrationTests(SseServerIntegrationTestFixture fixture, ITestOutputHelper testOutputHelper)
     : HttpServerIntegrationTests(fixture, testOutputHelper)
 
 {

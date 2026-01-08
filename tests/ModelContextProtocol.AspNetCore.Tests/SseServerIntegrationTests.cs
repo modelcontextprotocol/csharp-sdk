@@ -4,7 +4,7 @@ using System.Text;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
 
-public class SseServerIntegrationTests(SseServerWithXunitLoggerFixture fixture, ITestOutputHelper testOutputHelper)
+public class SseServerIntegrationTests(SseServerIntegrationTestFixture fixture, ITestOutputHelper testOutputHelper)
     : HttpServerIntegrationTests(fixture, testOutputHelper)
 
 {

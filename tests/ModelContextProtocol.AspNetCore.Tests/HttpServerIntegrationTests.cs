@@ -4,11 +4,11 @@ using ModelContextProtocol.Tests.Utils;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
 
-public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<SseServerWithXunitLoggerFixture>
+public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<SseServerIntegrationTestFixture>
 {
-    protected readonly SseServerWithXunitLoggerFixture _fixture;
+    protected readonly SseServerIntegrationTestFixture _fixture;
 
-    public HttpServerIntegrationTests(SseServerWithXunitLoggerFixture fixture, ITestOutputHelper testOutputHelper)
+    public HttpServerIntegrationTests(SseServerIntegrationTestFixture fixture, ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
     {
         _fixture = fixture;

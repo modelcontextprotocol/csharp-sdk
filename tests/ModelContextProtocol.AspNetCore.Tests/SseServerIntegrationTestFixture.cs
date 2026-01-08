@@ -7,18 +7,23 @@ using System.Net;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
 
-public abstract class SseServerIntegrationTestFixture : IAsyncDisposable
+public class SseServerIntegrationTestFixture : IAsyncDisposable
 {
     private readonly KestrelInMemoryTransport _inMemoryTransport = new();
+
     private readonly Task _serverTask;
     private readonly CancellationTokenSource _stopCts = new();
+
+    // XUnit's ITestOutputHelper is created per test, while this fixture is used for
+    // multiple tests, so this dispatches the output to the current test.
+    private readonly DelegatingTestOutputHelper _delegatingTestOutputHelper = new();
 
     private HttpClientTransportOptions DefaultTransportOptions { get; set; } = new()
     {
         Endpoint = new("http://localhost:5000/"),
     };
 
-    protected SseServerIntegrationTestFixture()
+    public SseServerIntegrationTestFixture()
     {
         var socketsHttpHandler = new SocketsHttpHandler
         {
@@ -34,10 +39,8 @@ public abstract class SseServerIntegrationTestFixture : IAsyncDisposable
             BaseAddress = new("http://localhost:5000/"),
         };
 
-        _serverTask = Program.MainAsync([], CreateLoggerProvider(), _inMemoryTransport, _stopCts.Token);
+        _serverTask = Program.MainAsync([], new XunitLoggerProvider(_delegatingTestOutputHelper), _inMemoryTransport, _stopCts.Token);
     }
-    
-    protected abstract ILoggerProvider CreateLoggerProvider();
 
     public HttpClient HttpClient { get; }
 
@@ -50,17 +53,21 @@ public abstract class SseServerIntegrationTestFixture : IAsyncDisposable
             TestContext.Current.CancellationToken);
     }
 
-    public virtual void Initialize(ITestOutputHelper output, HttpClientTransportOptions clientTransportOptions)
+    public void Initialize(ITestOutputHelper output, HttpClientTransportOptions clientTransportOptions)
     {
+        _delegatingTestOutputHelper.CurrentTestOutputHelper = output;
         DefaultTransportOptions = clientTransportOptions;
     }
 
-    public virtual void TestCompleted()
+    public void TestCompleted()
     {
+        _delegatingTestOutputHelper.CurrentTestOutputHelper = null;
     }
 
-    public virtual async ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
+        _delegatingTestOutputHelper.CurrentTestOutputHelper = null;
+
         HttpClient.Dispose();
         _stopCts.Cancel();
 
@@ -74,50 +81,4 @@ public abstract class SseServerIntegrationTestFixture : IAsyncDisposable
 
         _stopCts.Dispose();
     }
-}
-
-/// <summary>
-/// SSE server fixture that routes logs to xUnit test output.
-/// </summary>
-public class SseServerWithXunitLoggerFixture : SseServerIntegrationTestFixture
-{
-    // XUnit's ITestOutputHelper is created per test, while this fixture is used for
-    // multiple tests, so this dispatches the output to the current test.
-    private readonly DelegatingTestOutputHelper _delegatingTestOutputHelper = new();
-
-    protected override ILoggerProvider CreateLoggerProvider()
-        => new XunitLoggerProvider(_delegatingTestOutputHelper);
-
-    public override void Initialize(ITestOutputHelper output, HttpClientTransportOptions clientTransportOptions)
-    {
-        _delegatingTestOutputHelper.CurrentTestOutputHelper = output;
-        base.Initialize(output, clientTransportOptions);
-    }
-
-    public override void TestCompleted()
-    {
-        _delegatingTestOutputHelper.CurrentTestOutputHelper = null;
-        base.TestCompleted();
-    }
-
-    public override async ValueTask DisposeAsync()
-    {
-        _delegatingTestOutputHelper.CurrentTestOutputHelper = null;
-        await base.DisposeAsync();
-    }
-}
-
-/// <summary>
-/// Fixture for tests that need to inspect server logs using MockLoggerProvider.
-/// Use <see cref="SseServerWithXunitLoggerFixture"/> for tests that just need xUnit output.
-/// </summary>
-public class SseServerWithMockLoggerFixture : SseServerIntegrationTestFixture
-{
-    private readonly MockLoggerProvider _mockLoggerProvider = new();
-
-    protected override ILoggerProvider CreateLoggerProvider()
-        => _mockLoggerProvider;
-
-    public IEnumerable<(string Category, LogLevel LogLevel, EventId EventId, string Message, Exception? Exception)> ServerLogs 
-        => _mockLoggerProvider.LogMessages;
 }

@@ -38,7 +38,7 @@ public class Program
 
         Console.WriteLine("Registering handlers.");
 
-        #region Helper method
+        #region Helped method
         static CreateMessageRequestParams CreateRequestSamplingParams(string context, string uri, int maxTokens = 100)
         {
             return new CreateMessageRequestParams
@@ -421,16 +421,7 @@ public class Program
         }
 
         builder.Services.AddMcpServer(ConfigureOptions)
-            .WithHttpTransport(httpOptions =>
-            {
-                // Log headers for testing purposes
-                httpOptions.ConfigureSessionOptions = (httpContext, serverOptions, ct) =>
-                {
-                    var logger = httpContext.RequestServices.GetRequiredService<ILogger<Program>>();
-                    logger.LogInformation(JsonSerializer.Serialize(httpContext.Request.Headers));
-                    return Task.CompletedTask;
-                };
-            });
+            .WithHttpTransport();
 
         var app = builder.Build();
 
