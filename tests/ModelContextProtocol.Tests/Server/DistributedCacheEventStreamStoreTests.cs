@@ -28,142 +28,6 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     }
 
     [Fact]
-    public async Task Constructor_UsesDefaultOptions_WhenOptionsParameterIsNull()
-    {
-        // Arrange
-        var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache, options: null);
-
-        // Act - Create a stream to verify the store works with default options
-        var streamOptions = new SseEventStreamOptions
-        {
-            SessionId = "session-1",
-            StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
-        };
-        var writer = await store.CreateStreamAsync(streamOptions, CancellationToken);
-
-        // Assert - The store should work normally with default options
-        Assert.NotNull(writer);
-        Assert.Equal("stream-1", writer.StreamId);
-        Assert.Equal(SseEventStreamMode.Default, writer.Mode);
-    }
-
-    [Fact]
-    public async Task Constructor_UsesProvidedOptions_WhenOptionsParameterIsSpecified()
-    {
-        // Arrange
-        var cache = CreateMemoryCache();
-        var customOptions = new DistributedCacheEventStreamStoreOptions
-        {
-            EventSlidingExpiration = TimeSpan.FromMinutes(10),
-            EventAbsoluteExpiration = TimeSpan.FromHours(1),
-            MetadataSlidingExpiration = TimeSpan.FromMinutes(20),
-            MetadataAbsoluteExpiration = TimeSpan.FromHours(2),
-            PollingInterval = TimeSpan.FromMilliseconds(50)
-        };
-        var store = new DistributedCacheEventStreamStore(cache, customOptions);
-
-        // Act - Create a stream to verify the store works with custom options
-        var streamOptions = new SseEventStreamOptions
-        {
-            SessionId = "session-1",
-            StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
-        };
-        var writer = await store.CreateStreamAsync(streamOptions, CancellationToken);
-
-        // Assert - The store should work with custom options
-        Assert.NotNull(writer);
-        Assert.Equal("stream-1", writer.StreamId);
-    }
-
-    [Fact]
-    public async Task CreateStreamAsync_ReturnsWriter_WithCorrectStreamId()
-    {
-        // Arrange
-        var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
-        var options = new SseEventStreamOptions
-        {
-            SessionId = "session-1",
-            StreamId = "my-stream-id",
-            Mode = SseEventStreamMode.Default
-        };
-
-        // Act
-        var writer = await store.CreateStreamAsync(options, CancellationToken);
-
-        // Assert
-        Assert.Equal("my-stream-id", writer.StreamId);
-    }
-
-    [Fact]
-    public async Task CreateStreamAsync_ReturnsWriter_WithCorrectSessionId()
-    {
-        // Arrange
-        var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
-        var options = new SseEventStreamOptions
-        {
-            SessionId = "my-session-id",
-            StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
-        };
-
-        // Act
-        var writer = await store.CreateStreamAsync(options, CancellationToken);
-
-        // Assert - Write an event and verify the reader can find it by session
-        var item = new SseItem<JsonRpcMessage?>(null);
-        var writtenItem = await writer.WriteEventAsync(item, CancellationToken);
-
-        var reader = await store.GetStreamReaderAsync(writtenItem.EventId!, CancellationToken);
-        Assert.NotNull(reader);
-        Assert.Equal("my-session-id", reader.SessionId);
-    }
-
-    [Fact]
-    public async Task CreateStreamAsync_ReturnsWriter_WithDefaultMode()
-    {
-        // Arrange
-        var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
-        var options = new SseEventStreamOptions
-        {
-            SessionId = "session-1",
-            StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
-        };
-
-        // Act
-        var writer = await store.CreateStreamAsync(options, CancellationToken);
-
-        // Assert
-        Assert.Equal(SseEventStreamMode.Default, writer.Mode);
-    }
-
-    [Fact]
-    public async Task CreateStreamAsync_ReturnsWriter_WithPollingMode()
-    {
-        // Arrange
-        var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
-        var options = new SseEventStreamOptions
-        {
-            SessionId = "session-1",
-            StreamId = "stream-1",
-            Mode = SseEventStreamMode.Polling
-        };
-
-        // Act
-        var writer = await store.CreateStreamAsync(options, CancellationToken);
-
-        // Assert
-        Assert.Equal(SseEventStreamMode.Polling, writer.Mode);
-    }
-
-    [Fact]
     public async Task CreateStreamAsync_ThrowsArgumentNullException_WhenOptionsIsNull()
     {
         // Arrange
@@ -185,7 +49,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         var item = new SseItem<JsonRpcMessage?>(null);
@@ -208,7 +72,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         var existingEventId = "existing-event-id";
@@ -231,7 +95,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         var message = new JsonRpcNotification { Method = "test/notification" };
@@ -254,7 +118,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         var item = new SseItem<JsonRpcMessage?>(null, "custom-event-type");
@@ -306,7 +170,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         var item = new SseItem<JsonRpcMessage?>(null);
@@ -334,7 +198,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         var item = new SseItem<JsonRpcMessage?>(null);
@@ -358,7 +222,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         var item = new SseItem<JsonRpcMessage?>(null);
@@ -371,26 +235,6 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     }
 
     [Fact]
-    public async Task SetModeAsync_UpdatesModeProperty_OnWriter()
-    {
-        // Arrange
-        var cache = CreateMemoryCache();
-        var store = new DistributedCacheEventStreamStore(cache);
-        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
-        {
-            SessionId = "session-1",
-            StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
-        }, CancellationToken);
-
-        // Act
-        await writer.SetModeAsync(SseEventStreamMode.Polling, CancellationToken);
-
-        // Assert
-        Assert.Equal(SseEventStreamMode.Polling, writer.Mode);
-    }
-
-    [Fact]
     public async Task SetModeAsync_PersistsModeChangeToMetadata()
     {
         // Arrange
@@ -400,7 +244,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         mockCache.SetCalls.Clear(); // Clear calls from CreateStreamAsync setup
@@ -426,7 +270,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         // Write an event to have something to read
@@ -462,7 +306,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         // Write an event so we can get a reader
@@ -497,7 +341,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         // Act - Call DisposeAsync multiple times
@@ -519,7 +363,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         mockCache.SetCalls.Clear(); // Clear calls from CreateStreamAsync
@@ -588,7 +432,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             SessionId = "my-session",
             StreamId = "my-stream",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         // Write an event to get a valid event ID
@@ -875,7 +719,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     }
 
     [Fact]
-    public async Task ReadEventsAsync_InDefaultMode_WaitsForNewEvents()
+    public async Task ReadEventsAsync_InStreamingMode_WaitsForNewEvents()
     {
         // Arrange
         var cache = CreateMemoryCache();
@@ -887,7 +731,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         // Write one event so we have a valid event ID
@@ -932,7 +776,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     }
 
     [Fact]
-    public async Task ReadEventsAsync_InDefaultMode_YieldsNewlyWrittenEvents()
+    public async Task ReadEventsAsync_InStreamingMode_YieldsNewlyWrittenEvents()
     {
         // Arrange
         var cache = CreateMemoryCache();
@@ -944,7 +788,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         // Write initial event
@@ -991,7 +835,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     }
 
     [Fact]
-    public async Task ReadEventsAsync_InDefaultMode_CompletesWhenStreamIsDisposed()
+    public async Task ReadEventsAsync_InStreamingMode_CompletesWhenStreamIsDisposed()
     {
         // Arrange
         var cache = CreateMemoryCache();
@@ -1003,7 +847,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         // Write event to create a valid reader
@@ -1034,7 +878,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     }
 
     [Fact]
-    public async Task ReadEventsAsync_InDefaultMode_RespectsCancellation()
+    public async Task ReadEventsAsync_InStreamingMode_RespectsCancellation()
     {
         // Arrange
         var cache = CreateMemoryCache();
@@ -1046,7 +890,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         // Write event to create a valid reader
@@ -1089,7 +933,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     }
 
     [Fact]
-    public async Task ReadEventsAsync_RespectsModeSwitchFromDefaultToPolling()
+    public async Task ReadEventsAsync_RespectsModeSwitchFromStreamingToPolling()
     {
         // Arrange
         var cache = CreateMemoryCache();
@@ -1101,7 +945,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         // Write an event to create a valid reader
@@ -1151,7 +995,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default
+            Mode = SseEventStreamMode.Streaming
         }, CancellationToken);
 
         // Write initial event and create reader from sequence 0
@@ -1442,7 +1286,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         {
             SessionId = "session-1",
             StreamId = "stream-1",
-            Mode = SseEventStreamMode.Default // Non-polling mode to trigger the waiting loop
+            Mode = SseEventStreamMode.Streaming // Non-polling mode to trigger the waiting loop
         }, CancellationToken);
 
         var item = new SseItem<JsonRpcMessage?>(new JsonRpcNotification { Method = "test" });

@@ -114,6 +114,9 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
     private sealed class DistributedCacheEventStreamWriter : ISseEventStreamWriter
     {
         private readonly IDistributedCache _cache;
+        private readonly string _sessionId;
+        private readonly string _streamId;
+        private SseEventStreamMode _mode;
         private readonly DistributedCacheEventStreamStoreOptions _options;
         private long _sequence;
         private bool _disposed;
@@ -126,19 +129,15 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
             DistributedCacheEventStreamStoreOptions options)
         {
             _cache = cache;
-            SessionId = sessionId;
-            StreamId = streamId;
-            Mode = mode;
+            _sessionId = sessionId;
+            _streamId = streamId;
+            _mode = mode;
             _options = options;
         }
 
-        public string SessionId { get; }
-        public string StreamId { get; }
-        public SseEventStreamMode Mode { get; private set; }
-
         public async ValueTask SetModeAsync(SseEventStreamMode mode, CancellationToken cancellationToken = default)
         {
-            Mode = mode;
+            _mode = mode;
             await UpdateMetadataAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -152,7 +151,7 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
 
             // Generate a new sequence number and event ID
             var sequence = Interlocked.Increment(ref _sequence);
-            var eventId = DistributedCacheEventIdFormatter.Format(SessionId, StreamId, sequence);
+            var eventId = DistributedCacheEventIdFormatter.Format(_sessionId, _streamId, sequence);
             var newItem = sseItem with { EventId = eventId };
 
             // Store the event in the cache
@@ -182,13 +181,13 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
         {
             var metadata = new StreamMetadata
             {
-                Mode = Mode,
+                Mode = _mode,
                 IsCompleted = _disposed,
                 LastSequence = Interlocked.Read(ref _sequence),
             };
 
             var metadataBytes = JsonSerializer.SerializeToUtf8Bytes(metadata, McpJsonUtilities.JsonContext.Default.StreamMetadata);
-            var metadataKey = CacheKeys.StreamMetadata(SessionId, StreamId);
+            var metadataKey = CacheKeys.StreamMetadata(_sessionId, _streamId);
 
             await _cache.SetAsync(metadataKey, metadataBytes, new DistributedCacheEntryOptions
             {
