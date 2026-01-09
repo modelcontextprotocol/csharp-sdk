@@ -134,15 +134,14 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
     {
         if (parentTransport.Stateless)
         {
-            // Polling is currently not supported in stateless mode.
-            return;
+            throw new InvalidOperationException("Polling is not supported in stateless mode.");
         }
 
         using var _ = await _lock.LockAsync(cancellationToken).ConfigureAwait(false);
 
         if (_sseEventStreamWriter is null)
         {
-            return;
+            throw new InvalidOperationException($"Polling requires an event stream store to be configured.");
         }
 
         // Send the priming event with the new retry interval.
