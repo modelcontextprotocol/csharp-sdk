@@ -121,4 +121,18 @@ public sealed class HttpClientTransportOptions
     /// how many reconnection attempts are made before giving up.
     /// </remarks>
     public int MaxReconnectionAttempts { get; set; } = 2;
+
+    /// <summary>
+    /// Gets or sets the default interval at which the client attempts reconnection after an SSE stream is disconnected.
+    /// </summary>
+    /// <remarks>
+    /// <p>
+    /// The default value is 1 second.
+    /// </p>
+    /// <p>
+    /// If the server sends a message specifying a different reconnection interval, that new value will be used for all
+    /// subsequent reconnection attempts for that stream.
+    /// </p>
+    /// </remarks>
+    public TimeSpan DefaultReconnectionInterval { get; set; } = TimeSpan.FromSeconds(1);
 }

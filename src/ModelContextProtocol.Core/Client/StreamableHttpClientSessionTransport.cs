@@ -16,7 +16,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
     private static readonly MediaTypeWithQualityHeaderValue s_applicationJsonMediaType = new("application/json");
     private static readonly MediaTypeWithQualityHeaderValue s_textEventStreamMediaType = new("text/event-stream");
 
-    private static readonly TimeSpan s_defaultReconnectionDelay = TimeSpan.FromSeconds(1);
+    //private static readonly TimeSpan s_defaultReconnectionDelay = TimeSpan.FromSeconds(1);
 
     private readonly McpHttpClient _httpClient;
     private readonly HttpClientTransportOptions _options;
@@ -237,7 +237,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
             if (shouldDelay)
             {
-                var delay = state.RetryInterval ?? s_defaultReconnectionDelay;
+                var delay = state.RetryInterval ?? _options.DefaultReconnectionInterval;
                 await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
             }
             shouldDelay = true;
