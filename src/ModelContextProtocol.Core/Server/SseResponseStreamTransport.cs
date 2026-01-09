@@ -1,4 +1,5 @@
 using ModelContextProtocol.Protocol;
+using System.Net.ServerSentEvents;
 using System.Security.Claims;
 using System.Threading.Channels;
 
@@ -27,14 +28,17 @@ namespace ModelContextProtocol.Server;
 /// <param name="sessionId">The identifier corresponding to the current MCP session.</param>
 public sealed class SseResponseStreamTransport(Stream sseResponseStream, string? messageEndpoint = "/message", string? sessionId = null) : ITransport
 {
-    private readonly SseWriter _sseWriter = new(messageEndpoint);
     private readonly Channel<JsonRpcMessage> _incomingChannel = Channel.CreateBounded<JsonRpcMessage>(new BoundedChannelOptions(1)
     {
         SingleReader = true,
         SingleWriter = false,
     });
+    private readonly SemaphoreSlim _lock = new(1, 1);
+    private readonly TaskCompletionSource<bool> _completedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly SseEventWriter _sseWriter = new(sseResponseStream);
 
     private bool _isConnected;
+    private bool _disposed;
 
     /// <summary>
     /// Starts the transport and writes the JSON-RPC messages sent via <see cref="SendMessageAsync"/>
@@ -45,7 +49,14 @@ public sealed class SseResponseStreamTransport(Stream sseResponseStream, string?
     public async Task RunAsync(CancellationToken cancellationToken = default)
     {
         _isConnected = true;
-        await _sseWriter.WriteAllAsync(sseResponseStream, cancellationToken).ConfigureAwait(false);
+
+        // Write the endpoint event first
+        if (messageEndpoint is not null)
+        {
+            await _sseWriter.WriteAsync(SseItem.Endpoint(messageEndpoint), cancellationToken).ConfigureAwait(false);
+        }
+
+        await _completedTcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -57,17 +68,34 @@ public sealed class SseResponseStreamTransport(Stream sseResponseStream, string?
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
+        using var _ = await _lock.LockAsync().ConfigureAwait(false);
+
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
         _isConnected = false;
         _incomingChannel.Writer.TryComplete();
-        await _sseWriter.DisposeAsync().ConfigureAwait(false);
+        _completedTcs.TrySetResult(true);
+        _sseWriter.Dispose();
     }
 
     /// <inheritdoc/>
     public async Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(message);
-        // If the underlying writer has been disposed, just drop the message.
-        await _sseWriter.SendMessageAsync(message, eventStreamWriter: null, cancellationToken).ConfigureAwait(false);
+
+        using var _ = await _lock.LockAsync(cancellationToken).ConfigureAwait(false);
+
+        // If disposed, just drop the message.
+        if (_disposed)
+        {
+            return;
+        }
+
+        await _sseWriter.WriteAsync(SseItem.Message(message), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
