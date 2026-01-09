@@ -26,7 +26,7 @@ Content-Type: application/json
             "version": "0.1.0"
         },
         "capabilities": {},
-        "protocolVersion": "2025-06-18"
+        "protocolVersion": "2025-11-25"
     }
 }
 
@@ -37,7 +37,7 @@ Content-Type: application/json
 POST {{HostAddress}}/
 Accept: application/json, text/event-stream
 Content-Type: application/json
-MCP-Protocol-Version: 2025-06-18
+MCP-Protocol-Version: 2025-11-25
 Mcp-Session-Id: {{SessionId}}
 
 {
@@ -51,7 +51,7 @@ Mcp-Session-Id: {{SessionId}}
 POST {{HostAddress}}/
 Accept: application/json, text/event-stream
 Content-Type: application/json
-MCP-Protocol-Version: 2025-06-18
+MCP-Protocol-Version: 2025-11-25
 Mcp-Session-Id: {{SessionId}}
 
 {
@@ -65,7 +65,7 @@ Mcp-Session-Id: {{SessionId}}
 POST {{HostAddress}}/
 Accept: application/json, text/event-stream
 Content-Type: application/json
-MCP-Protocol-Version: 2025-06-18
+MCP-Protocol-Version: 2025-11-25
 Mcp-Session-Id: {{SessionId}}
 
 {

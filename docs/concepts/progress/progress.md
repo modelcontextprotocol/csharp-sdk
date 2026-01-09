@@ -9,7 +9,7 @@ uid: progress
 
 The Model Context Protocol (MCP) supports [progress tracking] for long-running operations through notification messages.
 
-[progress tracking]: https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/progress
+[progress tracking]: https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/progress
 
 Typically progress tracking is supported by server tools that perform operations that take a significant amount of time to complete, such as image generation or complex calculations.
 However, progress tracking is defined in the MCP specification as a general feature that can be implemented for any request that's handled by either a server or a client.
