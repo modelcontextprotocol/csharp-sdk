@@ -9,19 +9,6 @@ namespace ModelContextProtocol.Server;
 public interface ISseEventStreamWriter : IAsyncDisposable
 {
     /// <summary>
-    /// Gets the ID of the stream.
-    /// </summary>
-    /// <remarks>
-    /// This value is guaranteed to be unique on a per-session basis.
-    /// </remarks>
-    string StreamId { get; }
-
-    /// <summary>
-    /// Gets the current mode of the event stream.
-    /// </summary>
-    SseEventStreamMode Mode { get; }
-
-    /// <summary>
     /// Sets the mode of the event stream.
     /// </summary>
     /// <param name="mode">The new mode to set for the event stream.</param>

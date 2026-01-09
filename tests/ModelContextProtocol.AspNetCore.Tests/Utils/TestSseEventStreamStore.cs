@@ -161,9 +161,6 @@ public sealed class TestSseEventStreamStore : ISseEventStreamStore
             _state = state;
         }
 
-        public string StreamId => _state.StreamId;
-        public SseEventStreamMode Mode => _state.Mode;
-
         public ValueTask SetModeAsync(SseEventStreamMode mode, CancellationToken cancellationToken = default)
         {
             _state.Mode = mode;

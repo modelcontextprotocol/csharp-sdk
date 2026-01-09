@@ -15,71 +15,6 @@ public class SseEventStreamStoreTests(ITestOutputHelper testOutputHelper) : Logg
 
     #region CreateStreamAsync Tests
 
-    [Fact]
-    public async Task CreateStreamAsync_ReturnsWriter_WithCorrectStreamId()
-    {
-        var store = new TestSseEventStreamStore();
-        var options = new SseEventStreamOptions
-        {
-            SessionId = "session-1",
-            StreamId = "stream-1",
-            Mode = SseEventStreamMode.Streaming
-        };
-
-        var writer = await store.CreateStreamAsync(options, CancellationToken);
-
-        Assert.NotNull(writer);
-        Assert.Equal("stream-1", writer.StreamId);
-    }
-
-    [Fact]
-    public async Task CreateStreamAsync_ReturnsWriter_WithCorrectMode()
-    {
-        var store = new TestSseEventStreamStore();
-
-        var defaultModeOptions = new SseEventStreamOptions
-        {
-            SessionId = "session-1",
-            StreamId = "stream-1",
-            Mode = SseEventStreamMode.Streaming
-        };
-        var defaultWriter = await store.CreateStreamAsync(defaultModeOptions, CancellationToken);
-        Assert.Equal(SseEventStreamMode.Streaming, defaultWriter.Mode);
-
-        var pollingModeOptions = new SseEventStreamOptions
-        {
-            SessionId = "session-2",
-            StreamId = "stream-2",
-            Mode = SseEventStreamMode.Polling
-        };
-        var pollingWriter = await store.CreateStreamAsync(pollingModeOptions, CancellationToken);
-        Assert.Equal(SseEventStreamMode.Polling, pollingWriter.Mode);
-    }
-
-    [Fact]
-    public async Task CreateStreamAsync_MultipleStreams_CreatesDistinctWriters()
-    {
-        var store = new TestSseEventStreamStore();
-
-        var writer1 = await store.CreateStreamAsync(new SseEventStreamOptions
-        {
-            SessionId = "session-1",
-            StreamId = "stream-1",
-            Mode = SseEventStreamMode.Streaming
-        }, CancellationToken);
-
-        var writer2 = await store.CreateStreamAsync(new SseEventStreamOptions
-        {
-            SessionId = "session-1",
-            StreamId = "stream-2",
-            Mode = SseEventStreamMode.Streaming
-        }, CancellationToken);
-
-        Assert.NotSame(writer1, writer2);
-        Assert.Equal("stream-1", writer1.StreamId);
-        Assert.Equal("stream-2", writer2.StreamId);
-    }
-
     #endregion
 
     #region WriteEventAsync Tests
@@ -205,46 +140,6 @@ public class SseEventStreamStoreTests(ITestOutputHelper testOutputHelper) : Logg
 
         Assert.NotNull(result.EventId);
         Assert.Null(result.Data);
-    }
-
-    #endregion
-
-    #region SetModeAsync Tests
-
-    [Fact]
-    public async Task SetModeAsync_ChangesMode_FromDefaultToPolling()
-    {
-        var store = new TestSseEventStreamStore();
-        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
-        {
-            SessionId = "session-1",
-            StreamId = "stream-1",
-            Mode = SseEventStreamMode.Streaming
-        }, CancellationToken);
-
-        Assert.Equal(SseEventStreamMode.Streaming, writer.Mode);
-
-        await writer.SetModeAsync(SseEventStreamMode.Polling, CancellationToken);
-
-        Assert.Equal(SseEventStreamMode.Polling, writer.Mode);
-    }
-
-    [Fact]
-    public async Task SetModeAsync_ChangesMode_FromPollingToDefault()
-    {
-        var store = new TestSseEventStreamStore();
-        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
-        {
-            SessionId = "session-1",
-            StreamId = "stream-1",
-            Mode = SseEventStreamMode.Polling
-        }, CancellationToken);
-
-        Assert.Equal(SseEventStreamMode.Polling, writer.Mode);
-
-        await writer.SetModeAsync(SseEventStreamMode.Streaming, CancellationToken);
-
-        Assert.Equal(SseEventStreamMode.Streaming, writer.Mode);
     }
 
     #endregion

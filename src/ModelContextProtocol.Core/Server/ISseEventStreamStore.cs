@@ -19,5 +19,5 @@ public interface ISseEventStreamStore
     /// <param name="lastEventId">The ID of the last event received by the client, used to resume from that point.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A reader for the event stream, or <c>null</c> if no matching stream is found.</returns>
-    ValueTask<ISseEventStreamReader?> GetStreamReaderAsync(string lastEventId, CancellationToken cancellationToken);
+    ValueTask<ISseEventStreamReader?> GetStreamReaderAsync(string lastEventId, CancellationToken cancellationToken = default);
 }
