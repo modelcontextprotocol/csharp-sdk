@@ -567,6 +567,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         SetSessionId(sessionId);
 
         // Call the subscribe method to capture the McpServer instance.
+        using var getResponse = await HttpClient.GetAsync("", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
         using var response = await HttpClient.PostAsync("", JsonContent(SubscribeToResource("file:///test")), TestContext.Current.CancellationToken);
         var rpcResponse = await AssertSingleSseResponseAsync(response);
         AssertType<EmptyResult>(rpcResponse.Result);
@@ -574,7 +575,6 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
 
         // Check the captured McpServer instance can send a notification.
         await capturedServer.SendNotificationAsync(NotificationMethods.ResourceUpdatedNotification, TestContext.Current.CancellationToken);
-        using var getResponse = await HttpClient.GetAsync("", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
         JsonRpcMessage? firstSseMessage = await ReadSseAsync(getResponse.Content)
             .Select(data => JsonSerializer.Deserialize<JsonRpcMessage>(data, McpJsonUtilities.DefaultOptions))
             .FirstOrDefaultAsync(TestContext.Current.CancellationToken);
