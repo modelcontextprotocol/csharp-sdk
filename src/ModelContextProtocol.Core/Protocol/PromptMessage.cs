@@ -20,7 +20,7 @@ namespace ModelContextProtocol.Protocol;
 /// <para>
 /// <see cref="PromptMessage"/> objects are typically used in collections within <see cref="GetPromptResult"/>
 /// to represent complete conversations or prompt sequences. They can be converted to and from <see cref="ChatMessage"/>
-/// objects using the extension methods <see cref="AIContentExtensions.ToChatMessage(PromptMessage)"/> and
+/// objects using the extension methods <see cref="AIContentExtensions.ToChatMessage(PromptMessage, System.Text.Json.JsonSerializerOptions?)"/> and
 /// <see cref="AIContentExtensions.ToPromptMessages(ChatMessage)"/>.
 /// </para>
 /// <para>
