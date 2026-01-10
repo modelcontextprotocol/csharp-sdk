@@ -4,7 +4,7 @@
 // This is a shared source file included in both ModelContextProtocol.Core and the test project.
 // Do not reference symbols internal to the core project, as they won't be available in tests.
 
-using System;
+using System.Text;
 
 namespace ModelContextProtocol.Server;
 
@@ -13,8 +13,6 @@ namespace ModelContextProtocol.Server;
 /// </summary>
 /// <remarks>
 /// Event IDs are formatted as "{base64(sessionId)}:{base64(streamId)}:{sequence}".
-/// Base64 encoding is used because the MCP specification allows session IDs to contain
-/// any visible ASCII character (0x21-0x7E), including the ':' separator character.
 /// </remarks>
 internal static class DistributedCacheEventIdFormatter
 {
@@ -27,8 +25,8 @@ internal static class DistributedCacheEventIdFormatter
     {
         // Base64-encode session and stream IDs so the event ID can be parsed
         // even if the original IDs contain the ':' separator character
-        var sessionBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(sessionId));
-        var streamBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(streamId));
+        var sessionBase64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(sessionId));
+        var streamBase64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(streamId));
         return $"{sessionBase64}{Separator}{streamBase64}{Separator}{sequence}";
     }
 
@@ -49,8 +47,8 @@ internal static class DistributedCacheEventIdFormatter
 
         try
         {
-            sessionId = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(parts[0]));
-            streamId = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(parts[1]));
+            sessionId = Encoding.UTF8.GetString(Convert.FromBase64String(parts[0]));
+            streamId = Encoding.UTF8.GetString(Convert.FromBase64String(parts[1]));
             return long.TryParse(parts[2], out sequence);
         }
         catch

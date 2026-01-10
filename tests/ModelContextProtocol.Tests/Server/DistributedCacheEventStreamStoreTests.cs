@@ -756,8 +756,8 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
             }
         }, CancellationToken);
 
-        // Wait a bit, then write a new event
-        await Task.Delay(100, CancellationToken);
+        // Write a new event - the reader should pick it up since it's in streaming mode
+        // and won't complete until cancelled or the stream is disposed
         var newEvent = await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(null), CancellationToken);
 
         // Wait for read to complete (either event received or timeout)
@@ -812,8 +812,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
             }
         }, CancellationToken);
 
-        // Write 3 new events
-        await Task.Delay(100, CancellationToken);
+        // Write 3 new events - the reader should pick them up since it's in streaming mode
         var event1 = await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(null), CancellationToken);
         var event2 = await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(null), CancellationToken);
         var event3 = await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(null), CancellationToken);
@@ -856,25 +855,20 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         Assert.NotNull(reader);
 
         // Act - Start reading, then dispose the stream
-        var events = new List<SseItem<JsonRpcMessage?>>();
         var readTask = Task.Run(async () =>
         {
             await foreach (var evt in reader.ReadEventsAsync(CancellationToken))
             {
-                events.Add(evt);
             }
         }, CancellationToken);
 
-        // Wait a bit, then dispose the writer
-        await Task.Delay(100, CancellationToken);
+        // Dispose the writer - the reader should detect this and exit gracefully
         await writer.DisposeAsync();
 
-        // Wait for read to complete with a timeout
-        var timeoutTask = Task.Delay(TimeSpan.FromSeconds(2), CancellationToken);
-        var completedTask = await Task.WhenAny(readTask, timeoutTask);
-
-        // Assert - The read should complete gracefully (not timeout)
-        Assert.Same(readTask, completedTask);
+        // Assert - The read should complete gracefully within timeout
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(2));
+        await readTask.WaitAsync(timeoutCts.Token);
     }
 
     [Fact]
@@ -900,8 +894,9 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
 
         // Act - Start reading and then cancel
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken);
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         var events = new List<SseItem<JsonRpcMessage?>>();
+        var messageReceivedTcs = new TaskCompletionSource<bool>();
+        var continueReadingTcs = new TaskCompletionSource<bool>();
         OperationCanceledException? capturedException = null;
 
         var readTask = Task.Run(async () =>
@@ -911,6 +906,8 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
                 await foreach (var evt in reader.ReadEventsAsync(cts.Token))
                 {
                     events.Add(evt);
+                    messageReceivedTcs.SetResult(true);
+                    await continueReadingTcs.Task;
                 }
             }
             catch (OperationCanceledException ex)
@@ -919,17 +916,23 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
             }
         }, CancellationToken);
 
-        // Cancel after a short delay
-        await Task.Delay(100, CancellationToken);
+        // Write a message for the reader to consume
+        await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(null), CancellationToken);
+
+        // Wait for the first message to be received
+        await messageReceivedTcs.Task;
+
+        // Cancel so that ReadEventsAsync throws before reading the next message
         await cts.CancelAsync();
+
+        // Allow the message reader to continue
+        continueReadingTcs.SetResult(true);
 
         // Wait for read task to complete
         await readTask;
-        stopwatch.Stop();
 
-        // Assert - Either cancelled exception or graceful exit, but should complete quickly
-        Assert.Empty(events); // No events should have been received
-        Assert.True(stopwatch.ElapsedMilliseconds < 1000, $"Should complete quickly after cancellation, took {stopwatch.ElapsedMilliseconds}ms");
+        Assert.Single(events);
+        Assert.NotNull(capturedException);
     }
 
     [Fact]
@@ -953,7 +956,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         var reader = await store.GetStreamReaderAsync(writtenEvent.EventId!, CancellationToken);
         Assert.NotNull(reader);
 
-        // Start reading in default mode (will wait for new events)
+        // Start reading in streaming mode (will wait for new events)
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken);
         cts.CancelAfter(TimeSpan.FromSeconds(3));
         var events = new List<SseItem<JsonRpcMessage?>>();
@@ -968,16 +971,13 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
             readCompleted = true;
         }, CancellationToken);
 
-        // Wait a bit, then switch to polling mode
-        await Task.Delay(100, CancellationToken);
+        // Switch to polling mode - the reader should detect this and exit
         await writer.SetModeAsync(SseEventStreamMode.Polling, CancellationToken);
 
-        // Wait for read task to complete (should complete quickly after mode switch)
-        var timeoutTask = Task.Delay(TimeSpan.FromSeconds(1), CancellationToken);
-        var completedTask = await Task.WhenAny(readTask, timeoutTask);
-
-        // Assert - Read should have completed after switching to polling mode
-        Assert.Same(readTask, completedTask);
+        // Assert - Read should complete within timeout after switching to polling mode
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(1));
+        await readTask.WaitAsync(timeoutCts.Token);
         Assert.True(readCompleted);
         Assert.Empty(events); // No new events were written after the one we used to create the reader
     }
@@ -1271,7 +1271,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     }
 
     [Fact]
-    public async Task ReadEventsAsync_Completes_WhenMetadataExpires()
+    public async Task ReadEventsAsync_ThrowsMcpException_WhenMetadataExpires()
     {
         // Arrange - Use a cache that allows us to simulate metadata expiration
         var trackingCache = new TestDistributedCache();
@@ -1299,16 +1299,59 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         // Now simulate metadata expiration
         trackingCache.ExpireMetadata();
 
-        // Act - Read events; the reader should complete gracefully when metadata expires
-        // instead of looping indefinitely with the stale initial metadata
-        var events = new List<SseItem<JsonRpcMessage?>>();
-        await foreach (var evt in reader.ReadEventsAsync(CancellationToken))
+        // Act & Assert - Reader should throw McpException when metadata expires
+        var exception = await Assert.ThrowsAsync<McpException>(async () =>
         {
-            events.Add(evt);
-        }
+            await foreach (var evt in reader.ReadEventsAsync(CancellationToken))
+            {
+                // Should not yield any events before throwing
+            }
+        });
 
-        // If we reach here without timeout, the reader correctly handled metadata expiration
-        Assert.Empty(events); // No new events after the initial one used to create the reader
+        Assert.Contains("session-1", exception.Message);
+        Assert.Contains("stream-1", exception.Message);
+        Assert.Contains("metadata", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ReadEventsAsync_ThrowsMcpException_WhenEventExpires()
+    {
+        // Arrange - Use a cache that allows us to simulate event expiration
+        var trackingCache = new TestDistributedCache();
+        var store = new DistributedCacheEventStreamStore(trackingCache);
+
+        // Create a stream and write multiple events
+        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Polling
+        }, CancellationToken);
+
+        var event1 = await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(new JsonRpcNotification { Method = "method1" }), CancellationToken);
+        var event2 = await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(new JsonRpcNotification { Method = "method2" }), CancellationToken);
+        var event3 = await writer.WriteEventAsync(new SseItem<JsonRpcMessage?>(new JsonRpcNotification { Method = "method3" }), CancellationToken);
+
+        // Create a reader starting from before the first event
+        var startEventId = DistributedCacheEventIdFormatter.Format("session-1", "stream-1", 0);
+        var reader = await store.GetStreamReaderAsync(startEventId, CancellationToken);
+        Assert.NotNull(reader);
+
+        // Simulate event2 expiring from the cache
+        trackingCache.ExpireEvent(event2.EventId!);
+
+        // Act & Assert - Reader should throw McpException when an event is missing
+        var exception = await Assert.ThrowsAsync<McpException>(async () =>
+        {
+            var events = new List<SseItem<JsonRpcMessage?>>();
+            await foreach (var evt in reader.ReadEventsAsync(CancellationToken))
+            {
+                events.Add(evt);
+            }
+        });
+
+        Assert.Contains(event2.EventId!, exception.Message);
+        Assert.Contains("not found", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1521,18 +1564,20 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
 
     /// <summary>
     /// A distributed cache that tracks all operations for verification in tests.
-    /// Supports tracking Set calls, counting metadata reads, and simulating metadata expiration.
+    /// Supports tracking Set calls, counting metadata reads, and simulating metadata/event expiration.
     /// </summary>
     private sealed class TestDistributedCache : IDistributedCache
     {
         private readonly MemoryDistributedCache _innerCache = new(Options.Create(new MemoryDistributedCacheOptions()));
         private int _metadataReadCount;
         private bool _metadataExpired;
+        private readonly HashSet<string> _expiredEventIds = [];
 
         public List<(string Key, DistributedCacheEntryOptions Options)> SetCalls { get; } = [];
         public int MetadataReadCount => _metadataReadCount;
 
         public void ExpireMetadata() => _metadataExpired = true;
+        public void ExpireEvent(string eventId) => _expiredEventIds.Add(eventId);
 
         public byte[]? Get(string key)
         {
@@ -1543,6 +1588,10 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
                 {
                     return null;
                 }
+            }
+            if (IsExpiredEvent(key))
+            {
+                return null;
             }
             return _innerCache.Get(key);
         }
@@ -1557,7 +1606,24 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
                     return Task.FromResult<byte[]?>(null);
                 }
             }
+            if (IsExpiredEvent(key))
+            {
+                return Task.FromResult<byte[]?>(null);
+            }
             return _innerCache.GetAsync(key, token);
+        }
+
+        private bool IsExpiredEvent(string key)
+        {
+            // Cache key format is "mcp:sse:event:{eventId}"
+            foreach (var expiredEventId in _expiredEventIds)
+            {
+                if (key.EndsWith(expiredEventId))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         public void Refresh(string key) => _innerCache.Refresh(key);

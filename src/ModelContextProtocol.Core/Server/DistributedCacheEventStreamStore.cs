@@ -255,13 +255,8 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
 
                     var eventId = DistributedCacheEventIdFormatter.Format(SessionId, StreamId, currentSequence);
                     var eventKey = CacheKeys.Event(eventId);
-                    var eventBytes = await _cache.GetAsync(eventKey, cancellationToken).ConfigureAwait(false);
-
-                    if (eventBytes is null)
-                    {
-                        // Event may have expired; skip to next
-                        continue;
-                    }
+                    var eventBytes = await _cache.GetAsync(eventKey, cancellationToken).ConfigureAwait(false)
+                        ?? throw new McpException($"SSE event with ID '{eventId}' was not found in the cache. The event may have expired.");
 
                     var storedEvent = JsonSerializer.Deserialize(eventBytes, McpJsonUtilities.JsonContext.Default.StoredEvent);
                     if (storedEvent is not null)
@@ -290,19 +285,11 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
 
                 // Refresh metadata to get the latest sequence and completion status
                 var metadataKey = CacheKeys.StreamMetadata(SessionId, StreamId);
-                var metadataBytes = await _cache.GetAsync(metadataKey, cancellationToken).ConfigureAwait(false);
+                var metadataBytes = await _cache.GetAsync(metadataKey, cancellationToken).ConfigureAwait(false)
+                    ?? throw new McpException($"Stream metadata for session '{SessionId}' and stream '{StreamId}' was not found in the cache. The metadata may have expired.");
 
-                if (metadataBytes is null)
-                {
-                    // Metadata expired - treat stream as complete to avoid infinite loop
-                    yield break;
-                }
-
-                var currentMetadata = JsonSerializer.Deserialize(metadataBytes, McpJsonUtilities.JsonContext.Default.StreamMetadata);
-                if (currentMetadata is null)
-                {
-                    yield break;
-                }
+                var currentMetadata = JsonSerializer.Deserialize(metadataBytes, McpJsonUtilities.JsonContext.Default.StreamMetadata)
+                    ?? throw new McpException($"Stream metadata for session '{SessionId}' and stream '{StreamId}' could not be deserialized.");
 
                 lastSequence = currentMetadata.LastSequence;
                 isCompleted = currentMetadata.IsCompleted;
