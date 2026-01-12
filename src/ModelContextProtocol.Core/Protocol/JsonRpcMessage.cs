@@ -85,73 +85,58 @@ public abstract class JsonRpcMessage
                 throw new JsonException("Invalid or missing jsonrpc version");
             }
 
-            // Messages with an id but no method are responses
-            if (union.HasId && !union.HasMethod)
+            // Determine message type based on presence of id and method properties
+            switch ((union.HasId, union.HasMethod))
             {
-                // Messages with an error property are error responses
-                if (union.HasError)
-                {
-                    if (union.Error is null)
+                case (true, true):
+                    // Messages with both method and id are requests
+                    Debug.Assert(union.Method is not null, "HasMethod should only be true when Method is non-null");
+                    return new JsonRpcRequest
                     {
-                        throw new JsonException("Error property cannot be null");
+                        JsonRpc = union.JsonRpc,
+                        Id = union.Id,
+                        Method = union.Method!,
+                        Params = union.Params
+                    };
+
+                case (true, false):
+                    // Messages with an id but no method are responses
+                    if (union.HasError)
+                    {
+                        Debug.Assert(union.Error is not null, "HasError should only be true when Error is non-null");
+                        return new JsonRpcError
+                        {
+                            JsonRpc = union.JsonRpc,
+                            Id = union.Id,
+                            Error = union.Error!
+                        };
                     }
 
-                    return new JsonRpcError
+                    if (union.HasResult)
+                    {
+                        return new JsonRpcResponse
+                        {
+                            JsonRpc = union.JsonRpc,
+                            Id = union.Id,
+                            Result = union.Result
+                        };
+                    }
+
+                    throw new JsonException("Response must have either result or error");
+
+                case (false, true):
+                    // Messages with a method but no id are notifications
+                    Debug.Assert(union.Method is not null, "HasMethod should only be true when Method is non-null");
+                    return new JsonRpcNotification
                     {
                         JsonRpc = union.JsonRpc,
-                        Id = union.Id,
-                        Error = union.Error
+                        Method = union.Method!,
+                        Params = union.Params
                     };
-                }
 
-                // Messages with a result property are success responses
-                if (union.HasResult)
-                {
-                    return new JsonRpcResponse
-                    {
-                        JsonRpc = union.JsonRpc,
-                        Id = union.Id,
-                        Result = union.Result
-                    };
-                }
-
-                throw new JsonException("Response must have either result or error");
+                default:
+                    throw new JsonException("Invalid JSON-RPC message format");
             }
-
-            // Messages with a method but no id are notifications
-            if (union.HasMethod && !union.HasId)
-            {
-                if (union.Method is null)
-                {
-                    throw new JsonException("Method property cannot be null");
-                }
-
-                return new JsonRpcNotification
-                {
-                    JsonRpc = union.JsonRpc,
-                    Method = union.Method,
-                    Params = union.Params
-                };
-            }
-
-            // Messages with both method and id are requests
-            if (union.HasMethod && union.HasId)
-            {
-                if (union.Method is null)
-                {
-                    throw new JsonException("Method property cannot be null");
-                }
-
-                return new JsonRpcRequest
-                {
-                    JsonRpc = union.JsonRpc,
-                    Id = union.Id,
-                    Method = union.Method,
-                    Params = union.Params
-                };
-            }
-
-            throw new JsonException("Invalid JSON-RPC message format");
         }
 
         /// <inheritdoc/>
