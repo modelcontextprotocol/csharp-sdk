@@ -44,6 +44,9 @@ public class DiagnosticTests
             a.Kind == ActivityKind.Client &&
             a.Status == ActivityStatusCode.Unset);
 
+        // Per semantic conventions: mcp.protocol.version should be present after initialization
+        Assert.Contains(clientToolCall.Tags, t => t.Key == "mcp.protocol.version" && !string.IsNullOrEmpty(t.Value));
+
         var serverToolCall = Assert.Single(activities, a =>
             a.Tags.Any(t => t.Key == "gen_ai.tool.name" && t.Value == "DoubleValue") &&
             a.Tags.Any(t => t.Key == "mcp.method.name" && t.Value == "tools/call") &&
@@ -51,6 +54,9 @@ public class DiagnosticTests
             a.DisplayName == "tools/call DoubleValue" &&
             a.Kind == ActivityKind.Server &&
             a.Status == ActivityStatusCode.Unset);
+
+        // Per semantic conventions: mcp.protocol.version should be present after initialization
+        Assert.Contains(serverToolCall.Tags, t => t.Key == "mcp.protocol.version" && !string.IsNullOrEmpty(t.Value));
 
         Assert.Equal(clientToolCall.SpanId, serverToolCall.ParentSpanId);
         Assert.Equal(clientToolCall.TraceId, serverToolCall.TraceId);

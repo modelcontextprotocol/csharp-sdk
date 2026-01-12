@@ -1,5 +1,6 @@
 ﻿using ModelContextProtocol.Protocol;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics.Metrics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -102,6 +103,34 @@ internal static class Diagnostics
             JsonRpcNotification notification => notification.Method != NotificationMethods.LoggingMessageNotification,
             _ => false
         };
+
+    /// <summary>
+    /// Per MCP semantic conventions: If outer GenAI instrumentation is already tracing the tool execution,
+    /// MCP instrumentation SHOULD add MCP-specific attributes to the existing tool execution span instead
+    /// of creating a new one.
+    /// </summary>
+    /// <param name="activity">The outer activity with gen_ai.operation.name = execute_tool, if found.</param>
+    /// <returns>true if an outer tool execution activity was found and can be reused; false otherwise.</returns>
+    internal static bool TryGetOuterToolExecutionActivity([NotNullWhen(true)] out Activity? activity)
+    {
+        activity = Activity.Current;
+        if (activity is null)
+        {
+            return false;
+        }
+
+        // Check if the current activity has gen_ai.operation.name = execute_tool
+        foreach (var tag in activity.Tags)
+        {
+            if (tag.Key == "gen_ai.operation.name" && tag.Value == "execute_tool")
+            {
+                return true;
+            }
+        }
+
+        activity = null;
+        return false;
+    }
 
     internal static ActivityLink[] ActivityLinkFromCurrent() => Activity.Current is null ? [] : [new ActivityLink(Activity.Current.Context)];
 }

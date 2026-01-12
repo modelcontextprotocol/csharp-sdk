@@ -213,6 +213,9 @@ internal sealed partial class McpServerImpl : McpServer
 
                 _negotiatedProtocolVersion = protocolVersion;
 
+                // Update session handler with the negotiated protocol version for telemetry
+                _sessionHandler.NegotiatedProtocolVersion = protocolVersion;
+
                 return new InitializeResult
                 {
                     ProtocolVersion = protocolVersion,

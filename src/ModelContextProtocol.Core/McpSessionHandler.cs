@@ -61,6 +61,11 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
     // This _sessionId is solely used to identify the session in telemetry and logs.
     private readonly string _sessionId = Guid.NewGuid().ToString("N");
+
+    // The negotiated MCP protocol version (set after initialization).
+    // Note: This is exposed via property for telemetry purposes.
+    private string? _negotiatedProtocolVersion;
+
     private long _lastRequestId;
 
     private CancellationTokenSource? _messageProcessingCts;
@@ -109,6 +114,15 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     /// Gets and sets the name of the endpoint for logging and debug purposes.
     /// </summary>
     public string EndpointName { get; set; }
+
+    /// <summary>
+    /// Gets or sets the negotiated MCP protocol version for telemetry.
+    /// </summary>
+    public string? NegotiatedProtocolVersion
+    {
+        get => _negotiatedProtocolVersion;
+        set => _negotiatedProtocolVersion = value;
+    }
 
     /// <summary>
     /// Starts processing messages from the transport. This method will block until the transport is disconnected.
@@ -261,16 +275,32 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     {
         Histogram<double> durationMetric = _isServer ? s_serverOperationDuration : s_clientOperationDuration;
         string method = GetMethodName(message);
+        string? target = ExtractTargetFromMessage(message, method);
 
         long? startingTimestamp = durationMetric.Enabled ? Stopwatch.GetTimestamp() : null;
 
-        Activity? activity = Diagnostics.ShouldInstrumentMessage(message) ?
-            Diagnostics.ActivitySource.StartActivity(
-                CreateActivityName(method),
-                ActivityKind.Server,
-                parentContext: _propagator.ExtractActivityContext(message),
-                links: Diagnostics.ActivityLinkFromCurrent()) :
-            null;
+        // Per MCP semantic conventions: If outer GenAI instrumentation is already tracing the tool execution
+        // (i.e., Activity.Current has gen_ai.operation.name = execute_tool), we should add MCP attributes
+        // to that activity instead of creating a new one.
+        Activity? activity = null;
+        bool usingOuterActivity = false;
+        if (Diagnostics.ShouldInstrumentMessage(message))
+        {
+            if (method == RequestMethods.ToolsCall && Diagnostics.TryGetOuterToolExecutionActivity(out var outerActivity))
+            {
+                // Add MCP-specific attributes to the existing tool execution span
+                activity = outerActivity;
+                usingOuterActivity = true;
+            }
+            else
+            {
+                activity = Diagnostics.ActivitySource.StartActivity(
+                    CreateActivityName(method, target),
+                    ActivityKind.Server,
+                    parentContext: _propagator.ExtractActivityContext(message),
+                    links: Diagnostics.ActivityLinkFromCurrent());
+            }
+        }
 
         TagList tags = default;
         bool addTags = activity is { IsAllDataRequested: true } || startingTimestamp is not null;
@@ -278,7 +308,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         {
             if (addTags)
             {
-                AddTags(ref tags, activity, message, method);
+                AddTags(ref tags, activity, message, method, target, usingOuterActivity);
             }
 
             switch (message)
@@ -319,7 +349,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         }
         finally
         {
-            FinalizeDiagnostics(activity, startingTimestamp, durationMetric, ref tags);
+            FinalizeDiagnostics(activity, startingTimestamp, durationMetric, ref tags, disposeActivity: !usingOuterActivity);
         }
     }
 
@@ -422,11 +452,27 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
         Histogram<double> durationMetric = _isServer ? s_serverOperationDuration : s_clientOperationDuration;
         string method = request.Method;
+        string? target = ExtractTargetFromMessage(request, method);
 
         long? startingTimestamp = durationMetric.Enabled ? Stopwatch.GetTimestamp() : null;
-        using Activity? activity = Diagnostics.ShouldInstrumentMessage(request) ?
-            Diagnostics.ActivitySource.StartActivity(McpSessionHandler.CreateActivityName(method), ActivityKind.Client) :
-            null;
+
+        // Per MCP semantic conventions: If outer GenAI instrumentation is already tracing the tool execution
+        // (i.e., Activity.Current has gen_ai.operation.name = execute_tool), we should add MCP attributes
+        // to that activity instead of creating a new one.
+        Activity? activity = null;
+        bool usingOuterActivity = false;
+        if (Diagnostics.ShouldInstrumentMessage(request))
+        {
+            if (method == RequestMethods.ToolsCall && Diagnostics.TryGetOuterToolExecutionActivity(out var outerActivity))
+            {
+                activity = outerActivity;
+                usingOuterActivity = true;
+            }
+            else
+            {
+                activity = Diagnostics.ActivitySource.StartActivity(CreateActivityName(method, target), ActivityKind.Client);
+            }
+        }
 
         // Set request ID
         if (request.Id.Id is null)
@@ -445,7 +491,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         {
             if (addTags)
             {
-                AddTags(ref tags, activity, request, method);
+                AddTags(ref tags, activity, request, method, target, usingOuterActivity);
             }
 
             if (_logger.IsEnabled(LogLevel.Trace))
@@ -506,7 +552,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         finally
         {
             _pendingRequests.TryRemove(request.Id, out _);
-            FinalizeDiagnostics(activity, startingTimestamp, durationMetric, ref tags);
+            FinalizeDiagnostics(activity, startingTimestamp, durationMetric, ref tags, disposeActivity: !usingOuterActivity);
         }
     }
 
@@ -518,10 +564,11 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
         Histogram<double> durationMetric = _isServer ? s_serverOperationDuration : s_clientOperationDuration;
         string method = GetMethodName(message);
+        string? target = ExtractTargetFromMessage(message, method);
 
         long? startingTimestamp = durationMetric.Enabled ? Stopwatch.GetTimestamp() : null;
         using Activity? activity = Diagnostics.ShouldInstrumentMessage(message) ?
-            Diagnostics.ActivitySource.StartActivity(McpSessionHandler.CreateActivityName(method), ActivityKind.Client) :
+            Diagnostics.ActivitySource.StartActivity(CreateActivityName(method, target), ActivityKind.Client) :
             null;
 
         TagList tags = default;
@@ -534,7 +581,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         {
             if (addTags)
             {
-                AddTags(ref tags, activity, message, method);
+                AddTags(ref tags, activity, message, method, target, usingOuterActivity: false);
             }
 
             if (_logger.IsEnabled(LogLevel.Trace))
@@ -565,7 +612,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         }
         finally
         {
-            FinalizeDiagnostics(activity, startingTimestamp, durationMetric, ref tags);
+            FinalizeDiagnostics(activity, startingTimestamp, durationMetric, ref tags, disposeActivity: true);
         }
     }
 
@@ -589,6 +636,38 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
     private static string CreateActivityName(string method) => method;
 
+    /// <summary>
+    /// Creates a span name according to semantic conventions: "{mcp.method.name} {target}" where
+    /// target is the tool name, prompt name, or resource URI when applicable.
+    /// </summary>
+    private static string CreateActivityName(string method, string? target) =>
+        target is null ? method : $"{method} {target}";
+
+    /// <summary>
+    /// Extracts the target (tool name, prompt name, or resource URI) from a message for use in span naming.
+    /// </summary>
+    private static string? ExtractTargetFromMessage(JsonRpcMessage message, string method)
+    {
+        JsonObject? paramsObj = message switch
+        {
+            JsonRpcRequest request => request.Params as JsonObject,
+            JsonRpcNotification notification => notification.Params as JsonObject,
+            _ => null
+        };
+
+        if (paramsObj is null)
+        {
+            return null;
+        }
+
+        return method switch
+        {
+            RequestMethods.ToolsCall or RequestMethods.PromptsGet => GetStringProperty(paramsObj, "name"),
+            // Note: resource URI is not included in span name by default due to high cardinality per semantic conventions
+            _ => null
+        };
+    }
+
     private static string GetMethodName(JsonRpcMessage message) =>
         message switch
         {
@@ -597,10 +676,22 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             _ => "unknownMethod"
         };
 
-    private void AddTags(ref TagList tags, Activity? activity, JsonRpcMessage message, string method)
+    private void AddTags(ref TagList tags, Activity? activity, JsonRpcMessage message, string method, string? target, bool usingOuterActivity)
     {
         tags.Add("mcp.method.name", method);
         tags.Add("network.transport", _transportKind);
+
+        // Per semantic conventions: network.protocol.name when applicable (HTTP transports)
+        if (_transportKind == "tcp")
+        {
+            tags.Add("network.protocol.name", "http");
+        }
+
+        // Per semantic conventions: mcp.protocol.version is Recommended
+        if (_negotiatedProtocolVersion is not null)
+        {
+            tags.Add("mcp.protocol.version", _negotiatedProtocolVersion);
+        }
 
         // TODO: When using HTTP transport, add:
         // - server.address and server.port on client spans and metrics
@@ -615,25 +706,18 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             {
                 activity.AddTag("jsonrpc.request.id", withId.Id.Id?.ToString());
             }
+
+            // If we're adding tags to an outer activity, we don't need to set DisplayName as it's already set
+            if (!usingOuterActivity && target is not null)
+            {
+                activity.DisplayName = $"{method} {target}";
+            }
         }
 
-        JsonObject? paramsObj = message switch
-        {
-            JsonRpcRequest request => request.Params as JsonObject,
-            JsonRpcNotification notification => notification.Params as JsonObject,
-            _ => null
-        };
-
-        if (paramsObj == null)
-        {
-            return;
-        }
-
-        string? target = null;
+        // Add target-specific tags based on method
         switch (method)
         {
             case RequestMethods.ToolsCall:
-                target = GetStringProperty(paramsObj, "name");
                 if (target is not null)
                 {
                     // Per semantic conventions: gen_ai.tool.name for tool operations
@@ -644,7 +728,6 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                 break;
 
             case RequestMethods.PromptsGet:
-                target = GetStringProperty(paramsObj, "name");
                 if (target is not null)
                 {
                     // Per semantic conventions: gen_ai.prompt.name for prompt operations
@@ -656,17 +739,21 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             case RequestMethods.ResourcesSubscribe:
             case RequestMethods.ResourcesUnsubscribe:
             case NotificationMethods.ResourceUpdatedNotification:
-                target = GetStringProperty(paramsObj, "uri");
-                if (target is not null)
                 {
-                    tags.Add("mcp.resource.uri", target);
+                    // Get resource URI from params (not included in span name due to high cardinality)
+                    JsonObject? paramsObj = message switch
+                    {
+                        JsonRpcRequest request => request.Params as JsonObject,
+                        JsonRpcNotification notification => notification.Params as JsonObject,
+                        _ => null
+                    };
+                    string? uri = paramsObj is not null ? GetStringProperty(paramsObj, "uri") : null;
+                    if (uri is not null)
+                    {
+                        tags.Add("mcp.resource.uri", uri);
+                    }
                 }
                 break;
-        }
-
-        if (activity is { IsAllDataRequested: true })
-        {
-            activity.DisplayName = target == null ? method : $"{method} {target}";
         }
     }
 
@@ -718,7 +805,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     }
 
     private static void FinalizeDiagnostics(
-        Activity? activity, long? startingTimestamp, Histogram<double> durationMetric, ref TagList tags)
+        Activity? activity, long? startingTimestamp, Histogram<double> durationMetric, ref TagList tags, bool disposeActivity = true)
     {
         try
         {
@@ -737,7 +824,11 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         }
         finally
         {
-            activity?.Dispose();
+            // Only dispose the activity if we created it (not when reusing an outer GenAI activity)
+            if (disposeActivity)
+            {
+                activity?.Dispose();
+            }
         }
     }
 
