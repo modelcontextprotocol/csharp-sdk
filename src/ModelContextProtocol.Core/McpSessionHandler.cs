@@ -19,16 +19,14 @@ namespace ModelContextProtocol;
 /// </summary>
 internal sealed partial class McpSessionHandler : IAsyncDisposable
 {
-    // MCP semantic conventions specify ExplicitBucketBoundaries of [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 30, 60, 120, 300] for all metrics
-    // https://github.com/open-telemetry/semantic-conventions/blob/main/docs/gen-ai/mcp.md#metrics
     private static readonly Histogram<double> s_clientSessionDuration = Diagnostics.CreateDurationHistogram(
-        "mcp.client.session.duration", "The duration of the MCP session as observed on the MCP client.", longBuckets: true);
+        "mcp.client.session.duration", "The duration of the MCP session as observed on the MCP client.");
     private static readonly Histogram<double> s_serverSessionDuration = Diagnostics.CreateDurationHistogram(
-        "mcp.server.session.duration", "The duration of the MCP session as observed on the MCP server.", longBuckets: true);
+        "mcp.server.session.duration", "The duration of the MCP session as observed on the MCP server.");
     private static readonly Histogram<double> s_clientOperationDuration = Diagnostics.CreateDurationHistogram(
-        "mcp.client.operation.duration", "The duration of the MCP request or notification as observed on the sender from the time it was sent until the response or ack is received.", longBuckets: true);
+        "mcp.client.operation.duration", "The duration of the MCP request or notification as observed on the sender from the time it was sent until the response or ack is received.");
     private static readonly Histogram<double> s_serverOperationDuration = Diagnostics.CreateDurationHistogram(
-        "mcp.server.operation.duration", "MCP request or notification duration as observed on the receiver from the time it was received until the result or ack is sent.", longBuckets: true);
+        "mcp.server.operation.duration", "MCP request or notification duration as observed on the receiver from the time it was received until the result or ack is sent.");
 
     /// <summary>The latest version of the protocol supported by this implementation.</summary>
     internal const string LatestProtocolVersion = "2025-06-18";
@@ -62,10 +60,6 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     // This _sessionId is solely used to identify the session in telemetry and logs.
     private readonly string _sessionId = Guid.NewGuid().ToString("N");
 
-    // The negotiated MCP protocol version (set after initialization).
-    // Note: This is exposed via property for telemetry purposes.
-    private string? _negotiatedProtocolVersion;
-
     private long _lastRequestId;
 
     private CancellationTokenSource? _messageProcessingCts;
@@ -98,7 +92,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             StreamClientSessionTransport or StreamServerTransport => "pipe",
             SseClientSessionTransport or SseResponseStreamTransport => "tcp",
             StreamableHttpClientSessionTransport or StreamableHttpServerTransport or StreamableHttpPostTransport => "tcp",
-            _ => "pipe"
+            _ => "unknown"
         };
 
         _isServer = isServer;
@@ -118,11 +112,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     /// <summary>
     /// Gets or sets the negotiated MCP protocol version for telemetry.
     /// </summary>
-    public string? NegotiatedProtocolVersion
-    {
-        get => _negotiatedProtocolVersion;
-        set => _negotiatedProtocolVersion = value;
-    }
+    public string? NegotiatedProtocolVersion { get; set; }
 
     /// <summary>
     /// Starts processing messages from the transport. This method will block until the transport is disconnected.
@@ -275,31 +265,19 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     {
         Histogram<double> durationMetric = _isServer ? s_serverOperationDuration : s_clientOperationDuration;
         string method = GetMethodName(message);
-        string? target = ExtractTargetFromMessage(message, method);
 
         long? startingTimestamp = durationMetric.Enabled ? Stopwatch.GetTimestamp() : null;
 
-        // Per MCP semantic conventions: If outer GenAI instrumentation is already tracing the tool execution
-        // (i.e., Activity.Current has gen_ai.operation.name = execute_tool), we should add MCP attributes
-        // to that activity instead of creating a new one.
         Activity? activity = null;
-        bool usingOuterActivity = false;
+        string? target = null;
         if (Diagnostics.ShouldInstrumentMessage(message))
         {
-            if (method == RequestMethods.ToolsCall && Diagnostics.TryGetOuterToolExecutionActivity(out var outerActivity))
-            {
-                // Add MCP-specific attributes to the existing tool execution span
-                activity = outerActivity;
-                usingOuterActivity = true;
-            }
-            else
-            {
-                activity = Diagnostics.ActivitySource.StartActivity(
-                    CreateActivityName(method, target),
-                    ActivityKind.Server,
-                    parentContext: _propagator.ExtractActivityContext(message),
-                    links: Diagnostics.ActivityLinkFromCurrent());
-            }
+            target = ExtractTargetFromMessage(message, method);
+            activity = Diagnostics.ActivitySource.StartActivity(
+                CreateActivityName(method, target),
+                ActivityKind.Server,
+                parentContext: _propagator.ExtractActivityContext(message),
+                links: Diagnostics.ActivityLinkFromCurrent());
         }
 
         TagList tags = default;
@@ -308,7 +286,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         {
             if (addTags)
             {
-                AddTags(ref tags, activity, message, method, target, usingOuterActivity);
+                AddTags(ref tags, activity, message, method, target);
             }
 
             switch (message)
@@ -349,7 +327,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         }
         finally
         {
-            FinalizeDiagnostics(activity, startingTimestamp, durationMetric, ref tags, disposeActivity: !usingOuterActivity);
+            FinalizeDiagnostics(activity, startingTimestamp, durationMetric, ref tags);
         }
     }
 
@@ -452,17 +430,17 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
         Histogram<double> durationMetric = _isServer ? s_serverOperationDuration : s_clientOperationDuration;
         string method = request.Method;
-        string? target = ExtractTargetFromMessage(request, method);
 
         long? startingTimestamp = durationMetric.Enabled ? Stopwatch.GetTimestamp() : null;
 
-        // Per MCP semantic conventions: If outer GenAI instrumentation is already tracing the tool execution
-        // (i.e., Activity.Current has gen_ai.operation.name = execute_tool), we should add MCP attributes
-        // to that activity instead of creating a new one.
+        // If outer GenAI instrumentation is already tracing the tool execution,
+        // add MCP attributes to that activity instead of creating a new one.
         Activity? activity = null;
         bool usingOuterActivity = false;
+        string? target = null;
         if (Diagnostics.ShouldInstrumentMessage(request))
         {
+            target = ExtractTargetFromMessage(request, method);
             if (method == RequestMethods.ToolsCall && Diagnostics.TryGetOuterToolExecutionActivity(out var outerActivity))
             {
                 activity = outerActivity;
@@ -564,12 +542,16 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
         Histogram<double> durationMetric = _isServer ? s_serverOperationDuration : s_clientOperationDuration;
         string method = GetMethodName(message);
-        string? target = ExtractTargetFromMessage(message, method);
 
         long? startingTimestamp = durationMetric.Enabled ? Stopwatch.GetTimestamp() : null;
-        using Activity? activity = Diagnostics.ShouldInstrumentMessage(message) ?
-            Diagnostics.ActivitySource.StartActivity(CreateActivityName(method, target), ActivityKind.Client) :
-            null;
+
+        Activity? activity = null;
+        string? target = null;
+        if (Diagnostics.ShouldInstrumentMessage(message))
+        {
+            target = ExtractTargetFromMessage(message, method);
+            activity = Diagnostics.ActivitySource.StartActivity(CreateActivityName(method, target), ActivityKind.Client);
+        }
 
         TagList tags = default;
         bool addTags = activity is { IsAllDataRequested: true } || startingTimestamp is not null;
@@ -581,7 +563,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         {
             if (addTags)
             {
-                AddTags(ref tags, activity, message, method, target, usingOuterActivity: false);
+                AddTags(ref tags, activity, message, method, target);
             }
 
             if (_logger.IsEnabled(LogLevel.Trace))
@@ -612,7 +594,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         }
         finally
         {
-            FinalizeDiagnostics(activity, startingTimestamp, durationMetric, ref tags, disposeActivity: true);
+            FinalizeDiagnostics(activity, startingTimestamp, durationMetric, ref tags);
         }
     }
 
@@ -676,53 +658,45 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             _ => "unknownMethod"
         };
 
+    private void AddTags(ref TagList tags, Activity? activity, JsonRpcMessage message, string method, string? target)
+        => AddTags(ref tags, activity, message, method, target, usingOuterActivity: false);
+
     private void AddTags(ref TagList tags, Activity? activity, JsonRpcMessage message, string method, string? target, bool usingOuterActivity)
     {
         tags.Add("mcp.method.name", method);
         tags.Add("network.transport", _transportKind);
 
-        // Per semantic conventions: network.protocol.name when applicable (HTTP transports)
         if (_transportKind == "tcp")
         {
             tags.Add("network.protocol.name", "http");
         }
 
-        // Per semantic conventions: mcp.protocol.version is Recommended
-        if (_negotiatedProtocolVersion is not null)
+        if (NegotiatedProtocolVersion is not null)
         {
-            tags.Add("mcp.protocol.version", _negotiatedProtocolVersion);
+            tags.Add("mcp.protocol.version", NegotiatedProtocolVersion);
         }
 
-        // TODO: When using HTTP transport, add:
-        // - server.address and server.port on client spans and metrics
-        // - client.address and client.port on server spans (not metrics because of cardinality)
         if (activity is { IsAllDataRequested: true })
         {
-            // session and request id have high cardinality, so not applying to metric tags
             activity.AddTag("mcp.session.id", _sessionId);
 
-            // Per semantic conventions: jsonrpc.request.id is a string representation of the id
             if (message is JsonRpcMessageWithId withId)
             {
                 activity.AddTag("jsonrpc.request.id", withId.Id.Id?.ToString());
             }
 
-            // If we're adding tags to an outer activity, we don't need to set DisplayName as it's already set
             if (!usingOuterActivity && target is not null)
             {
                 activity.DisplayName = $"{method} {target}";
             }
         }
 
-        // Add target-specific tags based on method
         switch (method)
         {
             case RequestMethods.ToolsCall:
                 if (target is not null)
                 {
-                    // Per semantic conventions: gen_ai.tool.name for tool operations
                     tags.Add("gen_ai.tool.name", target);
-                    // Per semantic conventions: gen_ai.operation.name should be "execute_tool" for tool calls
                     tags.Add("gen_ai.operation.name", "execute_tool");
                 }
                 break;
@@ -730,7 +704,6 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             case RequestMethods.PromptsGet:
                 if (target is not null)
                 {
-                    // Per semantic conventions: gen_ai.prompt.name for prompt operations
                     tags.Add("gen_ai.prompt.name", target);
                 }
                 break;
@@ -740,7 +713,6 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             case RequestMethods.ResourcesUnsubscribe:
             case NotificationMethods.ResourceUpdatedNotification:
                 {
-                    // Get resource URI from params (not included in span name due to high cardinality)
                     JsonObject? paramsObj = message switch
                     {
                         JsonRpcRequest request => request.Params as JsonObject,
@@ -773,7 +745,6 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         tags.Add("error.type", errorType);
         if (intErrorCode is not null)
         {
-            // Per MCP semantic conventions: rpc.response.status_code for JSON-RPC error codes
             tags.Add("rpc.response.status_code", errorType);
         }
 
