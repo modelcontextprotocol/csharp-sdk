@@ -16,8 +16,6 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
     private static readonly MediaTypeWithQualityHeaderValue s_applicationJsonMediaType = new("application/json");
     private static readonly MediaTypeWithQualityHeaderValue s_textEventStreamMediaType = new("text/event-stream");
 
-    //private static readonly TimeSpan s_defaultReconnectionDelay = TimeSpan.FromSeconds(1);
-
     private readonly McpHttpClient _httpClient;
     private readonly HttpClientTransportOptions _options;
     private readonly CancellationTokenSource _connectionCts;
