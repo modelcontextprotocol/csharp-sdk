@@ -467,7 +467,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         {
             if (addTags)
             {
-                AddTags(ref tags, activity, request, method, target, usingOuterActivity);
+                AddTags(ref tags, activity, request, method, target);
             }
 
             if (_logger.IsEnabled(LogLevel.Trace))
@@ -657,9 +657,6 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         };
 
     private void AddTags(ref TagList tags, Activity? activity, JsonRpcMessage message, string method, string? target)
-        => AddTags(ref tags, activity, message, method, target, usingOuterActivity: false);
-
-    private void AddTags(ref TagList tags, Activity? activity, JsonRpcMessage message, string method, string? target, bool usingOuterActivity)
     {
         tags.Add("mcp.method.name", method);
         tags.Add("network.transport", _transportKind);
