@@ -6,10 +6,13 @@
     <Nullable>enable</Nullable>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <IsPackable>true</IsPackable>
-    <PackageId>ModelContextProtocol.AspNetCore</PackageId>
-    <Description>ASP.NET Core extensions for the C# Model Context Protocol (MCP) SDK.</Description>
+    <!-- Fork with distributed session support -->
+    <PackageId>Surfshack.ModelContextProtocol.AspNetCore</PackageId>
+    <Description>ASP.NET Core extensions for the C# Model Context Protocol (MCP) SDK. Fork with distributed session support via ISessionStore.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <IsAotCompatible>true</IsAotCompatible>
+    <RepositoryUrl>https://github.com/dota-devy/mcp-csharp-sdk</RepositoryUrl>
+    <PackageTags>mcp;model-context-protocol;ai;llm;aspnetcore;distributed-sessions</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

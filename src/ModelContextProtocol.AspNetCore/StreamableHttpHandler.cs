@@ -20,7 +20,8 @@ internal sealed class StreamableHttpHandler(
     StatefulSessionManager sessionManager,
     IHostApplicationLifetime hostApplicationLifetime,
     IServiceProvider applicationServices,
-    ILoggerFactory loggerFactory)
+    ILoggerFactory loggerFactory,
+    ISessionStore? sessionStore = null)
 {
     private const string McpSessionIdHeaderName = "Mcp-Session-Id";
     private const string LastEventIdHeaderName = "Last-Event-ID";
@@ -181,6 +182,14 @@ internal sealed class StreamableHttpHandler(
         {
             await session.DisposeAsync();
         }
+
+        // Also remove from persistent store if enabled
+        if (HttpServerTransportOptions.EnableDistributedSessions &&
+            sessionStore is not null &&
+            !string.IsNullOrEmpty(sessionId))
+        {
+            await sessionStore.RemoveAsync(sessionId, context.RequestAborted);
+        }
     }
 
     private async ValueTask<StreamableHttpSession?> GetSessionAsync(HttpContext context, string sessionId)
@@ -193,6 +202,18 @@ internal sealed class StreamableHttpHandler(
 
         if (!sessionManager.TryGetValue(sessionId, out var session))
         {
+            // Session not in memory - try to recreate from persistent store if enabled
+            if (HttpServerTransportOptions.EnableDistributedSessions && sessionStore is not null)
+            {
+                session = await TryRecreateSessionFromStoreAsync(context, sessionId);
+                if (session is not null)
+                {
+                    context.Response.Headers[McpSessionIdHeaderName] = session.Id;
+                    context.Features.Set(session.Server);
+                    return session;
+                }
+            }
+
             // -32001 isn't part of the MCP standard, but this is what the typescript-sdk currently does.
             // One of the few other usages I found was from some Ethereum JSON-RPC documentation and this
             // JSON-RPC library from Microsoft called StreamJsonRpc where it's called JsonRpcErrorCode.NoMarshaledObjectFound
@@ -212,6 +233,58 @@ internal sealed class StreamableHttpHandler(
         context.Response.Headers[McpSessionIdHeaderName] = session.Id;
         context.Features.Set(session.Server);
         return session;
+    }
+
+    private async ValueTask<StreamableHttpSession?> TryRecreateSessionFromStoreAsync(HttpContext context, string sessionId)
+    {
+        var metadata = await sessionStore!.GetAsync(sessionId, context.RequestAborted);
+        if (metadata is null)
+        {
+            return null;
+        }
+
+        // Validate user identity matches stored session
+        var currentUserClaim = GetUserIdClaim(context.User);
+        if (!UserIdClaimMatches(currentUserClaim, metadata))
+        {
+            return null;
+        }
+
+        // Recreate the session with the existing session ID
+        var transport = new StreamableHttpServerTransport
+        {
+            SessionId = sessionId,
+            FlowExecutionContextFromRequests = !HttpServerTransportOptions.PerSessionExecutionContext,
+        };
+
+        context.Response.Headers[McpSessionIdHeaderName] = sessionId;
+
+        // Create the session using the existing CreateSessionAsync logic
+        var session = await CreateSessionAsync(context, transport, sessionId);
+
+        // Update last activity in the store
+        await sessionStore.UpdateActivityAsync(sessionId, DateTime.UtcNow, context.RequestAborted);
+
+        return session;
+    }
+
+    private static bool UserIdClaimMatches(UserIdClaim? currentClaim, SessionMetadata metadata)
+    {
+        // If session had no user (anonymous), current request must also be anonymous
+        if (string.IsNullOrEmpty(metadata.UserIdClaimValue))
+        {
+            return currentClaim is null;
+        }
+
+        // If session had a user, current request must have the same user
+        if (currentClaim is null)
+        {
+            return false;
+        }
+
+        return currentClaim.Type == metadata.UserIdClaimType &&
+               currentClaim.Value == metadata.UserIdClaimValue &&
+               currentClaim.Issuer == metadata.UserIdClaimIssuer;
     }
 
     private async ValueTask<StreamableHttpSession?> GetOrCreateSessionAsync(HttpContext context)
@@ -295,6 +368,24 @@ internal sealed class StreamableHttpHandler(
 
         var userIdClaim = GetUserIdClaim(context.User);
         var session = new StreamableHttpSession(sessionId, transport, server, userIdClaim, sessionManager);
+
+        // Persist session metadata if distributed sessions are enabled
+        if (!HttpServerTransportOptions.Stateless &&
+            HttpServerTransportOptions.EnableDistributedSessions &&
+            sessionStore is not null &&
+            !string.IsNullOrEmpty(sessionId))
+        {
+            var metadata = new SessionMetadata
+            {
+                SessionId = sessionId,
+                UserIdClaimType = userIdClaim?.Type,
+                UserIdClaimValue = userIdClaim?.Value,
+                UserIdClaimIssuer = userIdClaim?.Issuer,
+                CreatedAtUtc = DateTime.UtcNow,
+                LastActivityUtc = DateTime.UtcNow
+            };
+            await sessionStore.SaveAsync(metadata, context.RequestAborted);
+        }
 
         var runSessionAsync = HttpServerTransportOptions.RunSessionHandler ?? RunSessionAsync;
         session.ServerRunTask = runSessionAsync(context, server, session.SessionClosed);

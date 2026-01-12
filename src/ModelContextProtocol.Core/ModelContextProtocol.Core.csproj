@@ -4,10 +4,12 @@
     <TargetFrameworks>net10.0;net9.0;net8.0;netstandard2.0</TargetFrameworks>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <IsPackable>true</IsPackable>
-    <PackageId>ModelContextProtocol.Core</PackageId>
-    <Description>Core .NET SDK for the Model Context Protocol (MCP)</Description>
+    <!-- Fork with distributed session support -->
+    <PackageId>Surfshack.ModelContextProtocol.Core</PackageId>
+    <Description>Core .NET SDK for the Model Context Protocol (MCP). Fork with distributed session support.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <RepositoryUrl>https://github.com/dota-devy/mcp-csharp-sdk</RepositoryUrl>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' != 'netstandard2.0'">

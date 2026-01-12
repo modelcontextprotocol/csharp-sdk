@@ -1,0 +1,101 @@
+name: Publish NuGet Packages
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version_suffix:
+        description: 'Version suffix (e.g., preview.1, beta.2). Leave empty for stable.'
+        required: false
+        default: ''
+
+env:
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Determine version
+        id: version
+        run: |
+          # Base version from tag or default
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"  # Remove 'v' prefix
+          else
+            # Use commit-based version for non-tag builds
+            VERSION="0.5.1-dev.${{ github.run_number }}"
+          fi
+
+          # Add suffix if provided
+          if [[ -n "${{ github.event.inputs.version_suffix }}" ]]; then
+            VERSION="${VERSION}-${{ github.event.inputs.version_suffix }}"
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore /p:Version=${{ steps.version.outputs.version }}
+
+      - name: Pack NuGet packages
+        run: |
+          dotnet pack src/ModelContextProtocol.Core/ModelContextProtocol.Core.csproj \
+            --configuration Release \
+            --no-build \
+            --output ./packages \
+            /p:PackageVersion=${{ steps.version.outputs.version }}
+
+          dotnet pack src/ModelContextProtocol/ModelContextProtocol.csproj \
+            --configuration Release \
+            --no-build \
+            --output ./packages \
+            /p:PackageVersion=${{ steps.version.outputs.version }}
+
+          dotnet pack src/ModelContextProtocol.AspNetCore/ModelContextProtocol.AspNetCore.csproj \
+            --configuration Release \
+            --no-build \
+            --output ./packages \
+            /p:PackageVersion=${{ steps.version.outputs.version }}
+
+      - name: Push to GitHub Packages
+        run: |
+          dotnet nuget add source \
+            --username ${{ github.actor }} \
+            --password ${{ secrets.GITHUB_TOKEN }} \
+            --store-password-in-clear-text \
+            --name github \
+            "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
+
+          dotnet nuget push ./packages/*.nupkg \
+            --source github \
+            --skip-duplicate
+
+      - name: Upload packages as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: ./packages/*.nupkg
+          retention-days: 30
