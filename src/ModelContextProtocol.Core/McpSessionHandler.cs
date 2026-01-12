@@ -19,14 +19,16 @@ namespace ModelContextProtocol;
 /// </summary>
 internal sealed partial class McpSessionHandler : IAsyncDisposable
 {
+    // MCP semantic conventions specify ExplicitBucketBoundaries of [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 30, 60, 120, 300] for all metrics
+    // https://github.com/open-telemetry/semantic-conventions/blob/main/docs/gen-ai/mcp.md#metrics
     private static readonly Histogram<double> s_clientSessionDuration = Diagnostics.CreateDurationHistogram(
-        "mcp.client.session.duration", "Measures the duration of a client session.", longBuckets: true);
+        "mcp.client.session.duration", "The duration of the MCP session as observed on the MCP client.", longBuckets: true);
     private static readonly Histogram<double> s_serverSessionDuration = Diagnostics.CreateDurationHistogram(
-        "mcp.server.session.duration", "Measures the duration of a server session.", longBuckets: true);
+        "mcp.server.session.duration", "The duration of the MCP session as observed on the MCP server.", longBuckets: true);
     private static readonly Histogram<double> s_clientOperationDuration = Diagnostics.CreateDurationHistogram(
-        "mcp.client.operation.duration", "Measures the duration of outbound message.", longBuckets: false);
+        "mcp.client.operation.duration", "The duration of the MCP request or notification as observed on the sender from the time it was sent until the response or ack is received.", longBuckets: true);
     private static readonly Histogram<double> s_serverOperationDuration = Diagnostics.CreateDurationHistogram(
-        "mcp.server.operation.duration", "Measures the duration of inbound message processing.", longBuckets: false);
+        "mcp.server.operation.duration", "MCP request or notification duration as observed on the receiver from the time it was received until the result or ack is sent.", longBuckets: true);
 
     /// <summary>The latest version of the protocol supported by this implementation.</summary>
     internal const string LatestProtocolVersion = "2025-06-18";
@@ -83,13 +85,15 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     {
         Throw.IfNull(transport);
 
+        // Per MCP semantic conventions: "pipe" for stdio, "tcp" or "quic" for HTTP
+        // https://github.com/open-telemetry/semantic-conventions/blob/main/docs/gen-ai/mcp.md#recording-mcp-transport
         _transportKind = transport switch
         {
-            StdioClientSessionTransport or StdioServerTransport => "stdio",
-            StreamClientSessionTransport or StreamServerTransport => "stream",
-            SseClientSessionTransport or SseResponseStreamTransport => "sse",
-            StreamableHttpClientSessionTransport or StreamableHttpServerTransport or StreamableHttpPostTransport => "http",
-            _ => "unknownTransport"
+            StdioClientSessionTransport or StdioServerTransport => "pipe",
+            StreamClientSessionTransport or StreamServerTransport => "pipe",
+            SseClientSessionTransport or SseResponseStreamTransport => "tcp",
+            StreamableHttpClientSessionTransport or StreamableHttpServerTransport or StreamableHttpPostTransport => "tcp",
+            _ => "pipe"
         };
 
         _isServer = isServer;
@@ -598,17 +602,18 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         tags.Add("mcp.method.name", method);
         tags.Add("network.transport", _transportKind);
 
-        // TODO: When using SSE transport, add:
+        // TODO: When using HTTP transport, add:
         // - server.address and server.port on client spans and metrics
-        // - client.address and client.port on server spans (not metrics because of cardinality) when using SSE transport
+        // - client.address and client.port on server spans (not metrics because of cardinality)
         if (activity is { IsAllDataRequested: true })
         {
             // session and request id have high cardinality, so not applying to metric tags
             activity.AddTag("mcp.session.id", _sessionId);
 
+            // Per semantic conventions: jsonrpc.request.id is a string representation of the id
             if (message is JsonRpcMessageWithId withId)
             {
-                activity.AddTag("mcp.request.id", withId.Id.Id?.ToString());
+                activity.AddTag("jsonrpc.request.id", withId.Id.Id?.ToString());
             }
         }
 
@@ -628,11 +633,22 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         switch (method)
         {
             case RequestMethods.ToolsCall:
+                target = GetStringProperty(paramsObj, "name");
+                if (target is not null)
+                {
+                    // Per semantic conventions: gen_ai.tool.name for tool operations
+                    tags.Add("gen_ai.tool.name", target);
+                    // Per semantic conventions: gen_ai.operation.name should be "execute_tool" for tool calls
+                    tags.Add("gen_ai.operation.name", "execute_tool");
+                }
+                break;
+
             case RequestMethods.PromptsGet:
                 target = GetStringProperty(paramsObj, "name");
                 if (target is not null)
                 {
-                    tags.Add(method == RequestMethods.ToolsCall ? "mcp.tool.name" : "mcp.prompt.name", target);
+                    // Per semantic conventions: gen_ai.prompt.name for prompt operations
+                    tags.Add("gen_ai.prompt.name", target);
                 }
                 break;
 
@@ -670,7 +686,8 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         tags.Add("error.type", errorType);
         if (intErrorCode is not null)
         {
-            tags.Add("rpc.jsonrpc.error_code", errorType);
+            // Per MCP semantic conventions: rpc.response.status_code for JSON-RPC error codes
+            tags.Add("rpc.response.status_code", errorType);
         }
 
         if (activity is { IsAllDataRequested: true })

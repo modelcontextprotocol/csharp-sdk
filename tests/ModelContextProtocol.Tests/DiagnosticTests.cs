@@ -37,15 +37,17 @@ public class DiagnosticTests
         Assert.NotEmpty(activities);
 
         var clientToolCall = Assert.Single(activities, a =>
-            a.Tags.Any(t => t.Key == "mcp.tool.name" && t.Value == "DoubleValue") &&
+            a.Tags.Any(t => t.Key == "gen_ai.tool.name" && t.Value == "DoubleValue") &&
             a.Tags.Any(t => t.Key == "mcp.method.name" && t.Value == "tools/call") &&
+            a.Tags.Any(t => t.Key == "gen_ai.operation.name" && t.Value == "execute_tool") &&
             a.DisplayName == "tools/call DoubleValue" &&
             a.Kind == ActivityKind.Client &&
             a.Status == ActivityStatusCode.Unset);
 
         var serverToolCall = Assert.Single(activities, a =>
-            a.Tags.Any(t => t.Key == "mcp.tool.name" && t.Value == "DoubleValue") &&
+            a.Tags.Any(t => t.Key == "gen_ai.tool.name" && t.Value == "DoubleValue") &&
             a.Tags.Any(t => t.Key == "mcp.method.name" && t.Value == "tools/call") &&
+            a.Tags.Any(t => t.Key == "gen_ai.operation.name" && t.Value == "execute_tool") &&
             a.DisplayName == "tools/call DoubleValue" &&
             a.Kind == ActivityKind.Server &&
             a.Status == ActivityStatusCode.Unset);
@@ -94,7 +96,7 @@ public class DiagnosticTests
         Assert.NotEmpty(activities);
 
         var throwToolClient = Assert.Single(activities, a =>
-            a.Tags.Any(t => t.Key == "mcp.tool.name" && t.Value == "Throw") &&
+            a.Tags.Any(t => t.Key == "gen_ai.tool.name" && t.Value == "Throw") &&
             a.Tags.Any(t => t.Key == "mcp.method.name" && t.Value == "tools/call") &&
             a.DisplayName == "tools/call Throw" &&
             a.Kind == ActivityKind.Client);
@@ -102,7 +104,7 @@ public class DiagnosticTests
         Assert.Equal(ActivityStatusCode.Error, throwToolClient.Status);
 
         var throwToolServer = Assert.Single(activities, a =>
-            a.Tags.Any(t => t.Key == "mcp.tool.name" && t.Value == "Throw") &&
+            a.Tags.Any(t => t.Key == "gen_ai.tool.name" && t.Value == "Throw") &&
             a.Tags.Any(t => t.Key == "mcp.method.name" && t.Value == "tools/call") &&
             a.DisplayName == "tools/call Throw" &&
             a.Kind == ActivityKind.Server);
@@ -110,22 +112,22 @@ public class DiagnosticTests
         Assert.Equal(ActivityStatusCode.Error, throwToolServer.Status);
 
         var doesNotExistToolClient = Assert.Single(activities, a =>
-            a.Tags.Any(t => t.Key == "mcp.tool.name" && t.Value == "does-not-exist") &&
+            a.Tags.Any(t => t.Key == "gen_ai.tool.name" && t.Value == "does-not-exist") &&
             a.Tags.Any(t => t.Key == "mcp.method.name" && t.Value == "tools/call") &&
             a.DisplayName == "tools/call does-not-exist" &&
             a.Kind == ActivityKind.Client);
 
         Assert.Equal(ActivityStatusCode.Error, doesNotExistToolClient.Status);
-        Assert.Equal("-32602", doesNotExistToolClient.Tags.Single(t => t.Key == "rpc.jsonrpc.error_code").Value);
+        Assert.Equal("-32602", doesNotExistToolClient.Tags.Single(t => t.Key == "rpc.response.status_code").Value);
 
         var doesNotExistToolServer = Assert.Single(activities, a =>
-            a.Tags.Any(t => t.Key == "mcp.tool.name" && t.Value == "does-not-exist") &&
+            a.Tags.Any(t => t.Key == "gen_ai.tool.name" && t.Value == "does-not-exist") &&
             a.Tags.Any(t => t.Key == "mcp.method.name" && t.Value == "tools/call") &&
             a.DisplayName == "tools/call does-not-exist" &&
             a.Kind == ActivityKind.Server);
 
         Assert.Equal(ActivityStatusCode.Error, doesNotExistToolServer.Status);
-        Assert.Equal("-32602", doesNotExistToolClient.Tags.Single(t => t.Key == "rpc.jsonrpc.error_code").Value);
+        Assert.Equal("-32602", doesNotExistToolClient.Tags.Single(t => t.Key == "rpc.response.status_code").Value);
     }
 
     private static async Task RunConnected(Func<McpClient, McpServer, Task> action, List<string> clientToServerLog)

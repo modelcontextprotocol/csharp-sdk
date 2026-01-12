@@ -13,7 +13,7 @@ internal static class Diagnostics
     internal static Meter Meter { get; } = new("Experimental.ModelContextProtocol");
 
     internal static Histogram<double> CreateDurationHistogram(string name, string description, bool longBuckets) =>
-        Meter.CreateHistogram(name, "s", description, advice: longBuckets ? LongSecondsBucketBoundaries : ShortSecondsBucketBoundaries);
+        Meter.CreateHistogram(name, "s", description, advice: longBuckets ? McpSecondsBucketBoundaries : ShortSecondsBucketBoundaries);
 
     /// <summary>
     /// Follows boundaries from http.server.request.duration/http.client.request.duration
@@ -24,10 +24,10 @@ internal static class Diagnostics
     };
 
     /// <summary>
-    /// Not based on a standard. Larger bucket sizes for longer lasting operations, e.g. HTTP connection duration.
-    /// See https://github.com/open-telemetry/semantic-conventions/issues/336
+    /// ExplicitBucketBoundaries specified in MCP semantic conventions for all MCP metrics.
+    /// See https://github.com/open-telemetry/semantic-conventions/blob/main/docs/gen-ai/mcp.md#metrics
     /// </summary>
-    private static InstrumentAdvice<double> LongSecondsBucketBoundaries { get; } = new()
+    private static InstrumentAdvice<double> McpSecondsBucketBoundaries { get; } = new()
     {
         HistogramBucketBoundaries = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 30, 60, 120, 300],
     };
