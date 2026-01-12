@@ -10,7 +10,7 @@
     <Authors>ModelContextProtocol</Authors>
     <Copyright>© Anthropic and Contributors.</Copyright>
     <PackageTags>ModelContextProtocol;mcp;ai;llm</PackageTags>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageIcon>logo.png</PackageIcon>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
