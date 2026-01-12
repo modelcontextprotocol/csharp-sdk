@@ -84,8 +84,6 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     {
         Throw.IfNull(transport);
 
-        // Per MCP semantic conventions: "pipe" for stdio, "tcp" or "quic" for HTTP
-        // https://github.com/open-telemetry/semantic-conventions/blob/main/docs/gen-ai/mcp.md#recording-mcp-transport
         _transportKind = transport switch
         {
             StdioClientSessionTransport or StdioServerTransport => "pipe",
@@ -666,7 +664,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         tags.Add("mcp.method.name", method);
         tags.Add("network.transport", _transportKind);
 
-        if (_transportKind == "tcp")
+        if (_transportKind is "tcp")
         {
             tags.Add("network.protocol.name", "http");
         }
@@ -683,11 +681,6 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             if (message is JsonRpcMessageWithId withId)
             {
                 activity.AddTag("jsonrpc.request.id", withId.Id.Id?.ToString());
-            }
-
-            if (!usingOuterActivity && target is not null)
-            {
-                activity.DisplayName = $"{method} {target}";
             }
         }
 

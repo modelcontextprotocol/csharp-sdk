@@ -105,15 +105,10 @@ internal static class Diagnostics
     /// <returns>true if an outer tool execution activity was found and can be reused; false otherwise.</returns>
     internal static bool TryGetOuterToolExecutionActivity([NotNullWhen(true)] out Activity? activity)
     {
-        activity = Activity.Current;
-        if (activity is null)
+        if (Activity.Current is { } currentActivity &&
+            currentActivity.OperationName.StartsWith("execute_tool ", StringComparison.Ordinal))
         {
-            return false;
-        }
-
-        // Check if the current activity name indicates a tool execution (e.g., "execute_tool toolName")
-        if (activity.OperationName.StartsWith("execute_tool ", StringComparison.Ordinal))
-        {
+            activity = currentActivity;
             return true;
         }
 
