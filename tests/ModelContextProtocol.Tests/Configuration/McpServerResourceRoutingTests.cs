@@ -13,6 +13,7 @@ public sealed class McpServerResourceRoutingTests(ITestOutputHelper testOutputHe
             McpServerResource.Create(options: new() { UriTemplate = "test://resource/non-templated" } , method: () => "static"),
             McpServerResource.Create(options: new() { UriTemplate = "test://resource/{id}" }, method: (string id) => $"template: {id}"),
             McpServerResource.Create(options: new() { UriTemplate = "test://params{?a1,a2,a3}" }, method: (string a1, string a2, string a3) => $"params: {a1}, {a2}, {a3}"),
+            McpServerResource.Create(options: new() { UriTemplate = "file://{prefix}/{+path}" }, method: (string prefix, string path) => $"prefix: {prefix}, path: {path}"),
         ]);
     }
 
@@ -34,6 +35,9 @@ public sealed class McpServerResourceRoutingTests(ITestOutputHelper testOutputHe
 
         var paramsResult = await client.ReadResourceAsync("test://params?a1=a&a2=b&a3=c", null, TestContext.Current.CancellationToken);
         Assert.Equal("params: a, b, c", ((TextResourceContents)paramsResult.Contents[0]).Text);
+
+        var pathResult = await client.ReadResourceAsync("file://foo/examples/example.rs", null, TestContext.Current.CancellationToken);
+        Assert.Equal("prefix: foo, path: examples/example.rs", ((TextResourceContents)pathResult.Contents[0]).Text);
 
         var mcpEx = await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ReadResourceAsync("test://params{?a1,a2,a3}", null, TestContext.Current.CancellationToken));
         Assert.Equal(McpErrorCode.ResourceNotFound, mcpEx.ErrorCode);

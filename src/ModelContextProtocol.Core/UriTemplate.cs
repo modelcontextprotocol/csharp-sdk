@@ -84,10 +84,11 @@ internal static partial class UriTemplate
 
             switch (m.Groups["operator"].Value)
             {
+                case "+": AppendExpression(ref pattern, paramNames, null, "[^?&]+"); break;
                 case "#": AppendExpression(ref pattern, paramNames, '#', "[^,]+"); break;
                 case "/": AppendExpression(ref pattern, paramNames, '/', "[^/?]+"); break;
                 default:  AppendExpression(ref pattern, paramNames, null, "[^/?&]+"); break;
-                
+
                 case "?": AppendQueryExpression(ref pattern, paramNames, '?'); break;
                 case "&": AppendQueryExpression(ref pattern, paramNames, '&'); break;
             }
@@ -143,6 +144,7 @@ internal static partial class UriTemplate
         // characters make up a parameter value. Then, for each name in `paramNames`, it optionally
         // appends the escaped `prefix` (only on the first parameter, then switches to ','), and
         // adds an optional named capture group `(?<paramName>valueChars)` to match and capture that value.
+        // Note: For "+" (reserved expansion) operator, prefix is null but valueChars allows "/" characters.
         static void AppendExpression(ref DefaultInterpolatedStringHandler pattern, List<string> paramNames, char? prefix, string valueChars)
         {
             Debug.Assert(prefix is '#' or '/' or null);
@@ -363,7 +365,7 @@ internal static partial class UriTemplate
                 }
             }
 
-            if (expansions.Count > 0 && 
+            if (expansions.Count > 0 &&
                 (modifierBehavior.PrefixEmptyExpansions || !expansions.All(string.IsNullOrEmpty)))
             {
                 builder.AppendLiteral(modifierBehavior.Prefix);
@@ -460,7 +462,7 @@ internal static partial class UriTemplate
     /// Defines an equality comparer for Uri templates as follows:
     /// 1. Non-templated Uris use regular System.Uri equality comparison (host name is case insensitive).
     /// 2. Templated Uris use regular string equality.
-    /// 
+    ///
     /// We do this because non-templated resources are looked up directly from the resource dictionary
     /// and we need to make sure equality is implemented correctly. Templated Uris are resolved in a
     /// fallback step using linear traversal of the resource dictionary, so their equality is only
