@@ -19,6 +19,7 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
     private TaskCompletionSource<bool>? _streamTcs;
     private ISseEventStreamWriter? _sseEventStreamWriter;
     private RequestId _pendingRequest;
+    private bool _finalResponseMessageSent;
     private bool _originalResponseCompleted;
 
     public ChannelReader<JsonRpcMessage> MessageReader => throw new NotSupportedException("JsonRpcMessage.Context.RelatedTransport should only be used for sending messages.");
@@ -88,9 +89,18 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
             throw new InvalidOperationException("Server to client requests are not supported in stateless mode.");
         }
 
+        using var _ = await _messageLock.LockAsync().ConfigureAwait(false);
+
         try
         {
-            using var _ = await _messageLock.LockAsync(cancellationToken).ConfigureAwait(false);
+
+            if (_finalResponseMessageSent)
+            {
+                // The final response message has already been sent.
+                // Rather than drop the message, fall back to sending it via the parent transport.
+                await parentTransport.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
+                return;
+            }
 
             var item = new SseItem<JsonRpcMessage?>(message, SseParser.EventTypeDefault);
 
@@ -102,7 +112,6 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
             if (!_originalResponseCompleted)
             {
                 // Only write the message to the response if the response has not completed.
-
                 try
                 {
                     await _sseResponseWriter.WriteAsync(item, cancellationToken).ConfigureAwait(false);
@@ -112,18 +121,13 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
                     _responseTcs.TrySetException(ex);
                 }
             }
-            else if (_sseEventStreamWriter is null)
-            {
-                // The response has completed, and there is no event stream to store the message.
-                // Rather than drop the message, fall back to sending it via the parent transport.
-                await parentTransport.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
-            }
         }
         finally
         {
             // Complete the response if this is the final message.
             if ((message is JsonRpcResponse or JsonRpcError) && ((JsonRpcMessageWithId)message).Id == _pendingRequest)
             {
+                _finalResponseMessageSent = true;
                 _responseTcs.TrySetResult(true);
                 _streamTcs?.TrySetResult(true);
             }
