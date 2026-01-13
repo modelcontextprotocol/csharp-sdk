@@ -15,15 +15,11 @@ internal static class SseItem
         => new(data: data, SseParser.EventTypeDefault);
 
     /// <summary>
-    /// Creates a new Server-Sent Events (SSE) item representing a 'prime' event with no data and a specified
-    /// reconnection interval.
+    /// Creates a new Server-Sent Events (SSE) item representing a 'prime' event with no data.
     /// </summary>
-    /// <returns>An <see cref="SseItem{T}"/> instance representing a 'prime' event with no data and the specified reconnection interval.</returns>
-    public static SseItem<T?> Prime<T>(TimeSpan retryInterval)
-        => new(data: default, eventType: null)
-        {
-            ReconnectionInterval = retryInterval,
-        };
+    /// <returns>An <see cref="SseItem{T}"/> instance representing a 'prime' event with no data.</returns>
+    public static SseItem<T?> Prime<T>()
+        => new(data: default, eventType: "prime");
 
     /// <summary>
     /// Creates a server-sent event (SSE) item representing the specified endpoint.

@@ -145,7 +145,10 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
         }
 
         // Send the priming event with the new retry interval.
-        var primingItem = await _sseEventStreamWriter.WriteEventAsync(SseItem.Prime<JsonRpcMessage>(retryInterval), cancellationToken).ConfigureAwait(false);
+        var primingItem = await _sseEventStreamWriter.WriteEventAsync(
+            sseItem: new SseItem<JsonRpcMessage?>() { ReconnectionInterval = retryInterval },
+            cancellationToken)
+            .ConfigureAwait(false);
 
         // Write to the response stream if it still exists.
         if (!_originalResponseCompleted)
@@ -178,7 +181,7 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
         _streamTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         _ = HandleStreamWriterDisposalAsync(_streamTcs.Task, cancellationToken);
 
-        return await _sseEventStreamWriter.WriteEventAsync(SseItem.Prime<JsonRpcMessage>(parentTransport.RetryInterval), cancellationToken).ConfigureAwait(false);
+        return await _sseEventStreamWriter.WriteEventAsync(SseItem.Prime<JsonRpcMessage>(), cancellationToken).ConfigureAwait(false);
 
         async Task HandleStreamWriterDisposalAsync(Task streamTask, CancellationToken cancellationToken)
         {

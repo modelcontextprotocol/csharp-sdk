@@ -248,7 +248,6 @@ internal sealed class StreamableHttpHandler(
                 SessionId = sessionId,
                 FlowExecutionContextFromRequests = !HttpServerTransportOptions.PerSessionExecutionContext,
                 EventStreamStore = HttpServerTransportOptions.EventStreamStore,
-                RetryInterval = HttpServerTransportOptions.RetryInterval,
             };
             context.Response.Headers[McpSessionIdHeaderName] = sessionId;
         }

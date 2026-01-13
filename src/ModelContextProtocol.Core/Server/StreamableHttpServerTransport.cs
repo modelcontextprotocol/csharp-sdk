@@ -70,15 +70,6 @@ public sealed class StreamableHttpServerTransport : ITransport
     public ISseEventStreamStore? EventStreamStore { get; init; }
 
     /// <summary>
-    /// Gets or sets the retry interval to suggest to clients in SSE retry field.
-    /// When <see cref="EventStreamStore"/> is set, the server will include a retry field in priming events.
-    /// </summary>
-    /// <remarks>
-    /// The default value is 1 second.
-    /// </remarks>
-    public TimeSpan RetryInterval { get; init; } = TimeSpan.FromSeconds(1);
-
-    /// <summary>
     /// Gets or sets the negotiated protocol version for this session.
     /// </summary>
     internal string? NegotiatedProtocolVersion { get; private set; }
@@ -131,7 +122,7 @@ public sealed class StreamableHttpServerTransport : ITransport
             _sseEventStreamWriter = await TryCreateEventStreamAsync(streamId: UnsolicitedMessageStreamId, cancellationToken).ConfigureAwait(false);
             if (_sseEventStreamWriter is not null)
             {
-                var primingItem = await _sseEventStreamWriter.WriteEventAsync(SseItem.Prime<JsonRpcMessage>(RetryInterval), cancellationToken).ConfigureAwait(false);
+                var primingItem = await _sseEventStreamWriter.WriteEventAsync(SseItem.Prime<JsonRpcMessage>(), cancellationToken).ConfigureAwait(false);
                 await _sseResponseWriter.WriteAsync(primingItem, cancellationToken).ConfigureAwait(false);
             }
         }

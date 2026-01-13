@@ -122,23 +122,7 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
     }
 
     [Fact]
-    public async Task Server_IncludesEventIdAndRetry_InSseResponse()
-    {
-        // Arrange
-        var expectedRetryInterval = TimeSpan.FromSeconds(5);
-        var eventStreamStore = new TestSseEventStreamStore();
-        await using var app = await CreateServerAsync(eventStreamStore, retryInterval: expectedRetryInterval);
-
-        // Act
-        var sseResponse = await SendInitializeAndReadSseResponseAsync(InitializeRequest);
-
-        // Assert - Event IDs and retry field should be present in the response
-        Assert.True(sseResponse.LastEventId is not null, "Expected SSE response to contain event IDs");
-        Assert.Equal(expectedRetryInterval, sseResponse.RetryInterval);
-    }
-
-    [Fact]
-    public async Task Server_WithoutEventStore_DoesNotIncludeEventIdAndRetry()
+    public async Task Server_WithoutEventStore_DoesNotIncludeEventId()
     {
         // Arrange - Server without event store
         await using var app = await CreateServerAsync();
@@ -148,7 +132,6 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
 
         // Assert - No event IDs or retry field when EventStore is not configured
         Assert.True(sseResponse.LastEventId is null, "Did not expect event IDs when EventStore is not configured");
-        Assert.True(sseResponse.RetryInterval is null, "Did not expect retry field when EventStore is not configured");
     }
 
     [Fact]
@@ -156,7 +139,7 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
     {
         // Arrange - Server with resumability enabled
         var eventStreamStore = new TestSseEventStreamStore();
-        await using var app = await CreateServerAsync(eventStreamStore, retryInterval: TimeSpan.FromSeconds(5));
+        await using var app = await CreateServerAsync(eventStreamStore);
 
         // Use an older protocol version that doesn't support resumability
         const string OldProtocolInitRequest = """
@@ -167,25 +150,9 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
 
         // Assert - Old clients should not receive event IDs or retry fields (no priming events)
         Assert.True(sseResponse.LastEventId is null, "Old protocol clients should not receive event IDs");
-        Assert.True(sseResponse.RetryInterval is null, "Old protocol clients should not receive retry field");
 
         // Event store should not have been called for old clients
         Assert.Equal(0, eventStreamStore.StoreEventCallCount);
-    }
-
-    [Fact]
-    public async Task Client_ReceivesRetryInterval_FromServer()
-    {
-        // Arrange - Server with specific retry interval
-        var expectedRetry = TimeSpan.FromMilliseconds(3000);
-        var eventStreamStore = new TestSseEventStreamStore();
-        await using var app = await CreateServerAsync(eventStreamStore, retryInterval: expectedRetry);
-
-        // Act - Send initialize and read the retry field
-        var sseItem = await SendInitializeAndReadSseResponseAsync(InitializeRequest);
-
-        // Assert - Client receives the retry interval from server
-        Assert.Equal(expectedRetry, sseItem.RetryInterval);
     }
 
     [Fact]
@@ -506,11 +473,38 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
     }
 
     [Fact]
-    public async Task PostResponse_EndsAndWriterIsDisposed_WhenWriteEventAsyncIsCanceled()
+    public async Task EnablePollingAsync_SendsSseItemWithRetryField()
     {
-        // This test verifies that the POST response ends and the ISseEventStreamWriter is disposed
-        // when a response message is sent but the underlying WriteEventAsync is canceled.
+        // Arrange
+        const string PollingToolName = "polling_tool";
+        var expectedRetryInterval = TimeSpan.FromSeconds(5);
+        var pollingTool = McpServerTool.Create(async (RequestContext<CallToolRequestParams> context) =>
+        {
+            await context.EnablePollingAsync(retryInterval: expectedRetryInterval);
+            return "Polling enabled";
+        }, options: new() { Name = PollingToolName });
 
+        var eventStreamStore = new TestSseEventStreamStore();
+        await using var app = await CreateServerAsync(eventStreamStore, configureServer: builder =>
+        {
+            builder.WithTools([pollingTool]);
+        });
+        await using var client = await ConnectClientAsync();
+
+        // Act - Call the tool that enables polling
+        var result = await client.CallToolAsync(PollingToolName, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert - The result should be successful
+        Assert.False(result.IsError is true);
+        Assert.Equal("Polling enabled", result.Content.OfType<TextContentBlock>().Single().Text);
+
+        // Verify that the event store received the retry interval
+        Assert.Contains(expectedRetryInterval, eventStreamStore.StoredReconnectionIntervals);
+    }
+
+    [Fact]
+    public async Task PostResponse_EndsAndSseEventStreamWriterIsDisposed_WhenWriteEventAsyncIsCanceled()
+    {
         var blockingStore = new BlockingEventStreamStore();
         await using var app = await CreateServerAsync(blockingStore);
         await using var client = await ConnectClientAsync();
@@ -523,40 +517,21 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
         // Start calling the tool - this will eventually trigger WriteEventAsync for the response
         var callTask = client.CallToolAsync("echo",
             new Dictionary<string, object?> { ["message"] = "test" },
-            cancellationToken: callCts.Token);
+            cancellationToken: callCts.Token).AsTask();
 
         // Wait for the writer to block on WriteEventAsync for the response message
         await blockingStore.WriteEventBlockedTcs.WaitAsync(TestContext.Current.CancellationToken);
 
-        // Cancel the token while the writer is blocked - this simulates the cancellation
-        // happening during SendMessageAsync
+        // Cancel the token while the writer is blocked - this causes an OCE to bubble up
+        // to SendMessageAsync
         await callCts.CancelAsync();
 
-        // Unblock the writer with a canceled token - this causes WriteEventAsync to throw
-        blockingStore.UnblockWithCancellation();
-
-        // The call should complete (with an error or cancellation) without hanging.
-        // The key assertion is that this doesn't timeout, proving the response TCS was signaled
-        // even when WriteEventAsync threw OperationCanceledException.
+        // The call should complete (with an error or cancellation) without hanging
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(10));
 
-        try
-        {
-            await callTask.AsTask().WaitAsync(timeoutCts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            // Expected - the request was canceled
-        }
-        catch (McpException)
-        {
-            // Also acceptable - server may send an error response
-        }
-        catch (TimeoutException)
-        {
-            Assert.Fail("The POST response did not complete - the response TaskCompletionSource was not signaled.");
-        }
+        // The call task should throw an OCE due to cancellation
+        await Assert.ThrowsAsync<OperationCanceledException>(() => callTask).WaitAsync(timeoutCts.Token);
 
         // Verify the writer was disposed (stream was properly cleaned up)
         Assert.True(blockingStore.WriterDisposed, "Expected the ISseEventStreamWriter to be disposed.");
@@ -571,7 +546,6 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
 
     private async Task<WebApplication> CreateServerAsync(
         ISseEventStreamStore? eventStreamStore = null,
-        TimeSpan? retryInterval = null,
         Action<IMcpServerBuilder>? configureServer = null,
         Action<HttpServerTransportOptions>? configureTransport = null)
     {
@@ -579,10 +553,6 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
             .WithHttpTransport(options =>
             {
                 options.EventStreamStore = eventStreamStore;
-                if (retryInterval.HasValue)
-                {
-                    options.RetryInterval = retryInterval.Value;
-                }
                 configureTransport?.Invoke(options);
             })
             .WithTools<ResumabilityTestTools>();
@@ -633,10 +603,6 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
             {
                 sseResponse.LastEventId = sseItem.EventId;
             }
-            if (sseItem.ReconnectionInterval.HasValue)
-            {
-                sseResponse.RetryInterval = sseItem.ReconnectionInterval.Value;
-            }
         }
 
         return sseResponse;
@@ -645,7 +611,6 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
     private struct SseResponse
     {
         public string? LastEventId { get; set; }
-        public TimeSpan? RetryInterval { get; set; }
     }
 
     /// <summary>
@@ -655,8 +620,6 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
     private sealed class BlockingEventStreamStore : ISseEventStreamStore
     {
         private readonly TaskCompletionSource _writeEventBlockedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private readonly TaskCompletionSource _unblockTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private CancellationTokenSource? _cancelCts;
         private bool _writerDisposed;
         private bool _blockingEnabled;
 
@@ -665,22 +628,11 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
 
         public void EnableBlocking() => _blockingEnabled = true;
 
-        public void UnblockWithCancellation()
-        {
-            _cancelCts?.Cancel();
-            _unblockTcs.TrySetCanceled();
-        }
-
         public ValueTask<ISseEventStreamWriter> CreateStreamAsync(SseEventStreamOptions options, CancellationToken cancellationToken = default)
-        {
-            _cancelCts = new CancellationTokenSource();
-            return new ValueTask<ISseEventStreamWriter>(new BlockingEventStreamWriter(this));
-        }
+            => new(new BlockingEventStreamWriter(this));
 
         public ValueTask<ISseEventStreamReader?> GetStreamReaderAsync(string lastEventId, CancellationToken cancellationToken = default)
-        {
-            throw new NotSupportedException("This test store does not support reading streams.");
-        }
+            => throw new NotSupportedException("This test store does not support reading streams.");
 
         private sealed class BlockingEventStreamWriter : ISseEventStreamWriter
         {
@@ -707,11 +659,8 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
                     // Signal that we're blocked
                     _store._writeEventBlockedTcs.TrySetResult();
 
-                    // Wait to be unblocked or canceled
-                    using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
-                        cancellationToken, _store._cancelCts?.Token ?? CancellationToken.None);
-
-                    await _store._unblockTcs.Task.WaitAsync(linkedCts.Token).ConfigureAwait(false);
+                    // Wait to be canceled
+                    await new TaskCompletionSource<bool>().Task.WaitAsync(cancellationToken);
                 }
 
                 return sseItem with { EventId = "0" };

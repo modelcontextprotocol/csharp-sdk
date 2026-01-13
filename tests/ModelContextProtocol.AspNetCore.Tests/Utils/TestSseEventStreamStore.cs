@@ -15,6 +15,7 @@ public sealed class TestSseEventStreamStore : ISseEventStreamStore
     private readonly ConcurrentDictionary<string, StreamState> _streams = new();
     private readonly ConcurrentDictionary<string, (StreamState Stream, long Sequence)> _eventLookup = new();
     private readonly List<string> _storedEventIds = [];
+    private readonly List<TimeSpan> _storedReconnectionIntervals = [];
     private readonly object _storedEventIdsLock = new();
     private int _storeEventCallCount;
     private long _globalSequence;
@@ -34,6 +35,20 @@ public sealed class TestSseEventStreamStore : ISseEventStreamStore
             lock (_storedEventIdsLock)
             {
                 return [.. _storedEventIds];
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets the list of stored reconnection intervals in order.
+    /// </summary>
+    public IReadOnlyList<TimeSpan> StoredReconnectionIntervals
+    {
+        get
+        {
+            lock (_storedEventIdsLock)
+            {
+                return [.. _storedReconnectionIntervals];
             }
         }
     }
@@ -66,12 +81,16 @@ public sealed class TestSseEventStreamStore : ISseEventStreamStore
 
     private string GenerateEventId() => Interlocked.Increment(ref _globalSequence).ToString();
 
-    private void TrackEvent(string eventId, StreamState stream, long sequence)
+    private void TrackEvent(string eventId, StreamState stream, long sequence, TimeSpan? reconnectionInterval = null)
     {
         _eventLookup[eventId] = (stream, sequence);
         lock (_storedEventIdsLock)
         {
             _storedEventIds.Add(eventId);
+            if (reconnectionInterval.HasValue)
+            {
+                _storedReconnectionIntervals.Add(reconnectionInterval.Value);
+            }
         }
         Interlocked.Increment(ref _storeEventCallCount);
     }
@@ -180,7 +199,7 @@ public sealed class TestSseEventStreamStore : ISseEventStreamStore
             var newItem = sseItem with { EventId = eventId };
 
             _state.AddEvent(newItem, sequence);
-            _store.TrackEvent(eventId, _state, sequence);
+            _store.TrackEvent(eventId, _state, sequence, sseItem.ReconnectionInterval);
 
             return new ValueTask<SseItem<JsonRpcMessage?>>(newItem);
         }
