@@ -82,13 +82,11 @@ public abstract class JsonRpcMessage
                 throw new JsonException("Expected StartObject token");
             }
 
-            // Track whether we've seen the required jsonrpc property
-            bool hasJsonRpc = false;
-
             // Local variables for parsed message data
+            bool hasJsonRpc = false;
             RequestId id = default;
             string? method = null;
-            JsonNode? @params = null;
+            JsonNode? parameters = null;
             JsonRpcErrorDetail? error = null;
             JsonNode? result = null;
             bool hasResult = false;
@@ -129,7 +127,7 @@ public abstract class JsonRpcMessage
                         break;
 
                     case "params":
-                        @params = JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<JsonNode>());
+                        parameters = JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<JsonNode>());
                         break;
 
                     case "error":
@@ -151,58 +149,60 @@ public abstract class JsonRpcMessage
             // All JSON-RPC messages must have a jsonrpc property with value "2.0"
             if (!hasJsonRpc)
             {
-                throw new JsonException("Invalid or missing jsonrpc version");
+                throw new JsonException("Missing jsonrpc version");
             }
 
             // Determine message type based on presence of id and method properties
-            // Messages with both method and id are requests
-            if (method is not null && id.Id is not null)
-            {
-                return new JsonRpcRequest
-                {
-                    JsonRpc = JsonRpcVersion,
-                    Id = id,
-                    Method = method,
-                    Params = @params
-                };
-            }
-
-            // Messages with a method but no id are notifications
             if (method is not null)
             {
-                return new JsonRpcNotification
+                if (id.Id is not null)
                 {
-                    JsonRpc = JsonRpcVersion,
-                    Method = method,
-                    Params = @params
-                };
+                    // Messages with both method and id are requests
+                    return new JsonRpcRequest
+                    {
+                        JsonRpc = JsonRpcVersion,
+                        Id = id,
+                        Method = method,
+                        Params = parameters
+                    };
+                }
+                else
+                {
+                    // Messages with a method but no id are notifications
+                    return new JsonRpcNotification
+                    {
+                        JsonRpc = JsonRpcVersion,
+                        Method = method,
+                        Params = parameters
+                    };
+                }
             }
 
-            // Messages with a result and id are success responses
-            if (hasResult && id.Id is not null)
-            {
-                return new JsonRpcResponse
-                {
-                    JsonRpc = JsonRpcVersion,
-                    Id = id,
-                    Result = result
-                };
-            }
-
-            // Messages with an error and id are error responses
-            if (error is not null && id.Id is not null)
-            {
-                return new JsonRpcError
-                {
-                    JsonRpc = JsonRpcVersion,
-                    Id = id,
-                    Error = error
-                };
-            }
-
-            // Error: Messages with an id but no method, error, or result are invalid
             if (id.Id is not null)
             {
+                if (hasResult)
+                {
+                    // Messages with a result and id are success responses
+                    return new JsonRpcResponse
+                    {
+                        JsonRpc = JsonRpcVersion,
+                        Id = id,
+                        Result = result
+                    };
+                }
+
+                if (error is not null)
+                {
+                    // Messages with an error and id are error responses
+                    return new JsonRpcError
+                    {
+                        JsonRpc = JsonRpcVersion,
+                        Id = id,
+                        Error = error
+                    };
+                }
+
+                // Error: Messages with an id but no method, error, or result are invalid
                 throw new JsonException("Response must have either result or error");
             }
 
