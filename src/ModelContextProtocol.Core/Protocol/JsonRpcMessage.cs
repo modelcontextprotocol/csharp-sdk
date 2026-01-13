@@ -113,9 +113,6 @@ public abstract class JsonRpcMessage
                     Result = union.Result
                 },
 
-                // Messages with an id but no method, error, or result are invalid
-                { HasId: true } => throw new JsonException("Response must have either result or error"),
-
                 // Messages with a method but no id are notifications
                 { Method: not null } => new JsonRpcNotification
                 {
@@ -124,7 +121,10 @@ public abstract class JsonRpcMessage
                     Params = union.Params
                 },
 
-                // Messages with neither id nor method are invalid
+                // Error: Messages with an id but no method, error, or result are invalid
+                { HasId: true } => throw new JsonException("Response must have either result or error"),
+
+                // Error: Messages with neither id nor method are invalid
                 _ => throw new JsonException("Invalid JSON-RPC message format")
             };
         }
