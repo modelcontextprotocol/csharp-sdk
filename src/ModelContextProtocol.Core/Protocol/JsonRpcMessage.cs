@@ -89,20 +89,20 @@ public abstract class JsonRpcMessage
             return union switch
             {
                 // Messages with both method and id are requests
-                { HasId: true, HasMethod: true } => new JsonRpcRequest
+                { HasId: true, Method: not null } => new JsonRpcRequest
                 {
                     JsonRpc = union.JsonRpc,
                     Id = union.Id,
-                    Method = union.Method!,
+                    Method = union.Method,
                     Params = union.Params
                 },
 
                 // Messages with an id and error are error responses
-                { HasId: true, HasError: true } => new JsonRpcError
+                { HasId: true, Error: not null } => new JsonRpcError
                 {
                     JsonRpc = union.JsonRpc,
                     Id = union.Id,
-                    Error = union.Error!
+                    Error = union.Error
                 },
 
                 // Messages with an id and result are success responses
@@ -117,15 +117,15 @@ public abstract class JsonRpcMessage
                 { HasId: true } => throw new JsonException("Response must have either result or error"),
 
                 // Messages with a method but no id are notifications
-                { HasMethod: true } => new JsonRpcNotification
+                { Method: not null } => new JsonRpcNotification
                 {
                     JsonRpc = union.JsonRpc,
-                    Method = union.Method!,
+                    Method = union.Method,
                     Params = union.Params
                 },
 
                 // Messages with neither id nor method are invalid
-                { HasId: false, HasMethod: false } => throw new JsonException("Invalid JSON-RPC message format")
+                _ => throw new JsonException("Invalid JSON-RPC message format")
             };
         }
 
@@ -193,7 +193,6 @@ public abstract class JsonRpcMessage
 
                     case "method":
                         union.Method = reader.GetString();
-                        union.HasMethod = union.Method is not null;
                         break;
 
                     case "params":
@@ -202,7 +201,6 @@ public abstract class JsonRpcMessage
 
                     case "error":
                         union.Error = JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<JsonRpcErrorDetail>());
-                        union.HasError = union.Error is not null;
                         break;
 
                     case "result":
@@ -237,10 +235,6 @@ public abstract class JsonRpcMessage
             public JsonNode? Result;
             /// <summary>Indicates whether an 'id' property was present.</summary>
             public bool HasId;
-            /// <summary>Indicates whether a 'method' property was present.</summary>
-            public bool HasMethod;
-            /// <summary>Indicates whether an 'error' property was present.</summary>
-            public bool HasError;
             /// <summary>Indicates whether a 'result' property was present.</summary>
             public bool HasResult;
         }
