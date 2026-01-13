@@ -89,7 +89,7 @@ public abstract class JsonRpcMessage
             return union switch
             {
                 // Messages with both method and id are requests
-                { HasId: true, Method: not null } => new JsonRpcRequest
+                { Method: not null, HasId: true } => new JsonRpcRequest
                 {
                     JsonRpc = union.JsonRpc,
                     Id = union.Id,
@@ -97,28 +97,28 @@ public abstract class JsonRpcMessage
                     Params = union.Params
                 },
 
-                // Messages with an id and error are error responses
-                { HasId: true, Error: not null } => new JsonRpcError
+                // Messages with a method but no id are notifications
+                { Method: not null, HasId: false } => new JsonRpcNotification
                 {
                     JsonRpc = union.JsonRpc,
-                    Id = union.Id,
-                    Error = union.Error
+                    Method = union.Method,
+                    Params = union.Params
                 },
 
-                // Messages with an id and result are success responses
-                { HasId: true, HasResult: true } => new JsonRpcResponse
+                // Messages with a result and id are success responses
+                { HasResult: true, HasId: true } => new JsonRpcResponse
                 {
                     JsonRpc = union.JsonRpc,
                     Id = union.Id,
                     Result = union.Result
                 },
 
-                // Messages with a method but no id are notifications
-                { Method: not null } => new JsonRpcNotification
+                // Messages with an error and id are error responses
+                { Error: not null, HasId: true } => new JsonRpcError
                 {
                     JsonRpc = union.JsonRpc,
-                    Method = union.Method,
-                    Params = union.Params
+                    Id = union.Id,
+                    Error = union.Error
                 },
 
                 // Error: Messages with an id but no method, error, or result are invalid
