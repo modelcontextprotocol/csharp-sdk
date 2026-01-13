@@ -77,56 +77,137 @@ public abstract class JsonRpcMessage
         /// <inheritdoc/>
         public override JsonRpcMessage? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            ParseUnion(ref reader, options, out Union union);
+            if (reader.TokenType != JsonTokenType.StartObject)
+            {
+                throw new JsonException("Expected StartObject token");
+            }
+
+            // Track whether we've seen the required jsonrpc property
+            bool hasJsonRpc = false;
+
+            // Local variables for parsed message data
+            RequestId id = default;
+            string? method = null;
+            JsonNode? @params = null;
+            JsonRpcErrorDetail? error = null;
+            JsonNode? result = null;
+            bool hasResult = false;
+
+            while (true)
+            {
+                bool success = reader.Read();
+                Debug.Assert(success, "custom converters are guaranteed to be passed fully buffered objects");
+
+                if (reader.TokenType is JsonTokenType.EndObject)
+                {
+                    break;
+                }
+
+                Debug.Assert(reader.TokenType is JsonTokenType.PropertyName);
+                string propertyName = reader.GetString()!;
+
+                success = reader.Read();
+                Debug.Assert(success, "custom converters are guaranteed to be passed fully buffered objects");
+
+                switch (propertyName)
+                {
+                    case "jsonrpc":
+                        // Validate that the value is "2.0" without allocating a string
+                        if (!reader.ValueTextEquals("2.0"u8))
+                        {
+                            throw new JsonException("Invalid jsonrpc version");
+                        }
+                        hasJsonRpc = true;
+                        break;
+
+                    case "id":
+                        id = JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<RequestId>());
+                        break;
+
+                    case "method":
+                        method = reader.GetString();
+                        break;
+
+                    case "params":
+                        @params = JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<JsonNode>());
+                        break;
+
+                    case "error":
+                        error = JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<JsonRpcErrorDetail>());
+                        break;
+
+                    case "result":
+                        result = JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<JsonNode>());
+                        hasResult = true;
+                        break;
+
+                    default:
+                        // Skip unknown properties
+                        reader.Skip();
+                        break;
+                }
+            }
 
             // All JSON-RPC messages must have a jsonrpc property with value "2.0"
-            if (union.JsonRpc != JsonRpcVersion)
+            if (!hasJsonRpc)
             {
                 throw new JsonException("Invalid or missing jsonrpc version");
             }
 
             // Determine message type based on presence of id and method properties
-            return union switch
+            // Messages with both method and id are requests
+            if (method is not null && id.Id is not null)
             {
-                // Messages with both method and id are requests
-                { Method: not null, Id.Id: not null } => new JsonRpcRequest
+                return new JsonRpcRequest
                 {
-                    JsonRpc = union.JsonRpc,
-                    Id = union.Id,
-                    Method = union.Method,
-                    Params = union.Params
-                },
+                    JsonRpc = JsonRpcVersion,
+                    Id = id,
+                    Method = method,
+                    Params = @params
+                };
+            }
 
-                // Messages with a method but no id are notifications
-                { Method: not null } => new JsonRpcNotification
+            // Messages with a method but no id are notifications
+            if (method is not null)
+            {
+                return new JsonRpcNotification
                 {
-                    JsonRpc = union.JsonRpc,
-                    Method = union.Method,
-                    Params = union.Params
-                },
+                    JsonRpc = JsonRpcVersion,
+                    Method = method,
+                    Params = @params
+                };
+            }
 
-                // Messages with a result and id are success responses
-                { HasResult: true, Id.Id: not null } => new JsonRpcResponse
+            // Messages with a result and id are success responses
+            if (hasResult && id.Id is not null)
+            {
+                return new JsonRpcResponse
                 {
-                    JsonRpc = union.JsonRpc,
-                    Id = union.Id,
-                    Result = union.Result
-                },
+                    JsonRpc = JsonRpcVersion,
+                    Id = id,
+                    Result = result
+                };
+            }
 
-                // Messages with an error and id are error responses
-                { Error: not null, Id.Id: not null } => new JsonRpcError
+            // Messages with an error and id are error responses
+            if (error is not null && id.Id is not null)
+            {
+                return new JsonRpcError
                 {
-                    JsonRpc = union.JsonRpc,
-                    Id = union.Id,
-                    Error = union.Error
-                },
+                    JsonRpc = JsonRpcVersion,
+                    Id = id,
+                    Error = error
+                };
+            }
 
-                // Error: Messages with an id but no method, error, or result are invalid
-                { Id.Id: not null } => throw new JsonException("Response must have either result or error"),
+            // Error: Messages with an id but no method, error, or result are invalid
+            if (id.Id is not null)
+            {
+                throw new JsonException("Response must have either result or error");
+            }
 
-                // Error: Messages with neither id nor method are invalid
-                _ => throw new JsonException("Invalid JSON-RPC message format")
-            };
+            // Error: Messages with neither id nor method are invalid
+            throw new JsonException("Invalid JSON-RPC message format");
         }
 
         /// <inheritdoc/>
@@ -149,91 +230,6 @@ public abstract class JsonRpcMessage
                 default:
                     throw new JsonException($"Unknown JSON-RPC message type: {value.GetType()}");
             }
-        }
-
-        /// <summary>
-        /// Manually parses a JSON-RPC message from the reader into the Union struct.
-        /// </summary>
-        private static void ParseUnion(ref Utf8JsonReader reader, JsonSerializerOptions options, out Union union)
-        {
-            union = default;
-            union.JsonRpc = string.Empty; // Initialize to avoid null reference warnings
-
-            if (reader.TokenType != JsonTokenType.StartObject)
-            {
-                throw new JsonException("Expected StartObject token");
-            }
-
-            while (true)
-            {
-                bool success = reader.Read();
-                Debug.Assert(success, "custom converters are guaranteed to be passed fully buffered objects");
-
-                if (reader.TokenType is JsonTokenType.EndObject)
-                {
-                    break;
-                }
-
-                Debug.Assert(reader.TokenType is JsonTokenType.PropertyName);
-                string propertyName = reader.GetString()!;
-
-                success = reader.Read();
-                Debug.Assert(success, "custom converters are guaranteed to be passed fully buffered objects");
-
-                switch (propertyName)
-                {
-                    case "jsonrpc":
-                        union.JsonRpc = reader.GetString() ?? string.Empty;
-                        break;
-
-                    case "id":
-                        union.Id = JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<RequestId>());
-                        break;
-
-                    case "method":
-                        union.Method = reader.GetString();
-                        break;
-
-                    case "params":
-                        union.Params = JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<JsonNode>());
-                        break;
-
-                    case "error":
-                        union.Error = JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<JsonRpcErrorDetail>());
-                        break;
-
-                    case "result":
-                        union.Result = JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<JsonNode>());
-                        union.HasResult = true;
-                        break;
-
-                    default:
-                        // Skip unknown properties
-                        reader.Skip();
-                        break;
-                }
-            }
-        }
-
-        /// <summary>
-        /// Private struct to hold parsed JSON-RPC message data during deserialization.
-        /// </summary>
-        private struct Union
-        {
-            /// <summary>The JSON-RPC protocol version (must be "2.0").</summary>
-            public string JsonRpc;
-            /// <summary>The message identifier for requests and responses.</summary>
-            public RequestId Id;
-            /// <summary>The method name for requests and notifications.</summary>
-            public string? Method;
-            /// <summary>The parameters for requests and notifications.</summary>
-            public JsonNode? Params;
-            /// <summary>The error details for error responses.</summary>
-            public JsonRpcErrorDetail? Error;
-            /// <summary>The result for successful responses.</summary>
-            public JsonNode? Result;
-            /// <summary>Indicates whether a 'result' property was present (result can be null).</summary>
-            public bool HasResult;
         }
     }
 }
