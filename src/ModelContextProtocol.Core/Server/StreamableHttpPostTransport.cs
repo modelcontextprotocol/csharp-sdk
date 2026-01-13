@@ -112,6 +112,7 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
             if (!_originalResponseCompleted)
             {
                 // Only write the message to the response if the response has not completed.
+
                 try
                 {
                     await _sseResponseWriter.WriteAsync(item, cancellationToken).ConfigureAwait(false);

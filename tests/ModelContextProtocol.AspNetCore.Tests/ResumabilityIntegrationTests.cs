@@ -520,7 +520,7 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
             cancellationToken: callCts.Token).AsTask();
 
         // Wait for the writer to block on WriteEventAsync for the response message
-        await blockingStore.WriteEventBlockedTcs.WaitAsync(TestContext.Current.CancellationToken);
+        await blockingStore.WriteEventBlockedTask.WaitAsync(TestContext.Current.CancellationToken);
 
         // Cancel the token while the writer is blocked - this causes an OCE to bubble up
         // to SendMessageAsync
@@ -533,8 +533,8 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
         // The call task should throw an OCE due to cancellation
         await Assert.ThrowsAsync<OperationCanceledException>(() => callTask).WaitAsync(timeoutCts.Token);
 
-        // Verify the writer was disposed (stream was properly cleaned up)
-        Assert.True(blockingStore.WriterDisposed, "Expected the ISseEventStreamWriter to be disposed.");
+        // Wait for the writer to be disposed
+        await blockingStore.DisposedTask.WaitAsync(timeoutCts.Token);
     }
 
     [McpServerToolType]
@@ -620,11 +620,11 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
     private sealed class BlockingEventStreamStore : ISseEventStreamStore
     {
         private readonly TaskCompletionSource _writeEventBlockedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private bool _writerDisposed;
+        private readonly TaskCompletionSource _disposedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private bool _blockingEnabled;
 
-        public Task WriteEventBlockedTcs => _writeEventBlockedTcs.Task;
-        public bool WriterDisposed => _writerDisposed;
+        public Task WriteEventBlockedTask => _writeEventBlockedTcs.Task;
+        public Task DisposedTask => _disposedTcs.Task;
 
         public void EnableBlocking() => _blockingEnabled = true;
 
@@ -660,7 +660,7 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
                     _store._writeEventBlockedTcs.TrySetResult();
 
                     // Wait to be canceled
-                    await new TaskCompletionSource<bool>().Task.WaitAsync(cancellationToken);
+                    await new TaskCompletionSource().Task.WaitAsync(cancellationToken);
                 }
 
                 return sseItem with { EventId = "0" };
@@ -668,7 +668,7 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
 
             public ValueTask DisposeAsync()
             {
-                _store._writerDisposed = true;
+                _store._disposedTcs.TrySetResult();
                 return default;
             }
         }
