@@ -72,8 +72,6 @@ public abstract class JsonRpcMessage
     [EditorBrowsable(EditorBrowsableState.Never)]
     public sealed class Converter : JsonConverter<JsonRpcMessage>
     {
-        private const string JsonRpcVersion = "2.0";
-
         /// <inheritdoc/>
         public override JsonRpcMessage? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
@@ -160,7 +158,6 @@ public abstract class JsonRpcMessage
                     // Messages with both method and id are requests
                     return new JsonRpcRequest
                     {
-                        JsonRpc = JsonRpcVersion,
                         Id = id,
                         Method = method,
                         Params = parameters
@@ -171,7 +168,6 @@ public abstract class JsonRpcMessage
                     // Messages with a method but no id are notifications
                     return new JsonRpcNotification
                     {
-                        JsonRpc = JsonRpcVersion,
                         Method = method,
                         Params = parameters
                     };
@@ -180,25 +176,23 @@ public abstract class JsonRpcMessage
 
             if (id.Id is not null)
             {
-                if (hasResult)
-                {
-                    // Messages with a result and id are success responses
-                    return new JsonRpcResponse
-                    {
-                        JsonRpc = JsonRpcVersion,
-                        Id = id,
-                        Result = result
-                    };
-                }
-
                 if (error is not null)
                 {
                     // Messages with an error and id are error responses
                     return new JsonRpcError
                     {
-                        JsonRpc = JsonRpcVersion,
                         Id = id,
                         Error = error
+                    };
+                }
+
+                if (hasResult)
+                {
+                    // Messages with a result and id are success responses
+                    return new JsonRpcResponse
+                    {
+                        Id = id,
+                        Result = result
                     };
                 }
 
