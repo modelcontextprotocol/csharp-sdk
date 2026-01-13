@@ -43,7 +43,7 @@ public sealed class StreamableHttpServerTransport : ITransport
     private bool _disposed;
 
     /// <inheritdoc/>
-    public string? SessionId { get; set; }
+    public string? SessionId { get; init; }
 
     /// <summary>
     /// Gets or initializes a value that indicates whether the transport should be in stateless mode that does not require all requests for a given session
@@ -64,15 +64,10 @@ public sealed class StreamableHttpServerTransport : ITransport
     public bool FlowExecutionContextFromRequests { get; init; }
 
     /// <summary>
-    /// Gets or sets a callback to be invoked before handling the initialize request.
-    /// </summary>
-    public Func<InitializeRequestParams?, ValueTask>? OnInitRequestReceived { get; set; }
-
-    /// <summary>
     /// Gets or sets the event store for resumability support.
     /// When set, events are stored and can be replayed when clients reconnect with a Last-Event-ID header.
     /// </summary>
-    public ISseEventStreamStore? EventStreamStore { get; set; }
+    public ISseEventStreamStore? EventStreamStore { get; init; }
 
     /// <summary>
     /// Gets or sets the retry interval to suggest to clients in SSE retry field.
@@ -81,7 +76,7 @@ public sealed class StreamableHttpServerTransport : ITransport
     /// <remarks>
     /// The default value is 1 second.
     /// </remarks>
-    public TimeSpan RetryInterval { get; set; } = TimeSpan.FromSeconds(1);
+    public TimeSpan RetryInterval { get; init; } = TimeSpan.FromSeconds(1);
 
     /// <summary>
     /// Gets or sets the negotiated protocol version for this session.
@@ -100,12 +95,6 @@ public sealed class StreamableHttpServerTransport : ITransport
     {
         // Capture the negotiated protocol version for resumability checks
         NegotiatedProtocolVersion = initParams?.ProtocolVersion;
-
-        // Invoke user-provided callback if specified
-        if (OnInitRequestReceived is { } callback)
-        {
-            await callback(initParams).ConfigureAwait(false);
-        }
     }
 
     /// <summary>
