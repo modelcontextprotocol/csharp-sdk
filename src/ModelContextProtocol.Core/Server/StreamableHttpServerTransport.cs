@@ -33,7 +33,7 @@ public sealed class StreamableHttpServerTransport : ITransport
         SingleReader = true,
         SingleWriter = false,
     });
-    private readonly CancellationTokenSource _originalResponseCompletedCts = new();
+    private readonly CancellationTokenSource _transportDisposedCts = new();
     private readonly SemaphoreSlim _unsolicitedMessageLock = new(1, 1);
 
     private SseEventWriter? _sseResponseWriter;
@@ -164,11 +164,15 @@ public sealed class StreamableHttpServerTransport : ITransport
         Throw.IfNull(message);
         Throw.IfNull(responseStream);
 
-        using var postCts = CancellationTokenSource.CreateLinkedTokenSource(_originalResponseCompletedCts.Token, cancellationToken);
+        using var postCts = CancellationTokenSource.CreateLinkedTokenSource(_transportDisposedCts.Token, cancellationToken);
         var postTransport = new StreamableHttpPostTransport(this, responseStream);
         await using (postTransport.ConfigureAwait(false))
         {
-            return await postTransport.HandlePostAsync(message, postCts.Token).ConfigureAwait(false);
+            return await postTransport.HandlePostAsync(
+                message,
+                postCancellationToken: postCts.Token,
+                sessionCancellationToken: _transportDisposedCts.Token)
+                .ConfigureAwait(false);
         }
     }
 
@@ -231,7 +235,7 @@ public sealed class StreamableHttpServerTransport : ITransport
         try
         {
             _incomingChannel.Writer.TryComplete();
-            await _originalResponseCompletedCts.CancelAsync().ConfigureAwait(false);
+            await _transportDisposedCts.CancelAsync().ConfigureAwait(false);
         }
         finally
         {
@@ -247,7 +251,7 @@ public sealed class StreamableHttpServerTransport : ITransport
             }
             finally
             {
-                _originalResponseCompletedCts.Dispose();
+                _transportDisposedCts.Dispose();
             }
         }
     }

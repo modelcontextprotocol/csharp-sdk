@@ -12,10 +12,11 @@ namespace ModelContextProtocol.Server;
 /// </summary>
 internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport parentTransport, Stream responseStream) : ITransport
 {
-    private readonly SemaphoreSlim _lock = new(1, 1);
+    private readonly SemaphoreSlim _messageLock = new(1, 1);
     private readonly TaskCompletionSource<bool> _responseTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly SseEventWriter _sseResponseWriter = new(responseStream);
 
+    private TaskCompletionSource<bool>? _streamTcs;
     private ISseEventStreamWriter? _sseEventStreamWriter;
     private RequestId _pendingRequest;
     private bool _originalResponseCompleted;
@@ -29,7 +30,7 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
     /// False, if nothing was written because the request body did not contain any <see cref="JsonRpcRequest"/> messages to respond to.
     /// The HTTP application should typically respond with an empty "202 Accepted" response in this scenario.
     /// </returns>
-    public async ValueTask<bool> HandlePostAsync(JsonRpcMessage message, CancellationToken cancellationToken)
+    public async ValueTask<bool> HandlePostAsync(JsonRpcMessage message, CancellationToken postCancellationToken, CancellationToken sessionCancellationToken)
     {
         Debug.Assert(_pendingRequest.Id is null);
 
@@ -55,26 +56,25 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
 
         if (_pendingRequest.Id is null)
         {
-            await parentTransport.MessageWriter.WriteAsync(message, cancellationToken).ConfigureAwait(false);
+            await parentTransport.MessageWriter.WriteAsync(message, postCancellationToken).ConfigureAwait(false);
             return false;
         }
 
-        using (await _lock.LockAsync(cancellationToken).ConfigureAwait(false))
+        using (await _messageLock.LockAsync(postCancellationToken).ConfigureAwait(false))
         {
-            _sseEventStreamWriter = await parentTransport.TryCreateEventStreamAsync(streamId: _pendingRequest.Id.ToString()!, cancellationToken).ConfigureAwait(false);
-            if (_sseEventStreamWriter is not null)
+            var primingItem = await TryStartSseEventStreamAsync(_pendingRequest, sessionCancellationToken).ConfigureAwait(false);
+            if (primingItem.HasValue)
             {
-                var primingItem = await _sseEventStreamWriter.WriteEventAsync(SseItem.Prime<JsonRpcMessage>(parentTransport.RetryInterval), cancellationToken).ConfigureAwait(false);
-                await _sseResponseWriter.WriteAsync(primingItem, cancellationToken).ConfigureAwait(false);
+                await _sseResponseWriter.WriteAsync(primingItem.Value, postCancellationToken).ConfigureAwait(false);
             }
 
             // Ensure that we've sent the priming event before processing the incoming request.
-            await parentTransport.MessageWriter.WriteAsync(message, cancellationToken).ConfigureAwait(false);
+            await parentTransport.MessageWriter.WriteAsync(message, postCancellationToken).ConfigureAwait(false);
         }
 
         // Wait for the response to be written before returning from the handler.
         // This keeps the HTTP response open until the final response message is sent.
-        await _responseTcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await _responseTcs.Task.WaitAsync(postCancellationToken).ConfigureAwait(false);
 
         return true;
     }
@@ -88,45 +88,45 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
             throw new InvalidOperationException("Server to client requests are not supported in stateless mode.");
         }
 
-        using var _ = await _lock.LockAsync(cancellationToken).ConfigureAwait(false);
-
-        var item = new SseItem<JsonRpcMessage?>(message, SseParser.EventTypeDefault);
-
-        if (_sseEventStreamWriter is not null)
+        try
         {
-            item = await _sseEventStreamWriter.WriteEventAsync(item, cancellationToken).ConfigureAwait(false);
-        }
+            using var _ = await _messageLock.LockAsync(cancellationToken).ConfigureAwait(false);
 
-        if (!_originalResponseCompleted)
-        {
-            // Only write the message to the response if the response has not completed.
+            var item = new SseItem<JsonRpcMessage?>(message, SseParser.EventTypeDefault);
 
-            try
-            {
-                await _sseResponseWriter.WriteAsync(item, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
-            {
-                _responseTcs.TrySetException(ex);
-            }
-        }
-        else if (_sseEventStreamWriter is null)
-        {
-            // The response has completed, and there is no event stream to store the message.
-            // Rather than drop the message, fall back to sending it via the parent transport.
-            await parentTransport.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
-        }
-
-        // Complete the response if this is the final message.
-        if ((message is JsonRpcResponse or JsonRpcError) && ((JsonRpcMessageWithId)message).Id == _pendingRequest)
-        {
             if (_sseEventStreamWriter is not null)
             {
-                await _sseEventStreamWriter.DisposeAsync().ConfigureAwait(false);
-                _sseEventStreamWriter = null;
+                item = await _sseEventStreamWriter.WriteEventAsync(item, cancellationToken).ConfigureAwait(false);
             }
 
-            _responseTcs.TrySetResult(true);
+            if (!_originalResponseCompleted)
+            {
+                // Only write the message to the response if the response has not completed.
+
+                try
+                {
+                    await _sseResponseWriter.WriteAsync(item, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+                {
+                    _responseTcs.TrySetException(ex);
+                }
+            }
+            else if (_sseEventStreamWriter is null)
+            {
+                // The response has completed, and there is no event stream to store the message.
+                // Rather than drop the message, fall back to sending it via the parent transport.
+                await parentTransport.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            // Complete the response if this is the final message.
+            if ((message is JsonRpcResponse or JsonRpcError) && ((JsonRpcMessageWithId)message).Id == _pendingRequest)
+            {
+                _responseTcs.TrySetResult(true);
+                _streamTcs?.TrySetResult(true);
+            }
         }
     }
 
@@ -137,7 +137,7 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
             throw new InvalidOperationException("Polling is not supported in stateless mode.");
         }
 
-        using var _ = await _lock.LockAsync(cancellationToken).ConfigureAwait(false);
+        using var _ = await _messageLock.LockAsync(cancellationToken).ConfigureAwait(false);
 
         if (_sseEventStreamWriter is null)
         {
@@ -161,9 +161,43 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
         _responseTcs.TrySetResult(true);
     }
 
+    private async ValueTask<SseItem<JsonRpcMessage?>?> TryStartSseEventStreamAsync(RequestId requestId, CancellationToken cancellationToken)
+    {
+        Debug.Assert(_sseEventStreamWriter is null);
+
+        _sseEventStreamWriter = await parentTransport.TryCreateEventStreamAsync(
+            streamId: requestId.Id!.ToString()!,
+            cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
+        if (_sseEventStreamWriter is null)
+        {
+            return null;
+        }
+
+        _streamTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = HandleStreamWriterDisposalAsync(_streamTcs.Task, cancellationToken);
+
+        return await _sseEventStreamWriter.WriteEventAsync(SseItem.Prime<JsonRpcMessage>(parentTransport.RetryInterval), cancellationToken).ConfigureAwait(false);
+
+        async Task HandleStreamWriterDisposalAsync(Task streamTask, CancellationToken cancellationToken)
+        {
+            try
+            {
+                await streamTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                using var _ = await _messageLock.LockAsync().ConfigureAwait(false);
+
+                await _sseEventStreamWriter!.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
-        using var _ = await _lock.LockAsync().ConfigureAwait(false);
+        using var _ = await _messageLock.LockAsync().ConfigureAwait(false);
 
         if (_originalResponseCompleted)
         {

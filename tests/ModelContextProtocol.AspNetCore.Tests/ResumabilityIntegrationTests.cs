@@ -204,7 +204,7 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
 
             progress.Report(new() { Progress = 50, Message = "Polled value" });
 
-            await clientReceivedPolledValueTcs.Task.WaitAsync(TestContext.Current.CancellationToken);;
+            await clientReceivedPolledValueTcs.Task.WaitAsync(TestContext.Current.CancellationToken); ;
 
             return "Complete";
         }, options: new() { Name = ProgressToolName });
@@ -505,6 +505,63 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
         Assert.Equal("Bad Request: The Last-Event-ID header refers to a session with a different session ID.", errorMessage);
     }
 
+    [Fact]
+    public async Task PostResponse_EndsAndWriterIsDisposed_WhenWriteEventAsyncIsCanceled()
+    {
+        // This test verifies that the POST response ends and the ISseEventStreamWriter is disposed
+        // when a response message is sent but the underlying WriteEventAsync is canceled.
+
+        var blockingStore = new BlockingEventStreamStore();
+        await using var app = await CreateServerAsync(blockingStore);
+        await using var client = await ConnectClientAsync();
+
+        // Enable blocking now that initialization is complete
+        blockingStore.EnableBlocking();
+
+        using var callCts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+
+        // Start calling the tool - this will eventually trigger WriteEventAsync for the response
+        var callTask = client.CallToolAsync("echo",
+            new Dictionary<string, object?> { ["message"] = "test" },
+            cancellationToken: callCts.Token);
+
+        // Wait for the writer to block on WriteEventAsync for the response message
+        await blockingStore.WriteEventBlockedTcs.WaitAsync(TestContext.Current.CancellationToken);
+
+        // Cancel the token while the writer is blocked - this simulates the cancellation
+        // happening during SendMessageAsync
+        await callCts.CancelAsync();
+
+        // Unblock the writer with a canceled token - this causes WriteEventAsync to throw
+        blockingStore.UnblockWithCancellation();
+
+        // The call should complete (with an error or cancellation) without hanging.
+        // The key assertion is that this doesn't timeout, proving the response TCS was signaled
+        // even when WriteEventAsync threw OperationCanceledException.
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(10));
+
+        try
+        {
+            await callTask.AsTask().WaitAsync(timeoutCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected - the request was canceled
+        }
+        catch (McpException)
+        {
+            // Also acceptable - server may send an error response
+        }
+        catch (TimeoutException)
+        {
+            Assert.Fail("The POST response did not complete - the response TaskCompletionSource was not signaled.");
+        }
+
+        // Verify the writer was disposed (stream was properly cleaned up)
+        Assert.True(blockingStore.WriterDisposed, "Expected the ISseEventStreamWriter to be disposed.");
+    }
+
     [McpServerToolType]
     private class ResumabilityTestTools
     {
@@ -589,5 +646,82 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
     {
         public string? LastEventId { get; set; }
         public TimeSpan? RetryInterval { get; set; }
+    }
+
+    /// <summary>
+    /// A test event stream store that blocks on WriteEventAsync for response messages,
+    /// allowing the test to cancel the operation and verify proper cleanup.
+    /// </summary>
+    private sealed class BlockingEventStreamStore : ISseEventStreamStore
+    {
+        private readonly TaskCompletionSource _writeEventBlockedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _unblockTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private CancellationTokenSource? _cancelCts;
+        private bool _writerDisposed;
+        private bool _blockingEnabled;
+
+        public Task WriteEventBlockedTcs => _writeEventBlockedTcs.Task;
+        public bool WriterDisposed => _writerDisposed;
+
+        public void EnableBlocking() => _blockingEnabled = true;
+
+        public void UnblockWithCancellation()
+        {
+            _cancelCts?.Cancel();
+            _unblockTcs.TrySetCanceled();
+        }
+
+        public ValueTask<ISseEventStreamWriter> CreateStreamAsync(SseEventStreamOptions options, CancellationToken cancellationToken = default)
+        {
+            _cancelCts = new CancellationTokenSource();
+            return new ValueTask<ISseEventStreamWriter>(new BlockingEventStreamWriter(this));
+        }
+
+        public ValueTask<ISseEventStreamReader?> GetStreamReaderAsync(string lastEventId, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("This test store does not support reading streams.");
+        }
+
+        private sealed class BlockingEventStreamWriter : ISseEventStreamWriter
+        {
+            private readonly BlockingEventStreamStore _store;
+
+            public BlockingEventStreamWriter(BlockingEventStreamStore store)
+            {
+                _store = store;
+            }
+
+            public ValueTask SetModeAsync(SseEventStreamMode mode, CancellationToken cancellationToken = default) => default;
+
+            public async ValueTask<SseItem<JsonRpcMessage?>> WriteEventAsync(SseItem<JsonRpcMessage?> sseItem, CancellationToken cancellationToken = default)
+            {
+                // Skip if already has an event ID (replay)
+                if (sseItem.EventId is not null)
+                {
+                    return sseItem;
+                }
+
+                // Block when we receive a response and blocking is enabled
+                if (sseItem.Data is JsonRpcResponse && _store._blockingEnabled)
+                {
+                    // Signal that we're blocked
+                    _store._writeEventBlockedTcs.TrySetResult();
+
+                    // Wait to be unblocked or canceled
+                    using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                        cancellationToken, _store._cancelCts?.Token ?? CancellationToken.None);
+
+                    await _store._unblockTcs.Task.WaitAsync(linkedCts.Token).ConfigureAwait(false);
+                }
+
+                return sseItem with { EventId = "0" };
+            }
+
+            public ValueTask DisposeAsync()
+            {
+                _store._writerDisposed = true;
+                return default;
+            }
+        }
     }
 }
