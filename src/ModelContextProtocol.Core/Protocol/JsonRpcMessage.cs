@@ -156,10 +156,8 @@ public abstract class JsonRpcMessage
         /// </summary>
         private static void ParseUnion(ref Utf8JsonReader reader, JsonSerializerOptions options, out Union union)
         {
-            union = new Union
-            {
-                JsonRpc = string.Empty // Initialize to avoid null reference warnings
-            };
+            union = default;
+            union.JsonRpc = string.Empty; // Initialize to avoid null reference warnings
 
             if (reader.TokenType != JsonTokenType.StartObject)
             {
