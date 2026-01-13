@@ -5,6 +5,7 @@ using System.Net.ServerSentEvents;
 using System.Text.Json;
 using ModelContextProtocol.Protocol;
 using System.Threading.Channels;
+using System.Net;
 
 namespace ModelContextProtocol.Client;
 
@@ -257,6 +258,13 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
             using (response)
             {
+                if (response.StatusCode >= HttpStatusCode.InternalServerError)
+                {
+                    // Server error; retry.
+                    attempt++;
+                    continue;
+                }
+
                 if (!response.IsSuccessStatusCode)
                 {
                     // If the server could be reached but returned a non-success status code,
