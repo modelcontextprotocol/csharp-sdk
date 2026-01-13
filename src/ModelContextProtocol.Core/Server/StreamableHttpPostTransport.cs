@@ -18,7 +18,7 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
 
     private ISseEventStreamWriter? _sseEventStreamWriter;
     private RequestId _pendingRequest;
-    private bool _disposed;
+    private bool _originalResponseCompleted;
 
     public ChannelReader<JsonRpcMessage> MessageReader => throw new NotSupportedException("JsonRpcMessage.Context.RelatedTransport should only be used for sending messages.");
 
@@ -97,10 +97,9 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
             item = await _sseEventStreamWriter.WriteEventAsync(item, cancellationToken).ConfigureAwait(false);
         }
 
-        if (!_disposed)
+        if (!_originalResponseCompleted)
         {
-            // Only write the message to the response if we're not disposed, since disposal is a sign
-            // that the response has completed.
+            // Only write the message to the response if the response has not completed.
 
             try
             {
@@ -149,7 +148,7 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
         var primingItem = await _sseEventStreamWriter.WriteEventAsync(SseItem.Prime<JsonRpcMessage>(retryInterval), cancellationToken).ConfigureAwait(false);
 
         // Write to the response stream if it still exists.
-        if (!_disposed)
+        if (!_originalResponseCompleted)
         {
             await _sseResponseWriter.WriteAsync(primingItem, cancellationToken).ConfigureAwait(false);
         }
@@ -166,12 +165,12 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
     {
         using var _ = await _lock.LockAsync().ConfigureAwait(false);
 
-        if (_disposed)
+        if (_originalResponseCompleted)
         {
             return;
         }
 
-        _disposed = true;
+        _originalResponseCompleted = true;
 
         _responseTcs.TrySetResult(true);
 

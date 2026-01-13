@@ -33,14 +33,14 @@ public sealed class StreamableHttpServerTransport : ITransport
         SingleReader = true,
         SingleWriter = false,
     });
-    private readonly CancellationTokenSource _disposeCts = new();
+    private readonly CancellationTokenSource _originalResponseCompletedCts = new();
     private readonly SemaphoreSlim _unsolicitedMessageLock = new(1, 1);
 
     private SseEventWriter? _sseResponseWriter;
     private ISseEventStreamWriter? _sseEventStreamWriter;
     private TaskCompletionSource<bool>? _responseTcs;
     private bool _getRequestStarted;
-    private bool _disposed;
+    private bool _originalResponseCompleted;
 
     /// <inheritdoc/>
     public string? SessionId { get; init; }
@@ -164,7 +164,7 @@ public sealed class StreamableHttpServerTransport : ITransport
         Throw.IfNull(message);
         Throw.IfNull(responseStream);
 
-        using var postCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token, cancellationToken);
+        using var postCts = CancellationTokenSource.CreateLinkedTokenSource(_originalResponseCompletedCts.Token, cancellationToken);
         var postTransport = new StreamableHttpPostTransport(this, responseStream);
         await using (postTransport.ConfigureAwait(false))
         {
@@ -201,10 +201,9 @@ public sealed class StreamableHttpServerTransport : ITransport
             item = await _sseEventStreamWriter.WriteEventAsync(item, cancellationToken).ConfigureAwait(false);
         }
 
-        if (!_disposed)
+        if (!_originalResponseCompleted)
         {
-            // Only write the message to the response if we're not disposed, since disposal is a sign
-            // that the response has completed.
+            // Only write the message to the response if the response has not completed.
 
             try
             {
@@ -222,17 +221,17 @@ public sealed class StreamableHttpServerTransport : ITransport
     {
         using var _ = await _unsolicitedMessageLock.LockAsync().ConfigureAwait(false);
 
-        if (_disposed)
+        if (_originalResponseCompleted)
         {
             return;
         }
 
-        _disposed = true;
+        _originalResponseCompleted = true;
 
         try
         {
             _incomingChannel.Writer.TryComplete();
-            await _disposeCts.CancelAsync().ConfigureAwait(false);
+            await _originalResponseCompletedCts.CancelAsync().ConfigureAwait(false);
         }
         finally
         {
@@ -248,7 +247,7 @@ public sealed class StreamableHttpServerTransport : ITransport
             }
             finally
             {
-                _disposeCts.Dispose();
+                _originalResponseCompletedCts.Dispose();
             }
         }
     }
