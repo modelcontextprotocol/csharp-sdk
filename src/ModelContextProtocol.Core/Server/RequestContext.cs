@@ -97,6 +97,6 @@ public sealed class RequestContext<TParams>
             throw new InvalidOperationException("Polling is only supported for Streamable HTTP transports.");
         }
 
-        await transport.EnablePollingAsync(retryInterval, cancellationToken);
+        await transport.EnablePollingAsync(retryInterval, cancellationToken).ConfigureAwait(false);
     }
 }

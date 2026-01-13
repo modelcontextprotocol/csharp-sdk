@@ -1,14 +1,16 @@
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using System.Buffers;
 using System.Net.ServerSentEvents;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 
-namespace ModelContextProtocol.Server;
+namespace ModelContextProtocol.AspNetCore;
 
 /// <summary>
 /// Provides extension methods for <see cref="ISseEventStreamReader"/>.
 /// </summary>
-public static class SseEventStreamReaderExtensions
+internal static class SseEventStreamReaderExtensions
 {
     /// <summary>
     /// Copies all events from the reader to the destination stream in SSE format.
@@ -20,13 +22,14 @@ public static class SseEventStreamReaderExtensions
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="reader"/> or <paramref name="destination"/> is null.</exception>
     public static async Task CopyToAsync(this ISseEventStreamReader reader, Stream destination, CancellationToken cancellationToken = default)
     {
-        Throw.IfNull(reader);
-        Throw.IfNull(destination);
+        ArgumentNullException.ThrowIfNull(reader);
+        ArgumentNullException.ThrowIfNull(destination);
 
         Utf8JsonWriter? jsonWriter = null;
+        var jsonTypeInfo = (JsonTypeInfo<JsonRpcMessage>)McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage));
 
         var events = reader.ReadEventsAsync(cancellationToken);
-        await SseFormatter.WriteAsync(events, destination, FormatEvent, cancellationToken);
+        await SseFormatter.WriteAsync(events, destination, FormatEvent, cancellationToken).ConfigureAwait(false);
 
         void FormatEvent(SseItem<JsonRpcMessage?> item, IBufferWriter<byte> writer)
         {
@@ -44,7 +47,7 @@ public static class SseEventStreamReaderExtensions
                 jsonWriter.Reset(writer);
             }
 
-            JsonSerializer.Serialize(jsonWriter, item.Data, McpJsonUtilities.JsonContext.Default.JsonRpcMessage!);
+            JsonSerializer.Serialize(jsonWriter, item.Data, jsonTypeInfo);
         }
     }
 }

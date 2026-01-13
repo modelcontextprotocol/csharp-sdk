@@ -34,7 +34,7 @@ public sealed class StreamableHttpServerTransport : ITransport
         SingleWriter = false,
     });
     private readonly CancellationTokenSource _disposeCts = new();
-    private readonly SemaphoreSlim _lock = new(1, 1);
+    private readonly SemaphoreSlim _unsolicitedMessageLock = new(1, 1);
 
     private SseEventWriter? _sseResponseWriter;
     private ISseEventStreamWriter? _sseEventStreamWriter;
@@ -129,7 +129,7 @@ public sealed class StreamableHttpServerTransport : ITransport
             throw new InvalidOperationException("GET requests are not supported in stateless mode.");
         }
 
-        using (await _lock.LockAsync(cancellationToken).ConfigureAwait(false))
+        using (await _unsolicitedMessageLock.LockAsync(cancellationToken).ConfigureAwait(false))
         {
             if (_getRequestStarted)
             {
@@ -176,8 +176,11 @@ public sealed class StreamableHttpServerTransport : ITransport
         Throw.IfNull(responseStream);
 
         using var postCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token, cancellationToken);
-        await using var postTransport = new StreamableHttpPostTransport(this, responseStream);
-        return await postTransport.HandlePostAsync(message, postCts.Token).ConfigureAwait(false);
+        var postTransport = new StreamableHttpPostTransport(this, responseStream);
+        await using (postTransport.ConfigureAwait(false))
+        {
+            return await postTransport.HandlePostAsync(message, postCts.Token).ConfigureAwait(false);
+        }
     }
 
     /// <inheritdoc/>
@@ -190,7 +193,7 @@ public sealed class StreamableHttpServerTransport : ITransport
             throw new InvalidOperationException("Unsolicited server to client messages are not supported in stateless mode.");
         }
 
-        using var _ = await _lock.LockAsync(cancellationToken).ConfigureAwait(false);
+        using var _ = await _unsolicitedMessageLock.LockAsync(cancellationToken).ConfigureAwait(false);
 
         if (!_getRequestStarted)
         {
@@ -226,7 +229,7 @@ public sealed class StreamableHttpServerTransport : ITransport
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
-        using var _ = await _lock.LockAsync().ConfigureAwait(false);
+        using var _ = await _unsolicitedMessageLock.LockAsync().ConfigureAwait(false);
 
         if (_disposed)
         {

@@ -68,6 +68,7 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
                 await _sseResponseWriter.WriteAsync(primingItem, cancellationToken).ConfigureAwait(false);
             }
 
+            // Ensure that we've sent the priming event before processing the incoming request.
             await parentTransport.MessageWriter.WriteAsync(message, cancellationToken).ConfigureAwait(false);
         }
 
