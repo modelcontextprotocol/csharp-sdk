@@ -77,7 +77,7 @@ public abstract class JsonRpcMessage
         /// <inheritdoc/>
         public override JsonRpcMessage? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            var union = ParseUnion(ref reader, options);
+            ParseUnion(ref reader, options, out Union union);
 
             // All JSON-RPC messages must have a jsonrpc property with value "2.0"
             if (union.JsonRpc != JsonRpcVersion)
@@ -164,9 +164,9 @@ public abstract class JsonRpcMessage
         /// <summary>
         /// Manually parses a JSON-RPC message from the reader into the Union struct.
         /// </summary>
-        private static Union ParseUnion(ref Utf8JsonReader reader, JsonSerializerOptions options)
+        private static void ParseUnion(ref Utf8JsonReader reader, JsonSerializerOptions options, out Union union)
         {
-            var union = new Union
+            union = new Union
             {
                 JsonRpc = string.Empty // Initialize to avoid null reference warnings
             };
@@ -228,8 +228,6 @@ public abstract class JsonRpcMessage
                         break;
                 }
             }
-
-            return union;
         }
 
         /// <summary>
