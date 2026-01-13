@@ -15,7 +15,7 @@ namespace ModelContextProtocol;
 /// This implementation should correctly handle valid URI templates, but it has undefined output for invalid templates,
 /// e.g. it may treat portions of invalid templates as literals rather than throwing.
 /// </remarks>
-internal static partial class UriTemplate
+public static partial class UriTemplate
 {
     /// <summary>Regex pattern for finding URI template expressions and parsing out the operator and varname.</summary>
     private const string UriTemplateExpressionPattern = """
@@ -84,10 +84,12 @@ internal static partial class UriTemplate
 
             switch (m.Groups["operator"].Value)
             {
-                case "+": AppendExpression(ref pattern, paramNames, null, "[^?&]+"); break;
+                case "+": AppendExpression(ref pattern, paramNames, null, "[^?&#]+"); break;
                 case "#": AppendExpression(ref pattern, paramNames, '#', "[^,]+"); break;
-                case "/": AppendExpression(ref pattern, paramNames, '/', "[^/?]+"); break;
-                default:  AppendExpression(ref pattern, paramNames, null, "[^/?&]+"); break;
+                case ".": AppendExpression(ref pattern, paramNames, '.', "[^./?#]+"); break;
+                case "/": AppendExpression(ref pattern, paramNames, '/', "[^/?#]+"); break;
+                case ";": AppendPathParameterExpression(ref pattern, paramNames); break;
+                default:  AppendExpression(ref pattern, paramNames, null, "[^/?&#]+"); break;
 
                 case "?": AppendQueryExpression(ref pattern, paramNames, '?'); break;
                 case "&": AppendQueryExpression(ref pattern, paramNames, '&'); break;
@@ -145,9 +147,10 @@ internal static partial class UriTemplate
         // appends the escaped `prefix` (only on the first parameter, then switches to ','), and
         // adds an optional named capture group `(?<paramName>valueChars)` to match and capture that value.
         // Note: For "+" (reserved expansion) operator, prefix is null but valueChars allows "/" characters.
+        // Note: For "." (label expansion) operator, the separator is "." instead of ",".
         static void AppendExpression(ref DefaultInterpolatedStringHandler pattern, List<string> paramNames, char? prefix, string valueChars)
         {
-            Debug.Assert(prefix is '#' or '/' or null);
+            Debug.Assert(prefix is '#' or '/' or '.' or null);
 
             if (paramNames.Count > 0)
             {
@@ -159,9 +162,19 @@ internal static partial class UriTemplate
                 }
 
                 AppendParameter(ref pattern, paramNames[0], valueChars);
+
+                // For label expansion (.), the separator between values is also a dot
+                // For path segment expansion (/), the separator between values is also a slash
+                string separator = prefix switch
+                {
+                    '.' => "\\.",
+                    '/' => "\\/",
+                    _ => "\\,"
+                };
                 for (int i = 1; i < paramNames.Count; i++)
                 {
-                    pattern.AppendFormatted("\\,?");
+                    pattern.AppendFormatted(separator);
+                    pattern.AppendFormatted('?');
                     AppendParameter(ref pattern, paramNames[i], valueChars);
                 }
 
@@ -172,6 +185,32 @@ internal static partial class UriTemplate
                     pattern.AppendFormatted('>');
                     pattern.AppendFormatted(valueChars);
                     pattern.AppendFormatted(")?");
+                }
+            }
+        }
+
+        // Appends a regex fragment for path-style parameter expansion (;).
+        // Format: ;name=value or ;name (if value is empty), separated by semicolons.
+        // Each parameter is made optional and captured by a named group.
+        static void AppendPathParameterExpression(ref DefaultInterpolatedStringHandler pattern, List<string> paramNames)
+        {
+            if (paramNames.Count > 0)
+            {
+                AppendParameter(ref pattern, paramNames[0]);
+                for (int i = 1; i < paramNames.Count; i++)
+                {
+                    AppendParameter(ref pattern, paramNames[i]);
+                }
+
+                static void AppendParameter(ref DefaultInterpolatedStringHandler pattern, string paramName)
+                {
+                    // Match ;name or ;name=value
+                    paramName = Regex.Escape(paramName);
+                    pattern.AppendFormatted("(?:;");
+                    pattern.AppendFormatted(paramName);
+                    pattern.AppendFormatted("(?:=(?<");
+                    pattern.AppendFormatted(paramName);
+                    pattern.AppendFormatted(">[^;/?&]+))?)?");
                 }
             }
         }
@@ -468,7 +507,7 @@ internal static partial class UriTemplate
     /// fallback step using linear traversal of the resource dictionary, so their equality is only
     /// there to distinguish between different templates.
     /// </summary>
-    public sealed class UriTemplateComparer : IEqualityComparer<string>
+    internal sealed class UriTemplateComparer : IEqualityComparer<string>
     {
         public static IEqualityComparer<string> Instance { get; } = new UriTemplateComparer();
 
