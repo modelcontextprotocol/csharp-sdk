@@ -197,7 +197,9 @@ public sealed class StreamableHttpServerTransport : ITransport
 
         if (!_getRequestStarted)
         {
-            throw new InvalidOperationException($"Cannot send messages before calling '{nameof(HandleGetRequestAsync)}' is called.");
+            // Clients are not required to make a GET request for unsolicited messages.
+            // If no GET request has been made, drop the message.
+            return;
         }
 
         Debug.Assert(_sseResponseWriter is not null);
