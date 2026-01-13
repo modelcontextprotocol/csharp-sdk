@@ -124,8 +124,8 @@ public abstract class JsonRpcMessage
                     Params = union.Params
                 },
 
-                // All other cases are invalid
-                _ => throw new JsonException("Invalid JSON-RPC message format")
+                // Messages with neither id nor method are invalid
+                { HasId: false, HasMethod: false } => throw new JsonException("Invalid JSON-RPC message format")
             };
         }
 
