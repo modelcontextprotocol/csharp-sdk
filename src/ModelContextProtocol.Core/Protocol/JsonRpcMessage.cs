@@ -89,7 +89,7 @@ public abstract class JsonRpcMessage
             return union switch
             {
                 // Messages with both method and id are requests
-                { Method: not null, HasId: true } => new JsonRpcRequest
+                { Method: not null, Id.Id: not null } => new JsonRpcRequest
                 {
                     JsonRpc = union.JsonRpc,
                     Id = union.Id,
@@ -98,7 +98,7 @@ public abstract class JsonRpcMessage
                 },
 
                 // Messages with a method but no id are notifications
-                { Method: not null, HasId: false } => new JsonRpcNotification
+                { Method: not null } => new JsonRpcNotification
                 {
                     JsonRpc = union.JsonRpc,
                     Method = union.Method,
@@ -106,7 +106,7 @@ public abstract class JsonRpcMessage
                 },
 
                 // Messages with a result and id are success responses
-                { HasResult: true, HasId: true } => new JsonRpcResponse
+                { HasResult: true, Id.Id: not null } => new JsonRpcResponse
                 {
                     JsonRpc = union.JsonRpc,
                     Id = union.Id,
@@ -114,7 +114,7 @@ public abstract class JsonRpcMessage
                 },
 
                 // Messages with an error and id are error responses
-                { Error: not null, HasId: true } => new JsonRpcError
+                { Error: not null, Id.Id: not null } => new JsonRpcError
                 {
                     JsonRpc = union.JsonRpc,
                     Id = union.Id,
@@ -122,7 +122,7 @@ public abstract class JsonRpcMessage
                 },
 
                 // Error: Messages with an id but no method, error, or result are invalid
-                { HasId: true } => throw new JsonException("Response must have either result or error"),
+                { Id.Id: not null } => throw new JsonException("Response must have either result or error"),
 
                 // Error: Messages with neither id nor method are invalid
                 _ => throw new JsonException("Invalid JSON-RPC message format")
@@ -188,7 +188,6 @@ public abstract class JsonRpcMessage
 
                     case "id":
                         union.Id = JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<RequestId>());
-                        union.HasId = true;
                         break;
 
                     case "method":
@@ -233,9 +232,7 @@ public abstract class JsonRpcMessage
             public JsonRpcErrorDetail? Error;
             /// <summary>The result for successful responses.</summary>
             public JsonNode? Result;
-            /// <summary>Indicates whether an 'id' property was present.</summary>
-            public bool HasId;
-            /// <summary>Indicates whether a 'result' property was present.</summary>
+            /// <summary>Indicates whether a 'result' property was present (result can be null).</summary>
             public bool HasResult;
         }
     }
