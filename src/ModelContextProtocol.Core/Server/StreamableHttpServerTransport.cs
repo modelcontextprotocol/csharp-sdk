@@ -36,11 +36,11 @@ public sealed class StreamableHttpServerTransport : ITransport
     private readonly CancellationTokenSource _transportDisposedCts = new();
     private readonly SemaphoreSlim _unsolicitedMessageLock = new(1, 1);
 
-    private SseEventWriter? _sseResponseWriter;
-    private ISseEventStreamWriter? _sseEventStreamWriter;
-    private TaskCompletionSource<bool>? _responseTcs;
-    private bool _getRequestStarted;
-    private bool _originalResponseCompleted;
+    private SseEventWriter? _httpSseWriter;
+    private ISseEventStreamWriter? _storeSseWriter;
+    private TaskCompletionSource<bool>? _httpResponseTcs;
+    private bool _getHttpRequestStarted;
+    private bool _getHttpResponseCompleted;
 
     /// <inheritdoc/>
     public string? SessionId { get; init; }
@@ -111,25 +111,25 @@ public sealed class StreamableHttpServerTransport : ITransport
 
         using (await _unsolicitedMessageLock.LockAsync(cancellationToken).ConfigureAwait(false))
         {
-            if (_getRequestStarted)
+            if (_getHttpRequestStarted)
             {
                 throw new InvalidOperationException("Session resumption is not yet supported. Please start a new session.");
             }
 
-            _getRequestStarted = true;
-            _sseResponseWriter = new SseEventWriter(sseResponseStream);
-            _responseTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            _sseEventStreamWriter = await TryCreateEventStreamAsync(streamId: UnsolicitedMessageStreamId, cancellationToken).ConfigureAwait(false);
-            if (_sseEventStreamWriter is not null)
+            _getHttpRequestStarted = true;
+            _httpSseWriter = new SseEventWriter(sseResponseStream);
+            _httpResponseTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _storeSseWriter = await TryCreateEventStreamAsync(streamId: UnsolicitedMessageStreamId, cancellationToken).ConfigureAwait(false);
+            if (_storeSseWriter is not null)
             {
-                var primingItem = await _sseEventStreamWriter.WriteEventAsync(SseItem.Prime<JsonRpcMessage>(), cancellationToken).ConfigureAwait(false);
-                await _sseResponseWriter.WriteAsync(primingItem, cancellationToken).ConfigureAwait(false);
+                var primingItem = await _storeSseWriter.WriteEventAsync(SseItem.Prime<JsonRpcMessage>(), cancellationToken).ConfigureAwait(false);
+                await _httpSseWriter.WriteAsync(primingItem, cancellationToken).ConfigureAwait(false);
             }
         }
 
         // Wait for the response to be written before returning from the handler.
         // This keeps the HTTP response open until the final response message is sent.
-        await _responseTcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await _httpResponseTcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -155,14 +155,13 @@ public sealed class StreamableHttpServerTransport : ITransport
         Throw.IfNull(message);
         Throw.IfNull(responseStream);
 
+        var postTransport = new StreamableHttpPostTransport(this, responseStream, _transportDisposedCts.Token);
         using var postCts = CancellationTokenSource.CreateLinkedTokenSource(_transportDisposedCts.Token, cancellationToken);
-        var postTransport = new StreamableHttpPostTransport(this, responseStream);
         await using (postTransport.ConfigureAwait(false))
         {
             return await postTransport.HandlePostAsync(
                 message,
-                postCancellationToken: postCts.Token,
-                sessionCancellationToken: _transportDisposedCts.Token)
+                cancellationToken: postCts.Token)
                 .ConfigureAwait(false);
         }
     }
@@ -179,34 +178,34 @@ public sealed class StreamableHttpServerTransport : ITransport
 
         using var _ = await _unsolicitedMessageLock.LockAsync(cancellationToken).ConfigureAwait(false);
 
-        if (!_getRequestStarted)
+        if (!_getHttpRequestStarted)
         {
             // Clients are not required to make a GET request for unsolicited messages.
             // If no GET request has been made, drop the message.
             return;
         }
 
-        Debug.Assert(_sseResponseWriter is not null);
-        Debug.Assert(_responseTcs is not null);
+        Debug.Assert(_httpSseWriter is not null);
+        Debug.Assert(_httpResponseTcs is not null);
 
         var item = SseItem.Message(message);
 
-        if (_sseEventStreamWriter is not null)
+        if (_storeSseWriter is not null)
         {
-            item = await _sseEventStreamWriter.WriteEventAsync(item, cancellationToken).ConfigureAwait(false);
+            item = await _storeSseWriter.WriteEventAsync(item, cancellationToken).ConfigureAwait(false);
         }
 
-        if (!_originalResponseCompleted)
+        if (!_getHttpResponseCompleted)
         {
             // Only write the message to the response if the response has not completed.
 
             try
             {
-                await _sseResponseWriter!.WriteAsync(item, cancellationToken).ConfigureAwait(false);
+                await _httpSseWriter!.WriteAsync(item, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
-                _responseTcs!.TrySetException(ex);
+                _httpResponseTcs!.TrySetException(ex);
             }
         }
     }
@@ -216,12 +215,12 @@ public sealed class StreamableHttpServerTransport : ITransport
     {
         using var _ = await _unsolicitedMessageLock.LockAsync().ConfigureAwait(false);
 
-        if (_originalResponseCompleted)
+        if (_getHttpResponseCompleted)
         {
             return;
         }
 
-        _originalResponseCompleted = true;
+        _getHttpResponseCompleted = true;
 
         try
         {
@@ -232,12 +231,12 @@ public sealed class StreamableHttpServerTransport : ITransport
         {
             try
             {
-                _responseTcs?.TrySetResult(true);
-                _sseResponseWriter?.Dispose();
+                _httpResponseTcs?.TrySetResult(true);
+                _httpSseWriter?.Dispose();
 
-                if (_sseEventStreamWriter is not null)
+                if (_storeSseWriter is not null)
                 {
-                    await _sseEventStreamWriter.DisposeAsync().ConfigureAwait(false);
+                    await _storeSseWriter.DisposeAsync().ConfigureAwait(false);
                 }
             }
             finally

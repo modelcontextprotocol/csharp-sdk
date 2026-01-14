@@ -10,17 +10,18 @@ namespace ModelContextProtocol.Server;
 /// Handles processing the request/response body pairs for the Streamable HTTP transport.
 /// This is typically used via <see cref="JsonRpcMessageContext.RelatedTransport"/>.
 /// </summary>
-internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport parentTransport, Stream responseStream) : ITransport
+internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport parentTransport, Stream responseStream, CancellationToken sessionCancellationToken) : ITransport
 {
     private readonly SemaphoreSlim _messageLock = new(1, 1);
-    private readonly TaskCompletionSource<bool> _responseTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly SseEventWriter _sseResponseWriter = new(responseStream);
+    private readonly TaskCompletionSource<bool> _httpResponseTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly SseEventWriter _httpSseWriter = new(responseStream);
 
-    private TaskCompletionSource<bool>? _streamTcs;
-    private ISseEventStreamWriter? _sseEventStreamWriter;
+    private TaskCompletionSource<bool>? _storeStreamTcs;
+    private ISseEventStreamWriter? _storeSseWriter;
+
     private RequestId _pendingRequest;
     private bool _finalResponseMessageSent;
-    private bool _originalResponseCompleted;
+    private bool _httpResponseCompleted;
 
     public ChannelReader<JsonRpcMessage> MessageReader => throw new NotSupportedException("JsonRpcMessage.Context.RelatedTransport should only be used for sending messages.");
 
@@ -31,7 +32,7 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
     /// False, if nothing was written because the request body did not contain any <see cref="JsonRpcRequest"/> messages to respond to.
     /// The HTTP application should typically respond with an empty "202 Accepted" response in this scenario.
     /// </returns>
-    public async ValueTask<bool> HandlePostAsync(JsonRpcMessage message, CancellationToken postCancellationToken, CancellationToken sessionCancellationToken)
+    public async ValueTask<bool> HandlePostAsync(JsonRpcMessage message, CancellationToken cancellationToken)
     {
         Debug.Assert(_pendingRequest.Id is null);
 
@@ -57,25 +58,25 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
 
         if (_pendingRequest.Id is null)
         {
-            await parentTransport.MessageWriter.WriteAsync(message, postCancellationToken).ConfigureAwait(false);
+            await parentTransport.MessageWriter.WriteAsync(message, cancellationToken).ConfigureAwait(false);
             return false;
         }
 
-        using (await _messageLock.LockAsync(postCancellationToken).ConfigureAwait(false))
+        using (await _messageLock.LockAsync(cancellationToken).ConfigureAwait(false))
         {
-            var primingItem = await TryStartSseEventStreamAsync(_pendingRequest, sessionCancellationToken).ConfigureAwait(false);
+            var primingItem = await TryStartSseEventStreamAsync(_pendingRequest).ConfigureAwait(false);
             if (primingItem.HasValue)
             {
-                await _sseResponseWriter.WriteAsync(primingItem.Value, postCancellationToken).ConfigureAwait(false);
+                await _httpSseWriter.WriteAsync(primingItem.Value, cancellationToken).ConfigureAwait(false);
             }
 
             // Ensure that we've sent the priming event before processing the incoming request.
-            await parentTransport.MessageWriter.WriteAsync(message, postCancellationToken).ConfigureAwait(false);
+            await parentTransport.MessageWriter.WriteAsync(message, cancellationToken).ConfigureAwait(false);
         }
 
         // Wait for the response to be written before returning from the handler.
         // This keeps the HTTP response open until the final response message is sent.
-        await _responseTcs.Task.WaitAsync(postCancellationToken).ConfigureAwait(false);
+        await _httpResponseTcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
 
         return true;
     }
@@ -104,22 +105,22 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
 
             var item = new SseItem<JsonRpcMessage?>(message, SseParser.EventTypeDefault);
 
-            if (_sseEventStreamWriter is not null)
+            if (_storeSseWriter is not null)
             {
-                item = await _sseEventStreamWriter.WriteEventAsync(item, cancellationToken).ConfigureAwait(false);
+                item = await _storeSseWriter.WriteEventAsync(item, cancellationToken).ConfigureAwait(false);
             }
 
-            if (!_originalResponseCompleted)
+            if (!_httpResponseCompleted)
             {
                 // Only write the message to the response if the response has not completed.
 
                 try
                 {
-                    await _sseResponseWriter.WriteAsync(item, cancellationToken).ConfigureAwait(false);
+                    await _httpSseWriter.WriteAsync(item, cancellationToken).ConfigureAwait(false);
                 }
                 catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
                 {
-                    _responseTcs.TrySetException(ex);
+                    _httpResponseTcs.TrySetException(ex);
                 }
             }
         }
@@ -129,8 +130,8 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
             if ((message is JsonRpcResponse or JsonRpcError) && ((JsonRpcMessageWithId)message).Id == _pendingRequest)
             {
                 _finalResponseMessageSent = true;
-                _responseTcs.TrySetResult(true);
-                _streamTcs?.TrySetResult(true);
+                _httpResponseTcs.TrySetResult(true);
+                _storeStreamTcs?.TrySetResult(true);
             }
         }
     }
@@ -144,61 +145,61 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
 
         using var _ = await _messageLock.LockAsync(cancellationToken).ConfigureAwait(false);
 
-        if (_sseEventStreamWriter is null)
+        if (_storeSseWriter is null)
         {
             throw new InvalidOperationException($"Polling requires an event stream store to be configured.");
         }
 
         // Send the priming event with the new retry interval.
-        var primingItem = await _sseEventStreamWriter.WriteEventAsync(
+        var primingItem = await _storeSseWriter.WriteEventAsync(
             sseItem: new SseItem<JsonRpcMessage?>() { ReconnectionInterval = retryInterval },
             cancellationToken)
             .ConfigureAwait(false);
 
         // Write to the response stream if it still exists.
-        if (!_originalResponseCompleted)
+        if (!_httpResponseCompleted)
         {
-            await _sseResponseWriter.WriteAsync(primingItem, cancellationToken).ConfigureAwait(false);
+            await _httpSseWriter.WriteAsync(primingItem, cancellationToken).ConfigureAwait(false);
         }
 
         // Set the mode to 'Polling' so that the replay stream ends as soon as all available messages have been sent.
         // This prevents the client from immediately establishing another long-lived connection.
-        await _sseEventStreamWriter.SetModeAsync(SseEventStreamMode.Polling, cancellationToken).ConfigureAwait(false);
+        await _storeSseWriter.SetModeAsync(SseEventStreamMode.Polling, cancellationToken).ConfigureAwait(false);
 
         // Signal completion so HandlePostAsync can return.
-        _responseTcs.TrySetResult(true);
+        _httpResponseTcs.TrySetResult(true);
     }
 
-    private async ValueTask<SseItem<JsonRpcMessage?>?> TryStartSseEventStreamAsync(RequestId requestId, CancellationToken cancellationToken)
+    private async ValueTask<SseItem<JsonRpcMessage?>?> TryStartSseEventStreamAsync(RequestId requestId)
     {
-        Debug.Assert(_sseEventStreamWriter is null);
+        Debug.Assert(_storeSseWriter is null);
 
-        _sseEventStreamWriter = await parentTransport.TryCreateEventStreamAsync(
+        _storeSseWriter = await parentTransport.TryCreateEventStreamAsync(
             streamId: requestId.Id!.ToString()!,
-            cancellationToken: cancellationToken)
+            cancellationToken: sessionCancellationToken)
             .ConfigureAwait(false);
 
-        if (_sseEventStreamWriter is null)
+        if (_storeSseWriter is null)
         {
             return null;
         }
 
-        _streamTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _ = HandleStreamWriterDisposalAsync(_streamTcs.Task, cancellationToken);
+        _storeStreamTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = HandleStoreStreamDisposalAsync(_storeStreamTcs.Task);
 
-        return await _sseEventStreamWriter.WriteEventAsync(SseItem.Prime<JsonRpcMessage>(), cancellationToken).ConfigureAwait(false);
+        return await _storeSseWriter.WriteEventAsync(SseItem.Prime<JsonRpcMessage>(), sessionCancellationToken).ConfigureAwait(false);
 
-        async Task HandleStreamWriterDisposalAsync(Task streamTask, CancellationToken cancellationToken)
+        async Task HandleStoreStreamDisposalAsync(Task streamTask)
         {
             try
             {
-                await streamTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+                await streamTask.WaitAsync(sessionCancellationToken).ConfigureAwait(false);
             }
             finally
             {
                 using var _ = await _messageLock.LockAsync().ConfigureAwait(false);
 
-                await _sseEventStreamWriter!.DisposeAsync().ConfigureAwait(false);
+                await _storeSseWriter!.DisposeAsync().ConfigureAwait(false);
             }
         }
     }
@@ -207,16 +208,16 @@ internal sealed class StreamableHttpPostTransport(StreamableHttpServerTransport 
     {
         using var _ = await _messageLock.LockAsync().ConfigureAwait(false);
 
-        if (_originalResponseCompleted)
+        if (_httpResponseCompleted)
         {
             return;
         }
 
-        _originalResponseCompleted = true;
+        _httpResponseCompleted = true;
 
-        _responseTcs.TrySetResult(true);
+        _httpResponseTcs.TrySetResult(true);
 
-        _sseResponseWriter.Dispose();
+        _httpSseWriter.Dispose();
 
         // Don't dispose the event stream writer here, as we may continue to write to the event store
         // after disposal if there are pending messages.
