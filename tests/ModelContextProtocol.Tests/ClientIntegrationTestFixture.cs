@@ -15,11 +15,13 @@ public class ClientIntegrationTestFixture
 
     public ClientIntegrationTestFixture()
     {
+        const string ServerEverythingVersion = "2025.12.18";
+
         EverythingServerTransportOptions = new()
         {
             Command = "npx",
             // Change to Arguments = ["mcp-server-everything"] if you want to run the server locally after creating a symlink
-            Arguments = ["-y", "--verbose", "@modelcontextprotocol/server-everything"],
+            Arguments = ["-y", "--verbose", $"@modelcontextprotocol/server-everything@{ServerEverythingVersion}"],
             Name = "Everything",
         };
 
