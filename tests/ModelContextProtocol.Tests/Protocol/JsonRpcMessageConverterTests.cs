@@ -303,10 +303,6 @@ public static class JsonRpcMessageConverterTests
         Assert.Equal(original.Error.Message, deserialized.Error.Message);
     }
 
-    // =============================================================================
-    // Edge case tests for less-common JSON-RPC payload shapes
-    // =============================================================================
-
     [Fact]
     public static void Deserialize_ResponseWithExplicitNullError_TreatedAsSuccessResponse()
     {
