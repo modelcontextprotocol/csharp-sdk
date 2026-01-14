@@ -226,7 +226,7 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
             progress.Report(new() { Progress = 0, Message = InitialMessage });
 
             // Make sure the client receives one message before we disconnect.
-            await clientReceivedInitialValueTcs.Task;
+            await clientReceivedInitialValueTcs.Task.WaitAsync(TestContext.Current.CancellationToken);
 
             // Simulate a network disconnection by faulting the response stream.
             var reconnectAttempt = await faultingStreamHandler.TriggerFaultAsync(TestContext.Current.CancellationToken);
@@ -237,7 +237,7 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
             reconnectAttempt.Continue();
 
             // Wait for the client to receive the message via replay.
-            await clientReceivedReconnectValueTcs.Task;
+            await clientReceivedReconnectValueTcs.Task.WaitAsync(TestContext.Current.CancellationToken);
 
             // Return the final result with the client still connected.
             return ResultMessage;

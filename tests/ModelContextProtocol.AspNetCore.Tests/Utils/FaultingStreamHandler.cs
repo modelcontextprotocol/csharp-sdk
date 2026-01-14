@@ -103,7 +103,21 @@ internal sealed class FaultingStreamHandler : DelegatingHandler
             _faultTcs = new TaskCompletionSource();
 
             await _cts.CancelAsync();
-            await _faultTcs.Task.WaitAsync(cancellationToken);
+
+            // Use a timeout to detect if the fault is not observed by a read operation.
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
+
+            try
+            {
+                await _faultTcs.Task.WaitAsync(timeoutCts.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new TimeoutException(
+                    $"TriggerFaultAsync timed out after 30 seconds waiting for a read to observe the cancellation. " +
+                    $"Stream disposed: {_disposed}, CTS cancelled: {_cts.IsCancellationRequested}");
+            }
         }
 
         public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
@@ -113,7 +127,11 @@ internal sealed class FaultingStreamHandler : DelegatingHandler
                 _cts.Token.ThrowIfCancellationRequested();
 
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cts.Token);
-                return await innerStream.ReadAsync(buffer, linkedCts.Token);
+                var bytesRead = await innerStream.ReadAsync(buffer, linkedCts.Token);
+
+                _cts.Token.ThrowIfCancellationRequested();
+
+                return bytesRead;
             }
             catch (OperationCanceledException) when (_cts.IsCancellationRequested)
             {
