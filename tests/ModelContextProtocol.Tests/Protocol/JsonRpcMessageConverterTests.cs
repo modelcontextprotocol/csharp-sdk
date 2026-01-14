@@ -302,4 +302,460 @@ public static class JsonRpcMessageConverterTests
         Assert.Equal(original.Error.Code, deserialized.Error.Code);
         Assert.Equal(original.Error.Message, deserialized.Error.Message);
     }
+
+    // =============================================================================
+    // Edge case tests for less-common JSON-RPC payload shapes
+    // =============================================================================
+
+    [Fact]
+    public static void Deserialize_ResponseWithExplicitNullError_TreatedAsSuccessResponse()
+    {
+        // Arrange - A valid response with explicit "error": null should be treated as success response
+        string json = """{"jsonrpc":"2.0","id":1,"result":{"data":"value"},"error":null}""";
+
+        // Act
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert - Should be a success response, not an error
+        Assert.NotNull(message);
+        Assert.IsType<JsonRpcResponse>(message);
+        var response = (JsonRpcResponse)message;
+        Assert.Equal(new RequestId(1), response.Id);
+        Assert.NotNull(response.Result);
+        Assert.Equal("value", response.Result["data"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public static void Deserialize_ResponseWithNullResultAndNullError_TreatedAsSuccessWithNullResult()
+    {
+        // Arrange - Both result and error are explicitly null
+        string json = """{"jsonrpc":"2.0","id":1,"result":null,"error":null}""";
+
+        // Act
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert - result: null is a valid success response
+        Assert.NotNull(message);
+        Assert.IsType<JsonRpcResponse>(message);
+        var response = (JsonRpcResponse)message;
+        Assert.Equal(new RequestId(1), response.Id);
+        Assert.Null(response.Result);
+    }
+
+    [Fact]
+    public static void Deserialize_ResponseWithErrorBeforeResult_ErrorTakesPrecedence()
+    {
+        // Arrange - Error property comes before result in JSON (error takes precedence)
+        string json = """{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"Invalid"},"result":{"data":"ignored"}}""";
+
+        // Act
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert - Should be an error response since error takes precedence
+        Assert.NotNull(message);
+        Assert.IsType<JsonRpcError>(message);
+        var error = (JsonRpcError)message;
+        Assert.Equal(new RequestId(1), error.Id);
+        Assert.Equal(-32600, error.Error.Code);
+    }
+
+    [Fact]
+    public static void Deserialize_ResponseWithResultBeforeError_ErrorTakesPrecedence()
+    {
+        // Arrange - Result property comes before error in JSON (error still takes precedence)
+        string json = """{"jsonrpc":"2.0","id":1,"result":{"data":"ignored"},"error":{"code":-32600,"message":"Invalid"}}""";
+
+        // Act
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert - Should be an error response since error takes precedence regardless of order
+        Assert.NotNull(message);
+        Assert.IsType<JsonRpcError>(message);
+        var error = (JsonRpcError)message;
+        Assert.Equal(new RequestId(1), error.Id);
+        Assert.Equal(-32600, error.Error.Code);
+    }
+
+    [Fact]
+    public static void Deserialize_RequestWithEmptyStringId_IsValidRequest()
+    {
+        // Arrange - Empty string is a valid ID per JSON-RPC 2.0
+        string json = """{"jsonrpc":"2.0","id":"","method":"test"}""";
+
+        // Act
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(message);
+        Assert.IsType<JsonRpcRequest>(message);
+        var request = (JsonRpcRequest)message;
+        Assert.Equal(new RequestId(""), request.Id);
+        Assert.Equal("test", request.Method);
+    }
+
+    [Fact]
+    public static void Deserialize_RequestWithZeroId_IsValidRequest()
+    {
+        // Arrange - Zero is a valid numeric ID
+        string json = """{"jsonrpc":"2.0","id":0,"method":"test"}""";
+
+        // Act
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(message);
+        Assert.IsType<JsonRpcRequest>(message);
+        var request = (JsonRpcRequest)message;
+        Assert.Equal(new RequestId(0), request.Id);
+    }
+
+    [Fact]
+    public static void Deserialize_RequestWithNegativeId_IsValidRequest()
+    {
+        // Arrange - Negative numbers are valid IDs
+        string json = """{"jsonrpc":"2.0","id":-42,"method":"test"}""";
+
+        // Act
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(message);
+        Assert.IsType<JsonRpcRequest>(message);
+        var request = (JsonRpcRequest)message;
+        Assert.Equal(new RequestId(-42), request.Id);
+    }
+
+    [Fact]
+    public static void Deserialize_RequestWithLargeNumericId_IsValidRequest()
+    {
+        // Arrange - Large number ID
+        string json = """{"jsonrpc":"2.0","id":9223372036854775807,"method":"test"}""";
+
+        // Act
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(message);
+        Assert.IsType<JsonRpcRequest>(message);
+        var request = (JsonRpcRequest)message;
+        Assert.Equal(new RequestId(long.MaxValue), request.Id);
+    }
+
+    [Fact]
+    public static void Deserialize_NotificationWithExplicitNullParams_IsValidNotification()
+    {
+        // Arrange - params: null is valid
+        string json = """{"jsonrpc":"2.0","method":"notify","params":null}""";
+
+        // Act
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(message);
+        Assert.IsType<JsonRpcNotification>(message);
+        var notification = (JsonRpcNotification)message;
+        Assert.Equal("notify", notification.Method);
+        Assert.Null(notification.Params);
+    }
+
+    [Fact]
+    public static void Deserialize_RequestWithEmptyObjectParams_IsValidRequest()
+    {
+        // Arrange - Empty object params
+        string json = """{"jsonrpc":"2.0","id":1,"method":"test","params":{}}""";
+
+        // Act
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(message);
+        Assert.IsType<JsonRpcRequest>(message);
+        var request = (JsonRpcRequest)message;
+        Assert.NotNull(request.Params);
+        Assert.IsType<JsonObject>(request.Params);
+    }
+
+    [Fact]
+    public static void Deserialize_RequestWithArrayParams_IsValidRequest()
+    {
+        // Arrange - Array params (positional arguments per JSON-RPC 2.0)
+        string json = """{"jsonrpc":"2.0","id":1,"method":"test","params":["arg1",42,true]}""";
+
+        // Act
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(message);
+        Assert.IsType<JsonRpcRequest>(message);
+        var request = (JsonRpcRequest)message;
+        Assert.NotNull(request.Params);
+        Assert.IsType<JsonArray>(request.Params);
+        var array = (JsonArray)request.Params;
+        Assert.Equal(3, array.Count);
+        Assert.Equal("arg1", array[0]?.GetValue<string>());
+        Assert.Equal(42, array[1]?.GetValue<int>());
+        Assert.True(array[2]?.GetValue<bool>());
+    }
+
+    [Fact]
+    public static void Deserialize_ErrorWithNullData_IsValidError()
+    {
+        // Arrange - Error with explicit null data
+        string json = """{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"Invalid","data":null}}""";
+
+        // Act
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(message);
+        Assert.IsType<JsonRpcError>(message);
+        var error = (JsonRpcError)message;
+        Assert.Equal(-32600, error.Error.Code);
+        Assert.Equal("Invalid", error.Error.Message);
+        Assert.Null(error.Error.Data);
+    }
+
+    [Fact]
+    public static void Deserialize_ErrorWithComplexData_IsValidError()
+    {
+        // Arrange - Error with complex object data
+        string json = """{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"Invalid","data":{"details":["error1","error2"],"field":"name"}}}""";
+
+        // Act
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(message);
+        Assert.IsType<JsonRpcError>(message);
+        var error = (JsonRpcError)message;
+        Assert.NotNull(error.Error.Data);
+    }
+
+    [Fact]
+    public static void Deserialize_RequestWithPropertiesInUnusualOrder_IsValidRequest()
+    {
+        // Arrange - Properties in unusual order (params, method, id, jsonrpc)
+        string json = """{"params":{"key":"value"},"method":"test","id":123,"jsonrpc":"2.0"}""";
+
+        // Act
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(message);
+        Assert.IsType<JsonRpcRequest>(message);
+        var request = (JsonRpcRequest)message;
+        Assert.Equal("2.0", request.JsonRpc);
+        Assert.Equal(new RequestId(123), request.Id);
+        Assert.Equal("test", request.Method);
+        Assert.Equal("value", request.Params?["key"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public static void Deserialize_ResponseWithPropertiesInUnusualOrder_IsValidResponse()
+    {
+        // Arrange - Properties in unusual order (result, id, jsonrpc)
+        string json = """{"result":{"status":"ok"},"id":"abc","jsonrpc":"2.0"}""";
+
+        // Act
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(message);
+        Assert.IsType<JsonRpcResponse>(message);
+        var response = (JsonRpcResponse)message;
+        Assert.Equal("2.0", response.JsonRpc);
+        Assert.Equal(new RequestId("abc"), response.Id);
+        Assert.Equal("ok", response.Result?["status"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public static void Deserialize_MessageWithUnicodeInStringValues_PreservesUnicode()
+    {
+        // Arrange - Unicode characters in method name, ID, and params
+        string json = """{"jsonrpc":"2.0","id":"请求-123","method":"日本語/メソッド","params":{"emoji":"🚀","text":"Ελληνικά"}}""";
+
+        // Act
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(message);
+        Assert.IsType<JsonRpcRequest>(message);
+        var request = (JsonRpcRequest)message;
+        Assert.Equal(new RequestId("请求-123"), request.Id);
+        Assert.Equal("日本語/メソッド", request.Method);
+        Assert.Equal("🚀", request.Params?["emoji"]?.GetValue<string>());
+        Assert.Equal("Ελληνικά", request.Params?["text"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public static void Deserialize_MessageWithEscapedCharacters_HandlesEscaping()
+    {
+        // Arrange - JSON with escaped characters
+        string json = """{"jsonrpc":"2.0","id":1,"method":"test","params":{"path":"C:\\Users\\test","quote":"He said \"hello\""}}""";
+
+        // Act
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(message);
+        Assert.IsType<JsonRpcRequest>(message);
+        var request = (JsonRpcRequest)message;
+        Assert.Equal("C:\\Users\\test", request.Params?["path"]?.GetValue<string>());
+        Assert.Equal("He said \"hello\"", request.Params?["quote"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public static void Deserialize_ResponseWithPrimitiveResult_IsValid()
+    {
+        // Arrange - Result is a primitive string, not an object
+        string json = """{"jsonrpc":"2.0","id":1,"result":"simple string result"}""";
+
+        // Act
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(message);
+        Assert.IsType<JsonRpcResponse>(message);
+        var response = (JsonRpcResponse)message;
+        Assert.NotNull(response.Result);
+        Assert.Equal("simple string result", response.Result.GetValue<string>());
+    }
+
+    [Fact]
+    public static void Deserialize_ResponseWithNumericResult_IsValid()
+    {
+        // Arrange - Result is a number
+        string json = """{"jsonrpc":"2.0","id":1,"result":42}""";
+
+        // Act
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(message);
+        Assert.IsType<JsonRpcResponse>(message);
+        var response = (JsonRpcResponse)message;
+        Assert.NotNull(response.Result);
+        Assert.Equal(42, response.Result.GetValue<int>());
+    }
+
+    [Fact]
+    public static void Deserialize_ResponseWithBooleanResult_IsValid()
+    {
+        // Arrange - Result is a boolean
+        string json = """{"jsonrpc":"2.0","id":1,"result":true}""";
+
+        // Act
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(message);
+        Assert.IsType<JsonRpcResponse>(message);
+        var response = (JsonRpcResponse)message;
+        Assert.NotNull(response.Result);
+        Assert.True(response.Result.GetValue<bool>());
+    }
+
+    [Fact]
+    public static void Deserialize_ResponseWithArrayResult_IsValid()
+    {
+        // Arrange - Result is an array
+        string json = """{"jsonrpc":"2.0","id":1,"result":[1,2,3,"four"]}""";
+
+        // Act
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(message);
+        Assert.IsType<JsonRpcResponse>(message);
+        var response = (JsonRpcResponse)message;
+        Assert.NotNull(response.Result);
+        Assert.IsType<JsonArray>(response.Result);
+        var array = (JsonArray)response.Result;
+        Assert.Equal(4, array.Count);
+    }
+
+    [Fact]
+    public static void Deserialize_MessageWithMultipleUnknownPropertiesInterspersed_IgnoresUnknown()
+    {
+        // Arrange - Unknown properties interspersed with known ones
+        string json = """{"unknown1":"x","jsonrpc":"2.0","unknown2":123,"id":1,"unknown3":true,"method":"test","unknown4":null}""";
+
+        // Act
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(message);
+        Assert.IsType<JsonRpcRequest>(message);
+        var request = (JsonRpcRequest)message;
+        Assert.Equal("2.0", request.JsonRpc);
+        Assert.Equal(new RequestId(1), request.Id);
+        Assert.Equal("test", request.Method);
+    }
+
+    [Fact]
+    public static void Deserialize_NotificationWithMethodOnly_NoParams_IsValid()
+    {
+        // Arrange - Minimal notification with no params
+        string json = """{"jsonrpc":"2.0","method":"ping"}""";
+
+        // Act
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(message);
+        Assert.IsType<JsonRpcNotification>(message);
+        var notification = (JsonRpcNotification)message;
+        Assert.Equal("ping", notification.Method);
+        Assert.Null(notification.Params);
+    }
+
+    [Fact]
+    public static void Deserialize_RequestWithNestedComplexParams_IsValid()
+    {
+        // Arrange - Deeply nested params structure
+        string json = """{"jsonrpc":"2.0","id":1,"method":"test","params":{"level1":{"level2":{"level3":{"value":"deep"}}}}}""";
+
+        // Act
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(message);
+        Assert.IsType<JsonRpcRequest>(message);
+        var request = (JsonRpcRequest)message;
+        Assert.NotNull(request.Params);
+        var deepValue = request.Params["level1"]?["level2"]?["level3"]?["value"]?.GetValue<string>();
+        Assert.Equal("deep", deepValue);
+    }
+
+    [Fact]
+    public static void Deserialize_ErrorWithNumericData_IsValid()
+    {
+        // Arrange - Error with numeric data (not object or string)
+        string json = """{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"Error","data":42}}""";
+
+        // Act
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(message);
+        Assert.IsType<JsonRpcError>(message);
+        var error = (JsonRpcError)message;
+        Assert.NotNull(error.Error.Data);
+    }
+
+    [Fact]
+    public static void Deserialize_ErrorWithArrayData_IsValid()
+    {
+        // Arrange - Error with array data
+        string json = """{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"Multiple errors","data":["error1","error2","error3"]}}""";
+
+        // Act
+        var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
+
+        // Assert
+        Assert.NotNull(message);
+        Assert.IsType<JsonRpcError>(message);
+        var error = (JsonRpcError)message;
+        Assert.NotNull(error.Error.Data);
+    }
 }
