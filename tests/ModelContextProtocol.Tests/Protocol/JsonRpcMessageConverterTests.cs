@@ -306,13 +306,15 @@ public static class JsonRpcMessageConverterTests
     [Fact]
     public static void Deserialize_ResponseWithExplicitNullError_TreatedAsSuccessResponse()
     {
-        // Arrange - A valid response with explicit "error": null should be treated as success response
+        // Arrange - Some implementations may include "error": null in success responses.
+        // While JSON-RPC 2.0 spec says responses have either result OR error (not both),
+        // this tests that we handle the lenient case gracefully.
         string json = """{"jsonrpc":"2.0","id":1,"result":{"data":"value"},"error":null}""";
 
         // Act
         var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
 
-        // Assert - Should be a success response, not an error
+        // Assert - Should be a success response since error is null
         Assert.NotNull(message);
         Assert.IsType<JsonRpcResponse>(message);
         var response = (JsonRpcResponse)message;
@@ -324,13 +326,14 @@ public static class JsonRpcMessageConverterTests
     [Fact]
     public static void Deserialize_ResponseWithNullResultAndNullError_TreatedAsSuccessWithNullResult()
     {
-        // Arrange - Both result and error are explicitly null
+        // Arrange - Both result and error are explicitly null.
+        // Per JSON-RPC 2.0, result: null is a valid success response value.
         string json = """{"jsonrpc":"2.0","id":1,"result":null,"error":null}""";
 
         // Act
         var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
 
-        // Assert - result: null is a valid success response
+        // Assert - result: null is valid, error: null is ignored
         Assert.NotNull(message);
         Assert.IsType<JsonRpcResponse>(message);
         var response = (JsonRpcResponse)message;
@@ -339,15 +342,17 @@ public static class JsonRpcMessageConverterTests
     }
 
     [Fact]
-    public static void Deserialize_ResponseWithErrorBeforeResult_ErrorTakesPrecedence()
+    public static void Deserialize_ResponseWithBothErrorAndResult_ErrorTakesPrecedence()
     {
-        // Arrange - Error property comes before result in JSON (error takes precedence)
+        // Arrange - JSON-RPC 2.0 spec says a response should have either result OR error, not both.
+        // However, if a non-compliant implementation sends both, we verify consistent behavior:
+        // error takes precedence regardless of property order.
         string json = """{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"Invalid"},"result":{"data":"ignored"}}""";
 
         // Act
         var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
 
-        // Assert - Should be an error response since error takes precedence
+        // Assert - Error takes precedence
         Assert.NotNull(message);
         Assert.IsType<JsonRpcError>(message);
         var error = (JsonRpcError)message;
@@ -356,15 +361,16 @@ public static class JsonRpcMessageConverterTests
     }
 
     [Fact]
-    public static void Deserialize_ResponseWithResultBeforeError_ErrorTakesPrecedence()
+    public static void Deserialize_ResponseWithBothResultAndError_ErrorTakesPrecedenceRegardlessOfOrder()
     {
-        // Arrange - Result property comes before error in JSON (error still takes precedence)
+        // Arrange - Same as above but with result appearing before error in the JSON.
+        // Validates that property order doesn't affect the precedence logic.
         string json = """{"jsonrpc":"2.0","id":1,"result":{"data":"ignored"},"error":{"code":-32600,"message":"Invalid"}}""";
 
         // Act
         var message = JsonSerializer.Deserialize<JsonRpcMessage>(json, McpJsonUtilities.DefaultOptions);
 
-        // Assert - Should be an error response since error takes precedence regardless of order
+        // Assert - Error still takes precedence
         Assert.NotNull(message);
         Assert.IsType<JsonRpcError>(message);
         var error = (JsonRpcError)message;
