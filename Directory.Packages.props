@@ -97,4 +97,10 @@
     <PackageVersion Include="System.Net.Http" Version="4.3.4" />
     <PackageVersion Include="JsonSchema.Net" Version="9.0.0" />
   </ItemGroup>
+
+  <!-- Sample dependencies -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="$(System10Version)" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.SqlServer" Version="$(System10Version)" />
+  </ItemGroup>
 </Project>

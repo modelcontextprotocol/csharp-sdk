@@ -1,0 +1,53 @@
+services:
+  # Redis for distributed caching
+  redis:
+    image: redis:7-alpine
+    container_name: mcp-resumability-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # SQL Server for distributed caching
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: mcp-resumability-sqlserver
+    ports:
+      - "1433:1433"
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=YourStrong@Passw0rd
+      - MSSQL_PID=Developer
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "YourStrong@Passw0rd" -C -Q "SELECT 1" || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # Initialize SQL Server cache table
+  sqlserver-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: mcp-resumability-sqlserver-init
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    volumes:
+      - ./init-sqlserver.sql:/init-sqlserver.sql:ro
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        /opt/mssql-tools18/bin/sqlcmd -S sqlserver -U sa -P "YourStrong@Passw0rd" -C -i /init-sqlserver.sql
+        echo "SQL Server cache table initialized."
+
+volumes:
+  redis-data:
+  sqlserver-data:

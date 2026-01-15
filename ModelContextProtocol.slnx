@@ -50,6 +50,8 @@
     <Project Path="samples/QuickstartClient/QuickstartClient.csproj" />
     <Project Path="samples/QuickstartWeatherServer/QuickstartWeatherServer.csproj" />
     <Project Path="samples/TestServerWithHosting/TestServerWithHosting.csproj" />
+    <Project Path="samples/ResumabilityDemo/ResumabilityDemo.Server/ResumabilityDemo.Server.csproj" />
+    <Project Path="samples/ResumabilityDemo/ResumabilityDemo.Client/ResumabilityDemo.Client.csproj" />
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path="Directory.Build.props" />
