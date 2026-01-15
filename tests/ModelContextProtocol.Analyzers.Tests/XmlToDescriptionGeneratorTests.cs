@@ -730,6 +730,51 @@ public partial class XmlToDescriptionGeneratorTests
     }
 
     [Fact]
+    public void Generator_DiagnosticHasValidSourceLocation()
+    {
+        // This test verifies that diagnostic locations are properly reconstructed
+        // and point to valid source positions (regression test for locations from stale compilations)
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public class TestTools
+            {
+                /// <summary>
+                /// Test tool
+                /// </summary>
+                [McpServerTool]
+                public static string TestMethod(string input)
+                {
+                    return input;
+                }
+            }
+            """, "MCP002");
+
+        Assert.True(result.Success);
+        
+        // Verify the diagnostic has a valid location with correct line/column information
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "MCP002");
+        Assert.NotNull(diagnostic.Location);
+        
+        // Verify the location span has valid position information
+        var lineSpan = diagnostic.Location.GetLineSpan();
+        Assert.True(lineSpan.IsValid, "Diagnostic line span should be valid");
+        
+        // Verify reasonable location values without assuming specific line numbers
+        Assert.True(lineSpan.StartLinePosition.Line >= 0, "Start line should be non-negative");
+        Assert.True(lineSpan.StartLinePosition.Character >= 0, "Start character should be non-negative");
+        Assert.True(lineSpan.EndLinePosition.Line >= lineSpan.StartLinePosition.Line, "End line should be >= start line");
+        
+        // The span should have a non-zero length (the identifier "TestMethod" is 10 characters)
+        Assert.True(diagnostic.Location.SourceSpan.Length > 0, "Span should have non-zero length");
+        Assert.Equal(10, diagnostic.Location.SourceSpan.Length); // "TestMethod".Length == 10
+    }
+
+    [Fact]
     public void Generator_WithGenericType_GeneratesCorrectly()
     {
         var result = RunGenerator("""
