@@ -1524,6 +1524,25 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     }
 
     [Fact]
+    public void EventIdFormatter_TryParse_HandlesEmptySessionAndStreamIds()
+    {
+        // Arrange
+        var originalSessionId = "";
+        var originalStreamId = "";
+        var originalSequence = 42L;
+
+        // Act
+        var eventId = DistributedCacheEventIdFormatter.Format(originalSessionId, originalStreamId, originalSequence);
+        var parsed = DistributedCacheEventIdFormatter.TryParse(eventId, out var sessionId, out var streamId, out var sequence);
+
+        // Assert
+        Assert.True(parsed);
+        Assert.Equal(originalSessionId, sessionId);
+        Assert.Equal(originalStreamId, streamId);
+        Assert.Equal(originalSequence, sequence);
+    }
+
+    [Fact]
     public void EventIdFormatter_TryParse_HandlesSpecialCharactersInSessionId()
     {
         // Arrange - Session IDs can contain any visible ASCII character per MCP spec

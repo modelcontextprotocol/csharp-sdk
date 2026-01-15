@@ -4,6 +4,12 @@
 // This is a shared source file included in both ModelContextProtocol.Core and the test project.
 // Do not reference symbols internal to the core project, as they won't be available in tests.
 
+#if NET
+using System.Buffers;
+using System.Buffers.Text;
+using System.Diagnostics.CodeAnalysis;
+
+#endif
 using System.Text;
 
 namespace ModelContextProtocol.Server;
@@ -39,6 +45,34 @@ internal static class DistributedCacheEventIdFormatter
         streamId = string.Empty;
         sequence = 0;
 
+#if NET
+        ReadOnlySpan<char> eventIdSpan = eventId.AsSpan();
+        Span<Range> partRanges = stackalloc Range[4];
+        int rangeCount = eventIdSpan.Split(partRanges, Separator);
+        if (rangeCount != 3)
+        {
+            return false;
+        }
+
+        try
+        {
+            ReadOnlySpan<char> sessionBase64 = eventIdSpan[partRanges[0]];
+            ReadOnlySpan<char> streamBase64 = eventIdSpan[partRanges[1]];
+            ReadOnlySpan<char> sequenceSpan = eventIdSpan[partRanges[2]];
+
+            if (!TryDecodeBase64ToString(sessionBase64, out sessionId!) ||
+                !TryDecodeBase64ToString(streamBase64, out streamId!))
+            {
+                return false;
+            }
+
+            return long.TryParse(sequenceSpan, out sequence);
+        }
+        catch
+        {
+            return false;
+        }
+#else
         var parts = eventId.Split(Separator);
         if (parts.Length != 3)
         {
@@ -55,5 +89,30 @@ internal static class DistributedCacheEventIdFormatter
         {
             return false;
         }
+#endif
     }
+
+#if NET
+    private static bool TryDecodeBase64ToString(ReadOnlySpan<char> base64Chars, [NotNullWhen(true)] out string? result)
+    {
+        // Use a single buffer: base64 chars are ASCII (1:1 with UTF8 bytes),
+        // and decoded data is always smaller than encoded, so we can decode in-place.
+        int bufferLength = base64Chars.Length;
+        Span<byte> buffer = bufferLength <= 256
+            ? stackalloc byte[bufferLength]
+            : new byte[bufferLength];
+
+        Encoding.UTF8.GetBytes(base64Chars, buffer);
+
+        OperationStatus status = Base64.DecodeFromUtf8InPlace(buffer, out int bytesWritten);
+        if (status != OperationStatus.Done)
+        {
+            result = null;
+            return false;
+        }
+
+        result = Encoding.UTF8.GetString(buffer[..bytesWritten]);
+        return true;
+    }
+#endif
 }
