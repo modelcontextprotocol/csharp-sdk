@@ -118,6 +118,7 @@ public sealed partial class DistributedCacheEventStreamStore : ISseEventStreamSt
     {
         public string? EventType { get; set; }
         public string? EventId { get; set; }
+        public int? ReconnectionIntervalMs { get; set; }
         public JsonRpcMessage? Data { get; set; }
     }
 
@@ -174,6 +175,9 @@ public sealed partial class DistributedCacheEventStreamStore : ISseEventStreamSt
             {
                 EventType = newItem.EventType,
                 EventId = eventId,
+                ReconnectionIntervalMs = newItem.ReconnectionInterval.HasValue
+                    ? (int)newItem.ReconnectionInterval.Value.TotalMilliseconds
+                    : null,
                 Data = newItem.Data,
             };
 
@@ -299,6 +303,9 @@ public sealed partial class DistributedCacheEventStreamStore : ISseEventStreamSt
                         yield return new SseItem<JsonRpcMessage?>(storedEvent.Data, storedEvent.EventType)
                         {
                             EventId = storedEvent.EventId,
+                            ReconnectionInterval = storedEvent.ReconnectionIntervalMs.HasValue
+                                ? TimeSpan.FromMilliseconds(storedEvent.ReconnectionIntervalMs.Value)
+                                : null,
                         };
                     }
                 }

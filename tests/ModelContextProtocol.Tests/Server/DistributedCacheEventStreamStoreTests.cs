@@ -131,6 +131,95 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
     }
 
     [Fact]
+    public async Task WriteEventAsync_PreservesReconnectionIntervalProperty_InStoredEvent()
+    {
+        // Arrange
+        var cache = CreateMemoryCache();
+        var store = new DistributedCacheEventStreamStore(cache);
+        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Polling
+        }, CancellationToken);
+
+        var expectedInterval = TimeSpan.FromSeconds(5);
+        var item = new SseItem<JsonRpcMessage?>(null) { ReconnectionInterval = expectedInterval };
+
+        // Act
+        var result = await writer.WriteEventAsync(item, CancellationToken);
+
+        // Assert - ReconnectionInterval should be preserved in returned item
+        Assert.Equal(expectedInterval, result.ReconnectionInterval);
+
+        // Get a reader and verify ReconnectionInterval is preserved after round-trip
+        var reader = await store.GetStreamReaderAsync(result.EventId!, CancellationToken);
+        Assert.NotNull(reader);
+
+        var events = new List<SseItem<JsonRpcMessage?>>();
+        await foreach (var evt in reader.ReadEventsAsync(CancellationToken))
+        {
+            events.Add(evt);
+        }
+
+        // Reader should not return the event we just wrote (it starts after lastEventId)
+        Assert.Empty(events);
+
+        // Write another event and verify it can be read with correct ReconnectionInterval
+        var secondItem = new SseItem<JsonRpcMessage?>(null) { ReconnectionInterval = TimeSpan.FromSeconds(10) };
+        _ = await writer.WriteEventAsync(secondItem, CancellationToken);
+
+        // Re-fetch reader using the first event ID to get the second event
+        reader = await store.GetStreamReaderAsync(result.EventId!, CancellationToken);
+        Assert.NotNull(reader);
+
+        await foreach (var evt in reader.ReadEventsAsync(CancellationToken))
+        {
+            events.Add(evt);
+        }
+
+        Assert.Single(events);
+        Assert.Equal(TimeSpan.FromSeconds(10), events[0].ReconnectionInterval);
+    }
+
+    [Fact]
+    public async Task WriteEventAsync_HandlesNullReconnectionInterval_InStoredEvent()
+    {
+        // Arrange
+        var cache = CreateMemoryCache();
+        var store = new DistributedCacheEventStreamStore(cache);
+        var writer = await store.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = "session-1",
+            StreamId = "stream-1",
+            Mode = SseEventStreamMode.Polling
+        }, CancellationToken);
+
+        // Write an event WITH a reconnection interval first
+        var firstItem = new SseItem<JsonRpcMessage?>(null) { ReconnectionInterval = TimeSpan.FromSeconds(5) };
+        var firstResult = await writer.WriteEventAsync(firstItem, CancellationToken);
+
+        // Write an event WITHOUT a reconnection interval
+        var secondItem = new SseItem<JsonRpcMessage?>(null);
+        var secondResult = await writer.WriteEventAsync(secondItem, CancellationToken);
+        Assert.Null(secondResult.ReconnectionInterval);
+
+        // Get a reader starting after the first event
+        var reader = await store.GetStreamReaderAsync(firstResult.EventId!, CancellationToken);
+        Assert.NotNull(reader);
+
+        var events = new List<SseItem<JsonRpcMessage?>>();
+        await foreach (var evt in reader.ReadEventsAsync(CancellationToken))
+        {
+            events.Add(evt);
+        }
+
+        // Should get the second event with null ReconnectionInterval
+        Assert.Single(events);
+        Assert.Null(events[0].ReconnectionInterval);
+    }
+
+    [Fact]
     public async Task WriteEventAsync_HandlesNullData_AssignsEventIdAndStoresEvent()
     {
         // Arrange
