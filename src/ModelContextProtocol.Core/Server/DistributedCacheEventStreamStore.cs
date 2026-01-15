@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
 using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
@@ -20,28 +22,32 @@ namespace ModelContextProtocol.Server;
 /// to be only one writer per stream. Readers may be created from separate processes.
 /// </para>
 /// </remarks>
-public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
+public sealed partial class DistributedCacheEventStreamStore : ISseEventStreamStore
 {
     private readonly IDistributedCache _cache;
     private readonly DistributedCacheEventStreamStoreOptions _options;
+    private readonly ILogger _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DistributedCacheEventStreamStore"/> class.
     /// </summary>
     /// <param name="cache">The distributed cache to use for storage.</param>
     /// <param name="options">Optional configuration options for the store.</param>
-    public DistributedCacheEventStreamStore(IDistributedCache cache, DistributedCacheEventStreamStoreOptions? options = null)
+    /// <param name="logger">Optional logger for diagnostic output.</param>
+    public DistributedCacheEventStreamStore(IDistributedCache cache, DistributedCacheEventStreamStoreOptions? options = null, ILogger<DistributedCacheEventStreamStore>? logger = null)
     {
         Throw.IfNull(cache);
         _cache = cache;
         _options = options ?? new();
+        _logger = logger ?? NullLogger<DistributedCacheEventStreamStore>.Instance;
     }
 
     /// <inheritdoc />
     public ValueTask<ISseEventStreamWriter> CreateStreamAsync(SseEventStreamOptions options, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(options);
-        var writer = new DistributedCacheEventStreamWriter(_cache, options.SessionId, options.StreamId, options.Mode, _options);
+        LogStreamCreated(options.SessionId, options.StreamId, options.Mode);
+        var writer = new DistributedCacheEventStreamWriter(_cache, options.SessionId, options.StreamId, options.Mode, _options, _logger);
         return new ValueTask<ISseEventStreamWriter>(writer);
     }
 
@@ -53,6 +59,7 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
         // Parse the event ID to get session, stream, and sequence information
         if (!DistributedCacheEventIdFormatter.TryParse(lastEventId, out var sessionId, out var streamId, out var sequence))
         {
+            LogEventIdParsingFailed(lastEventId);
             return null;
         }
 
@@ -61,17 +68,20 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
         var metadataBytes = await _cache.GetAsync(metadataKey, cancellationToken).ConfigureAwait(false);
         if (metadataBytes is null)
         {
+            LogStreamMetadataNotFound(sessionId, streamId);
             return null;
         }
 
         var metadata = JsonSerializer.Deserialize(metadataBytes, McpJsonUtilities.JsonContext.Default.StreamMetadata);
         if (metadata is null)
         {
+            LogStreamMetadataDeserializationFailed(sessionId, streamId);
             return null;
         }
 
         var startSequence = sequence + 1;
-        return new DistributedCacheEventStreamReader(_cache, sessionId, streamId, startSequence, metadata, _options);
+        LogStreamReaderCreated(sessionId, streamId, startSequence, metadata.LastSequence);
+        return new DistributedCacheEventStreamReader(_cache, sessionId, streamId, startSequence, metadata, _options, _logger);
     }
 
     /// <summary>
@@ -111,13 +121,14 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
         public JsonRpcMessage? Data { get; set; }
     }
 
-    private sealed class DistributedCacheEventStreamWriter : ISseEventStreamWriter
+    private sealed partial class DistributedCacheEventStreamWriter : ISseEventStreamWriter
     {
         private readonly IDistributedCache _cache;
         private readonly string _sessionId;
         private readonly string _streamId;
         private SseEventStreamMode _mode;
         private readonly DistributedCacheEventStreamStoreOptions _options;
+        private readonly ILogger _logger;
         private long _sequence;
         private bool _disposed;
 
@@ -126,17 +137,20 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
             string sessionId,
             string streamId,
             SseEventStreamMode mode,
-            DistributedCacheEventStreamStoreOptions options)
+            DistributedCacheEventStreamStoreOptions options,
+            ILogger logger)
         {
             _cache = cache;
             _sessionId = sessionId;
             _streamId = streamId;
             _mode = mode;
             _options = options;
+            _logger = logger;
         }
 
         public async ValueTask SetModeAsync(SseEventStreamMode mode, CancellationToken cancellationToken = default)
         {
+            LogStreamModeChanged(_sessionId, _streamId, mode);
             _mode = mode;
             await UpdateMetadataAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -146,6 +160,7 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
             // Skip if already has an event ID
             if (sseItem.EventId is not null)
             {
+                LogEventAlreadyHasId(_sessionId, _streamId, sseItem.EventId);
                 return sseItem;
             }
 
@@ -174,6 +189,7 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
             // Update metadata with the latest sequence
             await UpdateMetadataAsync(cancellationToken).ConfigureAwait(false);
 
+            LogEventWritten(_sessionId, _streamId, eventId, sequence);
             return newItem;
         }
 
@@ -207,15 +223,29 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
 
             // Mark the stream as completed in the metadata
             await UpdateMetadataAsync(CancellationToken.None).ConfigureAwait(false);
+            LogStreamWriterDisposed(_sessionId, _streamId, Interlocked.Read(ref _sequence));
         }
+
+        [LoggerMessage(Level = LogLevel.Debug, Message = "Stream mode changed for session '{SessionId}', stream '{StreamId}' to {Mode}.")]
+        private partial void LogStreamModeChanged(string sessionId, string streamId, SseEventStreamMode mode);
+
+        [LoggerMessage(Level = LogLevel.Trace, Message = "Event already has ID '{EventId}' for session '{SessionId}', stream '{StreamId}'. Skipping ID generation.")]
+        private partial void LogEventAlreadyHasId(string sessionId, string streamId, string eventId);
+
+        [LoggerMessage(Level = LogLevel.Debug, Message = "Event written to session '{SessionId}', stream '{StreamId}' with ID '{EventId}' (sequence {Sequence}).")]
+        private partial void LogEventWritten(string sessionId, string streamId, string eventId, long sequence);
+
+        [LoggerMessage(Level = LogLevel.Information, Message = "Stream writer disposed for session '{SessionId}', stream '{StreamId}'. Total events written: {TotalEvents}.")]
+        private partial void LogStreamWriterDisposed(string sessionId, string streamId, long totalEvents);
     }
 
-    private sealed class DistributedCacheEventStreamReader : ISseEventStreamReader
+    private sealed partial class DistributedCacheEventStreamReader : ISseEventStreamReader
     {
         private readonly IDistributedCache _cache;
         private readonly long _startSequence;
         private readonly StreamMetadata _initialMetadata;
         private readonly DistributedCacheEventStreamStoreOptions _options;
+        private readonly ILogger _logger;
 
         public DistributedCacheEventStreamReader(
             IDistributedCache cache,
@@ -223,7 +253,8 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
             string streamId,
             long startSequence,
             StreamMetadata initialMetadata,
-            DistributedCacheEventStreamStoreOptions options)
+            DistributedCacheEventStreamStoreOptions options,
+            ILogger logger)
         {
             _cache = cache;
             SessionId = sessionId;
@@ -231,6 +262,7 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
             _startSequence = startSequence;
             _initialMetadata = initialMetadata;
             _options = options;
+            _logger = logger;
         }
 
         public string SessionId { get; }
@@ -245,6 +277,8 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
             var lastSequence = _initialMetadata.LastSequence;
             var isCompleted = _initialMetadata.IsCompleted;
             var mode = _initialMetadata.Mode;
+
+            LogReadingEventsStarted(SessionId, StreamId, _startSequence, lastSequence);
 
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -261,6 +295,7 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
                     var storedEvent = JsonSerializer.Deserialize(eventBytes, McpJsonUtilities.JsonContext.Default.StoredEvent);
                     if (storedEvent is not null)
                     {
+                        LogEventRead(SessionId, StreamId, eventId, currentSequence);
                         yield return new SseItem<JsonRpcMessage?>(storedEvent.Data, storedEvent.EventType)
                         {
                             EventId = storedEvent.EventId,
@@ -271,16 +306,19 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
                 // If in polling mode, stop after returning currently available events
                 if (mode == SseEventStreamMode.Polling)
                 {
+                    LogReadingEventsCompletedPolling(SessionId, StreamId, currentSequence - 1);
                     yield break;
                 }
 
                 // If the stream is completed and we've read all events, stop
                 if (isCompleted)
                 {
+                    LogReadingEventsCompletedStreamEnded(SessionId, StreamId, currentSequence - 1);
                     yield break;
                 }
 
                 // Wait before polling again for new events
+                LogWaitingForNewEvents(SessionId, StreamId, _options.PollingInterval);
                 await Task.Delay(_options.PollingInterval, cancellationToken).ConfigureAwait(false);
 
                 // Refresh metadata to get the latest sequence and completion status
@@ -296,5 +334,35 @@ public sealed class DistributedCacheEventStreamStore : ISseEventStreamStore
                 mode = currentMetadata.Mode;
             }
         }
+
+        [LoggerMessage(Level = LogLevel.Debug, Message = "Starting to read events for session '{SessionId}', stream '{StreamId}' from sequence {StartSequence} to {LastSequence}.")]
+        private partial void LogReadingEventsStarted(string sessionId, string streamId, long startSequence, long lastSequence);
+
+        [LoggerMessage(Level = LogLevel.Trace, Message = "Event read from session '{SessionId}', stream '{StreamId}' with ID '{EventId}' (sequence {Sequence}).")]
+        private partial void LogEventRead(string sessionId, string streamId, string eventId, long sequence);
+
+        [LoggerMessage(Level = LogLevel.Debug, Message = "Reading events completed for session '{SessionId}', stream '{StreamId}' in polling mode. Last sequence read: {LastSequence}.")]
+        private partial void LogReadingEventsCompletedPolling(string sessionId, string streamId, long lastSequence);
+
+        [LoggerMessage(Level = LogLevel.Debug, Message = "Reading events completed for session '{SessionId}', stream '{StreamId}' as stream has ended. Last sequence read: {LastSequence}.")]
+        private partial void LogReadingEventsCompletedStreamEnded(string sessionId, string streamId, long lastSequence);
+
+        [LoggerMessage(Level = LogLevel.Trace, Message = "Waiting for new events on session '{SessionId}', stream '{StreamId}'. Polling interval: {PollingInterval}.")]
+        private partial void LogWaitingForNewEvents(string sessionId, string streamId, TimeSpan pollingInterval);
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Stream created for session '{SessionId}', stream '{StreamId}' with mode {Mode}.")]
+    private partial void LogStreamCreated(string sessionId, string streamId, SseEventStreamMode mode);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Stream reader created for session '{SessionId}', stream '{StreamId}' starting at sequence {StartSequence}. Last available sequence: {LastSequence}.")]
+    private partial void LogStreamReaderCreated(string sessionId, string streamId, long startSequence, long lastSequence);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to parse event ID '{EventId}'. Unable to create stream reader.")]
+    private partial void LogEventIdParsingFailed(string eventId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Stream metadata not found for session '{SessionId}', stream '{StreamId}'.")]
+    private partial void LogStreamMetadataNotFound(string sessionId, string streamId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to deserialize stream metadata for session '{SessionId}', stream '{StreamId}'.")]
+    private partial void LogStreamMetadataDeserializationFailed(string sessionId, string streamId);
 }
