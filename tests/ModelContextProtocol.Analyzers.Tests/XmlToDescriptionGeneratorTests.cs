@@ -764,8 +764,7 @@ public partial class XmlToDescriptionGeneratorTests
         var lineSpan = diagnostic.Location.GetLineSpan();
         Assert.True(lineSpan.IsValid, "Diagnostic line span should be valid");
         
-        // The line should point to the line containing "TestMethod" (line 14, 0-indexed would be 13)
-        // Line numbers may vary based on how the source is parsed, so just verify it's reasonable
+        // Verify reasonable location values without assuming specific line numbers
         Assert.True(lineSpan.StartLinePosition.Line >= 0, "Start line should be non-negative");
         Assert.True(lineSpan.StartLinePosition.Character >= 0, "Start character should be non-negative");
         Assert.True(lineSpan.EndLinePosition.Line >= lineSpan.StartLinePosition.Line, "End line should be >= start line");
