@@ -24,4 +24,7 @@ internal static class Experimentals
     // public const string Tasks_DiagnosticId = "MCP5001";
     // public const string Tasks_Message = "The Tasks feature is experimental within specification version 2025-11-25 and is subject to change. See SEP-1686 for more information.";
     // public const string Tasks_Url = "https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1686";
+
+    public const string UseMcpClient_DiagnosticId = "MCP5002";
+    public const string UseMcpClient_Message = "The UseMcpClient middleware for integrating hosted MCP servers with IChatClient is experimental and subject to change.";
 }
