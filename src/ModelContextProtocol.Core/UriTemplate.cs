@@ -15,7 +15,7 @@ namespace ModelContextProtocol;
 /// This implementation should correctly handle valid URI templates, but it has undefined output for invalid templates,
 /// e.g. it may treat portions of invalid templates as literals rather than throwing.
 /// </remarks>
-public static partial class UriTemplate
+internal static partial class UriTemplate
 {
     /// <summary>Regex pattern for finding URI template expressions and parsing out the operator and varname.</summary>
     private const string UriTemplateExpressionPattern = """
