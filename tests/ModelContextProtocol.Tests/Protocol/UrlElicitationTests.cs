@@ -535,10 +535,7 @@ public partial class UrlElicitationTests(ITestOutputHelper testOutputHelper) : C
         {
             Capabilities = new ClientCapabilities
             {
-                Elicitation = new ElicitationCapability
-                {
-                    Url = new UrlElicitationCapability(),
-                }
+                Elicitation = new(),
             },
             Handlers = new McpClientHandlers()
             {
