@@ -62,7 +62,7 @@ jobs:
         node-version: '20'
 
     - name: 📦 Install dependencies for tests
-      run: npm install @modelcontextprotocol/server-everything
+      run: npm install @modelcontextprotocol/server-everything@2025.12.18
 
     - name: 📦 Install dependencies for tests
       run: npm install @modelcontextprotocol/server-memory
