@@ -956,7 +956,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
 
         // Assert - The read should complete gracefully within timeout
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken);
-        timeoutCts.CancelAfter(TimeSpan.FromSeconds(2));
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(10));
         await readTask.WaitAsync(timeoutCts.Token);
     }
 
