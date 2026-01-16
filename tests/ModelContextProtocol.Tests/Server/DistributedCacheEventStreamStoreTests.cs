@@ -1064,9 +1064,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         await writer.SetModeAsync(SseEventStreamMode.Polling, CancellationToken);
 
         // Assert - Read should complete within timeout after switching to polling mode
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken);
-        timeoutCts.CancelAfter(TimeSpan.FromSeconds(10));
-        await readTask.WaitAsync(timeoutCts.Token);
+        await readTask.WaitAsync(cts.Token);
         Assert.True(readCompleted);
         Assert.Empty(events); // No new events were written after the one we used to create the reader
     }
