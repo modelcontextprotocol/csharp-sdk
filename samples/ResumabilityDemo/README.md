@@ -41,9 +41,9 @@ dotnet run
 ### 2. Run with Redis
 
 ```bash
-# Start Redis
+# Start Redis and RedisInsight (GUI)
 cd samples/ResumabilityDemo
-docker compose up redis -d
+docker compose up redis redisinsight -d
 
 # Update appsettings.json or use environment variables
 # Terminal 1: Start the server with Redis
@@ -54,6 +54,21 @@ dotnet run -- --CacheProvider=Redis --Redis:Configuration=localhost:6379
 cd ResumabilityDemo.Client
 dotnet run
 ```
+
+#### Browsing Redis with RedisInsight
+
+RedisInsight is a GUI for browsing Redis contents. After starting the containers:
+
+1. Open http://localhost:5540 in your browser
+2. Click "Add Redis Database"
+3. Enter connection details:
+   - **Host**: `redis` (or `host.docker.internal` if that doesn't work)
+   - **Port**: `6379`
+   - **Name**: Any friendly name like "MCP Resumability"
+
+You can then browse the keys stored by `DistributedCacheEventStreamStore`:
+- `mcp:sse:v1:meta:{sessionId}:{streamId}` - Stream metadata
+- `mcp:sse:v1:event:{eventId}` - Individual SSE events
 
 ### 3. Run with SQL Server
 
@@ -87,15 +102,30 @@ The server provides these tools for testing resumability:
 | `ProgressThenPolling` | Combines streaming progress with polling transition |
 | `GenerateUniqueId` | Returns a unique ID - verify same response on reconnection |
 
+## Server Options
+
+| Option | Description |
+|--------|-------------|
+| `--no-store` | Disable the event stream store (no resumability). Useful for comparison testing to see behavior without resumability support. |
+| `--CacheProvider=<type>` | Set the cache provider: `Memory` (default), `Redis`, or `SqlServer` |
+
+Example:
+```bash
+# Run without resumability support (for comparison)
+dotnet run -- --no-store
+
+# Run with Redis cache
+dotnet run -- --CacheProvider=Redis --Redis:Configuration=localhost:6379
+```
+
 ## Testing Scenarios
 
 ### Scenario 1: Basic Resumability
 
 1. Connect the client: `connect`
 2. Call a slow tool: `delay "Hello" 10`
-3. While waiting, kill and restart the client
-4. Reconnect: `connect`
-5. Observe that the response is still received (redelivered)
+3. While waiting, run `kill`
+4. Observe that the response is still received (redelivered)
 
 ### Scenario 2: Polling Mode (Server-Side Disconnect)
 

@@ -48,6 +48,19 @@ services:
         /opt/mssql-tools18/bin/sqlcmd -S sqlserver -U sa -P "YourStrong@Passw0rd" -C -i /init-sqlserver.sql
         echo "SQL Server cache table initialized."
 
+  # Redis GUI for browsing cache contents
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: mcp-resumability-redisinsight
+    ports:
+      - "5540:5540"
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - redisinsight-data:/data
+
 volumes:
   redis-data:
   sqlserver-data:
+  redisinsight-data:
