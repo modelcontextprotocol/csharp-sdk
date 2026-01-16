@@ -87,9 +87,18 @@ public sealed partial class DistributedCacheEventStreamStore : ISseEventStreamSt
     /// <summary>
     /// Provides methods for generating cache keys.
     /// </summary>
+    /// <remarks>
+    /// Cache keys are versioned to allow format changes without conflicts with existing entries.
+    /// When the cache format changes, increment <see cref="Version"/> to invalidate old entries.
+    /// </remarks>
     internal static class CacheKeys
     {
-        private const string Prefix = "mcp:sse:";
+        /// <summary>
+        /// The current cache key version. Increment this when changing the cache format
+        /// to ensure old entries are ignored.
+        /// </summary>
+        private const string Version = "v1";
+        private const string Prefix = $"mcp:sse:{Version}:";
 
         public static string StreamMetadata(string sessionId, string streamId) =>
             $"{Prefix}meta:{sessionId}:{streamId}";
