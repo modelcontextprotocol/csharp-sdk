@@ -351,7 +351,7 @@ public sealed partial class DistributedCacheEventStreamStore : ISseEventStreamSt
             }
         }
 
-        [LoggerMessage(Level = LogLevel.Debug, Message = "Starting to read events for session '{SessionId}', stream '{StreamId}' from sequence {StartSequence} to {LastSequence}.")]
+        [LoggerMessage(Level = LogLevel.Debug, Message = "Starting to read events for session '{SessionId}', stream '{StreamId}' starting at sequence {StartSequence}. Last available sequence: {LastSequence}.")]
         private partial void LogReadingEventsStarted(string sessionId, string streamId, long startSequence, long lastSequence);
 
         [LoggerMessage(Level = LogLevel.Trace, Message = "Event read from session '{SessionId}', stream '{StreamId}' with ID '{EventId}' (sequence {Sequence}).")]
