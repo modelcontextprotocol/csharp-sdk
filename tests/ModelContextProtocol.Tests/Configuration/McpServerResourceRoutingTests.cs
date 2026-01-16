@@ -271,6 +271,49 @@ public sealed class McpServerResourceRoutingTests(ITestOutputHelper testOutputHe
             uri: "wrongscheme://example.com/foo");
     }
 
+    /// <summary>
+    /// RFC 6570 specifies that empty values should expand to empty strings.
+    /// See https://datatracker.ietf.org/doc/html/rfc6570#page-22 test cases: O{+empty}X matches OX.
+    /// </summary>
+    [Fact]
+    public async Task ReservedExpansion_MatchesEmptyValue()
+    {
+        // Per RFC 6570: O{+empty}X should match OX when empty is ""
+        await AssertMatchAsync(
+            uriTemplate: "test://O{+empty}X",
+            method: (string empty) => $"empty:[{empty}]",
+            uri: "test://OX",
+            expectedResult: "empty:[]");
+    }
+
+    /// <summary>
+    /// RFC 6570 empty expansion test - reserved expansion at end of template.
+    /// </summary>
+    [Fact]
+    public async Task ReservedExpansion_MatchesEmptyValueAtEnd()
+    {
+        // {+var} at the end should match empty string
+        await AssertMatchAsync(
+            uriTemplate: "test://prefix{+suffix}",
+            method: (string suffix) => $"suffix:[{suffix}]",
+            uri: "test://prefix",
+            expectedResult: "suffix:[]");
+    }
+
+    /// <summary>
+    /// RFC 6570 empty expansion test - reserved expansion at start of template.
+    /// </summary>
+    [Fact]
+    public async Task ReservedExpansion_MatchesEmptyValueAtStart()
+    {
+        // {+var} at the start should match empty string
+        await AssertMatchAsync(
+            uriTemplate: "test://{+prefix}suffix",
+            method: (string prefix) => $"prefix:[{prefix}]",
+            uri: "test://suffix",
+            expectedResult: "prefix:[]");
+    }
+
     #endregion
 
     #region Level 2: Fragment Expansion {#var}

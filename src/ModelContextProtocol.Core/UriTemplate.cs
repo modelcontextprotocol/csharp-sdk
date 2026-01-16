@@ -84,12 +84,12 @@ internal static partial class UriTemplate
 
             switch (m.Groups["operator"].Value)
             {
-                case "+": AppendExpression(ref pattern, paramNames, null, "[^?&#]+"); break;
-                case "#": AppendExpression(ref pattern, paramNames, '#', "[^,]+"); break;
-                case ".": AppendExpression(ref pattern, paramNames, '.', "[^./?#]+"); break;
-                case "/": AppendExpression(ref pattern, paramNames, '/', "[^/?#]+"); break;
+                case "+": AppendExpression(ref pattern, paramNames, null, "[^?&#]*"); break;
+                case "#": AppendExpression(ref pattern, paramNames, '#', "[^,]*"); break;
+                case ".": AppendExpression(ref pattern, paramNames, '.', "[^./?#]*"); break;
+                case "/": AppendExpression(ref pattern, paramNames, '/', "[^/?#]*"); break;
                 case ";": AppendPathParameterExpression(ref pattern, paramNames); break;
-                default:  AppendExpression(ref pattern, paramNames, null, "[^/?&#]+"); break;
+                default:  AppendExpression(ref pattern, paramNames, null, "[^/?&#]*"); break;
 
                 case "?": AppendQueryExpression(ref pattern, paramNames, '?'); break;
                 case "&": AppendQueryExpression(ref pattern, paramNames, '&'); break;
@@ -135,7 +135,7 @@ internal static partial class UriTemplate
                     pattern.AppendFormatted(paramName);
                     pattern.AppendFormatted("=(?<");
                     pattern.AppendFormatted(paramName);
-                    pattern.AppendFormatted(">[^/?&]+))?");
+                    pattern.AppendFormatted(">[^/?&]*))?");
                 }
             }
 
@@ -210,7 +210,7 @@ internal static partial class UriTemplate
                     pattern.AppendLiteral(paramName);
                     pattern.AppendLiteral("(?:=(?<");
                     pattern.AppendLiteral(paramName);
-                    pattern.AppendLiteral(">[^;/?&]+))?)?");
+                    pattern.AppendLiteral(">[^;/?&]*))?)?");
                 }
             }
         }
