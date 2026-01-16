@@ -344,6 +344,9 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
             return default;
         });
 
+        // Wait for the client's GET SSE stream to be established before sending notifications
+        await faultingStreamHandler.WaitForStreamAsync(TestContext.Current.CancellationToken);
+
         // Send a custom notification to the client on the unsolicited message stream
         await server.SendNotificationAsync(CustomNotificationMethod, new JsonObject { ["message"] = InitialMessage }, cancellationToken: TestContext.Current.CancellationToken);
 

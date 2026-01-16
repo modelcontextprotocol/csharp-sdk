@@ -11,6 +11,10 @@ internal sealed class FaultingStreamHandler : DelegatingHandler
 {
     private FaultingStream? _lastStream;
     private TaskCompletionSource? _reconnectTcs;
+    private TaskCompletionSource _streamAvailableTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public Task WaitForStreamAsync(CancellationToken cancellationToken = default)
+        => _streamAvailableTcs.Task.WaitAsync(cancellationToken);
 
     public async Task<ReconnectAttempt> TriggerFaultAsync(CancellationToken cancellationToken)
     {
@@ -24,6 +28,7 @@ internal sealed class FaultingStreamHandler : DelegatingHandler
             throw new InvalidOperationException("Cannot trigger a fault while already waiting for reconnection.");
         }
 
+        _streamAvailableTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
         _reconnectTcs = new();
         await _lastStream.TriggerFaultAsync(cancellationToken);
 
@@ -63,6 +68,8 @@ internal sealed class FaultingStreamHandler : DelegatingHandler
             }
 
             response.Content = newContent;
+
+            _streamAvailableTcs.TrySetResult();
         }
 
         return response;
