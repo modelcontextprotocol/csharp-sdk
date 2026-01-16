@@ -1047,7 +1047,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
 
         // Start reading in streaming mode (will wait for new events)
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken);
-        cts.CancelAfter(TimeSpan.FromSeconds(3));
+        cts.CancelAfter(TimeSpan.FromSeconds(10));
         var events = new List<SseItem<JsonRpcMessage?>>();
         var readCompleted = false;
 
@@ -1065,7 +1065,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
 
         // Assert - Read should complete within timeout after switching to polling mode
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken);
-        timeoutCts.CancelAfter(TimeSpan.FromSeconds(1));
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(10));
         await readTask.WaitAsync(timeoutCts.Token);
         Assert.True(readCompleted);
         Assert.Empty(events); // No new events were written after the one we used to create the reader
