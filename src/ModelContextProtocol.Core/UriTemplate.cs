@@ -206,11 +206,11 @@ internal static partial class UriTemplate
                 {
                     // Match ;name or ;name=value
                     paramName = Regex.Escape(paramName);
-                    pattern.AppendFormatted("(?:;");
-                    pattern.AppendFormatted(paramName);
-                    pattern.AppendFormatted("(?:=(?<");
-                    pattern.AppendFormatted(paramName);
-                    pattern.AppendFormatted(">[^;/?&]+))?)?");
+                    pattern.AppendLiteral("(?:;");
+                    pattern.AppendLiteral(paramName);
+                    pattern.AppendLiteral("(?:=(?<");
+                    pattern.AppendLiteral(paramName);
+                    pattern.AppendLiteral(">[^;/?&]+))?)?");
                 }
             }
         }
