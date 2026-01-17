@@ -67,7 +67,7 @@ internal static partial class UriTemplate
     public static Regex CreateParser(string uriTemplate)
     {
         DefaultInterpolatedStringHandler pattern = new(0, 0, CultureInfo.InvariantCulture, stackalloc char[256]);
-        pattern.AppendFormatted('^');
+        pattern.AppendLiteral("^");
 
         int lastIndex = 0;
         for (Match m = UriTemplateExpression().Match(uriTemplate); m.Success; m = m.NextMatch())
@@ -97,7 +97,7 @@ internal static partial class UriTemplate
         }
 
         pattern.AppendFormatted(Regex.Escape(uriTemplate.Substring(lastIndex)));
-        pattern.AppendFormatted('$');
+        pattern.AppendLiteral("$");
 
         return new Regex(
             pattern.ToStringAndClear(),
@@ -116,7 +116,7 @@ internal static partial class UriTemplate
         {
             Debug.Assert(prefix is '?' or '&');
 
-            pattern.AppendFormatted("(?:\\");
+            pattern.AppendLiteral("(?:\\");
             pattern.AppendFormatted(prefix);
 
             if (paramNames.Count > 0)
@@ -124,22 +124,22 @@ internal static partial class UriTemplate
                 AppendParameter(ref pattern, paramNames[0]);
                 for (int i = 1; i < paramNames.Count; i++)
                 {
-                    pattern.AppendFormatted("\\&?");
+                    pattern.AppendLiteral("\\&?");
                     AppendParameter(ref pattern, paramNames[i]);
                 }
 
                 static void AppendParameter(ref DefaultInterpolatedStringHandler pattern, string paramName)
                 {
                     paramName = Regex.Escape(paramName);
-                    pattern.AppendFormatted("(?:");
+                    pattern.AppendLiteral("(?:");
                     pattern.AppendFormatted(paramName);
-                    pattern.AppendFormatted("=(?<");
+                    pattern.AppendLiteral("=(?<");
                     pattern.AppendFormatted(paramName);
-                    pattern.AppendFormatted(">[^/?&]*))?");
+                    pattern.AppendLiteral(">[^/?&]*))?");
                 }
             }
 
-            pattern.AppendFormatted(")?");
+            pattern.AppendLiteral(")?");
         }
 
         // Chooses a regex character‐class (`valueChars`) based on the initial `prefix` to define which
@@ -156,9 +156,9 @@ internal static partial class UriTemplate
             {
                 if (prefix is not null)
                 {
-                    pattern.AppendFormatted('\\');
+                    pattern.AppendLiteral("\\");
                     pattern.AppendFormatted(prefix);
-                    pattern.AppendFormatted('?');
+                    pattern.AppendLiteral("?");
                 }
 
                 AppendParameter(ref pattern, paramNames[0], valueChars);
@@ -174,17 +174,17 @@ internal static partial class UriTemplate
                 for (int i = 1; i < paramNames.Count; i++)
                 {
                     pattern.AppendFormatted(separator);
-                    pattern.AppendFormatted('?');
+                    pattern.AppendLiteral("?");
                     AppendParameter(ref pattern, paramNames[i], valueChars);
                 }
 
                 static void AppendParameter(ref DefaultInterpolatedStringHandler pattern, string paramName, string valueChars)
                 {
-                    pattern.AppendFormatted("(?<");
+                    pattern.AppendLiteral("(?<");
                     pattern.AppendFormatted(Regex.Escape(paramName));
-                    pattern.AppendFormatted('>');
+                    pattern.AppendLiteral(">");
                     pattern.AppendFormatted(valueChars);
-                    pattern.AppendFormatted(")?");
+                    pattern.AppendLiteral(")?");
                 }
             }
         }
@@ -207,9 +207,9 @@ internal static partial class UriTemplate
                     // Match ;name or ;name=value
                     paramName = Regex.Escape(paramName);
                     pattern.AppendLiteral("(?:;");
-                    pattern.AppendLiteral(paramName);
+                    pattern.AppendFormatted(paramName);
                     pattern.AppendLiteral("(?:=(?<");
-                    pattern.AppendLiteral(paramName);
+                    pattern.AppendFormatted(paramName);
                     pattern.AppendLiteral(">[^;/?&]*))?)?");
                 }
             }
@@ -476,7 +476,7 @@ internal static partial class UriTemplate
 
             if (c <= 0x7F)
             {
-                builder.AppendFormatted('%');
+                builder.AppendLiteral("%");
                 builder.AppendFormatted(hexDigits[c >> 4]);
                 builder.AppendFormatted(hexDigits[c & 0xF]);
             }
@@ -489,7 +489,7 @@ internal static partial class UriTemplate
                 foreach (byte b in Encoding.UTF8.GetBytes([c]))
 #endif
                 {
-                    builder.AppendFormatted('%');
+                    builder.AppendLiteral("%");
                     builder.AppendFormatted(hexDigits[b >> 4]);
                     builder.AppendFormatted(hexDigits[b & 0xF]);
                 }
