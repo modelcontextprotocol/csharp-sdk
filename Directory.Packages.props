@@ -4,7 +4,7 @@
     <System8Version>8.0.22</System8Version>
     <System9Version>9.0.11</System9Version>
     <System10Version>10.0.2</System10Version>
-    <MicrosoftExtensionsVersion>10.1.1</MicrosoftExtensionsVersion>
+    <MicrosoftExtensionsVersion>10.2.0</MicrosoftExtensionsVersion>
   </PropertyGroup>
 
   <!-- Product dependencies shared -->
@@ -65,7 +65,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageVersion>
-    <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="10.1.1-preview.1.25612.2" />
+    <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="10.2.0-preview.1.26063.2" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="$(System10Version)" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="$(System10Version)" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="$(System10Version)" />
