@@ -41,7 +41,7 @@ foreach (var tool in tools)
     Console.WriteLine($"Connected to server with tools: {tool.Name}");
 }
 
-using var anthropicClient = new AnthropicClient(new() { APIKey = builder.Configuration["ANTHROPIC_API_KEY"] })
+using var anthropicClient = new AnthropicClient(new() { ApiKey = builder.Configuration["ANTHROPIC_API_KEY"] })
     .AsIChatClient("claude-haiku-4-5-20251001")
     .AsBuilder()
     .UseFunctionInvocation()
