@@ -23,4 +23,4 @@ If you use experimental APIs, you will get one of the diagnostics shown below. T
 
 | Diagnostic ID | Description |
 | :------------ | :---------- |
-| `MCPEXP001` | MCP task-related APIs are experimental. Tasks provide a mechanism for asynchronous long-running operations that can be polled for status and results. See [MCP Tasks specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/docs/specification/2025-06-18/server/utilities/tasks.md) for details. |
+| `MCPEXP001` | MCP task-related APIs are experimental. Tasks provide a mechanism for asynchronous long-running operations that can be polled for status and results. See [MCP Tasks specification](https://modelcontextprotocol.io/specification/draft/basic/utilities/tasks) for details. |
