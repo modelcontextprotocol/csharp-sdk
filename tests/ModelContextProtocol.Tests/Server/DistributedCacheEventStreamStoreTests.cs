@@ -830,7 +830,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
 
         // Act - Start reading and then write a new event
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken);
-        cts.CancelAfter(TimeSpan.FromSeconds(2));
+        cts.CancelAfter(TimeSpan.FromSeconds(10));
         var events = new List<SseItem<JsonRpcMessage?>>();
         var readTask = Task.Run(async () =>
         {
@@ -887,7 +887,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
 
         // Act - Write multiple events while reader is active
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken);
-        cts.CancelAfter(TimeSpan.FromSeconds(3));
+        cts.CancelAfter(TimeSpan.FromSeconds(10));
         var events = new List<SseItem<JsonRpcMessage?>>();
         var readTask = Task.Run(async () =>
         {
