@@ -535,7 +535,7 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(10));
 
         // The call task should throw an OCE due to cancellation
-        await Assert.ThrowsAsync<OperationCanceledException>(() => callTask).WaitAsync(timeoutCts.Token);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => callTask).WaitAsync(timeoutCts.Token);
 
         // Wait for the writer to be disposed
         await blockingStore.DisposedTask.WaitAsync(timeoutCts.Token);
