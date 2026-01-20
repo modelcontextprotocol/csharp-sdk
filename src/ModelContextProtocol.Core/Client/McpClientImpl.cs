@@ -187,6 +187,9 @@ internal sealed partial class McpClientImpl : McpClient
 
                 _negotiatedProtocolVersion = initializeResponse.ProtocolVersion;
 
+                // Update session handler with the negotiated protocol version for telemetry
+                _sessionHandler.NegotiatedProtocolVersion = _negotiatedProtocolVersion;
+
                 // Send initialized notification
                 await this.SendNotificationAsync(
                     NotificationMethods.InitializedNotification,
@@ -229,6 +232,9 @@ internal sealed partial class McpClientImpl : McpClient
         _negotiatedProtocolVersion = resumeOptions.NegotiatedProtocolVersion
             ?? _options.ProtocolVersion
             ?? McpSessionHandler.LatestProtocolVersion;
+
+        // Update session handler with the negotiated protocol version for telemetry
+        _sessionHandler.NegotiatedProtocolVersion = _negotiatedProtocolVersion;
 
         LogClientSessionResumed(_endpointName);
     }

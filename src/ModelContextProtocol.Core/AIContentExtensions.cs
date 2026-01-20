@@ -132,7 +132,11 @@ public static class AIContentExtensions
                 {
                     if (sm.Content?.Select(b => b.ToAIContent(serializerOptions)).OfType<AIContent>().ToList() is { Count: > 0 } aiContents)
                     {
-                        messages.Add(new ChatMessage(sm.Role is Role.Assistant ? ChatRole.Assistant : ChatRole.User, aiContents));
+                        ChatRole role =
+                            aiContents.All(static c => c is FunctionResultContent) ? ChatRole.Tool :
+                            sm.Role is Role.Assistant ? ChatRole.Assistant :
+                            ChatRole.User;
+                        messages.Add(new ChatMessage(role, aiContents));
                     }
                 }
 

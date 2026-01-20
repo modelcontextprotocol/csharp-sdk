@@ -23,6 +23,7 @@
     <Compile Include="..\Common\Throw.cs" Link="Throw.cs" />
     <Compile Include="..\Common\Obsoletions.cs" Link="Obsoletions.cs" />
     <Compile Include="..\Common\Experimentals.cs" Link="Experimentals.cs" />
+    <Compile Include="..\Common\ServerSentEvents\**\*.cs" Link="ServerSentEvents\%(RecursiveDir)%(FileName)%(Extension)" />
   </ItemGroup>
 
   <!-- Dependencies only needed by netstandard2.0 -->

@@ -213,6 +213,9 @@ internal sealed partial class McpServerImpl : McpServer
 
                 _negotiatedProtocolVersion = protocolVersion;
 
+                // Update session handler with the negotiated protocol version for telemetry
+                _sessionHandler.NegotiatedProtocolVersion = protocolVersion;
+
                 return new InitializeResult
                 {
                     ProtocolVersion = protocolVersion,
@@ -558,7 +561,7 @@ internal sealed partial class McpServerImpl : McpServer
 
                 try
                 {
-                    return await handler(request, cancellationToken);
+                    return await handler(request, cancellationToken).ConfigureAwait(false);
                 }
                 catch (Exception e) when (e is not OperationCanceledException and not McpProtocolException)
                 {

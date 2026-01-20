@@ -19,5 +19,9 @@
 			}
 		}
 	},
-	"postCreateCommand": "dotnet dev-certs https --trust && dotnet --list-sdks && echo 'Available .NET SDKs installed successfully!'"
+	"postCreateCommand": {
+		"dev certs": "dotnet dev-certs https --trust",
+		"mono": "sudo apt-get update && sudo apt-get install -y mono-devel",
+		"list sdks": "dotnet --list-sdks && echo 'Available .NET SDKs installed successfully!'"
+	}
 }

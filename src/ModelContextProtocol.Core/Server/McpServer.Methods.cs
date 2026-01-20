@@ -492,7 +492,7 @@ public abstract partial class McpServer : McpSession
             throw new InvalidOperationException("Client does not support elicitation requests.");
         }
 
-        if (string.Equals(request.Mode, "form", StringComparison.Ordinal) && elicitationCapability.Form is null)
+        if (string.Equals(request.Mode, "form", StringComparison.Ordinal))
         {
             if (request.RequestedSchema is null)
             {

@@ -178,10 +178,10 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         await using var mcpClient = await ConnectAsync(clientOptions: new()
         {
-            ProtocolVersion = "2025-03-26",
+            ProtocolVersion = "2025-06-18",
         });
 
-        Assert.Equal("2025-03-26", mcpClient.NegotiatedProtocolVersion);
+        Assert.Equal("2025-06-18", mcpClient.NegotiatedProtocolVersion);
         await mcpClient.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         await mcpClient.DisposeAsync();
@@ -190,7 +190,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         // Stateless mode due to the lack of an Mcp-Session-Id, but the header should be included in the
         // initialized notification and the tools/list call at a minimum.
         Assert.True(protocolVersionHeaderValues.Count > 1);
-        Assert.All(protocolVersionHeaderValues, v => Assert.Equal("2025-03-26", v));
+        Assert.All(protocolVersionHeaderValues, v => Assert.Equal("2025-06-18", v));
     }
 
     [Fact]
@@ -282,5 +282,76 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         }
 
         Assert.Equal(1, runSessionCount);
+    }
+
+    [Fact]
+    public async Task EnablePollingAsync_ThrowsInvalidOperationException_InStatelessMode()
+    {
+        Assert.SkipUnless(Stateless, "This test only applies to stateless mode.");
+
+        InvalidOperationException? capturedException = null;
+        var pollingTool = McpServerTool.Create(async (RequestContext<CallToolRequestParams> context) =>
+        {
+            try
+            {
+                await context.EnablePollingAsync(retryInterval: TimeSpan.FromSeconds(1));
+            }
+            catch (InvalidOperationException ex)
+            {
+                capturedException = ex;
+            }
+
+            return "Complete";
+        }, options: new() { Name = "polling_tool" });
+
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools([pollingTool]);
+
+        await using var app = Builder.Build();
+        app.MapMcp();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var mcpClient = await ConnectAsync();
+
+        await mcpClient.CallToolAsync("polling_tool", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(capturedException);
+        Assert.Contains("stateless", capturedException.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task EnablePollingAsync_ThrowsInvalidOperationException_WhenNoEventStreamStoreConfigured()
+    {
+        Assert.SkipWhen(Stateless, "This test only applies to stateful mode without an event stream store.");
+
+        InvalidOperationException? capturedException = null;
+        var pollingTool = McpServerTool.Create(async (RequestContext<CallToolRequestParams> context) =>
+        {
+            try
+            {
+                await context.EnablePollingAsync(retryInterval: TimeSpan.FromSeconds(1));
+            }
+            catch (InvalidOperationException ex)
+            {
+                capturedException = ex;
+            }
+
+            return "Complete";
+        }, options: new() { Name = "polling_tool" });
+
+        // Configure without EventStreamStore
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools([pollingTool]);
+
+        await using var app = Builder.Build();
+        app.MapMcp();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var mcpClient = await ConnectAsync();
+
+        await mcpClient.CallToolAsync("polling_tool", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(capturedException);
+        Assert.Contains("event stream store", capturedException.Message, StringComparison.OrdinalIgnoreCase);
     }
 }

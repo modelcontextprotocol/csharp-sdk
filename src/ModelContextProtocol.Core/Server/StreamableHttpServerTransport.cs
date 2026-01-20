@@ -1,5 +1,7 @@
 using ModelContextProtocol.Protocol;
-using System.IO.Pipelines;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Net.ServerSentEvents;
 using System.Security.Claims;
 using System.Threading.Channels;
 
@@ -21,24 +23,27 @@ namespace ModelContextProtocol.Server;
 /// </remarks>
 public sealed class StreamableHttpServerTransport : ITransport
 {
-    // For JsonRpcMessages without a RelatedTransport, we don't want to block just because the client didn't make a GET request to handle unsolicited messages.
-    private readonly SseWriter _sseWriter = new(channelOptions: new BoundedChannelOptions(1)
-    {
-        SingleReader = true,
-        SingleWriter = false,
-        FullMode = BoundedChannelFullMode.DropOldest,
-    });
+    /// <summary>
+    /// The stream ID used for unsolicited messages sent via the standalone GET SSE stream.
+    /// </summary>
+    public static readonly string UnsolicitedMessageStreamId = "__get__";
+
     private readonly Channel<JsonRpcMessage> _incomingChannel = Channel.CreateBounded<JsonRpcMessage>(new BoundedChannelOptions(1)
     {
         SingleReader = true,
         SingleWriter = false,
     });
-    private readonly CancellationTokenSource _disposeCts = new();
+    private readonly CancellationTokenSource _transportDisposedCts = new();
+    private readonly SemaphoreSlim _unsolicitedMessageLock = new(1, 1);
 
-    private int _getRequestStarted;
+    private SseEventWriter? _httpSseWriter;
+    private ISseEventStreamWriter? _storeSseWriter;
+    private TaskCompletionSource<bool>? _httpResponseTcs;
+    private bool _getHttpRequestStarted;
+    private bool _getHttpResponseCompleted;
 
     /// <inheritdoc/>
-    public string? SessionId { get; set; }
+    public string? SessionId { get; init; }
 
     /// <summary>
     /// Gets or initializes a value that indicates whether the transport should be in stateless mode that does not require all requests for a given session
@@ -59,14 +64,29 @@ public sealed class StreamableHttpServerTransport : ITransport
     public bool FlowExecutionContextFromRequests { get; init; }
 
     /// <summary>
-    /// Gets or sets a callback to be invoked before handling the initialize request.
+    /// Gets or sets the event store for resumability support.
+    /// When set, events are stored and can be replayed when clients reconnect with a Last-Event-ID header.
     /// </summary>
-    public Func<InitializeRequestParams?, ValueTask>? OnInitRequestReceived { get; set; }
+    public ISseEventStreamStore? EventStreamStore { get; init; }
+
+    /// <summary>
+    /// Gets or sets the negotiated protocol version for this session.
+    /// </summary>
+    internal string? NegotiatedProtocolVersion { get; private set; }
 
     /// <inheritdoc/>
     public ChannelReader<JsonRpcMessage> MessageReader => _incomingChannel.Reader;
 
     internal ChannelWriter<JsonRpcMessage> MessageWriter => _incomingChannel.Writer;
+
+    /// <summary>
+    /// Handles the initialize request by capturing the protocol version and invoking the user callback.
+    /// </summary>
+    internal async ValueTask HandleInitRequestAsync(InitializeRequestParams? initParams)
+    {
+        // Capture the negotiated protocol version for resumability checks
+        NegotiatedProtocolVersion = initParams?.ProtocolVersion;
+    }
 
     /// <summary>
     /// Handles an optional SSE GET request a client using the Streamable HTTP transport might make by
@@ -78,8 +98,7 @@ public sealed class StreamableHttpServerTransport : ITransport
     /// <returns>A task representing the send loop that writes JSON-RPC messages to the SSE response stream.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="sseResponseStream"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">
-    /// <see cref="Stateless"/> is <see langword="true"/> and GET requests are not supported in stateless mode,
-    /// or a GET request has already been started for this session.
+    /// <see cref="Stateless"/> is <see langword="true"/> and GET requests are not supported in stateless mode.
     /// </exception>
     public async Task HandleGetRequestAsync(Stream sseResponseStream, CancellationToken cancellationToken = default)
     {
@@ -90,13 +109,27 @@ public sealed class StreamableHttpServerTransport : ITransport
             throw new InvalidOperationException("GET requests are not supported in stateless mode.");
         }
 
-        if (Interlocked.Exchange(ref _getRequestStarted, 1) == 1)
+        using (await _unsolicitedMessageLock.LockAsync(cancellationToken).ConfigureAwait(false))
         {
-            throw new InvalidOperationException("Session resumption is not yet supported. Please start a new session.");
+            if (_getHttpRequestStarted)
+            {
+                throw new InvalidOperationException("Session resumption is not yet supported. Please start a new session.");
+            }
+
+            _getHttpRequestStarted = true;
+            _httpSseWriter = new SseEventWriter(sseResponseStream);
+            _httpResponseTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _storeSseWriter = await TryCreateEventStreamAsync(streamId: UnsolicitedMessageStreamId, cancellationToken).ConfigureAwait(false);
+            if (_storeSseWriter is not null)
+            {
+                var primingItem = await _storeSseWriter.WriteEventAsync(SseItem.Prime<JsonRpcMessage>(), cancellationToken).ConfigureAwait(false);
+                await _httpSseWriter.WriteAsync(primingItem, cancellationToken).ConfigureAwait(false);
+            }
         }
 
-        // We do not need to reference _disposeCts like in HandlePostRequest, because the session ending completes the _sseWriter gracefully.
-        await _sseWriter.WriteAllAsync(sseResponseStream, cancellationToken).ConfigureAwait(false);
+        // Wait for the response to be written before returning from the handler.
+        // This keeps the HTTP response open until the final response message is sent.
+        await _httpResponseTcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -122,9 +155,15 @@ public sealed class StreamableHttpServerTransport : ITransport
         Throw.IfNull(message);
         Throw.IfNull(responseStream);
 
-        using var postCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token, cancellationToken);
-        await using var postTransport = new StreamableHttpPostTransport(this, responseStream);
-        return await postTransport.HandlePostAsync(message, postCts.Token).ConfigureAwait(false);
+        var postTransport = new StreamableHttpPostTransport(this, responseStream, _transportDisposedCts.Token);
+        using var postCts = CancellationTokenSource.CreateLinkedTokenSource(_transportDisposedCts.Token, cancellationToken);
+        await using (postTransport.ConfigureAwait(false))
+        {
+            return await postTransport.HandlePostAsync(
+                message,
+                cancellationToken: postCts.Token)
+                .ConfigureAwait(false);
+        }
     }
 
     /// <inheritdoc/>
@@ -137,28 +176,94 @@ public sealed class StreamableHttpServerTransport : ITransport
             throw new InvalidOperationException("Unsolicited server to client messages are not supported in stateless mode.");
         }
 
-        // If the underlying writer has been disposed, just drop the message.
-        await _sseWriter.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
+        using var _ = await _unsolicitedMessageLock.LockAsync(cancellationToken).ConfigureAwait(false);
+
+        if (!_getHttpRequestStarted)
+        {
+            // Clients are not required to make a GET request for unsolicited messages.
+            // If no GET request has been made, drop the message.
+            return;
+        }
+
+        Debug.Assert(_httpSseWriter is not null);
+        Debug.Assert(_httpResponseTcs is not null);
+
+        var item = SseItem.Message(message);
+
+        if (_storeSseWriter is not null)
+        {
+            item = await _storeSseWriter.WriteEventAsync(item, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (!_getHttpResponseCompleted)
+        {
+            // Only write the message to the response if the response has not completed.
+
+            try
+            {
+                await _httpSseWriter!.WriteAsync(item, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                _httpResponseTcs!.TrySetException(ex);
+            }
+        }
     }
 
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
+        using var _ = await _unsolicitedMessageLock.LockAsync().ConfigureAwait(false);
+
+        if (_getHttpResponseCompleted)
+        {
+            return;
+        }
+
+        _getHttpResponseCompleted = true;
+
         try
         {
             _incomingChannel.Writer.TryComplete();
-            await _disposeCts.CancelAsync();
+            await _transportDisposedCts.CancelAsync().ConfigureAwait(false);
         }
         finally
         {
             try
             {
-                await _sseWriter.DisposeAsync().ConfigureAwait(false);
+                _httpResponseTcs?.TrySetResult(true);
+                _httpSseWriter?.Dispose();
+
+                if (_storeSseWriter is not null)
+                {
+                    await _storeSseWriter.DisposeAsync().ConfigureAwait(false);
+                }
             }
             finally
             {
-                _disposeCts.Dispose();
+                _transportDisposedCts.Dispose();
             }
         }
+    }
+
+    internal async ValueTask<ISseEventStreamWriter?> TryCreateEventStreamAsync(string streamId, CancellationToken cancellationToken)
+    {
+        if (EventStreamStore is null || !McpSessionHandler.SupportsPrimingEvent(NegotiatedProtocolVersion))
+        {
+            return null;
+        }
+
+        // We use the 'Streaming' stream mode so that in the case of an unexpected network disconnection,
+        // the client can continue reading the remaining messages in a single, streamed response.
+        const SseEventStreamMode Mode = SseEventStreamMode.Streaming;
+
+        var sseEventStreamWriter = await EventStreamStore.CreateStreamAsync(new SseEventStreamOptions
+        {
+            SessionId = SessionId ?? Guid.NewGuid().ToString("N"),
+            StreamId = streamId,
+            Mode = Mode,
+        }, cancellationToken).ConfigureAwait(false);
+
+        return sseEventStreamWriter;
     }
 }

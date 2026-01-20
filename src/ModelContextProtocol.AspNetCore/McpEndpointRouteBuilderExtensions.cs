@@ -21,7 +21,7 @@ public static class McpEndpointRouteBuilderExtensions
     /// <returns>Returns a builder for configuring additional endpoint conventions like authorization policies.</returns>
     /// <exception cref="InvalidOperationException">The required MCP services have not been registered. Ensure <see cref="HttpMcpServerBuilderExtensions.WithHttpTransport"/> has been called during application startup.</exception>
     /// <remarks>
-    /// For details about the Streamable HTTP transport, see the <see href="https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http">2025-06-18 protocol specification</see>.
+    /// For details about the Streamable HTTP transport, see the <see href="https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http">2025-11-25 protocol specification</see>.
     /// This method also maps legacy SSE endpoints for backward compatibility at the path "/sse" and "/message". For details about the HTTP with SSE transport, see the <see href="https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse">2024-11-05 protocol specification</see>.
     /// </remarks>
     public static IEndpointConventionBuilder MapMcp(this IEndpointRouteBuilder endpoints, [StringSyntax("Route")] string pattern = "")
@@ -41,10 +41,12 @@ public static class McpEndpointRouteBuilderExtensions
 
         if (!streamableHttpHandler.HttpServerTransportOptions.Stateless)
         {
-            // The GET and DELETE endpoints are not mapped in Stateless mode since there's no way to send unsolicited messages
-            // for the GET to handle, and there is no server-side state for the DELETE to clean up.
+            // The GET endpoint is not mapped in Stateless mode since there's no way to send unsolicited messages.
+            // Resuming streams via GET is currently not supported in Stateless mode.
             streamableHttpGroup.MapGet("", streamableHttpHandler.HandleGetRequestAsync)
                 .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["text/event-stream"]));
+
+            // The DELETE endpoint is not mapped in Stateless mode since there is no server-side state for the DELETE to clean up.
             streamableHttpGroup.MapDelete("", streamableHttpHandler.HandleDeleteRequestAsync);
 
             // Map legacy HTTP with SSE endpoints only if not in Stateless mode, because we cannot guarantee the /message requests

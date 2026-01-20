@@ -1,5 +1,6 @@
 ﻿using ModelContextProtocol.Protocol;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics.Metrics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -12,22 +13,14 @@ internal static class Diagnostics
 
     internal static Meter Meter { get; } = new("Experimental.ModelContextProtocol");
 
-    internal static Histogram<double> CreateDurationHistogram(string name, string description, bool longBuckets) =>
-        Meter.CreateHistogram(name, "s", description, advice: longBuckets ? LongSecondsBucketBoundaries : ShortSecondsBucketBoundaries);
+    internal static Histogram<double> CreateDurationHistogram(string name, string description) =>
+        Meter.CreateHistogram(name, "s", description, advice: ExplicitBucketBoundaries);
 
     /// <summary>
-    /// Follows boundaries from http.server.request.duration/http.client.request.duration
+    /// ExplicitBucketBoundaries specified in MCP semantic conventions for all MCP metrics.
+    /// See https://github.com/open-telemetry/semantic-conventions/blob/main/docs/gen-ai/mcp.md#metrics
     /// </summary>
-    private static InstrumentAdvice<double> ShortSecondsBucketBoundaries { get; } = new()
-    {
-        HistogramBucketBoundaries = [0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10],
-    };
-
-    /// <summary>
-    /// Not based on a standard. Larger bucket sizes for longer lasting operations, e.g. HTTP connection duration.
-    /// See https://github.com/open-telemetry/semantic-conventions/issues/336
-    /// </summary>
-    private static InstrumentAdvice<double> LongSecondsBucketBoundaries { get; } = new()
+    private static InstrumentAdvice<double> ExplicitBucketBoundaries { get; } = new()
     {
         HistogramBucketBoundaries = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 30, 60, 120, 300],
     };
@@ -102,6 +95,26 @@ internal static class Diagnostics
             JsonRpcNotification notification => notification.Method != NotificationMethods.LoggingMessageNotification,
             _ => false
         };
+
+    /// <summary>
+    /// If outer GenAI instrumentation is already tracing the tool execution,
+    /// MCP instrumentation SHOULD add MCP-specific attributes to the existing tool execution span instead
+    /// of creating a new one.
+    /// </summary>
+    /// <param name="activity">The outer activity for tool execution, if found.</param>
+    /// <returns>true if an outer tool execution activity was found and can be reused; false otherwise.</returns>
+    internal static bool TryGetOuterToolExecutionActivity([NotNullWhen(true)] out Activity? activity)
+    {
+        if (Activity.Current is { } currentActivity &&
+            currentActivity.OperationName.StartsWith("execute_tool ", StringComparison.Ordinal))
+        {
+            activity = currentActivity;
+            return true;
+        }
+
+        activity = null;
+        return false;
+    }
 
     internal static ActivityLink[] ActivityLinkFromCurrent() => Activity.Current is null ? [] : [new ActivityLink(Activity.Current.Context)];
 }

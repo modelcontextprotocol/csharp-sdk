@@ -288,6 +288,35 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     }
 
     [Fact]
+    public async Task SendNotificationAsync_DoesNotThrow_WhenNoGetRequestHasBeenMade()
+    {
+        // Clients are not required to make a GET request for unsolicited messages.
+        // If no GET request has been made, the messages should be dropped rather than throwing.
+        McpServer? server = null;
+
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(options =>
+            {
+                options.RunSessionHandler = (httpContext, mcpServer, cancellationToken) =>
+                {
+                    server = mcpServer;
+                    return mcpServer.RunAsync(cancellationToken);
+                };
+            });
+
+        await StartAsync();
+
+        await CallInitializeAndValidateAsync();
+        Assert.NotNull(server);
+
+        // Calling SendNotificationAsync before a GET request should not throw.
+        // The notification should be silently dropped.
+        var exception = await Record.ExceptionAsync(() =>
+            server.SendNotificationAsync("test-method", TestContext.Current.CancellationToken));
+        Assert.Null(exception);
+    }
+
+    [Fact]
     public async Task SecondGetRequests_IsRejected_AsBadRequest()
     {
         await StartAsync();
@@ -567,6 +596,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         SetSessionId(sessionId);
 
         // Call the subscribe method to capture the McpServer instance.
+        using var getResponse = await HttpClient.GetAsync("", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
         using var response = await HttpClient.PostAsync("", JsonContent(SubscribeToResource("file:///test")), TestContext.Current.CancellationToken);
         var rpcResponse = await AssertSingleSseResponseAsync(response);
         AssertType<EmptyResult>(rpcResponse.Result);
@@ -574,7 +604,6 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
 
         // Check the captured McpServer instance can send a notification.
         await capturedServer.SendNotificationAsync(NotificationMethods.ResourceUpdatedNotification, TestContext.Current.CancellationToken);
-        using var getResponse = await HttpClient.GetAsync("", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
         JsonRpcMessage? firstSseMessage = await ReadSseAsync(getResponse.Content)
             .Select(data => JsonSerializer.Deserialize<JsonRpcMessage>(data, McpJsonUtilities.DefaultOptions))
             .FirstOrDefaultAsync(TestContext.Current.CancellationToken);
