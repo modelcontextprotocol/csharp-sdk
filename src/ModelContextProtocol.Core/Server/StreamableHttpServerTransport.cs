@@ -125,6 +125,11 @@ public sealed class StreamableHttpServerTransport : ITransport
                 var primingItem = await _storeSseWriter.WriteEventAsync(SseItem.Prime<JsonRpcMessage>(), cancellationToken).ConfigureAwait(false);
                 await _httpSseWriter.WriteAsync(primingItem, cancellationToken).ConfigureAwait(false);
             }
+
+            // We should flush to indicate a 200 success quickly, because the initialization response
+            // will be sent in response to a different POST request. It might be a while before we send a message
+            // over this response body.
+            await sseResponseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
         }
 
         // Wait for the response to be written before returning from the handler.
