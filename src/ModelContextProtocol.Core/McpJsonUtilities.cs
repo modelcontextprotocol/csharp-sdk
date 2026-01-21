@@ -111,7 +111,6 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(McpTaskStatusNotificationParams))]
 
     // MCP Request Params / Results
-    [JsonSerializable(typeof(Result))]  // Base class for polymorphic result serialization
     [JsonSerializable(typeof(CallToolRequestParams))]
     [JsonSerializable(typeof(CallToolResult))]
     [JsonSerializable(typeof(CreateTaskResult))]
