@@ -1,6 +1,6 @@
 ---
 title: Tasks
-author: AI Toolkit
+author: eiriktsarpalis
 description: MCP Tasks for Long-Running Operations
 uid: tasks
 ---
