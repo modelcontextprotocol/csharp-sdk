@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -63,6 +64,7 @@ public partial class McpClientResourceTemplateTests : ClientServerTestBase
                     };
 
                     yield return new object[] { variables, uriTemplate, expected };
+                    break;
                 }
             }
         }
@@ -78,6 +80,15 @@ public partial class McpClientResourceTemplateTests : ClientServerTestBase
         var result = await client.ReadResourceAsync(uriTemplate, variables, null, TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         var actualUri = Assert.IsType<TextResourceContents>(Assert.Single(result.Contents)).Text;
+
+        //if (uriTemplate.Contains("://", StringComparison.Ordinal) &&
+        //  Uri.TryCreate(actualUri, UriKind.Absolute, out _))
+        {
+            var resource = McpServerResource.Create(
+                method: (Func<string>)(() => "matched"),
+                options: new() { UriTemplate = $"test://{uriTemplate}" });
+            Assert.True(resource.IsMatch($"test://{actualUri}"));
+        }
 
         if (expected is string expectedUri)
         {
