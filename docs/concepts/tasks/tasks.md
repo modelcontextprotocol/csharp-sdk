@@ -457,7 +457,10 @@ catch (McpException ex) when (ex.ErrorCode == McpErrorCode.InvalidParams)
 
 ## Complete Example
 
-See the [LongRunningTasks sample](../../../samples/LongRunningTasks) for a complete working example demonstrating:
+<!-- TODO: Remove mlc-disable block after merging to main -->
+<!-- mlc-disable -->
+See the [LongRunningTasks sample](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples/LongRunningTasks) for a complete working example demonstrating:
+<!-- mlc-enable -->
 
 - Server setup with a file-based `IMcpTaskStore` for durability
 - Explicit task creation via `IMcpTaskStore` in tools returning `McpTask`
@@ -558,7 +561,10 @@ public class JobProcessor(IMcpTaskStore taskStore)
 
 ### Simplified Example: File-Based Task Store
 
-The [LongRunningTasks sample](../../../samples/LongRunningTasks) demonstrates a simplified fault-tolerant approach using the file system. The `FileBasedMcpTaskStore` persists task state to disk, allowing tasks to survive server restarts:
+<!-- TODO: Remove mlc-disable block after merging to main -->
+<!-- mlc-disable -->
+The [LongRunningTasks sample](https://github.com/modelcontextprotocol/csharp-sdk/tree/main/samples/LongRunningTasks) demonstrates a simplified fault-tolerant approach using the file system. The `FileBasedMcpTaskStore` persists task state to disk, allowing tasks to survive server restarts:
+<!-- mlc-enable -->
 
 ```csharp
 // Use a file-based task store for durability
