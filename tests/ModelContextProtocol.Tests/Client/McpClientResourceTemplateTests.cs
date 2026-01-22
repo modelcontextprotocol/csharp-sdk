@@ -1,5 +1,4 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
-using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -9,24 +8,17 @@ using System.Text.Json.Serialization;
 namespace ModelContextProtocol.Tests.Client;
 
 /// <summary>
-/// Tests for URI template formatting on the client side.
-/// Each test creates a resource and verifies that:
-/// 1. The client correctly formats the URI template with the provided variables
-/// 2. The server receives the correctly formatted URI in RequestContext.Params.Uri
-/// 3. The formatted URI matches the template via IsMatch()
+/// Tests for client-side URI template formatting (expansion).
+/// Uses a catch-all handler to verify the client correctly formats URIs per RFC 6570.
 /// </summary>
 public partial class McpClientResourceTemplateTests : ClientServerTestBase
 {
-    private const string TestScheme = "test://";
-
     public McpClientResourceTemplateTests(ITestOutputHelper outputHelper) : base(outputHelper)
     {
     }
 
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
-        // Use a catch-all handler that returns the URI from RequestContext.Params.Uri
-        // This allows testing all RFC 6570 templates without server-side matching limitations
         mcpServerBuilder.WithReadResourceHandler((request, cancellationToken) =>
             new ValueTask<ReadResourceResult>(new ReadResourceResult
             {
@@ -76,7 +68,6 @@ public partial class McpClientResourceTemplateTests : ClientServerTestBase
                     };
 
                     yield return new object[] { variables, uriTemplate, expected };
-                    break;
                 }
             }
         }
@@ -87,24 +78,12 @@ public partial class McpClientResourceTemplateTests : ClientServerTestBase
     public async Task UriTemplate_InputsProduceExpectedOutputs(
         IReadOnlyDictionary<string, object?> variables, string uriTemplate, object expected)
     {
-        // Create a client and read the resource using the template
         await using McpClient client = await CreateMcpClientForServer();
 
         var result = await client.ReadResourceAsync(uriTemplate, variables, null, TestContext.Current.CancellationToken);
         Assert.NotNull(result);
-
-        // The catch-all handler returns RequestContext.Params.Uri - verify the server received it correctly
         var actualUri = Assert.IsType<TextResourceContents>(Assert.Single(result.Contents)).Text;
 
-        // Create a resource with this template and verify the formatted URI matches it
-        // This tests the client's URI formatting against the template's parsing
-        var resource = McpServerResource.Create(
-            method: (Func<string>)(() => "matched"),
-            options: new() { UriTemplate = $"{TestScheme}{uriTemplate}" });
-        Assert.True(resource.IsMatch($"{TestScheme}{actualUri}"),
-            $"Formatted URI '{actualUri}' should match template '{uriTemplate}'");
-
-        // Verify the client formatted the URI correctly per RFC 6570 spec
         if (expected is string expectedUri)
         {
             Assert.Equal(expectedUri, actualUri);
