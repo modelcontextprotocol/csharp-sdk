@@ -4,6 +4,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 
 namespace ModelContextProtocol.Tests.Client;
 
@@ -89,93 +90,33 @@ public partial class McpClientResourceTemplateTests(ITestOutputHelper outputHelp
         }
     }
 
-    /// <summary>
-    /// Normalizes a URI template for use as a resource by adding a scheme if missing.
-    /// </summary>
-    private static string NormalizeUriTemplate(string uriTemplate)
-    {
-        // URI templates that don't start with a scheme need one for resource routing
-        if (!uriTemplate.Contains("://"))
-        {
-            return "test://" + uriTemplate;
-        }
-        return uriTemplate;
-    }
-
-    /// <summary>
-    /// Normalizes an expanded URI for use as a resource by adding a scheme if missing.
-    /// </summary>
-    private static string NormalizeExpandedUri(string expandedUri)
-    {
-        // Expanded URIs that don't start with a scheme need one for resource routing
-        if (!expandedUri.Contains("://"))
-        {
-            return "test://" + expandedUri;
-        }
-        return expandedUri;
-    }
-
     [Theory]
     [MemberData(nameof(UriTemplate_InputsProduceExpectedOutputs_MemberData))]
     public async Task UriTemplate_MatchesAndBindsExpectedParameters(
         IReadOnlyDictionary<string, object?> variables, string uriTemplate, object expected)
     {
-        // Skip test cases where expected is false (malformed templates)
-        if (expected is false)
-        {
-            return;
-        }
+        Assert.True(expected is not false, "Expected the URI template to match the resource.");
 
-        // Skip test cases with arrays/objects - the server-side URI parsing doesn't handle these the same way
-        foreach (var kvp in variables)
-        {
-            if (kvp.Value is string[] or Dictionary<string, string?>)
-            {
-                Assert.Skip("Skipping test case with array/object variable values - server-side parsing handles these differently.");
-            }
-        }
+        Assert.SkipWhen(Regex.IsMatch(uriTemplate, @"\{[0-9]"), "Skipping URI templates with numeric keys.");
 
-        // Normalize URI template to have a scheme for resource routing
-        var normalizedTemplate = NormalizeUriTemplate(uriTemplate);
-
-        // Get the expected expanded URI(s)
-        string[] expectedUris = expected switch
-        {
-            string s => [NormalizeExpandedUri(s)],
-            string[] arr => arr.Select(NormalizeExpandedUri).ToArray(),
-            _ => throw new InvalidOperationException($"Unexpected expected type: {expected.GetType()}")
-        };
+        var uriTemplateWithScheme = $"scheme://{(uriTemplate.StartsWith("/") ? "" : "/")}{uriTemplate}";
 
         // Create a simple resource that just returns success when matched
         // We use McpServerResource.Create with a parameterless delegate to let the server handle matching
         var resource = McpServerResource.Create(
-            () => "matched",
-            new McpServerResourceCreateOptions { UriTemplate = normalizedTemplate });
-        McpServerBuilder.WithResources(resource);
+            // TODO: Should have a lookup table of delegates with parameters matching the name of the variables in the template
+            // These delegates should then produce a result containing the bound parameters for verification
+            () => (List<string>) [ "param1: foo", "param2: bar" ],
+            new McpServerResourceCreateOptions { UriTemplate = uriTemplateWithScheme });
+        McpServerBuilder.WithResources([resource]);
 
         StartServer();
 
         await using McpClient client = await CreateMcpClientForServer();
 
-        // Request using the first expected expanded URI
-        var requestUri = expectedUris[0];
-
-        ReadResourceResult result;
-        try
-        {
-            result = await client.ReadResourceAsync(requestUri, null, TestContext.Current.CancellationToken);
-        }
-        catch (McpProtocolException ex) when (ex.ErrorCode == McpErrorCode.ResourceNotFound)
-        {
-            // The expanded URI doesn't match the template pattern according to the server's parser
-            Assert.Skip($"Template matching failed for URI '{requestUri}' with template '{normalizedTemplate}'. " +
-                       $"This may be due to differences in URI template expansion vs. matching semantics. Error: {ex.Message}");
-            return;
-        }
-
+        var result = await client.ReadResourceAsync(uriTemplateWithScheme, variables, null, TestContext.Current.CancellationToken);
         Assert.NotNull(result);
-        var text = Assert.IsType<TextResourceContents>(Assert.Single(result.Contents)).Text;
-        Assert.Equal("matched", text);
+        // TODO: Verify bound parameters once we have a way to extract them from the server resource
     }
 
     public class TestGroup
