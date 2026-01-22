@@ -3,7 +3,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
-namespace ModelContextProtocol.Tests;
+namespace ModelContextProtocol.Tests.Configuration;
 
 /// <summary>
 /// Test suite for UriTemplate.CreateParser method.
