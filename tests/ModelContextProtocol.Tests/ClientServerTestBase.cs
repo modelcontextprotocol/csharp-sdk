@@ -14,7 +14,8 @@ public abstract class ClientServerTestBase : LoggedTest, IAsyncDisposable
     private readonly Pipe _clientToServerPipe = new();
     private readonly Pipe _serverToClientPipe = new();
     private readonly CancellationTokenSource _cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-    private Task _serverTask = Task.CompletedTask;
+
+    private Task? _serverTask;
 
     public ClientServerTestBase(ITestOutputHelper testOutputHelper, bool startServer = true)
         : base(testOutputHelper)
@@ -69,15 +70,10 @@ public abstract class ClientServerTestBase : LoggedTest, IAsyncDisposable
         _clientToServerPipe.Writer.Complete();
         _serverToClientPipe.Writer.Complete();
 
-        await _serverTask;
-
-        if (ServiceProvider is IAsyncDisposable asyncDisposable)
+        if (_serverTask is not null)
         {
-            await asyncDisposable.DisposeAsync();
-        }
-        else if (ServiceProvider is IDisposable disposable)
-        {
-            disposable.Dispose();
+            await _serverTask;
+            await ServiceProvider.DisposeAsync();
         }
 
         _cts.Dispose();
