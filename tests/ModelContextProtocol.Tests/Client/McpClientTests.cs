@@ -107,7 +107,7 @@ public class McpClientTests : ClientServerTestBase
         {
             Messages =
             [
-                new SamplingMessage 
+                new SamplingMessage
                 {
                     Role = Role.User,
                     Content = [new TextContentBlock { Text = "Hello" }]
@@ -157,7 +157,7 @@ public class McpClientTests : ClientServerTestBase
         {
             Messages =
             [
-                new SamplingMessage 
+                new SamplingMessage
                 {
                     Role = Role.User,
                     Content = [new ImageContentBlock
@@ -585,11 +585,11 @@ public class McpClientTests : ClientServerTestBase
 
     [Theory]
     [InlineData(null)]
-    [InlineData("2025-03-26")]
+    [InlineData("2025-06-18")]
     public async Task ReturnsNegotiatedProtocolVersion(string? protocolVersion)
     {
         await using McpClient client = await CreateMcpClientForServer(new() { ProtocolVersion = protocolVersion });
-        Assert.Equal(protocolVersion ?? "2025-06-18", client.NegotiatedProtocolVersion);
+        Assert.Equal(protocolVersion ?? "2025-11-25", client.NegotiatedProtocolVersion);
     }
 
     [Fact]
@@ -597,7 +597,7 @@ public class McpClientTests : ClientServerTestBase
     {
         int getWeatherToolCallCount = 0;
         int askClientToolCallCount = 0;
-        
+
         Server.ServerOptions.ToolCollection?.Add(McpServerTool.Create(
             async (McpServer server, string query, CancellationToken cancellationToken) =>
             {
@@ -610,14 +610,14 @@ public class McpClientTests : ClientServerTestBase
                         return $"Weather in {location}: sunny, 22°C";
                     },
                     "get_weather", "Gets the weather for a location");
-                
+
                 var response = await server
                     .AsSamplingChatClient()
                     .AsBuilder()
                     .UseFunctionInvocation()
                     .Build()
                     .GetResponseAsync(query, new ChatOptions { Tools = [weatherTool] }, cancellationToken);
-                
+
                 return response.Text ?? "No response";
             },
             new() { Name = "ask_client", Description = "Asks the client a question using sampling" }));
@@ -627,7 +627,7 @@ public class McpClientTests : ClientServerTestBase
         {
             int currentCall = samplingCallCount++;
             var lastMessage = messages.LastOrDefault();
-            
+
             // First call: Return a tool call request for get_weather
             if (currentCall == 0)
             {
@@ -649,7 +649,7 @@ public class McpClientTests : ClientServerTestBase
 
                 string resultText = toolResult.Result?.ToString() ?? string.Empty;
                 Assert.Contains("Weather in Paris: sunny", resultText);
-                
+
                 return Task.FromResult<ChatResponse>(new([
                     new ChatMessage(ChatRole.User, messages.First().Contents),
                     new ChatMessage(ChatRole.Assistant, [new FunctionCallContent("call_weather_123", "get_weather", new Dictionary<string, object?> { ["location"] = "Paris" })]),
@@ -674,7 +674,7 @@ public class McpClientTests : ClientServerTestBase
             cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(result);
         Assert.Null(result.IsError);
-        
+
         var textContent = result.Content.OfType<TextContentBlock>().FirstOrDefault();
         Assert.NotNull(textContent);
         Assert.Contains("Weather in Paris: sunny, 22", textContent.Text);
@@ -682,7 +682,7 @@ public class McpClientTests : ClientServerTestBase
         Assert.Equal(1, askClientToolCallCount);
         Assert.Equal(2, samplingCallCount);
     }
-    
+
     /// <summary>Simple test IChatClient implementation for testing.</summary>
     private sealed class TestChatClient(Func<IEnumerable<ChatMessage>, ChatOptions?, CancellationToken, Task<ChatResponse>> getResponse) : IChatClient
     {
@@ -691,7 +691,7 @@ public class McpClientTests : ClientServerTestBase
             ChatOptions? options = null,
             CancellationToken cancellationToken = default) =>
             getResponse(messages, options, cancellationToken);
-        
+
         async IAsyncEnumerable<ChatResponseUpdate> IChatClient.GetStreamingResponseAsync(
             IEnumerable<ChatMessage> messages,
             ChatOptions? options,
@@ -703,7 +703,7 @@ public class McpClientTests : ClientServerTestBase
                 yield return update;
             }
         }
-        
+
         object? IChatClient.GetService(Type serviceType, object? serviceKey) => null;
         void IDisposable.Dispose() { }
     }

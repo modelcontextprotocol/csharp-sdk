@@ -19,7 +19,7 @@ internal sealed class StdioClientSessionTransport(
     {
         try
         {
-            await base.SendMessageAsync(message, cancellationToken);
+            await base.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
         }
         catch (IOException)
         {
@@ -58,7 +58,7 @@ internal sealed class StdioClientSessionTransport(
         }
 
         // And handle cleanup in the base type.
-        await base.CleanupAsync(error, cancellationToken);
+        await base.CleanupAsync(error, cancellationToken).ConfigureAwait(false);
     }
 
     private async ValueTask<Exception?> GetUnexpectedExitExceptionAsync(CancellationToken cancellationToken)

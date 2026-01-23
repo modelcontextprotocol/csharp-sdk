@@ -23,6 +23,7 @@ public static class AIContentExtensions
     /// satisfy sampling requests using the specified <see cref="IChatClient"/>.
     /// </summary>
     /// <param name="chatClient">The <see cref="IChatClient"/> with which to satisfy sampling requests.</param>
+    /// <param name="serializerOptions">The <see cref="JsonSerializerOptions"/> to use for serializing user-provided objects. If <see langword="null"/>, <see cref="McpJsonUtilities.DefaultOptions"/> is used.</param>
     /// <returns>The created handler delegate that can be assigned to <see cref="McpClientHandlers.SamplingHandler"/>.</returns>
     /// <remarks>
     /// <para>
@@ -36,15 +37,18 @@ public static class AIContentExtensions
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="chatClient"/> is <see langword="null"/>.</exception>
     public static Func<CreateMessageRequestParams?, IProgress<ProgressNotificationValue>, CancellationToken, ValueTask<CreateMessageResult>> CreateSamplingHandler(
-        this IChatClient chatClient)
+        this IChatClient chatClient,
+        JsonSerializerOptions? serializerOptions = null)
     {
         Throw.IfNull(chatClient);
+
+        serializerOptions ??= McpJsonUtilities.DefaultOptions;
 
         return async (requestParams, progress, cancellationToken) =>
         {
             Throw.IfNull(requestParams);
 
-            var (messages, options) = ToChatClientArguments(requestParams);
+            var (messages, options) = ToChatClientArguments(requestParams, serializerOptions);
             var progressToken = requestParams.ProgressToken;
 
             List<ChatResponseUpdate> updates = [];
@@ -75,12 +79,12 @@ public static class AIContentExtensions
                     chatResponse.FinishReason == ChatFinishReason.Length ? CreateMessageResult.StopReasonMaxTokens :
                     chatResponse.FinishReason == ChatFinishReason.ToolCalls ? CreateMessageResult.StopReasonToolUse :
                     chatResponse.FinishReason.ToString(),
-                Meta = chatResponse.AdditionalProperties?.ToJsonObject(),
+                Meta = chatResponse.AdditionalProperties?.ToJsonObject(serializerOptions),
                 Role = lastMessage?.Role == ChatRole.User ? Role.User : Role.Assistant,
                 Content = contents,
             };
 
-            static (IList<ChatMessage> Messages, ChatOptions? Options) ToChatClientArguments(CreateMessageRequestParams requestParams)
+            static (IList<ChatMessage> Messages, ChatOptions? Options) ToChatClientArguments(CreateMessageRequestParams requestParams, JsonSerializerOptions serializerOptions)
             {
                 ChatOptions? options = null;
 
@@ -126,7 +130,7 @@ public static class AIContentExtensions
                 List<ChatMessage> messages = [];
                 foreach (var sm in requestParams.Messages)
                 {
-                    if (sm.Content?.Select(b => b.ToAIContent()).OfType<AIContent>().ToList() is { Count: > 0 } aiContents)
+                    if (sm.Content?.Select(b => b.ToAIContent(serializerOptions)).OfType<AIContent>().ToList() is { Count: > 0 } aiContents)
                     {
                         ChatRole role =
                             aiContents.All(static c => c is FunctionResultContent) ? ChatRole.Tool :
@@ -142,8 +146,10 @@ public static class AIContentExtensions
     }
 
     /// <summary>Converts the specified dictionary to a <see cref="JsonObject"/>.</summary>
-    internal static JsonObject? ToJsonObject(this IReadOnlyDictionary<string, object?> properties) =>
-        JsonSerializer.SerializeToNode(properties, McpJsonUtilities.JsonContext.Default.IReadOnlyDictionaryStringObject) as JsonObject;
+    internal static JsonObject? ToJsonObject(this IReadOnlyDictionary<string, object?> properties, JsonSerializerOptions options)
+    {
+        return JsonSerializer.SerializeToNode(properties, options.GetTypeInfo(typeof(IReadOnlyDictionary<string, object?>))) as JsonObject;
+    }
 
     internal static AdditionalPropertiesDictionary ToAdditionalProperties(this JsonObject obj)
     {
@@ -160,17 +166,18 @@ public static class AIContentExtensions
     /// Converts a <see cref="PromptMessage"/> to a <see cref="ChatMessage"/> object.
     /// </summary>
     /// <param name="promptMessage">The prompt message to convert.</param>
+    /// <param name="options">The <see cref="JsonSerializerOptions"/> to use for deserialization. If <see langword="null"/>, <see cref="McpJsonUtilities.DefaultOptions"/> is used.</param>
     /// <returns>A <see cref="ChatMessage"/> object created from the prompt message.</returns>
     /// <remarks>
     /// This method transforms a protocol-specific <see cref="PromptMessage"/> from the Model Context Protocol
     /// into a standard <see cref="ChatMessage"/> object that can be used with AI client libraries.
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="promptMessage"/> is <see langword="null"/>.</exception>
-    public static ChatMessage ToChatMessage(this PromptMessage promptMessage)
+    public static ChatMessage ToChatMessage(this PromptMessage promptMessage, JsonSerializerOptions? options = null)
     {
         Throw.IfNull(promptMessage);
 
-        AIContent? content = ToAIContent(promptMessage.Content);
+        AIContent? content = promptMessage.Content.ToAIContent(options);
 
         return new()
         {
@@ -185,6 +192,7 @@ public static class AIContentExtensions
     /// </summary>
     /// <param name="result">The tool result to convert.</param>
     /// <param name="callId">The identifier for the function call request that triggered the tool invocation.</param>
+    /// <param name="options">The <see cref="JsonSerializerOptions"/> to use for serialization. If <see langword="null"/>, <see cref="McpJsonUtilities.DefaultOptions"/> is used.</param>
     /// <returns>A <see cref="ChatMessage"/> object created from the tool result.</returns>
     /// <remarks>
     /// This method transforms a protocol-specific <see cref="CallToolResult"/> from the Model Context Protocol
@@ -193,12 +201,14 @@ public static class AIContentExtensions
     /// serialized <see cref="JsonElement"/>.
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="result"/> or <paramref name="callId"/> is <see langword="null"/>.</exception>
-    public static ChatMessage ToChatMessage(this CallToolResult result, string callId)
+    public static ChatMessage ToChatMessage(this CallToolResult result, string callId, JsonSerializerOptions? options = null)
     {
         Throw.IfNull(result);
         Throw.IfNull(callId);
 
-        return new(ChatRole.Tool, [new FunctionResultContent(callId, JsonSerializer.SerializeToElement(result, McpJsonUtilities.JsonContext.Default.CallToolResult))
+        options ??= McpJsonUtilities.DefaultOptions;
+
+        return new(ChatRole.Tool, [new FunctionResultContent(callId, JsonSerializer.SerializeToElement(result, options.GetTypeInfo<CallToolResult>()))
         {
              RawRepresentation = result,
         }]);
@@ -252,6 +262,7 @@ public static class AIContentExtensions
 
     /// <summary>Creates a new <see cref="AIContent"/> from the content of a <see cref="ContentBlock"/>.</summary>
     /// <param name="content">The <see cref="ContentBlock"/> to convert.</param>
+    /// <param name="options">The <see cref="JsonSerializerOptions"/> to use for deserialization. If <see langword="null"/>, <see cref="McpJsonUtilities.DefaultOptions"/> is used.</param>
     /// <returns>
     /// The created <see cref="AIContent"/>. If the content can't be converted (such as when it's a resource link), <see langword="null"/> is returned.
     /// </returns>
@@ -260,9 +271,11 @@ public static class AIContentExtensions
     /// content types, enabling seamless integration between the protocol and AI client libraries.
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="content"/> is <see langword="null"/>.</exception>
-    public static AIContent? ToAIContent(this ContentBlock content)
+    public static AIContent? ToAIContent(this ContentBlock content, JsonSerializerOptions? options = null)
     {
         Throw.IfNull(content);
+
+        options ??= McpJsonUtilities.DefaultOptions;
 
         AIContent? ac = content switch
         {
@@ -275,11 +288,11 @@ public static class AIContentExtensions
             EmbeddedResourceBlock resourceContent => resourceContent.Resource.ToAIContent(),
             
             ToolUseContentBlock toolUse => FunctionCallContent.CreateFromParsedArguments(toolUse.Input, toolUse.Id, toolUse.Name,
-                static json => JsonSerializer.Deserialize(json, McpJsonUtilities.JsonContext.Default.IDictionaryStringObject)),
+                json => JsonSerializer.Deserialize(json, options.GetTypeInfo<IDictionary<string, object?>>())),
             
             ToolResultContentBlock toolResult => new FunctionResultContent(
                 toolResult.ToolUseId,
-                toolResult.Content.Count == 1 ? toolResult.Content[0].ToAIContent() : toolResult.Content.Select(c => c.ToAIContent()).OfType<AIContent>().ToList())
+                toolResult.Content.Count == 1 ? toolResult.Content[0].ToAIContent(options) : toolResult.Content.Select(c => c.ToAIContent(options)).OfType<AIContent>().ToList())
             {
                 Exception = toolResult.IsError is true ? new() : null,
             },
@@ -324,6 +337,7 @@ public static class AIContentExtensions
 
     /// <summary>Creates a list of <see cref="AIContent"/> from a sequence of <see cref="ContentBlock"/>.</summary>
     /// <param name="contents">The <see cref="ContentBlock"/> instances to convert.</param>
+    /// <param name="options">The <see cref="JsonSerializerOptions"/> to use for deserialization. If <see langword="null"/>, <see cref="McpJsonUtilities.DefaultOptions"/> is used.</param>
     /// <returns>The created <see cref="AIContent"/> instances.</returns>
     /// <remarks>
     /// <para>
@@ -332,16 +346,16 @@ public static class AIContentExtensions
     /// when processing the contents of a message or response.
     /// </para>
     /// <para>
-    /// Each <see cref="ContentBlock"/> object is converted using <see cref="ToAIContent(ContentBlock)"/>,
+    /// Each <see cref="ContentBlock"/> object is converted using <see cref="ToAIContent(ContentBlock, JsonSerializerOptions?)"/>,
     /// preserving the type-specific conversion logic for text, images, audio, and resources.
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="contents"/> is <see langword="null"/>.</exception>
-    public static IList<AIContent> ToAIContents(this IEnumerable<ContentBlock> contents)
+    public static IList<AIContent> ToAIContents(this IEnumerable<ContentBlock> contents, JsonSerializerOptions? options = null)
     {
         Throw.IfNull(contents);
 
-        return [.. contents.Select(ToAIContent).OfType<AIContent>()];
+        return [.. contents.Select(c => c.ToAIContent(options)).OfType<AIContent>()];
     }
 
     /// <summary>Creates a list of <see cref="AIContent"/> from a sequence of <see cref="ResourceContents"/>.</summary>
@@ -369,11 +383,14 @@ public static class AIContentExtensions
 
     /// <summary>Creates a new <see cref="ContentBlock"/> from the content of an <see cref="AIContent"/>.</summary>
     /// <param name="content">The <see cref="AIContent"/> to convert.</param>
+    /// <param name="options">The <see cref="JsonSerializerOptions"/> to use for serialization. If <see langword="null"/>, <see cref="McpJsonUtilities.DefaultOptions"/> is used.</param>
     /// <returns>The created <see cref="ContentBlock"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="content"/> is <see langword="null"/>.</exception>
-    public static ContentBlock ToContentBlock(this AIContent content)
+    public static ContentBlock ToContentBlock(this AIContent content, JsonSerializerOptions? options = null)
     {
         Throw.IfNull(content);
+
+        options ??= McpJsonUtilities.DefaultOptions;
 
         ContentBlock contentBlock = content switch
         {
@@ -408,7 +425,7 @@ public static class AIContentExtensions
             {
                 Id = callContent.CallId,
                 Name = callContent.Name,
-                Input = JsonSerializer.SerializeToElement(callContent.Arguments, McpJsonUtilities.DefaultOptions.GetTypeInfo<IDictionary<string, object?>>()!),
+                Input = JsonSerializer.SerializeToElement(callContent.Arguments, options.GetTypeInfo<IDictionary<string, object?>>()!),
             },
 
             FunctionResultContent resultContent => new ToolResultContentBlock()
@@ -416,19 +433,19 @@ public static class AIContentExtensions
                 ToolUseId = resultContent.CallId,
                 IsError = resultContent.Exception is not null,
                 Content =
-                    resultContent.Result is AIContent c ? [c.ToContentBlock()] :
-                    resultContent.Result is IEnumerable<AIContent> ec ? [.. ec.Select(c => c.ToContentBlock())] :
-                    [new TextContentBlock { Text = JsonSerializer.Serialize(content, McpJsonUtilities.DefaultOptions.GetTypeInfo<object>()) }],
+                    resultContent.Result is AIContent c ? [c.ToContentBlock(options)] :
+                    resultContent.Result is IEnumerable<AIContent> ec ? [.. ec.Select(c => c.ToContentBlock(options))] :
+                    [new TextContentBlock { Text = JsonSerializer.Serialize(content, options.GetTypeInfo<object>()) }],
                 StructuredContent = resultContent.Result is JsonElement je ? je : null,
             },
 
             _ => new TextContentBlock
             {
-                Text = JsonSerializer.Serialize(content, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(object))),
+                Text = JsonSerializer.Serialize(content, options.GetTypeInfo(typeof(object))),
             }
         };
 
-        contentBlock.Meta = content.AdditionalProperties?.ToJsonObject();
+        contentBlock.Meta = content.AdditionalProperties?.ToJsonObject(options);
 
         return contentBlock;
     }

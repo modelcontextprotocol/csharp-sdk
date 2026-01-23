@@ -1,6 +1,8 @@
 using ModelContextProtocol.Server;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Protocol;
@@ -78,53 +80,127 @@ public abstract class JsonRpcMessage
                 throw new JsonException("Expected StartObject token");
             }
 
-            using var doc = JsonDocument.ParseValue(ref reader);
-            var root = doc.RootElement;
+            // Local variables for parsed message data
+            bool hasJsonRpc = false;
+            RequestId id = default;
+            string? method = null;
+            JsonNode? parameters = null;
+            JsonRpcErrorDetail? error = null;
+            JsonNode? result = null;
+            bool hasResult = false;
 
-            // All JSON-RPC messages must have a jsonrpc property with value "2.0"
-            if (!root.TryGetProperty("jsonrpc", out var versionProperty) ||
-                versionProperty.GetString() != "2.0")
+            while (true)
             {
-                throw new JsonException("Invalid or missing jsonrpc version");
+                bool success = reader.Read();
+                Debug.Assert(success, "custom converters are guaranteed to be passed fully buffered objects");
+
+                if (reader.TokenType is JsonTokenType.EndObject)
+                {
+                    break;
+                }
+
+                Debug.Assert(reader.TokenType is JsonTokenType.PropertyName);
+                string propertyName = reader.GetString()!;
+
+                success = reader.Read();
+                Debug.Assert(success, "custom converters are guaranteed to be passed fully buffered objects");
+
+                switch (propertyName)
+                {
+                    case "jsonrpc":
+                        // Validate that the value is "2.0" without allocating a string
+                        if (!reader.ValueTextEquals("2.0"u8))
+                        {
+                            throw new JsonException("Invalid jsonrpc version");
+                        }
+                        hasJsonRpc = true;
+                        break;
+
+                    case "id":
+                        id = JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<RequestId>());
+                        break;
+
+                    case "method":
+                        method = reader.GetString();
+                        break;
+
+                    case "params":
+                        parameters = JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<JsonNode>());
+                        break;
+
+                    case "error":
+                        error = JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<JsonRpcErrorDetail>());
+                        break;
+
+                    case "result":
+                        result = JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<JsonNode>());
+                        hasResult = true;
+                        break;
+
+                    default:
+                        // Skip unknown properties
+                        reader.Skip();
+                        break;
+                }
             }
 
-            // Determine the message type based on the presence of id, method, and error properties
-            bool hasId = root.TryGetProperty("id", out _);
-            bool hasMethod = root.TryGetProperty("method", out _);
-            bool hasError = root.TryGetProperty("error", out _);
-
-            var rawText = root.GetRawText();
-
-            // Messages with an id but no method are responses
-            if (hasId && !hasMethod)
+            // All JSON-RPC messages must have a jsonrpc property with value "2.0"
+            if (!hasJsonRpc)
             {
-                // Messages with an error property are error responses
-                if (hasError)
+                throw new JsonException("Missing jsonrpc version");
+            }
+
+            // Determine message type based on presence of id and method properties
+            if (method is not null)
+            {
+                if (id.Id is not null)
                 {
-                    return JsonSerializer.Deserialize(rawText, options.GetTypeInfo<JsonRpcError>());
+                    // Messages with both method and id are requests
+                    return new JsonRpcRequest
+                    {
+                        Id = id,
+                        Method = method,
+                        Params = parameters
+                    };
+                }
+                else
+                {
+                    // Messages with a method but no id are notifications
+                    return new JsonRpcNotification
+                    {
+                        Method = method,
+                        Params = parameters
+                    };
+                }
+            }
+
+            if (id.Id is not null)
+            {
+                if (error is not null)
+                {
+                    // Messages with an error and id are error responses
+                    return new JsonRpcError
+                    {
+                        Id = id,
+                        Error = error
+                    };
                 }
 
-                // Messages with a result property are success responses
-                if (root.TryGetProperty("result", out _))
+                if (hasResult)
                 {
-                    return JsonSerializer.Deserialize(rawText, options.GetTypeInfo<JsonRpcResponse>());
+                    // Messages with a result and id are success responses
+                    return new JsonRpcResponse
+                    {
+                        Id = id,
+                        Result = result
+                    };
                 }
 
+                // Error: Messages with an id but no method, error, or result are invalid
                 throw new JsonException("Response must have either result or error");
             }
 
-            // Messages with a method but no id are notifications
-            if (hasMethod && !hasId)
-            {
-                return JsonSerializer.Deserialize(rawText, options.GetTypeInfo<JsonRpcNotification>());
-            }
-
-            // Messages with both method and id are requests
-            if (hasMethod && hasId)
-            {
-                return JsonSerializer.Deserialize(rawText, options.GetTypeInfo<JsonRpcRequest>());
-            }
-
+            // Error: Messages with neither id nor method are invalid
             throw new JsonException("Invalid JSON-RPC message format");
         }
 

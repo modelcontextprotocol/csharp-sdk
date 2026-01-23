@@ -1,0 +1,2 @@
+[*.cs]
+dotnet_diagnostic.CA2007.severity = error           # CA2007: Do not directly await a Task without ConfigureAwait

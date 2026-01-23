@@ -809,7 +809,7 @@ public class McpServerTests : LoggedTest
     {
         await using var server = new TestServerForIChatClient(supportsSampling: false);
 
-        Assert.Throws<InvalidOperationException>(server.AsSamplingChatClient);
+        Assert.Throws<InvalidOperationException>(() => server.AsSamplingChatClient());
     }
 
     [Fact]
