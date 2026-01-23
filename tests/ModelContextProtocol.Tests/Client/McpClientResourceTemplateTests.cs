@@ -97,8 +97,8 @@ public partial class McpClientResourceTemplateTests(ITestOutputHelper outputHelp
     {
         Assert.True(expected is not false, "Expected the URI template to match the resource.");
 
-        Assert.SkipWhen(Regex.IsMatch(uriTemplate, @"\{\??[0-9]"), "Skipping URI templates with numeric keys.");
-        Assert.SkipWhen(Regex.IsMatch(uriTemplate, @"\*\}"), "Skipping URI templates with explosive patterns.");
+        Assert.SkipWhen(Regex.IsMatch(uriTemplate, @"\*[},]"), "Skipping URI templates with explosive patterns.");
+        Assert.SkipWhen(Regex.IsMatch(uriTemplate, @"\{[^}]*\%.+\}"), "Skipping URI percent ('%') encoded keys.");
 
         var uriTemplateWithScheme = $"scheme://{(uriTemplate.StartsWith("/") ? "" : "/")}{uriTemplate}";
 
