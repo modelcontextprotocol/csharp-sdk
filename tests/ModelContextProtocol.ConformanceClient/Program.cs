@@ -1,9 +1,10 @@
 using System.Net;
 using System.Net.Sockets;
-using System.Text;
+using System.Text.Json;
 using System.Web;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 
 // This program expects the following command-line arguments:
 // 1. The client conformance test scenario to run (e.g., "tools_call")
@@ -17,15 +18,6 @@ if (args.Length < 2)
 
 var scenario = args[0];
 var endpoint =  args[1];
-
-McpClientOptions options = new()
-{
-    ClientInfo = new()
-    {
-        Name = "ConformanceClient",
-        Version = "1.0.0"
-    }
-};
 
 var consoleLoggerFactory = LoggerFactory.Create(builder =>
 {
@@ -67,6 +59,31 @@ var clientTransport = new HttpClientTransport(new()
     }
 }, loggerFactory: consoleLoggerFactory);
 
+// Wrapper delegate pattern: allows setting elicitation handler after client creation
+// This allows the actual handler to be set dynamically based on scenario
+Func<ElicitRequestParams?, CancellationToken, ValueTask<ElicitResult>>? elicitationHandler = null;
+
+McpClientOptions options = new()
+{
+    ClientInfo = new()
+    {
+        Name = "ConformanceClient",
+        Version = "1.0.0"
+    },
+    Handlers = new()
+    {
+        ElicitationHandler = (request, cancellationToken) =>
+        {
+            if (elicitationHandler is not null)
+            {
+                return elicitationHandler(request, cancellationToken);
+            }
+            Console.WriteLine("No elicitation handler set, rejecting by default");
+            return ValueTask.FromResult(new ElicitResult()); // default - reject
+        }
+    }
+};
+
 await using var mcpClient = await McpClient.CreateAsync(clientTransport, options, loggerFactory: consoleLoggerFactory);
 
 bool success = true;
@@ -103,6 +120,56 @@ switch (scenario)
             { "foo", "bar" },
         });
         success &= !(result.IsError == true);
+        break;
+    }
+    case "elicitation-sep1034-client-defaults":
+    {
+        // In this test scenario, an elicitation request will be made that includes default values in the schema.
+        // The client should apply these defaults to demonstrate that it received and processed them correctly.
+
+        // Set the elicitation handler dynamically for this scenario
+        elicitationHandler = (request, cancellationToken) =>
+        {
+            Console.WriteLine($"Received elicitation request: {request?.Message}");
+
+            // Apply default values from the schema
+            var content = new Dictionary<string, JsonElement>();
+
+            if (request?.RequestedSchema?.Properties is not null)
+            {
+                foreach (var (key, schema) in request.RequestedSchema.Properties)
+                {
+                    switch (schema)
+                    {
+                        case ElicitRequestParams.StringSchema stringSchema when stringSchema.Default is not null:
+                            content[key] = JsonSerializer.SerializeToElement(stringSchema.Default);
+                            break;
+                        case ElicitRequestParams.NumberSchema numberSchema when numberSchema.Default.HasValue:
+                            content[key] = JsonSerializer.SerializeToElement(numberSchema.Default.Value);
+                            break;
+                        case ElicitRequestParams.BooleanSchema booleanSchema when booleanSchema.Default.HasValue:
+                            content[key] = JsonSerializer.SerializeToElement(booleanSchema.Default.Value);
+                            break;
+                        case ElicitRequestParams.UntitledSingleSelectEnumSchema enumSchema when enumSchema.Default is not null:
+                            content[key] = JsonSerializer.SerializeToElement(enumSchema.Default);
+                            break;
+                        case ElicitRequestParams.TitledSingleSelectEnumSchema titledEnumSchema when titledEnumSchema.Default is not null:
+                            content[key] = JsonSerializer.SerializeToElement(titledEnumSchema.Default);
+                            break;
+                    }
+                }
+            }
+
+            return new ValueTask<ElicitResult>(new ElicitResult { Action = "accept", Content = content });
+        };
+
+        // Call the test_client_elicitation_defaults tool
+        var testToolName = "test_client_elicitation_defaults";
+        Console.WriteLine($"Calling tool: {testToolName}");
+        var result = await mcpClient.CallToolAsync(toolName: testToolName, arguments: new Dictionary<string, object?>());
+        Console.WriteLine($"Tool result: {result}");
+        success &= !(result.IsError == true);
+
         break;
     }
     default:
