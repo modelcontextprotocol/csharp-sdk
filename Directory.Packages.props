@@ -5,7 +5,8 @@
     <System9Version>9.0.11</System9Version>
     <System10Version>10.0.2</System10Version>
     <MicrosoftExtensionsVersion>10.2.0</MicrosoftExtensionsVersion>
-    <!-- Pin the conformance tester Node package version for CI stability -->
+    <!-- Pin the conformance tester Node package version for CI stability.
+         Keep in sync npm install step at ci-build-test.yml -->
     <McpConformanceVersion>0.1.10</McpConformanceVersion>
   </PropertyGroup>
 
