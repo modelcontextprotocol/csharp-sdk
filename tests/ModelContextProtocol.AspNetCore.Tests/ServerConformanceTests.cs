@@ -128,17 +128,6 @@ public class ServerConformanceTests : IAsyncLifetime
     {
         // Version is configured in Directory.Packages.props for central management
         var version = GetConformanceVersion();
-        _output.WriteLine($"=== Requested conformance package version: {version} ===");
-
-        // First, check the actual version that will be used
-        var versionCheckInfo = NodeHelpers.NpxStartInfo($"-y @modelcontextprotocol/conformance@{version} --version");
-        var versionProcess = Process.Start(versionCheckInfo);
-        if (versionProcess != null)
-        {
-            var actualVersion = await versionProcess.StandardOutput.ReadToEndAsync();
-            await versionProcess.WaitForExitAsync();
-            _output.WriteLine($"=== Actual conformance package version: {actualVersion.Trim()} ===");
-        }
 
         var startInfo = NodeHelpers.NpxStartInfo($"-y @modelcontextprotocol/conformance@{version} server --url {_serverUrl}");
 

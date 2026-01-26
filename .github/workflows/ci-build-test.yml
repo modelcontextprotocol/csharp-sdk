@@ -67,9 +67,6 @@ jobs:
     - name: 📦 Install dependencies for tests
       run: npm install @modelcontextprotocol/server-memory
 
-    - name: 📦 Install dependencies for tests
-      run: npm install @modelcontextprotocol/conformance
-
     - name: 🏗️ Build
       run: make build CONFIGURATION=${{ matrix.configuration }}
 
