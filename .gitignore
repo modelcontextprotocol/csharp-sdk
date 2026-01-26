@@ -80,4 +80,6 @@ docs/api
 
 # Rider
 .idea/
-.idea_modules/
+.idea_modules/node_modules/
+package-lock.json
+package.json
