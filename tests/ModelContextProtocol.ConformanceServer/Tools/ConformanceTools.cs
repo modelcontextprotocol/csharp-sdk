@@ -350,7 +350,8 @@ public class ConformanceTools
                         ]
                     },
                     // 3. Legacy titled enum (deprecated - enum + enumNames)
-#pragma warning disable MCP9001 // Required for SEP-1330 conformance testing
+                    // Required for SEP-1330 conformance testing - tests backward compatibility with legacy enum format
+#pragma warning disable MCP9001
                     ["legacy_titled"] = new ElicitRequestParams.LegacyTitledEnumSchema()
 #pragma warning restore MCP9001
                     {

@@ -101,9 +101,8 @@ public class Program
             var hostHeader = port.HasValue ? $"{host}:{port.Value}" : host;
 
             // Allow localhost and 127.0.0.1 on any port for conformance testing
-            // In production, this should be more restrictive
-            var allowed = host == "localhost" || host == "127.0.0.1" || 
-                          host.StartsWith("localhost.") || host.StartsWith("127.0.0.1.");
+            // In production, this should be more restrictive with specific allowed hosts
+            var allowed = host == "localhost" || host == "127.0.0.1";
 
             if (!allowed)
             {
