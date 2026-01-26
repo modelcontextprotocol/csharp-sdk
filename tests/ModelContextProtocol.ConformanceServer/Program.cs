@@ -92,6 +92,29 @@ public class Program
 
         var app = builder.Build();
 
+        // DNS Rebinding Protection Middleware
+        // Validates Host header to prevent DNS rebinding attacks
+        app.Use(async (context, next) =>
+        {
+            var host = context.Request.Host.Host;
+            var port = context.Request.Host.Port;
+            var hostHeader = port.HasValue ? $"{host}:{port.Value}" : host;
+
+            // Allow localhost and 127.0.0.1 on any port for conformance testing
+            // In production, this should be more restrictive
+            var allowed = host == "localhost" || host == "127.0.0.1" || 
+                          host.StartsWith("localhost.") || host.StartsWith("127.0.0.1.");
+
+            if (!allowed)
+            {
+                context.Response.StatusCode = 421; // Misdirected Request
+                await context.Response.WriteAsync($"Invalid Host header: {hostHeader}");
+                return;
+            }
+
+            await next();
+        });
+
         app.MapMcp();
 
         app.MapGet("/health", () => TypedResults.Ok("Healthy"));
