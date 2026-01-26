@@ -94,7 +94,6 @@ public class Program
 
         app.MapMcp();
 
-        // Return plain string to avoid JSON serialization issues when reflection is disabled
         app.MapGet("/health", () => "Healthy");
 
         await app.RunAsync(cancellationToken);
