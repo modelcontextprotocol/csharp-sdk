@@ -6,7 +6,7 @@
     <System10Version>10.0.2</System10Version>
     <MicrosoftExtensionsVersion>10.2.0</MicrosoftExtensionsVersion>
     <!-- Pin the conformance tester Node package version for CI stability -->
-    <McpConformanceVersion>0.1.9</McpConformanceVersion>
+    <McpConformanceVersion>0.1.10</McpConformanceVersion>
   </PropertyGroup>
 
   <!-- Product dependencies shared -->
