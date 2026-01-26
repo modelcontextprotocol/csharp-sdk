@@ -94,7 +94,7 @@ public class Program
 
         app.MapMcp();
 
-        app.MapGet("/health", () => TypedResults.Ok("Healthy"));
+        app.MapGet("/health", () => "Healthy");
 
         await app.RunAsync(cancellationToken);
     }
