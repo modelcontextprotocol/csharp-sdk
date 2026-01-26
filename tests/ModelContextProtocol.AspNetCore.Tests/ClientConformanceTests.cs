@@ -112,7 +112,8 @@ public class ClientConformanceTests //: IAsyncLifetime
     [InlineData("auth/token-endpoint-auth-basic")]
     [InlineData("auth/token-endpoint-auth-post")]
     [InlineData("auth/token-endpoint-auth-none")]
-    [InlineData("auth/resource-mismatch")]
+    // auth/resource-mismatch disabled for now pending https://github.com/modelcontextprotocol/conformance/pull/123
+    // [InlineData("auth/resource-mismatch")]
     [InlineData("auth/pre-registration")]
     [InlineData("auth/client-credentials-jwt")]
     [InlineData("auth/client-credentials-basic")]
