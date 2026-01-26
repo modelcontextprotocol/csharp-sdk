@@ -332,30 +332,76 @@ public class ConformanceTools
             {
                 Properties =
                 {
-                    ["color"] = new ElicitRequestParams.UntitledSingleSelectEnumSchema()
+                    // 1. Untitled single-select enum
+                    ["untitled_single"] = new ElicitRequestParams.UntitledSingleSelectEnumSchema()
                     {
-                        Description = "Choose a color",
-                        Enum = ["red", "green", "blue"]
+                        Description = "Untitled single-select enum",
+                        Enum = ["option1", "option2", "option3"]
                     },
-                    ["size"] = new ElicitRequestParams.UntitledSingleSelectEnumSchema()
+                    // 2. Titled single-select enum (oneOf with const + title)
+                    ["titled_single"] = new ElicitRequestParams.TitledSingleSelectEnumSchema()
                     {
-                        Description = "Choose a size",
-                        Enum = ["small", "medium", "large"],
-                        Default = "medium"
+                        Description = "Titled single-select enum",
+                        OneOf =
+                        [
+                            new ElicitRequestParams.EnumSchemaOption { Const = "value1", Title = "First Option" },
+                            new ElicitRequestParams.EnumSchemaOption { Const = "value2", Title = "Second Option" },
+                            new ElicitRequestParams.EnumSchemaOption { Const = "value3", Title = "Third Option" }
+                        ]
+                    },
+                    // 3. Legacy titled enum (deprecated - enum + enumNames)
+#pragma warning disable MCP9001 // Required for SEP-1330 conformance testing
+                    ["legacy_titled"] = new ElicitRequestParams.LegacyTitledEnumSchema()
+#pragma warning restore MCP9001
+                    {
+                        Description = "Legacy titled enum (deprecated)",
+                        Enum = ["opt1", "opt2", "opt3"],
+                        EnumNames = ["Option One", "Option Two", "Option Three"]
+                    },
+                    // 4. Untitled multi-select enum (array with items.enum)
+                    ["untitled_multi"] = new ElicitRequestParams.UntitledMultiSelectEnumSchema()
+                    {
+                        Description = "Untitled multi-select enum",
+                        Items = new ElicitRequestParams.UntitledEnumItemsSchema
+                        {
+                            Enum = ["option1", "option2", "option3"]
+                        }
+                    },
+                    // 5. Titled multi-select enum (array with items.anyOf)
+                    ["titled_multi"] = new ElicitRequestParams.TitledMultiSelectEnumSchema()
+                    {
+                        Description = "Titled multi-select enum",
+                        Items = new ElicitRequestParams.TitledEnumItemsSchema
+                        {
+                            AnyOf =
+                            [
+                                new ElicitRequestParams.EnumSchemaOption { Const = "value1", Title = "First Choice" },
+                                new ElicitRequestParams.EnumSchemaOption { Const = "value2", Title = "Second Choice" },
+                                new ElicitRequestParams.EnumSchemaOption { Const = "value3", Title = "Third Choice" }
+                            ]
+                        }
                     }
                 }
             };
 
             var result = await server.ElicitAsync(new ElicitRequestParams
             {
-                Message = "Test elicitation with enum schema",
+                Message = "Test elicitation with enum schema improvements (SEP-1330)",
                 RequestedSchema = schema
             }, cancellationToken);
 
             if (result.Action == "accept" && result.Content != null)
             {
-                return $"Accepted with values: color={result.Content["color"].GetString()}, " +
-                       $"size={result.Content["size"].GetString()}";
+                var summary = new System.Text.StringBuilder($"Elicitation completed: action={result.Action}, content={{");
+                bool first = true;
+                foreach (var kvp in result.Content)
+                {
+                    if (!first) summary.Append(", ");
+                    summary.Append($"{kvp.Key}={kvp.Value}");
+                    first = false;
+                }
+                summary.Append("}");
+                return summary.ToString();
             }
             else
             {

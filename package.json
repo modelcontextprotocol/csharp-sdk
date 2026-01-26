@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@modelcontextprotocol/conformance": "^0.1.11"
+  }
+}
