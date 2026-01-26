@@ -216,9 +216,9 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
         }
 
         // Enforce session isolation
-        if (sessionId != null && entry.SessionId != sessionId)
+        if (sessionId != entry.SessionId)
         {
-            throw new InvalidOperationException($"Task not found: {taskId}");
+            throw new InvalidOperationException($"Invalid sessionId: {sessionId} provided for {taskId}");
         }
 
         if (entry.StoredResult is not { } storedResult)
