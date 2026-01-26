@@ -167,7 +167,7 @@ public class ConformanceTools
     /// Error handling tool - returns a success message for testing
     /// </summary>
     [McpServerTool(Name = "test_error_handling")]
-    [Description("Tests error response handling")]
+    [Description("Tests tool that returns success message")]
     public static string ErrorHandling()
     {
         return "Error handling test passed (no exception thrown)";
