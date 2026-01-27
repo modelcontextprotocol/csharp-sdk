@@ -234,7 +234,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
         // Even when the client has elicitation support, it should not be advertised in stateless mode.
         Assert.Null(server.ClientCapabilities);
 
-        var requestElicitationEx = Assert.Throws<InvalidOperationException>(() => server.ElicitAsync(new() { Message = string.Empty }));
+        var requestElicitationEx = await Assert.ThrowsAsync<InvalidOperationException>(() => server.ElicitAsync(new() { Message = string.Empty }).AsTask());
         Assert.Equal(expectedElicitationErrorMessage, requestElicitationEx.Message);
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => server.SendRequestAsync(new JsonRpcRequest
