@@ -115,9 +115,21 @@ public class ServerConformanceTests : IAsyncLifetime
         _serverTask = Task.Run(() => ConformanceServer.Program.MainAsync(["--urls", _serverUrl], new XunitLoggerProvider(_output), cancellationToken: _serverCts.Token));
     }
 
+    private static string GetConformanceVersion()
+    {
+        var assembly = typeof(ServerConformanceTests).Assembly;
+        var attribute = assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false)
+            .Cast<System.Reflection.AssemblyMetadataAttribute>()
+            .FirstOrDefault(a => a.Key == "McpConformanceVersion");
+        return attribute?.Value ?? throw new InvalidOperationException("McpConformanceVersion not found in assembly metadata");
+    }
+
     private async Task<(bool Success, string Output, string Error)> RunNpxConformanceTests()
     {
-        var startInfo = NodeHelpers.NpxStartInfo($"-y @modelcontextprotocol/conformance server --url {_serverUrl}");
+        // Version is configured in Directory.Packages.props for central management
+        var version = GetConformanceVersion();
+
+        var startInfo = NodeHelpers.NpxStartInfo($"-y @modelcontextprotocol/conformance@{version} server --url {_serverUrl}");
 
         var outputBuilder = new StringBuilder();
         var errorBuilder = new StringBuilder();
