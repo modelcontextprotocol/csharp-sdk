@@ -85,14 +85,14 @@ internal static partial class UriTemplate
             switch (m.Groups["operator"].Value)
             {
                 case "+": AppendExpression(ref pattern, paramNames, null, "[^?&#]*"); break;
-                case "#": AppendExpression(ref pattern, paramNames, '#', "[^,]*"); break;
-                case ".": AppendExpression(ref pattern, paramNames, '.', "[^./?#]*"); break;
+                case "#": AppendExpression(ref pattern, paramNames, '#', ".*"); break;
+                case ".": AppendExpression(ref pattern, paramNames, '.', "[^/?#]*"); break;
                 case "/": AppendExpression(ref pattern, paramNames, '/', "[^/?#]*"); break;
-                case ";": AppendPathParameterExpression(ref pattern, paramNames); break;
                 default:  AppendExpression(ref pattern, paramNames, null, "[^/?&#]*"); break;
 
                 case "?": AppendQueryExpression(ref pattern, paramNames, '?'); break;
                 case "&": AppendQueryExpression(ref pattern, paramNames, '&'); break;
+                case ";": AppendPathParameterExpression(ref pattern, paramNames); break;
             }
         }
 

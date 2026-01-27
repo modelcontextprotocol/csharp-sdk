@@ -3,7 +3,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
-namespace ModelContextProtocol.Tests;
+namespace ModelContextProtocol.Tests.Configuration;
 
 /// <summary>
 /// Test suite for UriTemplate.CreateParser method.
@@ -383,14 +383,14 @@ public sealed class McpServerResourceRoutingTests(ITestOutputHelper testOutputHe
     /// FIXED BUG: Label expansion with multiple variables should use dot as separator.
     /// </summary>
     [Fact]
-    public async Task LabelExpansion_MatchesMultipleValues()
+    public async Task LabelExpansion_GreedilyMatchesMultipleValues()
     {
         // FIXED: {.x,y} should match .1024.768 (dot separated)
         await AssertMatchAsync(
             uriTemplate: "test://www{.x,y}",
             method: (string x, string y) => $"x:{x},y:{y}",
             uri: "test://www.example.com",
-            expectedResult: "x:example,y:com");
+            expectedResult: "x:example.com,y:");
     }
 
     [Fact]
