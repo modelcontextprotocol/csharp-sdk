@@ -279,6 +279,7 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
     [Fact]
     public async Task Client_CanResumeUnsolicitedMessageStream_AfterDisconnection()
     {
+        var timeout = TimeSpan.FromSeconds(10);
         using var faultingStreamHandler = new FaultingStreamHandler()
         {
             InnerHandler = SocketsHttpHandler,
@@ -304,12 +305,12 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
         await using var client = await ConnectClientAsync();
 
         // Get the server instance
-        var server = await serverTcs.Task.WaitAsync(TestContext.Current.CancellationToken);
+        var server = await serverTcs.Task.WaitAsync(timeout, TestContext.Current.CancellationToken);
 
         // Set up notification tracking with unique messages
-        var clientReceivedInitialNotificationTcs = new TaskCompletionSource();
-        var clientReceivedReplayedNotificationTcs = new TaskCompletionSource();
-        var clientReceivedReconnectNotificationTcs = new TaskCompletionSource();
+        var clientReceivedInitialNotificationTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var clientReceivedReplayedNotificationTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var clientReceivedReconnectNotificationTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         const string CustomNotificationMethod = "test/custom_notification";
         const string InitialMessage = "Initial notification";
@@ -343,11 +344,14 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
             return default;
         });
 
+        // Wait for the client's unsolicited message stream to be established before sending notifications
+        await faultingStreamHandler.WaitForUnsolicitedMessageStreamAsync(TestContext.Current.CancellationToken);
+
         // Send a custom notification to the client on the unsolicited message stream
         await server.SendNotificationAsync(CustomNotificationMethod, new JsonObject { ["message"] = InitialMessage }, cancellationToken: TestContext.Current.CancellationToken);
 
         // Wait for client to receive the first notification
-        await clientReceivedInitialNotificationTcs.Task.WaitAsync(TestContext.Current.CancellationToken);
+        await clientReceivedInitialNotificationTcs.Task.WaitAsync(timeout, TestContext.Current.CancellationToken);
 
         // Fault the unsolicited message stream (GET SSE)
         var reconnectAttempt = await faultingStreamHandler.TriggerFaultAsync(TestContext.Current.CancellationToken);
@@ -359,13 +363,13 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
         reconnectAttempt.Continue();
 
         // Wait for client to receive the notification via replay
-        await clientReceivedReplayedNotificationTcs.Task.WaitAsync(TestContext.Current.CancellationToken);
+        await clientReceivedReplayedNotificationTcs.Task.WaitAsync(timeout, TestContext.Current.CancellationToken);
 
         // Send a final notification while the client has reconnected - this should be handled by the transport
         await server.SendNotificationAsync(CustomNotificationMethod, new JsonObject { ["message"] = ReconnectMessage }, cancellationToken: TestContext.Current.CancellationToken);
 
         // Wait for the client to receive the final notification
-        await clientReceivedReconnectNotificationTcs.Task.WaitAsync(TestContext.Current.CancellationToken);
+        await clientReceivedReconnectNotificationTcs.Task.WaitAsync(timeout, TestContext.Current.CancellationToken);
 
         // Assert each notification was received exactly once
         Assert.Equal(1, initialNotificationReceivedCount);
@@ -531,7 +535,7 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(10));
 
         // The call task should throw an OCE due to cancellation
-        await Assert.ThrowsAsync<OperationCanceledException>(() => callTask).WaitAsync(timeoutCts.Token);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => callTask).WaitAsync(timeoutCts.Token);
 
         // Wait for the writer to be disposed
         await blockingStore.DisposedTask.WaitAsync(timeoutCts.Token);

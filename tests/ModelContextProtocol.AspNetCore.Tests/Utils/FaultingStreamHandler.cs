@@ -11,6 +11,12 @@ internal sealed class FaultingStreamHandler : DelegatingHandler
 {
     private FaultingStream? _lastStream;
     private TaskCompletionSource? _reconnectTcs;
+    private TaskCompletionSource _unsolicitedMessageStreamReadyTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public Task WaitForUnsolicitedMessageStreamAsync(CancellationToken cancellationToken = default)
+        => _unsolicitedMessageStreamReadyTcs.Task.WaitAsync(cancellationToken);
+
+    internal void SignalUnsolicitedMessageStreamReady() => _unsolicitedMessageStreamReadyTcs.TrySetResult();
 
     public async Task<ReconnectAttempt> TriggerFaultAsync(CancellationToken cancellationToken)
     {
@@ -23,6 +29,9 @@ internal sealed class FaultingStreamHandler : DelegatingHandler
         {
             throw new InvalidOperationException("Cannot trigger a fault while already waiting for reconnection.");
         }
+
+        // Reset the TCS so we can wait for the reconnected unsolicited message stream
+        _unsolicitedMessageStreamReadyTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         _reconnectTcs = new();
         await _lastStream.TriggerFaultAsync(cancellationToken);
@@ -46,6 +55,7 @@ internal sealed class FaultingStreamHandler : DelegatingHandler
             _reconnectTcs = null;
         }
 
+        var isGetRequest = request.Method == HttpMethod.Get;
         var response = await base.SendAsync(request, cancellationToken);
 
         // Only wrap SSE streams (text/event-stream)
@@ -63,6 +73,13 @@ internal sealed class FaultingStreamHandler : DelegatingHandler
             }
 
             response.Content = newContent;
+
+            // For GET requests (unsolicited message stream), set up the stream to signal
+            // when first data is read. This ensures the server's transport handler is ready.
+            if (isGetRequest)
+            {
+                _lastStream.SetReadyCallback(SignalUnsolicitedMessageStreamReady);
+            }
         }
 
         return response;
@@ -89,9 +106,13 @@ internal sealed class FaultingStreamHandler : DelegatingHandler
     {
         private readonly CancellationTokenSource _cts = new();
         private TaskCompletionSource? _faultTcs;
+        private Action? _readyCallback;
+        private bool _readySignaled;
         private bool _disposed;
 
         public bool IsDisposed => _disposed;
+
+        public void SetReadyCallback(Action callback) => _readyCallback = callback;
 
         public async Task TriggerFaultAsync(CancellationToken cancellationToken)
         {
@@ -130,6 +151,12 @@ internal sealed class FaultingStreamHandler : DelegatingHandler
                 var bytesRead = await innerStream.ReadAsync(buffer, linkedCts.Token);
 
                 _cts.Token.ThrowIfCancellationRequested();
+
+                if (bytesRead > 0 && !_readySignaled)
+                {
+                    _readySignaled = true;
+                    _readyCallback?.Invoke();
+                }
 
                 return bytesRead;
             }
