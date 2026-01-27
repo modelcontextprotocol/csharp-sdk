@@ -342,8 +342,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
                     ThrowFailedToHandleUnauthorizedResponse($"No authorization_endpoint was provided via '{wellKnownEndpoint}'.");
                 }
 
-                if (metadata.AuthorizationEndpoint.Scheme != Uri.UriSchemeHttp &&
-                    metadata.AuthorizationEndpoint.Scheme != Uri.UriSchemeHttps)
+                if (metadata.AuthorizationEndpoint.Scheme is not (Uri.UriSchemeHttp or Uri.UriSchemeHttps or $"{Uri.UriSchemeHttps}+{Uri.UriSchemeHttp}"))
                 {
                     ThrowFailedToHandleUnauthorizedResponse($"AuthorizationEndpoint must use HTTP or HTTPS. '{metadata.AuthorizationEndpoint}' does not meet this requirement.");
                 }
