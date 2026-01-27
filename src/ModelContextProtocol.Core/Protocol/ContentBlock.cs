@@ -131,15 +131,7 @@ public abstract class ContentBlock
                         break;
 
                     case "data":
-                        // Read the base64-encoded UTF-8 bytes directly without string allocation
-                        if (reader.HasValueSequence)
-                        {
-                            data = reader.ValueSequence.ToArray();
-                        }
-                        else
-                        {
-                            data = reader.ValueSpan.ToArray();
-                        }
+                        data = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan.ToArray();
                         break;
 
                     case "mimeType":
@@ -290,13 +282,11 @@ public abstract class ContentBlock
                     break;
 
                 case ImageContentBlock imageContent:
-                    // Write the UTF-8 bytes directly as a string value
                     writer.WriteString("data", imageContent.Data.Span);
                     writer.WriteString("mimeType", imageContent.MimeType);
                     break;
 
                 case AudioContentBlock audioContent:
-                    // Write the UTF-8 bytes directly as a string value
                     writer.WriteString("data", audioContent.Data.Span);
                     writer.WriteString("mimeType", audioContent.MimeType);
                     break;

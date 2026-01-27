@@ -397,8 +397,8 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
                     Uri = request.Params!.Uri, 
                     MimeType = dc.MediaType, 
                     Blob = MemoryMarshal.TryGetArray(dc.Base64Data, out ArraySegment<char> segment)
-                        ? System.Text.Encoding.UTF8.GetBytes(segment.Array!, segment.Offset, segment.Count) 
-                        : System.Text.Encoding.UTF8.GetBytes(dc.Base64Data.ToString()) 
+                        ? Encoding.UTF8.GetBytes(segment.Array!, segment.Offset, segment.Count) 
+                        : Encoding.UTF8.GetBytes(dc.Base64Data.ToString()) 
                 }],
             },
 
@@ -429,8 +429,8 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
                             Uri = request.Params!.Uri,
                             MimeType = dc.MediaType,
                             Blob = MemoryMarshal.TryGetArray(dc.Base64Data, out ArraySegment<char> segment)
-                                ? System.Text.Encoding.UTF8.GetBytes(segment.Array!, segment.Offset, segment.Count) 
-                                : System.Text.Encoding.UTF8.GetBytes(dc.Base64Data.ToString())
+                                ? Encoding.UTF8.GetBytes(segment.Array!, segment.Offset, segment.Count) 
+                                : Encoding.UTF8.GetBytes(dc.Base64Data.ToString())
                         },
 
                         _ => throw new InvalidOperationException($"Unsupported AIContent type '{ac.GetType()}' returned from resource function."),

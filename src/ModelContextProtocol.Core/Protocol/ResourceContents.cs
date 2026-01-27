@@ -105,15 +105,7 @@ public abstract class ResourceContents
                         break;
 
                     case "blob":
-                        // Read the base64-encoded UTF-8 bytes directly without string allocation
-                        if (reader.HasValueSequence)
-                        {
-                            blob = reader.ValueSequence.ToArray();
-                        }
-                        else
-                        {
-                            blob = reader.ValueSpan.ToArray();
-                        }
+                        blob = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan.ToArray();
                         break;
 
                     case "text":
