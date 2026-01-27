@@ -89,7 +89,7 @@ var response = await chatClient.GetResponseAsync(
 ## Getting Started (Server)
 
 > [!TIP]
-> You can use the [MCP Server project template](https://learn.microsoft.com/en-us/dotnet/ai/quickstarts/build-mcp-server?pivots=visualstudio) to quickly get started with creating your own MCP server.
+> You can use the [MCP Server project template](https://learn.microsoft.com/dotnet/ai/quickstarts/build-mcp-server?pivots=visualstudio) to quickly get started with creating your own MCP server.
 
 Here is an example of how to create an MCP server and register all tools from the current application.
 It includes a simple echo tool as an example (this is included in the same file here for easy of copy and paste, but it needn't be in the same file...
