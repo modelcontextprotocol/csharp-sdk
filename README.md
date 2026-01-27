@@ -90,7 +90,7 @@ var response = await chatClient.GetResponseAsync(
 
 ### MCP Server Project Template
 
-You can create your own MCP server by using the MCP Server project template.  This template will set you up with a working MCP server containing a random number tool that returns a random number between a specified min and max value. This template also lets you select an MCP transport type (stdio or http) and it will configure the MCP Server based on that choice. To learn more about the template, read this MS Learn doc on [creating minimal MCP servers](https://learn.microsoft.com/en-us/dotnet/ai/quickstarts/build-mcp-server).
+You can create your own MCP server by using the MCP Server project template.  This template will set you up with a working MCP server containing a random number tool that returns a random number between a specified min and max value. This template also lets you select an MCP transport type (stdio or http) and it will configure the MCP Server based on that choice. To learn more about the template, read this MS Learn doc on [creating minimal MCP servers](https://learn.microsoft.com/dotnet/ai/quickstarts/build-mcp-server).
 
 Here is an example of how to create an MCP server and register all tools from the current application.
 It includes a simple echo tool as an example (this is included in the same file here for easy of copy and paste, but it needn't be in the same file...
