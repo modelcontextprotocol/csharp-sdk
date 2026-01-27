@@ -37,18 +37,26 @@ public class DiagnosticTests
         Assert.NotEmpty(activities);
 
         var clientToolCall = Assert.Single(activities, a =>
-            a.Tags.Any(t => t.Key == "mcp.tool.name" && t.Value == "DoubleValue") &&
+            a.Tags.Any(t => t.Key == "gen_ai.tool.name" && t.Value == "DoubleValue") &&
             a.Tags.Any(t => t.Key == "mcp.method.name" && t.Value == "tools/call") &&
+            a.Tags.Any(t => t.Key == "gen_ai.operation.name" && t.Value == "execute_tool") &&
             a.DisplayName == "tools/call DoubleValue" &&
             a.Kind == ActivityKind.Client &&
             a.Status == ActivityStatusCode.Unset);
 
+        // Per semantic conventions: mcp.protocol.version should be present after initialization
+        Assert.Contains(clientToolCall.Tags, t => t.Key == "mcp.protocol.version" && !string.IsNullOrEmpty(t.Value));
+
         var serverToolCall = Assert.Single(activities, a =>
-            a.Tags.Any(t => t.Key == "mcp.tool.name" && t.Value == "DoubleValue") &&
+            a.Tags.Any(t => t.Key == "gen_ai.tool.name" && t.Value == "DoubleValue") &&
             a.Tags.Any(t => t.Key == "mcp.method.name" && t.Value == "tools/call") &&
+            a.Tags.Any(t => t.Key == "gen_ai.operation.name" && t.Value == "execute_tool") &&
             a.DisplayName == "tools/call DoubleValue" &&
             a.Kind == ActivityKind.Server &&
             a.Status == ActivityStatusCode.Unset);
+
+        // Per semantic conventions: mcp.protocol.version should be present after initialization
+        Assert.Contains(serverToolCall.Tags, t => t.Key == "mcp.protocol.version" && !string.IsNullOrEmpty(t.Value));
 
         Assert.Equal(clientToolCall.SpanId, serverToolCall.ParentSpanId);
         Assert.Equal(clientToolCall.TraceId, serverToolCall.TraceId);
@@ -94,7 +102,7 @@ public class DiagnosticTests
         Assert.NotEmpty(activities);
 
         var throwToolClient = Assert.Single(activities, a =>
-            a.Tags.Any(t => t.Key == "mcp.tool.name" && t.Value == "Throw") &&
+            a.Tags.Any(t => t.Key == "gen_ai.tool.name" && t.Value == "Throw") &&
             a.Tags.Any(t => t.Key == "mcp.method.name" && t.Value == "tools/call") &&
             a.DisplayName == "tools/call Throw" &&
             a.Kind == ActivityKind.Client);
@@ -102,7 +110,7 @@ public class DiagnosticTests
         Assert.Equal(ActivityStatusCode.Error, throwToolClient.Status);
 
         var throwToolServer = Assert.Single(activities, a =>
-            a.Tags.Any(t => t.Key == "mcp.tool.name" && t.Value == "Throw") &&
+            a.Tags.Any(t => t.Key == "gen_ai.tool.name" && t.Value == "Throw") &&
             a.Tags.Any(t => t.Key == "mcp.method.name" && t.Value == "tools/call") &&
             a.DisplayName == "tools/call Throw" &&
             a.Kind == ActivityKind.Server);
@@ -110,22 +118,72 @@ public class DiagnosticTests
         Assert.Equal(ActivityStatusCode.Error, throwToolServer.Status);
 
         var doesNotExistToolClient = Assert.Single(activities, a =>
-            a.Tags.Any(t => t.Key == "mcp.tool.name" && t.Value == "does-not-exist") &&
+            a.Tags.Any(t => t.Key == "gen_ai.tool.name" && t.Value == "does-not-exist") &&
             a.Tags.Any(t => t.Key == "mcp.method.name" && t.Value == "tools/call") &&
             a.DisplayName == "tools/call does-not-exist" &&
             a.Kind == ActivityKind.Client);
 
         Assert.Equal(ActivityStatusCode.Error, doesNotExistToolClient.Status);
-        Assert.Equal("-32602", doesNotExistToolClient.Tags.Single(t => t.Key == "rpc.jsonrpc.error_code").Value);
+        Assert.Equal("-32602", doesNotExistToolClient.Tags.Single(t => t.Key == "rpc.response.status_code").Value);
 
         var doesNotExistToolServer = Assert.Single(activities, a =>
-            a.Tags.Any(t => t.Key == "mcp.tool.name" && t.Value == "does-not-exist") &&
+            a.Tags.Any(t => t.Key == "gen_ai.tool.name" && t.Value == "does-not-exist") &&
             a.Tags.Any(t => t.Key == "mcp.method.name" && t.Value == "tools/call") &&
             a.DisplayName == "tools/call does-not-exist" &&
             a.Kind == ActivityKind.Server);
 
         Assert.Equal(ActivityStatusCode.Error, doesNotExistToolServer.Status);
-        Assert.Equal("-32602", doesNotExistToolClient.Tags.Single(t => t.Key == "rpc.jsonrpc.error_code").Value);
+        Assert.Equal("-32602", doesNotExistToolClient.Tags.Single(t => t.Key == "rpc.response.status_code").Value);
+    }
+
+    [Fact]
+    public async Task Session_McpAttributesAddedToOuterExecuteToolActivity()
+    {
+        // This test simulates the scenario where FunctionInvokingChatClient creates an outer
+        // "execute_tool" activity, and MCP should add its attributes to that activity instead
+        // of creating a new one.
+        string outerSourceName = "TestOuterSource";
+        var activities = new List<Activity>();
+
+        using var outerSource = new ActivitySource(outerSourceName);
+
+        using (var tracerProvider = OpenTelemetry.Sdk.CreateTracerProviderBuilder()
+            .AddSource(outerSourceName)
+            .AddSource("Experimental.ModelContextProtocol")
+            .AddInMemoryExporter(activities)
+            .Build())
+        {
+            await RunConnected(async (client, server) =>
+            {
+                // Simulate FunctionInvokingChatClient creating an outer activity
+                using var outerActivity = outerSource.StartActivity("execute_tool DoubleValue");
+                Assert.NotNull(outerActivity);
+
+                // Now call the MCP tool - MCP should augment the outer activity
+                var tool = (await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken))
+                    .First(t => t.Name == "DoubleValue");
+                await tool.InvokeAsync(new() { ["amount"] = 42 }, TestContext.Current.CancellationToken);
+            }, []);
+        }
+
+        // The outer activity should have MCP-specific attributes added to it
+        var outerExecuteToolActivity = Assert.Single(activities, a =>
+            a.Source.Name == outerSourceName &&
+            a.DisplayName == "execute_tool DoubleValue" &&
+            a.Kind == ActivityKind.Internal);
+
+        // MCP should have added its attributes to the outer activity
+        Assert.Contains(outerExecuteToolActivity.Tags, t => t.Key == "mcp.method.name" && t.Value == "tools/call");
+        Assert.Contains(outerExecuteToolActivity.Tags, t => t.Key == "gen_ai.tool.name" && t.Value == "DoubleValue");
+        Assert.Contains(outerExecuteToolActivity.Tags, t => t.Key == "gen_ai.operation.name" && t.Value == "execute_tool");
+
+        // Verify that no separate MCP client activity was created for this tool call
+        var mcpClientActivities = activities.Where(a =>
+            a.Source.Name == "Experimental.ModelContextProtocol" &&
+            a.Kind == ActivityKind.Client &&
+            a.Tags.Any(t => t.Key == "mcp.method.name" && t.Value == "tools/call") &&
+            a.Tags.Any(t => t.Key == "gen_ai.tool.name" && t.Value == "DoubleValue"));
+        Assert.Empty(mcpClientActivities);
     }
 
     private static async Task RunConnected(Func<McpClient, McpServer, Task> action, List<string> clientToServerLog)

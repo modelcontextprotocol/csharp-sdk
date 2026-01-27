@@ -10,6 +10,8 @@ public sealed class HttpClientTransportOptions
     /// <summary>
     /// Gets or sets the base address of the server for SSE connections.
     /// </summary>
+    /// <exception cref="ArgumentNullException">The value is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">The value is not an absolute URI, or does not use the HTTP or HTTPS scheme.</exception>
     public required Uri Endpoint
     {
         get;
@@ -42,7 +44,7 @@ public sealed class HttpClientTransportOptions
     /// When set to <see cref="HttpTransportMode.AutoDetect"/> (the default), the client will first attempt to use
     /// Streamable HTTP transport and automatically fall back to SSE transport if the server doesn't support it.
     /// </remarks>
-    /// <seealso href="https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http">Streamable HTTP transport specification</seealso>.
+    /// <seealso href="https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http">Streamable HTTP transport specification</seealso>.
     /// <seealso href="https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse">HTTP with SSE transport specification</seealso>.
     public HttpTransportMode TransportMode { get; set; } = HttpTransportMode.AutoDetect;
 
@@ -106,4 +108,31 @@ public sealed class HttpClientTransportOptions
     /// Gets sor sets the authorization provider to use for authentication.
     /// </summary>
     public ClientOAuthOptions? OAuth { get; set; }
+
+    /// <summary>
+    /// Gets or sets the maximum number of consecutive reconnection attempts when an SSE stream is disconnected.
+    /// </summary>
+    /// <value>
+    /// The maximum number of reconnection attempts. The default is 2.
+    /// </value>
+    /// <remarks>
+    /// When an SSE stream is disconnected (e.g., due to a network issue), the client will attempt to
+    /// reconnect using the Last-Event-ID header to resume from where it left off. This property controls
+    /// how many reconnection attempts are made before giving up.
+    /// </remarks>
+    public int MaxReconnectionAttempts { get; set; } = 2;
+
+    /// <summary>
+    /// Gets or sets the default interval at which the client attempts reconnection after an SSE stream is disconnected.
+    /// </summary>
+    /// <remarks>
+    /// <p>
+    /// The default value is 1 second.
+    /// </p>
+    /// <p>
+    /// If the server sends a message specifying a different reconnection interval, that new value will be used for all
+    /// subsequent reconnection attempts for that stream.
+    /// </p>
+    /// </remarks>
+    public TimeSpan DefaultReconnectionInterval { get; set; } = TimeSpan.FromSeconds(1);
 }

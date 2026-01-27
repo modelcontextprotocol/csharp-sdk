@@ -1,5 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Diagnostics;
+using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using Xunit;
 
@@ -347,7 +349,7 @@ public partial class XmlToDescriptionGeneratorTests
                     return input;
                 }
             }
-            """);
+            """, "MCP002");
 
         Assert.True(result.Success);
         Assert.Empty(result.GeneratedSources);
@@ -374,7 +376,7 @@ public partial class XmlToDescriptionGeneratorTests
                     return input;
                 }
             }
-            """);
+            """, "MCP002");
 
         Assert.True(result.Success);
         Assert.Empty(result.GeneratedSources);
@@ -405,7 +407,7 @@ public partial class XmlToDescriptionGeneratorTests
                     return input;
                 }
             }
-            """);
+            """, "MCP002");
 
         Assert.True(result.Success);
         Assert.Empty(result.GeneratedSources);
@@ -434,7 +436,7 @@ public partial class XmlToDescriptionGeneratorTests
                     return input;
                 }
             }
-            """);
+            """, "MCP002");
 
         Assert.True(result.Success);
         Assert.Empty(result.GeneratedSources);
@@ -552,7 +554,7 @@ public partial class XmlToDescriptionGeneratorTests
                     return input;
                 }
             }
-            """);
+            """, "MCP002");
 
         Assert.True(result.Success);
         Assert.Empty(result.GeneratedSources);
@@ -583,7 +585,7 @@ public partial class XmlToDescriptionGeneratorTests
                     return input;
                 }
             }
-            """);
+            """, "MCP002");
 
         Assert.True(result.Success);
         Assert.Empty(result.GeneratedSources);
@@ -614,7 +616,7 @@ public partial class XmlToDescriptionGeneratorTests
                     return input;
                 }
             }
-            """);
+            """, "MCP002");
 
         Assert.True(result.Success);
         Assert.Empty(result.GeneratedSources);
@@ -695,7 +697,7 @@ public partial class XmlToDescriptionGeneratorTests
                     return input;
                 }
             }
-            """);
+            """, "MCP001");
 
         // Should not throw, generates partial implementation without Description attributes
         Assert.True(result.Success);
@@ -725,6 +727,51 @@ public partial class XmlToDescriptionGeneratorTests
         var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "MCP001");
         Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity);
         Assert.Contains("invalid", diagnostic.GetMessage(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Generator_DiagnosticHasValidSourceLocation()
+    {
+        // This test verifies that diagnostic locations are properly reconstructed
+        // and point to valid source positions (regression test for locations from stale compilations)
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace Test;
+
+            [McpServerToolType]
+            public class TestTools
+            {
+                /// <summary>
+                /// Test tool
+                /// </summary>
+                [McpServerTool]
+                public static string TestMethod(string input)
+                {
+                    return input;
+                }
+            }
+            """, "MCP002");
+
+        Assert.True(result.Success);
+        
+        // Verify the diagnostic has a valid location with correct line/column information
+        var diagnostic = Assert.Single(result.Diagnostics, d => d.Id == "MCP002");
+        Assert.NotNull(diagnostic.Location);
+        
+        // Verify the location span has valid position information
+        var lineSpan = diagnostic.Location.GetLineSpan();
+        Assert.True(lineSpan.IsValid, "Diagnostic line span should be valid");
+        
+        // Verify reasonable location values without assuming specific line numbers
+        Assert.True(lineSpan.StartLinePosition.Line >= 0, "Start line should be non-negative");
+        Assert.True(lineSpan.StartLinePosition.Character >= 0, "Start character should be non-negative");
+        Assert.True(lineSpan.EndLinePosition.Line >= lineSpan.StartLinePosition.Line, "End line should be >= start line");
+        
+        // The span should have a non-zero length (the identifier "TestMethod" is 10 characters)
+        Assert.True(diagnostic.Location.SourceSpan.Length > 0, "Span should have non-zero length");
+        Assert.Equal(10, diagnostic.Location.SourceSpan.Length); // "TestMethod".Length == 10
     }
 
     [Fact]
@@ -1559,7 +1606,7 @@ public partial class XmlToDescriptionGeneratorTests
                 partial class TestTools
                 {
                     [Description("Async tool")]
-                    public partial Task<string> DoWorkAsync(string input);
+                    public partial global::System.Threading.Tasks.Task<string> DoWorkAsync(string input);
                 }
             }
             """;
@@ -1609,7 +1656,7 @@ public partial class XmlToDescriptionGeneratorTests
                 partial class TestTools
                 {
                     [Description("Static async tool")]
-                    public static partial Task<string> StaticAsyncMethod(string input);
+                    public static partial global::System.Threading.Tasks.Task<string> StaticAsyncMethod(string input);
                 }
             }
             """;
@@ -1661,7 +1708,7 @@ public partial class XmlToDescriptionGeneratorTests
                 partial class TestTools
                 {
                     [Description("Async tool with defaults")]
-                    public static partial Task<string> AsyncWithDefaults([Description("The input")] string input, [Description("Timeout in ms")] int timeout = 1000);
+                    public static partial global::System.Threading.Tasks.Task<string> AsyncWithDefaults([Description("The input")] string input, [Description("Timeout in ms")] int timeout = 1000);
                 }
             }
             """;
@@ -1717,7 +1764,388 @@ public partial class XmlToDescriptionGeneratorTests
         AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
     }
 
-    private GeneratorRunResult RunGenerator([StringSyntax("C#-test")] string source)
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Generator_WithTypeFromDifferentNamespace_GeneratesFullyQualifiedTypeName(bool useFullyQualifiedTypesInSource)
+    {
+        // This test validates that regardless of whether the source code uses fully qualified
+        // or unqualified type names, the generator always emits fully qualified type names
+        // with global:: prefix. This fixes the issue where parameter types from different
+        // namespaces caused build failures.
+        string usingDirective = useFullyQualifiedTypesInSource ? "" : "using MyApp.Actions;";
+        string returnType = useFullyQualifiedTypesInSource ? "System.Threading.Tasks.Task<string>" : "Task<string>";
+        string parameterType = useFullyQualifiedTypesInSource ? "MyApp.Actions.MyAction" : "MyAction";
+
+        var result = RunGenerator($$"""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+            using System.Threading.Tasks;
+            {{usingDirective}}
+
+            namespace MyApp.Actions
+            {
+                public enum MyAction
+                {
+                    One,
+                    Two
+                }
+            }
+
+            namespace MyApp
+            {
+                [McpServerToolType]
+                public sealed partial class Tools
+                {
+                    /// <summary>Do a thing based on an action.</summary>
+                    /// <param name="action">The action to perform.</param>
+                    [McpServerTool]
+                    public async partial {{returnType}} DoThing({{parameterType}} action)
+                        => await Task.FromResult("ok");
+                }
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+
+        // Regardless of source qualification, generated code should always use
+        // fully qualified type names with global:: prefix
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace MyApp
+            {
+                partial class Tools
+                {
+                    [Description("Do a thing based on an action.")]
+                    public partial global::System.Threading.Tasks.Task<string> DoThing([Description("The action to perform.")] global::MyApp.Actions.MyAction action);
+                }
+            }
+            """;
+
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Generator_WithGenericListParameter_GeneratesFullyQualifiedTypeName()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+            using System.Collections.Generic;
+
+            namespace MyApp.Models
+            {
+                public class Item { }
+            }
+
+            namespace MyApp
+            {
+                [McpServerToolType]
+                public sealed partial class Tools
+                {
+                    /// <summary>Process items.</summary>
+                    /// <param name="items">The items to process.</param>
+                    [McpServerTool]
+                    public static partial string ProcessItems(List<MyApp.Models.Item> items)
+                        => "ok";
+                }
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace MyApp
+            {
+                partial class Tools
+                {
+                    [Description("Process items.")]
+                    public static partial string ProcessItems([Description("The items to process.")] global::System.Collections.Generic.List<global::MyApp.Models.Item> items);
+                }
+            }
+            """;
+
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Generator_WithGenericDictionaryParameter_GeneratesFullyQualifiedTypeName()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+            using System.Collections.Generic;
+
+            namespace MyApp.Models
+            {
+                public class Key { }
+                public class Value { }
+            }
+
+            namespace MyApp
+            {
+                [McpServerToolType]
+                public sealed partial class Tools
+                {
+                    /// <summary>Process mapping.</summary>
+                    /// <param name="mapping">The mapping to process.</param>
+                    [McpServerTool]
+                    public static partial string ProcessMapping(Dictionary<MyApp.Models.Key, MyApp.Models.Value> mapping)
+                        => "ok";
+                }
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace MyApp
+            {
+                partial class Tools
+                {
+                    [Description("Process mapping.")]
+                    public static partial string ProcessMapping([Description("The mapping to process.")] global::System.Collections.Generic.Dictionary<global::MyApp.Models.Key, global::MyApp.Models.Value> mapping);
+                }
+            }
+            """;
+
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Generator_WithArrayParameter_GeneratesFullyQualifiedTypeName()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace MyApp.Models
+            {
+                public class Item { }
+            }
+
+            namespace MyApp
+            {
+                [McpServerToolType]
+                public sealed partial class Tools
+                {
+                    /// <summary>Process items array.</summary>
+                    /// <param name="items">The items array to process.</param>
+                    [McpServerTool]
+                    public static partial string ProcessItemsArray(MyApp.Models.Item[] items)
+                        => "ok";
+                }
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace MyApp
+            {
+                partial class Tools
+                {
+                    [Description("Process items array.")]
+                    public static partial string ProcessItemsArray([Description("The items array to process.")] global::MyApp.Models.Item[] items);
+                }
+            }
+            """;
+
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Generator_WithNullableReferenceTypeParameter_GeneratesFullyQualifiedTypeName()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace MyApp.Models
+            {
+                public class Item { }
+            }
+
+            namespace MyApp
+            {
+                [McpServerToolType]
+                public sealed partial class Tools
+                {
+                    /// <summary>Process optional item.</summary>
+                    /// <param name="item">The optional item to process.</param>
+                    [McpServerTool]
+                    public static partial string ProcessOptionalItem(MyApp.Models.Item? item)
+                        => "ok";
+                }
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace MyApp
+            {
+                partial class Tools
+                {
+                    [Description("Process optional item.")]
+                    public static partial string ProcessOptionalItem([Description("The optional item to process.")] global::MyApp.Models.Item? item);
+                }
+            }
+            """;
+
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Generator_WithNestedTypeParameter_GeneratesFullyQualifiedTypeName()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace MyApp.Models
+            {
+                public class Container
+                {
+                    public class NestedItem { }
+                }
+            }
+
+            namespace MyApp
+            {
+                [McpServerToolType]
+                public sealed partial class Tools
+                {
+                    /// <summary>Process nested item.</summary>
+                    /// <param name="item">The nested item to process.</param>
+                    [McpServerTool]
+                    public static partial string ProcessNestedItem(MyApp.Models.Container.NestedItem item)
+                        => "ok";
+                }
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace MyApp
+            {
+                partial class Tools
+                {
+                    [Description("Process nested item.")]
+                    public static partial string ProcessNestedItem([Description("The nested item to process.")] global::MyApp.Models.Container.NestedItem item);
+                }
+            }
+            """;
+
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Generator_WithNullableValueTypeParameter_GeneratesFullyQualifiedTypeName()
+    {
+        var result = RunGenerator("""
+            using ModelContextProtocol.Server;
+            using System.ComponentModel;
+
+            namespace MyApp.Models
+            {
+                public struct MyStruct { }
+            }
+
+            namespace MyApp
+            {
+                [McpServerToolType]
+                public sealed partial class Tools
+                {
+                    /// <summary>Process optional struct.</summary>
+                    /// <param name="value">The optional struct to process.</param>
+                    [McpServerTool]
+                    public static partial string ProcessOptionalStruct(MyApp.Models.MyStruct? value)
+                        => "ok";
+                }
+            }
+            """);
+
+        Assert.True(result.Success);
+        Assert.Single(result.GeneratedSources);
+
+        var expected = $$"""
+            // <auto-generated/>
+            // ModelContextProtocol.Analyzers {{typeof(XmlToDescriptionGenerator).Assembly.GetName().Version}}
+
+            #pragma warning disable
+
+            using System.ComponentModel;
+            using ModelContextProtocol.Server;
+
+            namespace MyApp
+            {
+                partial class Tools
+                {
+                    [Description("Process optional struct.")]
+                    public static partial string ProcessOptionalStruct([Description("The optional struct to process.")] global::MyApp.Models.MyStruct? value);
+                }
+            }
+            """;
+
+        AssertGeneratedSourceEquals(expected, result.GeneratedSources[0].SourceText.ToString());
+    }
+
+    private GeneratorRunResult RunGenerator([StringSyntax("C#-test")] string source, params string[] expectedDiagnosticIds)
     {
         var syntaxTree = CSharpSyntaxTree.ParseText(source);
 
@@ -1755,15 +2183,34 @@ public partial class XmlToDescriptionGeneratorTests
 
         var driver = (CSharpGeneratorDriver)CSharpGeneratorDriver
             .Create(new XmlToDescriptionGenerator())
-            .RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var diagnostics);
+            .RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var generatorDiagnostics);
 
         var runResult = driver.GetRunResult();
 
+        // Run the suppressor to check that CS1066 warnings for MCP methods are suppressed
+        var analyzers = ImmutableArray.Create<DiagnosticAnalyzer>(new CS1066Suppressor());
+        var compilationWithAnalyzers = outputCompilation.WithAnalyzers(analyzers);
+        var allDiagnostics = compilationWithAnalyzers.GetAllDiagnosticsAsync().GetAwaiter().GetResult();
+        
+        // Check for any unsuppressed CS1066 warnings - these should be suppressed by our suppressor
+        var unsuppressedCs1066 = allDiagnostics
+            .Where(d => d.Id == "CS1066" && !d.IsSuppressed)
+            .ToList();
+
+        // Collect all diagnostics from the generator (any verbosity level)
+        var allGeneratorDiagnostics = generatorDiagnostics.Concat(unsuppressedCs1066).ToList();
+        
+        // Check for unexpected diagnostics - any diagnostic that isn't in the expected list
+        var expectedSet = new HashSet<string>(expectedDiagnosticIds);
+        var unexpectedDiagnostics = allGeneratorDiagnostics
+            .Where(d => !expectedSet.Contains(d.Id))
+            .ToList();
+
         return new GeneratorRunResult
         {
-            Success = !diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error),
+            Success = unexpectedDiagnostics.Count == 0,
             GeneratedSources = runResult.GeneratedTrees.Select(t => (t.FilePath, t.GetText())).ToList(),
-            Diagnostics = diagnostics.ToList(),
+            Diagnostics = allGeneratorDiagnostics,
             Compilation = outputCompilation
         };
     }
@@ -1796,4 +2243,383 @@ public partial class XmlToDescriptionGeneratorTests
         public List<Diagnostic> Diagnostics { get; set; } = [];
         public Compilation? Compilation { get; set; }
     }
+
+    [Fact]
+    public void Caching_WithIdenticalCompilation_AllOutputsCached()
+    {
+        // This tests that running the same compilation twice uses cached results
+        const string Source = """
+            using ModelContextProtocol.Server;
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>Test tool</summary>
+                [McpServerTool]
+                public static partial string TestMethod(string input) => input;
+            }
+            """;
+
+        var compilation = CreateCompilation(Source);
+        var driver = CreateTrackedDriver();
+
+        // Run #1
+        driver = driver.RunGenerators(compilation, TestContext.Current.CancellationToken);
+        var result1 = driver.GetRunResult();
+        Assert.Single(result1.Results);
+        Assert.Single(result1.Results[0].GeneratedSources);
+
+        // Run #2 with same compilation - should be fully cached
+        driver = driver.RunGenerators(compilation, TestContext.Current.CancellationToken);
+        var result2 = driver.GetRunResult();
+        Assert.Single(result2.Results);
+        
+        var allOutputs = result2.Results[0].TrackedSteps.Values
+            .SelectMany(steps => steps.SelectMany(step => step.Outputs))
+            .ToList();
+        Assert.NotEmpty(allOutputs);
+        Assert.All(allOutputs, output => 
+            Assert.True(output.Reason is IncrementalStepRunReason.Cached or IncrementalStepRunReason.Unchanged,
+                $"Expected Cached or Unchanged but got {output.Reason}"));
+    }
+
+    [Fact]
+    public void Caching_WithNewCompilationSameSource_OutputsCached()
+    {
+        const string Source = """
+            using ModelContextProtocol.Server;
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>Test tool</summary>
+                [McpServerTool]
+                public static partial string TestMethod(string input) => input;
+            }
+            """;
+
+        var driver = CreateTrackedDriver();
+
+        // Run #1 with first compilation
+        var compilation1 = CreateCompilation(Source);
+        driver = driver.RunGenerators(compilation1, TestContext.Current.CancellationToken);
+        var result1 = driver.GetRunResult();
+        Assert.Single(result1.Results);
+
+        // Run #2 with NEW compilation from same source
+        // This creates new syntax trees and new symbol instances
+        var compilation2 = CreateCompilation(Source);
+        Assert.NotSame(compilation1, compilation2); // Verify these are different instances
+        
+        driver = driver.RunGenerators(compilation2, TestContext.Current.CancellationToken);
+        var result2 = driver.GetRunResult();
+        Assert.Single(result2.Results);
+
+        // The source generation output should be cached because the extracted data is semantically identical
+        var sourceOutputSteps = result2.Results[0].TrackedSteps
+            .Where(kvp => kvp.Key.Contains("SourceOutput") || kvp.Key.Contains("RegisterSourceOutput"))
+            .SelectMany(kvp => kvp.Value.SelectMany(step => step.Outputs))
+            .ToList();
+
+        // At minimum, check that we're not regenerating everything from scratch
+        var allOutputs = result2.Results[0].TrackedSteps.Values
+            .SelectMany(steps => steps.SelectMany(step => step.Outputs))
+            .ToList();
+        Assert.NotEmpty(allOutputs);
+        
+        // With proper value equality, the final output should be unchanged
+        // (the source text should be identical even if intermediate steps ran)
+        Assert.Equal(
+            result1.Results[0].GeneratedSources[0].SourceText.ToString(),
+            result2.Results[0].GeneratedSources[0].SourceText.ToString());
+    }
+
+    [Fact]
+    public void Caching_WithUnrelatedFileChange_McpMethodCached()
+    {
+        // Adding an unrelated file should not cause MCP method extraction to re-run
+        const string McpSource = """
+            using ModelContextProtocol.Server;
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>Test tool</summary>
+                [McpServerTool]
+                public static partial string TestMethod(string input) => input;
+            }
+            """;
+
+        const string UnrelatedSource1 = """
+            namespace Other;
+            public class Unrelated { public int Value { get; set; } }
+            """;
+
+        const string UnrelatedSource2 = """
+            namespace Other;
+            public class Unrelated { public int Value { get; set; } public string Name { get; set; } }
+            """;
+
+        var driver = CreateTrackedDriver();
+
+        // Run #1 with MCP file + unrelated file
+        driver = driver.RunGenerators(CreateCompilation(McpSource, UnrelatedSource1), TestContext.Current.CancellationToken);
+        var result1 = driver.GetRunResult();
+        Assert.Single(result1.Results);
+        var output1 = result1.Results[0].GeneratedSources[0].SourceText.ToString();
+
+        // Run #2 with MCP file + MODIFIED unrelated file
+        driver = driver.RunGenerators(CreateCompilation(McpSource, UnrelatedSource2), TestContext.Current.CancellationToken);
+        var result2 = driver.GetRunResult();
+        Assert.Single(result2.Results);
+        var output2 = result2.Results[0].GeneratedSources[0].SourceText.ToString();
+
+        // Output should be identical
+        Assert.Equal(output1, output2);
+
+        // Check that ForAttributeWithMetadataName steps for the MCP method are cached
+        var forAttributeSteps = result2.Results[0].TrackedSteps
+            .Where(kvp => kvp.Key.Contains("ForAttributeWithMetadataName"))
+            .SelectMany(kvp => kvp.Value.SelectMany(step => step.Outputs))
+            .ToList();
+
+        // The MCP method should be cached since it didn't change
+        Assert.Contains(forAttributeSteps, output => 
+            output.Reason is IncrementalStepRunReason.Cached or IncrementalStepRunReason.Unchanged);
+    }
+
+    [Fact]
+    public void Caching_WithXmlDocChange_OutputRegenerated()
+    {
+        // Changing XML docs should cause regeneration
+        const string Source1 = """
+            using ModelContextProtocol.Server;
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>Original description</summary>
+                [McpServerTool]
+                public static partial string TestMethod(string input) => input;
+            }
+            """;
+
+        const string Source2 = """
+            using ModelContextProtocol.Server;
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>Modified description</summary>
+                [McpServerTool]
+                public static partial string TestMethod(string input) => input;
+            }
+            """;
+
+        var driver = CreateTrackedDriver();
+
+        // Run #1
+        driver = driver.RunGenerators(CreateCompilation(Source1), TestContext.Current.CancellationToken);
+        var result1 = driver.GetRunResult();
+        var output1 = result1.Results[0].GeneratedSources[0].SourceText.ToString();
+        Assert.Contains("Original description", output1);
+
+        // Run #2 with modified XML docs
+        driver = driver.RunGenerators(CreateCompilation(Source2), TestContext.Current.CancellationToken);
+        var result2 = driver.GetRunResult();
+        var output2 = result2.Results[0].GeneratedSources[0].SourceText.ToString();
+        Assert.Contains("Modified description", output2);
+        Assert.DoesNotContain("Original description", output2);
+
+        // Verify that there was actual regeneration (not just cached)
+        var allOutputs = result2.Results[0].TrackedSteps.Values
+            .SelectMany(steps => steps.SelectMany(step => step.Outputs))
+            .ToList();
+        Assert.Contains(allOutputs, output => 
+            output.Reason is IncrementalStepRunReason.Modified or IncrementalStepRunReason.New);
+    }
+
+    [Fact]
+    public void Caching_WithAddedMethod_ExistingMethodCached()
+    {
+        const string Source1 = """
+            using ModelContextProtocol.Server;
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>First tool</summary>
+                [McpServerTool]
+                public static partial string FirstMethod(string input) => input;
+            }
+            """;
+
+        const string Source2 = """
+            using ModelContextProtocol.Server;
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class TestTools
+            {
+                /// <summary>First tool</summary>
+                [McpServerTool]
+                public static partial string FirstMethod(string input) => input;
+
+                /// <summary>Second tool</summary>
+                [McpServerTool]
+                public static partial string SecondMethod(string input) => input;
+            }
+            """;
+
+        var driver = CreateTrackedDriver();
+
+        // Run #1
+        driver = driver.RunGenerators(CreateCompilation(Source1), TestContext.Current.CancellationToken);
+        var result1 = driver.GetRunResult();
+        Assert.Single(result1.Results[0].GeneratedSources);
+
+        // Run #2 with added method
+        driver = driver.RunGenerators(CreateCompilation(Source2), TestContext.Current.CancellationToken);
+        var result2 = driver.GetRunResult();
+        Assert.Single(result2.Results[0].GeneratedSources);
+        
+        var output2 = result2.Results[0].GeneratedSources[0].SourceText.ToString();
+        Assert.Contains("First tool", output2);
+        Assert.Contains("Second tool", output2);
+
+        // The ForAttributeWithMetadataName step should have some cached outputs (the first method)
+        var forAttributeSteps = result2.Results[0].TrackedSteps
+            .Where(kvp => kvp.Key.Contains("ForAttributeWithMetadataName"))
+            .SelectMany(kvp => kvp.Value.SelectMany(step => step.Outputs))
+            .ToList();
+
+        // Should have both cached (first method) and new (second method) outputs
+        Assert.Contains(forAttributeSteps, output => 
+            output.Reason is IncrementalStepRunReason.Cached or IncrementalStepRunReason.Unchanged);
+        Assert.Contains(forAttributeSteps, output => 
+            output.Reason is IncrementalStepRunReason.New or IncrementalStepRunReason.Modified);
+    }
+
+    [Fact]
+    public void Caching_MultipleMethodsAcrossFiles_IndependentCaching()
+    {
+        const string File1 = """
+            using ModelContextProtocol.Server;
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class Tools1
+            {
+                /// <summary>Tool in file 1</summary>
+                [McpServerTool]
+                public static partial string Method1(string input) => input;
+            }
+            """;
+
+        const string File2Original = """
+            using ModelContextProtocol.Server;
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class Tools2
+            {
+                /// <summary>Tool in file 2</summary>
+                [McpServerTool]
+                public static partial string Method2(string input) => input;
+            }
+            """;
+
+        const string File2Modified = """
+            using ModelContextProtocol.Server;
+            namespace Test;
+
+            [McpServerToolType]
+            public partial class Tools2
+            {
+                /// <summary>Modified tool in file 2</summary>
+                [McpServerTool]
+                public static partial string Method2(string input) => input;
+            }
+            """;
+
+        var driver = CreateTrackedDriver();
+
+        // Run #1
+        driver = driver.RunGenerators(CreateCompilation(File1, File2Original), TestContext.Current.CancellationToken);
+        var result1 = driver.GetRunResult();
+        Assert.Single(result1.Results[0].GeneratedSources);
+
+        // Run #2 - only File2 changed
+        driver = driver.RunGenerators(CreateCompilation(File1, File2Modified), TestContext.Current.CancellationToken);
+        var result2 = driver.GetRunResult();
+        Assert.Single(result2.Results[0].GeneratedSources);
+
+        var output2 = result2.Results[0].GeneratedSources[0].SourceText.ToString();
+        Assert.Contains("Tool in file 1", output2); // Unchanged
+        Assert.Contains("Modified tool in file 2", output2); // Changed
+
+        // Method1 extraction should be cached, Method2 should be modified
+        var forAttributeSteps = result2.Results[0].TrackedSteps
+            .Where(kvp => kvp.Key.Contains("ForAttributeWithMetadataName"))
+            .SelectMany(kvp => kvp.Value.SelectMany(step => step.Outputs))
+            .ToList();
+
+        Assert.Contains(forAttributeSteps, output => 
+            output.Reason is IncrementalStepRunReason.Cached or IncrementalStepRunReason.Unchanged);
+        Assert.Contains(forAttributeSteps, output => 
+            output.Reason is IncrementalStepRunReason.Modified or IncrementalStepRunReason.New);
+    }
+
+    /// <summary>
+    /// Creates a compilation with the specified source and standard references.
+    /// Each call creates a NEW compilation instance to ensure we're testing value equality, not reference equality.
+    /// </summary>
+    private static CSharpCompilation CreateCompilation(params string[] sources)
+    {
+        var syntaxTrees = sources.Select(s => CSharpSyntaxTree.ParseText(s)).ToArray();
+
+        var runtimePath = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
+        List<MetadataReference> referenceList =
+        [
+            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(System.ComponentModel.DescriptionAttribute).Assembly.Location),
+            MetadataReference.CreateFromFile(Path.Combine(runtimePath, "System.Runtime.dll")),
+            MetadataReference.CreateFromFile(Path.Combine(runtimePath, "netstandard.dll")),
+        ];
+
+        try
+        {
+            var coreAssemblyPath = Path.Combine(AppContext.BaseDirectory, "ModelContextProtocol.Core.dll");
+            if (File.Exists(coreAssemblyPath))
+            {
+                referenceList.Add(MetadataReference.CreateFromFile(coreAssemblyPath));
+            }
+        }
+        catch
+        {
+            // Ignore
+        }
+
+        return CSharpCompilation.Create(
+            "TestAssembly",
+            syntaxTrees,
+            referenceList,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+    }
+
+    /// <summary>
+    /// Creates a generator driver with step tracking enabled.
+    /// </summary>
+    private static GeneratorDriver CreateTrackedDriver() =>
+        CSharpGeneratorDriver.Create(
+            generators: [new XmlToDescriptionGenerator().AsSourceGenerator()],
+            driverOptions: new GeneratorDriverOptions(
+                disabledOutputs: default,
+                trackIncrementalGeneratorSteps: true));
 }

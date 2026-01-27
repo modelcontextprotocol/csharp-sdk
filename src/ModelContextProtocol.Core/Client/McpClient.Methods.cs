@@ -21,6 +21,20 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>An <see cref="McpClient"/> that's connected to the specified server.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="clientTransport"/> is <see langword="null"/>.</exception>
+    /// <exception cref="HttpRequestException">An error occurred while connecting to the server over HTTP.</exception>
+    /// <exception cref="McpException">The server returned an error response during initialization.</exception>
+    /// <remarks>
+    /// <para>
+    /// When using an HTTP-based transport (such as <see cref="HttpClientTransport"/>), this method may throw
+    /// <see cref="HttpRequestException"/> if there is a problem establishing the connection to the MCP server.
+    /// </para>
+    /// <para>
+    /// If the server requires authentication and credentials are not provided or are invalid, an
+    /// <see cref="HttpRequestException"/> with an HTTP 401 Unauthorized status code will be thrown.
+    /// To authenticate with a protected server, configure the <see cref="HttpClientTransportOptions.OAuth"/>
+    /// property of the transport with appropriate credentials before calling this method.
+    /// </para>
+    /// </remarks>
     public static async Task<McpClient> CreateAsync(
         IClientTransport clientTransport,
         McpClientOptions? clientOptions = null,
@@ -126,6 +140,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A list of all available tools as <see cref="McpClientTool"/> instances.</returns>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public async ValueTask<IList<McpClientTool>> ListToolsAsync(
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -155,6 +170,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>The result of the request as provided by the server.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     /// <remarks>
     /// The <see cref="ListToolsAsync(RequestOptions?, CancellationToken)"/> overload retrieves all tools by automatically handling pagination.
     /// This overload works with the lower-level <see cref="ListToolsRequestParams"/> and <see cref="ListToolsResult"/>, returning the raw result from the server.
@@ -180,6 +196,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A list of all available prompts as <see cref="McpClientPrompt"/> instances.</returns>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public async ValueTask<IList<McpClientPrompt>> ListPromptsAsync(
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -209,6 +226,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>The result of the request as provided by the server.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     /// <remarks>
     /// The <see cref="ListPromptsAsync(RequestOptions?, CancellationToken)"/> overload retrieves all prompts by automatically handling pagination.
     /// This overload works with the lower-level <see cref="ListPromptsRequestParams"/> and <see cref="ListPromptsResult"/>, returning the raw result from the server.
@@ -238,6 +256,7 @@ public abstract partial class McpClient : McpSession
     /// <returns>A task containing the prompt's result with content and messages.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="name"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="name"/> is empty or composed entirely of whitespace.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public ValueTask<GetPromptResult> GetPromptAsync(
         string name,
         IReadOnlyDictionary<string, object?>? arguments = null,
@@ -266,6 +285,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>The result of the request as provided by the server.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public ValueTask<GetPromptResult> GetPromptAsync(
         GetPromptRequestParams requestParams,
         CancellationToken cancellationToken = default)
@@ -286,6 +306,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A list of all available resource templates as <see cref="ResourceTemplate"/> instances.</returns>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public async ValueTask<IList<McpClientResourceTemplate>> ListResourceTemplatesAsync(
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -315,6 +336,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>The result of the request as provided by the server.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     /// <remarks>
     /// The <see cref="ListResourceTemplatesAsync(RequestOptions?, CancellationToken)"/> overload retrieves all resource templates by automatically handling pagination.
     /// This overload works with the lower-level <see cref="ListResourceTemplatesRequestParams"/> and <see cref="ListResourceTemplatesResult"/>, returning the raw result from the server.
@@ -340,6 +362,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A list of all available resources as <see cref="Resource"/> instances.</returns>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public async ValueTask<IList<McpClientResource>> ListResourcesAsync(
         RequestOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -369,6 +392,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>The result of the request as provided by the server.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     /// <remarks>
     /// The <see cref="ListResourcesAsync(RequestOptions?, CancellationToken)"/> overload retrieves all resources by automatically handling pagination.
     /// This overload works with the lower-level <see cref="ListResourcesRequestParams"/> and <see cref="ListResourcesResult"/>, returning the raw result from the server.
@@ -395,6 +419,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public ValueTask<ReadResourceResult> ReadResourceAsync(
         Uri uri, RequestOptions? options = null, CancellationToken cancellationToken = default)
     {
@@ -411,6 +436,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="uri"/> is empty or composed entirely of whitespace.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public ValueTask<ReadResourceResult> ReadResourceAsync(
         string uri, RequestOptions? options = null, CancellationToken cancellationToken = default)
     {
@@ -432,6 +458,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <exception cref="ArgumentNullException"><paramref name="uriTemplate"/> or <paramref name="arguments"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="uriTemplate"/> is empty or composed entirely of whitespace.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public ValueTask<ReadResourceResult> ReadResourceAsync(
         string uriTemplate, IReadOnlyDictionary<string, object?> arguments, RequestOptions? options = null, CancellationToken cancellationToken = default)
     {
@@ -454,6 +481,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>The result of the request.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public ValueTask<ReadResourceResult> ReadResourceAsync(
         ReadResourceRequestParams requestParams,
         CancellationToken cancellationToken = default)
@@ -479,6 +507,7 @@ public abstract partial class McpClient : McpSession
     /// <returns>A <see cref="CompleteResult"/> containing completion suggestions.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="reference"/> or <paramref name="argumentName"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="argumentName"/> is empty or composed entirely of whitespace.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public ValueTask<CompleteResult> CompleteAsync(
         Reference reference, string argumentName, string argumentValue,
         RequestOptions? options = null, CancellationToken cancellationToken = default)
@@ -503,6 +532,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>The result of the request.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public ValueTask<CompleteResult> CompleteAsync(
         CompleteRequestParams requestParams, 
         CancellationToken cancellationToken = default)
@@ -525,6 +555,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous operation.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public Task SubscribeToResourceAsync(Uri uri, RequestOptions? options = null, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(uri);
@@ -541,6 +572,7 @@ public abstract partial class McpClient : McpSession
     /// <returns>A task that represents the asynchronous operation.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="uri"/> is empty or composed entirely of whitespace.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public Task SubscribeToResourceAsync(string uri, RequestOptions? options = null, CancellationToken cancellationToken = default)
     {
         Throw.IfNullOrWhiteSpace(uri);
@@ -561,6 +593,19 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>The result of the request.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    /// <remarks>
+    /// <para>
+    /// This method subscribes to resource update notifications but does not register a handler.
+    /// To receive notifications, you must separately call <see cref="McpSession.RegisterNotificationHandler(string, Func{JsonRpcNotification, CancellationToken, ValueTask})"/>
+    /// with <see cref="NotificationMethods.ResourceUpdatedNotification"/> and filter for the specific resource URI.
+    /// To unsubscribe, call <see cref="UnsubscribeFromResourceAsync(UnsubscribeRequestParams, CancellationToken)"/> and dispose the handler registration.
+    /// </para>
+    /// <para>
+    /// For a simpler API that handles both subscription and notification registration in a single call,
+    /// use <see cref="SubscribeToResourceAsync(Uri, Func{ResourceUpdatedNotificationParams, CancellationToken, ValueTask}, RequestOptions?, CancellationToken)"/>.
+    /// </para>
+    /// </remarks>
     public Task SubscribeToResourceAsync(
         SubscribeRequestParams requestParams,
         CancellationToken cancellationToken = default)
@@ -576,6 +621,142 @@ public abstract partial class McpClient : McpSession
     }
 
     /// <summary>
+    /// Subscribes to a resource on the server and registers a handler for notifications when it changes.
+    /// </summary>
+    /// <param name="uri">The URI of the resource to which to subscribe.</param>
+    /// <param name="handler">The handler to invoke when the resource is updated. It receives <see cref="ResourceUpdatedNotificationParams"/> for the subscribed resource.</param>
+    /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>
+    /// A task that completes with an <see cref="IAsyncDisposable"/> that, when disposed, unsubscribes from the resource
+    /// and removes the notification handler.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="uri"/> or <paramref name="handler"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    /// <remarks>
+    /// <para>
+    /// This method provides a convenient way to subscribe to resource updates and handle notifications in a single call.
+    /// The returned <see cref="IAsyncDisposable"/> manages both the subscription and the notification handler registration.
+    /// When disposed, it automatically unsubscribes from the resource and removes the handler.
+    /// </para>
+    /// <para>
+    /// The handler will only be invoked for notifications related to the specified resource URI.
+    /// Notifications for other resources are filtered out automatically.
+    /// </para>
+    /// </remarks>
+    public Task<IAsyncDisposable> SubscribeToResourceAsync(
+        Uri uri,
+        Func<ResourceUpdatedNotificationParams, CancellationToken, ValueTask> handler,
+        RequestOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(uri);
+
+        return SubscribeToResourceAsync(uri.AbsoluteUri, handler, options, cancellationToken);
+    }
+
+    /// <summary>
+    /// Subscribes to a resource on the server and registers a handler for notifications when it changes.
+    /// </summary>
+    /// <param name="uri">The URI of the resource to which to subscribe.</param>
+    /// <param name="handler">The handler to invoke when the resource is updated. It receives <see cref="ResourceUpdatedNotificationParams"/> for the subscribed resource.</param>
+    /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>
+    /// A task that completes with an <see cref="IAsyncDisposable"/> that, when disposed, unsubscribes from the resource
+    /// and removes the notification handler.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="uri"/> or <paramref name="handler"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="uri"/> is empty or composed entirely of whitespace.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
+    /// <remarks>
+    /// <para>
+    /// This method provides a convenient way to subscribe to resource updates and handle notifications in a single call.
+    /// The returned <see cref="IAsyncDisposable"/> manages both the subscription and the notification handler registration.
+    /// When disposed, it automatically unsubscribes from the resource and removes the handler.
+    /// </para>
+    /// <para>
+    /// The handler will only be invoked for notifications related to the specified resource URI.
+    /// Notifications for other resources are filtered out automatically.
+    /// </para>
+    /// </remarks>
+    public async Task<IAsyncDisposable> SubscribeToResourceAsync(
+        string uri,
+        Func<ResourceUpdatedNotificationParams, CancellationToken, ValueTask> handler,
+        RequestOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNullOrWhiteSpace(uri);
+        Throw.IfNull(handler);
+
+        // Register a notification handler that filters for this specific resource
+        IAsyncDisposable handlerRegistration = RegisterNotificationHandler(
+            NotificationMethods.ResourceUpdatedNotification,
+            async (notification, ct) =>
+            {
+                if (JsonSerializer.Deserialize(notification.Params, McpJsonUtilities.JsonContext.Default.ResourceUpdatedNotificationParams) is { } resourceUpdate &&
+                    UriTemplate.UriTemplateComparer.Instance.Equals(resourceUpdate.Uri, uri))
+                {
+                    await handler(resourceUpdate, ct).ConfigureAwait(false);
+                }
+            });
+
+        try
+        {
+            // Subscribe to the resource
+            await SubscribeToResourceAsync(uri, options, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // If subscription fails, unregister the handler before propagating the exception
+            await handlerRegistration.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+
+        // Return a disposable that unsubscribes and removes the handler
+        return new ResourceSubscription(this, uri, handlerRegistration, options);
+    }
+
+    /// <summary>
+    /// Manages a resource subscription, handling both unsubscription and handler disposal.
+    /// </summary>
+    private sealed class ResourceSubscription : IAsyncDisposable
+    {
+        private readonly McpClient _client;
+        private readonly string _uri;
+        private readonly IAsyncDisposable _handlerRegistration;
+        private readonly RequestOptions? _options;
+        private int _disposed;
+
+        public ResourceSubscription(McpClient client, string uri, IAsyncDisposable handlerRegistration, RequestOptions? options)
+        {
+            _client = client;
+            _uri = uri;
+            _handlerRegistration = handlerRegistration;
+            _options = options;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            {
+                return;
+            }
+
+            try
+            {
+                // Unsubscribe from the resource
+                await _client.UnsubscribeFromResourceAsync(_uri, _options, CancellationToken.None).ConfigureAwait(false);
+            }
+            finally
+            {
+                // Dispose the notification handler registration
+                await _handlerRegistration.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+    }
+
+    /// <summary>
     /// Unsubscribes from a resource on the server to stop receiving notifications about its changes.
     /// </summary>
     /// <param name="uri">The URI of the resource to unsubscribe from.</param>
@@ -583,6 +764,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous operation.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public Task UnsubscribeFromResourceAsync(Uri uri, RequestOptions? options = null, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(uri);
@@ -599,6 +781,7 @@ public abstract partial class McpClient : McpSession
     /// <returns>A task that represents the asynchronous operation.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="uri"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="uri"/> is empty or composed entirely of whitespace.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public Task UnsubscribeFromResourceAsync(string uri, RequestOptions? options = null, CancellationToken cancellationToken = default)
     {
         Throw.IfNullOrWhiteSpace(uri);
@@ -619,6 +802,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>The result of the request.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public Task UnsubscribeFromResourceAsync(
         UnsubscribeRequestParams requestParams,
         CancellationToken cancellationToken = default)
@@ -643,6 +827,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>The <see cref="CallToolResult"/> from the tool execution.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="toolName"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public ValueTask<CallToolResult> CallToolAsync(
         string toolName,
         IReadOnlyDictionary<string, object?>? arguments = null,
@@ -712,6 +897,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>The result of the request.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public ValueTask<CallToolResult> CallToolAsync(
         CallToolRequestParams requestParams,
         CancellationToken cancellationToken = default)
@@ -733,6 +919,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public Task SetLoggingLevelAsync(LogLevel level, RequestOptions? options = null, CancellationToken cancellationToken = default) =>
         SetLoggingLevelAsync(McpServerImpl.ToLoggingLevel(level), options, cancellationToken);
 
@@ -743,6 +930,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public Task SetLoggingLevelAsync(LoggingLevel level, RequestOptions? options = null, CancellationToken cancellationToken = default)
     {
         return SetLoggingLevelAsync(
@@ -761,6 +949,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>The result of the request.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public Task SetLoggingLevelAsync(
         SetLevelRequestParams requestParams,
         CancellationToken cancellationToken = default)

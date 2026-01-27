@@ -8,7 +8,6 @@ using ModelContextProtocol.AspNetCore.Authentication;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Authentication;
 using System.Net;
-using Xunit.Sdk;
 
 namespace ModelContextProtocol.AspNetCore.Tests.OAuth;
 
@@ -84,7 +83,7 @@ public abstract class OAuthTestBase : KestrelInMemoryTest, IAsyncDisposable
 
     protected async Task<WebApplication> StartMcpServerAsync(string path = "", string? authScheme = null)
     {
-        Builder.Services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+        Builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
         {
             options.TokenValidationParameters.ValidAudience = $"{McpServerUrl}{path}";
         });

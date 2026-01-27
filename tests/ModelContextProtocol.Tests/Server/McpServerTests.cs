@@ -128,7 +128,8 @@ public class McpServerTests : LoggedTest
         // Arrange
         await using var transport = new TestServerTransport();
         await using var server = McpServer.Create(transport, _options, LoggerFactory);
-        SetClientCapabilities(server, new ClientCapabilities());
+        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+        await InitializeServerAsync(transport, new ClientCapabilities(), TestContext.Current.CancellationToken);
 
         var action = async () => await server.SampleAsync(
             new CreateMessageRequestParams { Messages = [], MaxTokens = 1000 }, 
@@ -136,6 +137,9 @@ public class McpServerTests : LoggedTest
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(action);
+
+        await transport.DisposeAsync();
+        await runTask;
     }
 
     [Fact]
@@ -144,9 +148,8 @@ public class McpServerTests : LoggedTest
         // Arrange
         await using var transport = new TestServerTransport();
         await using var server = McpServer.Create(transport, _options, LoggerFactory);
-        SetClientCapabilities(server, new ClientCapabilities { Sampling = new SamplingCapability() });
-
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+        await InitializeServerAsync(transport, new ClientCapabilities { Sampling = new SamplingCapability() }, TestContext.Current.CancellationToken);
 
         // Act
         var result = await server.SampleAsync(
@@ -155,8 +158,10 @@ public class McpServerTests : LoggedTest
 
         Assert.NotNull(result);
         Assert.NotEmpty(transport.SentMessages);
-        Assert.IsType<JsonRpcRequest>(transport.SentMessages[0]);
-        Assert.Equal(RequestMethods.SamplingCreateMessage, ((JsonRpcRequest)transport.SentMessages[0]).Method);
+        // First message is the initialize response, second is the sampling request
+        Assert.True(transport.SentMessages.Count >= 2, "Expected at least 2 messages (initialize response and sampling request)");
+        var samplingRequest = Assert.IsType<JsonRpcRequest>(transport.SentMessages[1]);
+        Assert.Equal(RequestMethods.SamplingCreateMessage, samplingRequest.Method);
 
         await transport.DisposeAsync();
         await runTask;
@@ -168,12 +173,16 @@ public class McpServerTests : LoggedTest
         // Arrange
         await using var transport = new TestServerTransport();
         await using var server = McpServer.Create(transport, _options, LoggerFactory);
-        SetClientCapabilities(server, new ClientCapabilities());
+        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+        await InitializeServerAsync(transport, new ClientCapabilities(), TestContext.Current.CancellationToken);
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(async () => await server.RequestRootsAsync(
             new ListRootsRequestParams(), 
             CancellationToken.None));
+
+        await transport.DisposeAsync();
+        await runTask;
     }
 
     [Fact]
@@ -182,8 +191,8 @@ public class McpServerTests : LoggedTest
         // Arrange
         await using var transport = new TestServerTransport();
         await using var server = McpServer.Create(transport, _options, LoggerFactory);
-        SetClientCapabilities(server, new ClientCapabilities { Roots = new RootsCapability() });
         var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+        await InitializeServerAsync(transport, new ClientCapabilities { Roots = new RootsCapability() }, TestContext.Current.CancellationToken);
 
         // Act
         var result = await server.RequestRootsAsync(new ListRootsRequestParams(), CancellationToken.None);
@@ -191,8 +200,10 @@ public class McpServerTests : LoggedTest
         // Assert
         Assert.NotNull(result);
         Assert.NotEmpty(transport.SentMessages);
-        Assert.IsType<JsonRpcRequest>(transport.SentMessages[0]);
-        Assert.Equal(RequestMethods.RootsList, ((JsonRpcRequest)transport.SentMessages[0]).Method);
+        // First message is the initialize response, second is the roots request
+        Assert.True(transport.SentMessages.Count >= 2, "Expected at least 2 messages (initialize response and roots request)");
+        var rootsRequest = Assert.IsType<JsonRpcRequest>(transport.SentMessages[1]);
+        Assert.Equal(RequestMethods.RootsList, rootsRequest.Method);
 
         await transport.DisposeAsync();
         await runTask;
@@ -204,12 +215,16 @@ public class McpServerTests : LoggedTest
         // Arrange
         await using var transport = new TestServerTransport();
         await using var server = McpServer.Create(transport, _options, LoggerFactory);
-        SetClientCapabilities(server, new ClientCapabilities());
+        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+        await InitializeServerAsync(transport, new ClientCapabilities(), TestContext.Current.CancellationToken);
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(async () => await server.ElicitAsync(
             new ElicitRequestParams { Message = "" }, 
             CancellationToken.None));
+
+        await transport.DisposeAsync();
+        await runTask;
     }
 
     [Fact]
@@ -218,14 +233,14 @@ public class McpServerTests : LoggedTest
         // Arrange
         await using var transport = new TestServerTransport();
         await using var server = McpServer.Create(transport, _options, LoggerFactory);
-        SetClientCapabilities(server, new ClientCapabilities
+        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+        await InitializeServerAsync(transport, new ClientCapabilities
         {
             Elicitation = new()
             {
                 Form = new(),
             },
-        });
-        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+        }, TestContext.Current.CancellationToken);
 
         // Act
         var result = await server.ElicitAsync(new ElicitRequestParams { Message = "", RequestedSchema = new() }, CancellationToken.None);
@@ -233,8 +248,10 @@ public class McpServerTests : LoggedTest
         // Assert
         Assert.NotNull(result);
         Assert.NotEmpty(transport.SentMessages);
-        Assert.IsType<JsonRpcRequest>(transport.SentMessages[0]);
-        Assert.Equal(RequestMethods.ElicitationCreate, ((JsonRpcRequest)transport.SentMessages[0]).Method);
+        // First message is the initialize response, second is the elicit request
+        Assert.True(transport.SentMessages.Count >= 2, "Expected at least 2 messages (initialize response and elicit request)");
+        var elicitRequest = Assert.IsType<JsonRpcRequest>(transport.SentMessages[1]);
+        Assert.Equal(RequestMethods.ElicitationCreate, elicitRequest.Method);
 
         await transport.DisposeAsync();
         await runTask;
@@ -792,7 +809,7 @@ public class McpServerTests : LoggedTest
     {
         await using var server = new TestServerForIChatClient(supportsSampling: false);
 
-        Assert.Throws<InvalidOperationException>(server.AsSamplingChatClient);
+        Assert.Throws<InvalidOperationException>(() => server.AsSamplingChatClient());
     }
 
     [Fact]
@@ -844,11 +861,33 @@ public class McpServerTests : LoggedTest
         Assert.Same(logNotification, transport.SentMessages[0]);
     }
 
-    private static void SetClientCapabilities(McpServer server, ClientCapabilities capabilities)
+    private static async Task InitializeServerAsync(TestServerTransport transport, ClientCapabilities capabilities, CancellationToken cancellationToken = default)
     {
-        FieldInfo? field = server.GetType().GetField("_clientCapabilities", BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.NotNull(field);
-        field.SetValue(server, capabilities);
+        var initializeRequest = new JsonRpcRequest
+        {
+            Id = new RequestId("init-1"),
+            Method = RequestMethods.Initialize,
+            Params = JsonSerializer.SerializeToNode(new InitializeRequestParams
+            {
+                ProtocolVersion = "2024-11-05",
+                Capabilities = capabilities,
+                ClientInfo = new Implementation { Name = "test-client", Version = "1.0.0" }
+            }, McpJsonUtilities.DefaultOptions)
+        };
+
+        var tcs = new TaskCompletionSource<bool>();
+        transport.OnMessageSent = (message) =>
+        {
+            if (message is JsonRpcResponse response && response.Id == initializeRequest.Id)
+            {
+                tcs.TrySetResult(true);
+            }
+        };
+
+        await transport.SendClientMessageAsync(initializeRequest, cancellationToken);
+
+        // Wait for the initialize response to be sent
+        await tcs.Task.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
     }
 
     private sealed class TestServerForIChatClient(bool supportsSampling) : McpServer

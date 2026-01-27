@@ -97,13 +97,14 @@ internal sealed class McpServerOptionsSetup(
             optionsHandlers.ListResourceTemplatesHandler = handlers.ListResourceTemplatesHandler ?? optionsHandlers.ListResourceTemplatesHandler;
             optionsHandlers.ListResourcesHandler = handlers.ListResourcesHandler ?? optionsHandlers.ListResourcesHandler;
             optionsHandlers.ReadResourceHandler = handlers.ReadResourceHandler ?? optionsHandlers.ReadResourceHandler;
+        }
 
-            if (handlers.SubscribeToResourcesHandler is not null || handlers.UnsubscribeFromResourcesHandler is not null)
-            {
-                optionsHandlers.SubscribeToResourcesHandler = handlers.SubscribeToResourcesHandler ?? optionsHandlers.SubscribeToResourcesHandler;
-                optionsHandlers.UnsubscribeFromResourcesHandler = handlers.UnsubscribeFromResourcesHandler ?? optionsHandlers.UnsubscribeFromResourcesHandler;
-                resourcesCapability.Subscribe = true;
-            }
+        if (handlers.SubscribeToResourcesHandler is not null || handlers.UnsubscribeFromResourcesHandler is not null)
+        {
+            resourcesCapability ??= new();
+            optionsHandlers.SubscribeToResourcesHandler = handlers.SubscribeToResourcesHandler ?? optionsHandlers.SubscribeToResourcesHandler;
+            optionsHandlers.UnsubscribeFromResourcesHandler = handlers.UnsubscribeFromResourcesHandler ?? optionsHandlers.UnsubscribeFromResourcesHandler;
+            resourcesCapability.Subscribe = true;
         }
 
         ToolsCapability? toolsCapability = options.Capabilities?.Tools;

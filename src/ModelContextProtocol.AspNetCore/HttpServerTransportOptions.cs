@@ -6,10 +6,10 @@ namespace ModelContextProtocol.AspNetCore;
 /// <summary>
 /// Represents configuration options for <see cref="M:McpEndpointRouteBuilderExtensions.MapMcp"/>,
 /// which implements the Streaming HTTP transport for the Model Context Protocol.
-/// See the protocol specification for details on the Streamable HTTP transport. <see href="https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http"/>
+/// See the protocol specification for details on the Streamable HTTP transport. <see href="https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http"/>
 /// </summary>
 /// <remarks>
-/// For details on the Streamable HTTP transport, see the <see href="https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http">protocol specification</see>.
+/// For details on the Streamable HTTP transport, see the <see href="https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#streamable-http">protocol specification</see>.
 /// </remarks>
 public class HttpServerTransportOptions
 {
@@ -42,6 +42,21 @@ public class HttpServerTransportOptions
     /// Client sampling, elicitation, and roots capabilities are also disabled in stateless mode, because the server cannot make requests.
     /// </remarks>
     public bool Stateless { get; set; }
+
+    /// <summary>
+    /// Gets or sets the event store for resumability support.
+    /// When set, events are stored and can be replayed when clients reconnect with a Last-Event-ID header.
+    /// </summary>
+    /// <remarks>
+    /// When configured, the server will:
+    /// <list type="bullet">
+    /// <item><description>Generate unique event IDs for each SSE message</description></item>
+    /// <item><description>Store events for later replay</description></item>
+    /// <item><description>Replay missed events when a client reconnects with a Last-Event-ID header</description></item>
+    /// <item><description>Send priming events to establish resumability before any actual messages</description></item>
+    /// </list>
+    /// </remarks>
+    public ISseEventStreamStore? EventStreamStore { get; set; }
 
     /// <summary>
     /// Gets or sets a value that indicates whether the server uses a single execution context for the entire session.

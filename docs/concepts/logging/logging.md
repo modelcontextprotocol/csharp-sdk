@@ -9,7 +9,7 @@ uid: logging
 
 MCP servers can expose log messages to clients through the [Logging utility].
 
-[Logging utility]: https://modelcontextprotocol.io/specification/2025-06-18/server/utilities/logging
+[Logging utility]: https://modelcontextprotocol.io/specification/2025-11-25/server/utilities/logging
 
 This document describes how to implement logging in MCP servers and how clients can consume log messages.
 
@@ -43,7 +43,7 @@ dropped when sending messages to the client.
 MCP servers that implement the Logging utility must declare this in the capabilities sent in the
 [Initialization] phase at the beginning of the MCP session.
 
-[Initialization]: https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle#initialization
+[Initialization]: https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle#initialization
 
 Servers built with the C# SDK always declare the logging capability. Doing so does not obligate the server
 to send log messages&mdash;only allows it. Note that stateless MCP servers might not be capable of sending log

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using ModelContextProtocol.Server;
@@ -10,6 +11,7 @@ namespace ModelContextProtocol.Protocol;
 /// <remarks>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for details.
 /// </remarks>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class Prompt : IBaseMetadata
 {
     /// <inheritdoc />
@@ -75,4 +77,14 @@ public sealed class Prompt : IBaseMetadata
     /// </summary>
     [JsonIgnore]
     public McpServerPrompt? McpServerPrompt { get; set; }
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay
+    {
+        get
+        {
+            string desc = Description is not null ? $", Description = \"{Description}\"" : "";
+            return $"Name = {Name}{desc}";
+        }
+    }
 }

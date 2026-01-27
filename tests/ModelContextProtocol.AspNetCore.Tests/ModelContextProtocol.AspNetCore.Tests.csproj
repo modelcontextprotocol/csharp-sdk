@@ -52,11 +52,19 @@
   </ItemGroup>
 
   <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>McpConformanceVersion</_Parameter1>
+      <_Parameter2>$(McpConformanceVersion)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\samples\TestServerWithHosting\TestServerWithHosting.csproj" />
     <ProjectReference Include="..\..\src\ModelContextProtocol.Core\ModelContextProtocol.Core.csproj" />
     <ProjectReference Include="..\..\src\ModelContextProtocol.AspNetCore\ModelContextProtocol.AspNetCore.csproj" />
     <ProjectReference Include="..\ModelContextProtocol.TestSseServer\ModelContextProtocol.TestSseServer.csproj" />
     <ProjectReference Include="..\ModelContextProtocol.TestOAuthServer\ModelContextProtocol.TestOAuthServer.csproj" />
+    <ProjectReference Include="..\ModelContextProtocol.ConformanceClient\ModelContextProtocol.ConformanceClient.csproj" />
     <ProjectReference Include="..\ModelContextProtocol.ConformanceServer\ModelContextProtocol.ConformanceServer.csproj" />
   </ItemGroup>
 

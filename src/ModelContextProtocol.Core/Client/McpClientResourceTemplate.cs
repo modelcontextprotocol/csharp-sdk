@@ -80,6 +80,7 @@ public sealed class McpClientResourceTemplate
     /// </param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A <see cref="ValueTask{ReadResourceResult}"/> containing the resource template's result with content and messages.</returns>
+    /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
     public ValueTask<ReadResourceResult> ReadAsync(
         IReadOnlyDictionary<string, object?> arguments,
         CancellationToken cancellationToken = default) =>

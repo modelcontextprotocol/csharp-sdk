@@ -36,12 +36,12 @@ jobs:
 
     steps:
     - name: 📥 Clone the repo
-      uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       with:
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
 
     - name: 🔧 Set up .NET
-      uses: actions/setup-dotnet@2016bd2012dba4e32de620c46fe006a3ac9f0602 # v5.0.1
+      uses: actions/setup-dotnet@baa11fbfe1d6520db94683bd5c7a3818018e4309 # v5.1.0
       with:
         dotnet-version: |
           10.0.x
@@ -57,18 +57,19 @@ jobs:
       run: brew install mono
 
     - name: 🔧 Set up Node.js
-      uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+      uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
       with:
         node-version: '20'
 
     - name: 📦 Install dependencies for tests
-      run: npm install @modelcontextprotocol/server-everything
+      run: npm install @modelcontextprotocol/server-everything@2025.12.18
 
     - name: 📦 Install dependencies for tests
       run: npm install @modelcontextprotocol/server-memory
 
-    - name: 📦 Install dependencies for tests
-      run: npm install @modelcontextprotocol/conformance
+    # Keep version in sync with McpConformanceVersion in Directory.Packages.props
+    - name: 📦 Install conformance test runner
+      run: npm install @modelcontextprotocol/conformance@0.1.10
 
     - name: 🏗️ Build
       run: make build CONFIGURATION=${{ matrix.configuration }}
@@ -85,7 +86,7 @@ jobs:
 
     - name: 📤 Upload test results artifact
       if: always()
-      uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
       with:
         name: testresults-${{ matrix.os }}-${{ matrix.configuration }}
         path: artifacts/testresults/**

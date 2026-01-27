@@ -52,6 +52,7 @@ public abstract partial class McpServer : McpSession
     /// <returns>A task containing the sampling result from the client.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
+    /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
     public ValueTask<CreateMessageResult> SampleAsync(
         CreateMessageRequestParams requestParams,
         CancellationToken cancellationToken = default)
@@ -72,14 +73,18 @@ public abstract partial class McpServer : McpSession
     /// </summary>
     /// <param name="messages">The messages to send as part of the request.</param>
     /// <param name="chatOptions">The options to use for the request, including model parameters and constraints.</param>
+    /// <param name="serializerOptions">The <see cref="JsonSerializerOptions"/> to use for serializing user-provided objects. If <see langword="null"/>, <see cref="McpJsonUtilities.DefaultOptions"/> is used.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task containing the chat response from the model.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="messages"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
+    /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
     public async Task<ChatResponse> SampleAsync(
-        IEnumerable<ChatMessage> messages, ChatOptions? chatOptions = default, CancellationToken cancellationToken = default)
+        IEnumerable<ChatMessage> messages, ChatOptions? chatOptions = default, JsonSerializerOptions? serializerOptions = null, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(messages);
+
+        serializerOptions ??= McpJsonUtilities.DefaultOptions;
 
         StringBuilder? systemPrompt = null;
 
@@ -146,7 +151,7 @@ public abstract partial class McpServer : McpSession
                         Name = af.Name,
                         Description = af.Description,
                         InputSchema = af.JsonSchema,
-                        Meta = af.AdditionalProperties.ToJsonObject(),
+                        Meta = af.AdditionalProperties.ToJsonObject(serializerOptions),
                     });
                 }
             }
@@ -170,13 +175,13 @@ public abstract partial class McpServer : McpSession
             Temperature = chatOptions?.Temperature,
             ToolChoice = toolChoice,
             Tools = tools,
-            Meta = chatOptions?.AdditionalProperties?.ToJsonObject(),
+            Meta = chatOptions?.AdditionalProperties?.ToJsonObject(serializerOptions),
         }, cancellationToken).ConfigureAwait(false);
 
         List<AIContent> responseContents = [];
         foreach (var block in result.Content)
         {
-            if (block.ToAIContent() is { } content)
+            if (block.ToAIContent(serializerOptions) is { } content)
             {
                 responseContents.Add(content);
             }
@@ -200,13 +205,14 @@ public abstract partial class McpServer : McpSession
     /// <summary>
     /// Creates an <see cref="IChatClient"/> wrapper that can be used to send sampling requests to the client.
     /// </summary>
+    /// <param name="serializerOptions">The <see cref="JsonSerializerOptions"/> to use for serialization. If <see langword="null"/>, <see cref="McpJsonUtilities.DefaultOptions"/> is used.</param>
     /// <returns>The <see cref="IChatClient"/> that can be used to issue sampling requests to the client.</returns>
     /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
-    public IChatClient AsSamplingChatClient()
+    public IChatClient AsSamplingChatClient(JsonSerializerOptions? serializerOptions = null)
     {
         ThrowIfSamplingUnsupported();
 
-        return new SamplingChatClient(this);
+        return new SamplingChatClient(this, serializerOptions ?? McpJsonUtilities.DefaultOptions);
     }
 
     /// <summary>Gets an <see cref="ILogger"/> on which logged messages will be sent as notifications to the client.</summary>
@@ -222,6 +228,7 @@ public abstract partial class McpServer : McpSession
     /// <returns>A task containing the list of roots exposed by the client.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The client does not support roots.</exception>
+    /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
     public ValueTask<ListRootsResult> RequestRootsAsync(
         ListRootsRequestParams requestParams,
         CancellationToken cancellationToken = default)
@@ -245,6 +252,7 @@ public abstract partial class McpServer : McpSession
     /// <returns>A task containing the elicitation result.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The client does not support elicitation.</exception>
+    /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
     public ValueTask<ElicitResult> ElicitAsync(
         ElicitRequestParams requestParams, 
         CancellationToken cancellationToken = default)
@@ -272,6 +280,7 @@ public abstract partial class McpServer : McpSession
     /// <exception cref="ArgumentNullException"><paramref name="message"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="message"/> is empty or composed entirely of whitespace.</exception>
     /// <exception cref="InvalidOperationException">The client does not support elicitation.</exception>
+    /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
     /// <remarks>
     /// Elicitation uses a constrained subset of JSON Schema and only supports strings, numbers/integers, booleans and string enums.
     /// Unsupported member types are ignored when constructing the schema.
@@ -483,7 +492,7 @@ public abstract partial class McpServer : McpSession
             throw new InvalidOperationException("Client does not support elicitation requests.");
         }
 
-        if (string.Equals(request.Mode, "form", StringComparison.Ordinal) && elicitationCapability.Form is null)
+        if (string.Equals(request.Mode, "form", StringComparison.Ordinal))
         {
             if (request.RequestedSchema is null)
             {
@@ -515,13 +524,14 @@ public abstract partial class McpServer : McpSession
     }
 
     /// <summary>Provides an <see cref="IChatClient"/> implementation that's implemented via client sampling.</summary>
-    private sealed class SamplingChatClient(McpServer server) : IChatClient
+    private sealed class SamplingChatClient(McpServer server, JsonSerializerOptions serializerOptions) : IChatClient
     {
         private readonly McpServer _server = server;
+        private readonly JsonSerializerOptions _serializerOptions = serializerOptions;
 
         /// <inheritdoc/>
         public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? chatOptions = null, CancellationToken cancellationToken = default) =>
-            _server.SampleAsync(messages, chatOptions, cancellationToken);
+            _server.SampleAsync(messages, chatOptions, _serializerOptions, cancellationToken);
 
         /// <inheritdoc/>
         async IAsyncEnumerable<ChatResponseUpdate> IChatClient.GetStreamingResponseAsync(

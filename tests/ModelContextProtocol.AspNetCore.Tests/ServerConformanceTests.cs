@@ -98,7 +98,7 @@ public class ServerConformanceTests : IAsyncLifetime
     public async Task RunConformanceTests()
     {
         // Check if Node.js is installed
-        Assert.SkipWhen(!IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
+        Assert.SkipWhen(!NodeHelpers.IsNpxInstalled(), "Node.js is not installed. Skipping conformance tests.");
 
         // Run the conformance test suite
         var result = await RunNpxConformanceTests();
@@ -110,37 +110,26 @@ public class ServerConformanceTests : IAsyncLifetime
 
     private void StartConformanceServer()
     {
-        // The ConformanceServer binary is in a parallel directory to the test binary
-        // Test binary is in: artifacts/bin/ModelContextProtocol.ConformanceTests/Debug/{tfm}/
-        // ConformanceServer binary is in: artifacts/bin/ModelContextProtocol.ConformanceServer/Debug/{tfm}/
-        var testBinaryDir = AppContext.BaseDirectory; // e.g., .../net10.0/
-        var configuration = Path.GetFileName(Path.GetDirectoryName(testBinaryDir.TrimEnd(Path.DirectorySeparatorChar))!);
-        var targetFramework = Path.GetFileName(testBinaryDir.TrimEnd(Path.DirectorySeparatorChar));
-        var conformanceServerDir = Path.GetFullPath(
-            Path.Combine(testBinaryDir, "..", "..", "..", "ModelContextProtocol.ConformanceServer", configuration, targetFramework));
-
-        if (!Directory.Exists(conformanceServerDir))
-        {
-            throw new DirectoryNotFoundException(
-                $"ConformanceServer directory not found at: {conformanceServerDir}");
-        }
-
         // Start the server in a background task
         _serverCts = new CancellationTokenSource();
         _serverTask = Task.Run(() => ConformanceServer.Program.MainAsync(["--urls", _serverUrl], new XunitLoggerProvider(_output), cancellationToken: _serverCts.Token));
     }
 
+    private static string GetConformanceVersion()
+    {
+        var assembly = typeof(ServerConformanceTests).Assembly;
+        var attribute = assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false)
+            .Cast<System.Reflection.AssemblyMetadataAttribute>()
+            .FirstOrDefault(a => a.Key == "McpConformanceVersion");
+        return attribute?.Value ?? throw new InvalidOperationException("McpConformanceVersion not found in assembly metadata");
+    }
+
     private async Task<(bool Success, string Output, string Error)> RunNpxConformanceTests()
     {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "npx",
-            Arguments = $"-y @modelcontextprotocol/conformance server --url {_serverUrl}",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
+        // Version is configured in Directory.Packages.props for central management
+        var version = GetConformanceVersion();
+
+        var startInfo = NodeHelpers.NpxStartInfo($"-y @modelcontextprotocol/conformance@{version} server --url {_serverUrl}");
 
         var outputBuilder = new StringBuilder();
         var errorBuilder = new StringBuilder();
@@ -176,34 +165,5 @@ public class ServerConformanceTests : IAsyncLifetime
             Output: outputBuilder.ToString(),
             Error: errorBuilder.ToString()
         );
-    }
-
-    private static bool IsNodeInstalled()
-    {
-        try
-        {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "npx",   // Check specifically for npx because windows seems unable to find it
-                Arguments = "--version",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = Process.Start(startInfo);
-            if (process == null)
-            {
-                return false;
-            }
-
-            process.WaitForExit(5000);
-            return process.ExitCode == 0;
-        }
-        catch
-        {
-            return false;
-        }
     }
 }

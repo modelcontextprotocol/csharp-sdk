@@ -58,6 +58,8 @@ internal sealed class StreamableHttpSession(
                     {
                         sessionManager.DecrementIdleSessionCount();
                     }
+                    // Update LastActivityTicks when acquiring reference in Started state to prevent timeout during active usage
+                    LastActivityTicks = sessionManager.TimeProvider.GetTimestamp();
                     break;
                 case SessionState.Disposed:
                     throw new ObjectDisposedException(nameof(StreamableHttpSession));

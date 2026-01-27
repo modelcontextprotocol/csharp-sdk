@@ -70,6 +70,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/ModelContextProtocol.Analyzers.Tests/ModelContextProtocol.Analyzers.Tests.csproj" />
     <Project Path="tests/ModelContextProtocol.AspNetCore.Tests/ModelContextProtocol.AspNetCore.Tests.csproj" />
+    <Project Path="tests/ModelContextProtocol.ConformanceClient/ModelContextProtocol.ConformanceClient.csproj" />
     <Project Path="tests/ModelContextProtocol.ConformanceServer/ModelContextProtocol.ConformanceServer.csproj" />
     <Project Path="tests/ModelContextProtocol.TestOAuthServer/ModelContextProtocol.TestOAuthServer.csproj" />
     <Project Path="tests/ModelContextProtocol.Tests/ModelContextProtocol.Tests.csproj" />

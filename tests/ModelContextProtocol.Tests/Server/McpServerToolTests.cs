@@ -658,11 +658,11 @@ public partial class McpServerToolTests
     {
         JsonSchema schema = JsonSerializer.Deserialize(schemaDoc, JsonContext2.Default.JsonSchema)!;
         EvaluationOptions options = new() { OutputFormat = OutputFormat.List };
-        EvaluationResults results = schema.Evaluate(value, options);
+        EvaluationResults results = schema.Evaluate(JsonSerializer.SerializeToElement(value, JsonContext2.Default.JsonNode), options);
         if (!results.IsValid)
         {
-            IEnumerable<string> errors = results.Details
-                .Where(d => d.HasErrors)
+            IEnumerable<string> errors = (results.Details ?? [])
+                .Where(d => d.Errors?.Count > 0)
                 .SelectMany(d => d.Errors!.Select(error => $"Path:${d.InstanceLocation} {error.Key}:{error.Value}"));
 
             throw new XunitException($"""
@@ -804,15 +804,32 @@ public partial class McpServerToolTests
     public void ReturnDescription_StructuredOutputEnabled_WithExplicitDescription_NoSynthesis()
     {
         // When UseStructuredContent is true and Description is set, return description goes to output schema
-        McpServerTool tool = McpServerTool.Create(ToolWithReturnDescription, new() 
-        { 
-            Description = "Custom description", 
-            UseStructuredContent = true 
+        McpServerTool tool = McpServerTool.Create(ToolWithReturnDescription, new()
+        {
+            Description = "Custom description",
+            UseStructuredContent = true
         });
 
         // Description should not have the return description appended
         Assert.Equal("Custom description", tool.ProtocolTool.Description);
         Assert.NotNull(tool.ProtocolTool.OutputSchema);
+    }
+
+    [Fact]
+    public async Task EnablePollingAsync_ThrowsInvalidOperationException_WhenTransportIsNotStreamableHttpPost()
+    {
+        // Arrange
+        Mock<McpServer> mockServer = new();
+        var jsonRpcRequest = CreateTestJsonRpcRequest();
+
+        // The JsonRpcRequest has no Context, so RelatedTransport will be null
+        var requestContext = new RequestContext<CallToolRequestParams>(mockServer.Object, jsonRpcRequest);
+
+        // Act & Assert
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => requestContext.EnablePollingAsync(TimeSpan.FromSeconds(1), TestContext.Current.CancellationToken).AsTask());
+
+        Assert.Contains("Streamable HTTP", exception.Message);
     }
 
     [Description("Tool that returns data.")]
@@ -826,6 +843,7 @@ public partial class McpServerToolTests
     private static string ToolWithoutReturnDescription() => "result";
 
     [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+    [JsonSerializable(typeof(JsonNode))]
     [JsonSerializable(typeof(DisposableToolType))]
     [JsonSerializable(typeof(AsyncDisposableToolType))]
     [JsonSerializable(typeof(AsyncDisposableAndDisposableToolType))]

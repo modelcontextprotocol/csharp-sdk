@@ -108,7 +108,7 @@ public class McpServerOptionsSetupTests
     }
 
     [Fact]
-    public void Configure_WithSubscribeToResourcesHandler_WithoutOtherResourcesHandler_DoesNotCreateResourcesCapability()
+    public void Configure_WithSubscribeToResourcesHandler_WithoutOtherResourcesHandler_DoesCreateResourcesCapability()
     {
         var services = new ServiceCollection();
         services.AddMcpServer()
@@ -116,12 +116,13 @@ public class McpServerOptionsSetupTests
 
         var options = services.BuildServiceProvider().GetRequiredService<IOptions<McpServerOptions>>().Value;
 
-        Assert.Null(options.Handlers.SubscribeToResourcesHandler);
-        Assert.Null(options.Capabilities?.Resources);
+        Assert.NotNull(options.Handlers.SubscribeToResourcesHandler);
+        Assert.NotNull(options.Capabilities?.Resources);
+        Assert.True(options.Capabilities.Resources.Subscribe);
     }
 
     [Fact]
-    public void Configure_WithUnsubscribeFromResourcesHandler_WithoutOtherResourcesHandler_DoesNotCreateResourcesCapability()
+    public void Configure_WithUnsubscribeFromResourcesHandler_WithoutOtherResourcesHandler_DoesCreateResourcesCapability()
     {
         var services = new ServiceCollection();
         services.AddMcpServer()
@@ -129,8 +130,9 @@ public class McpServerOptionsSetupTests
 
         var options = services.BuildServiceProvider().GetRequiredService<IOptions<McpServerOptions>>().Value;
 
-        Assert.Null(options.Handlers.UnsubscribeFromResourcesHandler);
-        Assert.Null(options.Capabilities?.Resources);
+        Assert.NotNull(options.Handlers.UnsubscribeFromResourcesHandler);
+        Assert.NotNull(options.Capabilities?.Resources);
+        Assert.True(options.Capabilities.Resources.Subscribe);
     }
 
     [Fact]

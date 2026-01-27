@@ -1,4 +1,5 @@
 using System.Buffers.Text;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
 
@@ -22,6 +23,7 @@ namespace ModelContextProtocol.Protocol;
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for more details.
 /// </para>
 /// </remarks>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class BlobResourceContents : ResourceContents
 {
     private byte[]? _decodedData;
@@ -76,6 +78,17 @@ public sealed class BlobResourceContents : ResourceContents
 #endif
             }
             return _decodedData;
+        }
+    }
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay
+    {
+        get
+        {
+            string lengthDisplay = DebuggerDisplayHelper.GetBase64LengthDisplay(Blob);
+            string mimeInfo = MimeType is not null ? $", MimeType = {MimeType}" : "";
+            return $"Uri = \"{Uri}\"{mimeInfo}, Length = {lengthDisplay}";
         }
     }
 }

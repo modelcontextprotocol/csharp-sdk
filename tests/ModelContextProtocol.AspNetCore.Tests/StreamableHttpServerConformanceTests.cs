@@ -288,6 +288,35 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     }
 
     [Fact]
+    public async Task SendNotificationAsync_DoesNotThrow_WhenNoGetRequestHasBeenMade()
+    {
+        // Clients are not required to make a GET request for unsolicited messages.
+        // If no GET request has been made, the messages should be dropped rather than throwing.
+        McpServer? server = null;
+
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(options =>
+            {
+                options.RunSessionHandler = (httpContext, mcpServer, cancellationToken) =>
+                {
+                    server = mcpServer;
+                    return mcpServer.RunAsync(cancellationToken);
+                };
+            });
+
+        await StartAsync();
+
+        await CallInitializeAndValidateAsync();
+        Assert.NotNull(server);
+
+        // Calling SendNotificationAsync before a GET request should not throw.
+        // The notification should be silently dropped.
+        var exception = await Record.ExceptionAsync(() =>
+            server.SendNotificationAsync("test-method", TestContext.Current.CancellationToken));
+        Assert.Null(exception);
+    }
+
+    [Fact]
     public async Task SecondGetRequests_IsRejected_AsBadRequest()
     {
         await StartAsync();
@@ -522,6 +551,33 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     }
 
     [Fact]
+    public async Task ActiveSession_WithPeriodicRequests_DoesNotTimeout()
+    {
+        var fakeTimeProvider = new FakeTimeProvider();
+        Builder.Services.AddMcpServer().WithHttpTransport(options =>
+        {
+            options.IdleTimeout = TimeSpan.FromHours(2);
+            options.TimeProvider = fakeTimeProvider;
+        });
+
+        await StartAsync();
+        await CallInitializeAndValidateAsync();
+
+        // Simulate multiple POST requests over a period longer than IdleTimeout
+        // Each request should update LastActivityTicks, preventing timeout
+        for (int i = 0; i < 5; i++)
+        {
+            // Advance time by 1 hour between requests
+            fakeTimeProvider.Advance(TimeSpan.FromHours(1));
+            await CallEchoAndValidateAsync();
+        }
+
+        // Total time elapsed: 5 hours (> 2 hour IdleTimeout)
+        // But session should still be alive because of periodic activity
+        await CallEchoAndValidateAsync();
+    }
+
+    [Fact]
     public async Task McpServer_UsedOutOfScope_CanSendNotifications()
     {
         McpServer? capturedServer = null;
@@ -540,6 +596,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         SetSessionId(sessionId);
 
         // Call the subscribe method to capture the McpServer instance.
+        using var getResponse = await HttpClient.GetAsync("", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
         using var response = await HttpClient.PostAsync("", JsonContent(SubscribeToResource("file:///test")), TestContext.Current.CancellationToken);
         var rpcResponse = await AssertSingleSseResponseAsync(response);
         AssertType<EmptyResult>(rpcResponse.Result);
@@ -547,7 +604,6 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
 
         // Check the captured McpServer instance can send a notification.
         await capturedServer.SendNotificationAsync(NotificationMethods.ResourceUpdatedNotification, TestContext.Current.CancellationToken);
-        using var getResponse = await HttpClient.GetAsync("", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
         JsonRpcMessage? firstSseMessage = await ReadSseAsync(getResponse.Content)
             .Select(data => JsonSerializer.Deserialize<JsonRpcMessage>(data, McpJsonUtilities.DefaultOptions))
             .FirstOrDefaultAsync(TestContext.Current.CancellationToken);

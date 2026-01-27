@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -8,6 +9,7 @@ namespace ModelContextProtocol.Protocol;
 /// <summary>
 /// Represents a tool that the server is capable of calling.
 /// </summary>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class Tool : IBaseMetadata
 {
     /// <inheritdoc />
@@ -37,6 +39,7 @@ public sealed class Tool : IBaseMetadata
     /// <summary>
     /// Gets or sets a JSON Schema object defining the expected parameters for the tool.
     /// </summary>
+    /// <exception cref="ArgumentException">The value is not a valid MCP tool JSON schema.</exception>
     /// <remarks>
     /// <para>
     /// The schema must be a valid JSON Schema object with the "type" property set to "object".
@@ -71,6 +74,7 @@ public sealed class Tool : IBaseMetadata
     /// <summary>
     /// Gets or sets a JSON Schema object defining the expected structured outputs for the tool.
     /// </summary>
+    /// <exception cref="ArgumentException">The value is not a valid MCP tool JSON schema.</exception>
     /// <remarks>
     /// <para>
     /// The schema must be a valid JSON Schema object with the "type" property set to "object".
@@ -130,4 +134,14 @@ public sealed class Tool : IBaseMetadata
     /// </summary>
     [JsonIgnore]
     public McpServerTool? McpServerTool { get; set; }
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private string DebuggerDisplay
+    {
+        get
+        {
+            string desc = Description is not null ? $", Description = \"{Description}\"" : "";
+            return $"Name = {Name}{desc}";
+        }
+    }
 }

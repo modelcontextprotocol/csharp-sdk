@@ -1,6 +1,5 @@
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol;
-using System.Collections.ObjectModel;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -26,13 +25,6 @@ namespace ModelContextProtocol.Client;
 /// </remarks>
 public sealed class McpClientTool : AIFunction
 {
-    /// <summary>Additional properties exposed from tools.</summary>
-    private static readonly ReadOnlyDictionary<string, object?> s_additionalProperties =
-        new(new Dictionary<string, object?>()
-        {
-            ["Strict"] = false, // some MCP schemas may not meet "strict" requirements
-        });
-
     private readonly McpClient _client;
     private readonly string _name;
     private readonly string _description;
@@ -127,9 +119,6 @@ public sealed class McpClientTool : AIFunction
     public override JsonSerializerOptions JsonSerializerOptions { get; }
 
     /// <inheritdoc/>
-    public override IReadOnlyDictionary<string, object?> AdditionalProperties => s_additionalProperties;
-
-    /// <inheritdoc/>
     protected async override ValueTask<object?> InvokeCoreAsync(
         AIFunctionArguments arguments, CancellationToken cancellationToken)
     {
@@ -150,10 +139,10 @@ public sealed class McpClientTool : AIFunction
         {
             switch (result.Content.Count)
             {
-                case 1 when result.Content[0].ToAIContent() is { } aiContent:
+                case 1 when result.Content[0].ToAIContent(JsonSerializerOptions) is { } aiContent:
                     return aiContent;
 
-                case > 1 when result.Content.Select(c => c.ToAIContent()).ToArray() is { } aiContents && aiContents.All(static c => c is not null):
+                case > 1 when result.Content.Select(c => c.ToAIContent(JsonSerializerOptions)).ToArray() is { } aiContents && aiContents.All(static c => c is not null):
                     return aiContents;
             }
         }
