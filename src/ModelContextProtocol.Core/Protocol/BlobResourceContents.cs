@@ -86,7 +86,7 @@ public sealed class BlobResourceContents : ResourceContents
     {
         get
         {
-            string lengthDisplay = DebuggerDisplayHelper.GetBase64LengthDisplay(Blob);
+            string lengthDisplay = _decodedData is null ? DebuggerDisplayHelper.GetBase64LengthDisplay(Blob) : $"{_decodedData.Length} bytes";
             string mimeInfo = MimeType is not null ? $", MimeType = {MimeType}" : "";
             return $"Uri = \"{Uri}\"{mimeInfo}, Length = {lengthDisplay}";
         }

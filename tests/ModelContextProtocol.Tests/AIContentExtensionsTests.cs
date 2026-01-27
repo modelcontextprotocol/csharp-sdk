@@ -301,7 +301,7 @@ public class AIContentExtensionsTests
         var contentBlock = dataContent.ToContentBlock();
         var imageBlock = Assert.IsType<ImageContentBlock>(contentBlock);
 
-        Assert.Equal(Convert.ToBase64String(imageData), imageBlock.Data);
+        Assert.Equal(imageData, imageBlock.DecodedData);
         Assert.Equal("image/png", imageBlock.MimeType);
         Assert.NotNull(imageBlock.Meta);
         Assert.True(imageBlock.Meta.ContainsKey("dimensions"));
