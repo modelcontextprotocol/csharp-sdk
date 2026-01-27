@@ -2,7 +2,7 @@ using ModelContextProtocol.Protocol;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 
-namespace ModelContextProtocol.Server;
+namespace ModelContextProtocol;
 
 /// <summary>
 /// Provides an interface for pluggable task storage implementations in MCP servers.

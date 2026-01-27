@@ -252,6 +252,11 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
 
     #region Input Required Status Tests
 
+    // NOTE: The InputRequired status is automatically set by the server when a tool executing
+    // as a task calls SampleAsync() or ElicitAsync(). The status is set back to Working when
+    // the request completes. See TaskExecutionContext for implementation details.
+    // The tests below verify the store correctly handles status transitions.
+
     [Fact]
     public async Task InputRequiredStatus_SerializesCorrectly()
     {
@@ -278,7 +283,7 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
         var metadata = new McpTaskMetadata();
         var task = await store.CreateTaskAsync(metadata, new RequestId("req-1"), new JsonRpcRequest { Method = "test" }, null, TestContext.Current.CancellationToken);
 
-        // Transition to input_required
+        // Transition to input_required (testing store's status transition capability)
         var inputRequiredTask = await store.UpdateTaskStatusAsync(
             task.TaskId,
             McpTaskStatus.InputRequired,
@@ -885,5 +890,145 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
         // Assert - Should have listed all tasks without duplicates or corruption
         Assert.Equal(20, listedTasks.Count);
         Assert.Equal(20, listedTasks.Select(t => t.TaskId).Distinct().Count());
+    }
+
+    [Fact]
+    public void Constructor_ThrowsForInvalidMaxTasks()
+    {
+        // Assert
+        Assert.Throws<ArgumentOutOfRangeException>(() => new InMemoryMcpTaskStore(maxTasks: 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new InMemoryMcpTaskStore(maxTasks: -1));
+    }
+
+    [Fact]
+    public void Constructor_ThrowsForInvalidMaxTasksPerSession()
+    {
+        // Assert
+        Assert.Throws<ArgumentOutOfRangeException>(() => new InMemoryMcpTaskStore(maxTasksPerSession: 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new InMemoryMcpTaskStore(maxTasksPerSession: -1));
+    }
+
+    [Fact]
+    public async Task CreateTaskAsync_EnforcesMaxTasksLimit()
+    {
+        // Arrange
+        using var store = new InMemoryMcpTaskStore(maxTasks: 3);
+        var metadata = new McpTaskMetadata();
+
+        // Act - Create up to the limit
+        await store.CreateTaskAsync(metadata, new RequestId("req-1"), new JsonRpcRequest { Method = "test" }, null, TestContext.Current.CancellationToken);
+        await store.CreateTaskAsync(metadata, new RequestId("req-2"), new JsonRpcRequest { Method = "test" }, null, TestContext.Current.CancellationToken);
+        await store.CreateTaskAsync(metadata, new RequestId("req-3"), new JsonRpcRequest { Method = "test" }, null, TestContext.Current.CancellationToken);
+
+        // Assert - Fourth task should throw
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            store.CreateTaskAsync(metadata, new RequestId("req-4"), new JsonRpcRequest { Method = "test" }, null, TestContext.Current.CancellationToken));
+        Assert.Contains("Maximum number of tasks (3) has been reached", ex.Message);
+    }
+
+    [Fact]
+    public async Task CreateTaskAsync_EnforcesMaxTasksPerSessionLimit()
+    {
+        // Arrange
+        using var store = new InMemoryMcpTaskStore(maxTasksPerSession: 2);
+        var metadata = new McpTaskMetadata();
+
+        // Act - Create up to the limit for session-1
+        await store.CreateTaskAsync(metadata, new RequestId("req-1"), new JsonRpcRequest { Method = "test" }, "session-1", TestContext.Current.CancellationToken);
+        await store.CreateTaskAsync(metadata, new RequestId("req-2"), new JsonRpcRequest { Method = "test" }, "session-1", TestContext.Current.CancellationToken);
+
+        // Assert - Third task for session-1 should throw
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            store.CreateTaskAsync(metadata, new RequestId("req-3"), new JsonRpcRequest { Method = "test" }, "session-1", TestContext.Current.CancellationToken));
+        Assert.Contains("Maximum number of tasks per session (2) has been reached", ex.Message);
+        Assert.Contains("session-1", ex.Message);
+    }
+
+    [Fact]
+    public async Task CreateTaskAsync_MaxTasksPerSession_AllowsDifferentSessions()
+    {
+        // Arrange
+        using var store = new InMemoryMcpTaskStore(maxTasksPerSession: 2);
+        var metadata = new McpTaskMetadata();
+
+        // Act - Create 2 tasks for session-1
+        await store.CreateTaskAsync(metadata, new RequestId("req-1"), new JsonRpcRequest { Method = "test" }, "session-1", TestContext.Current.CancellationToken);
+        await store.CreateTaskAsync(metadata, new RequestId("req-2"), new JsonRpcRequest { Method = "test" }, "session-1", TestContext.Current.CancellationToken);
+
+        // Should still be able to create tasks for session-2
+        var task3 = await store.CreateTaskAsync(metadata, new RequestId("req-3"), new JsonRpcRequest { Method = "test" }, "session-2", TestContext.Current.CancellationToken);
+        var task4 = await store.CreateTaskAsync(metadata, new RequestId("req-4"), new JsonRpcRequest { Method = "test" }, "session-2", TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.NotNull(task3);
+        Assert.NotNull(task4);
+    }
+
+    [Fact]
+    public async Task CreateTaskAsync_MaxTasksPerSession_DoesNotApplyToNullSession()
+    {
+        // Arrange
+        using var store = new InMemoryMcpTaskStore(maxTasksPerSession: 1);
+        var metadata = new McpTaskMetadata();
+
+        // Act - Create multiple tasks with null session (should not be limited)
+        var task1 = await store.CreateTaskAsync(metadata, new RequestId("req-1"), new JsonRpcRequest { Method = "test" }, null, TestContext.Current.CancellationToken);
+        var task2 = await store.CreateTaskAsync(metadata, new RequestId("req-2"), new JsonRpcRequest { Method = "test" }, null, TestContext.Current.CancellationToken);
+        var task3 = await store.CreateTaskAsync(metadata, new RequestId("req-3"), new JsonRpcRequest { Method = "test" }, null, TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.NotNull(task1);
+        Assert.NotNull(task2);
+        Assert.NotNull(task3);
+    }
+
+    [Fact]
+    public async Task CreateTaskAsync_CombinesMaxTasksAndMaxTasksPerSession()
+    {
+        // Arrange - Global limit of 5, per-session limit of 2
+        using var store = new InMemoryMcpTaskStore(maxTasks: 5, maxTasksPerSession: 2);
+        var metadata = new McpTaskMetadata();
+
+        // Create 2 tasks for session-1 (hits per-session limit)
+        await store.CreateTaskAsync(metadata, new RequestId("req-1"), new JsonRpcRequest { Method = "test" }, "session-1", TestContext.Current.CancellationToken);
+        await store.CreateTaskAsync(metadata, new RequestId("req-2"), new JsonRpcRequest { Method = "test" }, "session-1", TestContext.Current.CancellationToken);
+
+        // session-1 is at its limit
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            store.CreateTaskAsync(metadata, new RequestId("req-3"), new JsonRpcRequest { Method = "test" }, "session-1", TestContext.Current.CancellationToken));
+
+        // But session-2 can still create tasks
+        await store.CreateTaskAsync(metadata, new RequestId("req-4"), new JsonRpcRequest { Method = "test" }, "session-2", TestContext.Current.CancellationToken);
+        await store.CreateTaskAsync(metadata, new RequestId("req-5"), new JsonRpcRequest { Method = "test" }, "session-2", TestContext.Current.CancellationToken);
+
+        // Now global limit is reached (4 tasks total, but 5th would be 5)
+        // Wait, we have 4 tasks, should be able to create one more
+        await store.CreateTaskAsync(metadata, new RequestId("req-6"), new JsonRpcRequest { Method = "test" }, "session-3", TestContext.Current.CancellationToken);
+
+        // Now at 5 tasks (global limit), should throw
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            store.CreateTaskAsync(metadata, new RequestId("req-7"), new JsonRpcRequest { Method = "test" }, "session-3", TestContext.Current.CancellationToken));
+        Assert.Contains("Maximum number of tasks (5) has been reached", ex.Message);
+    }
+
+    [Fact]
+    public async Task CreateTaskAsync_MaxTasksPerSession_ExcludesExpiredTasks()
+    {
+        // Arrange - Short TTL and per-session limit of 1
+        var shortTtl = TimeSpan.FromMilliseconds(50);
+        using var store = new InMemoryMcpTaskStore(defaultTtl: shortTtl, maxTasksPerSession: 1);
+        var metadata = new McpTaskMetadata();
+
+        // Create first task
+        await store.CreateTaskAsync(metadata, new RequestId("req-1"), new JsonRpcRequest { Method = "test" }, "session-1", TestContext.Current.CancellationToken);
+
+        // Wait for it to expire
+        await Task.Delay(100, TestContext.Current.CancellationToken);
+
+        // Should be able to create another task since the first one expired
+        var task2 = await store.CreateTaskAsync(metadata, new RequestId("req-2"), new JsonRpcRequest { Method = "test" }, "session-1", TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.NotNull(task2);
     }
 }

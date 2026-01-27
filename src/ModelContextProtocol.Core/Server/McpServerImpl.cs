@@ -933,6 +933,16 @@ internal sealed partial class McpServerImpl : McpServer
         // Execute the tool asynchronously in the background
         _ = Task.Run(async () =>
         {
+            // Set up the task execution context for automatic input_required status tracking
+            TaskExecutionContext.Current = new TaskExecutionContext
+            {
+                TaskId = mcpTask.TaskId,
+                SessionId = SessionId,
+                TaskStore = taskStore,
+                SendNotifications = sendNotifications,
+                NotifyTaskStatusFunc = NotifyTaskStatusAsync
+            };
+
             try
             {
                 // Update task status to working
@@ -1012,6 +1022,9 @@ internal sealed partial class McpServerImpl : McpServer
             }
             finally
             {
+                // Clean up task execution context
+                TaskExecutionContext.Current = null;
+
                 // Clean up task cancellation tracking
                 _taskCancellationTokenProvider!.Complete(mcpTask.TaskId);
             }

@@ -53,8 +53,6 @@ Tasks begin in the `working` status and transition to one of the terminal states
 To enable task support on a server, configure a task store when setting up the MCP server:
 
 ```csharp
-using ModelContextProtocol.Server;
-
 var builder = WebApplication.CreateBuilder(args);
 
 // Create a task store for managing task state
@@ -69,7 +67,7 @@ builder.Services.AddMcpServer(options =>
 .WithTools<MyTools>();
 ```
 
-The <xref:ModelContextProtocol.Server.InMemoryMcpTaskStore> is a reference implementation suitable for development and single-server deployments. For production multi-server scenarios, implement <xref:ModelContextProtocol.Server.IMcpTaskStore> with a persistent backing store (database, Redis, etc.).
+The <xref:ModelContextProtocol.InMemoryMcpTaskStore> is a reference implementation suitable for development and single-server deployments. For production multi-server scenarios, implement <xref:ModelContextProtocol.IMcpTaskStore> with a persistent backing store (database, Redis, etc.).
 
 ### Task Store Configuration
 
@@ -138,7 +136,7 @@ Task support levels:
 
 ### Explicit Task Creation with `IMcpTaskStore`
 
-For more control over task lifecycle, tools can directly interact with <xref:ModelContextProtocol.Server.IMcpTaskStore> and return an `McpTask`. This approach allows you to:
+For more control over task lifecycle, tools can directly interact with <xref:ModelContextProtocol.IMcpTaskStore> and return an `McpTask`. This approach allows you to:
 
 - Create a task and return immediately while work continues in the background
 - Control exactly when and how task status and results are updated
@@ -314,18 +312,6 @@ else if (completedTask.Status == McpTaskStatus.Failed)
 }
 ```
 
-Or use the combined helper:
-
-```csharp
-// Poll and get result in one call
-var (task, resultJson) = await client.WaitForTaskResultAsync(
-    taskId,
-    cancellationToken: cancellationToken);
-
-// Deserialize to the expected type
-var result = resultJson.Deserialize<CallToolResult>(McpJsonUtilities.DefaultOptions);
-```
-
 ### Listing Tasks
 
 List all tasks for the current session:
@@ -376,7 +362,7 @@ var client = await McpClient.CreateAsync(transport, options);
 
 ## Implementing a Custom Task Store
 
-For production deployments, implement <xref:ModelContextProtocol.Server.IMcpTaskStore> with a persistent backing store:
+For production deployments, implement <xref:ModelContextProtocol.IMcpTaskStore> with a persistent backing store:
 
 ```csharp
 public class DatabaseTaskStore : IMcpTaskStore
@@ -606,8 +592,8 @@ While this file-based approach demonstrates the pattern, production systems shou
 
 ## See Also
 
-- <xref:ModelContextProtocol.Server.IMcpTaskStore>
-- <xref:ModelContextProtocol.Server.InMemoryMcpTaskStore>
+- <xref:ModelContextProtocol.IMcpTaskStore>
+- <xref:ModelContextProtocol.InMemoryMcpTaskStore>
 - <xref:ModelContextProtocol.Protocol.McpTask>
 - <xref:ModelContextProtocol.Protocol.McpTaskStatus>
 - [MCP Tasks Specification](https://modelcontextprotocol.io/specification/draft/basic/utilities/tasks)

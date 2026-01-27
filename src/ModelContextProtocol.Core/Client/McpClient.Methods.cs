@@ -924,7 +924,7 @@ public abstract partial class McpClient : McpSession
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>
     /// An <see cref="McpTask"/> representing the created task. Use <see cref="GetTaskAsync"/> to poll for status updates
-    /// and <see cref="GetTaskResultAsync"/> or <see cref="WaitForTaskResultAsync"/> to retrieve the final result.
+    /// and <see cref="GetTaskResultAsync"/> to retrieve the final result.
     /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="toolName"/> is <see langword="null"/>.</exception>
     /// <exception cref="McpException">The request failed or the server returned an error response.</exception>
@@ -1201,8 +1201,7 @@ public abstract partial class McpClient : McpSession
     /// to wait between polling attempts.
     /// </para>
     /// <para>
-    /// For retrieving the actual result of a completed task, use <see cref="GetTaskResultAsync"/>
-    /// or <see cref="WaitForTaskResultAsync"/>.
+    /// For retrieving the actual result of a completed task, use <see cref="GetTaskResultAsync"/>.
     /// </para>
     /// </remarks>
     [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
@@ -1231,54 +1230,6 @@ public abstract partial class McpClient : McpSession
         while (true);
 
         return task;
-    }
-
-    /// <summary>
-    /// Waits for a task to complete and retrieves its result.
-    /// </summary>
-    /// <param name="taskId">The unique identifier of the task whose result to retrieve.</param>
-    /// <param name="options">Optional request options including metadata, serialization settings, and progress tracking.</param>
-    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>A tuple containing the final task state and its raw JSON result.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="taskId"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException"><paramref name="taskId"/> is empty or composed entirely of whitespace.</exception>
-    /// <exception cref="McpException">The task failed or was cancelled.</exception>
-    /// <remarks>
-    /// <para>
-    /// This method combines <see cref="PollTaskUntilCompleteAsync"/> and <see cref="GetTaskResultAsync"/>
-    /// to provide a convenient way to wait for a task to complete and retrieve its result in a single call.
-    /// </para>
-    /// <para>
-    /// If the task completes with a status of <see cref="McpTaskStatus.Failed"/> or <see cref="McpTaskStatus.Cancelled"/>,
-    /// an <see cref="McpException"/> is thrown.
-    /// </para>
-    /// </remarks>
-    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
-    public async ValueTask<(McpTask Task, JsonElement Result)> WaitForTaskResultAsync(
-        string taskId,
-        RequestOptions? options = null,
-        CancellationToken cancellationToken = default)
-    {
-        Throw.IfNullOrWhiteSpace(taskId);
-
-        // Poll until task reaches terminal state
-        var task = await PollTaskUntilCompleteAsync(taskId, options, cancellationToken).ConfigureAwait(false);
-
-        // Check for failure or cancellation
-        if (task.Status == McpTaskStatus.Failed)
-        {
-            throw new McpException($"Task '{taskId}' failed: {task.StatusMessage ?? "Unknown error"}");
-        }
-
-        if (task.Status == McpTaskStatus.Cancelled)
-        {
-            throw new McpException($"Task '{taskId}' was cancelled");
-        }
-
-        // Retrieve the result
-        var result = await GetTaskResultAsync(taskId, options, cancellationToken).ConfigureAwait(false);
-
-        return (task, result);
     }
 
     /// <summary>

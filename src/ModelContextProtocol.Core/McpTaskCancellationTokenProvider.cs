@@ -68,29 +68,17 @@ internal sealed class McpTaskCancellationTokenProvider : IDisposable
     /// Attempts to cancel a running task.
     /// </summary>
     /// <param name="taskId">The unique identifier of the task to cancel.</param>
-    /// <returns>
-    /// <see langword="true"/> if the task was found and cancellation was signaled;
-    /// <see langword="false"/> if the task was not found (already completed or never registered).
-    /// </returns>
     /// <remarks>
     /// This method signals cancellation but does not remove the task from tracking.
     /// The task executor should call <see cref="Complete"/> when it observes
     /// the cancellation and finishes cleanup.
     /// </remarks>
-    public bool Cancel(string taskId)
+    public void Cancel(string taskId)
     {
-        if (_disposed)
-        {
-            return false;
-        }
-
         if (_runningTasks.TryGetValue(taskId, out var cts))
         {
             cts.Cancel();
-            return true;
         }
-
-        return false;
     }
 
     /// <summary>

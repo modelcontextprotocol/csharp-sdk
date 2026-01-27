@@ -4,6 +4,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
+using System.Text.Json;
 
 namespace ModelContextProtocol.Tests.Server;
 
@@ -206,6 +207,332 @@ public class ToolTaskSupportTests : LoggedTest
         Assert.NotNull(fixture.Client.ServerCapabilities.Tasks.Cancel);
         Assert.NotNull(fixture.Client.ServerCapabilities.Tasks.Requests?.Tools?.Call);
     }
+
+#pragma warning disable MCPEXP001 // Tasks feature is experimental
+    [Fact]
+    public void McpServerToolAttribute_TaskSupport_CanBeSetOnAttribute()
+    {
+        // Test that the TaskSupport property can be set via the attribute
+        // and is correctly read when creating a tool
+        var tool = McpServerTool.Create(typeof(TaskSupportAttributeTestTools).GetMethod(nameof(TaskSupportAttributeTestTools.RequiredTaskTool))!);
+        Assert.NotNull(tool.ProtocolTool.Execution);
+        Assert.Equal(ToolTaskSupport.Required, tool.ProtocolTool.Execution.TaskSupport);
+
+        var optionalTool = McpServerTool.Create(typeof(TaskSupportAttributeTestTools).GetMethod(nameof(TaskSupportAttributeTestTools.OptionalTaskTool))!);
+        Assert.NotNull(optionalTool.ProtocolTool.Execution);
+        Assert.Equal(ToolTaskSupport.Optional, optionalTool.ProtocolTool.Execution.TaskSupport);
+
+        var forbiddenTool = McpServerTool.Create(typeof(TaskSupportAttributeTestTools).GetMethod(nameof(TaskSupportAttributeTestTools.ForbiddenTaskTool))!);
+        Assert.NotNull(forbiddenTool.ProtocolTool.Execution);
+        Assert.Equal(ToolTaskSupport.Forbidden, forbiddenTool.ProtocolTool.Execution.TaskSupport);
+    }
+
+    [Fact]
+    public void McpServerToolAttribute_TaskSupport_WhenNotSet_AllowsAutoDetection()
+    {
+        // When TaskSupport is not set on the attribute, async tools should use auto-detection (Optional)
+        var asyncTool = McpServerTool.Create(typeof(TaskSupportAttributeTestTools).GetMethod(nameof(TaskSupportAttributeTestTools.AsyncToolWithoutTaskSupport))!);
+        Assert.NotNull(asyncTool.ProtocolTool.Execution);
+        Assert.Equal(ToolTaskSupport.Optional, asyncTool.ProtocolTool.Execution.TaskSupport);
+
+        // Sync tools without TaskSupport set should have null Execution or Forbidden
+        var syncTool = McpServerTool.Create(typeof(TaskSupportAttributeTestTools).GetMethod(nameof(TaskSupportAttributeTestTools.SyncToolWithoutTaskSupport))!);
+        Assert.True(
+            syncTool.ProtocolTool.Execution is null ||
+            syncTool.ProtocolTool.Execution.TaskSupport is null ||
+            syncTool.ProtocolTool.Execution.TaskSupport == ToolTaskSupport.Forbidden,
+            "Sync tools without explicit TaskSupport should not support tasks");
+    }
+
+    [Fact]
+    public void McpServerToolAttribute_TaskSupport_ExplicitForbidden_OverridesAutoDetection()
+    {
+        // Verify that explicitly setting Forbidden overrides auto-detection for async methods
+        var forbiddenAsyncTool = McpServerTool.Create(typeof(TaskSupportAttributeTestTools).GetMethod(nameof(TaskSupportAttributeTestTools.ForbiddenAsyncTool))!);
+        Assert.NotNull(forbiddenAsyncTool.ProtocolTool.Execution);
+        Assert.Equal(ToolTaskSupport.Forbidden, forbiddenAsyncTool.ProtocolTool.Execution.TaskSupport);
+    }
+
+    [Fact]
+    public void McpServerToolAttribute_TaskSupport_OptionalOnSyncMethod_IsAllowed()
+    {
+        // Setting Optional on a sync method is allowed - the tool will just execute very quickly
+        // This tests that the SDK doesn't prevent this configuration at tool creation time
+        var tool = McpServerTool.Create(typeof(TaskSupportAttributeTestTools).GetMethod(nameof(TaskSupportAttributeTestTools.OptionalTaskTool))!);
+        Assert.NotNull(tool.ProtocolTool.Execution);
+        Assert.Equal(ToolTaskSupport.Optional, tool.ProtocolTool.Execution.TaskSupport);
+    }
+
+    [Fact]
+    public void McpServerToolAttribute_TaskSupport_RequiredOnSyncMethod_IsAllowed()
+    {
+        // Setting Required on a sync method is allowed - the tool will just execute very quickly
+        // This tests that the SDK doesn't prevent this configuration at tool creation time
+        var tool = McpServerTool.Create(typeof(TaskSupportAttributeTestTools).GetMethod(nameof(TaskSupportAttributeTestTools.RequiredTaskTool))!);
+        Assert.NotNull(tool.ProtocolTool.Execution);
+        Assert.Equal(ToolTaskSupport.Required, tool.ProtocolTool.Execution.TaskSupport);
+    }
+#pragma warning restore MCPEXP001
+
+#pragma warning disable MCPEXP001 // Tasks feature is experimental
+    [Fact]
+    public void McpServerToolAttribute_TaskSupport_WhenNotSet_DefaultsBasedOnMethodSignature()
+    {
+        // When TaskSupport is not set on the attribute, async tools should default to Optional
+        var asyncTool = McpServerTool.Create(typeof(TaskSupportAttributeTestTools).GetMethod(nameof(TaskSupportAttributeTestTools.AsyncToolWithoutTaskSupport))!);
+        Assert.NotNull(asyncTool.ProtocolTool.Execution);
+        Assert.Equal(ToolTaskSupport.Optional, asyncTool.ProtocolTool.Execution.TaskSupport);
+
+        // Sync tools should have null or no Execution set
+        var syncTool = McpServerTool.Create(typeof(TaskSupportAttributeTestTools).GetMethod(nameof(TaskSupportAttributeTestTools.SyncToolWithoutTaskSupport))!);
+        Assert.True(
+            syncTool.ProtocolTool.Execution is null ||
+            syncTool.ProtocolTool.Execution.TaskSupport is null ||
+            syncTool.ProtocolTool.Execution.TaskSupport == ToolTaskSupport.Forbidden,
+            "Sync tools without explicit TaskSupport should not support tasks");
+    }
+
+    [Theory]
+    [InlineData(ToolTaskSupport.Forbidden, "\"forbidden\"")]
+    [InlineData(ToolTaskSupport.Optional, "\"optional\"")]
+    [InlineData(ToolTaskSupport.Required, "\"required\"")]
+    public void ToolTaskSupport_SerializesToJsonCorrectly(ToolTaskSupport value, string expectedJson)
+    {
+        var json = JsonSerializer.Serialize(value, McpJsonUtilities.DefaultOptions);
+        Assert.Equal(expectedJson, json);
+    }
+
+    [Theory]
+    [InlineData("\"forbidden\"", ToolTaskSupport.Forbidden)]
+    [InlineData("\"optional\"", ToolTaskSupport.Optional)]
+    [InlineData("\"required\"", ToolTaskSupport.Required)]
+    public void ToolTaskSupport_DeserializesFromJsonCorrectly(string json, ToolTaskSupport expected)
+    {
+        var value = JsonSerializer.Deserialize<ToolTaskSupport>(json, McpJsonUtilities.DefaultOptions);
+        Assert.Equal(expected, value);
+    }
+
+    [Fact]
+    public void ToolExecution_TaskSupport_NullByDefault()
+    {
+        // Verify that ToolExecution.TaskSupport is null by default
+        var execution = new ToolExecution();
+        Assert.Null(execution.TaskSupport);
+        
+        // When serialized with a value, it should appear correctly
+        var tool = new Tool
+        {
+            Name = "test",
+            Execution = new ToolExecution { TaskSupport = ToolTaskSupport.Optional }
+        };
+        var toolJson = JsonSerializer.Serialize(tool, McpJsonUtilities.DefaultOptions);
+        Assert.Contains("\"optional\"", toolJson);
+    }
+
+    [Fact]
+    public void McpServerToolCreateOptions_Execution_OverridesAutoDetection()
+    {
+        // When Execution is set via options, it should override auto-detection
+        var tool = McpServerTool.Create(
+            async (string input, CancellationToken ct) =>
+            {
+                await Task.Delay(1, ct);
+                return input;
+            },
+            new McpServerToolCreateOptions
+            {
+                Name = "test",
+                Execution = new ToolExecution { TaskSupport = ToolTaskSupport.Forbidden }
+            });
+
+        // Even though this is an async method, it should have Forbidden since it was explicitly set
+        Assert.NotNull(tool.ProtocolTool.Execution);
+        Assert.Equal(ToolTaskSupport.Forbidden, tool.ProtocolTool.Execution.TaskSupport);
+    }
+
+    [Fact]
+    public void McpServerToolCreateOptions_Execution_Required_SetsCorrectly()
+    {
+        var tool = McpServerTool.Create(
+            (string input) => input,
+            new McpServerToolCreateOptions
+            {
+                Name = "test",
+                Execution = new ToolExecution { TaskSupport = ToolTaskSupport.Required }
+            });
+
+        Assert.NotNull(tool.ProtocolTool.Execution);
+        Assert.Equal(ToolTaskSupport.Required, tool.ProtocolTool.Execution.TaskSupport);
+    }
+
+    [Fact]
+    public void ToolTaskSupport_EnumValues_AreCorrect()
+    {
+        // Verify enum values are as expected (Forbidden = 0)
+        Assert.Equal(0, (int)ToolTaskSupport.Forbidden);
+        Assert.Equal(1, (int)ToolTaskSupport.Optional);
+        Assert.Equal(2, (int)ToolTaskSupport.Required);
+    }
+
+    [Fact]
+    public void McpServerToolAttribute_TaskSupport_PublicPropertyDefaultsToForbidden()
+    {
+        // Verify that the public property returns Forbidden when not set
+        var attr = new McpServerToolAttribute();
+        Assert.Equal(ToolTaskSupport.Forbidden, attr.TaskSupport);
+    }
+#pragma warning restore MCPEXP001
+
+    [McpServerToolType]
+    private static class TaskSupportAttributeTestTools
+    {
+#pragma warning disable MCPEXP001 // Tasks feature is experimental
+        [McpServerTool(TaskSupport = ToolTaskSupport.Required)]
+        public static string RequiredTaskTool(string input) => $"Required: {input}";
+
+        [McpServerTool(TaskSupport = ToolTaskSupport.Optional)]
+        public static string OptionalTaskTool(string input) => $"Optional: {input}";
+
+        [McpServerTool(TaskSupport = ToolTaskSupport.Forbidden)]
+        public static string ForbiddenTaskTool(string input) => $"Forbidden: {input}";
+
+        [McpServerTool(TaskSupport = ToolTaskSupport.Forbidden)]
+        public static async Task<string> ForbiddenAsyncTool(string input, CancellationToken ct)
+        {
+            await Task.Delay(1, ct);
+            return $"ForbiddenAsync: {input}";
+        }
+#pragma warning restore MCPEXP001
+
+        [McpServerTool]
+        public static async Task<string> AsyncToolWithoutTaskSupport(string input, CancellationToken ct)
+        {
+            await Task.Delay(1, ct);
+            return $"Async: {input}";
+        }
+
+        [McpServerTool]
+        public static string SyncToolWithoutTaskSupport(string input) => $"Sync: {input}";
+    }
+
+    #region Sync Method with Optional/Required TaskSupport Integration Tests
+
+#pragma warning disable MCPEXP001 // Tasks feature is experimental
+    [Fact]
+    public async Task SyncTool_WithOptionalTaskSupport_CanBeCalledAsTask()
+    {
+        // Arrange - Server with task store and a sync tool with Optional task support
+        var taskStore = new InMemoryMcpTaskStore();
+
+        await using var fixture = new ClientServerFixture(
+            LoggerFactory,
+            configureServer: builder =>
+            {
+                builder.WithTools([McpServerTool.Create(
+                    (string input) => $"Sync result: {input}",
+                    new McpServerToolCreateOptions
+                    {
+                        Name = "optional-sync-tool",
+                        Description = "A sync tool with optional task support",
+                        Execution = new ToolExecution { TaskSupport = ToolTaskSupport.Optional }
+                    })]);
+            },
+            configureServices: services =>
+            {
+                services.AddSingleton<IMcpTaskStore>(taskStore);
+                services.Configure<McpServerOptions>(options => options.TaskStore = taskStore);
+            });
+
+        // Act - Call the sync tool as a task
+        var mcpTask = await fixture.Client.CallToolAsTaskAsync(
+            "optional-sync-tool",
+            arguments: new Dictionary<string, object?> { ["input"] = "test" },
+            taskMetadata: new McpTaskMetadata(),
+            progress: null,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert - Task was created successfully
+        Assert.NotNull(mcpTask);
+        Assert.NotEmpty(mcpTask.TaskId);
+    }
+
+    [Fact]
+    public async Task SyncTool_WithRequiredTaskSupport_CanBeCalledAsTask()
+    {
+        // Arrange - Server with task store and a sync tool with Required task support
+        var taskStore = new InMemoryMcpTaskStore();
+
+        await using var fixture = new ClientServerFixture(
+            LoggerFactory,
+            configureServer: builder =>
+            {
+                builder.WithTools([McpServerTool.Create(
+                    (string input) => $"Sync result: {input}",
+                    new McpServerToolCreateOptions
+                    {
+                        Name = "required-sync-tool",
+                        Description = "A sync tool with required task support",
+                        Execution = new ToolExecution { TaskSupport = ToolTaskSupport.Required }
+                    })]);
+            },
+            configureServices: services =>
+            {
+                services.AddSingleton<IMcpTaskStore>(taskStore);
+                services.Configure<McpServerOptions>(options => options.TaskStore = taskStore);
+            });
+
+        // Act - Call the sync tool as a task
+        var mcpTask = await fixture.Client.CallToolAsTaskAsync(
+            "required-sync-tool",
+            arguments: new Dictionary<string, object?> { ["input"] = "test" },
+            taskMetadata: new McpTaskMetadata(),
+            progress: null,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert - Task was created successfully
+        Assert.NotNull(mcpTask);
+        Assert.NotEmpty(mcpTask.TaskId);
+    }
+
+    [Fact]
+    public async Task SyncTool_WithRequiredTaskSupport_CannotBeCalledDirectly()
+    {
+        // Arrange - Server with task store and a sync tool with Required task support
+        var taskStore = new InMemoryMcpTaskStore();
+
+        await using var fixture = new ClientServerFixture(
+            LoggerFactory,
+            configureServer: builder =>
+            {
+                builder.WithTools([McpServerTool.Create(
+                    (string input) => $"Sync result: {input}",
+                    new McpServerToolCreateOptions
+                    {
+                        Name = "required-sync-tool",
+                        Description = "A sync tool with required task support",
+                        Execution = new ToolExecution { TaskSupport = ToolTaskSupport.Required }
+                    })]);
+            },
+            configureServices: services =>
+            {
+                services.AddSingleton<IMcpTaskStore>(taskStore);
+                services.Configure<McpServerOptions>(options => options.TaskStore = taskStore);
+            });
+
+        // Act & Assert - Calling directly should fail because task execution is required
+        var exception = await Assert.ThrowsAsync<McpProtocolException>(() =>
+            fixture.Client.CallToolAsync(
+                "required-sync-tool",
+                arguments: new Dictionary<string, object?> { ["input"] = "test" },
+                cancellationToken: TestContext.Current.CancellationToken).AsTask());
+
+        // The server returns MethodNotFound because direct invocation is not allowed for required-task tools
+        Assert.Equal(McpErrorCode.MethodNotFound, exception.ErrorCode);
+        Assert.Contains("task", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+#pragma warning restore MCPEXP001
+
+    #endregion
 
     /// <summary>
     /// A fixture that creates a connected MCP client-server pair for testing.

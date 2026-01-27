@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 
-namespace ModelContextProtocol.Server;
+namespace ModelContextProtocol;
 
 /// <summary>
 /// Provides an in-memory implementation of <see cref="IMcpTaskStore"/> for development and testing.
@@ -33,6 +33,8 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
     private readonly TimeSpan _pollInterval;
     private readonly Timer? _cleanupTimer;
     private readonly int _pageSize;
+    private readonly int? _maxTasks;
+    private readonly int? _maxTasksPerSession;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="InMemoryMcpTaskStore"/> class.
@@ -55,12 +57,22 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
     /// <param name="pageSize">
     /// Maximum number of tasks to return per page in <see cref="ListTasksAsync"/>. Default is 100.
     /// </param>
+    /// <param name="maxTasks">
+    /// Maximum number of tasks allowed in the store globally. Null means unlimited.
+    /// When the limit is reached, <see cref="CreateTaskAsync"/> will throw <see cref="InvalidOperationException"/>.
+    /// </param>
+    /// <param name="maxTasksPerSession">
+    /// Maximum number of tasks allowed per session. Null means unlimited.
+    /// When the limit is reached for a session, <see cref="CreateTaskAsync"/> will throw <see cref="InvalidOperationException"/>.
+    /// </param>
     public InMemoryMcpTaskStore(
         TimeSpan? defaultTtl = null,
         TimeSpan? maxTtl = null,
         TimeSpan? pollInterval = null,
         TimeSpan? cleanupInterval = null,
-        int pageSize = 100)
+        int pageSize = 100,
+        int? maxTasks = null,
+        int? maxTasksPerSession = null)
     {
         if (defaultTtl.HasValue && maxTtl.HasValue && defaultTtl.Value > maxTtl.Value)
         {
@@ -86,10 +98,28 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
                 "Page size must be positive.");
         }
 
+        if (maxTasks is <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(maxTasks),
+                maxTasks,
+                "Max tasks must be positive.");
+        }
+
+        if (maxTasksPerSession is <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(maxTasksPerSession),
+                maxTasksPerSession,
+                "Max tasks per session must be positive.");
+        }
+
         _defaultTtl = defaultTtl;
         _maxTtl = maxTtl;
         _pollInterval = pollInterval.Value;
         _pageSize = pageSize;
+        _maxTasks = maxTasks;
+        _maxTasksPerSession = maxTasksPerSession;
 
         cleanupInterval ??= TimeSpan.FromMinutes(1);
         if (cleanupInterval.Value != Timeout.InfiniteTimeSpan)
@@ -106,6 +136,24 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
         string? sessionId = null,
         CancellationToken cancellationToken = default)
     {
+        // Check global task limit
+        if (_maxTasks is { } maxTasks && _tasks.Count >= maxTasks)
+        {
+            throw new InvalidOperationException(
+                $"Maximum number of tasks ({maxTasks}) has been reached. Cannot create new task.");
+        }
+
+        // Check per-session task limit
+        if (_maxTasksPerSession is { } maxPerSession && sessionId is not null)
+        {
+            var sessionTaskCount = _tasks.Values.Count(e => e.SessionId == sessionId && !IsExpired(e));
+            if (sessionTaskCount >= maxPerSession)
+            {
+                throw new InvalidOperationException(
+                    $"Maximum number of tasks per session ({maxPerSession}) has been reached for session '{sessionId}'. Cannot create new task.");
+            }
+        }
+
         var taskId = GenerateTaskId();
         var now = DateTimeOffset.UtcNow;
 

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Server;
@@ -136,6 +137,7 @@ public sealed class McpServerToolAttribute : Attribute
     internal bool? _idempotent;
     internal bool? _openWorld;
     internal bool? _readOnly;
+    internal ToolTaskSupport? _taskSupport;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="McpServerToolAttribute"/> class.
@@ -257,4 +259,29 @@ public sealed class McpServerToolAttribute : Attribute
     /// </para>
     /// </remarks>
     public string? IconSource { get; set; }
+
+    /// <summary>
+    /// Gets or sets the task support configuration for the tool.
+    /// </summary>
+    /// <value>
+    /// A <see cref="ToolTaskSupport"/> value indicating how the tool supports task-based invocation.
+    /// The default value is <see cref="ToolTaskSupport.Forbidden"/>.
+    /// </value>
+    /// <remarks>
+    /// <para>
+    /// When set to <see cref="ToolTaskSupport.Forbidden"/>, clients must not attempt to invoke the tool as a task.
+    /// When set to <see cref="ToolTaskSupport.Optional"/>, clients may invoke the tool as a task or as a normal request.
+    /// When set to <see cref="ToolTaskSupport.Required"/>, clients must invoke the tool as a task.
+    /// </para>
+    /// <para>
+    /// If this property is not explicitly set on the attribute, the task support behavior will be determined 
+    /// automatically based on the tool's characteristics (e.g., async methods default to <see cref="ToolTaskSupport.Optional"/>).
+    /// </para>
+    /// </remarks>
+    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    public ToolTaskSupport TaskSupport
+    {
+        get => _taskSupport ?? ToolTaskSupport.Forbidden;
+        set => _taskSupport = value;
+    }
 }

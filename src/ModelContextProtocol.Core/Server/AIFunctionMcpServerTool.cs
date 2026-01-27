@@ -205,6 +205,12 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             }
 
             newOptions.UseStructuredContent = toolAttr.UseStructuredContent;
+
+            if (toolAttr._taskSupport is { } taskSupport)
+            {
+                newOptions.Execution ??= new ToolExecution();
+                newOptions.Execution.TaskSupport ??= taskSupport;
+            }
         }
 
         if (method.GetCustomAttribute<DescriptionAttribute>() is { } descAttr)

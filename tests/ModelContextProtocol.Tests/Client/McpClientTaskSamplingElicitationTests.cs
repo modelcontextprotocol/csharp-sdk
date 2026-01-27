@@ -226,14 +226,14 @@ public class McpClientTaskSamplingElicitationTests : ClientServerTestBase
         do
         {
             await Task.Delay(100, TestContext.Current.CancellationToken);
-            taskStatus = await Server.GetClientTaskAsync(mcpTask.TaskId, TestContext.Current.CancellationToken);
+            taskStatus = await Server.GetTaskAsync(mcpTask.TaskId, TestContext.Current.CancellationToken);
         }
         while (taskStatus.Status == McpTaskStatus.Working);
 
         Assert.Equal(McpTaskStatus.Completed, taskStatus.Status);
 
         // Get the result
-        var result = await Server.GetClientTaskResultAsync<CreateMessageResult>(
+        var result = await Server.GetTaskResultAsync<CreateMessageResult>(
             mcpTask.TaskId, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
@@ -382,14 +382,14 @@ public class McpClientTaskSamplingElicitationTests : ClientServerTestBase
         do
         {
             await Task.Delay(100, TestContext.Current.CancellationToken);
-            taskStatus = await Server.GetClientTaskAsync(mcpTask.TaskId, TestContext.Current.CancellationToken);
+            taskStatus = await Server.GetTaskAsync(mcpTask.TaskId, TestContext.Current.CancellationToken);
         }
         while (taskStatus.Status == McpTaskStatus.Working);
 
         Assert.Equal(McpTaskStatus.Completed, taskStatus.Status);
 
         // Get the result
-        var result = await Server.GetClientTaskResultAsync<ElicitResult>(
+        var result = await Server.GetTaskResultAsync<ElicitResult>(
             mcpTask.TaskId, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
@@ -436,7 +436,7 @@ public class McpClientTaskSamplingElicitationTests : ClientServerTestBase
             TestContext.Current.CancellationToken);
 
         // Act - Server lists tasks from client
-        var tasks = await Server.ListClientTasksAsync(TestContext.Current.CancellationToken);
+        var tasks = await Server.ListTasksAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(tasks);
@@ -491,7 +491,7 @@ public class McpClientTaskSamplingElicitationTests : ClientServerTestBase
         await samplingStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
         // Act - Cancel the task
-        var cancelledTask = await Server.CancelClientTaskAsync(mcpTask.TaskId, TestContext.Current.CancellationToken);
+        var cancelledTask = await Server.CancelTaskAsync(mcpTask.TaskId, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(cancelledTask);
@@ -660,7 +660,7 @@ public class McpClientTaskSamplingElicitationTests : ClientServerTestBase
         do
         {
             await Task.Delay(100, TestContext.Current.CancellationToken);
-            taskStatus = await Server.GetClientTaskAsync(mcpTask.TaskId, TestContext.Current.CancellationToken);
+            taskStatus = await Server.GetTaskAsync(mcpTask.TaskId, TestContext.Current.CancellationToken);
         }
         while (taskStatus.Status == McpTaskStatus.Working);
 
@@ -710,7 +710,7 @@ public class McpClientTaskSamplingElicitationTests : ClientServerTestBase
         do
         {
             await Task.Delay(100, TestContext.Current.CancellationToken);
-            taskStatus = await Server.GetClientTaskAsync(mcpTask.TaskId, TestContext.Current.CancellationToken);
+            taskStatus = await Server.GetTaskAsync(mcpTask.TaskId, TestContext.Current.CancellationToken);
         }
         while (taskStatus.Status == McpTaskStatus.Working);
 

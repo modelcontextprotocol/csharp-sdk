@@ -9,11 +9,11 @@ namespace ModelContextProtocol.Tests.Server;
 /// <summary>
 /// Tests for McpServer methods that query tasks on the client (Phase 4 implementation).
 /// </summary>
-public class McpServerClientTaskMethodsTests : LoggedTest
+public class McpServerTaskMethodsTests : LoggedTest
 {
     private readonly McpServerOptions _options;
 
-    public McpServerClientTaskMethodsTests(ITestOutputHelper testOutputHelper)
+    public McpServerTaskMethodsTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
     {
 #if !NET
@@ -230,10 +230,10 @@ public class McpServerClientTaskMethodsTests : LoggedTest
 
     #endregion
 
-    #region GetClientTaskAsync Tests
+    #region GetTaskAsync Tests
 
     [Fact]
-    public async Task GetClientTaskAsync_ThrowsException_WhenClientDoesNotSupportTasks()
+    public async Task GetTaskAsync_ThrowsException_WhenClientDoesNotSupportTasks()
     {
         // Arrange
         await using var transport = new TestServerTransport();
@@ -243,14 +243,14 @@ public class McpServerClientTaskMethodsTests : LoggedTest
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-            await server.GetClientTaskAsync("task-id", CancellationToken.None));
+            await server.GetTaskAsync("task-id", CancellationToken.None));
 
         await transport.DisposeAsync();
         await runTask;
     }
 
     [Fact]
-    public async Task GetClientTaskAsync_SendsRequest_AndReturnsTask()
+    public async Task GetTaskAsync_SendsRequest_AndReturnsTask()
     {
         // Arrange
         await using var transport = new TestServerTransport();
@@ -271,7 +271,7 @@ public class McpServerClientTaskMethodsTests : LoggedTest
         }, TestContext.Current.CancellationToken);
 
         // Act
-        var task = await server.GetClientTaskAsync("client-task-789", TestContext.Current.CancellationToken);
+        var task = await server.GetTaskAsync("client-task-789", TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(task);
@@ -288,7 +288,7 @@ public class McpServerClientTaskMethodsTests : LoggedTest
     }
 
     [Fact]
-    public async Task GetClientTaskAsync_ThrowsArgumentException_WhenTaskIdIsEmpty()
+    public async Task GetTaskAsync_ThrowsArgumentException_WhenTaskIdIsEmpty()
     {
         // Arrange
         await using var transport = new TestServerTransport();
@@ -301,7 +301,7 @@ public class McpServerClientTaskMethodsTests : LoggedTest
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentException>(async () =>
-            await server.GetClientTaskAsync("", CancellationToken.None));
+            await server.GetTaskAsync("", CancellationToken.None));
 
         await transport.DisposeAsync();
         await runTask;
@@ -309,10 +309,10 @@ public class McpServerClientTaskMethodsTests : LoggedTest
 
     #endregion
 
-    #region GetClientTaskResultAsync Tests
+    #region GetTaskResultAsync Tests
 
     [Fact]
-    public async Task GetClientTaskResultAsync_ThrowsException_WhenClientDoesNotSupportTasks()
+    public async Task GetTaskResultAsync_ThrowsException_WhenClientDoesNotSupportTasks()
     {
         // Arrange
         await using var transport = new TestServerTransport();
@@ -322,14 +322,14 @@ public class McpServerClientTaskMethodsTests : LoggedTest
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-            await server.GetClientTaskResultAsync<CreateMessageResult>("task-id", cancellationToken: CancellationToken.None));
+            await server.GetTaskResultAsync<CreateMessageResult>("task-id", cancellationToken: CancellationToken.None));
 
         await transport.DisposeAsync();
         await runTask;
     }
 
     [Fact]
-    public async Task GetClientTaskResultAsync_ReturnsDeserializedResult()
+    public async Task GetTaskResultAsync_ReturnsDeserializedResult()
     {
         // Arrange
         await using var transport = new TestServerTransport();
@@ -347,7 +347,7 @@ public class McpServerClientTaskMethodsTests : LoggedTest
         }, TestContext.Current.CancellationToken);
 
         // Act
-        var result = await server.GetClientTaskResultAsync<CreateMessageResult>(
+        var result = await server.GetTaskResultAsync<CreateMessageResult>(
             "task-id", cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
@@ -363,10 +363,10 @@ public class McpServerClientTaskMethodsTests : LoggedTest
 
     #endregion
 
-    #region ListClientTasksAsync Tests
+    #region ListTasksAsync Tests
 
     [Fact]
-    public async Task ListClientTasksAsync_ThrowsException_WhenClientDoesNotSupportTasks()
+    public async Task ListTasksAsync_ThrowsException_WhenClientDoesNotSupportTasks()
     {
         // Arrange
         await using var transport = new TestServerTransport();
@@ -376,14 +376,14 @@ public class McpServerClientTaskMethodsTests : LoggedTest
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-            await server.ListClientTasksAsync(CancellationToken.None));
+            await server.ListTasksAsync(CancellationToken.None));
 
         await transport.DisposeAsync();
         await runTask;
     }
 
     [Fact]
-    public async Task ListClientTasksAsync_ThrowsException_WhenClientDoesNotSupportTaskListing()
+    public async Task ListTasksAsync_ThrowsException_WhenClientDoesNotSupportTaskListing()
     {
         // Arrange - Client supports tasks but NOT task listing
         await using var transport = new TestServerTransport();
@@ -399,14 +399,14 @@ public class McpServerClientTaskMethodsTests : LoggedTest
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-            await server.ListClientTasksAsync(CancellationToken.None));
+            await server.ListTasksAsync(CancellationToken.None));
 
         await transport.DisposeAsync();
         await runTask;
     }
 
     [Fact]
-    public async Task ListClientTasksAsync_ReturnsTaskList()
+    public async Task ListTasksAsync_ReturnsTaskList()
     {
         // Arrange
         await using var transport = new TestServerTransport();
@@ -447,7 +447,7 @@ public class McpServerClientTaskMethodsTests : LoggedTest
         }, TestContext.Current.CancellationToken);
 
         // Act
-        var tasks = await server.ListClientTasksAsync(TestContext.Current.CancellationToken);
+        var tasks = await server.ListTasksAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(tasks);
@@ -462,10 +462,10 @@ public class McpServerClientTaskMethodsTests : LoggedTest
 
     #endregion
 
-    #region CancelClientTaskAsync Tests
+    #region CancelTaskAsync Tests
 
     [Fact]
-    public async Task CancelClientTaskAsync_ThrowsException_WhenClientDoesNotSupportTasks()
+    public async Task CancelTaskAsync_ThrowsException_WhenClientDoesNotSupportTasks()
     {
         // Arrange
         await using var transport = new TestServerTransport();
@@ -475,14 +475,14 @@ public class McpServerClientTaskMethodsTests : LoggedTest
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-            await server.CancelClientTaskAsync("task-id", CancellationToken.None));
+            await server.CancelTaskAsync("task-id", CancellationToken.None));
 
         await transport.DisposeAsync();
         await runTask;
     }
 
     [Fact]
-    public async Task CancelClientTaskAsync_ThrowsException_WhenClientDoesNotSupportTaskCancellation()
+    public async Task CancelTaskAsync_ThrowsException_WhenClientDoesNotSupportTaskCancellation()
     {
         // Arrange - Client supports tasks but NOT task cancellation
         await using var transport = new TestServerTransport();
@@ -498,14 +498,14 @@ public class McpServerClientTaskMethodsTests : LoggedTest
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-            await server.CancelClientTaskAsync("task-id", CancellationToken.None));
+            await server.CancelTaskAsync("task-id", CancellationToken.None));
 
         await transport.DisposeAsync();
         await runTask;
     }
 
     [Fact]
-    public async Task CancelClientTaskAsync_SendsRequest_AndReturnsCancelledTask()
+    public async Task CancelTaskAsync_SendsRequest_AndReturnsCancelledTask()
     {
         // Arrange
         await using var transport = new TestServerTransport();
@@ -528,7 +528,7 @@ public class McpServerClientTaskMethodsTests : LoggedTest
         }, TestContext.Current.CancellationToken);
 
         // Act
-        var task = await server.CancelClientTaskAsync("task-to-cancel", TestContext.Current.CancellationToken);
+        var task = await server.CancelTaskAsync("task-to-cancel", TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(task);
@@ -546,10 +546,10 @@ public class McpServerClientTaskMethodsTests : LoggedTest
 
     #endregion
 
-    #region PollClientTaskUntilCompleteAsync Tests
+    #region PollTaskUntilCompleteAsync Tests
 
     [Fact]
-    public async Task PollClientTaskUntilCompleteAsync_ReturnsImmediately_WhenTaskIsAlreadyComplete()
+    public async Task PollTaskUntilCompleteAsync_ReturnsImmediately_WhenTaskIsAlreadyComplete()
     {
         // Arrange
         await using var transport = new TestServerTransport();
@@ -569,7 +569,7 @@ public class McpServerClientTaskMethodsTests : LoggedTest
         }, TestContext.Current.CancellationToken);
 
         // Act
-        var task = await server.PollClientTaskUntilCompleteAsync("completed-task", TestContext.Current.CancellationToken);
+        var task = await server.PollTaskUntilCompleteAsync("completed-task", TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(task);
@@ -581,7 +581,7 @@ public class McpServerClientTaskMethodsTests : LoggedTest
     }
 
     [Fact]
-    public async Task PollClientTaskUntilCompleteAsync_ReturnsTask_WhenTaskFails()
+    public async Task PollTaskUntilCompleteAsync_ReturnsTask_WhenTaskFails()
     {
         // Arrange
         await using var transport = new TestServerTransport();
@@ -602,7 +602,7 @@ public class McpServerClientTaskMethodsTests : LoggedTest
         }, TestContext.Current.CancellationToken);
 
         // Act
-        var task = await server.PollClientTaskUntilCompleteAsync("failed-task", TestContext.Current.CancellationToken);
+        var task = await server.PollTaskUntilCompleteAsync("failed-task", TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(task);
@@ -616,10 +616,10 @@ public class McpServerClientTaskMethodsTests : LoggedTest
 
     #endregion
 
-    #region WaitForClientTaskResultAsync Tests
+    #region WaitForTaskResultAsync Tests
 
     [Fact]
-    public async Task WaitForClientTaskResultAsync_ReturnsTaskAndResult_WhenTaskCompletes()
+    public async Task WaitForTaskResultAsync_ReturnsTaskAndResult_WhenTaskCompletes()
     {
         // Arrange
         await using var transport = new TestServerTransport();
@@ -644,7 +644,7 @@ public class McpServerClientTaskMethodsTests : LoggedTest
         }, TestContext.Current.CancellationToken);
 
         // Act
-        var (task, result) = await server.WaitForClientTaskResultAsync<CreateMessageResult>(
+        var (task, result) = await server.WaitForTaskResultAsync<CreateMessageResult>(
             "task-with-result", cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
@@ -662,7 +662,7 @@ public class McpServerClientTaskMethodsTests : LoggedTest
     }
 
     [Fact]
-    public async Task WaitForClientTaskResultAsync_ThrowsException_WhenTaskFails()
+    public async Task WaitForTaskResultAsync_ThrowsException_WhenTaskFails()
     {
         // Arrange
         await using var transport = new TestServerTransport();
@@ -684,7 +684,7 @@ public class McpServerClientTaskMethodsTests : LoggedTest
 
         // Act & Assert
         var ex = await Assert.ThrowsAsync<McpException>(async () =>
-            await server.WaitForClientTaskResultAsync<CreateMessageResult>(
+            await server.WaitForTaskResultAsync<CreateMessageResult>(
                 "failed-task", cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains("failed", ex.Message, StringComparison.OrdinalIgnoreCase);
@@ -695,7 +695,7 @@ public class McpServerClientTaskMethodsTests : LoggedTest
     }
 
     [Fact]
-    public async Task WaitForClientTaskResultAsync_ThrowsException_WhenTaskIsCancelled()
+    public async Task WaitForTaskResultAsync_ThrowsException_WhenTaskIsCancelled()
     {
         // Arrange
         await using var transport = new TestServerTransport();
@@ -716,7 +716,7 @@ public class McpServerClientTaskMethodsTests : LoggedTest
 
         // Act & Assert
         var ex = await Assert.ThrowsAsync<McpException>(async () =>
-            await server.WaitForClientTaskResultAsync<CreateMessageResult>(
+            await server.WaitForTaskResultAsync<CreateMessageResult>(
                 "cancelled-task", cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains("cancelled", ex.Message, StringComparison.OrdinalIgnoreCase);
