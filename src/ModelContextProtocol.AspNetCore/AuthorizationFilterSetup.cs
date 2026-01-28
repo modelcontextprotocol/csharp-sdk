@@ -3,7 +3,6 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.AspNetCore;
