@@ -195,10 +195,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
             return;
         }
 
-        if (_logger.IsEnabled(LogLevel.Trace))
-        {
-            LogTransportReceivedMessageSensitive(Name, data);
-        }
+        LogTransportReceivedMessageSensitive(Name, data);
 
         try
         {
