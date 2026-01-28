@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.AI;
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -175,6 +176,10 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(ResourceTemplateReference))]
     [JsonSerializable(typeof(BlobResourceContents))]
     [JsonSerializable(typeof(TextResourceContents))]
+
+    // Distributed cache event stream store
+    [JsonSerializable(typeof(DistributedCacheEventStreamStore.StreamMetadata))]
+    [JsonSerializable(typeof(DistributedCacheEventStreamStore.StoredEvent))]
 
     // Other MCP Types
     [JsonSerializable(typeof(IReadOnlyDictionary<string, object>))]
