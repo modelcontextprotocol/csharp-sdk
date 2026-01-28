@@ -103,4 +103,18 @@ public class HttpServerTransportOptions
     /// Gets or sets the time provider that's used for testing the <see cref="IdleTimeout"/>.
     /// </summary>
     public TimeProvider TimeProvider { get; set; } = TimeProvider.System;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether to enable distributed session support.
+    /// </summary>
+    /// <value>
+    /// <see langword="true"/> to enable distributed sessions; <see langword="false"/> to use in-memory only. The default is <see langword="false"/>.
+    /// </value>
+    /// <remarks>
+    /// When enabled and an <see cref="ISessionStore"/> is registered in DI, sessions can be
+    /// recreated on any server instance. This enables horizontal scaling without sticky sessions.
+    /// Session metadata is persisted to the store, and sessions not found in memory are
+    /// automatically recreated from stored metadata.
+    /// </remarks>
+    public bool EnableDistributedSessions { get; set; }
 }
