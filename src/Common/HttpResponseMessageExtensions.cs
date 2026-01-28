@@ -24,12 +24,15 @@ internal static class HttpResponseMessageExtensions
             string? responseBody = null;
             try
             {
-                responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                // Add a timeout to prevent hanging if the server sends an error response but doesn't end the request.
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                cts.CancelAfter(TimeSpan.FromSeconds(5));
+                responseBody = await response.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
-                // Ignore errors reading the response body (e.g., stream closed) - we'll throw without it.
-                // Allow cancellation exceptions to propagate.
+                // Ignore errors reading the response body (e.g., stream closed, timeout) - we'll throw without it.
+                // Allow cancellation exceptions to propagate only if the original token was cancelled.
             }
 
             throw CreateHttpRequestException(response, responseBody);
