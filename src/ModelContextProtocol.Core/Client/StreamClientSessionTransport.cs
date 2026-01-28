@@ -105,7 +105,10 @@ internal class StreamClientSessionTransport : TransportBase
 
         var json = JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage);
 
-        LogTransportSendingMessageSensitive(Name, json);
+        if (Logger.IsEnabled(LogLevel.Trace))
+        {
+            LogTransportSendingMessageSensitive(Name, json);
+        }
 
         using var _ = await _sendLock.LockAsync(cancellationToken).ConfigureAwait(false);
         try

@@ -75,7 +75,10 @@ public class StreamServerTransport : TransportBase
         try
         {
             var json = JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage);
-            LogTransportSendingMessageSensitive(Name, json);
+            if (Logger.IsEnabled(LogLevel.Trace))
+            {
+                LogTransportSendingMessageSensitive(Name, json);
+            }
             await _outputStream.WriteAsync(Encoding.UTF8.GetBytes(json), cancellationToken).ConfigureAwait(false);
             await _outputStream.WriteAsync(s_newlineBytes, cancellationToken).ConfigureAwait(false);
             await _outputStream.FlushAsync(cancellationToken).ConfigureAwait(false);
