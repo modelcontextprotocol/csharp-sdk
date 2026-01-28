@@ -75,6 +75,21 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
                 $"Call {nameof(McpClient)}.{nameof(McpClient.ResumeSessionAsync)} to resume existing sessions.");
         }
 
+        string messageId = "(no id)";
+        if (message is JsonRpcMessageWithId messageWithId)
+        {
+            messageId = messageWithId.Id.ToString();
+        }
+
+        if (_logger.IsEnabled(LogLevel.Trace))
+        {
+            LogTransportSendingMessageSensitive(Name, JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage));
+        }
+        else
+        {
+            LogTransportSendingMessage(Name, messageId);
+        }
+
         using var sendCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _connectionCts.Token);
         cancellationToken = sendCts.Token;
 
