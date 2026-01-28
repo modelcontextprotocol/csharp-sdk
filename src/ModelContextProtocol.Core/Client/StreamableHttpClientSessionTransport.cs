@@ -347,7 +347,10 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
     private async Task<JsonRpcMessageWithId?> ProcessMessageAsync(string data, JsonRpcRequest? relatedRpcRequest, CancellationToken cancellationToken)
     {
-        LogTransportReceivedMessageSensitive(Name, data);
+        if (_logger.IsEnabled(LogLevel.Trace))
+        {
+            LogTransportReceivedMessageSensitive(Name, data);
+        }
 
         try
         {

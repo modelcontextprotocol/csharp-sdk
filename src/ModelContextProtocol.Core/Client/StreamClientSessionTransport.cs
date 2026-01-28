@@ -148,7 +148,10 @@ internal class StreamClientSessionTransport : TransportBase
                     continue;
                 }
 
-                LogTransportReceivedMessageSensitive(Name, line);
+                if (Logger.IsEnabled(LogLevel.Trace))
+                {
+                    LogTransportReceivedMessageSensitive(Name, line);
+                }
 
                 await ProcessMessageAsync(line, cancellationToken).ConfigureAwait(false);
             }

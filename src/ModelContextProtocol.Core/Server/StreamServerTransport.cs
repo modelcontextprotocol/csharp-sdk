@@ -112,7 +112,10 @@ public class StreamServerTransport : TransportBase
                     continue;
                 }
 
-                LogTransportReceivedMessageSensitive(Name, line);
+                if (Logger.IsEnabled(LogLevel.Trace))
+                {
+                    LogTransportReceivedMessageSensitive(Name, line);
+                }
 
                 try
                 {
