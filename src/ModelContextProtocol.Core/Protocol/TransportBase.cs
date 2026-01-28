@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Diagnostics;
+using System.Text.Json;
 using System.Threading.Channels;
 
 namespace ModelContextProtocol.Protocol;
@@ -168,6 +169,18 @@ public abstract partial class TransportBase : ITransport
 
     [LoggerMessage(Level = LogLevel.Trace, Message = "{EndpointName} transport sending message. Message: '{Message}'.")]
     private protected partial void LogTransportSendingMessageSensitive(string endpointName, string message);
+
+    /// <summary>
+    /// Logs a sending message at Trace level if trace logging is enabled.
+    /// </summary>
+    /// <param name="message">The JSON-RPC message to log.</param>
+    private protected void LogTransportSendingMessageSensitive(JsonRpcMessage message)
+    {
+        if (_logger.IsEnabled(LogLevel.Trace))
+        {
+            LogTransportSendingMessageSensitive(Name, JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage));
+        }
+    }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} transport reading messages.")]
     private protected partial void LogTransportEnteringReadMessagesLoop(string endpointName);
