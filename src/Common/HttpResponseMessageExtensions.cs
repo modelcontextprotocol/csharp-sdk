@@ -26,9 +26,10 @@ internal static class HttpResponseMessageExtensions
             {
                 responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             }
-            catch
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // Ignore any errors reading the response body - we'll throw without it
+                // Ignore errors reading the response body (e.g., stream closed) - we'll throw without it.
+                // Allow cancellation exceptions to propagate.
             }
 
             throw CreateHttpRequestException(response, responseBody);
