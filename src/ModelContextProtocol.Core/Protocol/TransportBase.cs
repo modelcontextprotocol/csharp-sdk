@@ -166,9 +166,6 @@ public abstract partial class TransportBase : ITransport
     [LoggerMessage(Level = LogLevel.Error, Message = "{EndpointName} transport send failed for message ID '{MessageId}'.")]
     private protected partial void LogTransportSendFailed(string endpointName, string messageId, Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "{EndpointName} transport sending message with ID '{MessageId}'.")]
-    private protected partial void LogTransportSendingMessage(string endpointName, string messageId);
-
     [LoggerMessage(Level = LogLevel.Trace, Message = "{EndpointName} transport sending message. Message: '{Message}'.")]
     private protected partial void LogTransportSendingMessageSensitive(string endpointName, string message);
 

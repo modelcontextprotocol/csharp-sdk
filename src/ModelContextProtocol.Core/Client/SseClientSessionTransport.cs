@@ -80,14 +80,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
             messageId = messageWithId.Id.ToString();
         }
 
-        if (_logger.IsEnabled(LogLevel.Trace))
-        {
-            LogTransportSendingMessageSensitive(Name, JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage));
-        }
-        else
-        {
-            LogTransportSendingMessage(Name, messageId);
-        }
+        LogTransportSendingMessageSensitive(Name, JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage));
 
         using var httpRequestMessage = new HttpRequestMessage(HttpMethod.Post, _messageEndpoint);
         StreamableHttpClientSessionTransport.CopyAdditionalHeaders(httpRequestMessage.Headers, _options.AdditionalHeaders, sessionId: null, protocolVersion: null);
