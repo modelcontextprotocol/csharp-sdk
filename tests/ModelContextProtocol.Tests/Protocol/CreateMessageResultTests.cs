@@ -118,7 +118,7 @@ public class CreateMessageResultTests
             [
                 new ImageContentBlock
                 {
-                    Data = Convert.ToBase64String([1, 2, 3, 4, 5]),
+                    Data = System.Text.Encoding.UTF8.GetBytes(Convert.ToBase64String([1, 2, 3, 4, 5])),
                     MimeType = "image/png"
                 }
             ],

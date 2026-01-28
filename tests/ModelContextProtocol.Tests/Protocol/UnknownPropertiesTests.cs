@@ -75,7 +75,7 @@ public class UnknownPropertiesTests
         // Assert
         Assert.NotNull(deserialized);
         var imageBlock = Assert.IsType<ImageContentBlock>(deserialized);
-        Assert.Equal("base64data", imageBlock.Data);
+        Assert.Equal("base64data", System.Text.Encoding.UTF8.GetString(imageBlock.Data.ToArray()));
         Assert.Equal("image/png", imageBlock.MimeType);
     }
 

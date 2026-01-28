@@ -180,7 +180,7 @@ public abstract class HttpServerIntegrationTests : LoggedTest, IClassFixture<Sse
         Assert.Single(result.Contents);
 
         BlobResourceContents blobContent = Assert.IsType<BlobResourceContents>(result.Contents[0]);
-        Assert.NotNull(blobContent.Blob);
+        Assert.False(blobContent.Blob.IsEmpty);
     }
 
     [Fact]

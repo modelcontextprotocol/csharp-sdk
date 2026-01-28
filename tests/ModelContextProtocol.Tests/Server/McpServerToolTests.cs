@@ -270,10 +270,10 @@ public partial class McpServerToolTests
 
         Assert.Equal("text", (result.Content[0] as TextContentBlock)?.Text);
 
-        Assert.Equal("1234", (result.Content[1] as ImageContentBlock)?.Data);
+        Assert.Equal("1234", System.Text.Encoding.UTF8.GetString((result.Content[1] as ImageContentBlock)?.Data.ToArray() ?? []));
         Assert.Equal("image/png", (result.Content[1] as ImageContentBlock)?.MimeType);
 
-        Assert.Equal("1234", (result.Content[2] as AudioContentBlock)?.Data);
+        Assert.Equal("1234", System.Text.Encoding.UTF8.GetString((result.Content[2] as AudioContentBlock)?.Data.ToArray() ?? []));
         Assert.Equal("audio/wav", (result.Content[2] as AudioContentBlock)?.MimeType);
     }
 
@@ -309,12 +309,12 @@ public partial class McpServerToolTests
         }
         else if (result.Content[0] is ImageContentBlock ic)
         {
-            Assert.Equal(data.Split(',').Last(), ic.Data);
+            Assert.Equal(data.Split(',').Last(), System.Text.Encoding.UTF8.GetString(ic.Data.ToArray()));
             Assert.Equal("image/png", ic.MimeType);
         }
         else if (result.Content[0] is AudioContentBlock ac)
         {
-            Assert.Equal(data.Split(',').Last(), ac.Data);
+            Assert.Equal(data.Split(',').Last(), System.Text.Encoding.UTF8.GetString(ac.Data.ToArray()));
             Assert.Equal("audio/wav", ac.MimeType);
         }
         else
@@ -397,7 +397,7 @@ public partial class McpServerToolTests
             return (IList<ContentBlock>)
             [
                 new TextContentBlock { Text = "42" },
-                new ImageContentBlock { Data = "1234", MimeType = "image/png" }
+                new ImageContentBlock { Data = System.Text.Encoding.UTF8.GetBytes("1234"), MimeType = "image/png" }
             ];
         });
         var result = await tool.InvokeAsync(
@@ -405,7 +405,7 @@ public partial class McpServerToolTests
             TestContext.Current.CancellationToken);
         Assert.Equal(2, result.Content.Count);
         Assert.Equal("42", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
-        Assert.Equal("1234", Assert.IsType<ImageContentBlock>(result.Content[1]).Data);
+        Assert.Equal("1234", System.Text.Encoding.UTF8.GetString(Assert.IsType<ImageContentBlock>(result.Content[1]).Data.ToArray()));
         Assert.Equal("image/png", Assert.IsType<ImageContentBlock>(result.Content[1]).MimeType);
     }
 
@@ -414,7 +414,7 @@ public partial class McpServerToolTests
     {
         CallToolResult response = new()
         {
-            Content = [new TextContentBlock { Text = "text" }, new ImageContentBlock { Data = "1234", MimeType = "image/png" }]
+            Content = [new TextContentBlock { Text = "text" }, new ImageContentBlock { Data = System.Text.Encoding.UTF8.GetBytes("1234"), MimeType = "image/png" }]
         };
 
         Mock<McpServer> mockServer = new();
@@ -431,7 +431,7 @@ public partial class McpServerToolTests
 
         Assert.Equal(2, result.Content.Count);
         Assert.Equal("text", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
-        Assert.Equal("1234", Assert.IsType<ImageContentBlock>(result.Content[1]).Data);
+        Assert.Equal("1234", System.Text.Encoding.UTF8.GetString(Assert.IsType<ImageContentBlock>(result.Content[1]).Data.ToArray()));
     }
 
     [Fact]
