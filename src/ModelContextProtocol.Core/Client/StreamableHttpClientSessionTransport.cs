@@ -75,6 +75,8 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
                 $"Call {nameof(McpClient)}.{nameof(McpClient.ResumeSessionAsync)} to resume existing sessions.");
         }
 
+        LogTransportSendingMessageSensitive(message);
+
         using var sendCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _connectionCts.Token);
         cancellationToken = sendCts.Token;
 
