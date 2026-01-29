@@ -83,6 +83,8 @@ internal sealed partial class SseClientSessionTransport : TransportBase
             messageId = messageWithId.Id.ToString();
         }
 
+        LogTransportSendingMessageSensitive(message);
+
         using var httpRequestMessage = new HttpRequestMessage(HttpMethod.Post, _messageEndpoint);
         StreamableHttpClientSessionTransport.CopyAdditionalHeaders(httpRequestMessage.Headers, _options.AdditionalHeaders, sessionId: null, protocolVersion: null);
         var response = await _httpClient.SendAsync(httpRequestMessage, message, cancellationToken).ConfigureAwait(false);

@@ -1,4 +1,5 @@
-﻿using ModelContextProtocol.Protocol;
+﻿using Microsoft.Extensions.Logging;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.IO.Pipelines;
@@ -21,6 +22,14 @@ public class StdioServerTransportTests : LoggedTest
             InitializationTimeout = TimeSpan.FromSeconds(10),
             ServerInstructions = "Test Instructions"
         };
+
+        // Override the LoggerFactory to use Trace level for testing Trace-level logging
+        LoggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+        {
+            builder.AddProvider(XunitLoggerProvider);
+            builder.AddProvider(MockLoggerProvider);
+            builder.SetMinimumLevel(LogLevel.Trace);
+        });
     }
 
     [Fact(Skip="https://github.com/modelcontextprotocol/csharp-sdk/issues/143")]
@@ -192,5 +201,60 @@ public class StdioServerTransportTests : LoggedTest
 
         Assert.True(magnifyingGlassFound, "Magnifying glass emoji not found in result");
         Assert.True(rocketFound, "Rocket emoji not found in result");
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_Should_Log_At_Trace_Level()
+    {
+        // Arrange
+        using var output = new MemoryStream();
+
+        await using var transport = new StreamServerTransport(
+            new Pipe().Reader.AsStream(),
+            output,
+            loggerFactory: LoggerFactory);
+
+        // Act
+        var message = new JsonRpcRequest { Method = "test", Id = new RequestId(44) };
+        await transport.SendMessageAsync(message, TestContext.Current.CancellationToken);
+
+        // Assert
+        var traceLogMessages = MockLoggerProvider.LogMessages
+            .Where(x => x.LogLevel == LogLevel.Trace && x.Message.Contains("transport sending message"))
+            .ToList();
+
+        Assert.NotEmpty(traceLogMessages);
+        Assert.Contains(traceLogMessages, x => x.Message.Contains("\"method\":\"test\"") && x.Message.Contains("\"id\":44"));
+    }
+
+    [Fact]
+    public async Task ReadMessagesAsync_Should_Log_Received_At_Trace_Level()
+    {
+        // Arrange
+        var message = new JsonRpcRequest { Method = "test", Id = new RequestId(99) };
+        var json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions);
+
+        Pipe pipe = new();
+        using var input = pipe.Reader.AsStream();
+
+        await using var transport = new StreamServerTransport(
+            input,
+            Stream.Null,
+            loggerFactory: LoggerFactory);
+
+        // Act
+        await pipe.Writer.WriteAsync(Encoding.UTF8.GetBytes($"{json}\n"), TestContext.Current.CancellationToken);
+
+        // Wait for the message to be processed
+        var canRead = await transport.MessageReader.WaitToReadAsync(TestContext.Current.CancellationToken);
+        Assert.True(canRead, "Nothing to read here from transport message reader");
+
+        // Assert
+        var traceLogMessages = MockLoggerProvider.LogMessages
+            .Where(x => x.LogLevel == LogLevel.Trace && x.Message.Contains("transport received message"))
+            .ToList();
+
+        Assert.NotEmpty(traceLogMessages);
+        Assert.Contains(traceLogMessages, x => x.Message.Contains("\"method\":\"test\"") && x.Message.Contains("\"id\":99"));
     }
 }
