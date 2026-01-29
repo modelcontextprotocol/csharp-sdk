@@ -76,7 +76,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             Name = options?.Name ?? method.GetCustomAttribute<McpServerToolAttribute>()?.Name ?? DeriveName(method),
             Description = options?.Description,
             MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
-            SerializerOptions = options?.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
+            SerializerOptions = GetSerializerOptions(options?.SerializerOptions),
             JsonSchemaCreateOptions = options?.SchemaCreateOptions,
             ConfigureParameterBinding = pi =>
             {
@@ -579,5 +579,23 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             StructuredContent = structuredContent,
             IsError = allErrorContent && hasAny
         };
+    }
+
+    private static JsonSerializerOptions GetSerializerOptions(JsonSerializerOptions? customOptions)
+    {
+        if (customOptions is null)
+        {
+            return McpJsonUtilities.DefaultOptions;
+        }
+
+        if (customOptions.TypeInfoResolver is not null)
+        {
+            return customOptions;
+        }
+
+        customOptions.TypeInfoResolverChain.Add(McpJsonUtilities.JsonContext.Default);
+        customOptions.TypeInfoResolverChain.Add(AIJsonUtilities.DefaultOptions.TypeInfoResolver!);
+
+        return customOptions;
     }
 }
