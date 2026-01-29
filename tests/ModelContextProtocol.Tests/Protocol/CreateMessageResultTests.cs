@@ -116,11 +116,7 @@ public class CreateMessageResultTests
             Model = "test-model",
             Content =
             [
-                new ImageContentBlock
-                {
-                    Data = System.Text.Encoding.UTF8.GetBytes(Convert.ToBase64String([1, 2, 3, 4, 5])),
-                    MimeType = "image/png"
-                }
+                ImageContentBlock.FromImage((byte[])[1, 2, 3, 4, 5], "image/png")
             ],
             StopReason = "endTurn"
         };

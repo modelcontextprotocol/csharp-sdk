@@ -95,7 +95,7 @@ public class AIContentExtensionsTests
             Content =
             [
                 new TextContentBlock { Text = "Text result" },
-                new ImageContentBlock { Data = System.Text.Encoding.UTF8.GetBytes(Convert.ToBase64String([1, 2, 3])), MimeType = "image/png" }
+                ImageContentBlock.FromImage((byte[])[1, 2, 3], "image/png")
             ]
         };
 

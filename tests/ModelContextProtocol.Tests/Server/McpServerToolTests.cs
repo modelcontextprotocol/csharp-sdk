@@ -397,7 +397,7 @@ public partial class McpServerToolTests
             return (IList<ContentBlock>)
             [
                 new TextContentBlock { Text = "42" },
-                new ImageContentBlock { Data = System.Text.Encoding.UTF8.GetBytes("1234"), MimeType = "image/png" }
+                ImageContentBlock.FromImage((byte[])[1, 2, 3, 4], "image/png")
             ];
         });
         var result = await tool.InvokeAsync(
@@ -414,7 +414,7 @@ public partial class McpServerToolTests
     {
         CallToolResult response = new()
         {
-            Content = [new TextContentBlock { Text = "text" }, new ImageContentBlock { Data = System.Text.Encoding.UTF8.GetBytes("1234"), MimeType = "image/png" }]
+            Content = [new TextContentBlock { Text = "text" }, ImageContentBlock.FromImage((byte[])[1, 2, 3, 4], "image/png")]
         };
 
         Mock<McpServer> mockServer = new();

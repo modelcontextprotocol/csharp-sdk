@@ -160,11 +160,7 @@ public class McpClientTests : ClientServerTestBase
                 new SamplingMessage
                 {
                     Role = Role.User,
-                    Content = [new ImageContentBlock
-                    {
-                        MimeType = "image/png",
-                        Data = System.Text.Encoding.UTF8.GetBytes(Convert.ToBase64String(new byte[] { 1, 2, 3 }))
-                    }],
+                    Content = [ImageContentBlock.FromImage((byte[])[1, 2, 3], "image/png")],
                 }
             ],
             MaxTokens = 100
