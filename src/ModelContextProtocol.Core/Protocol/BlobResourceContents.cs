@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Buffers.Text;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -26,8 +27,41 @@ namespace ModelContextProtocol.Protocol;
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
 public sealed class BlobResourceContents : ResourceContents
 {
-    private byte[]? _decodedData;
+    private ReadOnlyMemory<byte>? _decodedData;
     private ReadOnlyMemory<byte> _blob;
+
+    /// <summary>
+    /// Creates an <see cref="BlobResourceContents"/> from raw data.
+    /// </summary>
+    /// <param name="data">The raw data.</param>
+    /// <param name="uri">The URI of the data.</param>
+    /// <param name="mimeType">The optional MIME type of the data.</param>
+    /// <returns>A new <see cref="BlobResourceContents"/> instance.</returns>
+    /// <exception cref="InvalidOperationException"></exception>
+    public static BlobResourceContents FromData(ReadOnlyMemory<byte> data, string uri, string? mimeType = null)
+    {
+        ReadOnlyMemory<byte> blob;
+
+        // Encode directly to UTF-8 base64 bytes without string intermediate
+        int maxLength = Base64.GetMaxEncodedToUtf8Length(data.Length);
+        byte[] buffer = new byte[maxLength];
+        if (Base64.EncodeToUtf8(data.Span, buffer, out _, out int bytesWritten) == OperationStatus.Done)
+        {
+            blob = buffer.AsMemory(0, bytesWritten);
+        }
+        else
+        {
+            throw new InvalidOperationException("Failed to encode binary data to base64");
+        }
+        
+        return new()
+        {
+            _decodedData = data,
+            Blob = blob,
+            MimeType = mimeType,
+            Uri = uri
+        };
+    }
 
     /// <summary>
     /// Gets or sets the base64-encoded UTF-8 bytes representing the binary data of the item.
@@ -47,11 +81,17 @@ public sealed class BlobResourceContents : ResourceContents
     }
 
     /// <summary>
-    /// Gets the decoded data represented by <see cref="Blob"/>.
+    /// Gets or sets the decoded data represented by <see cref="Blob"/>.
     /// </summary>
     /// <remarks>
-    /// Accessing this member will decode the value in <see cref="Blob"/> and cache the result.
+    /// <para>
+    /// When getting, this member will decode the value in <see cref="Blob"/> and cache the result.
     /// Subsequent accesses return the cached value unless <see cref="Blob"/> is modified.
+    /// </para>
+    /// <para>
+    /// When setting, the binary data is stored without copying and <see cref="Blob"/> is updated
+    /// with the base64-encoded UTF-8 representation.
+    /// </para>
     /// </remarks>
     [JsonIgnore]
     public ReadOnlyMemory<byte> Data
@@ -60,24 +100,19 @@ public sealed class BlobResourceContents : ResourceContents
         {
             if (_decodedData is null)
             {
-#if NET
                 // Decode directly from UTF-8 base64 bytes without string intermediate
                 int maxLength = Base64.GetMaxDecodedFromUtf8Length(Blob.Length);
                 byte[] buffer = new byte[maxLength];
                 if (Base64.DecodeFromUtf8(Blob.Span, buffer, out _, out int bytesWritten) == System.Buffers.OperationStatus.Done)
                 {
-                    _decodedData = bytesWritten == maxLength ? buffer : buffer.AsMemory(0, bytesWritten).ToArray();
+                    _decodedData = buffer.AsMemory(0, bytesWritten);
                 }
                 else
                 {
                     throw new FormatException("Invalid base64 data");
                 }
-#else
-                byte[] array = MemoryMarshal.TryGetArray(Blob, out ArraySegment<byte> segment) && segment.Offset == 0 && segment.Count == segment.Array!.Length ? segment.Array : Blob.ToArray();
-                _decodedData = Convert.FromBase64String(System.Text.Encoding.UTF8.GetString(array));
-#endif
             }
-            return _decodedData;
+            return _decodedData.Value;
         }
     }
 
@@ -86,7 +121,7 @@ public sealed class BlobResourceContents : ResourceContents
     {
         get
         {
-            string lengthDisplay = _decodedData is null ? DebuggerDisplayHelper.GetBase64LengthDisplay(Blob) : $"{_decodedData.Length} bytes";
+            string lengthDisplay = _decodedData is null ? DebuggerDisplayHelper.GetBase64LengthDisplay(Blob) : $"{Data.Length} bytes";
             string mimeInfo = MimeType is not null ? $", MimeType = {MimeType}" : "";
             return $"Uri = \"{Uri}\"{mimeInfo}, Length = {lengthDisplay}";
         }
