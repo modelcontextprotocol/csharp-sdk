@@ -8,6 +8,8 @@ namespace ModelContextProtocol;
 /// </summary>
 internal static class HttpResponseMessageExtensions
 {
+    private const int MaxResponseBodyLength = 8 * 1024;
+
     /// <summary>
     /// Throws an <see cref="HttpRequestException"/> if the <see cref="HttpResponseMessage.IsSuccessStatusCode"/> property is <see langword="false"/>.
     /// Unlike <see cref="HttpResponseMessage.EnsureSuccessStatusCode"/>, this method includes the response body in the exception message
@@ -24,10 +26,14 @@ internal static class HttpResponseMessageExtensions
             string? responseBody = null;
             try
             {
-                // Add a timeout to prevent hanging if the server sends an error response but doesn't end the request.
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 cts.CancelAfter(TimeSpan.FromSeconds(5));
                 responseBody = await response.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
+
+                if (responseBody.Length > MaxResponseBodyLength)
+                {
+                    responseBody = responseBody.Substring(0, MaxResponseBodyLength) + "...";
+                }
             }
             catch
             {
