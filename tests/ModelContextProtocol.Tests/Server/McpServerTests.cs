@@ -692,7 +692,7 @@ public class McpServerTests : LoggedTest
             TestContext.Current.CancellationToken
         );
 
-        var error = await receivedMessage.Task.WaitAsync(TestTimeouts.DefaultTimeout, TestContext.Current.CancellationToken);
+        var error = await receivedMessage.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
         Assert.NotNull(error);
         Assert.NotNull(error.Error);
         Assert.Equal((int)errorCode, error.Error.Code);
@@ -744,7 +744,7 @@ public class McpServerTests : LoggedTest
             TestContext.Current.CancellationToken
         );
 
-        var error = await receivedMessage.Task.WaitAsync(TestTimeouts.DefaultTimeout, TestContext.Current.CancellationToken);
+        var error = await receivedMessage.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
         Assert.NotNull(error);
         Assert.NotNull(error.Error);
         Assert.Equal((int)ErrorCode, error.Error.Code);
@@ -786,7 +786,7 @@ public class McpServerTests : LoggedTest
             }
         );
 
-        var response = await receivedMessage.Task.WaitAsync(TestTimeouts.DefaultTimeout);
+        var response = await receivedMessage.Task.WaitAsync(TestConstants.DefaultTimeout);
         Assert.NotNull(response);
 
         assertResult(server, response.Result);
@@ -887,7 +887,7 @@ public class McpServerTests : LoggedTest
         await transport.SendClientMessageAsync(initializeRequest, cancellationToken);
 
         // Wait for the initialize response to be sent
-        await tcs.Task.WaitAsync(TestTimeouts.DefaultTimeout, cancellationToken);
+        await tcs.Task.WaitAsync(TestConstants.DefaultTimeout, cancellationToken);
     }
 
     private sealed class TestServerForIChatClient(bool supportsSampling) : McpServer

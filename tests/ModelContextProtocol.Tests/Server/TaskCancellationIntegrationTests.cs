@@ -78,10 +78,10 @@ public class TaskCancellationIntegrationTests : ClientServerTestBase
         Assert.NotNull(callResult.Task);
 
         // Wait for the tool to start executing
-        await _toolStarted.Task.WaitAsync(TestTimeouts.DefaultTimeout, TestContext.Current.CancellationToken);
+        await _toolStarted.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
 
         // Assert - Wait for the cancellation to fire (should happen when TTL expires)
-        var cancelled = await _toolCancellationFired.Task.WaitAsync(TestTimeouts.DefaultTimeout, TestContext.Current.CancellationToken);
+        var cancelled = await _toolCancellationFired.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
         Assert.True(cancelled, "Tool's CancellationToken should have been triggered when TTL expired");
 
         // Note: TTL-based expiration does not explicitly set task status to Cancelled.
@@ -109,13 +109,13 @@ public class TaskCancellationIntegrationTests : ClientServerTestBase
         string taskId = callResult.Task.TaskId;
 
         // Wait for the tool to start executing
-        await _toolStarted.Task.WaitAsync(TestTimeouts.DefaultTimeout, TestContext.Current.CancellationToken);
+        await _toolStarted.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
 
         // Act - Explicitly cancel the task
         var cancelledTask = await client.CancelTaskAsync(taskId, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert - Wait for the cancellation to propagate to the tool
-        var cancelled = await _toolCancellationFired.Task.WaitAsync(TestTimeouts.DefaultTimeout, TestContext.Current.CancellationToken);
+        var cancelled = await _toolCancellationFired.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
         Assert.True(cancelled, "Tool's CancellationToken should have been triggered by explicit cancellation");
 
         // Verify task status
@@ -256,7 +256,7 @@ public class TaskCancellationConcurrencyTests : ClientServerTestBase
     {
         lock (_lock)
         {
-            return _toolStarts[marker].Task.WaitAsync(TestTimeouts.DefaultTimeout, ct);
+            return _toolStarts[marker].Task.WaitAsync(TestConstants.DefaultTimeout, ct);
         }
     }
 
@@ -264,7 +264,7 @@ public class TaskCancellationConcurrencyTests : ClientServerTestBase
     {
         lock (_lock)
         {
-            return _toolCancellations[marker].Task.WaitAsync(TestTimeouts.DefaultTimeout, ct);
+            return _toolCancellations[marker].Task.WaitAsync(TestConstants.DefaultTimeout, ct);
         }
     }
 

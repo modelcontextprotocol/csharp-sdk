@@ -246,7 +246,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken))
         {
-            var observedSessionId = await resumeServer.GetStarted.WaitAsync(TestTimeouts.DefaultTimeout, TestContext.Current.CancellationToken);
+            var observedSessionId = await resumeServer.GetStarted.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
             Assert.Equal(sessionId, observedSessionId);
 
             var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);

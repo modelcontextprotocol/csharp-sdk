@@ -252,7 +252,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         Assert.NotNull(serverInfo);
         Assert.False(string.IsNullOrEmpty(resumedSessionId));
 
-        await serverTcs.Task.WaitAsync(TestTimeouts.DefaultTimeout, TestContext.Current.CancellationToken);
+        await serverTcs.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
 
         await using var resumeTransport = new HttpClientTransport(new()
         {

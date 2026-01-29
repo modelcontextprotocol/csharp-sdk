@@ -1,10 +1,9 @@
 namespace ModelContextProtocol.Tests.Utils;
 
 /// <summary>
-/// Provides centralized timeout constants for tests to prevent sporadic CI failures
-/// due to overloaded machines.
+/// Provides centralized constants for tests
 /// </summary>
-public static class TestTimeouts
+public static class TestConstants
 {
     /// <summary>
     /// Default timeout for test operations that may be affected by CI machine load.

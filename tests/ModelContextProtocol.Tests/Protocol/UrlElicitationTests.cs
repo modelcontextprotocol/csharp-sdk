@@ -276,7 +276,7 @@ public partial class UrlElicitationTests(ITestOutputHelper testOutputHelper) : C
         Assert.NotNull(capturedMessage);
         Assert.Contains(capturedElicitationId, capturedUrl);
 
-        var notifiedElicitationId = await completionNotification.Task.WaitAsync(TestTimeouts.DefaultTimeout, TestContext.Current.CancellationToken);
+        var notifiedElicitationId = await completionNotification.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
         Assert.Equal(capturedElicitationId, notifiedElicitationId);
     }
 
