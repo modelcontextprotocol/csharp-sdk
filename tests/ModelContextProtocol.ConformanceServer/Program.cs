@@ -92,6 +92,8 @@ public class Program
 
         var app = builder.Build();
 
+        app.UseMcpDnsRebindingProtection();
+
         app.MapMcp();
 
         app.MapGet("/health", () => "Healthy");

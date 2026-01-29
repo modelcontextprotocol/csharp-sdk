@@ -39,6 +39,10 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private readonly string? _dcrInitialAccessToken;
     private readonly Func<DynamicClientRegistrationResponse, CancellationToken, Task>? _dcrResponseDelegate;
 
+    // JWT client assertion support (private_key_jwt)
+    private readonly string? _jwtPrivateKeyPem;
+    private readonly string? _jwtSigningAlgorithm;
+
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
 
@@ -46,6 +50,12 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private string? _clientSecret;
     private ITokenCache _tokenCache;
     private AuthorizationServerMetadata? _authServerMetadata;
+    private int _scopeStepUpCount;
+
+    /// <summary>
+    /// Maximum number of scope step-up retries before failing.
+    /// </summary>
+    private const int MaxScopeStepUpRetries = 3;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ClientOAuthProvider"/> class using the specified options.
@@ -89,7 +99,25 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         _dcrInitialAccessToken = options.DynamicClientRegistration?.InitialAccessToken;
         _dcrResponseDelegate = options.DynamicClientRegistration?.ResponseDelegate;
         _tokenCache = options.TokenCache ?? new InMemoryTokenCache();
+
+        // JWT client assertion support
+        _jwtPrivateKeyPem = options.JwtPrivateKeyPem;
+        _jwtSigningAlgorithm = options.JwtSigningAlgorithm;
+
+        // Validate JWT signing algorithm if provided
+        if (_jwtSigningAlgorithm is not null &&
+            !s_jwtSigningAlgorithms.Contains(_jwtSigningAlgorithm))
+        {
+            throw new ArgumentException($"JWT signing algorithm '{_jwtSigningAlgorithm}' is not supported.", nameof(options));
+        }
     }
+
+    private static readonly HashSet<string> s_jwtSigningAlgorithms = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ES256", "ES384", "ES512", 
+        "RS256", "RS384", "RS512", 
+        "PS256", "PS384", "PS512"
+    };
 
     /// <summary>
     /// Default authorization server selection strategy that selects the first available server.
@@ -132,7 +160,8 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         var response = await base.SendAsync(request, message, cancellationToken).ConfigureAwait(false);
 
-        if (ShouldRetryWithNewAccessToken(response))
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
+            HasInsufficientScopeError(response))
         {
             return await HandleUnauthorizedResponseAsync(request, message, response, attemptedRefresh, cancellationToken).ConfigureAwait(false);
         }
@@ -161,14 +190,12 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         return (null, false);
     }
 
-    private static bool ShouldRetryWithNewAccessToken(HttpResponseMessage response)
+    /// <summary>
+    /// Checks if the response contains an insufficient_scope error (403 Forbidden with error=insufficient_scope).
+    /// </summary>
+    private static bool HasInsufficientScopeError(HttpResponseMessage response)
     {
-        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-        {
-            return true;
-        }
-
-        // Only retry 403 Forbidden if it contains an insufficient_scope error as described in Section 10.1.1 of the MCP specification
+        // Only 403 Forbidden responses can have insufficient_scope error
         // https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization#runtime-insufficient-scope-errors
         if (response.StatusCode != System.Net.HttpStatusCode.Forbidden)
         {
@@ -222,7 +249,10 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         }
 
         retryRequest.Headers.Authorization = new AuthenticationHeaderValue(BearerScheme, accessToken);
-        return await base.SendAsync(retryRequest, originalJsonRpcMessage, cancellationToken).ConfigureAwait(false);
+
+        // Use SendAsync (not base.SendAsync) to enable retry logic for scope step-up scenarios
+        // where the server may respond with 403 (insufficient_scope) multiple times
+        return await SendAsync(retryRequest, originalJsonRpcMessage, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -233,6 +263,20 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
     private async Task<string> GetAccessTokenAsync(HttpResponseMessage response, bool attemptedRefresh, CancellationToken cancellationToken)
     {
+        // Check if this is a scope step-up retry (403 with insufficient_scope)
+        if (HasInsufficientScopeError(response))
+        {
+            if (++_scopeStepUpCount >= MaxScopeStepUpRetries)
+            {
+                ThrowFailedToHandleUnauthorizedResponse($"Maximum scope step-up retry limit ({MaxScopeStepUpRetries}) exceeded.");
+            }
+        }
+        else
+        {
+            // Reset the counter for non-scope-step-up requests (e.g., initial auth or token expiry)
+            _scopeStepUpCount = 0;
+        }
+
         // Get available authorization servers from the 401 or 403 response
         var protectedResourceMetadata = await ExtractProtectedResourceMetadata(response, cancellationToken).ConfigureAwait(false);
         var availableAuthorizationServers = protectedResourceMetadata.AuthorizationServers;
@@ -282,7 +326,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             }
         }
 
-        // Assign a client ID if necessary
+        // Skip dynamic registration if we have pre-registered credentials (ClientId + ClientSecret)
         if (string.IsNullOrEmpty(_clientId))
         {
             // Try using a client metadata document before falling back to dynamic client registration
@@ -296,9 +340,245 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             }
         }
 
-        // Perform the OAuth flow
+        // Check if client_credentials grant type should be used.
+        // Use client_credentials when:
+        // 1. The server supports client_credentials grant type.
+        // 2. We have a client secret (confidential client).
+        // 3. No AuthorizationRedirectDelegate was explicitly provided (machine-to-machine flow).
+        if (ShouldUseClientCredentialsGrant(authServerMetadata))
+        {
+            return await InitiateClientCredentialsFlowAsync(protectedResourceMetadata, authServerMetadata, cancellationToken).ConfigureAwait(false);
+        }
+
+        // Perform the OAuth authorization code flow
         return await InitiateAuthorizationCodeFlowAsync(protectedResourceMetadata, authServerMetadata, cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Determines whether to use the client_credentials grant type.
+    /// </summary>
+    private bool ShouldUseClientCredentialsGrant(AuthorizationServerMetadata authServerMetadata)
+    {
+        // Must have either client secret or JWT private key for client_credentials.
+        if (string.IsNullOrEmpty(_clientSecret) && string.IsNullOrEmpty(_jwtPrivateKeyPem))
+        {
+            return false;
+        }
+
+        // Server must support client_credentials grant type.
+        if (authServerMetadata.GrantTypesSupported?.Contains("client_credentials") != true)
+        {
+            return false;
+        }
+
+        // If an authorization redirect delegate was explicitly configured, use authorization code flow
+        // Default delegate is fine to override with client_credentials.
+        if (_authorizationRedirectDelegate != DefaultAuthorizationUrlHandler)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Initiates the OAuth client_credentials flow for machine-to-machine authentication.
+    /// </summary>
+    private async Task<string> InitiateClientCredentialsFlowAsync(
+        ProtectedResourceMetadata protectedResourceMetadata,
+        AuthorizationServerMetadata authServerMetadata,
+        CancellationToken cancellationToken)
+    {
+        var resourceUri = GetRequiredResourceUri(protectedResourceMetadata);
+
+        var formParams = new Dictionary<string, string>
+        {
+            ["grant_type"] = "client_credentials",
+            ["resource"] = resourceUri.ToString(),
+        };
+
+        var scope = GetScopeParameter(protectedResourceMetadata);
+        if (!string.IsNullOrEmpty(scope))
+        {
+            formParams["scope"] = scope!;
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.TokenEndpoint);
+
+        // Add client authentication based on available credentials and server support
+        AddClientAuthentication(request, formParams, authServerMetadata);
+
+        request.Content = new FormUrlEncodedContent(formParams);
+
+        using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        httpResponse.EnsureSuccessStatusCode();
+
+        var tokens = await HandleSuccessfulTokenResponseAsync(httpResponse, cancellationToken).ConfigureAwait(false);
+        LogOAuthClientCredentialsCompleted();
+        return tokens.AccessToken;
+    }
+
+    /// <summary>
+    /// Adds client authentication to the token request based on available credentials.
+    /// </summary>
+    private void AddClientAuthentication(
+        HttpRequestMessage request,
+        Dictionary<string, string> formParams,
+        AuthorizationServerMetadata authServerMetadata)
+    {
+        // If JWT private key is configured, use private_key_jwt.
+        if (!string.IsNullOrEmpty(_jwtPrivateKeyPem) && !string.IsNullOrEmpty(_jwtSigningAlgorithm))
+        {
+            // Use the issuer as the audience if available, otherwise fall back to token endpoint
+            var audience = authServerMetadata.Issuer ?? authServerMetadata.TokenEndpoint!;
+            var assertion = CreateClientAssertion(audience);
+            formParams["client_id"] = GetClientIdOrThrow();
+            formParams["client_assertion_type"] = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
+            formParams["client_assertion"] = assertion;
+            return;
+        }
+
+        // Otherwise use client_secret authentication.
+        var tokenEndpointAuthMethod = GetTokenEndpointAuthMethod(authServerMetadata);
+
+        if (tokenEndpointAuthMethod == "client_secret_basic")
+        {
+            // Use HTTP Basic authentication
+            var credentials = $"{Uri.EscapeDataString(GetClientIdOrThrow())}:{Uri.EscapeDataString(_clientSecret ?? string.Empty)}";
+            var encodedCredentials = Convert.ToBase64String(Encoding.UTF8.GetBytes(credentials));
+            request.Headers.Authorization = new AuthenticationHeaderValue("Basic", encodedCredentials);
+        }
+        else
+        {
+            // Use client_secret_post (credentials in body)
+            formParams["client_id"] = GetClientIdOrThrow();
+            formParams["client_secret"] = _clientSecret ?? string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// Creates a JWT client assertion for private_key_jwt authentication.
+    /// </summary>
+    private string CreateClientAssertion(Uri audience)
+    {
+        // JWT claims (payload)
+        var now = DateTimeOffset.UtcNow;
+        var clientId = GetClientIdOrThrow();
+        var jti = Guid.NewGuid().ToString();
+        var iat = now.ToUnixTimeSeconds();
+        var exp = now.AddMinutes(5).ToUnixTimeSeconds();
+
+        // Manually construct JSON to avoid AOT/trimming issues with Dictionary<string,object>
+        // Algorithm is validated in constructor to be one of the known safe values, so no escaping needed
+        var headerJson = $@"{{""alg"":""{_jwtSigningAlgorithm!.ToUpperInvariant()}"",""typ"":""JWT""}}";
+        var claimsJson = $@"{{""iss"":""{JsonEncodedString(clientId)}"",""sub"":""{JsonEncodedString(clientId)}"",""aud"":""{JsonEncodedString(audience.ToString())}"",""jti"":""{jti}"",""iat"":{iat},""exp"":{exp}}}";
+
+        var headerBase64 = Base64UrlEncode(Encoding.UTF8.GetBytes(headerJson));
+        var claimsBase64 = Base64UrlEncode(Encoding.UTF8.GetBytes(claimsJson));
+
+        var signingInput = $"{headerBase64}.{claimsBase64}";
+        var signature = SignJwt(signingInput);
+
+        return $"{signingInput}.{signature}";
+    }
+
+    /// <summary>
+    /// Escapes a string for JSON encoding.
+    /// </summary>
+    private static string JsonEncodedString(string value) => JsonEncodedText.Encode(value).ToString();
+
+    /// <summary>
+    /// Signs the JWT using the configured private key and algorithm.
+    /// </summary>
+    private string SignJwt(string input)
+    {
+#if NETSTANDARD2_0
+        throw new NotSupportedException(
+            "JWT client assertion (private_key_jwt) is not supported on .NET Standard 2.0. " +
+            "Use .NET 5.0 or later for this feature.");
+#else
+        var data = Encoding.UTF8.GetBytes(input);
+
+        var pemContent = _jwtPrivateKeyPem!;
+        using AsymmetricAlgorithm key = _jwtSigningAlgorithm!.StartsWith("ES", StringComparison.OrdinalIgnoreCase) ?
+            LoadKeyWithDisposal(ECDsa.Create, ecdsa => ecdsa.ImportFromPem(pemContent)) :
+            LoadKeyWithDisposal(RSA.Create, rsa => rsa.ImportFromPem(pemContent));
+
+        byte[] signature;
+
+        if (_jwtSigningAlgorithm!.StartsWith("ES", StringComparison.OrdinalIgnoreCase))
+        {
+            // ECDSA signature - JWT requires IEEE P1363 format (R||S concatenation), not DER
+            var ecdsa = key as ECDsa ?? throw new InvalidOperationException("Private key is not an EC key, but ES* algorithm was specified.");
+            var hashAlgorithm = GetHashAlgorithmName(_jwtSigningAlgorithm);
+            signature = ecdsa.SignData(data, hashAlgorithm, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+        }
+        else if (_jwtSigningAlgorithm.StartsWith("RS", StringComparison.OrdinalIgnoreCase) ||
+                 _jwtSigningAlgorithm.StartsWith("PS", StringComparison.OrdinalIgnoreCase))
+        {
+            // RSA signature
+            var rsa = key as RSA ?? throw new InvalidOperationException("Private key is not an RSA key, but RS*/PS* algorithm was specified.");
+            var hashAlgorithm = GetHashAlgorithmName(_jwtSigningAlgorithm);
+            var padding = _jwtSigningAlgorithm.StartsWith("PS", StringComparison.OrdinalIgnoreCase)
+                ? RSASignaturePadding.Pss
+                : RSASignaturePadding.Pkcs1;
+            signature = rsa.SignData(data, hashAlgorithm, padding);
+        }
+        else
+        {
+            throw new NotSupportedException($"JWT signing algorithm '{_jwtSigningAlgorithm}' is not supported.");
+        }
+
+        return Base64UrlEncode(signature);
+#endif
+    }
+
+    private static TAlgorithm LoadKeyWithDisposal<TAlgorithm>(
+        Func<TAlgorithm> createAlgorithm,
+        Action<TAlgorithm> importAction)
+        where TAlgorithm : AsymmetricAlgorithm
+    {
+        var algorithm = createAlgorithm();
+        try
+        {
+            importAction(algorithm);
+            return algorithm;
+        }
+        catch
+        {
+            algorithm.Dispose();
+            throw;
+        }
+    }
+
+    private static HashAlgorithmName GetHashAlgorithmName(string algorithm) =>
+        s_signingAlgorithms.TryGetValue(algorithm, out HashAlgorithmName alg) ? alg :
+        throw new NotSupportedException($"JWT signing algorithm '{algorithm}' is not supported.");
+
+    private static readonly Dictionary<string, HashAlgorithmName> s_signingAlgorithms = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["ES256"] = HashAlgorithmName.SHA256,
+        ["RS256"] = HashAlgorithmName.SHA256,
+        ["PS256"] = HashAlgorithmName.SHA256,
+
+        ["ES384"] = HashAlgorithmName.SHA384,
+        ["RS384"] = HashAlgorithmName.SHA384,
+        ["PS384"] = HashAlgorithmName.SHA384,
+
+        ["ES512"] = HashAlgorithmName.SHA512,
+        ["RS512"] = HashAlgorithmName.SHA512,
+        ["PS512"] = HashAlgorithmName.SHA512,
+    };
+
+    /// <summary>
+    /// Base64url encodes data per RFC 7515.
+    /// </summary>
+    private static string Base64UrlEncode(byte[] data) =>
+#if NET9_0_OR_GREATER
+        Base64Url.EncodeToString(data);
+#else
+        Convert.ToBase64String(data).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+#endif
 
     private void ApplyClientIdMetadataDocument(Uri metadataUri)
     {
@@ -311,10 +591,10 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         _clientId = metadataUri.AbsoluteUri;
 
         // See: https://datatracker.ietf.org/doc/html/draft-ietf-oauth-client-id-metadata-document-00#section-3
-        static bool IsValidClientMetadataDocumentUri(Uri uri)
-            => uri.IsAbsoluteUri
-            && string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
-            && uri.AbsolutePath.Length > 1; // AbsolutePath always starts with "/"
+        static bool IsValidClientMetadataDocumentUri(Uri uri) =>
+            uri.IsAbsoluteUri &&
+            string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
+            uri.AbsolutePath.Length > 1; // AbsolutePath always starts with "/"
     }
 
     private async Task<AuthorizationServerMetadata> GetAuthServerMetadataAsync(Uri authServerUri, CancellationToken cancellationToken)
@@ -385,19 +665,33 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     private async Task<string?> RefreshTokensAsync(string refreshToken, Uri resourceUri, AuthorizationServerMetadata authServerMetadata, CancellationToken cancellationToken)
     {
-        var requestContent = new FormUrlEncodedContent(new Dictionary<string, string>
+        var formParams = new Dictionary<string, string>
         {
             ["grant_type"] = "refresh_token",
             ["refresh_token"] = refreshToken,
-            ["client_id"] = GetClientIdOrThrow(),
-            ["client_secret"] = _clientSecret ?? string.Empty,
             ["resource"] = resourceUri.ToString(),
-        });
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.TokenEndpoint)
-        {
-            Content = requestContent
         };
+
+        // Add client credentials based on token endpoint auth method
+        var tokenEndpointAuthMethod = GetTokenEndpointAuthMethod(authServerMetadata);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.TokenEndpoint);
+
+        if (tokenEndpointAuthMethod == "client_secret_basic")
+        {
+            // Use HTTP Basic authentication
+            var credentials = $"{Uri.EscapeDataString(GetClientIdOrThrow())}:{Uri.EscapeDataString(_clientSecret ?? string.Empty)}";
+            var encodedCredentials = Convert.ToBase64String(Encoding.UTF8.GetBytes(credentials));
+            request.Headers.Authorization = new AuthenticationHeaderValue("Basic", encodedCredentials);
+        }
+        else
+        {
+            // Use client_secret_post (credentials in body)
+            formParams["client_id"] = GetClientIdOrThrow();
+            formParams["client_secret"] = _clientSecret ?? string.Empty;
+        }
+
+        request.Content = new FormUrlEncodedContent(formParams);
 
         using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
@@ -482,21 +776,35 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     {
         var resourceUri = GetRequiredResourceUri(protectedResourceMetadata);
 
-        var requestContent = new FormUrlEncodedContent(new Dictionary<string, string>
+        var formParams = new Dictionary<string, string>
         {
             ["grant_type"] = "authorization_code",
             ["code"] = authorizationCode,
             ["redirect_uri"] = _redirectUri.ToString(),
-            ["client_id"] = GetClientIdOrThrow(),
             ["code_verifier"] = codeVerifier,
-            ["client_secret"] = _clientSecret ?? string.Empty,
             ["resource"] = resourceUri.ToString(),
-        });
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.TokenEndpoint)
-        {
-            Content = requestContent
         };
+
+        // Add client credentials based on token endpoint auth method
+        var tokenEndpointAuthMethod = GetTokenEndpointAuthMethod(authServerMetadata);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, authServerMetadata.TokenEndpoint);
+
+        if (tokenEndpointAuthMethod == "client_secret_basic")
+        {
+            // Use HTTP Basic authentication
+            var credentials = $"{Uri.EscapeDataString(GetClientIdOrThrow())}:{Uri.EscapeDataString(_clientSecret ?? string.Empty)}";
+            var encodedCredentials = Convert.ToBase64String(Encoding.UTF8.GetBytes(credentials));
+            request.Headers.Authorization = new AuthenticationHeaderValue("Basic", encodedCredentials);
+        }
+        else
+        {
+            // Use client_secret_post (credentials in body)
+            formParams["client_id"] = GetClientIdOrThrow();
+            formParams["client_secret"] = _clientSecret ?? string.Empty;
+        }
+
+        request.Content = new FormUrlEncodedContent(formParams);
 
         using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
         httpResponse.EnsureSuccessStatusCode();
@@ -870,6 +1178,25 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     private string GetClientIdOrThrow() => _clientId ?? throw new InvalidOperationException("Client ID is not available. This may indicate an issue with dynamic client registration.");
 
+    /// <summary>
+    /// Determines the token endpoint authentication method to use based on server metadata.
+    /// </summary>
+    /// <param name="authServerMetadata">The authorization server metadata.</param>
+    /// <returns>The authentication method to use (client_secret_basic or client_secret_post).</returns>
+    private static string GetTokenEndpointAuthMethod(AuthorizationServerMetadata authServerMetadata)
+    {
+        var supportedMethods = authServerMetadata.TokenEndpointAuthMethodsSupported;
+
+        // If client_secret_basic is supported, prefer it
+        if (supportedMethods?.Contains("client_secret_basic") == true)
+        {
+            return "client_secret_basic";
+        }
+
+        // Otherwise use client_secret_post (default per RFC)
+        return "client_secret_post";
+    }
+
     [DoesNotReturn]
     private static void ThrowFailedToHandleUnauthorizedResponse(string message) =>
         throw new McpException($"Failed to handle unauthorized response with 'Bearer' scheme. {message}");
@@ -879,6 +1206,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     [LoggerMessage(Level = LogLevel.Information, Message = "OAuth authorization completed successfully")]
     partial void LogOAuthAuthorizationCompleted();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "OAuth client_credentials flow completed successfully")]
+    partial void LogOAuthClientCredentialsCompleted();
 
     [LoggerMessage(Level = LogLevel.Information, Message = "OAuth token refresh completed successfully")]
     partial void LogOAuthTokenRefreshCompleted();

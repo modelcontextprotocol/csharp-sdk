@@ -24,6 +24,25 @@ public sealed class ClientOAuthOptions
     public string? ClientSecret { get; set; }
 
     /// <summary>
+    /// Gets or sets the private key in PEM format for JWT client assertion (private_key_jwt).
+    /// </summary>
+    /// <remarks>
+    /// When provided along with <see cref="JwtSigningAlgorithm"/>, the client will use JWT client 
+    /// assertion (private_key_jwt) for token endpoint authentication instead of client_secret.
+    /// This is typically used for machine-to-machine authentication with client_credentials grant.
+    /// </remarks>
+    public string? JwtPrivateKeyPem { get; set; }
+
+    /// <summary>
+    /// Gets or sets the signing algorithm for JWT client assertion.
+    /// </summary>
+    /// <remarks>
+    /// Common values include "RS256", "RS384", "RS512", "ES256", "ES384", "ES512".
+    /// This property is only used when <see cref="JwtPrivateKeyPem"/> is provided.
+    /// </remarks>
+    public string? JwtSigningAlgorithm { get; set; }
+
+    /// <summary>
     /// Gets or sets the HTTPS URL pointing to this client's metadata document.
     /// </summary>
     /// <remarks>
