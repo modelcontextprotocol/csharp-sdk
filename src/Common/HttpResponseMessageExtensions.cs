@@ -29,10 +29,9 @@ internal static class HttpResponseMessageExtensions
                 cts.CancelAfter(TimeSpan.FromSeconds(5));
                 responseBody = await response.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            catch
             {
-                // Ignore errors reading the response body (e.g., stream closed, timeout) - we'll throw without it.
-                // Allow cancellation exceptions to propagate only if the original token was cancelled.
+                // Ignore all errors reading the response body (e.g., stream closed, timeout, cancellation) - we'll throw without it.
             }
 
             throw CreateHttpRequestException(response, responseBody);
