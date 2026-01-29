@@ -755,7 +755,7 @@ public class McpServerTaskMethodsTests : LoggedTest
         await transport.SendClientMessageAsync(initializeRequest, cancellationToken);
 
         // Wait for the initialize response to be sent
-        await tcs.Task.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
+        await tcs.Task.WaitAsync(TestTimeouts.DefaultTimeout, cancellationToken);
     }
 
     #endregion

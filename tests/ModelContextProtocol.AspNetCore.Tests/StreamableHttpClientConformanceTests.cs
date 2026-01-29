@@ -6,6 +6,7 @@ using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Text.Json;
@@ -245,7 +246,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken))
         {
-            var observedSessionId = await resumeServer.GetStarted.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            var observedSessionId = await resumeServer.GetStarted.WaitAsync(TestTimeouts.DefaultTimeout, TestContext.Current.CancellationToken);
             Assert.Equal(sessionId, observedSessionId);
 
             var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Primitives;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
 using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
@@ -251,7 +252,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         Assert.NotNull(serverInfo);
         Assert.False(string.IsNullOrEmpty(resumedSessionId));
 
-        await serverTcs.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await serverTcs.Task.WaitAsync(TestTimeouts.DefaultTimeout, TestContext.Current.CancellationToken);
 
         await using var resumeTransport = new HttpClientTransport(new()
         {

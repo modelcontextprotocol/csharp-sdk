@@ -95,7 +95,7 @@ public class AutomaticInputRequiredStatusTests : LoggedTest
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Wait for the sampling request to be received by the client
-        await samplingRequestReceived.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await samplingRequestReceived.Task.WaitAsync(TestTimeouts.DefaultTimeout, TestContext.Current.CancellationToken);
 
         // Check the task status while sampling is in progress
         var statusDuringSampling = await taskStore.GetTaskAsync(
@@ -194,7 +194,7 @@ public class AutomaticInputRequiredStatusTests : LoggedTest
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Wait for the elicitation request to be received
-        await elicitationRequestReceived.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await elicitationRequestReceived.Task.WaitAsync(TestTimeouts.DefaultTimeout, TestContext.Current.CancellationToken);
 
         // Check the task status while elicitation is in progress
         var statusDuringElicitation = await taskStore.GetTaskAsync(
@@ -301,7 +301,7 @@ public class AutomaticInputRequiredStatusTests : LoggedTest
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Wait for sampling to complete inside the tool
-        await samplingCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await samplingCompleted.Task.WaitAsync(TestTimeouts.DefaultTimeout, TestContext.Current.CancellationToken);
 
         // Small delay to ensure status update is processed
         await Task.Delay(50, TestContext.Current.CancellationToken);
@@ -380,7 +380,7 @@ public class AutomaticInputRequiredStatusTests : LoggedTest
             arguments: new Dictionary<string, object?> { ["prompt"] = "Hello" },
             cancellationToken: TestContext.Current.CancellationToken);
 
-        await samplingCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await samplingCompleted.Task.WaitAsync(TestTimeouts.DefaultTimeout, TestContext.Current.CancellationToken);
 
         // Assert - No task should exist (tool was not called as a task)
         var tasks = await taskStore.ListTasksAsync(cancellationToken: TestContext.Current.CancellationToken);
