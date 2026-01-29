@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using ModelContextProtocol.Tests.Utils;
@@ -53,11 +54,16 @@ public class ClientConformanceTests //: IAsyncLifetime
         "auth/client-credentials-basic"
     ];
 
+    private static string GetConformanceVersion() =>
+        typeof(ClientConformanceTests).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().FirstOrDefault(a => a.Key is "McpConformanceVersion")?.Value ??
+        throw new InvalidOperationException("McpConformanceVersion not found in assembly metadata");
+
     [Fact(Skip = "npx is not installed. Skipping client conformance tests.", SkipUnless = nameof(IsNpxInstalled))]
     public async Task VerifyAllConformanceTestsAreListed()
     {
         // Get the list of available conformance tests from the suite
-        var startInfo = NodeHelpers.NpxStartInfo("-y @modelcontextprotocol/conformance list --client");
+        // Version is configured in Directory.Packages.props for central management
+        var startInfo = NodeHelpers.NpxStartInfo($"-y @modelcontextprotocol/conformance@{GetConformanceVersion()} list --client");
 
         var outputBuilder = new StringBuilder();
         var process = new Process { StartInfo = startInfo };
@@ -180,7 +186,8 @@ public class ClientConformanceTests //: IAsyncLifetime
                 $"ConformanceClient executable not found at: {conformanceClientPath}");
         }
 
-        var startInfo = NodeHelpers.NpxStartInfo($"-y @modelcontextprotocol/conformance client --scenario {scenario} --command \"{conformanceClientPath} {scenario}\"");
+        // Version is configured in Directory.Packages.props for central management
+        var startInfo = NodeHelpers.NpxStartInfo($"-y @modelcontextprotocol/conformance@{GetConformanceVersion()} client --scenario {scenario} --command \"{conformanceClientPath} {scenario}\"");
 
         var outputBuilder = new StringBuilder();
         var errorBuilder = new StringBuilder();

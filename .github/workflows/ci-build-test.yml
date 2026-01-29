@@ -69,7 +69,7 @@ jobs:
 
     # Keep version in sync with McpConformanceVersion in Directory.Packages.props
     - name: 📦 Install conformance test runner
-      run: npm install @modelcontextprotocol/conformance@0.1.10
+      run: npm install @modelcontextprotocol/conformance@0.1.11
 
     - name: 🏗️ Build
       run: make build CONFIGURATION=${{ matrix.configuration }}
