@@ -401,13 +401,13 @@ public static class AIContentExtensions
 
             DataContent dataContent when dataContent.HasTopLevelMediaType("image") => new ImageContentBlock
             {
-                Data = System.Text.Encoding.UTF8.GetBytes(dataContent.Base64Data.ToString()),
+                Data = GetUtf8Bytes(dataContent.Base64Data.Span),
                 MimeType = dataContent.MediaType,
             },
 
             DataContent dataContent when dataContent.HasTopLevelMediaType("audio") => new AudioContentBlock
             {
-                Data = System.Text.Encoding.UTF8.GetBytes(dataContent.Base64Data.ToString()),
+                Data = GetUtf8Bytes(dataContent.Base64Data.Span),
                 MimeType = dataContent.MediaType,
             },
 
@@ -415,7 +415,7 @@ public static class AIContentExtensions
             {
                 Resource = new BlobResourceContents
                 {
-                    Blob = System.Text.Encoding.UTF8.GetBytes(dataContent.Base64Data.ToString()),
+                    Blob = GetUtf8Bytes(dataContent.Base64Data.Span),
                     MimeType = dataContent.MediaType,
                     Uri = string.Empty,
                 }
@@ -448,6 +448,22 @@ public static class AIContentExtensions
         contentBlock.Meta = content.AdditionalProperties?.ToJsonObject(options);
 
         return contentBlock;
+
+        unsafe byte[] GetUtf8Bytes(ReadOnlySpan<char> utf16)
+        {
+            // gets UTF-8 bytes from UTF-16 chars without intermediate string allocations
+            fixed (char* pChars = utf16)
+            {
+                var byteCount = System.Text.Encoding.UTF8.GetByteCount(pChars, utf16.Length);
+                var bytes = new byte[byteCount];
+                
+                fixed (byte* pBytes = bytes)
+                {
+                    System.Text.Encoding.UTF8.GetBytes(pChars, utf16.Length, pBytes, byteCount);
+                }
+                return bytes;
+            }
+        }
     }
 
     private sealed class ToolAIFunctionDeclaration(Tool tool) : AIFunctionDeclaration
