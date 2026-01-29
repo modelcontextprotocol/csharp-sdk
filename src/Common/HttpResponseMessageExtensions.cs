@@ -8,7 +8,7 @@ namespace ModelContextProtocol;
 /// </summary>
 internal static class HttpResponseMessageExtensions
 {
-    private const int MaxResponseBodyLength = 8 * 1024;
+    private const int MaxResponseBodyLength = 1024;
 
     /// <summary>
     /// Throws an <see cref="HttpRequestException"/> if the <see cref="HttpResponseMessage.IsSuccessStatusCode"/> property is <see langword="false"/>.
