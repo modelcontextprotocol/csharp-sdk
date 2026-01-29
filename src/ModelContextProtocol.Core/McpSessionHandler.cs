@@ -317,16 +317,14 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                 AddTags(ref tags, activity, message, method, target);
             }
 
-            var filteredHandler = _incomingMessageFilter(async (msg, ct) =>
+            await _incomingMessageFilter(async (msg, ct) =>
             {
                 var result = await HandleMessageCoreAsync(msg, ct).ConfigureAwait(false);
                 if (addTags && result is not null)
                 {
                     AddResponseTags(ref tags, activity, result, method);
                 }
-            });
-
-            await filteredHandler(message, cancellationToken).ConfigureAwait(false);
+            })(message, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception e) when (addTags)
         {
@@ -607,7 +605,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                 AddTags(ref tags, activity, message, method, target);
             }
 
-            var filteredHandler = _outgoingMessageFilter(async (msg, ct) =>
+            await _outgoingMessageFilter(async (msg, ct) =>
             {
                 if (_logger.IsEnabled(LogLevel.Trace))
                 {
@@ -629,9 +627,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                 {
                     tcs.TrySetCanceled(default);
                 }
-            });
-
-            await filteredHandler(message, cancellationToken).ConfigureAwait(false);
+            })(message, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (addTags)
         {

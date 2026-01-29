@@ -1137,6 +1137,7 @@ public static partial class McpServerBuilderExtensions
     public static IMcpServerBuilder AddIncomingMessageFilter(this IMcpServerBuilder builder, McpMessageFilter filter)
     {
         Throw.IfNull(builder);
+        Throw.IfNull(filter);
 
         builder.Services.Configure<McpServerOptions>(options => options.Filters.IncomingMessageFilters.Add(filter));
         return builder;

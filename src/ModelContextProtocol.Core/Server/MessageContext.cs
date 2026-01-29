@@ -19,9 +19,6 @@ namespace ModelContextProtocol.Server;
 /// </remarks>
 public class MessageContext
 {
-    /// <summary>The server with which this instance is associated.</summary>
-    private McpServer _server;
-
     /// <summary>
     /// Initializes a new instance of the <see cref="MessageContext"/> class with the specified server and JSON-RPC message.
     /// </summary>
@@ -32,7 +29,7 @@ public class MessageContext
         Throw.IfNull(server);
         Throw.IfNull(jsonRpcMessage);
 
-        _server = server;
+        Server = server;
         JsonRpcMessage = jsonRpcMessage;
         Services = server.Services;
         User = jsonRpcMessage.Context?.User;
@@ -41,11 +38,11 @@ public class MessageContext
     /// <summary>Gets or sets the server with which this instance is associated.</summary>
     public McpServer Server
     {
-        get => _server;
+        get => field;
         set
         {
             Throw.IfNull(value);
-            _server = value;
+            field = value;
         }
     }
 
