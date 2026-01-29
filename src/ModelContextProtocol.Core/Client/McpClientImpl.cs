@@ -58,7 +58,15 @@ internal sealed partial class McpClientImpl : McpClient
 
         RegisterHandlers(options, notificationHandlers, requestHandlers);
 
-        _sessionHandler = new McpSessionHandler(isServer: false, transport, endpointName, requestHandlers, notificationHandlers, _logger);
+        _sessionHandler = new McpSessionHandler(
+            isServer: false,
+            transport,
+            endpointName,
+            requestHandlers,
+            notificationHandlers,
+            incomingMessageFilter: null,
+            outgoingMessageFilter: null,
+            _logger);
     }
 
     private void RegisterHandlers(McpClientOptions options, NotificationHandlers notificationHandlers, RequestHandlers requestHandlers)

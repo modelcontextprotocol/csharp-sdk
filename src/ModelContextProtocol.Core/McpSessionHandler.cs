@@ -66,6 +66,8 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     private readonly ITransport _transport;
     private readonly RequestHandlers _requestHandlers;
     private readonly NotificationHandlers _notificationHandlers;
+    private readonly JsonRpcMessageFilter _incomingMessageFilter;
+    private readonly JsonRpcMessageFilter _outgoingMessageFilter;
     private readonly long _sessionStartingTimestamp = Stopwatch.GetTimestamp();
 
     private readonly DistributedContextPropagator _propagator = DistributedContextPropagator.Current;
@@ -95,6 +97,8 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     /// <param name="endpointName">The name of the endpoint for logging and debug purposes.</param>
     /// <param name="requestHandlers">A collection of request handlers.</param>
     /// <param name="notificationHandlers">A collection of notification handlers.</param>
+    /// <param name="incomingMessageFilter">A filter that wraps incoming message processing. Takes the next handler and returns a wrapped handler. If null, a passthrough filter is used.</param>
+    /// <param name="outgoingMessageFilter">A filter that wraps outgoing message processing. Takes the next handler and returns a wrapped handler. If null, a passthrough filter is used.</param>
     /// <param name="logger">The logger.</param>
     public McpSessionHandler(
         bool isServer,
@@ -102,6 +106,8 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         string endpointName,
         RequestHandlers requestHandlers,
         NotificationHandlers notificationHandlers,
+        JsonRpcMessageFilter? incomingMessageFilter,
+        JsonRpcMessageFilter? outgoingMessageFilter,
         ILogger logger)
     {
         Throw.IfNull(transport);
@@ -120,7 +126,9 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         EndpointName = endpointName;
         _requestHandlers = requestHandlers;
         _notificationHandlers = notificationHandlers;
-        _logger = logger ?? NullLogger.Instance;
+        _incomingMessageFilter = incomingMessageFilter ?? (next => next);
+        _outgoingMessageFilter = outgoingMessageFilter ?? (next => next);
+        _logger = logger;
         LogSessionCreated(EndpointName, _sessionId, _transportKind);
     }
 
@@ -309,36 +317,16 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                 AddTags(ref tags, activity, message, method, target);
             }
 
-            switch (message)
+            var filteredHandler = _incomingMessageFilter(async (msg, ct) =>
             {
-                case JsonRpcRequest request:
-                    LogRequestHandlerCalled(EndpointName, request.Method);
-                    long requestStartingTimestamp = Stopwatch.GetTimestamp();
-                    try
-                    {
-                        var result = await HandleRequest(request, cancellationToken).ConfigureAwait(false);
-                        LogRequestHandlerCompleted(EndpointName, request.Method, GetElapsed(requestStartingTimestamp).TotalMilliseconds);
-                        AddResponseTags(ref tags, activity, result, method);
-                    }
-                    catch (Exception ex)
-                    {
-                        LogRequestHandlerException(EndpointName, request.Method, GetElapsed(requestStartingTimestamp).TotalMilliseconds, ex);
-                        throw;
-                    }
-                    break;
+                var result = await HandleMessageCoreAsync(msg, ct).ConfigureAwait(false);
+                if (addTags && result is not null)
+                {
+                    AddResponseTags(ref tags, activity, result, method);
+                }
+            });
 
-                case JsonRpcNotification notification:
-                    await HandleNotification(notification, cancellationToken).ConfigureAwait(false);
-                    break;
-
-                case JsonRpcMessageWithId messageWithId:
-                    HandleMessageWithId(message, messageWithId);
-                    break;
-
-                default:
-                    LogEndpointHandlerUnexpectedMessageType(EndpointName, message.GetType().Name);
-                    break;
-            }
+            await filteredHandler(message, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception e) when (addTags)
         {
@@ -351,7 +339,40 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         }
     }
 
-    private async Task HandleNotification(JsonRpcNotification notification, CancellationToken cancellationToken)
+    private async Task<JsonNode?> HandleMessageCoreAsync(JsonRpcMessage message, CancellationToken cancellationToken)
+    {
+        switch (message)
+        {
+            case JsonRpcRequest request:
+                LogRequestHandlerCalled(EndpointName, request.Method);
+                long requestStartingTimestamp = Stopwatch.GetTimestamp();
+                try
+                {
+                    var result = await HandleRequestAsync(request, cancellationToken).ConfigureAwait(false);
+                    LogRequestHandlerCompleted(EndpointName, request.Method, GetElapsed(requestStartingTimestamp).TotalMilliseconds);
+                    return result;
+                }
+                catch (Exception ex)
+                {
+                    LogRequestHandlerException(EndpointName, request.Method, GetElapsed(requestStartingTimestamp).TotalMilliseconds, ex);
+                    throw;
+                }
+
+            case JsonRpcNotification notification:
+                await HandleNotificationAsync(notification, cancellationToken).ConfigureAwait(false);
+                return null;
+
+            case JsonRpcMessageWithId messageWithId:
+                HandleMessageWithId(message, messageWithId);
+                return null;
+
+            default:
+                LogEndpointHandlerUnexpectedMessageType(EndpointName, message.GetType().Name);
+                return null;
+        }
+    }
+
+    private async Task HandleNotificationAsync(JsonRpcNotification notification, CancellationToken cancellationToken)
     {
         // Special-case cancellation to cancel a pending operation. (We'll still subsequently invoke a user-specified handler if one exists.)
         if (notification.Method == NotificationMethods.CancelledNotification)
@@ -387,7 +408,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         }
     }
 
-    private async Task<JsonNode?> HandleRequest(JsonRpcRequest request, CancellationToken cancellationToken)
+    private async Task<JsonNode?> HandleRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken)
     {
         if (!_requestHandlers.TryGetValue(request.Method, out var handler))
         {
@@ -586,26 +607,31 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                 AddTags(ref tags, activity, message, method, target);
             }
 
-            if (_logger.IsEnabled(LogLevel.Trace))
+            var filteredHandler = _outgoingMessageFilter(async (msg, ct) =>
             {
-                LogSendingMessageSensitive(EndpointName, JsonSerializer.Serialize(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage));
-            }
-            else
-            {
-                LogSendingMessage(EndpointName);
-            }
+                if (_logger.IsEnabled(LogLevel.Trace))
+                {
+                    LogSendingMessageSensitive(EndpointName, JsonSerializer.Serialize(msg, McpJsonUtilities.JsonContext.Default.JsonRpcMessage));
+                }
+                else
+                {
+                    LogSendingMessage(EndpointName);
+                }
 
-            await SendToRelatedTransportAsync(message, cancellationToken).ConfigureAwait(false);
+                await SendToRelatedTransportAsync(msg, ct).ConfigureAwait(false);
 
-            // If the sent notification was a cancellation notification, cancel the pending request's await, as either the
-            // server won't be sending a response, or per the specification, the response should be ignored. There are inherent
-            // race conditions here, so it's possible and allowed for the operation to complete before we get to this point.
-            if (message is JsonRpcNotification { Method: NotificationMethods.CancelledNotification } notification &&
-                GetCancelledNotificationParams(notification.Params) is CancelledNotificationParams cn &&
-                _pendingRequests.TryRemove(cn.RequestId, out var tcs))
-            {
-                tcs.TrySetCanceled(default);
-            }
+                // If the sent notification was a cancellation notification, cancel the pending request's await, as either the
+                // server won't be sending a response, or per the specification, the response should be ignored. There are inherent
+                // race conditions here, so it's possible and allowed for the operation to complete before we get to this point.
+                if (msg is JsonRpcNotification { Method: NotificationMethods.CancelledNotification } notification &&
+                    GetCancelledNotificationParams(notification.Params) is CancelledNotificationParams cn &&
+                    _pendingRequests.TryRemove(cn.RequestId, out var tcs))
+                {
+                    tcs.TrySetCanceled(default);
+                }
+            });
+
+            await filteredHandler(message, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (addTags)
         {

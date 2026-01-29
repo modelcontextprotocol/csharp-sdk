@@ -118,7 +118,17 @@ internal sealed partial class McpServerImpl : McpServer
         }
 
         // And initialize the session.
-        _sessionHandler = new McpSessionHandler(isServer: true, _sessionTransport, _endpointName!, _requestHandlers, _notificationHandlers, _logger);
+        var incomingMessageFilter = BuildMessageFilterPipeline(options.Filters.IncomingMessageFilters);
+        var outgoingMessageFilter = BuildMessageFilterPipeline(options.Filters.OutgoingMessageFilters);
+        _sessionHandler = new McpSessionHandler(
+            isServer: true,
+            _sessionTransport,
+            _endpointName!,
+            _requestHandlers,
+            _notificationHandlers,
+            incomingMessageFilter,
+            outgoingMessageFilter,
+            _logger);
     }
 
     /// <inheritdoc/>
@@ -873,6 +883,37 @@ internal sealed partial class McpServerImpl : McpServer
         }
 
         return current;
+    }
+
+    private JsonRpcMessageFilter BuildMessageFilterPipeline(List<McpMessageFilter> filters)
+    {
+        if (filters.Count == 0)
+        {
+            return next => next;
+        }
+
+        return next =>
+        {
+            // Build the handler chain from the filters.
+            // The innermost handler calls the provided 'next' delegate with the message from the context.
+            McpMessageHandler baseHandler = async (context, cancellationToken) =>
+            {
+                await next(context.JsonRpcMessage, cancellationToken).ConfigureAwait(false);
+            };
+
+            var current = baseHandler;
+            for (int i = filters.Count - 1; i >= 0; i--)
+            {
+                current = filters[i](current);
+            }
+
+            // Return the handler that creates a MessageContext and invokes the pipeline.
+            return async (message, cancellationToken) =>
+            {
+                var context = new MessageContext(new DestinationBoundMcpServer(this, message.Context?.RelatedTransport), message);
+                await current(context, cancellationToken).ConfigureAwait(false);
+            };
+        };
     }
 
     private void UpdateEndpointNameWithClientInfo()

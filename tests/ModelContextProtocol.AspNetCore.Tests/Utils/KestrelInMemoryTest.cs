@@ -7,7 +7,7 @@ using ModelContextProtocol.Tests.Utils;
 
 namespace ModelContextProtocol.AspNetCore.Tests.Utils;
 
-public class KestrelInMemoryTest : LoggedTest
+public abstract class KestrelInMemoryTest : LoggedTest
 {
     public KestrelInMemoryTest(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
