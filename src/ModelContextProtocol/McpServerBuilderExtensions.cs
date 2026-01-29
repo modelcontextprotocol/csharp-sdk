@@ -1168,19 +1168,6 @@ public static partial class McpServerBuilderExtensions
         builder.Services.Configure<McpServerOptions>(options => options.Filters.OutgoingMessageFilters.Add(filter));
         return builder;
     }
-
-    /// <summary>
-    /// Adds a filter to intercept all incoming JSON-RPC messages.
-    /// </summary>
-    /// <param name="builder">The builder instance.</param>
-    /// <param name="filter">The filter function that wraps the message handler.</param>
-    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    /// <remarks>
-    /// This method is retained for backward compatibility. Prefer <see cref="AddIncomingMessageFilter(IMcpServerBuilder, McpMessageFilter)"/>.
-    /// </remarks>
-    public static IMcpServerBuilder AddMessageFilter(this IMcpServerBuilder builder, McpMessageFilter filter)
-        => AddIncomingMessageFilter(builder, filter);
     #endregion
 
     #region Transports
