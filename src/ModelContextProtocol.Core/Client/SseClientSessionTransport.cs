@@ -145,7 +145,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
     {
         int attempt = 0;
 
-        while (attempt < _options.MaxReconnectionAttempts && !cancellationToken.IsCancellationRequested)
+        while (attempt <= _options.MaxReconnectionAttempts && !cancellationToken.IsCancellationRequested)
         {
             try
             {

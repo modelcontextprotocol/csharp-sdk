@@ -50,12 +50,13 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private string? _clientSecret;
     private ITokenCache _tokenCache;
     private AuthorizationServerMetadata? _authServerMetadata;
-    private int _scopeStepUpCount;
+    private int _repeatedAuthFailureCount;
 
     /// <summary>
-    /// Maximum number of scope step-up retries before failing.
+    /// Maximum number of repeated auth failure retries before failing.
+    /// This prevents infinite loops when tokens are never accepted by the server.
     /// </summary>
-    private const int MaxScopeStepUpRetries = 3;
+    private const int MaxRepeatedAuthFailures = 3;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ClientOAuthProvider"/> class using the specified options.
@@ -166,6 +167,8 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             return await HandleUnauthorizedResponseAsync(request, message, response, attemptedRefresh, cancellationToken).ConfigureAwait(false);
         }
 
+        // Reset the auth failure counter on successful request
+        _repeatedAuthFailureCount = 0;
         return response;
     }
 
@@ -263,18 +266,11 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
     private async Task<string> GetAccessTokenAsync(HttpResponseMessage response, bool attemptedRefresh, CancellationToken cancellationToken)
     {
-        // Check if this is a scope step-up retry (403 with insufficient_scope)
-        if (HasInsufficientScopeError(response))
+        // Track all auth failures to prevent infinite redirect loops.
+        // This counter is only reset when a request succeeds (in SendAsync).
+        if (++_repeatedAuthFailureCount > MaxRepeatedAuthFailures)
         {
-            if (++_scopeStepUpCount >= MaxScopeStepUpRetries)
-            {
-                ThrowFailedToHandleUnauthorizedResponse($"Maximum scope step-up retry limit ({MaxScopeStepUpRetries}) exceeded.");
-            }
-        }
-        else
-        {
-            // Reset the counter for non-scope-step-up requests (e.g., initial auth or token expiry)
-            _scopeStepUpCount = 0;
+            ThrowFailedToHandleUnauthorizedResponse($"Maximum repeated authentication failure limit ({MaxRepeatedAuthFailures}) exceeded. The server may be rejecting all tokens.");
         }
 
         // Get available authorization servers from the 401 or 403 response

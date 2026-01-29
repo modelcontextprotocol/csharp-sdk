@@ -140,6 +140,38 @@ public sealed class Program
             RedirectUris = ["http://localhost:1179/callback"],
         };
 
+        // Client for testing client_credentials grant with client_secret_post (default)
+        _clients["client-credentials-post"] = new ClientInfo
+        {
+            ClientId = "client-credentials-post",
+            ClientSecret = "cc-secret-post",
+            RequiresClientSecret = true,
+            RedirectUris = [],
+            TokenEndpointAuthMethod = "client_secret_post",
+            AllowedGrantTypes = ["client_credentials"],
+        };
+
+        // Client for testing client_credentials grant with client_secret_basic
+        _clients["client-credentials-basic"] = new ClientInfo
+        {
+            ClientId = "client-credentials-basic",
+            ClientSecret = "cc-secret-basic",
+            RequiresClientSecret = true,
+            RedirectUris = [],
+            TokenEndpointAuthMethod = "client_secret_basic",
+            AllowedGrantTypes = ["client_credentials"],
+        };
+
+        // Client for testing client_credentials grant with private_key_jwt
+        _clients["client-credentials-jwt"] = new ClientInfo
+        {
+            ClientId = "client-credentials-jwt",
+            RequiresClientSecret = false, // JWT assertion is used instead
+            RedirectUris = [],
+            TokenEndpointAuthMethod = "private_key_jwt",
+            AllowedGrantTypes = ["client_credentials"],
+        };
+
         // The MCP spec tells the client to use /.well-known/oauth-authorization-server but AddJwtBearer looks for
         // /.well-known/openid-configuration by default.
         //
@@ -171,10 +203,11 @@ public sealed class Program
                 SubjectTypesSupported = ["public"],
                 IdTokenSigningAlgValuesSupported = ["RS256"],
                 ScopesSupported = ["openid", "profile", "email", "mcp:tools"],
-                TokenEndpointAuthMethodsSupported = ["client_secret_post"],
+                TokenEndpointAuthMethodsSupported = ["client_secret_post", "client_secret_basic", "private_key_jwt", "none"],
+                TokenEndpointAuthSigningAlgValuesSupported = ["RS256"],
                 ClaimsSupported = ["sub", "iss", "name", "email", "aud"],
                 CodeChallengeMethodsSupported = ["S256"],
-                GrantTypesSupported = ["authorization_code", "refresh_token"],
+                GrantTypesSupported = ["authorization_code", "refresh_token", "client_credentials"],
                 IntrospectionEndpoint = $"{_url}/introspect",
                 RegistrationEndpoint = $"{_url}/register",
                 ClientIdMetadataDocumentSupported = ClientIdMetadataDocumentSupported,
@@ -417,6 +450,26 @@ public sealed class Program
                 HasRefreshedToken = true;
                 return Results.Ok(response);
             }
+            else if (grant_type == "client_credentials")
+            {
+                // Client credentials flow - machine-to-machine authentication
+                var scope = form["scope"].ToString();
+                var requestedScopes = string.IsNullOrEmpty(scope) ? [] : scope.Split(' ').ToList();
+
+                // Verify client is allowed to use client_credentials grant
+                if (!client.AllowedGrantTypes.Contains("client_credentials"))
+                {
+                    return Results.BadRequest(new OAuthErrorResponse
+                    {
+                        Error = "unauthorized_client",
+                        ErrorDescription = "Client is not authorized to use client_credentials grant"
+                    });
+                }
+
+                // Generate token response for client credentials
+                var response = GenerateJwtTokenResponse(client.ClientId, requestedScopes, new Uri(resource));
+                return Results.Ok(response);
+            }
             else
             {
                 return Results.BadRequest(new OAuthErrorResponse
@@ -546,26 +599,135 @@ public sealed class Program
 
     /// <summary>
     /// Authenticates a client based on client credentials in the request.
+    /// Supports client_secret_post, client_secret_basic, private_key_jwt, and none.
     /// </summary>
     /// <param name="context">The HTTP context.</param>
     /// <param name="form">The form collection containing client credentials.</param>
     /// <returns>The client info if authentication succeeds, null otherwise.</returns>
     private ClientInfo? AuthenticateClient(HttpContext context, IFormCollection form)
     {
-        var clientId = form["client_id"].ToString();
-        var clientSecret = form["client_secret"].ToString();
+        string? clientId = null;
+        string? clientSecret = null;
+
+        // Try client_secret_basic (HTTP Basic Auth)
+        var authHeader = context.Request.Headers.Authorization.FirstOrDefault();
+        if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase))
+        {
+            var encodedCredentials = authHeader["Basic ".Length..];
+            var credentialBytes = Convert.FromBase64String(encodedCredentials);
+            var credentials = Encoding.UTF8.GetString(credentialBytes).Split(':', 2);
+            if (credentials.Length == 2)
+            {
+                clientId = Uri.UnescapeDataString(credentials[0]);
+                clientSecret = Uri.UnescapeDataString(credentials[1]);
+            }
+        }
+
+        // Fallback to client_secret_post (form parameters)
+        if (string.IsNullOrEmpty(clientId))
+        {
+            clientId = form["client_id"].ToString();
+            clientSecret = form["client_secret"].ToString();
+        }
 
         if (string.IsNullOrEmpty(clientId) || !_clients.TryGetValue(clientId, out var client))
         {
             return null;
         }
 
-        if (client.RequiresClientSecret && client.ClientSecret != clientSecret)
+        // Check for JWT client assertion (private_key_jwt)
+        var clientAssertionType = form["client_assertion_type"].ToString();
+        var clientAssertion = form["client_assertion"].ToString();
+
+        if (!string.IsNullOrEmpty(clientAssertionType) && clientAssertionType == "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
+        {
+            if (string.IsNullOrEmpty(clientAssertion))
+            {
+                return null;
+            }
+
+            // Verify JWT client assertion
+            if (!VerifyClientAssertion(client, clientAssertion))
+            {
+                return null;
+            }
+
+            return client;
+        }
+
+        // For clients that don't require a secret (e.g., CIMD clients or none auth method)
+        if (!client.RequiresClientSecret)
+        {
+            return client;
+        }
+
+        // Verify client secret
+        if (client.ClientSecret != clientSecret)
         {
             return null;
         }
 
         return client;
+    }
+
+    /// <summary>
+    /// Verifies a JWT client assertion for private_key_jwt authentication.
+    /// </summary>
+    private bool VerifyClientAssertion(ClientInfo client, string assertion)
+    {
+        // For simplicity, we just check that the JWT has three parts and the client has a public key configured
+        // In a real implementation, we would verify the signature using the client's public key
+        var parts = assertion.Split('.');
+        if (parts.Length != 3)
+        {
+            return false;
+        }
+
+        // Parse the payload to verify claims
+        try
+        {
+            var payloadJson = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(parts[1]));
+            var payload = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(payloadJson);
+
+            if (payload == null)
+            {
+                return false;
+            }
+
+            // Verify required claims
+            if (!payload.TryGetValue("iss", out var issElement) || issElement.GetString() != client.ClientId)
+            {
+                return false;
+            }
+
+            if (!payload.TryGetValue("sub", out var subElement) || subElement.GetString() != client.ClientId)
+            {
+                return false;
+            }
+
+            if (!payload.TryGetValue("aud", out var audElement) || audElement.GetString() != $"{_url}/token")
+            {
+                return false;
+            }
+
+            // Verify expiration
+            if (payload.TryGetValue("exp", out var expElement))
+            {
+                var exp = expElement.GetInt64();
+                if (DateTimeOffset.UtcNow.ToUnixTimeSeconds() > exp)
+                {
+                    return false;
+                }
+            }
+
+            // If client has a public key configured, we would verify the signature here
+            // For testing purposes, we accept any properly structured JWT
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     /// <summary>
