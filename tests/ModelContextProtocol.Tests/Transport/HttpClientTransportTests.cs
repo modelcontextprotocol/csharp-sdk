@@ -83,6 +83,32 @@ public class HttpClientTransportTests : LoggedTest
     }
 
     [Fact]
+    public async Task ConnectAsync_Throws_HttpRequestException_With_ResponseBody_On_ErrorStatusCode()
+    {
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        await using var transport = new HttpClientTransport(_transportOptions, httpClient, LoggerFactory);
+
+        const string errorDetails = "Bad request: Invalid MCP protocol version";
+        mockHttpHandler.RequestHandler = (request) =>
+        {
+            return Task.FromResult(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.BadRequest,
+                ReasonPhrase = "Bad Request",
+                Content = new StringContent(errorDetails)
+            });
+        };
+
+        var httpException = await Assert.ThrowsAsync<HttpRequestException>(() => transport.ConnectAsync(TestContext.Current.CancellationToken));
+        Assert.Contains(errorDetails, httpException.Message);
+        Assert.Contains("400", httpException.Message);
+#if NET
+        Assert.Equal(HttpStatusCode.BadRequest, httpException.StatusCode);
+#endif
+    }
+
+    [Fact]
     public async Task SendMessageAsync_Handles_Accepted_Response()
     {
         using var mockHttpHandler = new MockHttpHandler();
@@ -118,6 +144,53 @@ public class HttpClientTransportTests : LoggedTest
         await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
         await session.SendMessageAsync(new JsonRpcRequest { Method = RequestMethods.Initialize, Id = new RequestId(44) }, CancellationToken.None);
         Assert.True(true);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_Throws_HttpRequestException_With_ResponseBody_On_ErrorStatusCode()
+    {
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        await using var transport = new HttpClientTransport(_transportOptions, httpClient, LoggerFactory);
+
+        var firstCall = true;
+        const string errorDetails = "Invalid JSON-RPC message format: missing 'id' field";
+
+        mockHttpHandler.RequestHandler = (request) =>
+        {
+            if (request.Method == HttpMethod.Post && request.RequestUri?.AbsoluteUri == "http://localhost:8080/sseendpoint")
+            {
+                return Task.FromResult(new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.BadRequest,
+                    ReasonPhrase = "Bad Request",
+                    Content = new StringContent(errorDetails)
+                });
+            }
+            else
+            {
+                if (!firstCall)
+                    throw new IOException("Abort");
+                else
+                    firstCall = false;
+
+                return Task.FromResult(new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                    Content = new StringContent("event: endpoint\r\ndata: /sseendpoint\r\n\r\n")
+                });
+            }
+        };
+
+        await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+        var httpException = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            session.SendMessageAsync(new JsonRpcRequest { Method = RequestMethods.Initialize, Id = new RequestId(44) }, CancellationToken.None));
+
+        Assert.Contains(errorDetails, httpException.Message);
+        Assert.Contains("400", httpException.Message);
+#if NET
+        Assert.Equal(HttpStatusCode.BadRequest, httpException.StatusCode);
+#endif
     }
 
     [Fact]

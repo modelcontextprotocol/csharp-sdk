@@ -86,16 +86,19 @@ internal sealed partial class SseClientSessionTransport : TransportBase
 
         if (!response.IsSuccessStatusCode)
         {
+            // Read the response body once to include in both logging and exception
+            string responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
             if (_logger.IsEnabled(LogLevel.Trace))
             {
-                LogRejectedPostSensitive(Name, messageId, await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+                LogRejectedPostSensitive(Name, messageId, responseBody);
             }
             else
             {
                 LogRejectedPost(Name, messageId);
             }
 
-            response.EnsureSuccessStatusCode();
+            throw HttpResponseMessageExtensions.CreateHttpRequestException(response, responseBody);
         }
     }
 
@@ -146,7 +149,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
 
             using var response = await _httpClient.SendAsync(request, message: null, cancellationToken).ConfigureAwait(false);
 
-            response.EnsureSuccessStatusCode();
+            await response.EnsureSuccessStatusCodeWithResponseBodyAsync(cancellationToken).ConfigureAwait(false);
 
             using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
 
