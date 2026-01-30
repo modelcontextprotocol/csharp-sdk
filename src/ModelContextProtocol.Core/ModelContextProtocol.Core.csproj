@@ -9,8 +9,6 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Suppress the experimental tasks warning -->
     <NoWarn>$(NoWarn);MCPEXP001</NoWarn>
-    <!-- Required by GuidHelpers.cs -->
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' != 'netstandard2.0'">
@@ -20,6 +18,8 @@
   <PropertyGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
     <!-- CS0436: Allow ObsoleteAttribute to be redefined internally -->
     <NoWarn>$(NoWarn);CS0436</NoWarn>
+    <!-- Required by CancellableStreamReader.cs -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>

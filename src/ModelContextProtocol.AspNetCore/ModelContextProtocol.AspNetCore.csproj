@@ -10,8 +10,6 @@
     <Description>ASP.NET Core extensions for the C# Model Context Protocol (MCP) SDK.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <IsAotCompatible>true</IsAotCompatible>
-    <!-- Required by GuidHelpers.cs -->
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>

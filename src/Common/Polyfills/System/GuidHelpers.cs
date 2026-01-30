@@ -10,53 +10,31 @@ internal static class GuidHelpers
     private static long s_counter;
 
     /// <summary>
-    /// Creates a monotonically increasing GUID using a UUIDv7-like format with the specified timestamp.
-    /// Uses a globally increasing counter for strict monotonicity.
+    /// Creates a strictly monotonically increasing identifier string using 64-bit timestamp ticks
+    /// and a 64-bit counter, formatted as a 32-character hexadecimal string (GUID-like).
     /// </summary>
-    /// <param name="timestamp">The timestamp to embed in the GUID.</param>
-    /// <returns>A new monotonically increasing GUID.</returns>
+    /// <param name="timestamp">The timestamp to embed in the identifier.</param>
+    /// <returns>A new strictly monotonically increasing identifier string.</returns>
     /// <remarks>
     /// <para>
-    /// This method cannot be replaced with <c>Guid.CreateVersion7(DateTimeOffset)</c> because
-    /// the built-in .NET implementation uses random bits for intra-millisecond uniqueness,
-    /// which does not guarantee strict monotonicity. For keyset pagination to work correctly,
-    /// GUIDs created within the same millisecond must be strictly ordered by creation time.
+    /// This method creates a 128-bit identifier composed of two 64-bit values:
+    /// - High 64 bits: <see cref="DateTimeOffset.Ticks"/> from the timestamp
+    /// - Low 64 bits: A globally monotonically increasing counter
     /// </para>
     /// <para>
-    /// This implementation uses a globally monotonically increasing counter to ensure that
-    /// all generated GUIDs are strictly ordered by creation time, regardless of timestamp.
-    /// The format is UUIDv7-like but not RFC 9562 compliant since we prioritize strict
-    /// monotonicity over random bits in the counter field.
+    /// The resulting string is strictly monotonically increasing when compared lexicographically,
+    /// which is required for keyset pagination to work correctly. Unlike <c>Guid.CreateVersion7</c>,
+    /// which uses random bits for intra-millisecond uniqueness, this implementation guarantees
+    /// strict ordering for all identifiers regardless of when they were created.
     /// </para>
     /// </remarks>
-    public static Guid CreateMonotonicUuid(DateTimeOffset timestamp)
+    public static string CreateMonotonicId(DateTimeOffset timestamp)
     {
-        // UUIDv7-like format (based on RFC 9562 structure, but uses counter instead of random for strict monotonicity):
-        // - 48 bits: Unix timestamp in milliseconds (big-endian)
-        // - 4 bits: version (0111 = 7)
-        // - 12 bits: counter/sequence (for intra-millisecond ordering)
-        // - 2 bits: variant (10)
-        // - 62 bits: random
-
-        long timestampMs = timestamp.ToUnixTimeMilliseconds();
+        long ticks = timestamp.UtcTicks;
         long counter = Interlocked.Increment(ref s_counter);
 
-        // Start with a random GUID and twiddle the relevant bits
-        Guid guid = Guid.NewGuid();
-
-        unsafe
-        {
-            int* guidAsInts = (int*)&guid;
-            short* guidAsShorts = (short*)&guid;
-            byte* guidAsBytes = (byte*)&guid;
-
-            // Set timestamp (48 bits) and version/counter using little-endian layout
-            guidAsInts[0] = (int)(timestampMs >> 8);
-            guidAsShorts[2] = (short)((timestampMs & 0xFF) | ((timestampMs >> 40) << 8));
-            guidAsShorts[3] = (short)((counter & 0xFFF) | 0x7000);
-            guidAsBytes[8] = (byte)((guidAsBytes[8] & 0x3F) | 0x80);
-        }
-
-        return guid;
+        // Format as 32-character hex string (16 bytes = 128 bits)
+        // High 64 bits: timestamp ticks, Low 64 bits: counter
+        return $"{ticks:x16}{counter:x16}";
     }
 }
