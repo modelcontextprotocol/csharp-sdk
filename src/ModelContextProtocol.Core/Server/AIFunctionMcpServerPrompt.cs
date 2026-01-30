@@ -212,9 +212,9 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
 
         object? result = await AIFunction.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false);
 
-        return result switch
+        GetPromptResult getPromptResult = result switch
         {
-            GetPromptResult getPromptResult => getPromptResult,
+            GetPromptResult gpr => gpr,
 
             string text => new()
             {
@@ -250,5 +250,10 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
 
             _ => throw new InvalidOperationException($"Unknown result type '{result.GetType()}' returned from prompt function."),
         };
+
+        // Propagate metadata from the prompt to the result if the result doesn't already have metadata.
+        getPromptResult.Meta ??= ProtocolPrompt.Meta;
+
+        return getPromptResult;
     }
 }

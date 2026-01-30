@@ -1,3 +1,4 @@
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -1246,6 +1247,177 @@ public partial class McpMetaAttributeTests
         Assert.Equal("123", obj["num"]?.ToString());
     }
 
+    #region Meta Propagation to Result Tests
+
+    [Fact]
+    public async Task McpServerTool_InvokeAsync_PropagatesMetaToResult()
+    {
+        var method = typeof(TestToolMetaPropagationClass).GetMethod(nameof(TestToolMetaPropagationClass.ToolWithMeta))!;
+        var tool = McpServerTool.Create(method, target: null);
+
+        // Verify tool has meta defined
+        Assert.NotNull(tool.ProtocolTool.Meta);
+        Assert.Equal("gpt-4o", tool.ProtocolTool.Meta["model"]?.ToString());
+
+        var result = await tool.InvokeAsync(
+            new RequestContext<CallToolRequestParams>(new Moq.Mock<McpServer>().Object, CreateTestJsonRpcRequest()) { Params = new() { Name = "tool_with_meta" } },
+            TestContext.Current.CancellationToken);
+
+        // Verify meta is propagated to result
+        Assert.NotNull(result.Meta);
+        Assert.Equal("gpt-4o", result.Meta["model"]?.ToString());
+        Assert.Equal("1.0", result.Meta["version"]?.ToString());
+    }
+
+    [Fact]
+    public async Task McpServerTool_InvokeAsync_DoesNotOverrideUserProvidedMeta()
+    {
+        var method = typeof(TestToolCallToolResultClass).GetMethod(nameof(TestToolCallToolResultClass.ToolReturnsCallToolResultWithMeta))!;
+        var tool = McpServerTool.Create(method, target: null);
+
+        // Verify tool has meta defined
+        Assert.NotNull(tool.ProtocolTool.Meta);
+        Assert.Equal("tool-meta-value", tool.ProtocolTool.Meta["toolMeta"]?.ToString());
+
+        var result = await tool.InvokeAsync(
+            new RequestContext<CallToolRequestParams>(new Moq.Mock<McpServer>().Object, CreateTestJsonRpcRequest()) { Params = new() { Name = "tool" } },
+            TestContext.Current.CancellationToken);
+
+        // Verify that user-provided meta is preserved (not overwritten by tool meta)
+        Assert.NotNull(result.Meta);
+        Assert.Equal("user-provided-meta-value", result.Meta["customMeta"]?.ToString());
+        Assert.False(result.Meta.ContainsKey("toolMeta"));
+    }
+
+    [Fact]
+    public async Task McpServerPrompt_GetAsync_PropagatesMetaToResult()
+    {
+        var method = typeof(TestPromptMetaPropagationClass).GetMethod(nameof(TestPromptMetaPropagationClass.PromptWithMeta))!;
+        var prompt = McpServerPrompt.Create(method, target: null);
+
+        // Verify prompt has meta defined
+        Assert.NotNull(prompt.ProtocolPrompt.Meta);
+        Assert.Equal("reasoning", prompt.ProtocolPrompt.Meta["type"]?.ToString());
+
+        var result = await prompt.GetAsync(
+            new RequestContext<GetPromptRequestParams>(new Moq.Mock<McpServer>().Object, CreateTestJsonRpcRequest()) { Params = new() { Name = "prompt" } },
+            TestContext.Current.CancellationToken);
+
+        // Verify meta is propagated to result
+        Assert.NotNull(result.Meta);
+        Assert.Equal("reasoning", result.Meta["type"]?.ToString());
+        Assert.Equal("claude-3", result.Meta["model"]?.ToString());
+    }
+
+    [Fact]
+    public async Task McpServerPrompt_GetAsync_DoesNotOverrideUserProvidedMeta()
+    {
+        var method = typeof(TestPromptGetPromptResultClass).GetMethod(nameof(TestPromptGetPromptResultClass.PromptReturnsGetPromptResultWithMeta))!;
+        var prompt = McpServerPrompt.Create(method, target: null);
+
+        // Verify prompt has meta defined
+        Assert.NotNull(prompt.ProtocolPrompt.Meta);
+        Assert.Equal("prompt-meta-value", prompt.ProtocolPrompt.Meta["promptMeta"]?.ToString());
+
+        var result = await prompt.GetAsync(
+            new RequestContext<GetPromptRequestParams>(new Moq.Mock<McpServer>().Object, CreateTestJsonRpcRequest()) { Params = new() { Name = "prompt" } },
+            TestContext.Current.CancellationToken);
+
+        // Verify that user-provided meta is preserved (not overwritten by prompt meta)
+        Assert.NotNull(result.Meta);
+        Assert.Equal("user-provided-meta-value", result.Meta["customMeta"]?.ToString());
+        Assert.False(result.Meta.ContainsKey("promptMeta"));
+    }
+
+    [Fact]
+    public async Task McpServerResource_ReadAsync_PropagatesMetaToResult()
+    {
+        var method = typeof(TestResourceClass).GetMethod(nameof(TestResourceClass.ResourceWithMeta))!;
+        var resource = McpServerResource.Create(method, target: null);
+
+        // Verify resource has meta defined
+        Assert.NotNull(resource.ProtocolResourceTemplate?.Meta);
+        Assert.Equal("text/plain", resource.ProtocolResourceTemplate.Meta["encoding"]?.ToString());
+
+        var result = await resource.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(new Moq.Mock<McpServer>().Object, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://test/123" } },
+            TestContext.Current.CancellationToken);
+
+        // Verify meta is propagated to result
+        Assert.NotNull(result.Meta);
+        Assert.Equal("text/plain", result.Meta["encoding"]?.ToString());
+        Assert.Equal("cached", result.Meta["caching"]?.ToString());
+    }
+
+    [Fact]
+    public async Task McpServerResource_ReadAsync_DoesNotOverrideUserProvidedMeta()
+    {
+        var method = typeof(TestResourceReadResourceResultClass).GetMethod(nameof(TestResourceReadResourceResultClass.ResourceReturnsReadResourceResultWithMeta))!;
+        var resource = McpServerResource.Create(method, target: null);
+
+        // Verify resource has meta defined
+        Assert.NotNull(resource.ProtocolResourceTemplate?.Meta);
+        Assert.Equal("resource-meta-value", resource.ProtocolResourceTemplate.Meta["resourceMeta"]?.ToString());
+
+        var result = await resource.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(new Moq.Mock<McpServer>().Object, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://test/123" } },
+            TestContext.Current.CancellationToken);
+
+        // Verify that user-provided meta is preserved (not overwritten by resource meta)
+        Assert.NotNull(result.Meta);
+        Assert.Equal("user-provided-meta-value", result.Meta["customMeta"]?.ToString());
+        Assert.False(result.Meta.ContainsKey("resourceMeta"));
+    }
+
+    [Fact]
+    public async Task McpServerTool_InvokeAsync_WithNoMeta_ResultHasNoMeta()
+    {
+        var method = typeof(TestToolMetaPropagationClass).GetMethod(nameof(TestToolMetaPropagationClass.ToolWithoutMeta))!;
+        var tool = McpServerTool.Create(method, target: null);
+
+        // Verify tool has no meta defined
+        Assert.Null(tool.ProtocolTool.Meta);
+
+        var result = await tool.InvokeAsync(
+            new RequestContext<CallToolRequestParams>(new Moq.Mock<McpServer>().Object, CreateTestJsonRpcRequest()) { Params = new() { Name = "tool_without_meta" } },
+            TestContext.Current.CancellationToken);
+
+        // Verify result has no meta
+        Assert.Null(result.Meta);
+    }
+
+    private static JsonRpcRequest CreateTestJsonRpcRequest()
+    {
+        return new JsonRpcRequest
+        {
+            Id = new RequestId("test-id"),
+            Method = "test/method",
+            Params = null
+        };
+    }
+
+    // Test classes specifically for result propagation tests (no parameters)
+    private class TestToolMetaPropagationClass
+    {
+        [McpServerTool]
+        [McpMeta("model", "gpt-4o")]
+        [McpMeta("version", "1.0")]
+        public static string ToolWithMeta() => "result";
+
+        [McpServerTool]
+        public static string ToolWithoutMeta() => "result";
+    }
+
+    private class TestPromptMetaPropagationClass
+    {
+        [McpServerPrompt]
+        [McpMeta("type", "reasoning")]
+        [McpMeta("model", "claude-3")]
+        public static string PromptWithMeta() => "result";
+    }
+
+    #endregion
+
     private class TestToolClass
     {
         [McpServerTool]
@@ -1534,5 +1706,48 @@ public partial class McpMetaAttributeTests
         [McpMeta("metadata", JsonValue = """{"type": "document"}""")]
         [McpMeta("permissions", JsonValue = """["read", "write"]""")]
         public static string ResourceWithJsonValueMeta(string id) => id;
+    }
+
+    // Test classes for user-provided result types with their own meta
+    private class TestToolCallToolResultClass
+    {
+        [McpServerTool]
+        [McpMeta("toolMeta", "tool-meta-value")]
+        public static CallToolResult ToolReturnsCallToolResultWithMeta()
+        {
+            return new CallToolResult
+            {
+                Content = [new TextContentBlock { Text = "test" }],
+                Meta = new JsonObject { ["customMeta"] = "user-provided-meta-value" }
+            };
+        }
+    }
+
+    private class TestPromptGetPromptResultClass
+    {
+        [McpServerPrompt]
+        [McpMeta("promptMeta", "prompt-meta-value")]
+        public static GetPromptResult PromptReturnsGetPromptResultWithMeta()
+        {
+            return new GetPromptResult
+            {
+                Messages = [new PromptMessage { Role = Role.User, Content = new TextContentBlock { Text = "test" } }],
+                Meta = new JsonObject { ["customMeta"] = "user-provided-meta-value" }
+            };
+        }
+    }
+
+    private class TestResourceReadResourceResultClass
+    {
+        [McpServerResource(UriTemplate = "resource://test/{id}")]
+        [McpMeta("resourceMeta", "resource-meta-value")]
+        public static ReadResourceResult ResourceReturnsReadResourceResultWithMeta(string id)
+        {
+            return new ReadResourceResult
+            {
+                Contents = [new TextResourceContents { Uri = $"resource://test/{id}", Text = id }],
+                Meta = new JsonObject { ["customMeta"] = "user-provided-meta-value" }
+            };
+        }
     }
 }

@@ -375,9 +375,9 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
         object? result = await AIFunction.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false);
 
         // And process the result.
-        return result switch
+        ReadResourceResult readResourceResult = result switch
         {
-            ReadResourceResult readResourceResult => readResourceResult,
+            ReadResourceResult rrr => rrr,
 
             ResourceContents content => new()
             {
@@ -441,5 +441,10 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
 
             _ => throw new InvalidOperationException($"Unsupported result type '{result.GetType()}' returned from resource function."),
         };
+
+        // Propagate metadata from the resource template to the result if the result doesn't already have metadata.
+        readResourceResult.Meta ??= ProtocolResourceTemplate.Meta;
+
+        return readResourceResult;
     }
 }

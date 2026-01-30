@@ -268,7 +268,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         result = await AIFunction.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false);
 
         JsonNode? structuredContent = CreateStructuredResponse(result);
-        return result switch
+        CallToolResult callToolResult = result switch
         {
             AIContent aiContent => new()
             {
@@ -303,7 +303,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 StructuredContent = structuredContent,
             },
 
-            CallToolResult callToolResponse => callToolResponse,
+            CallToolResult ctr => ctr,
 
             _ => new()
             {
@@ -311,6 +311,11 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 StructuredContent = structuredContent,
             },
         };
+
+        // Propagate metadata from the tool to the result if the result doesn't already have metadata.
+        callToolResult.Meta ??= ProtocolTool.Meta;
+
+        return callToolResult;
     }
 
     /// <summary>Creates a name to use based on the supplied method and naming policy.</summary>
