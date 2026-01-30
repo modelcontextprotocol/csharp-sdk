@@ -39,6 +39,9 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
     private readonly int _pageSize;
     private readonly int? _maxTasks;
     private readonly int? _maxTasksPerSession;
+    private long _lastTimestamp;
+    private long _counter;
+    private readonly object _guidLock = new();
 #if MCP_TEST_TIME_PROVIDER
     private readonly TimeProvider _timeProvider;
 #endif
@@ -363,21 +366,20 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
             }
         }
 
-        // Stream enumeration - filter by session, exclude expired, order by (CreatedAt, TaskId) for stable pagination
-        // Must sort BEFORE applying keyset filter to ensure consistent comparison
-        IEnumerable<TaskEntry> query = _tasks.Values
+        // Stream enumeration - filter by session, exclude expired, apply keyset pagination
+        var query = _tasks.Values
             .Where(e => sessionId == null || e.SessionId == sessionId)
-            .Where(e => !IsExpired(e))
-            .OrderBy(e => (e.CreatedAt, e.TaskId));
+            .Where(e => !IsExpired(e));
 
         // Apply keyset filter if cursor provided: (CreatedAt, TaskId) > cursor
-        // This runs on sorted data, so we skip items until we pass the cursor position
         if (parsedCursor is { } parsedCursorValue)
         {
-            query = query.SkipWhile(e => (e.CreatedAt, e.TaskId).CompareTo(parsedCursorValue) <= 0);
+            query = query.Where(e => (e.CreatedAt, e.TaskId).CompareTo(parsedCursorValue) > 0);
         }
 
+        // Order by (CreatedAt, TaskId) for stable, deterministic pagination
         var page = query
+            .OrderBy(e => (e.CreatedAt, e.TaskId))
             .Take(_pageSize + 1) // Take one extra to check if there's a next page
             .Select(e => e.ToMcpTask())
             .ToList();
@@ -448,11 +450,80 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
         _cleanupTimer?.Dispose();
     }
 
-#if NET9_0_OR_GREATER
-    private static string GenerateTaskId() => Guid.CreateVersion7().ToString("N");
+    /// <summary>
+    /// Generates a monotonically increasing task ID using UUID v7 format.
+    /// Uses a counter for intra-millisecond ordering to ensure strict monotonicity.
+    /// </summary>
+    private string GenerateTaskId()
+    {
+        // UUID v7 format (RFC 9562):
+        // - 48 bits: Unix timestamp in milliseconds (big-endian)
+        // - 4 bits: version (0111 = 7)
+        // - 12 bits: counter/sequence (for intra-millisecond ordering)
+        // - 2 bits: variant (10)
+        // - 62 bits: random
+
+        long timestamp;
+        long counter;
+
+        lock (_guidLock)
+        {
+            timestamp = GetUtcNow().ToUnixTimeMilliseconds();
+
+            if (timestamp == _lastTimestamp)
+            {
+                // Same millisecond - increment counter
+                _counter++;
+            }
+            else
+            {
+                // New millisecond - reset counter
+                _lastTimestamp = timestamp;
+                _counter = 0;
+            }
+
+            counter = _counter;
+        }
+
+        byte[] bytes = new byte[16];
+
+        // Fill lower random bits (last 8 bytes) with random data
+#if NETSTANDARD2_0
+        using (var rng = System.Security.Cryptography.RandomNumberGenerator.Create())
+        {
+            rng.GetBytes(bytes, 8, 8);
+        }
 #else
-    private static string GenerateTaskId() => GuidPolyfills.CreateVersion7().ToString("N");
+        System.Security.Cryptography.RandomNumberGenerator.Fill(bytes.AsSpan(8, 8));
 #endif
+
+        // Set timestamp (48 bits, big-endian) in first 6 bytes
+        bytes[0] = (byte)(timestamp >> 40);
+        bytes[1] = (byte)(timestamp >> 32);
+        bytes[2] = (byte)(timestamp >> 24);
+        bytes[3] = (byte)(timestamp >> 16);
+        bytes[4] = (byte)(timestamp >> 8);
+        bytes[5] = (byte)timestamp;
+
+        // Set version 7 (0111) in high nibble of byte 6, and high 4 bits of counter in low nibble
+        bytes[6] = (byte)(0x70 | ((counter >> 8) & 0x0F));
+
+        // Set remaining 8 bits of counter in byte 7
+        bytes[7] = (byte)(counter & 0xFF);
+
+        // Set variant (10) in high 2 bits of byte 8
+        bytes[8] = (byte)((bytes[8] & 0x3F) | 0x80);
+
+        // Convert from big-endian byte array to Guid
+        var guid = new Guid(
+            (int)(bytes[0] << 24 | bytes[1] << 16 | bytes[2] << 8 | bytes[3]),
+            (short)(bytes[4] << 8 | bytes[5]),
+            (short)(bytes[6] << 8 | bytes[7]),
+            bytes[8], bytes[9], bytes[10], bytes[11],
+            bytes[12], bytes[13], bytes[14], bytes[15]);
+
+        return guid.ToString("N");
+    }
 
     private static bool IsTerminalStatus(McpTaskStatus status) =>
         status is McpTaskStatus.Completed or McpTaskStatus.Failed or McpTaskStatus.Cancelled;

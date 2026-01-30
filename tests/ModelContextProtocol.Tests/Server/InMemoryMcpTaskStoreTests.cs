@@ -1090,4 +1090,84 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
         var allCreatedIds = createdTasks.Select(t => t.TaskId).ToHashSet();
         Assert.Equal(allCreatedIds, allReturnedIds);
     }
+
+    [Fact]
+    public async Task ListTasksAsync_TasksCreatedAfterFirstPageWithSameTimestampAppearInSecondPage()
+    {
+        // Arrange - Use a fake time provider so we can control timestamps precisely
+        var fakeTime = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        using var store = new TestInMemoryMcpTaskStore(
+            defaultTtl: null,
+            maxTtl: null,
+            pollInterval: null,
+            cleanupInterval: Timeout.InfiniteTimeSpan,
+            pageSize: 5,
+            maxTasks: null,
+            maxTasksPerSession: null,
+            timeProvider: fakeTime);
+
+        // Create initial 6 tasks - all with the same timestamp
+        // (6 so that first page has 5 and cursor points to task 5)
+        var initialTasks = new List<McpTask>();
+        for (int i = 0; i < 6; i++)
+        {
+            var task = await store.CreateTaskAsync(
+                new McpTaskMetadata(),
+                new RequestId($"req-initial-{i}"),
+                new JsonRpcRequest { Method = "test" },
+                null,
+                TestContext.Current.CancellationToken);
+            initialTasks.Add(task);
+        }
+
+        // Get first page - should have 5 tasks with a cursor
+        var result1 = await store.ListTasksAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(5, result1.Tasks.Length);
+        Assert.NotNull(result1.NextCursor);
+
+        // Now create 5 more tasks AFTER we got the first page cursor
+        // These tasks have the SAME timestamp as the cursor (time hasn't moved)
+        // Due to monotonic UUID v7 with counter, they should sort AFTER the cursor
+        var laterTasks = new List<McpTask>();
+        for (int i = 0; i < 5; i++)
+        {
+            var task = await store.CreateTaskAsync(
+                new McpTaskMetadata(),
+                new RequestId($"req-later-{i}"),
+                new JsonRpcRequest { Method = "test" },
+                null,
+                TestContext.Current.CancellationToken);
+            laterTasks.Add(task);
+        }
+
+        // Verify all tasks have the same timestamp
+        var allTasks = initialTasks.Concat(laterTasks).ToList();
+        var firstTimestamp = allTasks[0].CreatedAt;
+        Assert.All(allTasks, task => Assert.Equal(firstTimestamp, task.CreatedAt));
+
+        // Get ALL remaining pages
+        var allSubsequentTasks = new List<McpTask>();
+        string? cursor = result1.NextCursor;
+        while (cursor != null)
+        {
+            var result = await store.ListTasksAsync(cursor: cursor, cancellationToken: TestContext.Current.CancellationToken);
+            allSubsequentTasks.AddRange(result.Tasks);
+            cursor = result.NextCursor;
+        }
+
+        // Verify no overlap between first page and subsequent
+        var page1Ids = result1.Tasks.Select(t => t.TaskId).ToHashSet();
+        var subsequentIds = allSubsequentTasks.Select(t => t.TaskId).ToHashSet();
+        Assert.Empty(page1Ids.Intersect(subsequentIds));
+
+        // Verify we got all tasks
+        var allReturnedIds = page1Ids.Union(subsequentIds).ToHashSet();
+        var allCreatedIds = allTasks.Select(t => t.TaskId).ToHashSet();
+        Assert.Equal(allCreatedIds, allReturnedIds);
+
+        // Most importantly: verify ALL the later tasks (created after first page) are surfaced
+        // in the subsequent pages
+        var laterTaskIds = laterTasks.Select(t => t.TaskId).ToHashSet();
+        Assert.Superset(laterTaskIds, subsequentIds);
+    }
 }
