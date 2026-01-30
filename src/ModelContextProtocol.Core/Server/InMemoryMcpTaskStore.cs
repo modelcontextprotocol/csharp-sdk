@@ -351,32 +351,22 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
         string? sessionId = null,
         CancellationToken cancellationToken = default)
     {
-        // Parse cursor: format is "CreatedAt|TaskId" for keyset pagination
-        (DateTimeOffset, string)? parsedCursor = null;
-        if (cursor != null)
-        {
-            var parts = cursor.Split('|');
-            if (parts.Length == 2 &&
-                DateTimeOffset.TryParse(parts[0], out var parsedDate))
-            {
-                parsedCursor = (parsedDate, parts[1]);
-            }
-        }
-
         // Stream enumeration - filter by session, exclude expired, apply keyset pagination
         var query = _tasks.Values
             .Where(e => sessionId == null || e.SessionId == sessionId)
             .Where(e => !IsExpired(e));
 
-        // Apply keyset filter if cursor provided: (CreatedAt, TaskId) > cursor
-        if (parsedCursor is { } parsedCursorValue)
+        // Apply keyset filter if cursor provided: TaskId > cursor
+        // UUID v7 task IDs are monotonically increasing and inherently time-ordered
+        if (cursor != null)
         {
-            query = query.Where(e => (e.CreatedAt, e.TaskId).CompareTo(parsedCursorValue) > 0);
+            query = query.Where(e => string.CompareOrdinal(e.TaskId, cursor) > 0);
         }
 
-        // Order by (CreatedAt, TaskId) for stable, deterministic pagination
+        // Order by TaskId for stable, deterministic pagination
+        // UUID v7 task IDs sort chronologically due to embedded timestamp
         var page = query
-            .OrderBy(e => (e.CreatedAt, e.TaskId))
+            .OrderBy(e => e.TaskId, StringComparer.Ordinal)
             .Take(_pageSize + 1) // Take one extra to check if there's a next page
             .Select(e => e.ToMcpTask())
             .ToList();
@@ -386,7 +376,7 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
         if (page.Count > _pageSize)
         {
             var lastItemInPage = page[_pageSize - 1]; // Last item we'll actually return
-            nextCursor = $"{lastItemInPage.CreatedAt:O}|{lastItemInPage.TaskId}";
+            nextCursor = lastItemInPage.TaskId;
             page.RemoveAt(_pageSize); // Remove the extra item
         }
         else
