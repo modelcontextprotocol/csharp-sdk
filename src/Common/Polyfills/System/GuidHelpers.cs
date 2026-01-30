@@ -10,11 +10,11 @@ internal static class GuidHelpers
     private static long s_counter;
 
     /// <summary>
-    /// Creates a monotonically increasing UUID v7 GUID with the specified timestamp.
+    /// Creates a monotonically increasing GUID using a UUIDv7-like format with the specified timestamp.
     /// Uses a globally increasing counter for strict monotonicity.
     /// </summary>
     /// <param name="timestamp">The timestamp to embed in the GUID.</param>
-    /// <returns>A new monotonically increasing UUID v7 GUID.</returns>
+    /// <returns>A new monotonically increasing GUID.</returns>
     /// <remarks>
     /// <para>
     /// This method cannot be replaced with <c>Guid.CreateVersion7(DateTimeOffset)</c> because
@@ -25,11 +25,13 @@ internal static class GuidHelpers
     /// <para>
     /// This implementation uses a globally monotonically increasing counter to ensure that
     /// all generated GUIDs are strictly ordered by creation time, regardless of timestamp.
+    /// The format is UUIDv7-like but not RFC 9562 compliant since we prioritize strict
+    /// monotonicity over random bits in the counter field.
     /// </para>
     /// </remarks>
     public static Guid CreateMonotonicUuid(DateTimeOffset timestamp)
     {
-        // UUID v7 format (RFC 9562):
+        // UUIDv7-like format (based on RFC 9562 structure, but uses counter instead of random for strict monotonicity):
         // - 48 bits: Unix timestamp in milliseconds (big-endian)
         // - 4 bits: version (0111 = 7)
         // - 12 bits: counter/sequence (for intra-millisecond ordering)
