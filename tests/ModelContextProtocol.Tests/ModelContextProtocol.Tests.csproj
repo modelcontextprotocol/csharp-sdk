@@ -33,6 +33,7 @@
     <Compile Include="..\..\src\ModelContextProtocol.Core\Server\InMemoryMcpTaskStore.cs" Link="Server\InMemoryMcpTaskStore.cs" />
     <!-- Include dependencies for the linked InMemoryMcpTaskStore.cs -->
     <Compile Include="..\..\src\Common\Experimentals.cs" Link="Experimentals.cs" />
+    <Compile Include="..\..\src\Common\Polyfills\System\GuidPolyfills.cs" Link="Polyfills\GuidPolyfills.cs" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'net472'">
