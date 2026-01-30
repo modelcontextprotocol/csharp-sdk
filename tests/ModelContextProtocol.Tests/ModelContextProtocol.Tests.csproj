@@ -10,7 +10,9 @@
     <IsTestProject>true</IsTestProject>
     <RootNamespace>ModelContextProtocol.Tests</RootNamespace>
     <!-- https://github.com/dotnet/sdk/issues/51060 -->
-    <NoWarn>$(NoWarn);NU1903;NU1902</NoWarn>
+    <NoWarn>$(NoWarn);NU1903;NU1902;CS0436</NoWarn>
+    <!-- Define for conditional TimeProvider support in InMemoryMcpTaskStore -->
+    <DefineConstants>$(DefineConstants);MCP_TEST_TIME_PROVIDER</DefineConstants>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' == 'net9.0'">
@@ -27,6 +29,10 @@
 
   <ItemGroup>
     <Compile Include="..\Common\**\*.cs" />
+    <!-- Link InMemoryMcpTaskStore.cs for testing with TimeProvider support -->
+    <Compile Include="..\..\src\ModelContextProtocol.Core\Server\InMemoryMcpTaskStore.cs" Link="Server\InMemoryMcpTaskStore.cs" />
+    <!-- Include dependencies for the linked InMemoryMcpTaskStore.cs -->
+    <Compile Include="..\..\src\Common\Experimentals.cs" Link="Experimentals.cs" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'net472'">

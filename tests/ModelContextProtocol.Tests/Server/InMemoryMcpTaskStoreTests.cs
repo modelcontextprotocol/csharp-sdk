@@ -1038,7 +1038,15 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
     {
         // Arrange - Use a fake time provider to create tasks with identical timestamps
         var fakeTime = new FakeTimeProvider(DateTimeOffset.UtcNow);
-        using var store = new InMemoryMcpTaskStore(pageSize: 5, timeProvider: fakeTime);
+        using var store = new InMemoryMcpTaskStore(
+            defaultTtl: null,
+            maxTtl: null,
+            pollInterval: null,
+            cleanupInterval: Timeout.InfiniteTimeSpan,
+            pageSize: 5,
+            maxTasks: null,
+            maxTasksPerSession: null,
+            timeProvider: fakeTime);
 
         // Create 10 tasks - all with the EXACT same timestamp
         var createdTasks = new List<McpTask>();

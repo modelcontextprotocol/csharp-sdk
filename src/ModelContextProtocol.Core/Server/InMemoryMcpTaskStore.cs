@@ -35,7 +35,9 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
     private readonly int _pageSize;
     private readonly int? _maxTasks;
     private readonly int? _maxTasksPerSession;
+#if MCP_TEST_TIME_PROVIDER
     private readonly TimeProvider _timeProvider;
+#endif
 
     /// <summary>
     /// Initializes a new instance of the <see cref="InMemoryMcpTaskStore"/> class.
@@ -66,10 +68,6 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
     /// Maximum number of tasks allowed per session. Null means unlimited.
     /// When the limit is reached for a session, <see cref="CreateTaskAsync"/> will throw <see cref="InvalidOperationException"/>.
     /// </param>
-    /// <param name="timeProvider">
-    /// Time provider for getting the current time. Defaults to <see cref="TimeProvider.System"/>.
-    /// This parameter is primarily useful for testing scenarios where you need to control time.
-    /// </param>
     public InMemoryMcpTaskStore(
         TimeSpan? defaultTtl = null,
         TimeSpan? maxTtl = null,
@@ -77,8 +75,7 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
         TimeSpan? cleanupInterval = null,
         int pageSize = 100,
         int? maxTasks = null,
-        int? maxTasksPerSession = null,
-        TimeProvider? timeProvider = null)
+        int? maxTasksPerSession = null)
     {
         if (defaultTtl.HasValue && maxTtl.HasValue && defaultTtl.Value > maxTtl.Value)
         {
@@ -126,7 +123,9 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
         _pageSize = pageSize;
         _maxTasks = maxTasks;
         _maxTasksPerSession = maxTasksPerSession;
-        _timeProvider = timeProvider ?? TimeProvider.System;
+#if MCP_TEST_TIME_PROVIDER
+        _timeProvider = TimeProvider.System;
+#endif
 
         cleanupInterval ??= TimeSpan.FromMinutes(1);
         if (cleanupInterval.Value != Timeout.InfiniteTimeSpan)
@@ -134,6 +133,26 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
             _cleanupTimer = new Timer(CleanupExpiredTasks, null, cleanupInterval.Value, cleanupInterval.Value);
         }
     }
+
+#if MCP_TEST_TIME_PROVIDER
+    /// <summary>
+    /// Initializes a new instance of the <see cref="InMemoryMcpTaskStore"/> class with a custom time provider.
+    /// This constructor is only available for testing purposes.
+    /// </summary>
+    internal InMemoryMcpTaskStore(
+        TimeSpan? defaultTtl,
+        TimeSpan? maxTtl,
+        TimeSpan? pollInterval,
+        TimeSpan? cleanupInterval,
+        int pageSize,
+        int? maxTasks,
+        int? maxTasksPerSession,
+        TimeProvider timeProvider)
+        : this(defaultTtl, maxTtl, pollInterval, cleanupInterval, pageSize, maxTasks, maxTasksPerSession)
+    {
+        _timeProvider = timeProvider ?? TimeProvider.System;
+    }
+#endif
 
     /// <inheritdoc/>
     public Task<McpTask> CreateTaskAsync(
@@ -162,7 +181,7 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
         }
 
         var taskId = GenerateTaskId();
-        var now = _timeProvider.GetUtcNow();
+        var now = GetUtcNow();
 
         // Determine TTL: use requested, fall back to default, respect max limit
         var ttl = taskParams.TimeToLive ?? _defaultTtl;
@@ -249,7 +268,7 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
             var updatedEntry = new TaskEntry(entry)
             {
                 Status = status,
-                LastUpdatedAt = _timeProvider.GetUtcNow(),
+                LastUpdatedAt = GetUtcNow(),
                 StoredResult = result
             };
 
@@ -310,7 +329,7 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
             {
                 Status = status,
                 StatusMessage = statusMessage,
-                LastUpdatedAt = _timeProvider.GetUtcNow(),
+                LastUpdatedAt = GetUtcNow(),
             };
 
             if (_tasks.TryUpdate(taskId, updatedEntry, entry))
@@ -405,7 +424,7 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
             var updatedEntry = new TaskEntry(entry)
             {
                 Status = McpTaskStatus.Cancelled,
-                LastUpdatedAt = _timeProvider.GetUtcNow(),
+                LastUpdatedAt = GetUtcNow(),
             };
 
             if (_tasks.TryUpdate(taskId, updatedEntry, entry))
@@ -430,7 +449,17 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
     private static bool IsTerminalStatus(McpTaskStatus status) =>
         status is McpTaskStatus.Completed or McpTaskStatus.Failed or McpTaskStatus.Cancelled;
 
+#if MCP_TEST_TIME_PROVIDER
+    private DateTimeOffset GetUtcNow() => _timeProvider.GetUtcNow();
+#else
+    private static DateTimeOffset GetUtcNow() => DateTimeOffset.UtcNow;
+#endif
+
+#if MCP_TEST_TIME_PROVIDER
     private bool IsExpired(TaskEntry entry)
+#else
+    private static bool IsExpired(TaskEntry entry)
+#endif
     {
         if (entry.TimeToLive == null)
         {
@@ -438,7 +467,7 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
         }
 
         var expirationTime = entry.CreatedAt + entry.TimeToLive.Value;
-        return _timeProvider.GetUtcNow() >= expirationTime;
+        return GetUtcNow() >= expirationTime;
     }
 
     private void CleanupExpiredTasks(object? state)

@@ -26,7 +26,6 @@
   <!-- Product dependencies .NET Standard -->
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
     <PackageVersion Include="Microsoft.Bcl.Memory" Version="$(System10Version)" />
-    <PackageVersion Include="Microsoft.Bcl.TimeProvider" Version="$(System10Version)" />
     <PackageVersion Include="System.Diagnostics.DiagnosticSource" Version="$(System10Version)" />
     <PackageVersion Include="System.IO.Pipelines" Version="$(System10Version)" />
     <PackageVersion Include="System.Text.Json" Version="$(System10Version)" />
