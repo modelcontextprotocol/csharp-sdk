@@ -1,7 +1,8 @@
 namespace System;
 
 /// <summary>
-/// Provides polyfills for GUID generation methods not available in older .NET versions.
+/// Provides polyfills for GUID generation methods not available in older .NET versions,
+/// with monotonic counter-based ordering for strict intra-millisecond sequencing.
 /// </summary>
 internal static class GuidPolyfills
 {
@@ -10,12 +11,17 @@ internal static class GuidPolyfills
     private static readonly object s_lock = new();
 
     /// <summary>
-    /// Creates a monotonically increasing GUID using UUID v7 format with the specified timestamp.
+    /// Creates a UUID v7 GUID with the specified timestamp.
     /// Uses a counter for intra-millisecond ordering to ensure strict monotonicity.
     /// </summary>
-    /// <param name="timestamp">The Unix timestamp in milliseconds to embed in the GUID.</param>
-    /// <returns>A new monotonically increasing GUID.</returns>
-    public static Guid CreateMonotonicUuid(long timestamp)
+    /// <param name="timestamp">The timestamp to embed in the GUID.</param>
+    /// <returns>A new UUID v7 GUID.</returns>
+    /// <remarks>
+    /// Unlike the built-in <c>Guid.CreateVersion7(DateTimeOffset)</c> in .NET 9+,
+    /// this implementation uses a counter to ensure strict monotonicity within the same millisecond,
+    /// which is required for keyset pagination to work correctly.
+    /// </remarks>
+    public static Guid CreateVersion7(DateTimeOffset timestamp)
     {
         // UUID v7 format (RFC 9562):
         // - 48 bits: Unix timestamp in milliseconds (big-endian)
@@ -24,11 +30,12 @@ internal static class GuidPolyfills
         // - 2 bits: variant (10)
         // - 62 bits: random
 
+        long timestampMs = timestamp.ToUnixTimeMilliseconds();
         long counter;
 
         lock (s_lock)
         {
-            if (timestamp == s_lastTimestamp)
+            if (timestampMs == s_lastTimestamp)
             {
                 // Same millisecond - increment counter
                 s_counter++;
@@ -36,7 +43,7 @@ internal static class GuidPolyfills
             else
             {
                 // New millisecond - reset counter
-                s_lastTimestamp = timestamp;
+                s_lastTimestamp = timestampMs;
                 s_counter = 0;
             }
 
@@ -56,12 +63,12 @@ internal static class GuidPolyfills
 #endif
 
         // Set timestamp (48 bits, big-endian) in first 6 bytes
-        bytes[0] = (byte)(timestamp >> 40);
-        bytes[1] = (byte)(timestamp >> 32);
-        bytes[2] = (byte)(timestamp >> 24);
-        bytes[3] = (byte)(timestamp >> 16);
-        bytes[4] = (byte)(timestamp >> 8);
-        bytes[5] = (byte)timestamp;
+        bytes[0] = (byte)(timestampMs >> 40);
+        bytes[1] = (byte)(timestampMs >> 32);
+        bytes[2] = (byte)(timestampMs >> 24);
+        bytes[3] = (byte)(timestampMs >> 16);
+        bytes[4] = (byte)(timestampMs >> 8);
+        bytes[5] = (byte)timestampMs;
 
         // Set version 7 (0111) in high nibble of byte 6, and high 4 bits of counter in low nibble
         bytes[6] = (byte)(0x70 | ((counter >> 8) & 0x0F));
@@ -81,3 +88,4 @@ internal static class GuidPolyfills
             bytes[12], bytes[13], bytes[14], bytes[15]);
     }
 }
+
