@@ -377,7 +377,7 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
         // And process the result.
         ReadResourceResult readResourceResult = result switch
         {
-            ReadResourceResult rrr => rrr,
+            ReadResourceResult existingResult => existingResult,
 
             ResourceContents content => new()
             {

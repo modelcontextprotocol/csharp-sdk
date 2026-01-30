@@ -1386,6 +1386,40 @@ public partial class McpMetaAttributeTests
         Assert.Null(result.Meta);
     }
 
+    [Fact]
+    public async Task McpServerPrompt_GetAsync_WithNoMeta_ResultHasNoMeta()
+    {
+        var method = typeof(TestPromptMetaPropagationClass).GetMethod(nameof(TestPromptMetaPropagationClass.PromptWithoutMeta))!;
+        var prompt = McpServerPrompt.Create(method, target: null);
+
+        // Verify prompt has no meta defined
+        Assert.Null(prompt.ProtocolPrompt.Meta);
+
+        var result = await prompt.GetAsync(
+            new RequestContext<GetPromptRequestParams>(new Moq.Mock<McpServer>().Object, CreateTestJsonRpcRequest()) { Params = new() { Name = "prompt_without_meta" } },
+            TestContext.Current.CancellationToken);
+
+        // Verify result has no meta
+        Assert.Null(result.Meta);
+    }
+
+    [Fact]
+    public async Task McpServerResource_ReadAsync_WithNoMeta_ResultHasNoMeta()
+    {
+        var method = typeof(TestResourceMetaPropagationClass).GetMethod(nameof(TestResourceMetaPropagationClass.ResourceWithoutMeta))!;
+        var resource = McpServerResource.Create(method, target: null);
+
+        // Verify resource has no meta defined
+        Assert.Null(resource.ProtocolResourceTemplate?.Meta);
+
+        var result = await resource.ReadAsync(
+            new RequestContext<ReadResourceRequestParams>(new Moq.Mock<McpServer>().Object, CreateTestJsonRpcRequest()) { Params = new() { Uri = "resource://no-meta/123" } },
+            TestContext.Current.CancellationToken);
+
+        // Verify result has no meta
+        Assert.Null(result.Meta);
+    }
+
     private static JsonRpcRequest CreateTestJsonRpcRequest()
     {
         return new JsonRpcRequest
@@ -1414,6 +1448,15 @@ public partial class McpMetaAttributeTests
         [McpMeta("type", "reasoning")]
         [McpMeta("model", "claude-3")]
         public static string PromptWithMeta() => "result";
+
+        [McpServerPrompt]
+        public static string PromptWithoutMeta() => "result";
+    }
+
+    private class TestResourceMetaPropagationClass
+    {
+        [McpServerResource(UriTemplate = "resource://no-meta/{id}")]
+        public static string ResourceWithoutMeta(string id) => id;
     }
 
     #endregion

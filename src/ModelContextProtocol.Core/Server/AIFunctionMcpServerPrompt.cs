@@ -214,7 +214,7 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
 
         GetPromptResult getPromptResult = result switch
         {
-            GetPromptResult gpr => gpr,
+            GetPromptResult existingResult => existingResult,
 
             string text => new()
             {

@@ -303,7 +303,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 StructuredContent = structuredContent,
             },
 
-            CallToolResult ctr => ctr,
+            CallToolResult existingResult => existingResult,
 
             _ => new()
             {
