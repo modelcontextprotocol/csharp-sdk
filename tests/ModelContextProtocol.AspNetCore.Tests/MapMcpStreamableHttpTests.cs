@@ -373,7 +373,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         {
             return async context =>
             {
-                Assert.Equal("Bearer testToken", context.Request.Headers["Authorization"]);
+                Assert.Equal("Bearer testToken", context.Request.Headers["Authorize"]);
                 if (context.Request.Method == HttpMethods.Post)
                 {
                     wasPostRequest = true;
@@ -397,7 +397,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
             TransportMode = HttpTransportMode.StreamableHttp,
             AdditionalHeaders = new Dictionary<string, string>
             {
-                ["Authorization"] = "Bearer testToken"
+                ["Authorize"] = "Bearer testToken"
             },
         };
 
