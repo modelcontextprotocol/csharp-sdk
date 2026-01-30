@@ -76,7 +76,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             Name = options?.Name ?? method.GetCustomAttribute<McpServerToolAttribute>()?.Name ?? DeriveName(method),
             Description = options?.Description,
             MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
-            SerializerOptions = options?.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
+            SerializerOptions = GetSerializerOptions(options?.SerializerOptions),
             JsonSchemaCreateOptions = options?.SchemaCreateOptions,
             ConfigureParameterBinding = pi =>
             {
@@ -579,5 +579,30 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             StructuredContent = structuredContent,
             IsError = allErrorContent && hasAny
         };
+    }
+
+    /// <summary>
+    /// Gets the appropriate <see cref="JsonSerializerOptions"/> for tool serialization.
+    /// </summary>
+    /// <remarks>
+    /// If no options are provided, returns the default MCP options. If options are provided but
+    /// don't have a TypeInfoResolver, this method silently mutates the options to add one,
+    /// approximating the behavior of the non-AOT friendly JsonSerializer.Serialize methods.
+    /// </remarks>
+    private static JsonSerializerOptions GetSerializerOptions(JsonSerializerOptions? customOptions)
+    {
+        if (customOptions is null)
+        {
+            return McpJsonUtilities.DefaultOptions;
+        }
+
+        if (customOptions.TypeInfoResolver is null)
+        {
+            Debug.Assert(!customOptions.IsReadOnly, "If no resolver is present then the options must still be editable.");
+            customOptions.TypeInfoResolver = McpJsonUtilities.DefaultOptions.TypeInfoResolver;
+            customOptions.MakeReadOnly();
+        }
+
+        return customOptions;
     }
 }
