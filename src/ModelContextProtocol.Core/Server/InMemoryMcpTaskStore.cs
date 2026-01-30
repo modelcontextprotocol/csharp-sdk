@@ -3,7 +3,11 @@ using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 
+#if MCP_TEST_TIME_PROVIDER
+namespace ModelContextProtocol.Tests.Internal;
+#else
 namespace ModelContextProtocol;
+#endif
 
 /// <summary>
 /// Provides an in-memory implementation of <see cref="IMcpTaskStore"/> for development and testing.

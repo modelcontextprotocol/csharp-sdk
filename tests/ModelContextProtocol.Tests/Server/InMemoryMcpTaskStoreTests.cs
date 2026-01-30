@@ -3,6 +3,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.Text.Json;
+using TestInMemoryMcpTaskStore = ModelContextProtocol.Tests.Internal.InMemoryMcpTaskStore;
 
 namespace ModelContextProtocol.Tests.Server;
 
@@ -1038,7 +1039,7 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
     {
         // Arrange - Use a fake time provider to create tasks with identical timestamps
         var fakeTime = new FakeTimeProvider(DateTimeOffset.UtcNow);
-        using var store = new InMemoryMcpTaskStore(
+        using var store = new TestInMemoryMcpTaskStore(
             defaultTtl: null,
             maxTtl: null,
             pollInterval: null,
