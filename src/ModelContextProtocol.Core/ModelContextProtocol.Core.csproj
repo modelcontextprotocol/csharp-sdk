@@ -18,7 +18,6 @@
   <PropertyGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
     <!-- CS0436: Allow ObsoleteAttribute to be redefined internally -->
     <NoWarn>$(NoWarn);CS0436</NoWarn>
-    <!-- Required by CancellableStreamReader.cs -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
