@@ -22,7 +22,6 @@ public sealed class RequestContext<TParams> : MessageContext
     public RequestContext(McpServer server, JsonRpcRequest jsonRpcRequest)
         : base(server, jsonRpcRequest)
     {
-        JsonRpcRequest = jsonRpcRequest;
     }
 
     /// <summary>Gets or sets the parameters associated with this request.</summary>
@@ -40,7 +39,11 @@ public sealed class RequestContext<TParams> : MessageContext
     /// This property provides access to the complete JSON-RPC request that initiated this handler invocation,
     /// including the method name, parameters, request ID, and associated transport and user information.
     /// </remarks>
-    public JsonRpcRequest JsonRpcRequest { get; }
+    public JsonRpcRequest JsonRpcRequest
+    {
+        get => (JsonRpcRequest)JsonRpcMessage;
+        set => JsonRpcMessage = value;
+    }
 
     /// <summary>
     /// Ends the current response and enables polling for updates from the server.
