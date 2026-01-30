@@ -5,12 +5,15 @@
     <TargetFrameworks>net10.0;net9.0;net8.0;net472</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <RootNamespace>ModelContextProtocol.Tests</RootNamespace>
     <!-- https://github.com/dotnet/sdk/issues/51060 -->
     <NoWarn>$(NoWarn);NU1903;NU1902</NoWarn>
+    <!-- Define for conditional TimeProvider support in InMemoryMcpTaskStore -->
+    <DefineConstants>$(DefineConstants);MCP_TEST_TIME_PROVIDER</DefineConstants>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' == 'net9.0'">
@@ -27,11 +30,19 @@
 
   <ItemGroup>
     <Compile Include="..\Common\**\*.cs" />
+    <!-- Link InMemoryMcpTaskStore.cs for testing with TimeProvider support -->
+    <Compile Include="..\..\src\ModelContextProtocol.Core\Server\InMemoryMcpTaskStore.cs" Link="Server\InMemoryMcpTaskStore.cs" />
+    <!-- Include dependencies for the linked InMemoryMcpTaskStore.cs -->
+    <Compile Include="..\..\src\Common\Experimentals.cs" Link="Experimentals.cs" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'net472'">
     <Compile Include="..\..\src\Common\Throw.cs" Link="Throw.cs" />
     <Compile Include="..\..\src\Common\Polyfills\**\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' != 'net472'">
+    <Compile Include="..\..\src\Common\Polyfills\System\IdHelpers.cs" Link="Polyfills\IdHelpers.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -43,6 +54,7 @@
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
     <PackageReference Include="Microsoft.Extensions.Logging" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Moq" />
     <PackageReference Include="OpenTelemetry" />

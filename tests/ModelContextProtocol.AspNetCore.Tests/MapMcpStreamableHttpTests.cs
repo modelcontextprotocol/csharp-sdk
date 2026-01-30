@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Primitives;
 using ModelContextProtocol.Client;
@@ -354,5 +355,61 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         Assert.NotNull(capturedException);
         Assert.Contains("event stream store", capturedException.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AdditionalHeaders_AreSent_InPostAndDeleteRequests()
+    {
+        Assert.SkipWhen(Stateless, "DELETE requests are not sent in stateless mode due to lack of session ID.");
+
+        bool wasPostRequest = false;
+        bool wasDeleteRequest = false;
+
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<EchoHttpContextUserTools>();
+
+        await using var app = Builder.Build();
+
+        app.Use(next =>
+        {
+            return async context =>
+            {
+                Assert.Equal("Bearer testToken", context.Request.Headers["Authorize"]);
+                if (context.Request.Method == HttpMethods.Post)
+                {
+                    wasPostRequest = true;
+                }
+                else if (context.Request.Method == HttpMethods.Delete)
+                {
+                    wasDeleteRequest = true;
+                }
+                await next(context);
+            };
+        });
+
+        app.MapMcp();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        var transportOptions = new HttpClientTransportOptions
+        {
+            Endpoint = new("http://localhost:5000/"),
+            Name = "In-memory Streamable HTTP Client",
+            TransportMode = HttpTransportMode.StreamableHttp,
+            AdditionalHeaders = new Dictionary<string, string>
+            {
+                ["Authorize"] = "Bearer testToken"
+            },
+        };
+
+        await using var mcpClient = await ConnectAsync(transportOptions: transportOptions);
+
+        // Do a tool call to ensure there's more than just the initialize request
+        await mcpClient.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // Dispose the client to trigger the DELETE request
+        await mcpClient.DisposeAsync();
+
+        Assert.True(wasPostRequest, "POST request was not made");
+        Assert.True(wasDeleteRequest, "DELETE request was not made");
     }
 }

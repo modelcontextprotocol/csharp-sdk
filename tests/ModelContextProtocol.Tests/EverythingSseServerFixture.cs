@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Net;
+using ModelContextProtocol.Tests.Utils;
 
 namespace ModelContextProtocol.Tests;
 
@@ -33,7 +34,7 @@ public class EverythingSseServerFixture : IAsyncDisposable
             ?? throw new InvalidOperationException($"Could not start process for {processStartInfo.FileName} with '{processStartInfo.Arguments}'.");
 
         // Poll until the server is ready (up to 30 seconds)
-        using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+        using var httpClient = new HttpClient { Timeout = TestConstants.HttpClientPollingTimeout };
         var endpoint = $"http://localhost:{_port}/sse";
         var deadline = DateTime.UtcNow.AddSeconds(30);
         
@@ -72,7 +73,7 @@ public class EverythingSseServerFixture : IAsyncDisposable
 
             using var stopProcess = Process.Start(stopInfo)
                 ?? throw new InvalidOperationException($"Could not stop process for {stopInfo.FileName} with '{stopInfo.Arguments}'.");
-            await stopProcess.WaitForExitAsync(TimeSpan.FromSeconds(10));
+            await stopProcess.WaitForExitAsync(TestConstants.DefaultTimeout);
         }
         catch (Exception ex)
         {

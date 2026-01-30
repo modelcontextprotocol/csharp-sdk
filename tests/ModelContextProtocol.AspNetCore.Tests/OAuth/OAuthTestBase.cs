@@ -83,6 +83,11 @@ public abstract class OAuthTestBase : KestrelInMemoryTest, IAsyncDisposable
 
     protected async Task<WebApplication> StartMcpServerAsync(string path = "", string? authScheme = null)
     {
+        // Wait for the OAuth server to be ready before starting the MCP server.
+        // This prevents race conditions in CI where the OAuth server may not be
+        // fully initialized when the first test request is made.
+        await TestOAuthServer.ServerStarted.WaitAsync(TestContext.Current.CancellationToken);
+
         Builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
         {
             options.TokenValidationParameters.ValidAudience = $"{McpServerUrl}{path}";

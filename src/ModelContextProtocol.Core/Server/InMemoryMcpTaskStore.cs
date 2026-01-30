@@ -3,7 +3,11 @@ using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 
+#if MCP_TEST_TIME_PROVIDER
+namespace ModelContextProtocol.Tests.Internal;
+#else
 namespace ModelContextProtocol;
+#endif
 
 /// <summary>
 /// Provides an in-memory implementation of <see cref="IMcpTaskStore"/> for development and testing.
@@ -35,6 +39,9 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
     private readonly int _pageSize;
     private readonly int? _maxTasks;
     private readonly int? _maxTasksPerSession;
+#if MCP_TEST_TIME_PROVIDER
+    private readonly TimeProvider _timeProvider;
+#endif
 
     /// <summary>
     /// Initializes a new instance of the <see cref="InMemoryMcpTaskStore"/> class.
@@ -120,6 +127,9 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
         _pageSize = pageSize;
         _maxTasks = maxTasks;
         _maxTasksPerSession = maxTasksPerSession;
+#if MCP_TEST_TIME_PROVIDER
+        _timeProvider = TimeProvider.System;
+#endif
 
         cleanupInterval ??= TimeSpan.FromMinutes(1);
         if (cleanupInterval.Value != Timeout.InfiniteTimeSpan)
@@ -127,6 +137,26 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
             _cleanupTimer = new Timer(CleanupExpiredTasks, null, cleanupInterval.Value, cleanupInterval.Value);
         }
     }
+
+#if MCP_TEST_TIME_PROVIDER
+    /// <summary>
+    /// Initializes a new instance of the <see cref="InMemoryMcpTaskStore"/> class with a custom time provider.
+    /// This constructor is only available for testing purposes.
+    /// </summary>
+    internal InMemoryMcpTaskStore(
+        TimeSpan? defaultTtl,
+        TimeSpan? maxTtl,
+        TimeSpan? pollInterval,
+        TimeSpan? cleanupInterval,
+        int pageSize,
+        int? maxTasks,
+        int? maxTasksPerSession,
+        TimeProvider timeProvider)
+        : this(defaultTtl, maxTtl, pollInterval, cleanupInterval, pageSize, maxTasks, maxTasksPerSession)
+    {
+        _timeProvider = timeProvider ?? TimeProvider.System;
+    }
+#endif
 
     /// <inheritdoc/>
     public Task<McpTask> CreateTaskAsync(
@@ -155,7 +185,7 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
         }
 
         var taskId = GenerateTaskId();
-        var now = DateTimeOffset.UtcNow;
+        var now = GetUtcNow();
 
         // Determine TTL: use requested, fall back to default, respect max limit
         var ttl = taskParams.TimeToLive ?? _defaultTtl;
@@ -242,7 +272,7 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
             var updatedEntry = new TaskEntry(entry)
             {
                 Status = status,
-                LastUpdatedAt = DateTimeOffset.UtcNow,
+                LastUpdatedAt = GetUtcNow(),
                 StoredResult = result
             };
 
@@ -303,7 +333,7 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
             {
                 Status = status,
                 StatusMessage = statusMessage,
-                LastUpdatedAt = DateTimeOffset.UtcNow,
+                LastUpdatedAt = GetUtcNow(),
             };
 
             if (_tasks.TryUpdate(taskId, updatedEntry, entry))
@@ -321,32 +351,22 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
         string? sessionId = null,
         CancellationToken cancellationToken = default)
     {
-        // Parse cursor: format is "CreatedAt|TaskId" for keyset pagination
-        (DateTimeOffset, string)? parsedCursor = null;
-        if (cursor != null)
-        {
-            var parts = cursor.Split('|');
-            if (parts.Length == 2 &&
-                DateTimeOffset.TryParse(parts[0], out var parsedDate))
-            {
-                parsedCursor = (parsedDate, parts[1]);
-            }
-        }
-
         // Stream enumeration - filter by session, exclude expired, apply keyset pagination
         var query = _tasks.Values
             .Where(e => sessionId == null || e.SessionId == sessionId)
             .Where(e => !IsExpired(e));
 
-        // Apply keyset filter if cursor provided: (CreatedAt, TaskId) > cursor
-        if (parsedCursor is { } parsedCursorValue)
+        // Apply keyset filter if cursor provided: TaskId > cursor
+        // UUID v7 task IDs are monotonically increasing and inherently time-ordered
+        if (cursor != null)
         {
-            query = query.Where(e => (e.CreatedAt, e.TaskId).CompareTo(parsedCursorValue) > 0);
+            query = query.Where(e => string.CompareOrdinal(e.TaskId, cursor) > 0);
         }
 
-        // Order by (CreatedAt, TaskId) for stable, deterministic pagination
+        // Order by TaskId for stable, deterministic pagination
+        // UUID v7 task IDs sort chronologically due to embedded timestamp
         var page = query
-            .OrderBy(e => (e.CreatedAt, e.TaskId))
+            .OrderBy(e => e.TaskId, StringComparer.Ordinal)
             .Take(_pageSize + 1) // Take one extra to check if there's a next page
             .Select(e => e.ToMcpTask())
             .ToList();
@@ -356,7 +376,7 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
         if (page.Count > _pageSize)
         {
             var lastItemInPage = page[_pageSize - 1]; // Last item we'll actually return
-            nextCursor = $"{lastItemInPage.CreatedAt:O}|{lastItemInPage.TaskId}";
+            nextCursor = lastItemInPage.TaskId;
             page.RemoveAt(_pageSize); // Remove the extra item
         }
         else
@@ -397,7 +417,7 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
             var updatedEntry = new TaskEntry(entry)
             {
                 Status = McpTaskStatus.Cancelled,
-                LastUpdatedAt = DateTimeOffset.UtcNow,
+                LastUpdatedAt = GetUtcNow(),
             };
 
             if (_tasks.TryUpdate(taskId, updatedEntry, entry))
@@ -417,12 +437,23 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
         _cleanupTimer?.Dispose();
     }
 
-    private static string GenerateTaskId() => Guid.NewGuid().ToString("N");
+    private string GenerateTaskId() =>
+        IdHelpers.CreateMonotonicId(GetUtcNow());
 
     private static bool IsTerminalStatus(McpTaskStatus status) =>
         status is McpTaskStatus.Completed or McpTaskStatus.Failed or McpTaskStatus.Cancelled;
 
+#if MCP_TEST_TIME_PROVIDER
+    private DateTimeOffset GetUtcNow() => _timeProvider.GetUtcNow();
+#else
+    private static DateTimeOffset GetUtcNow() => DateTimeOffset.UtcNow;
+#endif
+
+#if MCP_TEST_TIME_PROVIDER
+    private bool IsExpired(TaskEntry entry)
+#else
     private static bool IsExpired(TaskEntry entry)
+#endif
     {
         if (entry.TimeToLive == null)
         {
@@ -430,7 +461,7 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
         }
 
         var expirationTime = entry.CreatedAt + entry.TimeToLive.Value;
-        return DateTimeOffset.UtcNow >= expirationTime;
+        return GetUtcNow() >= expirationTime;
     }
 
     private void CleanupExpiredTasks(object? state)
