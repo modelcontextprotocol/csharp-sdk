@@ -27,6 +27,10 @@ namespace ModelContextProtocol;
 [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
 public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
 {
+    // Counter used for generating monotonically increasing task IDs, ensuring chronological ordering
+    // even when tasks are created within the same millisecond.
+    private static long s_taskIdCounter;
+
     private readonly ConcurrentDictionary<string, TaskEntry> _tasks = new();
     private readonly TimeSpan? _defaultTtl;
     private readonly TimeSpan? _maxTtl;
@@ -179,7 +183,7 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
 
         if (!_tasks.TryAdd(taskId, entry))
         {
-            // This should be extremely rare with GUID-based IDs
+            // Should never happen with counter-based IDs since each counter value is unique
             throw new InvalidOperationException($"Task ID collision: {taskId}");
         }
 
@@ -417,7 +421,15 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
         _cleanupTimer?.Dispose();
     }
 
-    private static string GenerateTaskId() => Guid.NewGuid().ToString("N");
+    private string GenerateTaskId()
+    {
+        // Use Interlocked.Increment to generate a monotonically increasing counter.
+        // This ensures task IDs maintain chronological ordering for keyset pagination,
+        // even when multiple tasks are created within the same millisecond.
+        // Format: {counter:D20}-{uniqueSuffix} where D20 ensures lexicographic sorting.
+        long counter = Interlocked.Increment(ref s_taskIdCounter);
+        return $"{counter:D20}-{Guid.NewGuid():N}";
+    }
 
     private static bool IsTerminalStatus(McpTaskStatus status) =>
         status is McpTaskStatus.Completed or McpTaskStatus.Failed or McpTaskStatus.Cancelled;
