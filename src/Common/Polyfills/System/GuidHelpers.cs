@@ -27,7 +27,7 @@ internal static class GuidHelpers
     /// all generated GUIDs are strictly ordered by creation time, regardless of timestamp.
     /// </para>
     /// </remarks>
-    public static unsafe Guid CreateMonotonicUuid(DateTimeOffset timestamp)
+    public static Guid CreateMonotonicUuid(DateTimeOffset timestamp)
     {
         // UUID v7 format (RFC 9562):
         // - 48 bits: Unix timestamp in milliseconds (big-endian)
@@ -42,15 +42,18 @@ internal static class GuidHelpers
         // Start with a random GUID and twiddle the relevant bits
         Guid guid = Guid.NewGuid();
 
-        int* guidAsInts = (int*)&guid;
-        short* guidAsShorts = (short*)&guid;
-        byte* guidAsBytes = (byte*)&guid;
+        unsafe
+        {
+            int* guidAsInts = (int*)&guid;
+            short* guidAsShorts = (short*)&guid;
+            byte* guidAsBytes = (byte*)&guid;
 
-        // Set timestamp (48 bits) and version/counter using little-endian layout
-        guidAsInts[0] = (int)(timestampMs >> 8);
-        guidAsShorts[2] = (short)((timestampMs & 0xFF) | ((timestampMs >> 40) << 8));
-        guidAsShorts[3] = (short)((counter & 0xFFF) | 0x7000);
-        guidAsBytes[8] = (byte)((guidAsBytes[8] & 0x3F) | 0x80);
+            // Set timestamp (48 bits) and version/counter using little-endian layout
+            guidAsInts[0] = (int)(timestampMs >> 8);
+            guidAsShorts[2] = (short)((timestampMs & 0xFF) | ((timestampMs >> 40) << 8));
+            guidAsShorts[3] = (short)((counter & 0xFFF) | 0x7000);
+            guidAsBytes[8] = (byte)((guidAsBytes[8] & 0x3F) | 0x80);
+        }
 
         return guid;
     }
