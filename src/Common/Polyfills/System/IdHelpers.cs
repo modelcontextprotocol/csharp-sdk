@@ -3,9 +3,9 @@ using System.Threading;
 namespace System;
 
 /// <summary>
-/// Provides helper methods for GUID generation.
+/// Provides helper methods for monotonic ID generation.
 /// </summary>
-internal static class GuidHelpers
+internal static class IdHelpers
 {
     private static long s_counter;
 

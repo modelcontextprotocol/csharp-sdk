@@ -42,7 +42,7 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' != 'net472'">
-    <Compile Include="..\..\src\Common\Polyfills\System\GuidHelpers.cs" Link="Polyfills\GuidHelpers.cs" />
+    <Compile Include="..\..\src\Common\Polyfills\System\IdHelpers.cs" Link="Polyfills\IdHelpers.cs" />
   </ItemGroup>
 
   <ItemGroup>
