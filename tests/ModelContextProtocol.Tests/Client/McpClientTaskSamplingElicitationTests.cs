@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Tests.Client;
@@ -219,7 +220,7 @@ public class McpClientTaskSamplingElicitationTests : ClientServerTestBase
         Assert.Equal(McpTaskStatus.Working, mcpTask.Status);
 
         // Wait for sampling to complete
-        await samplingCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await samplingCompleted.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
 
         // Poll until task is complete
         McpTask taskStatus;
@@ -375,7 +376,7 @@ public class McpClientTaskSamplingElicitationTests : ClientServerTestBase
         Assert.Equal(McpTaskStatus.Working, mcpTask.Status);
 
         // Wait for elicitation to complete
-        await elicitationCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await elicitationCompleted.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
 
         // Poll until task is complete
         McpTask taskStatus;
@@ -488,7 +489,7 @@ public class McpClientTaskSamplingElicitationTests : ClientServerTestBase
             TestContext.Current.CancellationToken);
 
         // Wait for sampling to start
-        await samplingStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await samplingStarted.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
 
         // Act - Cancel the task
         var cancelledTask = await Server.CancelTaskAsync(mcpTask.TaskId, TestContext.Current.CancellationToken);
@@ -600,8 +601,8 @@ public class McpClientTaskSamplingElicitationTests : ClientServerTestBase
         // Wait for both Working and Completed notifications to arrive
         // The notifications are sent asynchronously so we need to wait for both
         await Task.WhenAll(
-            workingNotificationReceived.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken),
-            completedNotificationReceived.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+            workingNotificationReceived.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken),
+            completedNotificationReceived.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
 
         // Assert - Should have received notifications for status transitions
         await notificationHandler.DisposeAsync();
@@ -653,7 +654,7 @@ public class McpClientTaskSamplingElicitationTests : ClientServerTestBase
             TestContext.Current.CancellationToken);
 
         // Wait for sampling attempt
-        await samplingAttempted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await samplingAttempted.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
 
         // Poll until task status changes
         McpTask taskStatus;
@@ -703,7 +704,7 @@ public class McpClientTaskSamplingElicitationTests : ClientServerTestBase
             TestContext.Current.CancellationToken);
 
         // Wait for elicitation attempt
-        await elicitationAttempted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await elicitationAttempted.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
 
         // Poll until task status changes
         McpTask taskStatus;

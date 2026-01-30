@@ -47,7 +47,7 @@ public class ServerConformanceTests : IAsyncLifetime
         // Wait for server to be ready (retry for up to 30 seconds)
         var timeout = TimeSpan.FromSeconds(30);
         var stopwatch = Stopwatch.StartNew();
-        using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+        using var httpClient = new HttpClient { Timeout = TestConstants.HttpClientPollingTimeout };
 
         while (stopwatch.Elapsed < timeout)
         {
@@ -83,7 +83,7 @@ public class ServerConformanceTests : IAsyncLifetime
             {
                 try
                 {
-                    await _serverTask.WaitAsync(TimeSpan.FromSeconds(5));
+                    await _serverTask.WaitAsync(TestConstants.DefaultTimeout);
                 }
                 catch
                 {
