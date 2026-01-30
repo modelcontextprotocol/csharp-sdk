@@ -47,15 +47,6 @@ jobs:
           10.0.x
           9.0.x
 
-    # NetFX testing on non-Windows requires mono
-    - name: 🔧 Setup Mono
-      if: runner.os == 'Linux'
-      run: sudo apt-get install -y mono-devel
-
-    - name: 🔧 Setup Mono on macOS
-      if: runner.os == 'macOS'
-      run: brew install mono
-
     - name: 🔧 Set up Node.js
       uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
       with:
