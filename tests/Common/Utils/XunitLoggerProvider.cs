@@ -34,7 +34,15 @@ public class XunitLoggerProvider(ITestOutputHelper output) : ILoggerProvider
                 sb.Append(exception.ToString());
             }
 
-            output.WriteLine(sb.ToString());
+            try
+            {
+                output.WriteLine(sb.ToString());
+            }
+            catch
+            {
+                // Ignore exceptions from xUnit's TestOutputHelper when the test has already completed.
+                // Background work may continue logging after xUnit has disposed the test context.
+            }
         }
 
         public bool IsEnabled(LogLevel logLevel) => true;
