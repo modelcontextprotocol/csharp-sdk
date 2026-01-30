@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
 using System.Diagnostics;
 using System.Net.ServerSentEvents;
@@ -12,14 +11,15 @@ namespace ModelContextProtocol.Server;
 /// Handles processing the request/response body pairs for the Streamable HTTP transport.
 /// This is typically used via <see cref="JsonRpcMessageContext.RelatedTransport"/>.
 /// </summary>
-internal sealed partial class StreamableHttpPostTransport : ITransport
+internal sealed partial class StreamableHttpPostTransport(
+    StreamableHttpServerTransport parentTransport,
+    Stream responseStream,
+    CancellationToken sessionCancellationToken,
+    ILogger logger) : ITransport
 {
-    private readonly StreamableHttpServerTransport _parentTransport;
-    private readonly CancellationToken _sessionCancellationToken;
-    private readonly ILogger _logger;
     private readonly SemaphoreSlim _messageLock = new(1, 1);
     private readonly TaskCompletionSource<bool> _httpResponseTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly SseEventWriter _httpSseWriter;
+    private readonly SseEventWriter _httpSseWriter = new(responseStream);
 
     private TaskCompletionSource<bool>? _storeStreamTcs;
     private ISseEventStreamWriter? _storeSseWriter;
@@ -28,21 +28,9 @@ internal sealed partial class StreamableHttpPostTransport : ITransport
     private bool _finalResponseMessageSent;
     private bool _httpResponseCompleted;
 
-    public StreamableHttpPostTransport(
-        StreamableHttpServerTransport parentTransport,
-        Stream responseStream,
-        CancellationToken sessionCancellationToken,
-        ILogger logger)
-    {
-        _parentTransport = parentTransport;
-        _sessionCancellationToken = sessionCancellationToken;
-        _logger = logger;
-        _httpSseWriter = new(responseStream);
-    }
-
     public ChannelReader<JsonRpcMessage> MessageReader => throw new NotSupportedException("JsonRpcMessage.Context.RelatedTransport should only be used for sending messages.");
 
-    string? ITransport.SessionId => _parentTransport.SessionId;
+    string? ITransport.SessionId => parentTransport.SessionId;
 
     /// <returns>
     /// True, if data was written to the response body.
@@ -61,21 +49,21 @@ internal sealed partial class StreamableHttpPostTransport : ITransport
             if (request.Method == RequestMethods.Initialize)
             {
                 var initializeRequest = JsonSerializer.Deserialize(request.Params, McpJsonUtilities.JsonContext.Default.InitializeRequestParams);
-                await _parentTransport.HandleInitRequestAsync(initializeRequest).ConfigureAwait(false);
+                await parentTransport.HandleInitRequestAsync(initializeRequest).ConfigureAwait(false);
             }
         }
 
         message.Context ??= new JsonRpcMessageContext();
         message.Context.RelatedTransport = this;
 
-        if (_parentTransport.FlowExecutionContextFromRequests)
+        if (parentTransport.FlowExecutionContextFromRequests)
         {
             message.Context.ExecutionContext = ExecutionContext.Capture();
         }
 
         if (_pendingRequest.Id is null)
         {
-            await _parentTransport.MessageWriter.WriteAsync(message, cancellationToken).ConfigureAwait(false);
+            await parentTransport.MessageWriter.WriteAsync(message, cancellationToken).ConfigureAwait(false);
             return false;
         }
 
@@ -88,7 +76,7 @@ internal sealed partial class StreamableHttpPostTransport : ITransport
             }
 
             // Ensure that we've sent the priming event before processing the incoming request.
-            await _parentTransport.MessageWriter.WriteAsync(message, cancellationToken).ConfigureAwait(false);
+            await parentTransport.MessageWriter.WriteAsync(message, cancellationToken).ConfigureAwait(false);
         }
 
         // Wait for the response to be written before returning from the handler.
@@ -102,7 +90,7 @@ internal sealed partial class StreamableHttpPostTransport : ITransport
     {
         Throw.IfNull(message);
 
-        if (_parentTransport.Stateless && message is JsonRpcRequest)
+        if (parentTransport.Stateless && message is JsonRpcRequest)
         {
             throw new InvalidOperationException("Server to client requests are not supported in stateless mode.");
         }
@@ -116,7 +104,7 @@ internal sealed partial class StreamableHttpPostTransport : ITransport
             {
                 // The final response message has already been sent.
                 // Rather than drop the message, fall back to sending it via the parent transport.
-                await _parentTransport.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
+                await parentTransport.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
                 return;
             }
 
@@ -155,7 +143,7 @@ internal sealed partial class StreamableHttpPostTransport : ITransport
 
     public async ValueTask EnablePollingAsync(TimeSpan retryInterval, CancellationToken cancellationToken)
     {
-        if (_parentTransport.Stateless)
+        if (parentTransport.Stateless)
         {
             throw new InvalidOperationException("Polling is not supported in stateless mode.");
         }
@@ -191,9 +179,9 @@ internal sealed partial class StreamableHttpPostTransport : ITransport
     {
         Debug.Assert(_storeSseWriter is null);
 
-        _storeSseWriter = await _parentTransport.TryCreateEventStreamAsync(
+        _storeSseWriter = await parentTransport.TryCreateEventStreamAsync(
             streamId: requestId.Id!.ToString()!,
-            cancellationToken: _sessionCancellationToken)
+            cancellationToken: sessionCancellationToken)
             .ConfigureAwait(false);
 
         if (_storeSseWriter is null)
@@ -204,23 +192,20 @@ internal sealed partial class StreamableHttpPostTransport : ITransport
         _storeStreamTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         _ = HandleStoreStreamDisposalAsync(_storeStreamTcs.Task);
 
-        return await _storeSseWriter.WriteEventAsync(SseItem.Prime<JsonRpcMessage>(), _sessionCancellationToken).ConfigureAwait(false);
+        return await _storeSseWriter.WriteEventAsync(SseItem.Prime<JsonRpcMessage>(), sessionCancellationToken).ConfigureAwait(false);
 
         async Task HandleStoreStreamDisposalAsync(Task streamTask)
         {
             try
             {
-                await streamTask.WaitAsync(_sessionCancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
+                await streamTask.WaitAsync(sessionCancellationToken).ConfigureAwait(false);
             }
             finally
             {
+                using var _ = await _messageLock.LockAsync().ConfigureAwait(false);
+
                 try
                 {
-                    using var _ = await _messageLock.LockAsync().ConfigureAwait(false);
-
                     await _storeSseWriter!.DisposeAsync().ConfigureAwait(false);
                 }
                 catch (Exception ex)
