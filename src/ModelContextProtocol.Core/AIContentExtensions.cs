@@ -281,9 +281,9 @@ public static class AIContentExtensions
         {
             TextContentBlock textContent => new TextContent(textContent.Text),
             
-            ImageContentBlock imageContent => new DataContent(Convert.FromBase64String(imageContent.Data), imageContent.MimeType),
+            ImageContentBlock imageContent => new DataContent(imageContent.DecodedData, imageContent.MimeType),
             
-            AudioContentBlock audioContent => new DataContent(Convert.FromBase64String(audioContent.Data), audioContent.MimeType),
+            AudioContentBlock audioContent => new DataContent(audioContent.DecodedData, audioContent.MimeType),
             
             EmbeddedResourceBlock resourceContent => resourceContent.Resource.ToAIContent(),
             
@@ -324,7 +324,7 @@ public static class AIContentExtensions
 
         AIContent ac = content switch
         {
-            BlobResourceContents blobResource => new DataContent(Convert.FromBase64String(blobResource.Blob), blobResource.MimeType ?? "application/octet-stream"),
+            BlobResourceContents blobResource => new DataContent(blobResource.Data, blobResource.MimeType ?? "application/octet-stream"),
             TextResourceContents textResource => new TextContent(textResource.Text),
             _ => throw new NotSupportedException($"Resource type '{content.GetType().Name}' is not supported.")
         };
@@ -401,13 +401,13 @@ public static class AIContentExtensions
 
             DataContent dataContent when dataContent.HasTopLevelMediaType("image") => new ImageContentBlock
             {
-                Data = dataContent.Base64Data.ToString(),
+                Data = GetUtf8Bytes(dataContent.Base64Data.Span),
                 MimeType = dataContent.MediaType,
             },
 
             DataContent dataContent when dataContent.HasTopLevelMediaType("audio") => new AudioContentBlock
             {
-                Data = dataContent.Base64Data.ToString(),
+                Data = GetUtf8Bytes(dataContent.Base64Data.Span),
                 MimeType = dataContent.MediaType,
             },
 
@@ -415,7 +415,7 @@ public static class AIContentExtensions
             {
                 Resource = new BlobResourceContents
                 {
-                    Blob = dataContent.Base64Data.ToString(),
+                    Blob = GetUtf8Bytes(dataContent.Base64Data.Span),
                     MimeType = dataContent.MediaType,
                     Uri = string.Empty,
                 }
@@ -448,6 +448,22 @@ public static class AIContentExtensions
         contentBlock.Meta = content.AdditionalProperties?.ToJsonObject(options);
 
         return contentBlock;
+
+        unsafe byte[] GetUtf8Bytes(ReadOnlySpan<char> utf16)
+        {
+            // gets UTF-8 bytes from UTF-16 chars without intermediate string allocations
+            fixed (char* pChars = utf16)
+            {
+                var byteCount = System.Text.Encoding.UTF8.GetByteCount(pChars, utf16.Length);
+                var bytes = new byte[byteCount];
+                
+                fixed (byte* pBytes = bytes)
+                {
+                    System.Text.Encoding.UTF8.GetBytes(pChars, utf16.Length, pBytes, byteCount);
+                }
+                return bytes;
+            }
+        }
     }
 
     private sealed class ToolAIFunctionDeclaration(Tool tool) : AIFunctionDeclaration
