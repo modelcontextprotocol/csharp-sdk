@@ -18,8 +18,8 @@ public static class TestConstants
     public static readonly TimeSpan HttpClientTimeout = TimeSpan.FromSeconds(60);
 
     /// <summary>
-    /// Timeout for short-lived HTTP requests during server health checks.
+    /// Timeout for short-lived HTTP requests during polling operations.
     /// Set to 2 seconds for quick failure detection while polling.
     /// </summary>
-    public static readonly TimeSpan HttpClientHealthCheckTimeout = TimeSpan.FromSeconds(2);
+    public static readonly TimeSpan HttpClientPollingTimeout = TimeSpan.FromSeconds(2);
 }

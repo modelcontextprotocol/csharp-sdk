@@ -34,7 +34,7 @@ public class EverythingSseServerFixture : IAsyncDisposable
             ?? throw new InvalidOperationException($"Could not start process for {processStartInfo.FileName} with '{processStartInfo.Arguments}'.");
 
         // Poll until the server is ready (up to 30 seconds)
-        using var httpClient = new HttpClient { Timeout = TestConstants.HttpClientHealthCheckTimeout };
+        using var httpClient = new HttpClient { Timeout = TestConstants.HttpClientPollingTimeout };
         var endpoint = $"http://localhost:{_port}/sse";
         var deadline = DateTime.UtcNow.AddSeconds(30);
         
