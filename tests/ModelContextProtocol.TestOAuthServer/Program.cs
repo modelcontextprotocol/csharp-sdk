@@ -33,6 +33,7 @@ public sealed class Program
 
     private readonly ILoggerProvider? _loggerProvider;
     private readonly IConnectionListenerFactory? _kestrelTransport;
+    private readonly TaskCompletionSource _serverStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Program"/> class with logging and transport parameters.
@@ -46,6 +47,11 @@ public sealed class Program
         _loggerProvider = loggerProvider;
         _kestrelTransport = kestrelTransport;
     }
+
+    /// <summary>
+    /// Gets a task that completes when the server has started and is ready to accept connections.
+    /// </summary>
+    public Task ServerStarted => _serverStarted.Task;
 
     // Track if we've already issued an already-expired token for the CanAuthenticate_WithTokenRefresh test which uses the test-refresh-client registration.
     public bool HasRefreshedToken { get; set; }
@@ -541,7 +547,20 @@ public sealed class Program
         Console.WriteLine($"Demo Client ID: {clientId}");
         Console.WriteLine($"Demo Client Secret: {clientSecret}");
 
-        await app.RunAsync(cancellationToken);
+        await app.StartAsync(cancellationToken);
+        _serverStarted.TrySetResult();
+
+        // Wait until cancellation is requested
+        try
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when cancellation is requested
+        }
+
+        await app.StopAsync();
     }
 
     /// <summary>
