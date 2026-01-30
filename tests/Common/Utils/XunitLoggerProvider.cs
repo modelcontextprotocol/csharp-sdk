@@ -38,10 +38,15 @@ public class XunitLoggerProvider(ITestOutputHelper output) : ILoggerProvider
             {
                 output.WriteLine(sb.ToString());
             }
-            catch
+            catch (InvalidOperationException)
             {
                 // Ignore exceptions from xUnit's TestOutputHelper when the test has already completed.
                 // Background work may continue logging after xUnit has disposed the test context.
+            }
+            catch (NullReferenceException)
+            {
+                // xUnit v3 may throw NullReferenceException in TestOutputHelper.QueueTestOutput()
+                // when the internal queue has been torn down after test completion.
             }
         }
 
