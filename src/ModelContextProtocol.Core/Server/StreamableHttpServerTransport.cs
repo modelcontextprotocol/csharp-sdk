@@ -125,6 +125,12 @@ public sealed class StreamableHttpServerTransport : ITransport
                 var primingItem = await _storeSseWriter.WriteEventAsync(SseItem.Prime<JsonRpcMessage>(), cancellationToken).ConfigureAwait(false);
                 await _httpSseWriter.WriteAsync(primingItem, cancellationToken).ConfigureAwait(false);
             }
+            else
+            {
+                // If there's no priming write, flush the stream to ensure HTTP response headers are
+                // sent to the client now that the transport is ready to accept messages via SendMessageAsync.
+                await sseResponseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
         }
 
         // Wait for the response to be written before returning from the handler.
