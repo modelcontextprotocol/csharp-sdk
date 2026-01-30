@@ -119,7 +119,7 @@ public class AutomaticInputRequiredStatusTests : LoggedTest
             finalStatus = await taskStore.GetTaskAsync(mcpTask.TaskId, cancellationToken: TestContext.Current.CancellationToken);
             maxAttempts--;
         }
-        while (finalStatus?.Status is McpTaskStatus.Working or McpTaskStatus.InputRequired && maxAttempts > 0);
+        while ((finalStatus?.Status is McpTaskStatus.Working or McpTaskStatus.InputRequired) && maxAttempts > 0);
 
         // Assert - Status should have been InputRequired during sampling
         Assert.Contains(McpTaskStatus.InputRequired, statusesDuringSampling);
@@ -218,7 +218,7 @@ public class AutomaticInputRequiredStatusTests : LoggedTest
             finalStatus = await taskStore.GetTaskAsync(mcpTask.TaskId, cancellationToken: TestContext.Current.CancellationToken);
             maxAttempts--;
         }
-        while (finalStatus?.Status is McpTaskStatus.Working or McpTaskStatus.InputRequired && maxAttempts > 0);
+        while ((finalStatus?.Status is McpTaskStatus.Working or McpTaskStatus.InputRequired) && maxAttempts > 0);
 
         // Assert - Status should have been InputRequired during elicitation
         Assert.Contains(McpTaskStatus.InputRequired, statusesDuringElicitation);
