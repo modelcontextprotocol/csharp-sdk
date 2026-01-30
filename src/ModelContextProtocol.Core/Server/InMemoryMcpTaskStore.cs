@@ -438,7 +438,7 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
     }
 
     private string GenerateTaskId() =>
-        GuidPolyfills.CreateVersion7(GetUtcNow()).ToString("N");
+        GuidPolyfills.CreateMonotonicUuid(GetUtcNow()).ToString("N");
 
     private static bool IsTerminalStatus(McpTaskStatus status) =>
         status is McpTaskStatus.Completed or McpTaskStatus.Failed or McpTaskStatus.Cancelled;

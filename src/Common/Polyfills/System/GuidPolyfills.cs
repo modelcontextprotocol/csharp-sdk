@@ -1,8 +1,7 @@
 namespace System;
 
 /// <summary>
-/// Provides polyfills for GUID generation methods not available in older .NET versions,
-/// with monotonic counter-based ordering for strict intra-millisecond sequencing.
+/// Provides polyfills for GUID generation methods not available in older .NET versions.
 /// </summary>
 internal static class GuidPolyfills
 {
@@ -11,17 +10,24 @@ internal static class GuidPolyfills
     private static readonly object s_lock = new();
 
     /// <summary>
-    /// Creates a UUID v7 GUID with the specified timestamp.
+    /// Creates a monotonically increasing UUID v7 GUID with the specified timestamp.
     /// Uses a counter for intra-millisecond ordering to ensure strict monotonicity.
     /// </summary>
     /// <param name="timestamp">The timestamp to embed in the GUID.</param>
-    /// <returns>A new UUID v7 GUID.</returns>
+    /// <returns>A new monotonically increasing UUID v7 GUID.</returns>
     /// <remarks>
-    /// Unlike the built-in <c>Guid.CreateVersion7(DateTimeOffset)</c> in .NET 9+,
-    /// this implementation uses a counter to ensure strict monotonicity within the same millisecond,
-    /// which is required for keyset pagination to work correctly.
+    /// <para>
+    /// This method cannot be replaced with <c>Guid.CreateVersion7(DateTimeOffset)</c> because
+    /// the built-in .NET implementation uses random bits for intra-millisecond uniqueness,
+    /// which does not guarantee strict monotonicity. For keyset pagination to work correctly,
+    /// GUIDs created within the same millisecond must be strictly ordered by creation time.
+    /// </para>
+    /// <para>
+    /// This implementation uses RFC 9562's optional counter mechanism to ensure that
+    /// multiple GUIDs generated within the same millisecond are strictly monotonically increasing.
+    /// </para>
     /// </remarks>
-    public static Guid CreateVersion7(DateTimeOffset timestamp)
+    public static Guid CreateMonotonicUuid(DateTimeOffset timestamp)
     {
         // UUID v7 format (RFC 9562):
         // - 48 bits: Unix timestamp in milliseconds (big-endian)
@@ -88,4 +94,3 @@ internal static class GuidPolyfills
             bytes[12], bytes[13], bytes[14], bytes[15]);
     }
 }
-
