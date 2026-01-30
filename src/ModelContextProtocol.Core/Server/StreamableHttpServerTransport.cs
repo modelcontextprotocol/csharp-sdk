@@ -37,7 +37,6 @@ public sealed partial class StreamableHttpServerTransport : ITransport
     });
     private readonly CancellationTokenSource _transportDisposedCts = new();
     private readonly SemaphoreSlim _unsolicitedMessageLock = new(1, 1);
-    private readonly ILoggerFactory? _loggerFactory;
     private readonly ILogger _logger;
 
     private SseEventWriter? _httpSseWriter;
@@ -52,7 +51,6 @@ public sealed partial class StreamableHttpServerTransport : ITransport
     /// <param name="loggerFactory">Optional logger factory used for logging employed by the transport.</param>
     public StreamableHttpServerTransport(ILoggerFactory? loggerFactory = null)
     {
-        _loggerFactory = loggerFactory;
         _logger = loggerFactory?.CreateLogger<StreamableHttpServerTransport>() ?? NullLogger<StreamableHttpServerTransport>.Instance;
     }
 
