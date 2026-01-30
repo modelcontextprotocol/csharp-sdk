@@ -58,4 +58,20 @@ public class JsonRpcMessageContext
     /// </para>
     /// </remarks>
     public ClaimsPrincipal? User { get; set; }
+
+    /// <summary>
+    /// Gets or sets a key/value collection that can be used to share data within the scope of this message.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This property allows data to be flowed throughout the message processing pipeline,
+    /// including from incoming message filters to request-specific filters and handlers.
+    /// </para>
+    /// <para>
+    /// When creating a <see cref="MessageContext"/> or <see cref="RequestContext{TParams}"/> for server-side
+    /// processing, the Items dictionary from this context will be used, ensuring data set in message filters
+    /// is available in request filters and handlers.
+    /// </para>
+    /// </remarks>
+    public IDictionary<string, object?>? Items { get; set; }
 }

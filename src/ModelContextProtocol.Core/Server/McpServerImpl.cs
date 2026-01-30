@@ -910,7 +910,9 @@ internal sealed partial class McpServerImpl : McpServer
             // Return the handler that creates a MessageContext and invokes the pipeline.
             return async (message, cancellationToken) =>
             {
-                var context = new MessageContext(new DestinationBoundMcpServer(this, message.Context?.RelatedTransport), message);
+                // Ensure message has a Context so Items can be shared through the pipeline
+                message.Context ??= new();
+                var context = new MessageContext(new DestinationBoundMcpServer(this, message.Context.RelatedTransport), message);
                 await current(context, cancellationToken).ConfigureAwait(false);
             };
         };

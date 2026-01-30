@@ -32,7 +32,6 @@ public class MessageContext
         Server = server;
         JsonRpcMessage = jsonRpcMessage;
         Services = server.Services;
-        User = jsonRpcMessage.Context?.User;
     }
 
     /// <summary>Gets or sets the server with which this instance is associated.</summary>
@@ -49,10 +48,25 @@ public class MessageContext
     /// <summary>
     /// Gets or sets a key/value collection that can be used to share data within the scope of this message.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This dictionary is shared with the <see cref="Protocol.JsonRpcMessageContext.Items"/> property
+    /// on the underlying <see cref="JsonRpcMessage"/>, ensuring that data set in message filters
+    /// flows through to request-specific filters and handlers.
+    /// </para>
+    /// </remarks>
     public IDictionary<string, object?> Items
     {
-        get => field ??= new Dictionary<string, object?>();
-        set => field = value;
+        get
+        {
+            JsonRpcMessage.Context ??= new();
+            return JsonRpcMessage.Context.Items ??= new Dictionary<string, object?>();
+        }
+        set
+        {
+            JsonRpcMessage.Context ??= new();
+            JsonRpcMessage.Context.Items = value;
+        }
     }
 
     /// <summary>Gets or sets the services associated with this message.</summary>
@@ -65,7 +79,22 @@ public class MessageContext
     public IServiceProvider? Services { get; set; }
 
     /// <summary>Gets or sets the user associated with this message.</summary>
-    public ClaimsPrincipal? User { get; set; }
+    /// <remarks>
+    /// <para>
+    /// This property is backed by the <see cref="Protocol.JsonRpcMessageContext.User"/> property
+    /// on the underlying <see cref="JsonRpcMessage"/>, ensuring that user information set in message filters
+    /// flows through to request-specific filters and handlers.
+    /// </para>
+    /// </remarks>
+    public ClaimsPrincipal? User
+    {
+        get => JsonRpcMessage.Context?.User;
+        set
+        {
+            JsonRpcMessage.Context ??= new();
+            JsonRpcMessage.Context.User = value;
+        }
+    }
 
     /// <summary>
     /// Gets the JSON-RPC message associated with this context.
@@ -75,5 +104,5 @@ public class MessageContext
     /// including the method name (for requests/notifications), request ID (for requests/responses),
     /// and associated transport and user information.
     /// </remarks>
-    public JsonRpcMessage JsonRpcMessage { get; }
+    public JsonRpcMessage JsonRpcMessage { get; set; }
 }
