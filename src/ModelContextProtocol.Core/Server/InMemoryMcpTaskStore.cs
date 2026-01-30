@@ -333,22 +333,21 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
             }
         }
 
-        // Stream enumeration - filter by session, exclude expired
-        var query = _tasks.Values
-            .Where(e => sessionId == null || e.SessionId == sessionId)
-            .Where(e => !IsExpired(e));
-
-        // Order by (CreatedAt, TaskId) for stable, deterministic pagination
+        // Stream enumeration - filter by session, exclude expired, order by (CreatedAt, TaskId) for stable pagination
         // Must sort BEFORE applying keyset filter to ensure consistent comparison
-        var orderedQuery = query.OrderBy(e => (e.CreatedAt, e.TaskId));
+        IEnumerable<TaskEntry> query = _tasks.Values
+            .Where(e => sessionId == null || e.SessionId == sessionId)
+            .Where(e => !IsExpired(e))
+            .OrderBy(e => (e.CreatedAt, e.TaskId));
 
         // Apply keyset filter if cursor provided: (CreatedAt, TaskId) > cursor
         // This runs on sorted data, so we skip items until we pass the cursor position
-        IEnumerable<TaskEntry> filteredQuery = parsedCursor is { } parsedCursorValue
-            ? orderedQuery.SkipWhile(e => (e.CreatedAt, e.TaskId).CompareTo(parsedCursorValue) <= 0)
-            : orderedQuery;
+        if (parsedCursor is { } parsedCursorValue)
+        {
+            query = query.SkipWhile(e => (e.CreatedAt, e.TaskId).CompareTo(parsedCursorValue) <= 0);
+        }
 
-        var page = filteredQuery
+        var page = query
             .Take(_pageSize + 1) // Take one extra to check if there's a next page
             .Select(e => e.ToMcpTask())
             .ToList();
