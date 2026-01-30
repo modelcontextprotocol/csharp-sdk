@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Time.Testing;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
@@ -1030,5 +1031,54 @@ public class InMemoryMcpTaskStoreTests : LoggedTest
 
         // Assert
         Assert.NotNull(task2);
+    }
+
+    [Fact]
+    public async Task ListTasksAsync_KeysetPaginationWorksWithIdenticalTimestamps()
+    {
+        // Arrange - Use a fake time provider to create tasks with identical timestamps
+        var fakeTime = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        using var store = new InMemoryMcpTaskStore(pageSize: 5, timeProvider: fakeTime);
+
+        // Create 10 tasks - all with the EXACT same timestamp
+        var createdTasks = new List<McpTask>();
+        for (int i = 0; i < 10; i++)
+        {
+            var task = await store.CreateTaskAsync(
+                new McpTaskMetadata(),
+                new RequestId($"req-{i}"),
+                new JsonRpcRequest { Method = "test" },
+                null,
+                TestContext.Current.CancellationToken);
+            createdTasks.Add(task);
+        }
+
+        // Verify all tasks have the same CreatedAt timestamp
+        var firstTimestamp = createdTasks[0].CreatedAt;
+        Assert.All(createdTasks, task => Assert.Equal(firstTimestamp, task.CreatedAt));
+
+        // Act - Get first page
+        var result1 = await store.ListTasksAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert - First page should have 5 tasks
+        Assert.Equal(5, result1.Tasks.Length);
+        Assert.NotNull(result1.NextCursor);
+
+        // Get second page using cursor
+        var result2 = await store.ListTasksAsync(cursor: result1.NextCursor, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Assert - Second page should have 5 tasks
+        Assert.Equal(5, result2.Tasks.Length);
+        Assert.Null(result2.NextCursor); // No more pages
+
+        // Verify no overlap between pages
+        var page1Ids = result1.Tasks.Select(t => t.TaskId).ToHashSet();
+        var page2Ids = result2.Tasks.Select(t => t.TaskId).ToHashSet();
+        Assert.Empty(page1Ids.Intersect(page2Ids));
+
+        // Verify we got all 10 tasks exactly once
+        var allReturnedIds = page1Ids.Union(page2Ids).ToHashSet();
+        var allCreatedIds = createdTasks.Select(t => t.TaskId).ToHashSet();
+        Assert.Equal(allCreatedIds, allReturnedIds);
     }
 }

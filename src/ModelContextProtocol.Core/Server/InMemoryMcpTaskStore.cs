@@ -35,6 +35,7 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
     private readonly int _pageSize;
     private readonly int? _maxTasks;
     private readonly int? _maxTasksPerSession;
+    private readonly TimeProvider _timeProvider;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="InMemoryMcpTaskStore"/> class.
@@ -65,6 +66,10 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
     /// Maximum number of tasks allowed per session. Null means unlimited.
     /// When the limit is reached for a session, <see cref="CreateTaskAsync"/> will throw <see cref="InvalidOperationException"/>.
     /// </param>
+    /// <param name="timeProvider">
+    /// Time provider for getting the current time. Defaults to <see cref="TimeProvider.System"/>.
+    /// This parameter is primarily useful for testing scenarios where you need to control time.
+    /// </param>
     public InMemoryMcpTaskStore(
         TimeSpan? defaultTtl = null,
         TimeSpan? maxTtl = null,
@@ -72,7 +77,8 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
         TimeSpan? cleanupInterval = null,
         int pageSize = 100,
         int? maxTasks = null,
-        int? maxTasksPerSession = null)
+        int? maxTasksPerSession = null,
+        TimeProvider? timeProvider = null)
     {
         if (defaultTtl.HasValue && maxTtl.HasValue && defaultTtl.Value > maxTtl.Value)
         {
@@ -120,6 +126,7 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
         _pageSize = pageSize;
         _maxTasks = maxTasks;
         _maxTasksPerSession = maxTasksPerSession;
+        _timeProvider = timeProvider ?? TimeProvider.System;
 
         cleanupInterval ??= TimeSpan.FromMinutes(1);
         if (cleanupInterval.Value != Timeout.InfiniteTimeSpan)
@@ -155,7 +162,7 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
         }
 
         var taskId = GenerateTaskId();
-        var now = DateTimeOffset.UtcNow;
+        var now = _timeProvider.GetUtcNow();
 
         // Determine TTL: use requested, fall back to default, respect max limit
         var ttl = taskParams.TimeToLive ?? _defaultTtl;
@@ -242,7 +249,7 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
             var updatedEntry = new TaskEntry(entry)
             {
                 Status = status,
-                LastUpdatedAt = DateTimeOffset.UtcNow,
+                LastUpdatedAt = _timeProvider.GetUtcNow(),
                 StoredResult = result
             };
 
@@ -303,7 +310,7 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
             {
                 Status = status,
                 StatusMessage = statusMessage,
-                LastUpdatedAt = DateTimeOffset.UtcNow,
+                LastUpdatedAt = _timeProvider.GetUtcNow(),
             };
 
             if (_tasks.TryUpdate(taskId, updatedEntry, entry))
@@ -398,7 +405,7 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
             var updatedEntry = new TaskEntry(entry)
             {
                 Status = McpTaskStatus.Cancelled,
-                LastUpdatedAt = DateTimeOffset.UtcNow,
+                LastUpdatedAt = _timeProvider.GetUtcNow(),
             };
 
             if (_tasks.TryUpdate(taskId, updatedEntry, entry))
@@ -423,7 +430,7 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
     private static bool IsTerminalStatus(McpTaskStatus status) =>
         status is McpTaskStatus.Completed or McpTaskStatus.Failed or McpTaskStatus.Cancelled;
 
-    private static bool IsExpired(TaskEntry entry)
+    private bool IsExpired(TaskEntry entry)
     {
         if (entry.TimeToLive == null)
         {
@@ -431,7 +438,7 @@ public sealed class InMemoryMcpTaskStore : IMcpTaskStore, IDisposable
         }
 
         var expirationTime = entry.CreatedAt + entry.TimeToLive.Value;
-        return DateTimeOffset.UtcNow >= expirationTime;
+        return _timeProvider.GetUtcNow() >= expirationTime;
     }
 
     private void CleanupExpiredTasks(object? state)
