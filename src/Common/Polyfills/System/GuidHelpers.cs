@@ -27,7 +27,7 @@ internal static class GuidHelpers
     /// all generated GUIDs are strictly ordered by creation time, regardless of timestamp.
     /// </para>
     /// </remarks>
-    public static Guid CreateMonotonicUuid(DateTimeOffset timestamp)
+    public static unsafe Guid CreateMonotonicUuid(DateTimeOffset timestamp)
     {
         // UUID v7 format (RFC 9562):
         // - 48 bits: Unix timestamp in milliseconds (big-endian)
@@ -40,41 +40,18 @@ internal static class GuidHelpers
         long counter = Interlocked.Increment(ref s_counter);
 
         // Start with a random GUID and twiddle the relevant bits
-        Guid baseGuid = Guid.NewGuid();
+        Guid guid = Guid.NewGuid();
 
-#if NETSTANDARD2_0
-        byte[] bytes = baseGuid.ToByteArray();
-#else
-        Span<byte> bytes = stackalloc byte[16];
-        baseGuid.TryWriteBytes(bytes);
-#endif
+        int* guidAsInts = (int*)&guid;
+        short* guidAsShorts = (short*)&guid;
+        byte* guidAsBytes = (byte*)&guid;
 
-        // Guid.ToByteArray() returns bytes in little-endian order for the first 3 components,
-        // but we need big-endian for UUID v7. The byte layout from ToByteArray() is:
-        // [0-3]: Data1 (little-endian int)
-        // [4-5]: Data2 (little-endian short)
-        // [6-7]: Data3 (little-endian short)
-        // [8-15]: Data4 (byte array, unchanged)
+        // Set timestamp (48 bits) and version/counter using little-endian layout
+        guidAsInts[0] = (int)(timestampMs >> 8);
+        guidAsShorts[2] = (short)((timestampMs & 0xFF) | ((timestampMs >> 40) << 8));
+        guidAsShorts[3] = (short)((counter & 0xFFF) | 0x7000);
+        guidAsBytes[8] = (byte)((guidAsBytes[8] & 0x3F) | 0x80);
 
-        // Set timestamp (48 bits) - need to account for little-endian layout
-        // Data1 (bytes 0-3, little-endian) contains timestamp bits 0-31
-        bytes[0] = (byte)(timestampMs >> 8);
-        bytes[1] = (byte)(timestampMs >> 16);
-        bytes[2] = (byte)(timestampMs >> 24);
-        bytes[3] = (byte)(timestampMs >> 32);
-
-        // Data2 (bytes 4-5, little-endian) contains timestamp bits 32-47
-        bytes[4] = (byte)timestampMs;
-        bytes[5] = (byte)(timestampMs >> 40);
-
-        // Data3 (bytes 6-7, little-endian) contains version (4 bits) + counter high (12 bits)
-        // Version 7 = 0111, counter uses 12 bits
-        bytes[6] = (byte)(counter & 0xFF);
-        bytes[7] = (byte)(0x70 | ((counter >> 8) & 0x0F));
-
-        // Set variant (10) in high 2 bits of byte 8
-        bytes[8] = (byte)((bytes[8] & 0x3F) | 0x80);
-
-        return new Guid(bytes);
+        return guid;
     }
 }

@@ -7,7 +7,6 @@
     <PackageId>ModelContextProtocol.Core</PackageId>
     <Description>Core .NET SDK for the Model Context Protocol (MCP)</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <!-- Suppress the experimental tasks warning -->
     <NoWarn>$(NoWarn);MCPEXP001</NoWarn>
   </PropertyGroup>
