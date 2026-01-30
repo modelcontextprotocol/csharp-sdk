@@ -405,7 +405,7 @@ public partial class McpServerToolTests
             TestContext.Current.CancellationToken);
         Assert.Equal(2, result.Content.Count);
         Assert.Equal("42", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
-        Assert.Equal("1234", System.Text.Encoding.UTF8.GetString(Assert.IsType<ImageContentBlock>(result.Content[1]).Data.ToArray()));
+        Assert.Equal((byte[])[1, 2, 3, 4], Assert.IsType<ImageContentBlock>(result.Content[1]).DecodedData.ToArray());
         Assert.Equal("image/png", Assert.IsType<ImageContentBlock>(result.Content[1]).MimeType);
     }
 
@@ -431,7 +431,7 @@ public partial class McpServerToolTests
 
         Assert.Equal(2, result.Content.Count);
         Assert.Equal("text", Assert.IsType<TextContentBlock>(result.Content[0]).Text);
-        Assert.Equal("1234", System.Text.Encoding.UTF8.GetString(Assert.IsType<ImageContentBlock>(result.Content[1]).Data.ToArray()));
+        Assert.Equal((byte[])[1, 2, 3, 4], Assert.IsType<ImageContentBlock>(result.Content[1]).DecodedData.ToArray());
     }
 
     [Fact]
