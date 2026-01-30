@@ -238,7 +238,7 @@ internal sealed class StreamableHttpHandler(
         if (!HttpServerTransportOptions.Stateless)
         {
             sessionId = MakeNewSessionId();
-            transport = new()
+            transport = new(loggerFactory)
             {
                 SessionId = sessionId,
                 FlowExecutionContextFromRequests = !HttpServerTransportOptions.PerSessionExecutionContext,
@@ -252,7 +252,7 @@ internal sealed class StreamableHttpHandler(
             // If in the future we support resuming stateless requests, we should populate
             // the event stream store and retry interval here as well.
             sessionId = "";
-            transport = new()
+            transport = new(loggerFactory)
             {
                 Stateless = true,
             };
