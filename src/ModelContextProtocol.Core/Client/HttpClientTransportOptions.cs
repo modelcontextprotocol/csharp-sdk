@@ -57,7 +57,7 @@ public sealed class HttpClientTransportOptions
     /// Gets or sets a timeout used to establish the initial connection to the SSE server.
     /// </summary>
     /// <value>
-    /// The timeout used to establish the initial connection to the SSE server. The default is 30 seconds.
+    /// The timeout used to establish the initial connection to the SSE server. The default is 60 seconds.
     /// </value>
     /// <remarks>
     /// This timeout controls how long the client waits for:
@@ -67,7 +67,7 @@ public sealed class HttpClientTransportOptions
     /// </list>
     /// If the timeout expires before the connection is established, a <see cref="TimeoutException"/> is thrown.
     /// </remarks>
-    public TimeSpan ConnectionTimeout { get; set; } = TimeSpan.FromSeconds(30);
+    public TimeSpan ConnectionTimeout { get; set; } = TimeSpan.FromSeconds(60);
 
     /// <summary>
     /// Gets or sets custom HTTP headers to include in requests to the SSE server.

@@ -42,7 +42,7 @@ public class KestrelInMemoryTest : LoggedTest
     protected static void ConfigureHttpClient(HttpClient httpClient)
     {
         httpClient.BaseAddress = new Uri("http://localhost:5000/");
-        httpClient.Timeout = TimeSpan.FromSeconds(10);
+        httpClient.Timeout = TestConstants.HttpClientTimeout;
     }
 
     public override void Dispose()
