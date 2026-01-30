@@ -1,6 +1,7 @@
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -177,6 +178,23 @@ public sealed class McpServerToolCreateOptions
     public JsonObject? Meta { get; set; }
 
     /// <summary>
+    /// Gets or sets the execution hints for this tool.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Execution hints provide information about how the tool should be invoked, including
+    /// task support level (<see cref="ToolTaskSupport"/>).
+    /// </para>
+    /// <para>
+    /// If <see langword="null"/>, the tool's execution settings are determined automatically based on
+    /// the method signature (async methods get <see cref="ToolTaskSupport.Optional"/>; sync methods
+    /// get <see cref="ToolTaskSupport.Forbidden"/>).
+    /// </para>
+    /// </remarks>
+    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    public ToolExecution? Execution { get; set; }
+
+    /// <summary>
     /// Creates a shallow clone of the current <see cref="McpServerToolCreateOptions"/> instance.
     /// </summary>
     internal McpServerToolCreateOptions Clone() =>
@@ -196,5 +214,6 @@ public sealed class McpServerToolCreateOptions
             Metadata = Metadata,
             Icons = Icons,
             Meta = Meta,
+            Execution = Execution,
         };
 }

@@ -499,7 +499,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         };
 
         using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
-        httpResponse.EnsureSuccessStatusCode();
+        await httpResponse.EnsureSuccessStatusCodeWithResponseBodyAsync(cancellationToken).ConfigureAwait(false);
 
         var tokens = await HandleSuccessfulTokenResponseAsync(httpResponse, cancellationToken).ConfigureAwait(false);
         LogOAuthAuthorizationCompleted();
@@ -544,7 +544,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         using var httpResponse = await _httpClient.GetAsync(metadataUrl, cancellationToken).ConfigureAwait(false);
         if (requireSuccess)
         {
-            httpResponse.EnsureSuccessStatusCode();
+            await httpResponse.EnsureSuccessStatusCodeWithResponseBodyAsync(cancellationToken).ConfigureAwait(false);
         }
         else if (!httpResponse.IsSuccessStatusCode)
         {

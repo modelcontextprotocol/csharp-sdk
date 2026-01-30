@@ -83,7 +83,7 @@ public class ServerConformanceTests : IAsyncLifetime
             {
                 try
                 {
-                    await _serverTask.WaitAsync(TimeSpan.FromSeconds(5));
+                    await _serverTask.WaitAsync(TestConstants.DefaultTimeout);
                 }
                 catch
                 {

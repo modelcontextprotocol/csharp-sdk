@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Net;
 
 namespace ModelContextProtocol.Tests;
 
@@ -31,8 +32,30 @@ public class EverythingSseServerFixture : IAsyncDisposable
         _ = Process.Start(processStartInfo)
             ?? throw new InvalidOperationException($"Could not start process for {processStartInfo.FileName} with '{processStartInfo.Arguments}'.");
 
-        // Wait for the server to start
-        await Task.Delay(10000);
+        // Poll until the server is ready (up to 30 seconds)
+        using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+        var endpoint = $"http://localhost:{_port}/sse";
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                using var response = await httpClient.GetAsync(endpoint, HttpCompletionOption.ResponseHeadersRead);
+                if (response.IsSuccessStatusCode || response.StatusCode is HttpStatusCode.MethodNotAllowed)
+                {
+                    return;
+                }
+            }
+            catch (Exception e) when (e is HttpRequestException or OperationCanceledException)
+            {
+                // server not ready
+            }
+
+            await Task.Delay(100);
+        }
+
+        throw new InvalidOperationException($"Docker container failed to start within 30 seconds on port {_port}");
     }
     public async ValueTask DisposeAsync()
     {

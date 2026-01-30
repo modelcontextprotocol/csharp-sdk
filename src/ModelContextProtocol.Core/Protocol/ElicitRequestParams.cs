@@ -92,6 +92,16 @@ public sealed class ElicitRequestParams : RequestParams
     [JsonPropertyName("requestedSchema")]
     public RequestSchema? RequestedSchema { get; set; }
 
+    /// <summary>
+    /// Gets or sets optional task metadata to augment this request with task execution.
+    /// </summary>
+    /// <remarks>
+    /// When present, indicates that the requestor wants this operation executed as a task.
+    /// The receiver must support task augmentation for this specific request type.
+    /// </remarks>
+    [JsonPropertyName("task")]
+    public McpTaskMetadata? Task { get; set; }
+
     /// <summary>Represents a request schema used in a form mode elicitation request.</summary>
     public class RequestSchema
     {

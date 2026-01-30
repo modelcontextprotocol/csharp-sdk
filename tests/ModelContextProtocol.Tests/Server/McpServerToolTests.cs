@@ -832,6 +832,82 @@ public partial class McpServerToolTests
         Assert.Contains("Streamable HTTP", exception.Message);
     }
 
+    [Fact]
+    public void AsyncTool_AutomaticallyMarkedWithTaskSupport()
+    {
+        // Async tools should automatically get TaskSupport = Optional
+        McpServerTool tool = McpServerTool.Create(AsyncToolReturningTask);
+
+        Assert.NotNull(tool.ProtocolTool.Execution);
+        Assert.Equal(ToolTaskSupport.Optional, tool.ProtocolTool.Execution.TaskSupport);
+    }
+
+    [Fact]
+    public void AsyncTool_ValueTask_AutomaticallyMarkedWithTaskSupport()
+    {
+        // Async tools returning ValueTask should also get TaskSupport = Optional
+        McpServerTool tool = McpServerTool.Create(AsyncToolReturningValueTask);
+
+        Assert.NotNull(tool.ProtocolTool.Execution);
+        Assert.Equal(ToolTaskSupport.Optional, tool.ProtocolTool.Execution.TaskSupport);
+    }
+
+    [Fact]
+    public void AsyncTool_TaskOfT_AutomaticallyMarkedWithTaskSupport()
+    {
+        // Async tools returning Task<T> should get TaskSupport = Optional
+        McpServerTool tool = McpServerTool.Create(AsyncToolReturningTaskOfT);
+
+        Assert.NotNull(tool.ProtocolTool.Execution);
+        Assert.Equal(ToolTaskSupport.Optional, tool.ProtocolTool.Execution.TaskSupport);
+    }
+
+    [Fact]
+    public void AsyncTool_ValueTaskOfT_AutomaticallyMarkedWithTaskSupport()
+    {
+        // Async tools returning ValueTask<T> should get TaskSupport = Optional
+        McpServerTool tool = McpServerTool.Create(AsyncToolReturningValueTaskOfT);
+
+        Assert.NotNull(tool.ProtocolTool.Execution);
+        Assert.Equal(ToolTaskSupport.Optional, tool.ProtocolTool.Execution.TaskSupport);
+    }
+
+    [Fact]
+    public void SyncTool_NotMarkedWithTaskSupport()
+    {
+        // Synchronous tools should not have TaskSupport set
+        McpServerTool tool = McpServerTool.Create(SyncTool);
+
+        Assert.Null(tool.ProtocolTool.Execution);
+    }
+
+    private static async Task AsyncToolReturningTask()
+    {
+        await Task.Yield();
+    }
+
+    private static async ValueTask AsyncToolReturningValueTask()
+    {
+        await Task.Yield();
+    }
+
+    private static async Task<string> AsyncToolReturningTaskOfT()
+    {
+        await Task.Yield();
+        return "result";
+    }
+
+    private static async ValueTask<string> AsyncToolReturningValueTaskOfT()
+    {
+        await Task.Yield();
+        return "result";
+    }
+
+    private static string SyncTool()
+    {
+        return "sync result";
+    }
+
     [Description("Tool that returns data.")]
     [return: Description("The computed result")]
     private static string ToolWithReturnDescription() => "result";

@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Tests.Utils;
 
 namespace ModelContextProtocol.Tests.Configuration;
 
@@ -275,7 +276,7 @@ public partial class UrlElicitationTests(ITestOutputHelper testOutputHelper) : C
         Assert.NotNull(capturedMessage);
         Assert.Contains(capturedElicitationId, capturedUrl);
 
-        var notifiedElicitationId = await completionNotification.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        var notifiedElicitationId = await completionNotification.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
         Assert.Equal(capturedElicitationId, notifiedElicitationId);
     }
 

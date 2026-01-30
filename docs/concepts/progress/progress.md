@@ -34,7 +34,7 @@ Note that servers aren't required to support progress tracking, so clients shoul
 
 In the MCP C# SDK, clients can specify a `progressToken` in the request parameters when calling a tool method.
 The client should also provide a notification handler to process "notifications/progress" notifications.
-There are two way to do this. The first is to register a notification handler using the <xref:ModelContextProtocol.McpSession.RegisterNotificationHandler*> method on the <xref:ModelContextProtocol.Client.McpClient> instance. A handler registered this way will receive all progress notifications sent by the server.
+There are two ways to do this. The first is to register a notification handler using the <xref:ModelContextProtocol.McpSession.RegisterNotificationHandler*> method on the <xref:ModelContextProtocol.Client.McpClient> instance. A handler registered this way will receive all progress notifications sent by the server.
 
 ```csharp
 mcpClient.RegisterNotificationHandler(NotificationMethods.ProgressNotification,

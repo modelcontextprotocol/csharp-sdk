@@ -173,7 +173,7 @@ public sealed class McpClientTool : AIFunction
     /// The base <see cref="AIFunction.InvokeAsync"/> method is overridden to invoke this <see cref="CallAsync"/> method.
     /// The only difference in behavior is that <see cref="AIFunction.InvokeAsync"/> serializes the resulting <see cref="CallToolResult"/>"/>
     /// such that the <see cref="object"/> returned is a <see cref="JsonElement"/> containing the serialized <see cref="CallToolResult"/>.
-    /// This <see cref="CallToolResult"/> method is intended to be called directly by user code, whereas the base <see cref="AIFunction.InvokeAsync"/>
+    /// This <see cref="CallAsync"/> method is intended to be called directly by user code, whereas the base <see cref="AIFunction.InvokeAsync"/>
     /// is intended to be used polymorphically via the base class, typically as part of an <see cref="IChatClient"/> operation.
     /// </remarks>
     /// <exception cref="McpException">The server could not find the requested tool, or the server encountered an error while processing the request.</exception>
