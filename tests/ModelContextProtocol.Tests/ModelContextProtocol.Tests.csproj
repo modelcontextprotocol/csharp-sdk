@@ -10,6 +10,8 @@
     <IsTestProject>true</IsTestProject>
     <RootNamespace>ModelContextProtocol.Tests</RootNamespace>
     <!-- https://github.com/dotnet/sdk/issues/51060 -->
+    <!-- CS0436: InMemoryMcpTaskStore.cs is linked to enable TimeProvider support for testing.
+         This shadows the type from ModelContextProtocol.Core, causing CS0436 at all usage sites. -->
     <NoWarn>$(NoWarn);NU1903;NU1902;CS0436</NoWarn>
     <!-- Define for conditional TimeProvider support in InMemoryMcpTaskStore -->
     <DefineConstants>$(DefineConstants);MCP_TEST_TIME_PROVIDER</DefineConstants>
