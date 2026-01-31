@@ -61,7 +61,7 @@ public abstract class ResourceContents
     /// Provides a <see cref="JsonConverter"/> for <see cref="ResourceContents"/>.
     /// </summary>
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public class Converter : JsonConverter<ResourceContents>
+    public sealed class Converter : JsonConverter<ResourceContents>
     {
         /// <inheritdoc/>
         public override ResourceContents? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)

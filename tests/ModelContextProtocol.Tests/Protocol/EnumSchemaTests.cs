@@ -298,7 +298,7 @@ public class EnumSchemaTests
 
         // Assert
         Assert.NotNull(deserialized);
-        var result = Assert.IsType<ElicitRequestParams.EnumSchema>(deserialized);
+        var result = Assert.IsType<ElicitRequestParams.LegacyTitledEnumSchema>(deserialized);
         Assert.Equal("string", result.Type);
         Assert.Equal("Environment", result.Title);
         Assert.Equal("Deployment environment", result.Description);
@@ -309,10 +309,10 @@ public class EnumSchemaTests
     }
 
     [Fact]
-    public void EnumSchema_Serializes_Correctly()
+    public void LegacyTitledEnumSchema_Direct_Serializes_Correctly()
     {
         // Arrange
-        var schema = new ElicitRequestParams.EnumSchema
+        var schema = new ElicitRequestParams.LegacyTitledEnumSchema
         {
             Title = "Environment",
             Description = "Deployment environment",
@@ -327,7 +327,7 @@ public class EnumSchemaTests
 
         // Assert
         Assert.NotNull(deserialized);
-        var result = Assert.IsType<ElicitRequestParams.EnumSchema>(deserialized);
+        var result = Assert.IsType<ElicitRequestParams.LegacyTitledEnumSchema>(deserialized);
         Assert.Equal("string", result.Type);
         Assert.Equal("Environment", result.Title);
         Assert.Equal("Deployment environment", result.Description);
@@ -338,9 +338,9 @@ public class EnumSchemaTests
     }
 
     [Fact]
-    public void Enum_WithEnumNames_Deserializes_As_EnumSchema()
+    public void Enum_WithEnumNames_Deserializes_As_LegacyTitledEnumSchema()
     {
-        // Arrange - JSON with enumNames should deserialize as (deprecated) EnumSchema
+        // Arrange - JSON with enumNames should deserialize as (deprecated) LegacyTitledEnumSchema
         string json = """
             {
                 "type": "string",
@@ -356,7 +356,7 @@ public class EnumSchemaTests
 
         // Assert
         Assert.NotNull(deserialized);
-        var result = Assert.IsType<ElicitRequestParams.EnumSchema>(deserialized);
+        var result = Assert.IsType<ElicitRequestParams.LegacyTitledEnumSchema>(deserialized);
         Assert.Equal("string", result.Type);
         Assert.Equal("Environment", result.Title);
         Assert.Equal("Deployment environment", result.Description);

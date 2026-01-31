@@ -103,7 +103,7 @@ public sealed class ElicitRequestParams : RequestParams
     public McpTaskMetadata? Task { get; set; }
 
     /// <summary>Represents a request schema used in a form mode elicitation request.</summary>
-    public class RequestSchema
+    public sealed class RequestSchema
     {
         /// <summary>Gets the type of the schema.</summary>
         /// <remarks>This value is always "object".</remarks>
@@ -161,7 +161,7 @@ public sealed class ElicitRequestParams : RequestParams
         /// Provides a polymorphic converter for the <see cref="PrimitiveSchemaDefinition"/> class that doesn't require
         /// setting <see cref="JsonSerializerOptions.AllowOutOfOrderMetadataProperties"/> explicitly.
         [EditorBrowsable(EditorBrowsableState.Never)]
-        public class Converter : JsonConverter<PrimitiveSchemaDefinition>
+        public sealed class Converter : JsonConverter<PrimitiveSchemaDefinition>
         {
             /// <inheritdoc/>
             public override PrimitiveSchemaDefinition? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
@@ -315,11 +315,9 @@ public sealed class ElicitRequestParams : RequestParams
                         {
                             if (enumNames is not null)
                             {
-                                // EnumSchema is deprecated but supported for backward compatibility.
-                                // Use the EnumSchema class, which is an alias for LegacyTitledEnumSchema,
-                                // to ensure backward compatibility with existing code relying on that type.
+                                // LegacyTitledEnumSchema is deprecated but supported for backward compatibility.
 #pragma warning disable MCP9001
-                                psd = new EnumSchema
+                                psd = new LegacyTitledEnumSchema
 #pragma warning restore MCP9001
                                 {
                                     Enum = enumValues,
@@ -996,24 +994,12 @@ public sealed class ElicitRequestParams : RequestParams
 
     /// <summary>
     /// Represents a legacy schema for an enum type with enumNames.
-    /// This is a compatibility alias for <see cref="LegacyTitledEnumSchema"/>.
     /// </summary>
     /// <remarks>
     /// This schema is deprecated in favor of <see cref="TitledSingleSelectEnumSchema"/>.
     /// </remarks>
     [Obsolete(Obsoletions.LegacyTitledEnumSchema_Message, DiagnosticId = Obsoletions.LegacyTitledEnumSchema_DiagnosticId, UrlFormat = Obsoletions.LegacyTitledEnumSchema_Url)]
-    public sealed class EnumSchema : LegacyTitledEnumSchema
-    {
-    }
-
-    /// <summary>
-    /// Represents a legacy schema for an enum type with enumNames.
-    /// </summary>
-    /// <remarks>
-    /// This schema is deprecated in favor of <see cref="TitledSingleSelectEnumSchema"/>.
-    /// </remarks>
-    [Obsolete(Obsoletions.LegacyTitledEnumSchema_Message, DiagnosticId = Obsoletions.LegacyTitledEnumSchema_DiagnosticId, UrlFormat = Obsoletions.LegacyTitledEnumSchema_Url)]
-    public class LegacyTitledEnumSchema : PrimitiveSchemaDefinition
+    public sealed class LegacyTitledEnumSchema : PrimitiveSchemaDefinition
     {
         /// <inheritdoc/>
         [JsonPropertyName("type")]
