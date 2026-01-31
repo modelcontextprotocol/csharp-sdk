@@ -315,11 +315,9 @@ public sealed class ElicitRequestParams : RequestParams
                         {
                             if (enumNames is not null)
                             {
-                                // EnumSchema is deprecated but supported for backward compatibility.
-                                // Use the EnumSchema class, which is an alias for LegacyTitledEnumSchema,
-                                // to ensure backward compatibility with existing code relying on that type.
+                                // LegacyTitledEnumSchema is deprecated but supported for backward compatibility.
 #pragma warning disable MCP9001
-                                psd = new EnumSchema
+                                psd = new LegacyTitledEnumSchema
 #pragma warning restore MCP9001
                                 {
                                     Enum = enumValues,
@@ -644,25 +642,6 @@ public sealed class ElicitRequestParams : RequestParams
                         if (legacyTitledEnum.Default is not null)
                         {
                             writer.WriteString("default", legacyTitledEnum.Default);
-                        }
-                        break;
-
-#pragma warning disable MCP9001 // EnumSchema is deprecated but supported for backward compatibility
-                    case EnumSchema enumSchema:
-#pragma warning restore MCP9001
-                        if (enumSchema.Enum is not null)
-                        {
-                            writer.WritePropertyName("enum");
-                            JsonSerializer.Serialize(writer, enumSchema.Enum, McpJsonUtilities.JsonContext.Default.IListString);
-                        }
-                        if (enumSchema.EnumNames is not null)
-                        {
-                            writer.WritePropertyName("enumNames");
-                            JsonSerializer.Serialize(writer, enumSchema.EnumNames, McpJsonUtilities.JsonContext.Default.IListString);
-                        }
-                        if (enumSchema.Default is not null)
-                        {
-                            writer.WriteString("default", enumSchema.Default);
                         }
                         break;
 
@@ -1011,52 +990,6 @@ public sealed class ElicitRequestParams : RequestParams
         /// <summary>Gets or sets the default values for the enum.</summary>
         [JsonPropertyName("default")]
         public IList<string>? Default { get; set; }
-    }
-
-    /// <summary>
-    /// Represents a legacy schema for an enum type with enumNames.
-    /// This is a compatibility alias for <see cref="LegacyTitledEnumSchema"/>.
-    /// </summary>
-    /// <remarks>
-    /// This schema is deprecated in favor of <see cref="TitledSingleSelectEnumSchema"/>.
-    /// </remarks>
-    [Obsolete(Obsoletions.LegacyTitledEnumSchema_Message, DiagnosticId = Obsoletions.LegacyTitledEnumSchema_DiagnosticId, UrlFormat = Obsoletions.LegacyTitledEnumSchema_Url)]
-    public sealed class EnumSchema : PrimitiveSchemaDefinition
-    {
-        /// <inheritdoc/>
-        [JsonPropertyName("type")]
-        public override string Type
-        {
-            get => "string";
-            set
-            {
-                if (value is not "string")
-                {
-                    throw new ArgumentException("Type must be 'string'.", nameof(value));
-                }
-            }
-        }
-
-        /// <summary>Gets or sets the list of allowed string values for the enum.</summary>
-        [JsonPropertyName("enum")]
-        [field: MaybeNull]
-        public IList<string> Enum
-        {
-            get => field ??= [];
-            set
-            {
-                Throw.IfNull(value);
-                field = value;
-            }
-        }
-
-        /// <summary>Gets or sets optional display names corresponding to the enum values.</summary>
-        [JsonPropertyName("enumNames")]
-        public IList<string>? EnumNames { get; set; }
-
-        /// <summary>Gets or sets the default value for the enum.</summary>
-        [JsonPropertyName("default")]
-        public string? Default { get; set; }
     }
 
     /// <summary>
