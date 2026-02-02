@@ -61,7 +61,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
     {
         // Immediately dispose the response. SendHttpRequestAsync only returns the response so the auto transport can look at it.
         using var response = await SendHttpRequestAsync(message, cancellationToken).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
+        await response.EnsureSuccessStatusCodeWithResponseBodyAsync(cancellationToken).ConfigureAwait(false);
     }
 
     // This is used by the auto transport so it can fall back and try SSE given a non-200 response without catching an exception.
@@ -74,6 +74,8 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
                 $"Cannot send '{RequestMethods.Initialize}' when {nameof(HttpClientTransportOptions)}.{nameof(HttpClientTransportOptions.KnownSessionId)} is configured. " +
                 $"Call {nameof(McpClient)}.{nameof(McpClient.ResumeSessionAsync)} to resume existing sessions.");
         }
+
+        LogTransportSendingMessageSensitive(message);
 
         using var sendCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _connectionCts.Token);
         cancellationToken = sendCts.Token;

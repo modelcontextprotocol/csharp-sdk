@@ -11,7 +11,7 @@ namespace ModelContextProtocol;
 /// when available. If there is a SEP associated with the experimental API, the Url should
 /// point to the SEP issue.
 /// <para>
-/// Experimental diagnostic IDs are in the format MCP5###.
+/// Experimental diagnostic IDs are in the format MCPEXP###.
 /// </para>
 /// <para>
 /// Diagnostic IDs cannot be reused when experimental API are removed or promoted to stable.
@@ -21,7 +21,18 @@ namespace ModelContextProtocol;
 /// </remarks>
 internal static class Experimentals
 {
-    // public const string Tasks_DiagnosticId = "MCP5001";
-    // public const string Tasks_Message = "The Tasks feature is experimental within specification version 2025-11-25 and is subject to change. See SEP-1686 for more information.";
-    // public const string Tasks_Url = "https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1686";
+    /// <summary>
+    /// Diagnostic ID for the experimental MCP Tasks feature.
+    /// </summary>
+    public const string Tasks_DiagnosticId = "MCPEXP001";
+
+    /// <summary>
+    /// Message for the experimental MCP Tasks feature.
+    /// </summary>
+    public const string Tasks_Message = "The Tasks feature is experimental per the MCP specification and is subject to change.";
+
+    /// <summary>
+    /// URL for the experimental MCP Tasks feature.
+    /// </summary>
+    public const string Tasks_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcpexp001";
 }

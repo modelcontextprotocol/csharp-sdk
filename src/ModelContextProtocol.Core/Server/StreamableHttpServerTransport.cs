@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -21,7 +23,7 @@ namespace ModelContextProtocol.Server;
 /// such as when streaming completion results or providing progress updates during long-running operations.
 /// </para>
 /// </remarks>
-public sealed class StreamableHttpServerTransport : ITransport
+public sealed partial class StreamableHttpServerTransport : ITransport
 {
     /// <summary>
     /// The stream ID used for unsolicited messages sent via the standalone GET SSE stream.
@@ -35,12 +37,22 @@ public sealed class StreamableHttpServerTransport : ITransport
     });
     private readonly CancellationTokenSource _transportDisposedCts = new();
     private readonly SemaphoreSlim _unsolicitedMessageLock = new(1, 1);
+    private readonly ILogger _logger;
 
     private SseEventWriter? _httpSseWriter;
     private ISseEventStreamWriter? _storeSseWriter;
     private TaskCompletionSource<bool>? _httpResponseTcs;
     private bool _getHttpRequestStarted;
     private bool _getHttpResponseCompleted;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="StreamableHttpServerTransport"/> class.
+    /// </summary>
+    /// <param name="loggerFactory">Optional logger factory used for logging employed by the transport.</param>
+    public StreamableHttpServerTransport(ILoggerFactory? loggerFactory = null)
+    {
+        _logger = loggerFactory?.CreateLogger<StreamableHttpServerTransport>() ?? NullLogger<StreamableHttpServerTransport>.Instance;
+    }
 
     /// <inheritdoc/>
     public string? SessionId { get; init; }
@@ -125,11 +137,12 @@ public sealed class StreamableHttpServerTransport : ITransport
                 var primingItem = await _storeSseWriter.WriteEventAsync(SseItem.Prime<JsonRpcMessage>(), cancellationToken).ConfigureAwait(false);
                 await _httpSseWriter.WriteAsync(primingItem, cancellationToken).ConfigureAwait(false);
             }
-
-            // We should flush to indicate a 200 success quickly, because the initialization response
-            // will be sent in response to a different POST request. It might be a while before we send a message
-            // over this response body.
-            await sseResponseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            else
+            {
+                // If there's no priming write, flush the stream to ensure HTTP response headers are
+                // sent to the client now that the transport is ready to accept messages via SendMessageAsync.
+                await sseResponseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
         }
 
         // Wait for the response to be written before returning from the handler.
@@ -160,7 +173,7 @@ public sealed class StreamableHttpServerTransport : ITransport
         Throw.IfNull(message);
         Throw.IfNull(responseStream);
 
-        var postTransport = new StreamableHttpPostTransport(this, responseStream, _transportDisposedCts.Token);
+        var postTransport = new StreamableHttpPostTransport(this, responseStream, _transportDisposedCts.Token, _logger);
         using var postCts = CancellationTokenSource.CreateLinkedTokenSource(_transportDisposedCts.Token, cancellationToken);
         await using (postTransport.ConfigureAwait(false))
         {

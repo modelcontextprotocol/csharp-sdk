@@ -7,9 +7,14 @@ uid: filters
 
 # MCP Server Handler Filters
 
-For each handler type in the MCP Server, there are corresponding `AddXXXFilter` methods in `McpServerBuilderExtensions.cs` that allow you to add filters to the handler pipeline. The filters are stored in `McpServerOptions.Filters` and applied during server configuration.
+The MCP Server provides two levels of filters for intercepting and modifying request processing:
 
-## Available Filter Methods
+1. **Message Filters** - Low-level filters (`AddIncomingMessageFilter`, `AddOutgoingMessageFilter`) that intercept all JSON-RPC messages before routing
+2. **Request-Specific Filters** - Handler-level filters (e.g., `AddListToolsFilter`, `AddCallToolFilter`) that target specific MCP operations
+
+The filters are stored in `McpServerOptions.Filters` and applied during server configuration.
+
+## Available Request-Specific Filter Methods
 
 The following filter methods are available:
 
@@ -24,6 +29,212 @@ The following filter methods are available:
 - `AddSubscribeToResourcesFilter` - Filter for resource subscription handlers
 - `AddUnsubscribeFromResourcesFilter` - Filter for resource unsubscription handlers
 - `AddSetLoggingLevelFilter` - Filter for logging level handlers
+
+## Message Filters
+
+In addition to the request-specific filters above, there are low-level message filters that intercept all JSON-RPC messages before they are routed to specific handlers:
+
+- `AddIncomingMessageFilter` - Filter for all incoming JSON-RPC messages (requests and notifications)
+- `AddOutgoingMessageFilter` - Filter for all outgoing JSON-RPC messages (responses and notifications)
+
+### When to Use Message Filters
+
+Message filters operate at a lower level than request-specific filters and are useful when you need to:
+
+- Intercept all messages regardless of type
+- Implement custom protocol extensions or handle custom JSON-RPC methods
+- Log or monitor all traffic between client and server
+- Modify or skip messages before they reach handlers
+- Send additional messages in response to specific events
+
+### Incoming Message Filter
+
+`AddIncomingMessageFilter` intercepts all incoming JSON-RPC messages before they are dispatched to request-specific handlers:
+
+```csharp
+services.AddMcpServer()
+    .AddIncomingMessageFilter(next => async (context, cancellationToken) =>
+    {
+        var logger = context.Services?.GetService<ILogger<Program>>();
+
+        // Access the raw JSON-RPC message
+        if (context.JsonRpcMessage is JsonRpcRequest request)
+        {
+            logger?.LogInformation($"Incoming request: {request.Method}");
+        }
+
+        // Call next to continue processing
+        await next(context, cancellationToken);
+    })
+    .WithTools<MyTools>();
+```
+
+#### MessageContext Properties
+
+Inside an incoming message filter, you have access to:
+
+- `context.JsonRpcMessage` - The incoming `JsonRpcMessage` (can be `JsonRpcRequest` or `JsonRpcNotification`)
+- `context.Server` - The `McpServer` instance for sending responses or notifications
+- `context.Services` - The request's service provider
+- `context.Items` - A dictionary for passing data between filters
+
+#### Skipping Default Handlers
+
+You can skip the default handler by not calling `next`. This is useful for implementing custom protocol methods:
+
+```csharp
+.AddIncomingMessageFilter(next => async (context, cancellationToken) =>
+{
+    if (context.JsonRpcMessage is JsonRpcRequest request && request.Method == "custom/myMethod")
+    {
+        // Handle the custom method directly
+        var response = new JsonRpcResponse
+        {
+            Id = request.Id,
+            Result = JsonSerializer.SerializeToNode(new { message = "Custom response" })
+        };
+        await context.Server.SendMessageAsync(response, cancellationToken);
+        return; // Don't call next - we handled it
+    }
+
+    await next(context, cancellationToken);
+})
+```
+
+### Outgoing Message Filter
+
+`AddOutgoingMessageFilter` intercepts all outgoing JSON-RPC messages before they are sent to the client:
+
+```csharp
+services.AddMcpServer()
+    .AddOutgoingMessageFilter(next => async (context, cancellationToken) =>
+    {
+        var logger = context.Services?.GetService<ILogger<Program>>();
+
+        // Inspect outgoing messages
+        switch (context.JsonRpcMessage)
+        {
+            case JsonRpcResponse response:
+                logger?.LogInformation($"Sending response for request {response.Id}");
+                break;
+            case JsonRpcNotification notification:
+                logger?.LogInformation($"Sending notification: {notification.Method}");
+                break;
+        }
+
+        await next(context, cancellationToken);
+    })
+    .WithTools<MyTools>();
+```
+
+#### Skipping Outgoing Messages
+
+You can suppress outgoing messages by not calling `next`:
+
+```csharp
+.AddOutgoingMessageFilter(next => async (context, cancellationToken) =>
+{
+    // Suppress specific notifications
+    if (context.JsonRpcMessage is JsonRpcNotification notification &&
+        notification.Method == "notifications/progress")
+    {
+        return; // Don't send this notification
+    }
+
+    await next(context, cancellationToken);
+})
+```
+
+#### Sending Additional Messages
+
+Outgoing message filters can send additional messages by calling `next` with a new `MessageContext`:
+
+```csharp
+.AddOutgoingMessageFilter(next => async (context, cancellationToken) =>
+{
+    // Send an extra notification before certain responses
+    if (context.JsonRpcMessage is JsonRpcResponse response &&
+        response.Result is JsonObject result &&
+        result.ContainsKey("tools"))
+    {
+        var notification = new JsonRpcNotification
+        {
+            Method = "custom/toolsListed",
+            Params = new JsonObject { ["timestamp"] = DateTime.UtcNow.ToString("O") },
+            Context = new JsonRpcMessageContext
+            {
+                RelatedTransport = context.JsonRpcMessage.Context?.RelatedTransport
+            }
+        };
+        await next(new MessageContext(context.Server, notification), cancellationToken);
+    }
+
+    await next(context, cancellationToken);
+})
+```
+
+### Message Filter Execution Order
+
+Message filters execute in registration order, with the first registered filter being the outermost:
+
+```csharp
+services.AddMcpServer()
+    .AddIncomingMessageFilter(incomingFilter1)  // Incoming: executes first (outermost)
+    .AddIncomingMessageFilter(incomingFilter2)  // Incoming: executes second
+    .AddOutgoingMessageFilter(outgoingFilter1)  // Outgoing: executes first (outermost)
+    .AddOutgoingMessageFilter(outgoingFilter2)  // Outgoing: executes second
+    .AddListToolsFilter(toolsFilter)            // Request-specific filter
+    .WithTools<MyTools>();
+```
+
+**Important**: Incoming message filters always run before request-specific filters, and outgoing message filters run when responses or notifications are sent. The complete execution flow for a request/response cycle is:
+
+```
+Request arrives
+    ↓
+IncomingFilter1 (before next)
+    ↓
+IncomingFilter2 (before next)
+    ↓
+Request Routing → ListToolsFilter → Handler
+    ↓
+IncomingFilter2 (after next)
+    ↓
+IncomingFilter1 (after next)
+    ↓
+Response sent via OutgoingFilter1 (before next)
+    ↓
+OutgoingFilter2 (before next)
+    ↓
+Transport sends message
+    ↓
+OutgoingFilter2 (after next)
+    ↓
+OutgoingFilter1 (after next)
+```
+
+### Passing Data Between Filters
+
+The `Items` dictionary allows you to pass data between filters processing the same message:
+
+```csharp
+.AddIncomingMessageFilter(next => async (context, cancellationToken) =>
+{
+    context.Items["requestStartTime"] = DateTime.UtcNow;
+    await next(context, cancellationToken);
+})
+.AddIncomingMessageFilter(next => async (context, cancellationToken) =>
+{
+    await next(context, cancellationToken);
+
+    if (context.Items.TryGetValue("requestStartTime", out var startTime))
+    {
+        var elapsed = DateTime.UtcNow - (DateTime)startTime;
+        var logger = context.Services?.GetService<ILogger<Program>>();
+        logger?.LogInformation($"Request processed in {elapsed.TotalMilliseconds}ms");
+    }
+})
+```
 
 ## Usage
 

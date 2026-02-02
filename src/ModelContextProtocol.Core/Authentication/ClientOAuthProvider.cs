@@ -260,9 +260,6 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // Get auth server metadata
         var authServerMetadata = await GetAuthServerMetadataAsync(selectedAuthServer, cancellationToken).ConfigureAwait(false);
 
-        // Store auth server metadata for future refresh operations
-        _authServerMetadata = authServerMetadata;
-
         // The existing access token must be invalid to have resulted in a 401 response, but refresh might still work.
         var resourceUri = GetRequiredResourceUri(protectedResourceMetadata);
 
@@ -295,6 +292,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
                 await PerformDynamicClientRegistrationAsync(protectedResourceMetadata, authServerMetadata, cancellationToken).ConfigureAwait(false);
             }
         }
+
+        // Store auth server metadata for future refresh operations
+        _authServerMetadata = authServerMetadata;
 
         // Perform the OAuth flow
         return await InitiateAuthorizationCodeFlowAsync(protectedResourceMetadata, authServerMetadata, cancellationToken).ConfigureAwait(false);
@@ -499,7 +499,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         };
 
         using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
-        httpResponse.EnsureSuccessStatusCode();
+        await httpResponse.EnsureSuccessStatusCodeWithResponseBodyAsync(cancellationToken).ConfigureAwait(false);
 
         var tokens = await HandleSuccessfulTokenResponseAsync(httpResponse, cancellationToken).ConfigureAwait(false);
         LogOAuthAuthorizationCompleted();
@@ -544,7 +544,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         using var httpResponse = await _httpClient.GetAsync(metadataUrl, cancellationToken).ConfigureAwait(false);
         if (requireSuccess)
         {
-            httpResponse.EnsureSuccessStatusCode();
+            await httpResponse.EnsureSuccessStatusCodeWithResponseBodyAsync(cancellationToken).ConfigureAwait(false);
         }
         else if (!httpResponse.IsSuccessStatusCode)
         {

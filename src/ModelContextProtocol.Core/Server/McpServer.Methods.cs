@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 using System.Collections.Concurrent;
@@ -53,19 +53,63 @@ public abstract partial class McpServer : McpSession
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
     /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
-    public ValueTask<CreateMessageResult> SampleAsync(
+    /// <remarks>
+    /// When called during task-augmented tool execution, this method automatically updates the task
+    /// status to <see cref="McpTaskStatus.InputRequired"/> while waiting for the client response,
+    /// then returns to <see cref="McpTaskStatus.Working"/> when the response is received.
+    /// </remarks>
+    public async ValueTask<CreateMessageResult> SampleAsync(
         CreateMessageRequestParams requestParams,
         CancellationToken cancellationToken = default)
     {
         Throw.IfNull(requestParams);
         ThrowIfSamplingUnsupported();
 
-        return SendRequestAsync(
+        return await SendRequestWithTaskStatusTrackingAsync(
             RequestMethods.SamplingCreateMessage,
             requestParams,
             McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams,
             McpJsonUtilities.JsonContext.Default.CreateMessageResult,
-            cancellationToken: cancellationToken);
+            "Waiting for sampling response",
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Requests to sample an LLM via the client as a task, allowing the server to poll for completion.
+    /// </summary>
+    /// <param name="requestParams">The parameters for the sampling request.</param>
+    /// <param name="taskMetadata">The task metadata specifying TTL and other task-related options.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
+    /// <returns>An <see cref="McpTask"/> representing the created task on the client.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> or <paramref name="taskMetadata"/> is <see langword="null"/>.</exception>
+    /// <exception cref="InvalidOperationException">The client does not support sampling or task-augmented sampling.</exception>
+    /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
+    /// <remarks>
+    /// Use <see cref="GetTaskAsync"/> to poll for task status and <see cref="GetTaskResultAsync{TResult}"/>
+    /// (with <see cref="CreateMessageResult"/>) to retrieve the final result when the task completes.
+    /// </remarks>
+    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    public async ValueTask<McpTask> SampleAsTaskAsync(
+        CreateMessageRequestParams requestParams,
+        McpTaskMetadata taskMetadata,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(requestParams);
+        Throw.IfNull(taskMetadata);
+        ThrowIfSamplingUnsupported();
+        ThrowIfTasksUnsupportedForSampling();
+
+        // Set the task metadata on the request
+        requestParams.Task = taskMetadata;
+
+        var result = await SendRequestAsync(
+            RequestMethods.SamplingCreateMessage,
+            requestParams,
+            McpJsonUtilities.JsonContext.Default.CreateMessageRequestParams,
+            McpJsonUtilities.JsonContext.Default.CreateTaskResult,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        return result.Task;
     }
 
     /// <summary>
@@ -73,15 +117,18 @@ public abstract partial class McpServer : McpSession
     /// </summary>
     /// <param name="messages">The messages to send as part of the request.</param>
     /// <param name="chatOptions">The options to use for the request, including model parameters and constraints.</param>
+    /// <param name="serializerOptions">The <see cref="JsonSerializerOptions"/> to use for serializing user-provided objects. If <see langword="null"/>, <see cref="McpJsonUtilities.DefaultOptions"/> is used.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task containing the chat response from the model.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="messages"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
     /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
     public async Task<ChatResponse> SampleAsync(
-        IEnumerable<ChatMessage> messages, ChatOptions? chatOptions = default, CancellationToken cancellationToken = default)
+        IEnumerable<ChatMessage> messages, ChatOptions? chatOptions = default, JsonSerializerOptions? serializerOptions = null, CancellationToken cancellationToken = default)
     {
         Throw.IfNull(messages);
+
+        serializerOptions ??= McpJsonUtilities.DefaultOptions;
 
         StringBuilder? systemPrompt = null;
 
@@ -148,7 +195,7 @@ public abstract partial class McpServer : McpSession
                         Name = af.Name,
                         Description = af.Description,
                         InputSchema = af.JsonSchema,
-                        Meta = af.AdditionalProperties.ToJsonObject(),
+                        Meta = af.AdditionalProperties.ToJsonObject(serializerOptions),
                     });
                 }
             }
@@ -172,13 +219,13 @@ public abstract partial class McpServer : McpSession
             Temperature = chatOptions?.Temperature,
             ToolChoice = toolChoice,
             Tools = tools,
-            Meta = chatOptions?.AdditionalProperties?.ToJsonObject(),
+            Meta = chatOptions?.AdditionalProperties?.ToJsonObject(serializerOptions),
         }, cancellationToken).ConfigureAwait(false);
 
         List<AIContent> responseContents = [];
         foreach (var block in result.Content)
         {
-            if (block.ToAIContent() is { } content)
+            if (block.ToAIContent(serializerOptions) is { } content)
             {
                 responseContents.Add(content);
             }
@@ -202,13 +249,14 @@ public abstract partial class McpServer : McpSession
     /// <summary>
     /// Creates an <see cref="IChatClient"/> wrapper that can be used to send sampling requests to the client.
     /// </summary>
+    /// <param name="serializerOptions">The <see cref="JsonSerializerOptions"/> to use for serialization. If <see langword="null"/>, <see cref="McpJsonUtilities.DefaultOptions"/> is used.</param>
     /// <returns>The <see cref="IChatClient"/> that can be used to issue sampling requests to the client.</returns>
     /// <exception cref="InvalidOperationException">The client does not support sampling.</exception>
-    public IChatClient AsSamplingChatClient()
+    public IChatClient AsSamplingChatClient(JsonSerializerOptions? serializerOptions = null)
     {
         ThrowIfSamplingUnsupported();
 
-        return new SamplingChatClient(this);
+        return new SamplingChatClient(this, serializerOptions ?? McpJsonUtilities.DefaultOptions);
     }
 
     /// <summary>Gets an <see cref="ILogger"/> on which logged messages will be sent as notifications to the client.</summary>
@@ -249,19 +297,358 @@ public abstract partial class McpServer : McpSession
     /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The client does not support elicitation.</exception>
     /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
-    public ValueTask<ElicitResult> ElicitAsync(
+    /// <remarks>
+    /// When called during task-augmented tool execution, this method automatically updates the task
+    /// status to <see cref="McpTaskStatus.InputRequired"/> while waiting for user input,
+    /// then returns to <see cref="McpTaskStatus.Working"/> when the response is received.
+    /// </remarks>
+    public async ValueTask<ElicitResult> ElicitAsync(
         ElicitRequestParams requestParams, 
         CancellationToken cancellationToken = default)
     {
         Throw.IfNull(requestParams);
         ThrowIfElicitationUnsupported(requestParams);
 
-        return SendRequestAsync(
+        return await SendRequestWithTaskStatusTrackingAsync(
             RequestMethods.ElicitationCreate,
             requestParams,
             McpJsonUtilities.JsonContext.Default.ElicitRequestParams,
             McpJsonUtilities.JsonContext.Default.ElicitResult,
+            "Waiting for user input",
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Requests additional information from the user via the client as a task, allowing the server to poll for completion.
+    /// </summary>
+    /// <param name="requestParams">The parameters for the elicitation request.</param>
+    /// <param name="taskMetadata">The task metadata specifying TTL and other task-related options.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
+    /// <returns>An <see cref="McpTask"/> representing the created task on the client.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> or <paramref name="taskMetadata"/> is <see langword="null"/>.</exception>
+    /// <exception cref="InvalidOperationException">The client does not support elicitation or task-augmented elicitation.</exception>
+    /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
+    /// <remarks>
+    /// Use <see cref="GetTaskAsync"/> to poll for task status and <see cref="GetTaskResultAsync{TResult}"/>
+    /// (with <see cref="ElicitResult"/>) to retrieve the final result when the task completes.
+    /// </remarks>
+    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    public async ValueTask<McpTask> ElicitAsTaskAsync(
+        ElicitRequestParams requestParams,
+        McpTaskMetadata taskMetadata,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(requestParams);
+        Throw.IfNull(taskMetadata);
+        ThrowIfElicitationUnsupported(requestParams);
+        ThrowIfTasksUnsupportedForElicitation();
+
+        // Set the task metadata on the request
+        requestParams.Task = taskMetadata;
+
+        var result = await SendRequestAsync(
+            RequestMethods.ElicitationCreate,
+            requestParams,
+            McpJsonUtilities.JsonContext.Default.ElicitRequestParams,
+            McpJsonUtilities.JsonContext.Default.CreateTaskResult,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        return result.Task;
+    }
+
+    /// <summary>
+    /// Retrieves the current state of a specific task from the client.
+    /// </summary>
+    /// <param name="taskId">The unique identifier of the task to retrieve.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>The current state of the task.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="taskId"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="taskId"/> is empty or composed entirely of whitespace.</exception>
+    /// <exception cref="InvalidOperationException">The client does not support tasks.</exception>
+    /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
+    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    public async ValueTask<McpTask> GetTaskAsync(
+        string taskId,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNullOrWhiteSpace(taskId);
+        ThrowIfTasksUnsupported();
+
+        var result = await SendRequestAsync(
+            RequestMethods.TasksGet,
+            new GetTaskRequestParams { TaskId = taskId },
+            McpJsonUtilities.JsonContext.Default.GetTaskRequestParams,
+            McpJsonUtilities.JsonContext.Default.GetTaskResult,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        // Convert GetTaskResult to McpTask
+        return new McpTask
+        {
+            TaskId = result.TaskId,
+            Status = result.Status,
+            StatusMessage = result.StatusMessage,
+            CreatedAt = result.CreatedAt,
+            LastUpdatedAt = result.LastUpdatedAt,
+            TimeToLive = result.TimeToLive,
+            PollInterval = result.PollInterval
+        };
+    }
+
+    /// <summary>
+    /// Retrieves the result of a completed task from the client, blocking until the task reaches a terminal state.
+    /// </summary>
+    /// <typeparam name="TResult">The type to deserialize the task result into.</typeparam>
+    /// <param name="taskId">The unique identifier of the task whose result to retrieve.</param>
+    /// <param name="jsonSerializerOptions">Optional serializer options for deserializing the result.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>The result of the task, deserialized into type <typeparamref name="TResult"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="taskId"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="taskId"/> is empty or composed entirely of whitespace.</exception>
+    /// <exception cref="InvalidOperationException">The client does not support tasks.</exception>
+    /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
+    /// <remarks>
+    /// <para>
+    /// This method sends a tasks/result request to the client, which will block until the task completes if it hasn't already.
+    /// The client handles all polling logic internally.
+    /// </para>
+    /// <para>
+    /// For sampling tasks, use <see cref="CreateMessageResult"/> as <typeparamref name="TResult"/>.
+    /// For elicitation tasks, use <see cref="ElicitResult"/> as <typeparamref name="TResult"/>.
+    /// </para>
+    /// </remarks>
+    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    public async ValueTask<TResult?> GetTaskResultAsync<TResult>(
+        string taskId,
+        JsonSerializerOptions? jsonSerializerOptions = null,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNullOrWhiteSpace(taskId);
+        ThrowIfTasksUnsupported();
+
+        var result = await SendRequestAsync(
+            RequestMethods.TasksResult,
+            new GetTaskPayloadRequestParams { TaskId = taskId },
+            McpJsonUtilities.JsonContext.Default.GetTaskPayloadRequestParams,
+            McpJsonUtilities.JsonContext.Default.JsonElement,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        var serializerOptions = jsonSerializerOptions ?? McpJsonUtilities.DefaultOptions;
+        serializerOptions.MakeReadOnly();
+
+        var typeInfo = serializerOptions.GetTypeInfo<TResult>();
+        return result.Deserialize(typeInfo);
+    }
+
+    /// <summary>
+    /// Retrieves a list of all tasks from the client.
+    /// </summary>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A list of all tasks.</returns>
+    /// <exception cref="InvalidOperationException">The client does not support tasks or task listing.</exception>
+    /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
+    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    public async ValueTask<IList<McpTask>> ListTasksAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfTasksUnsupported();
+        ThrowIfTaskListingUnsupported();
+
+        List<McpTask>? tasks = null;
+        ListTasksRequestParams requestParams = new();
+        do
+        {
+            var taskResults = await ListTasksAsync(requestParams, cancellationToken).ConfigureAwait(false);
+            if (tasks is null)
+            {
+                tasks = new List<McpTask>(taskResults.Tasks.Length);
+            }
+
+            foreach (var mcpTask in taskResults.Tasks)
+            {
+                tasks.Add(mcpTask);
+            }
+
+            requestParams.Cursor = taskResults.NextCursor;
+        }
+        while (requestParams.Cursor is not null);
+
+        return tasks;
+    }
+
+    /// <summary>
+    /// Retrieves a list of tasks from the client.
+    /// </summary>
+    /// <param name="requestParams">The request parameters to send in the request.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>The result of the request as provided by the client.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="requestParams"/> is <see langword="null"/>.</exception>
+    /// <exception cref="InvalidOperationException">The client does not support tasks or task listing.</exception>
+    /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
+    /// <remarks>
+    /// The <see cref="ListTasksAsync(CancellationToken)"/> overload retrieves all tasks by automatically handling pagination.
+    /// This overload works with the lower-level <see cref="ListTasksRequestParams"/> and <see cref="ListTasksResult"/>, returning the raw result from the client.
+    /// Any pagination needs to be managed by the caller.
+    /// </remarks>
+    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    public ValueTask<ListTasksResult> ListTasksAsync(
+        ListTasksRequestParams requestParams,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(requestParams);
+        ThrowIfTasksUnsupported();
+        ThrowIfTaskListingUnsupported();
+
+        return SendRequestAsync(
+            RequestMethods.TasksList,
+            requestParams,
+            McpJsonUtilities.JsonContext.Default.ListTasksRequestParams,
+            McpJsonUtilities.JsonContext.Default.ListTasksResult,
             cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// Cancels a running task on the client.
+    /// </summary>
+    /// <param name="taskId">The unique identifier of the task to cancel.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>The updated state of the task after cancellation.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="taskId"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="taskId"/> is empty or composed entirely of whitespace.</exception>
+    /// <exception cref="InvalidOperationException">The client does not support tasks or task cancellation.</exception>
+    /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
+    /// <remarks>
+    /// Cancelling a task requests that the client stop execution. The client may not immediately cancel the task,
+    /// and may choose to allow the task to complete if it's close to finishing.
+    /// </remarks>
+    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    public async ValueTask<McpTask> CancelTaskAsync(
+        string taskId,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNullOrWhiteSpace(taskId);
+        ThrowIfTasksUnsupported();
+        ThrowIfTaskCancellationUnsupported();
+
+        var result = await SendRequestAsync(
+            RequestMethods.TasksCancel,
+            new CancelMcpTaskRequestParams { TaskId = taskId },
+            McpJsonUtilities.JsonContext.Default.CancelMcpTaskRequestParams,
+            McpJsonUtilities.JsonContext.Default.CancelMcpTaskResult,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        // Convert CancelMcpTaskResult to McpTask
+        return new McpTask
+        {
+            TaskId = result.TaskId,
+            Status = result.Status,
+            StatusMessage = result.StatusMessage,
+            CreatedAt = result.CreatedAt,
+            LastUpdatedAt = result.LastUpdatedAt,
+            TimeToLive = result.TimeToLive,
+            PollInterval = result.PollInterval
+        };
+    }
+
+    /// <summary>
+    /// Polls a task on the client until it reaches a terminal state.
+    /// </summary>
+    /// <param name="taskId">The unique identifier of the task to poll.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>The task in its terminal state.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="taskId"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="taskId"/> is empty or composed entirely of whitespace.</exception>
+    /// <exception cref="InvalidOperationException">The client does not support tasks.</exception>
+    /// <exception cref="McpException">The request failed or the client returned an error response.</exception>
+    /// <remarks>
+    /// <para>
+    /// This method repeatedly calls <see cref="GetTaskAsync"/> until the task reaches a terminal status.
+    /// It respects the <see cref="McpTask.PollInterval"/> returned by the client to determine how long
+    /// to wait between polling attempts.
+    /// </para>
+    /// <para>
+    /// For retrieving the actual result of a completed task, use <see cref="GetTaskResultAsync{TResult}"/>
+    /// or <see cref="WaitForTaskResultAsync{TResult}"/>.
+    /// </para>
+    /// </remarks>
+    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    public async ValueTask<McpTask> PollTaskUntilCompleteAsync(
+        string taskId,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNullOrWhiteSpace(taskId);
+
+        McpTask task;
+        do
+        {
+            task = await GetTaskAsync(taskId, cancellationToken).ConfigureAwait(false);
+
+            // If task is in a terminal state, we're done
+            if (task.Status is McpTaskStatus.Completed or McpTaskStatus.Failed or McpTaskStatus.Cancelled)
+            {
+                break;
+            }
+
+            // Wait for the poll interval before checking again (default to 1 second)
+            var pollInterval = task.PollInterval ?? TimeSpan.FromSeconds(1);
+            await Task.Delay(pollInterval, cancellationToken).ConfigureAwait(false);
+        }
+        while (true);
+
+        return task;
+    }
+
+    /// <summary>
+    /// Waits for a task on the client to complete and retrieves its result.
+    /// </summary>
+    /// <typeparam name="TResult">The type to deserialize the task result into.</typeparam>
+    /// <param name="taskId">The unique identifier of the task whose result to retrieve.</param>
+    /// <param name="jsonSerializerOptions">Optional serializer options for deserializing the result.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A tuple containing the final task state and its result.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="taskId"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="taskId"/> is empty or composed entirely of whitespace.</exception>
+    /// <exception cref="InvalidOperationException">The client does not support tasks.</exception>
+    /// <exception cref="McpException">The task failed or was cancelled.</exception>
+    /// <remarks>
+    /// <para>
+    /// This method combines <see cref="PollTaskUntilCompleteAsync"/> and <see cref="GetTaskResultAsync{TResult}"/>
+    /// to provide a convenient way to wait for a task to complete and retrieve its result in a single call.
+    /// </para>
+    /// <para>
+    /// If the task completes with a status of <see cref="McpTaskStatus.Failed"/> or <see cref="McpTaskStatus.Cancelled"/>,
+    /// an <see cref="McpException"/> is thrown.
+    /// </para>
+    /// <para>
+    /// For sampling tasks, use <see cref="CreateMessageResult"/> as <typeparamref name="TResult"/>.
+    /// For elicitation tasks, use <see cref="ElicitResult"/> as <typeparamref name="TResult"/>.
+    /// </para>
+    /// </remarks>
+    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    public async ValueTask<(McpTask Task, TResult? Result)> WaitForTaskResultAsync<TResult>(
+        string taskId,
+        JsonSerializerOptions? jsonSerializerOptions = null,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNullOrWhiteSpace(taskId);
+
+        // Poll until task reaches terminal state
+        var task = await PollTaskUntilCompleteAsync(taskId, cancellationToken).ConfigureAwait(false);
+
+        // Check for failure or cancellation
+        if (task.Status == McpTaskStatus.Failed)
+        {
+            throw new McpException($"Task '{taskId}' failed: {task.StatusMessage ?? "Unknown error"}");
+        }
+
+        if (task.Status == McpTaskStatus.Cancelled)
+        {
+            throw new McpException($"Task '{taskId}' was cancelled");
+        }
+
+        // Retrieve the result
+        var result = await GetTaskResultAsync<TResult>(taskId, jsonSerializerOptions, cancellationToken).ConfigureAwait(false);
+
+        return (task, result);
     }
 
     /// <summary>
@@ -488,7 +875,7 @@ public abstract partial class McpServer : McpSession
             throw new InvalidOperationException("Client does not support elicitation requests.");
         }
 
-        if (string.Equals(request.Mode, "form", StringComparison.Ordinal) && elicitationCapability.Form is null)
+        if (string.Equals(request.Mode, "form", StringComparison.Ordinal))
         {
             if (request.RequestedSchema is null)
             {
@@ -519,14 +906,129 @@ public abstract partial class McpServer : McpSession
         }
     }
 
+    private void ThrowIfTasksUnsupportedForSampling()
+    {
+        if (ClientCapabilities?.Tasks?.Requests?.Sampling?.CreateMessage is null)
+        {
+            if (ClientCapabilities is null)
+            {
+                throw new InvalidOperationException("Task-augmented sampling is not supported in stateless mode.");
+            }
+
+            throw new InvalidOperationException("Client does not support task-augmented sampling requests.");
+        }
+    }
+
+    private void ThrowIfTasksUnsupportedForElicitation()
+    {
+        if (ClientCapabilities?.Tasks?.Requests?.Elicitation?.Create is null)
+        {
+            if (ClientCapabilities is null)
+            {
+                throw new InvalidOperationException("Task-augmented elicitation is not supported in stateless mode.");
+            }
+
+            throw new InvalidOperationException("Client does not support task-augmented elicitation requests.");
+        }
+    }
+
+    private void ThrowIfTasksUnsupported()
+    {
+        if (ClientCapabilities?.Tasks is null)
+        {
+            if (ClientCapabilities is null)
+            {
+                throw new InvalidOperationException("Tasks are not supported in stateless mode.");
+            }
+
+            throw new InvalidOperationException("Client does not support tasks.");
+        }
+    }
+
+    private void ThrowIfTaskListingUnsupported()
+    {
+        if (ClientCapabilities?.Tasks?.List is null)
+        {
+            throw new InvalidOperationException("Client does not support task listing.");
+        }
+    }
+
+    private void ThrowIfTaskCancellationUnsupported()
+    {
+        if (ClientCapabilities?.Tasks?.Cancel is null)
+        {
+            throw new InvalidOperationException("Client does not support task cancellation.");
+        }
+    }
+
+    /// <summary>
+    /// Sends a request to the client, automatically updating task status to InputRequired during
+    /// the request when called within a task execution context.
+    /// </summary>
+    private async ValueTask<TResult> SendRequestWithTaskStatusTrackingAsync<TParams, TResult>(
+        string method,
+        TParams requestParams,
+        JsonTypeInfo<TParams> paramsTypeInfo,
+        JsonTypeInfo<TResult> resultTypeInfo,
+        string inputRequiredMessage,
+        CancellationToken cancellationToken)
+        where TParams : RequestParams
+        where TResult : notnull
+    {
+        var taskContext = TaskExecutionContext.Current;
+        
+        // If we're not in a task execution context, just send the request normally
+        if (taskContext is null)
+        {
+            return await SendRequestAsync(method, requestParams, paramsTypeInfo, resultTypeInfo, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+
+        // Update task status to InputRequired
+        var inputRequiredTask = await taskContext.TaskStore.UpdateTaskStatusAsync(
+            taskContext.TaskId,
+            Protocol.McpTaskStatus.InputRequired,
+            inputRequiredMessage,
+            taskContext.SessionId,
+            CancellationToken.None).ConfigureAwait(false);
+
+        // Send notification if enabled
+        if (taskContext.SendNotifications && taskContext.NotifyTaskStatusFunc is not null)
+        {
+            _ = taskContext.NotifyTaskStatusFunc(inputRequiredTask, CancellationToken.None);
+        }
+
+        try
+        {
+            // Send the actual request
+            return await SendRequestAsync(method, requestParams, paramsTypeInfo, resultTypeInfo, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            // Update task status back to Working
+            var workingTask = await taskContext.TaskStore.UpdateTaskStatusAsync(
+                taskContext.TaskId,
+                Protocol.McpTaskStatus.Working,
+                null, // Clear status message
+                taskContext.SessionId,
+                CancellationToken.None).ConfigureAwait(false);
+
+            // Send notification if enabled
+            if (taskContext.SendNotifications && taskContext.NotifyTaskStatusFunc is not null)
+            {
+                _ = taskContext.NotifyTaskStatusFunc(workingTask, CancellationToken.None);
+            }
+        }
+    }
+
     /// <summary>Provides an <see cref="IChatClient"/> implementation that's implemented via client sampling.</summary>
-    private sealed class SamplingChatClient(McpServer server) : IChatClient
+    private sealed class SamplingChatClient(McpServer server, JsonSerializerOptions serializerOptions) : IChatClient
     {
         private readonly McpServer _server = server;
+        private readonly JsonSerializerOptions _serializerOptions = serializerOptions;
 
         /// <inheritdoc/>
         public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? chatOptions = null, CancellationToken cancellationToken = default) =>
-            _server.SampleAsync(messages, chatOptions, cancellationToken);
+            _server.SampleAsync(messages, chatOptions, _serializerOptions, cancellationToken);
 
         /// <inheritdoc/>
         async IAsyncEnumerable<ChatResponseUpdate> IChatClient.GetStreamingResponseAsync(
@@ -553,6 +1055,49 @@ public abstract partial class McpServer : McpSession
 
         /// <inheritdoc/>
         void IDisposable.Dispose() { } // nop
+    }
+
+    /// <summary>
+    /// Sends a task status notification to the connected client.
+    /// </summary>
+    /// <param name="task">The task whose status changed.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
+    /// <returns>A task representing the asynchronous notification operation.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="task"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This method sends an optional status notification to inform the client of task state changes.
+    /// According to the MCP specification, receivers MAY send this notification but are not required to.
+    /// Clients must not rely on receiving these notifications and should continue polling via tasks/get.
+    /// </para>
+    /// <para>
+    /// The notification is sent using the standard <c>notifications/tasks/status</c> method and includes
+    /// the full task state information.
+    /// </para>
+    /// </remarks>
+    [Experimental(Experimentals.Tasks_DiagnosticId, UrlFormat = Experimentals.Tasks_Url)]
+    public Task NotifyTaskStatusAsync(
+        McpTask task,
+        CancellationToken cancellationToken = default)
+    {
+        Throw.IfNull(task);
+
+        var notificationParams = new McpTaskStatusNotificationParams
+        {
+            TaskId = task.TaskId,
+            Status = task.Status,
+            StatusMessage = task.StatusMessage,
+            CreatedAt = task.CreatedAt,
+            LastUpdatedAt = task.LastUpdatedAt,
+            TimeToLive = task.TimeToLive,
+            PollInterval = task.PollInterval
+        };
+
+        return SendNotificationAsync(
+            NotificationMethods.TaskStatusNotification,
+            notificationParams,
+            McpJsonUtilities.JsonContext.Default.McpTaskStatusNotificationParams,
+            cancellationToken);
     }
 
     /// <summary>

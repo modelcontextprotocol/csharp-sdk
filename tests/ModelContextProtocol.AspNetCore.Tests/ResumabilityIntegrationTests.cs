@@ -10,6 +10,7 @@ using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
 
@@ -279,7 +280,7 @@ public class ResumabilityIntegrationTests(ITestOutputHelper testOutputHelper) : 
     [Fact]
     public async Task Client_CanResumeUnsolicitedMessageStream_AfterDisconnection()
     {
-        var timeout = TimeSpan.FromSeconds(10);
+        var timeout = TestConstants.DefaultTimeout;
         using var faultingStreamHandler = new FaultingStreamHandler()
         {
             InnerHandler = SocketsHttpHandler,

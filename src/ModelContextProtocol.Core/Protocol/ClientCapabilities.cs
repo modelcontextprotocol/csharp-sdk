@@ -66,4 +66,20 @@ public sealed class ClientCapabilities
     /// </summary>
     [JsonPropertyName("elicitation")]
     public ElicitationCapability? Elicitation { get; set; }
+
+    /// <summary>
+    /// Gets or sets the client's tasks capability for supporting task-augmented requests.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The tasks capability enables servers to augment their requests with tasks for long-running
+    /// operations. When present, servers can request that certain operations (like sampling or
+    /// elicitation) execute asynchronously, with the ability to poll for status and retrieve results later.
+    /// </para>
+    /// <para>
+    /// See <see cref="McpTasksCapability"/> for details on configuring which operations support tasks.
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("tasks")]
+    public McpTasksCapability? Tasks { get; set; }
 }

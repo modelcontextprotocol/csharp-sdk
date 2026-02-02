@@ -72,7 +72,7 @@ public sealed class XmlToDescriptionGenerator : IIncrementalGenerator
             "MCP001" => Diagnostics.InvalidXmlDocumentation,
             "MCP002" => Diagnostics.McpMethodMustBePartial,
             _ => throw new InvalidOperationException($"Unknown diagnostic ID: {info.Id}")
-        }, info.Location, info.MessageArgs);
+        }, info.Location?.ToLocation(), info.MessageArgs);
 
     private static IncrementalValuesProvider<MethodToGenerate> CreateProviderForAttribute(
         IncrementalGeneratorInitializationContext context,
@@ -108,7 +108,7 @@ public sealed class XmlToDescriptionGenerator : IIncrementalGenerator
                 HasGeneratableContent(xmlDocs, methodSymbol, descriptionAttribute))
             {
                 return MethodToGenerate.CreateDiagnosticOnly(
-                    new DiagnosticInfo("MCP002", methodDeclaration.Identifier.GetLocation(), methodSymbol.Name));
+                    DiagnosticInfo.Create("MCP002", methodDeclaration.Identifier.GetLocation(), methodSymbol.Name));
             }
 
             return MethodToGenerate.Empty;
@@ -116,7 +116,7 @@ public sealed class XmlToDescriptionGenerator : IIncrementalGenerator
 
         // For partial methods with invalid XML, report diagnostic but still generate partial declaration.
         EquatableArray<DiagnosticInfo> diagnostics = hasInvalidXml ?
-            new EquatableArray<DiagnosticInfo>(ImmutableArray.Create(new DiagnosticInfo("MCP001", methodSymbol.Locations.FirstOrDefault(), methodSymbol.Name))) :
+            new EquatableArray<DiagnosticInfo>(ImmutableArray.Create(DiagnosticInfo.Create("MCP001", methodSymbol.Locations.FirstOrDefault(), methodSymbol.Name))) :
             default;
 
         bool needsMethodDescription = xmlDocs is not null &&
@@ -514,29 +514,29 @@ public sealed class XmlToDescriptionGenerator : IIncrementalGenerator
         string Name,
         string TypeKeyword);
 
-    /// <summary>Holds diagnostic information to be reported.</summary>
-    private readonly struct DiagnosticInfo
+    /// <summary>Holds serializable location information for incremental generator caching.</summary>
+    /// <remarks>
+    /// Roslyn <see cref="Location"/> objects cannot be stored in incremental generator cached data
+    /// because they contain references to syntax trees from specific compilations. Storing them
+    /// causes issues when the generator returns cached data with locations from earlier compilations.
+    /// </remarks>
+    private readonly record struct LocationInfo(string FilePath, TextSpan TextSpan, LinePositionSpan LineSpan)
     {
-        public string Id { get; }
-        public Location? Location { get; }
-        public string MethodName { get; }
+        public static LocationInfo? FromLocation(Location? location) =>
+            location is null || !location.IsInSource ? null :
+            new LocationInfo(location.SourceTree?.FilePath ?? "", location.SourceSpan, location.GetLineSpan().Span);
 
-        public DiagnosticInfo(string id, Location? location, string methodName)
-        {
-            Id = id;
-            Location = location;
-            MethodName = methodName;
-        }
+        public Location ToLocation() =>
+            Location.Create(FilePath, TextSpan, LineSpan);
+    }
+
+    /// <summary>Holds diagnostic information to be reported.</summary>
+    private readonly record struct DiagnosticInfo(string Id, LocationInfo? Location, string MethodName)
+    {
+        public static DiagnosticInfo Create(string id, Location? location, string methodName) =>
+            new(id, LocationInfo.FromLocation(location), methodName);
 
         public object?[] MessageArgs => [MethodName];
-
-        // For incremental generator caching, we compare only the logical content, not the Location object
-        public bool Equals(DiagnosticInfo other) =>
-            Id == other.Id && MethodName == other.MethodName;
-
-        public override bool Equals(object? obj) => obj is DiagnosticInfo other && Equals(other);
-
-        public override int GetHashCode() => (Id, MethodName).GetHashCode();
     }
 
     /// <summary>Holds extracted XML documentation for a method (used only during extraction, not cached).</summary>

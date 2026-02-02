@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Tests.Utils;
 
 namespace ModelContextProtocol.Tests.Configuration;
 
@@ -163,6 +164,26 @@ public partial class UrlElicitationTests(ITestOutputHelper testOutputHelper) : C
                     throw new McpException(ex.Message);
                 }
             }
+            else if (request.Params.Name == "TestFormElicitationMissingSchema")
+            {
+                try
+                {
+                    await request.Server.ElicitAsync(new()
+                        {
+                            Message = "Form elicitation without schema should fail.",
+                        },
+                        cancellationToken);
+                }
+                catch (ArgumentException ex)
+                {
+                    throw new McpException(ex.Message);
+                }
+
+                return new CallToolResult
+                {
+                    Content = [new TextContentBlock { Text = "missing-schema-succeeded" }],
+                };
+            }
 
             Assert.Fail($"Unexpected tool name: {request.Params.Name}");
             return new CallToolResult { Content = [] };
@@ -255,7 +276,7 @@ public partial class UrlElicitationTests(ITestOutputHelper testOutputHelper) : C
         Assert.NotNull(capturedMessage);
         Assert.Contains(capturedElicitationId, capturedUrl);
 
-        var notifiedElicitationId = await completionNotification.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        var notifiedElicitationId = await completionNotification.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
         Assert.Equal(capturedElicitationId, notifiedElicitationId);
     }
 
@@ -504,6 +525,35 @@ public partial class UrlElicitationTests(ITestOutputHelper testOutputHelper) : C
         Assert.Equal("elicitation-required-id", elicitation.ElicitationId);
         Assert.Equal("https://auth.example.com/connect?elicitationId=elicitation-required-id", elicitation.Url);
         Assert.Equal("Authorization is required to access Example Co.", elicitation.Message);
+    }
+
+    [Fact]
+    public async Task FormElicitation_Requires_RequestedSchema()
+    {
+        var elicitationHandlerCalled = false;
+
+        await using McpClient client = await CreateMcpClientForServer(new McpClientOptions
+        {
+            Capabilities = new ClientCapabilities
+            {
+                Elicitation = new(),
+            },
+            Handlers = new McpClientHandlers()
+            {
+                ElicitationHandler = (request, cancellationToken) =>
+                {
+                    elicitationHandlerCalled = true;
+                    return new ValueTask<ElicitResult>(new ElicitResult());
+                },
+            }
+        });
+
+        var result = await client.CallToolAsync("TestFormElicitationMissingSchema", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsError);
+        var textContent = Assert.IsType<TextContentBlock>(result.Content[0]);
+        Assert.Equal("An error occurred invoking 'TestFormElicitationMissingSchema': Form mode elicitation requests require a requested schema.", textContent.Text);
+        Assert.False(elicitationHandlerCalled);
     }
 
     private ElicitationCapability AssertServerElicitationCapability()
