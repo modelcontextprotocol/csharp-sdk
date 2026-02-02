@@ -79,8 +79,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ModelContextProtocol.Core\ModelContextProtocol.Core.csproj">
-      <!-- Force net8.0 tests to use netstandard2.0 build for netstandard2.0 test coverage on all platforms -->
-      <SetTargetFramework Condition="'$(TargetFramework)' == 'net8.0'">TargetFramework=netstandard2.0</SetTargetFramework>
+      <!-- On non-Windows platforms, force net8.0 tests to use netstandard2.0 build for cross-platform netstandard2.0 coverage -->
+      <SetTargetFramework Condition="'$(TargetFramework)' == 'net8.0' AND !$([MSBuild]::IsOSPlatform('Windows'))">TargetFramework=netstandard2.0</SetTargetFramework>
     </ProjectReference>
     <ProjectReference Include="..\ModelContextProtocol.TestServer\ModelContextProtocol.TestServer.csproj" />
     <ProjectReference Include="..\..\samples\TestServerWithHosting\TestServerWithHosting.csproj" />
