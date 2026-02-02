@@ -72,7 +72,7 @@ public sealed partial class DistributedCacheEventStreamStore : ISseEventStreamSt
             return null;
         }
 
-        var metadata = JsonSerializer.Deserialize(metadataBytes, McpJsonUtilities.JsonContext.Default.StreamMetadata);
+        var metadata = JsonSerializer.Deserialize(metadataBytes, DistributedCacheEventStreamStoreJsonUtilities.StreamMetadataJsonTypeInfo);
         if (metadata is null)
         {
             LogStreamMetadataDeserializationFailed(sessionId, streamId);
@@ -190,7 +190,7 @@ public sealed partial class DistributedCacheEventStreamStore : ISseEventStreamSt
                 Data = newItem.Data,
             };
 
-            var eventBytes = JsonSerializer.SerializeToUtf8Bytes(storedEvent, McpJsonUtilities.JsonContext.Default.StoredEvent);
+            var eventBytes = JsonSerializer.SerializeToUtf8Bytes(storedEvent, DistributedCacheEventStreamStoreJsonUtilities.StoredEventJsonTypeInfo);
             var eventKey = CacheKeys.Event(eventId);
 
             await _cache.SetAsync(eventKey, eventBytes, new DistributedCacheEntryOptions
@@ -215,7 +215,7 @@ public sealed partial class DistributedCacheEventStreamStore : ISseEventStreamSt
                 LastSequence = Interlocked.Read(ref _sequence),
             };
 
-            var metadataBytes = JsonSerializer.SerializeToUtf8Bytes(metadata, McpJsonUtilities.JsonContext.Default.StreamMetadata);
+            var metadataBytes = JsonSerializer.SerializeToUtf8Bytes(metadata, DistributedCacheEventStreamStoreJsonUtilities.StreamMetadataJsonTypeInfo);
             var metadataKey = CacheKeys.StreamMetadata(_sessionId, _streamId);
 
             await _cache.SetAsync(metadataKey, metadataBytes, new DistributedCacheEntryOptions
@@ -305,7 +305,7 @@ public sealed partial class DistributedCacheEventStreamStore : ISseEventStreamSt
                     var eventBytes = await _cache.GetAsync(eventKey, cancellationToken).ConfigureAwait(false)
                         ?? throw new McpException($"SSE event with ID '{eventId}' was not found in the cache. The event may have expired.");
 
-                    var storedEvent = JsonSerializer.Deserialize(eventBytes, McpJsonUtilities.JsonContext.Default.StoredEvent);
+                    var storedEvent = JsonSerializer.Deserialize(eventBytes, DistributedCacheEventStreamStoreJsonUtilities.StoredEventJsonTypeInfo);
                     if (storedEvent is not null)
                     {
                         LogEventRead(SessionId, StreamId, eventId, currentSequence);
@@ -342,7 +342,7 @@ public sealed partial class DistributedCacheEventStreamStore : ISseEventStreamSt
                 var metadataBytes = await _cache.GetAsync(metadataKey, cancellationToken).ConfigureAwait(false)
                     ?? throw new McpException($"Stream metadata for session '{SessionId}' and stream '{StreamId}' was not found in the cache. The metadata may have expired.");
 
-                var currentMetadata = JsonSerializer.Deserialize(metadataBytes, McpJsonUtilities.JsonContext.Default.StreamMetadata)
+                var currentMetadata = JsonSerializer.Deserialize(metadataBytes, DistributedCacheEventStreamStoreJsonUtilities.StreamMetadataJsonTypeInfo)
                     ?? throw new McpException($"Stream metadata for session '{SessionId}' and stream '{StreamId}' could not be deserialized.");
 
                 lastSequence = currentMetadata.LastSequence;
