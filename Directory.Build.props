@@ -47,8 +47,7 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <!-- Shared target frameworks for test projects and test support projects. net472 is only included on Windows. -->
+    <!-- Shared target frameworks for test projects and test support projects. -->
     <DefaultTestTargetFrameworks>net10.0;net9.0;net8.0</DefaultTestTargetFrameworks>
-    <DefaultTestTargetFrameworks Condition="$([MSBuild]::IsOSPlatform('Windows'))">$(DefaultTestTargetFrameworks);net472</DefaultTestTargetFrameworks>
   </PropertyGroup>
 </Project>
