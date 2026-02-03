@@ -34,7 +34,7 @@ public class DistributedCacheResumabilityIntegrationTests(ITestOutputHelper test
         var options = new DistributedCacheEventStreamStoreOptions
         {
             // Use shorter polling interval for faster test execution
-            PollingInterval = TimeSpan.FromMilliseconds(50),
+            StreamReaderPollingInterval = TimeSpan.FromMilliseconds(50),
 
             // Use shorter expiration times for tests
             EventSlidingExpiration = TimeSpan.FromMinutes(5),

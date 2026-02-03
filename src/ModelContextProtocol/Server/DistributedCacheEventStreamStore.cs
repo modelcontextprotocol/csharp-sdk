@@ -351,8 +351,8 @@ public sealed partial class DistributedCacheEventStreamStore : ISseEventStreamSt
                 }
 
                 // Wait before polling again for new events
-                LogWaitingForNewEvents(SessionId, StreamId, _options.PollingInterval);
-                await Task.Delay(_options.PollingInterval, cancellationToken).ConfigureAwait(false);
+                LogWaitingForNewEvents(SessionId, StreamId, _options.StreamReaderPollingInterval);
+                await Task.Delay(_options.StreamReaderPollingInterval, cancellationToken).ConfigureAwait(false);
 
                 // Refresh metadata to get the latest sequence and completion status
                 var metadataKey = CacheKeys.StreamMetadata(SessionId, StreamId);

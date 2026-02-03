@@ -352,7 +352,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         var cache = CreateMemoryCache();
         var customOptions = new DistributedCacheEventStreamStoreOptions
         {
-            PollingInterval = TimeSpan.FromMilliseconds(10)
+            StreamReaderPollingInterval = TimeSpan.FromMilliseconds(10)
         };
         var store = new DistributedCacheEventStreamStore(cache, customOptions);
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
@@ -814,7 +814,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         var cache = CreateMemoryCache();
         var store = new DistributedCacheEventStreamStore(cache, new DistributedCacheEventStreamStoreOptions
         {
-            PollingInterval = TimeSpan.FromMilliseconds(50)
+            StreamReaderPollingInterval = TimeSpan.FromMilliseconds(50)
         });
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
@@ -871,7 +871,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         var cache = CreateMemoryCache();
         var store = new DistributedCacheEventStreamStore(cache, new DistributedCacheEventStreamStoreOptions
         {
-            PollingInterval = TimeSpan.FromMilliseconds(50)
+            StreamReaderPollingInterval = TimeSpan.FromMilliseconds(50)
         });
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
@@ -929,7 +929,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         var cache = CreateMemoryCache();
         var store = new DistributedCacheEventStreamStore(cache, new DistributedCacheEventStreamStoreOptions
         {
-            PollingInterval = TimeSpan.FromMilliseconds(50)
+            StreamReaderPollingInterval = TimeSpan.FromMilliseconds(50)
         });
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
@@ -967,7 +967,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         var cache = CreateMemoryCache();
         var store = new DistributedCacheEventStreamStore(cache, new DistributedCacheEventStreamStoreOptions
         {
-            PollingInterval = TimeSpan.FromMilliseconds(50)
+            StreamReaderPollingInterval = TimeSpan.FromMilliseconds(50)
         });
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
@@ -1031,7 +1031,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         var cache = CreateMemoryCache();
         var store = new DistributedCacheEventStreamStore(cache, new DistributedCacheEventStreamStoreOptions
         {
-            PollingInterval = TimeSpan.FromMilliseconds(50)
+            StreamReaderPollingInterval = TimeSpan.FromMilliseconds(50)
         });
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
@@ -1076,7 +1076,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         var cache = CreateMemoryCache();
         var store = new DistributedCacheEventStreamStore(cache, new DistributedCacheEventStreamStoreOptions
         {
-            PollingInterval = TimeSpan.FromMilliseconds(50)
+            StreamReaderPollingInterval = TimeSpan.FromMilliseconds(50)
         });
         var writer = await store.CreateStreamAsync(new SseEventStreamOptions
         {
@@ -1350,7 +1350,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         var options = new DistributedCacheEventStreamStoreOptions();
 
         // Assert - Check that defaults are set reasonably
-        Assert.True(options.PollingInterval >= TimeSpan.FromMilliseconds(50), "Polling interval should be at least 50ms");
+        Assert.True(options.StreamReaderPollingInterval >= TimeSpan.FromMilliseconds(50), "Polling interval should be at least 50ms");
         Assert.True(options.EventSlidingExpiration > TimeSpan.Zero, "Event sliding expiration should be positive");
         Assert.True(options.EventAbsoluteExpiration > TimeSpan.Zero, "Event absolute expiration should be positive");
         Assert.True(options.MetadataSlidingExpiration > TimeSpan.Zero, "Metadata sliding expiration should be positive");
@@ -1364,7 +1364,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         var trackingCache = new TestDistributedCache();
         var customOptions = new DistributedCacheEventStreamStoreOptions
         {
-            PollingInterval = TimeSpan.FromMilliseconds(10) // Fast polling to detect the bug quickly
+            StreamReaderPollingInterval = TimeSpan.FromMilliseconds(10) // Fast polling to detect the bug quickly
         };
         var store = new DistributedCacheEventStreamStore(trackingCache, customOptions);
 
@@ -1448,7 +1448,7 @@ public class DistributedCacheEventStreamStoreTests(ITestOutputHelper testOutputH
         var trackingCache = new TestDistributedCache();
         var customOptions = new DistributedCacheEventStreamStoreOptions
         {
-            PollingInterval = TimeSpan.FromMilliseconds(10)
+            StreamReaderPollingInterval = TimeSpan.FromMilliseconds(10)
         };
         var store = new DistributedCacheEventStreamStore(trackingCache, customOptions);
 

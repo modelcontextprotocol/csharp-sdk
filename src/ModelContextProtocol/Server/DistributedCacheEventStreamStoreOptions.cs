@@ -40,12 +40,12 @@ public sealed class DistributedCacheEventStreamStoreOptions
     public TimeSpan? MetadataAbsoluteExpiration { get; set; } = TimeSpan.FromHours(4);
 
     /// <summary>
-    /// Gets or sets the interval between polling attempts when a reader is waiting for new events
+    /// Gets or sets the interval between polling attempts when a stream reader is waiting for new events
     /// in the default <see cref="SseEventStreamMode.Streaming"/> mode.
     /// </summary>
     /// <remarks>
-    /// This only affects readers. A shorter interval provides lower latency for new events
+    /// This only affects stream readers. A shorter interval provides lower latency for new events
     /// but increases cache access frequency.
     /// </remarks>
-    public TimeSpan PollingInterval { get; set; } = TimeSpan.FromMilliseconds(100);
+    public TimeSpan StreamReaderPollingInterval { get; set; } = TimeSpan.FromSeconds(1);
 }
