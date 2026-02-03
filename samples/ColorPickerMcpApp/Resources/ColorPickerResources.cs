@@ -428,7 +428,7 @@ public class ColorPickerResources
                 try {
                     const result = await sendRequest('ui/initialize', {
                         protocolVersion: '2025-06-18',
-                        clientInfo: {
+                        appInfo: {
                             name: 'ColorPickerMcpApp',
                             version: '1.0.0'
                         },
