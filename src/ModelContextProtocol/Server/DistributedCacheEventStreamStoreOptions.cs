@@ -41,7 +41,7 @@ public sealed class DistributedCacheEventStreamStoreOptions
 
     /// <summary>
     /// Gets or sets the interval between polling attempts when a reader is waiting for new events
-    /// in <see cref="SseEventStreamMode.Polling"/> mode.
+    /// in the default <see cref="SseEventStreamMode.Streaming"/> mode.
     /// </summary>
     /// <remarks>
     /// This only affects readers. A shorter interval provides lower latency for new events
