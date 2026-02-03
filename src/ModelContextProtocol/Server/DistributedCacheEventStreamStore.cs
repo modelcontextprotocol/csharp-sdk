@@ -160,13 +160,17 @@ public sealed partial class DistributedCacheEventStreamStore : ISseEventStreamSt
 
         public async ValueTask SetModeAsync(SseEventStreamMode mode, CancellationToken cancellationToken = default)
         {
+            ThrowIfDisposed();
+
             LogStreamModeChanged(_sessionId, _streamId, mode);
             _mode = mode;
-            await UpdateMetadataAsync(cancellationToken).ConfigureAwait(false);
+            await UpdateMetadataAsync(isCompleted: false, cancellationToken).ConfigureAwait(false);
         }
 
         public async ValueTask<SseItem<JsonRpcMessage?>> WriteEventAsync(SseItem<JsonRpcMessage?> sseItem, CancellationToken cancellationToken = default)
         {
+            ThrowIfDisposed();
+
             // Skip if already has an event ID
             if (sseItem.EventId is not null)
             {
@@ -200,18 +204,18 @@ public sealed partial class DistributedCacheEventStreamStore : ISseEventStreamSt
             }, cancellationToken).ConfigureAwait(false);
 
             // Update metadata with the latest sequence
-            await UpdateMetadataAsync(cancellationToken).ConfigureAwait(false);
+            await UpdateMetadataAsync(isCompleted: false, cancellationToken).ConfigureAwait(false);
 
             LogEventWritten(_sessionId, _streamId, eventId, sequence);
             return newItem;
         }
 
-        private async ValueTask UpdateMetadataAsync(CancellationToken cancellationToken)
+        private async ValueTask UpdateMetadataAsync(bool isCompleted, CancellationToken cancellationToken)
         {
             var metadata = new StreamMetadata
             {
                 Mode = _mode,
-                IsCompleted = _disposed,
+                IsCompleted = isCompleted,
                 LastSequence = Interlocked.Read(ref _sequence),
             };
 
@@ -225,6 +229,18 @@ public sealed partial class DistributedCacheEventStreamStore : ISseEventStreamSt
             }, cancellationToken).ConfigureAwait(false);
         }
 
+        private void ThrowIfDisposed()
+        {
+#if NET
+            ObjectDisposedException.ThrowIf(_disposed, this);
+#else
+            if (_disposed)
+            {
+                throw new ObjectDisposedException(nameof(DistributedCacheEventStreamWriter));
+            }
+#endif
+        }
+
         public async ValueTask DisposeAsync()
         {
             if (_disposed)
@@ -235,7 +251,7 @@ public sealed partial class DistributedCacheEventStreamStore : ISseEventStreamSt
             _disposed = true;
 
             // Mark the stream as completed in the metadata
-            await UpdateMetadataAsync(CancellationToken.None).ConfigureAwait(false);
+            await UpdateMetadataAsync(isCompleted: true, CancellationToken.None).ConfigureAwait(false);
             LogStreamWriterDisposed(_sessionId, _streamId, Interlocked.Read(ref _sequence));
         }
 
