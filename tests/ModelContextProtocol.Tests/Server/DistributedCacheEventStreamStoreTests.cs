@@ -6,7 +6,7 @@ using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.Net.ServerSentEvents;
 
-namespace ModelContextProtocol.AspNetCore.Tests;
+namespace ModelContextProtocol.Tests;
 
 /// <summary>
 /// Tests for <see cref="DistributedCacheEventStreamStore"/>.
