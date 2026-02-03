@@ -105,9 +105,6 @@ public sealed partial class DistributedCacheEventStreamStore : ISseEventStreamSt
 
         public static string Event(string eventId) =>
             $"{Prefix}event:{eventId}";
-
-        public static string StreamEventCount(string sessionId, string streamId) =>
-            $"{Prefix}count:{sessionId}:{streamId}";
     }
 
     /// <summary>
