@@ -100,11 +100,15 @@ public sealed partial class DistributedCacheEventStreamStore : ISseEventStreamSt
         private const string Version = "v1";
         private const string Prefix = $"mcp:sse:{Version}:";
 
-        public static string StreamMetadata(string sessionId, string streamId) =>
-            $"{Prefix}meta:{sessionId}:{streamId}";
+        public static string StreamMetadata(string sessionId, string streamId)
+        {
+            var sessionIdBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(sessionId));
+            var streamIdBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(streamId));
+            return $"{Prefix}meta:{sessionIdBase64}:{streamIdBase64}";
+        }
 
-        public static string Event(string eventId) =>
-            $"{Prefix}event:{eventId}";
+        public static string Event(string eventId)
+            => $"{Prefix}event:{eventId}";
     }
 
     /// <summary>
