@@ -450,6 +450,147 @@ public static class AIContentExtensions
         return contentBlock;
     }
 
+    /// <summary>
+    /// Processes a collection of chat messages to extract and remove approval requests and responses,
+    /// and reconstructs function call messages from approved requests while maintaining metadata.
+    /// </summary>
+    /// <param name="messages">The collection of chat messages to process.</param>
+    /// <param name="options">The <see cref="JsonSerializerOptions"/> to use for serialization. If <see langword="null"/>, <see cref="McpJsonUtilities.DefaultOptions"/> is used.</param>
+    /// <returns>
+    /// A tuple containing:
+    /// - The modified list of chat messages with approval requests/responses removed and function calls reconstructed.
+    /// - A list of approval responses that were processed.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// This method scans through the provided messages to find <see cref="FunctionApprovalRequestContent"/> 
+    /// and <see cref="FunctionApprovalResponseContent"/> pairs. When approval responses are found, it:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>Extracts the original approval request messages and stores them keyed by their function call ID.</description></item>
+    /// <item><description>Removes both the approval request and response content from the message collection.</description></item>
+    /// <item><description>For approved requests, reconstructs <see cref="FunctionCallContent"/> messages while preserving the original request message metadata (such as MessageId).</description></item>
+    /// </list>
+    /// <para>
+    /// This enables proper correlation between approval requests and their responses, ensuring that 
+    /// the reconstructed function call messages maintain the original context and metadata.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="messages"/> is <see langword="null"/>.</exception>
+#pragma warning disable MEAI001 // Type is for evaluation purposes only and is subject to change or removal in future updates
+    public static (IList<ChatMessage> Messages, IList<FunctionApprovalResponseContent> ApprovalResponses) ProcessFunctionApprovalResponses(
+        this IEnumerable<ChatMessage> messages,
+        JsonSerializerOptions? options = null)
+    {
+        Throw.IfNull(messages);
+
+        options ??= McpJsonUtilities.DefaultOptions;
+
+        // Extract and store approval request messages keyed by function call ID
+        Dictionary<string, ChatMessage>? allApprovalRequestsMessages = null;
+        List<ChatMessage> processedMessages = [];
+        List<FunctionApprovalResponseContent> approvalResponses = [];
+
+        foreach (var message in messages)
+        {
+            List<AIContent>? newContents = null;
+            bool hasApprovalRequests = false;
+            bool hasApprovalResponses = false;
+
+            for (int i = 0; i < message.Contents.Count; i++)
+            {
+                var content = message.Contents[i];
+
+                if (content is FunctionApprovalRequestContent farc)
+                {
+                    // Store the approval request message keyed by the function call CallId (NOT by farc.Id)
+                    // This is the fix: we key by FunctionCall.CallId instead of farc.Id
+                    (allApprovalRequestsMessages ??= []).Add(farc.FunctionCall.CallId, message);
+                    hasApprovalRequests = true;
+                }
+                else if (content is FunctionApprovalResponseContent farcResponse)
+                {
+                    approvalResponses.Add(farcResponse);
+                    hasApprovalResponses = true;
+                }
+                else
+                {
+                    (newContents ??= []).Add(content);
+                }
+            }
+
+            // Remove messages that contain only approval requests or responses
+            if (newContents is { Count: > 0 })
+            {
+                if (hasApprovalRequests || hasApprovalResponses)
+                {
+                    // Create a new message with only non-approval content
+                    processedMessages.Add(new ChatMessage(message.Role, newContents)
+                    {
+                        MessageId = message.MessageId,
+                        AuthorName = message.AuthorName,
+                        RawRepresentation = message.RawRepresentation,
+                        AdditionalProperties = message.AdditionalProperties,
+                    });
+                }
+                else
+                {
+                    processedMessages.Add(message);
+                }
+            }
+            // If the message contained only approval requests/responses, it's omitted
+        }
+
+        // Process approval responses and reconstruct function calls
+        if (approvalResponses.Count > 0 && allApprovalRequestsMessages is not null)
+        {
+            Dictionary<string, List<FunctionCallContent>> callsByMessageId = [];
+
+            foreach (var approvalResponse in approvalResponses)
+            {
+                if (approvalResponse.Approved && 
+                    allApprovalRequestsMessages.TryGetValue(approvalResponse.FunctionCall.CallId, out var originalMessage))
+                {
+                    // Reconstruct the function call content and associate it with the original message
+                    var reconstructedCall = approvalResponse.FunctionCall;
+                    string messageId = originalMessage.MessageId ?? string.Empty;
+                    
+                    if (!callsByMessageId.TryGetValue(messageId, out var calls))
+                    {
+                        calls = [];
+                        callsByMessageId[messageId] = calls;
+                    }
+                    calls.Add(reconstructedCall);
+                }
+            }
+
+            // Add reconstructed function call messages
+            foreach (var kvp in callsByMessageId)
+            {
+                string messageId = kvp.Key;
+                List<FunctionCallContent> calls = kvp.Value;
+
+                // Find the original request message to copy metadata
+                ChatMessage? originalMessage = messageId != string.Empty && allApprovalRequestsMessages.Values.FirstOrDefault(m => m.MessageId == messageId) is { } msg
+                    ? msg
+                    : allApprovalRequestsMessages.Values.FirstOrDefault();
+
+                var reconstructedMessage = new ChatMessage(ChatRole.Assistant, calls.ToArray())
+                {
+                    MessageId = messageId != string.Empty ? messageId : originalMessage?.MessageId,
+                    AuthorName = originalMessage?.AuthorName,
+                    RawRepresentation = originalMessage?.RawRepresentation,
+                    AdditionalProperties = originalMessage?.AdditionalProperties,
+                };
+
+                processedMessages.Add(reconstructedMessage);
+            }
+        }
+
+        return (processedMessages, approvalResponses);
+    }
+#pragma warning restore MEAI001
+
     private sealed class ToolAIFunctionDeclaration(Tool tool) : AIFunctionDeclaration
     {
         public override string Name => tool.Name;

@@ -402,6 +402,174 @@ public class AIContentExtensionsTests
         
         Assert.Null(exception);
     }
+
+    /// <summary>
+    /// Regression test for approval request/response correlation bug.
+    /// This test ensures that approval request messages are stored in the dictionary
+    /// keyed by FunctionCall.CallId (not by FunctionApprovalRequestContent.Id),
+    /// so that the original request message metadata is properly retained when
+    /// reconstructing function call messages from approved requests.
+    /// </summary>
+    [Fact]
+#pragma warning disable MEAI001 // Type is for evaluation purposes only and is subject to change or removal in future updates
+    public void ProcessFunctionApprovalResponses_MaintainsMessageMetadata()
+    {
+        // Arrange: Create a message history with approval requests and responses
+        const string messageId = "msg_123";
+        const string callId = "call_abc";
+        const string authorName = "TestUser";
+        
+        var functionCall = new FunctionCallContent(callId, "test_function", new Dictionary<string, object?> { ["param"] = "value" });
+        var approvalRequest = new FunctionApprovalRequestContent("req_456", functionCall);
+        
+        var requestMessage = new ChatMessage(ChatRole.Assistant, [approvalRequest])
+        {
+            MessageId = messageId,
+            AuthorName = authorName,
+            AdditionalProperties = new() { ["custom_prop"] = "test_value" }
+        };
+        
+        var approvalResponse = new FunctionApprovalResponseContent(callId, approved: true, functionCall);
+        var responseMessage = new ChatMessage(ChatRole.User, [approvalResponse]);
+        
+        List<ChatMessage> messages = [requestMessage, responseMessage];
+        
+        // Act: Process the messages
+        var (processedMessages, approvalResponses) = messages.ProcessFunctionApprovalResponses();
+        
+        // Assert: Verify that approval responses were extracted
+        Assert.Single(approvalResponses);
+        Assert.Same(approvalResponse, approvalResponses[0]);
+        
+        // Assert: Verify the reconstructed function call message exists
+        var reconstructedMessage = processedMessages.FirstOrDefault(m => 
+            m.Role == ChatRole.Assistant && 
+            m.Contents.Any(c => c is FunctionCallContent));
+        Assert.NotNull(reconstructedMessage);
+        
+        // Assert: Verify that the original message metadata is retained
+        // This is the key assertion - without the fix, MessageId would be null or incorrect
+        // because the dictionary lookup by CallId would fail (since it was keyed by farc.Id)
+        Assert.Equal(messageId, reconstructedMessage.MessageId);
+        Assert.Equal(authorName, reconstructedMessage.AuthorName);
+        Assert.NotNull(reconstructedMessage.AdditionalProperties);
+        Assert.Equal("test_value", reconstructedMessage.AdditionalProperties["custom_prop"]);
+        
+        // Assert: Verify the function call content is correct
+        var reconstructedCall = Assert.IsType<FunctionCallContent>(Assert.Single(reconstructedMessage.Contents));
+        Assert.Equal(callId, reconstructedCall.CallId);
+        Assert.Equal("test_function", reconstructedCall.Name);
+    }
+    
+    /// <summary>
+    /// Test that verifies approval requests and responses are removed from the message list
+    /// after processing.
+    /// </summary>
+    [Fact]
+    public void ProcessFunctionApprovalResponses_RemovesApprovalContent()
+    {
+        // Arrange
+        var functionCall = new FunctionCallContent("call_1", "fn1", new Dictionary<string, object?>());
+        var approvalRequest = new FunctionApprovalRequestContent("req_1", functionCall);
+        var approvalResponse = new FunctionApprovalResponseContent("call_1", approved: true, functionCall);
+        
+        var textContent = new TextContent("Regular text");
+        
+        List<ChatMessage> messages =
+        [
+            new ChatMessage(ChatRole.User, [textContent]),
+            new ChatMessage(ChatRole.Assistant, [approvalRequest]),
+            new ChatMessage(ChatRole.User, [approvalResponse]),
+        ];
+        
+        // Act
+        var (processedMessages, _) = messages.ProcessFunctionApprovalResponses();
+        
+        // Assert: Original text message should remain
+        Assert.Contains(processedMessages, m => m.Contents.Any(c => c is TextContent));
+        
+        // Assert: Approval request and response messages should be removed or empty
+        Assert.DoesNotContain(processedMessages, m => m.Contents.Any(c => c is FunctionApprovalRequestContent));
+        Assert.DoesNotContain(processedMessages, m => m.Contents.Any(c => c is FunctionApprovalResponseContent));
+        
+        // Assert: A new reconstructed function call message should be added
+        Assert.Contains(processedMessages, m => m.Contents.Any(c => c is FunctionCallContent));
+    }
+    
+    /// <summary>
+    /// Test that verifies rejected approvals do not result in reconstructed function calls.
+    /// </summary>
+    [Fact]
+    public void ProcessFunctionApprovalResponses_DoesNotReconstructRejectedCalls()
+    {
+        // Arrange
+        var functionCall = new FunctionCallContent("call_1", "fn1", new Dictionary<string, object?>());
+        var approvalRequest = new FunctionApprovalRequestContent("req_1", functionCall);
+        var approvalResponse = new FunctionApprovalResponseContent("call_1", approved: false, functionCall);
+        
+        List<ChatMessage> messages =
+        [
+            new ChatMessage(ChatRole.Assistant, [approvalRequest]),
+            new ChatMessage(ChatRole.User, [approvalResponse]),
+        ];
+        
+        // Act
+        var (processedMessages, approvalResponses) = messages.ProcessFunctionApprovalResponses();
+        
+        // Assert: Approval response was extracted
+        Assert.Single(approvalResponses);
+        Assert.False(approvalResponses[0].Approved);
+        
+        // Assert: No reconstructed function call message (because it was rejected)
+        Assert.DoesNotContain(processedMessages, m => m.Contents.Any(c => c is FunctionCallContent));
+    }
+    
+    /// <summary>
+    /// Test that verifies parallel/multiple approval requests are handled correctly.
+    /// </summary>
+    [Fact]
+    public void ProcessFunctionApprovalResponses_HandlesMultipleApprovals()
+    {
+        // Arrange
+        const string messageId = "msg_multi";
+        
+        var call1 = new FunctionCallContent("call_1", "fn1", new Dictionary<string, object?>());
+        var call2 = new FunctionCallContent("call_2", "fn2", new Dictionary<string, object?>());
+        
+        var request1 = new FunctionApprovalRequestContent("req_1", call1);
+        var request2 = new FunctionApprovalRequestContent("req_2", call2);
+        
+        var requestMessage = new ChatMessage(ChatRole.Assistant, [request1, request2])
+        {
+            MessageId = messageId,
+        };
+        
+        var response1 = new FunctionApprovalResponseContent("call_1", approved: true, call1);
+        var response2 = new FunctionApprovalResponseContent("call_2", approved: true, call2);
+        
+        var responseMessage = new ChatMessage(ChatRole.User, [response1, response2]);
+        
+        List<ChatMessage> messages = [requestMessage, responseMessage];
+        
+        // Act
+        var (processedMessages, approvalResponses) = messages.ProcessFunctionApprovalResponses();
+        
+        // Assert: Both approval responses were extracted
+        Assert.Equal(2, approvalResponses.Count);
+        
+        // Assert: Reconstructed message contains both function calls
+        var reconstructedMessage = processedMessages.FirstOrDefault(m => 
+            m.Role == ChatRole.Assistant && 
+            m.Contents.Any(c => c is FunctionCallContent));
+        Assert.NotNull(reconstructedMessage);
+        Assert.Equal(messageId, reconstructedMessage.MessageId);
+        
+        var functionCalls = reconstructedMessage.Contents.OfType<FunctionCallContent>().ToList();
+        Assert.Equal(2, functionCalls.Count);
+        Assert.Contains(functionCalls, fc => fc.CallId == "call_1");
+        Assert.Contains(functionCalls, fc => fc.CallId == "call_2");
+    }
+#pragma warning restore MEAI001
 }
 
 // Test type for named user-defined type test
