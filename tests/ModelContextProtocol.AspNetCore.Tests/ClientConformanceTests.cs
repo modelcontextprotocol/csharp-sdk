@@ -45,6 +45,15 @@ public class ClientConformanceTests //: IAsyncLifetime
             $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
     }
 
+    private static string GetConformanceVersion()
+    {
+        var assembly = typeof(ClientConformanceTests).Assembly;
+        var attribute = assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false)
+            .Cast<System.Reflection.AssemblyMetadataAttribute>()
+            .FirstOrDefault(a => a.Key == "McpConformanceVersion");
+        return attribute?.Value ?? throw new InvalidOperationException("McpConformanceVersion not found in assembly metadata");
+    }
+
     private async Task<(bool Success, string Output, string Error)> RunClientConformanceScenario(string scenario)
     {
         // Construct an absolute path to the conformance client executable
@@ -59,7 +68,8 @@ public class ClientConformanceTests //: IAsyncLifetime
                 $"ConformanceClient executable not found at: {conformanceClientPath}");
         }
 
-        var startInfo = NodeHelpers.NpxStartInfo($"-y @modelcontextprotocol/conformance client --scenario {scenario} --command \"{conformanceClientPath} {scenario}\"");
+        var version = GetConformanceVersion();
+        var startInfo = NodeHelpers.NpxStartInfo($"-y @modelcontextprotocol/conformance@{version} client --scenario {scenario} --command \"{conformanceClientPath} {scenario}\"");
 
         var outputBuilder = new StringBuilder();
         var errorBuilder = new StringBuilder();
