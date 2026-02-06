@@ -52,14 +52,17 @@ jobs:
       with:
         node-version: '20'
 
-    - name: 📦 Install dependencies for tests
+    - name: 📦 Install dependencies for tests | Pinned MCP TS SDK
+      run: npm install @modelcontextprotocol/sdk@1.25.3
+
+    - name: 📦 Install dependencies for tests | Pinned Everything Server
       run: npm install @modelcontextprotocol/server-everything@2025.12.18
 
-    - name: 📦 Install dependencies for tests
-      run: npm install @modelcontextprotocol/server-memory
+    - name: 📦 Install dependencies for tests | Pinned Memory Server
+      run: npm install @modelcontextprotocol/server-memory@2026.1.26
 
     # Keep version in sync with McpConformanceVersion in Directory.Packages.props
-    - name: 📦 Install conformance test runner
+    - name: 📦 Install dependencies for tests | Pinned MCP Conformance tests
       run: npm install @modelcontextprotocol/conformance@0.1.10
 
     - name: 🏗️ Build
