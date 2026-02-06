@@ -332,16 +332,49 @@ public class ConformanceTools
             {
                 Properties =
                 {
-                    ["color"] = new ElicitRequestParams.UntitledSingleSelectEnumSchema()
+                    ["untitledSingle"] = new ElicitRequestParams.UntitledSingleSelectEnumSchema()
                     {
-                        Description = "Choose a color",
-                        Enum = ["red", "green", "blue"]
+                        Description = "Choose an option",
+                        Enum = ["option1", "option2", "option3"]
                     },
-                    ["size"] = new ElicitRequestParams.UntitledSingleSelectEnumSchema()
+                    ["titledSingle"] = new ElicitRequestParams.TitledSingleSelectEnumSchema()
                     {
-                        Description = "Choose a size",
-                        Enum = ["small", "medium", "large"],
-                        Default = "medium"
+                        Description = "Choose a titled option",
+                        OneOf =
+                        [
+                            new() { Const = "value1", Title = "First Option" },
+                            new() { Const = "value2", Title = "Second Option" },
+                            new() { Const = "value3", Title = "Third Option" }
+                        ]
+                    },
+#pragma warning disable MCP9001
+                    ["legacyEnum"] = new ElicitRequestParams.LegacyTitledEnumSchema()
+                    {
+                        Description = "Choose a legacy option",
+                        Enum = ["opt1", "opt2", "opt3"],
+                        EnumNames = ["Option One", "Option Two", "Option Three"]
+                    },
+#pragma warning restore MCP9001
+                    ["untitledMulti"] = new ElicitRequestParams.UntitledMultiSelectEnumSchema()
+                    {
+                        Description = "Choose multiple options",
+                        Items = new ElicitRequestParams.UntitledEnumItemsSchema
+                        {
+                            Enum = ["option1", "option2", "option3"]
+                        }
+                    },
+                    ["titledMulti"] = new ElicitRequestParams.TitledMultiSelectEnumSchema()
+                    {
+                        Description = "Choose multiple titled options",
+                        Items = new ElicitRequestParams.TitledEnumItemsSchema
+                        {
+                            AnyOf =
+                            [
+                                new() { Const = "value1", Title = "First Choice" },
+                                new() { Const = "value2", Title = "Second Choice" },
+                                new() { Const = "value3", Title = "Third Choice" }
+                            ]
+                        }
                     }
                 }
             };
@@ -354,8 +387,7 @@ public class ConformanceTools
 
             if (result.Action == "accept" && result.Content != null)
             {
-                return $"Accepted with values: color={result.Content["color"].GetString()}, " +
-                       $"size={result.Content["size"].GetString()}";
+                return $"Elicitation completed: action={result.Action}, content={result.Content}";
             }
             else
             {
