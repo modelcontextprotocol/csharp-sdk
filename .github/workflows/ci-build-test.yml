@@ -63,6 +63,10 @@ jobs:
     - name: 🧪 Test
       run: make test CONFIGURATION=${{ matrix.configuration }}
 
+    - name: 🧪 AOT Compatibility
+      if: matrix.configuration == 'Release'
+      run: dotnet publish tests/ModelContextProtocol.AotCompatibility.TestApp/ModelContextProtocol.AotCompatibility.TestApp.csproj --configuration Release
+
     - name: 📦 Pack
       if: matrix.configuration == 'Release'
       run: make pack CONFIGURATION=${{ matrix.configuration }}
