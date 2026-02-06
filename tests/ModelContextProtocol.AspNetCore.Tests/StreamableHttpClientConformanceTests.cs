@@ -366,11 +366,7 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
             await getRequestReceived.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
 
             // Dispose should not hang even though the GET stream is actively open
-            var disposeTask = client.DisposeAsync().AsTask();
-            var completedTask = await Task.WhenAny(disposeTask, Task.Delay(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
-
-            Assert.True(disposeTask == completedTask, "DisposeAsync hung with OwnsSession=false and active GET stream.");
-            await disposeTask;
+            await client.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         }
     }
 
