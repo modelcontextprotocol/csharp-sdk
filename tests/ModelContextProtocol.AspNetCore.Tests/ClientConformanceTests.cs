@@ -9,7 +9,7 @@ namespace ModelContextProtocol.ConformanceTests;
 /// This test runs the Node.js-based conformance test suite for the client
 /// and reports the results.
 /// </summary>
-public class ClientConformanceTests //: IAsyncLifetime
+public class ClientConformanceTests
 {
     private readonly ITestOutputHelper _output;
 

@@ -85,11 +85,11 @@ public static class NodeHelpers
 
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            // On Windows, node_modules/.bin contains .cmd shims
+            // On Windows, node_modules/.bin contains .cmd shims that can be executed directly
             return new ProcessStartInfo
             {
-                FileName = "cmd.exe",
-                Arguments = $"/c \"{binPath}.cmd\" {arguments}",
+                FileName = $"{binPath}.cmd",
+                Arguments = arguments,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -147,8 +147,8 @@ public static class NodeHelpers
         {
             return new ProcessStartInfo
             {
-                FileName = "cmd.exe",
-                Arguments = $"/c npm {arguments}",
+                FileName = "npm.cmd",
+                Arguments = arguments,
                 WorkingDirectory = workingDirectory,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -160,8 +160,8 @@ public static class NodeHelpers
         {
             return new ProcessStartInfo
             {
-                FileName = "npm",
-                Arguments = arguments,
+                FileName = "cmd.exe",
+                Arguments = $"/c npm {arguments}",
                 WorkingDirectory = workingDirectory,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
