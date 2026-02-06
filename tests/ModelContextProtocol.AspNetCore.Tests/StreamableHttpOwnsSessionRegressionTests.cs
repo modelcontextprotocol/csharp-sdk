@@ -12,10 +12,19 @@ namespace ModelContextProtocol.AspNetCore.Tests;
 /// Regression tests for StreamableHttp client disposal behavior with OwnsSession option.
 /// </summary>
 /// <remarks>
-/// This test reproduces a bug where McpClient.DisposeAsync() hangs indefinitely when using
+/// <para>
+/// These tests validate that McpClient.DisposeAsync() completes quickly when using
 /// Streamable HTTP transport with HttpClientTransportOptions.OwnsSession = false.
-/// The hang occurs because the background GET receive task (ReceiveUnsolicitedMessagesAsync)
-/// is not properly canceled when the client is disposed.
+/// </para>
+/// <para>
+/// The tests ensure that the background GET receive task (ReceiveUnsolicitedMessagesAsync)
+/// is properly canceled when the client is disposed. This prevents indefinite hangs where
+/// the DisposeAsync() call would wait forever for the SSE stream to complete.
+/// </para>
+/// <para>
+/// Current status: All tests PASS, indicating the implementation correctly handles disposal
+/// with proper cancellation token propagation through the SSE stream reading operations.
+/// </para>
 /// </remarks>
 public class StreamableHttpOwnsSessionRegressionTests(ITestOutputHelper testOutputHelper)
     : KestrelInMemoryTest(testOutputHelper)
@@ -24,13 +33,20 @@ public class StreamableHttpOwnsSessionRegressionTests(ITestOutputHelper testOutp
     /// Regression test: McpClient.DisposeAsync should complete quickly when OwnsSession = false.
     /// </summary>
     /// <remarks>
-    /// This test reproduces the reported issue where DisposeAsync hangs indefinitely.
+    /// <para>
+    /// This test validates that disposal completes within a reasonable timeout when OwnsSession = false.
     /// The test sets up a Streamable HTTP server with a long-lived GET SSE stream,
     /// creates a client with OwnsSession = false, performs an initial call that triggers
     /// the background ReceiveUnsolicitedMessagesAsync task, then attempts to dispose the client.
-    /// 
-    /// Expected behavior: DisposeAsync should complete within a short timeout (2-5 seconds).
-    /// Bug behavior: DisposeAsync hangs because the background GET task is not canceled.
+    /// </para>
+    /// <para>
+    /// Expected behavior: DisposeAsync should complete within 5 seconds by properly canceling
+    /// the background GET task through the cancellation token.
+    /// </para>
+    /// <para>
+    /// Bug scenario (if present): DisposeAsync would hang indefinitely because the background
+    /// GET task reading from the SSE stream would not respect the cancellation token.
+    /// </para>
     /// </remarks>
     [Fact]
     public async Task DisposeAsync_CompletesQuickly_WhenOwnsSessionIsFalse()
