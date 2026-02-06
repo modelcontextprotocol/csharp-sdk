@@ -412,4 +412,139 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         Assert.True(wasPostRequest, "POST request was not made");
         Assert.True(wasDeleteRequest, "DELETE request was not made");
     }
+
+    [Fact]
+    public async Task DisposeAsync_DoesNotHang_WhenOwnsSessionIsFalse()
+    {
+        Assert.SkipWhen(Stateless, "Stateless mode doesn't support session management.");
+
+        var getResponseStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<ClaimsPrincipalTools>();
+
+        await using var app = Builder.Build();
+
+        // Track when the GET SSE response starts being written, which indicates
+        // the server's HandleGetRequestAsync has fully initialized the SSE writer.
+        app.Use(next =>
+        {
+            return async context =>
+            {
+                if (context.Request.Method == HttpMethods.Get)
+                {
+                    context.Response.OnStarting(() =>
+                    {
+                        getResponseStarted.TrySetResult();
+                        return Task.CompletedTask;
+                    });
+                }
+                await next(context);
+            };
+        });
+
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+            OwnsSession = false,
+        }, HttpClient, LoggerFactory);
+
+        var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Call a tool to ensure the session is fully established
+        var result = await client.CallToolAsync(
+            "echo_claims_principal",
+            new Dictionary<string, object?>() { ["message"] = "Hello!" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+
+        // Wait for the GET SSE stream to be fully established on the server
+        await getResponseStarted.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+
+        // This should not hang. The issue reports that DisposeAsync hangs indefinitely
+        // when OwnsSession is false. Use a timeout to detect the hang.
+        await client.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_DoesNotHang_WhenOwnsSessionIsFalse_WithUnsolicitedMessages()
+    {
+        Assert.SkipWhen(Stateless, "Stateless mode doesn't support session management.");
+
+        var getResponseStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var serverTcs = new TaskCompletionSource<McpServer>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Builder.Services.AddMcpServer().WithHttpTransport(opts =>
+        {
+            ConfigureStateless(opts);
+            opts.RunSessionHandler = async (context, server, cancellationToken) =>
+            {
+                serverTcs.TrySetResult(server);
+                await server.RunAsync(cancellationToken);
+            };
+        }).WithTools<ClaimsPrincipalTools>();
+
+        await using var app = Builder.Build();
+
+        // Track when the GET SSE response starts being written, which indicates
+        // the server's HandleGetRequestAsync has fully initialized the SSE writer.
+        app.Use(next =>
+        {
+            return async context =>
+            {
+                if (context.Request.Method == HttpMethods.Get)
+                {
+                    context.Response.OnStarting(() =>
+                    {
+                        getResponseStarted.TrySetResult();
+                        return Task.CompletedTask;
+                    });
+                }
+                await next(context);
+            };
+        });
+
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+            OwnsSession = false,
+        }, HttpClient, LoggerFactory);
+
+        var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        var result = await client.CallToolAsync(
+            "echo_claims_principal",
+            new Dictionary<string, object?>() { ["message"] = "Hello!" },
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+
+        // Wait for the GET SSE stream to be fully established on the server
+        await getResponseStarted.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+
+        // Register a handler on the client to detect when the notification is received
+        var notificationReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var handlerRegistration = client.RegisterNotificationHandler("notifications/tools/list_changed", (notification, ct) =>
+        {
+            notificationReceived.TrySetResult();
+            return default;
+        });
+
+        // Get the server instance and send an unsolicited notification by modifying tools
+        var server = await serverTcs.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        await server.SendNotificationAsync("notifications/tools/list_changed", TestContext.Current.CancellationToken);
+
+        // Wait for the client to actually receive the notification
+        await notificationReceived.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+
+        // Dispose should still not hang
+        await client.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+    }
 }
