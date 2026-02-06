@@ -47,6 +47,7 @@ public sealed class BlobResourceContents : ResourceContents
         byte[] buffer = new byte[maxLength];
         if (Base64.EncodeToUtf8(data.Span, buffer, out _, out int bytesWritten) == OperationStatus.Done)
         {
+            Debug.Assert(bytesWritten == buffer.Length, "Base64 encoding should always produce exact length for non-padded input");
             blob = buffer.AsMemory(0, bytesWritten);
         }
         else
@@ -67,7 +68,7 @@ public sealed class BlobResourceContents : ResourceContents
     /// Gets or sets the base64-encoded UTF-8 bytes representing the binary data of the item.
     /// </summary>
     /// <remarks>
-    /// This is a zero-copy representation of the wire payload of this item. Setting this value will invalidate any cached value of <see cref="Data"/>.
+    /// This is a zero-copy representation of the wire payload of this item. Setting this value will invalidate any cached value of <see cref="DecodedData"/>.
     /// </remarks>
     [JsonPropertyName("blob")]
     public required ReadOnlyMemory<byte> Blob
@@ -94,7 +95,7 @@ public sealed class BlobResourceContents : ResourceContents
     /// </para>
     /// </remarks>
     [JsonIgnore]
-    public ReadOnlyMemory<byte> Data
+    public ReadOnlyMemory<byte> DecodedData
     {
         get
         {
@@ -121,7 +122,7 @@ public sealed class BlobResourceContents : ResourceContents
     {
         get
         {
-            string lengthDisplay = _decodedData is null ? DebuggerDisplayHelper.GetBase64LengthDisplay(Blob) : $"{Data.Length} bytes";
+            string lengthDisplay = _decodedData is null ? DebuggerDisplayHelper.GetBase64LengthDisplay(Blob) : $"{DecodedData.Length} bytes";
             string mimeInfo = MimeType is not null ? $", MimeType = {MimeType}" : "";
             return $"Uri = \"{Uri}\"{mimeInfo}, Length = {lengthDisplay}";
         }

@@ -1,9 +1,7 @@
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
-#if !NET
-using System.Runtime.InteropServices;
-#endif
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -324,7 +322,7 @@ public static class AIContentExtensions
 
         AIContent ac = content switch
         {
-            BlobResourceContents blobResource => new DataContent(blobResource.Data, blobResource.MimeType ?? "application/octet-stream"),
+            BlobResourceContents blobResource => new DataContent(blobResource.DecodedData, blobResource.MimeType ?? "application/octet-stream"),
             TextResourceContents textResource => new TextContent(textResource.Text),
             _ => throw new NotSupportedException($"Resource type '{content.GetType().Name}' is not supported.")
         };
@@ -449,20 +447,12 @@ public static class AIContentExtensions
 
         return contentBlock;
 
-        unsafe byte[] GetUtf8Bytes(ReadOnlySpan<char> utf16)
+        static byte[] GetUtf8Bytes(ReadOnlySpan<char> utf16)
         {
-            // gets UTF-8 bytes from UTF-16 chars without intermediate string allocations
-            fixed (char* pChars = utf16)
-            {
-                var byteCount = System.Text.Encoding.UTF8.GetByteCount(pChars, utf16.Length);
-                var bytes = new byte[byteCount];
-                
-                fixed (byte* pBytes = bytes)
-                {
-                    System.Text.Encoding.UTF8.GetBytes(pChars, utf16.Length, pBytes, byteCount);
-                }
-                return bytes;
-            }
+            // Get UTF-8 bytes from UTF-16 chars without intermediate string allocations
+            byte[] bytes = new byte[Encoding.UTF8.GetByteCount(utf16)];
+            Encoding.UTF8.GetBytes(utf16, bytes);
+            return bytes;
         }
     }
 

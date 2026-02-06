@@ -1,6 +1,7 @@
 ﻿using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
+using System.Text;
 
 namespace EverythingServer.Resources;
 
@@ -31,7 +32,7 @@ public class SimpleResourceType
             } :
             new BlobResourceContents
             {
-                Blob = System.Text.Encoding.UTF8.GetBytes(resource.Description!),
+                Blob = Encoding.UTF8.GetBytes(resource.Description!),
                 MimeType = resource.MimeType,
                 Uri = resource.Uri,
             };
