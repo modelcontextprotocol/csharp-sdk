@@ -9,19 +9,19 @@ namespace ModelContextProtocol.ConformanceTests;
 /// This test runs the Node.js-based conformance test suite for the client
 /// and reports the results.
 /// </summary>
-public class ClientConformanceTests //: IAsyncLifetime
+public class ClientConformanceTests
 {
     private readonly ITestOutputHelper _output;
 
     // Public static property required for SkipUnless attribute
-    public static bool IsNpxInstalled => NodeHelpers.IsNpxInstalled();
+    public static bool IsNodeInstalled => NodeHelpers.IsNodeInstalled();
 
     public ClientConformanceTests(ITestOutputHelper output)
     {
         _output = output;
     }
 
-    [Theory(Skip = "npx is not installed. Skipping client conformance tests.", SkipUnless = nameof(IsNpxInstalled))]
+    [Theory(Skip = "Node.js is not installed. Skipping client conformance tests.", SkipUnless = nameof(IsNodeInstalled))]
     [InlineData("initialize")]
     [InlineData("tools_call")]
     [InlineData("auth/metadata-default")]
@@ -59,7 +59,7 @@ public class ClientConformanceTests //: IAsyncLifetime
                 $"ConformanceClient executable not found at: {conformanceClientPath}");
         }
 
-        var startInfo = NodeHelpers.NpxStartInfo($"-y @modelcontextprotocol/conformance client --scenario {scenario} --command \"{conformanceClientPath} {scenario}\"");
+        var startInfo = NodeHelpers.ConformanceTestStartInfo($"client --scenario {scenario} --command \"{conformanceClientPath} {scenario}\"");
 
         var outputBuilder = new StringBuilder();
         var errorBuilder = new StringBuilder();
