@@ -418,20 +418,25 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
     {
         Assert.SkipWhen(Stateless, "Stateless mode doesn't support session management.");
 
-        var getRequestReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var getResponseStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<EchoHttpContextUserTools>();
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<ClaimsPrincipalTools>();
 
         await using var app = Builder.Build();
 
-        // Track when the GET request arrives to ensure the SSE stream is established
+        // Track when the GET SSE response starts being written, which indicates
+        // the server's HandleGetRequestAsync has fully initialized the SSE writer.
         app.Use(next =>
         {
             return async context =>
             {
                 if (context.Request.Method == HttpMethods.Get)
                 {
-                    getRequestReceived.TrySetResult();
+                    context.Response.OnStarting(() =>
+                    {
+                        getResponseStarted.TrySetResult();
+                        return Task.CompletedTask;
+                    });
                 }
                 await next(context);
             };
@@ -451,14 +456,14 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         // Call a tool to ensure the session is fully established
         var result = await client.CallToolAsync(
-            "echo_with_user_name",
+            "echo_claims_principal",
             new Dictionary<string, object?>() { ["message"] = "Hello!" },
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
 
-        // Wait for the GET SSE stream to be established on the server
-        await getRequestReceived.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        // Wait for the GET SSE stream to be fully established on the server
+        await getResponseStarted.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
 
         // This should not hang. The issue reports that DisposeAsync hangs indefinitely
         // when OwnsSession is false. Use a timeout to detect the hang.
@@ -470,7 +475,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
     {
         Assert.SkipWhen(Stateless, "Stateless mode doesn't support session management.");
 
-        var getRequestReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var getResponseStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var serverTcs = new TaskCompletionSource<McpServer>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         Builder.Services.AddMcpServer().WithHttpTransport(opts =>
@@ -481,17 +486,23 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
                 serverTcs.TrySetResult(server);
                 await server.RunAsync(cancellationToken);
             };
-        }).WithTools<EchoHttpContextUserTools>();
+        }).WithTools<ClaimsPrincipalTools>();
 
         await using var app = Builder.Build();
 
+        // Track when the GET SSE response starts being written, which indicates
+        // the server's HandleGetRequestAsync has fully initialized the SSE writer.
         app.Use(next =>
         {
             return async context =>
             {
                 if (context.Request.Method == HttpMethods.Get)
                 {
-                    getRequestReceived.TrySetResult();
+                    context.Response.OnStarting(() =>
+                    {
+                        getResponseStarted.TrySetResult();
+                        return Task.CompletedTask;
+                    });
                 }
                 await next(context);
             };
@@ -510,13 +521,13 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         var result = await client.CallToolAsync(
-            "echo_with_user_name",
+            "echo_claims_principal",
             new Dictionary<string, object?>() { ["message"] = "Hello!" },
             cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(result);
 
-        // Wait for the GET SSE stream to be established
-        await getRequestReceived.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        // Wait for the GET SSE stream to be fully established on the server
+        await getResponseStarted.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
 
         // Register a handler on the client to detect when the notification is received
         var notificationReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
