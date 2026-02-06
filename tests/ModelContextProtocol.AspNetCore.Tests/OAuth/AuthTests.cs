@@ -502,6 +502,42 @@ public class AuthTests : OAuthTestBase
     }
 
     [Fact]
+    public async Task AuthorizationFlow_UsesScopeFromClientOAuthOptions()
+    {
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.ResourceMetadata!.ScopesSupported = ["mcp:tools", "files:read"];
+        });
+
+        await using var app = await StartMcpServerAsync();
+
+        string? requestedScope = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                Scopes = ["mcp:tools"],
+                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                {
+                    var query = QueryHelpers.ParseQuery(uri.Query);
+                    requestedScope = query["scope"].ToString();
+                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("mcp:tools", requestedScope);
+    }
+
+    [Fact]
     public async Task AuthorizationFails_WhenResourceMetadataPortDiffers()
     {
         Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
