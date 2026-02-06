@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -39,6 +40,69 @@ public static class HttpMcpServerBuilderExtensions
             builder.Services.Configure(configureOptions);
         }
 
+        return builder;
+    }
+
+    /// <summary>
+    /// Configures a custom session store for distributed session support.
+    /// </summary>
+    /// <typeparam name="TSessionStore">The type implementing <see cref="ISessionStore"/>.</typeparam>
+    /// <param name="builder">The builder instance.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <remarks>
+    /// When a session store is registered and <see cref="HttpServerTransportOptions.EnableDistributedSessions"/>
+    /// is set to <see langword="true"/>, sessions can be recreated on any server instance.
+    /// This enables horizontal scaling without sticky sessions.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    public static IMcpServerBuilder WithSessionStore<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TSessionStore>(this IMcpServerBuilder builder)
+        where TSessionStore : class, ISessionStore
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.Services.TryAddSingleton<ISessionStore, TSessionStore>();
+        return builder;
+    }
+
+    /// <summary>
+    /// Configures a custom session store instance for distributed session support.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="sessionStore">The session store instance.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <remarks>
+    /// When a session store is registered and <see cref="HttpServerTransportOptions.EnableDistributedSessions"/>
+    /// is set to <see langword="true"/>, sessions can be recreated on any server instance.
+    /// This enables horizontal scaling without sticky sessions.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="sessionStore"/> is <see langword="null"/>.</exception>
+    public static IMcpServerBuilder WithSessionStore(this IMcpServerBuilder builder, ISessionStore sessionStore)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(sessionStore);
+
+        builder.Services.TryAddSingleton(sessionStore);
+        return builder;
+    }
+
+    /// <summary>
+    /// Configures a session store using a factory for distributed session support.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="factory">A factory function to create the session store.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <remarks>
+    /// When a session store is registered and <see cref="HttpServerTransportOptions.EnableDistributedSessions"/>
+    /// is set to <see langword="true"/>, sessions can be recreated on any server instance.
+    /// This enables horizontal scaling without sticky sessions.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="factory"/> is <see langword="null"/>.</exception>
+    public static IMcpServerBuilder WithSessionStore(this IMcpServerBuilder builder, Func<IServiceProvider, ISessionStore> factory)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(factory);
+
+        builder.Services.TryAddSingleton(factory);
         return builder;
     }
 
