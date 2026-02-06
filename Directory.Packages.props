@@ -5,15 +5,14 @@
     <System9Version>9.0.11</System9Version>
     <System10Version>10.0.2</System10Version>
     <MicrosoftExtensionsVersion>10.2.0</MicrosoftExtensionsVersion>
-    <!-- Pin the conformance tester Node package version for CI stability.
-         Keep in sync npm install step at ci-build-test.yml -->
-    <McpConformanceVersion>0.1.10</McpConformanceVersion>
   </PropertyGroup>
 
   <!-- Product dependencies shared -->
   <ItemGroup>
     <PackageVersion Include="Microsoft.Extensions.AI" Version="$(MicrosoftExtensionsVersion)" />
     <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="$(MicrosoftExtensionsVersion)" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.Abstractions" Version="$(System10Version)" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="$(System10Version)" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="$(System10Version)" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="$(System10Version)" />
   </ItemGroup>
@@ -63,7 +62,7 @@
 
   <!-- Testing dependencies -->
   <ItemGroup>
-    <PackageVersion Include="Anthropic" Version="12.2.0" />
+    <PackageVersion Include="Anthropic" Version="12.3.0" />
     <PackageVersion Include="coverlet.collector" Version="6.0.4">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
@@ -93,6 +92,6 @@
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageVersion Include="System.Net.Http" Version="4.3.4" />
-    <PackageVersion Include="JsonSchema.Net" Version="8.0.5" />
+    <PackageVersion Include="JsonSchema.Net" Version="9.0.0" />
   </ItemGroup>
 </Project>

@@ -97,11 +97,10 @@ public class ServerConformanceTests : IAsyncLifetime
     [Fact]
     public async Task RunConformanceTests()
     {
-        // Check if Node.js is installed
-        Assert.SkipWhen(!NodeHelpers.IsNpxInstalled(), "Node.js is not installed. Skipping conformance tests.");
+        Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
 
         // Run the conformance test suite
-        var result = await RunNpxConformanceTests();
+        var result = await RunConformanceTestsAsync();
 
         // Report the results
         Assert.True(result.Success,
@@ -115,21 +114,9 @@ public class ServerConformanceTests : IAsyncLifetime
         _serverTask = Task.Run(() => ConformanceServer.Program.MainAsync(["--urls", _serverUrl], new XunitLoggerProvider(_output), cancellationToken: _serverCts.Token));
     }
 
-    private static string GetConformanceVersion()
+    private async Task<(bool Success, string Output, string Error)> RunConformanceTestsAsync()
     {
-        var assembly = typeof(ServerConformanceTests).Assembly;
-        var attribute = assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false)
-            .Cast<System.Reflection.AssemblyMetadataAttribute>()
-            .FirstOrDefault(a => a.Key == "McpConformanceVersion");
-        return attribute?.Value ?? throw new InvalidOperationException("McpConformanceVersion not found in assembly metadata");
-    }
-
-    private async Task<(bool Success, string Output, string Error)> RunNpxConformanceTests()
-    {
-        // Version is configured in Directory.Packages.props for central management
-        var version = GetConformanceVersion();
-
-        var startInfo = NodeHelpers.NpxStartInfo($"-y @modelcontextprotocol/conformance@{version} server --url {_serverUrl}");
+        var startInfo = NodeHelpers.ConformanceTestStartInfo($"server --url {_serverUrl}");
 
         var outputBuilder = new StringBuilder();
         var errorBuilder = new StringBuilder();

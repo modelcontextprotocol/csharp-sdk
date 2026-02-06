@@ -12,7 +12,7 @@ namespace ModelContextProtocol.Protocol;
 /// but is not serialized as part of the JSON-RPC payload. This includes transport references, execution context,
 /// and authenticated user information.
 /// </remarks>
-public class JsonRpcMessageContext
+public sealed class JsonRpcMessageContext
 {
     /// <summary>
     /// Gets or sets the transport the <see cref="JsonRpcMessage"/> was received on or should be sent over.

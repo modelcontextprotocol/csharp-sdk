@@ -34,6 +34,9 @@ _ReSharper*/
 **/packages/*
 !**/packages/build/
 
+# npm
+node_modules/
+
 # MSTest test Results
 [Tt]est[Rr]esult*/
 [Bb]uild[Ll]og.*
