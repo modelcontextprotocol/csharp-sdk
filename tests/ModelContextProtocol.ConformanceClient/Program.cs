@@ -1,9 +1,10 @@
 using System.Net;
 using System.Net.Sockets;
-using System.Text;
+using System.Text.Json;
 using System.Web;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 
 // This program expects the following command-line arguments:
 // 1. The client conformance test scenario to run (e.g., "tools_call")
@@ -24,7 +25,15 @@ McpClientOptions options = new()
     {
         Name = "ConformanceClient",
         Version = "1.0.0"
-    }
+    },
+    Handlers = new()
+    {
+        ElicitationHandler = (request, ct) =>
+        {
+            // Accept with empty content; the SDK applies schema defaults automatically.
+            return new ValueTask<ElicitResult>(new ElicitResult { Action = "accept", Content = new Dictionary<string, System.Text.Json.JsonElement>() });
+        },
+    },
 };
 
 var consoleLoggerFactory = LoggerFactory.Create(builder =>
@@ -50,21 +59,50 @@ if (callbackPort == 0)
 
 var clientRedirectUri = new Uri($"http://localhost:{callbackPort}/callback");
 
+// Read conformance context for scenarios that provide additional data (e.g., pre-registered credentials).
+string? preRegisteredClientId = null;
+string? preRegisteredClientSecret = null;
+var conformanceContext = Environment.GetEnvironmentVariable("MCP_CONFORMANCE_CONTEXT");
+if (!string.IsNullOrEmpty(conformanceContext))
+{
+    using var doc = JsonDocument.Parse(conformanceContext);
+    if (doc.RootElement.TryGetProperty("client_id", out var clientIdEl))
+    {
+        preRegisteredClientId = clientIdEl.GetString();
+    }
+    if (doc.RootElement.TryGetProperty("client_secret", out var clientSecretEl))
+    {
+        preRegisteredClientSecret = clientSecretEl.GetString();
+    }
+}
+
+var oauthOptions = new ModelContextProtocol.Authentication.ClientOAuthOptions
+{
+    RedirectUri = clientRedirectUri,
+    // Configure the metadata document URI for CIMD.
+    ClientMetadataDocumentUri = new Uri("https://conformance-test.local/client-metadata.json"),
+    AuthorizationRedirectDelegate = (authUrl, redirectUri, ct) => HandleAuthorizationUrlAsync(authUrl, redirectUri, ct),
+};
+
+if (preRegisteredClientId is not null)
+{
+    // Use pre-registered credentials instead of DCR.
+    oauthOptions.ClientId = preRegisteredClientId;
+    oauthOptions.ClientSecret = preRegisteredClientSecret;
+}
+else
+{
+    oauthOptions.DynamicClientRegistration = new()
+    {
+        ClientName = "ProtectedMcpClient",
+    };
+}
+
 var clientTransport = new HttpClientTransport(new()
 {
     Endpoint = new Uri(endpoint),
     TransportMode = HttpTransportMode.StreamableHttp,
-    OAuth = new()
-    {
-        RedirectUri = clientRedirectUri,
-        // Configure the metadata document URI for CIMD.
-        ClientMetadataDocumentUri = new Uri("https://conformance-test.local/client-metadata.json"),
-        AuthorizationRedirectDelegate = (authUrl, redirectUri, ct) => HandleAuthorizationUrlAsync(authUrl, redirectUri, ct),
-        DynamicClientRegistration = new()
-        {
-            ClientName = "ProtectedMcpClient",
-        },
-    }
+    OAuth = oauthOptions,
 }, loggerFactory: consoleLoggerFactory);
 
 await using var mcpClient = await McpClient.CreateAsync(clientTransport, options, loggerFactory: consoleLoggerFactory);
@@ -89,6 +127,26 @@ switch (scenario)
         success &= !(result.IsError == true);
         break;
     }
+    case "elicitation-sep1034-client-defaults":
+    {
+        var tools = await mcpClient.ListToolsAsync();
+        Console.WriteLine($"Available tools: {string.Join(", ", tools.Select(t => t.Name))}");
+        var toolName = "test_client_elicitation_defaults";
+        Console.WriteLine($"Calling tool: {toolName}");
+        var result = await mcpClient.CallToolAsync(toolName: toolName, arguments: new Dictionary<string, object?>());
+        success &= !(result.IsError == true);
+        break;
+    }
+    case "sse-retry":
+    {
+        var tools = await mcpClient.ListToolsAsync();
+        Console.WriteLine($"Available tools: {string.Join(", ", tools.Select(t => t.Name))}");
+        var toolName = "test_reconnection";
+        Console.WriteLine($"Calling tool: {toolName}");
+        var result = await mcpClient.CallToolAsync(toolName: toolName, arguments: new Dictionary<string, object?>());
+        success &= !(result.IsError == true);
+        break;
+    }
     case "auth/scope-step-up":
     {
         // Just testing that we can authenticate and list tools
@@ -96,13 +154,27 @@ switch (scenario)
         Console.WriteLine($"Available tools: {string.Join(", ", tools.Select(t => t.Name))}");
 
         // Call the "test_tool" tool
-        var toolName = tools.FirstOrDefault()?.Name ?? "test-tool";
+        var toolName = "test-tool";
         Console.WriteLine($"Calling tool: {toolName}");
         var result = await mcpClient.CallToolAsync(toolName: toolName, arguments: new Dictionary<string, object?>
         {
             { "foo", "bar" },
         });
         success &= !(result.IsError == true);
+        break;
+    }
+    case "auth/scope-retry-limit":
+    {
+        // Try to list tools - this triggers the auth flow that always fails with 403.
+        // The test validates the client doesn't retry indefinitely.
+        try
+        {
+            await mcpClient.ListToolsAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Expected auth failure: {ex.Message}");
+        }
         break;
     }
     default:

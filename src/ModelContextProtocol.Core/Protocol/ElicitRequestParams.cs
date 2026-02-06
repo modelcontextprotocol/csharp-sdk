@@ -143,6 +143,22 @@ public sealed class ElicitRequestParams : RequestParams
         {
         }
 
+        /// <summary>Gets the default value for this schema as a <see cref="JsonElement"/>, if one is defined.</summary>
+        internal JsonElement? GetDefaultAsJsonElement() => this switch
+        {
+            StringSchema { Default: { } s } => JsonSerializer.SerializeToElement(s, McpJsonUtilities.JsonContext.Default.String),
+            NumberSchema { Default: { } n } => JsonSerializer.SerializeToElement(n, McpJsonUtilities.JsonContext.Default.Double),
+            BooleanSchema { Default: { } b } => JsonSerializer.SerializeToElement(b, McpJsonUtilities.JsonContext.Default.Boolean),
+            UntitledSingleSelectEnumSchema { Default: { } s } => JsonSerializer.SerializeToElement(s, McpJsonUtilities.JsonContext.Default.String),
+            TitledSingleSelectEnumSchema { Default: { } s } => JsonSerializer.SerializeToElement(s, McpJsonUtilities.JsonContext.Default.String),
+            UntitledMultiSelectEnumSchema { Default: { } a } => JsonSerializer.SerializeToElement(a, McpJsonUtilities.JsonContext.Default.IListString),
+            TitledMultiSelectEnumSchema { Default: { } a } => JsonSerializer.SerializeToElement(a, McpJsonUtilities.JsonContext.Default.IListString),
+#pragma warning disable MCP9001 // LegacyTitledEnumSchema is deprecated but supported for backward compatibility
+            LegacyTitledEnumSchema { Default: { } s } => JsonSerializer.SerializeToElement(s, McpJsonUtilities.JsonContext.Default.String),
+#pragma warning restore MCP9001
+            _ => null,
+        };
+
         /// <summary>Gets or sets the type of the schema.</summary>
         [JsonPropertyName("type")]
         public abstract string Type { get; set; }

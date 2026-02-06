@@ -100,11 +100,33 @@ public class ServerConformanceTests : IAsyncLifetime
         Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
 
         // Run the conformance test suite
-        var result = await RunConformanceTestsAsync();
+        var result = await RunConformanceTestsAsync($"server --url {_serverUrl}");
 
         // Report the results
         Assert.True(result.Success,
             $"Conformance tests failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
+    }
+
+    [Fact]
+    public async Task RunPendingConformanceTest_JsonSchema202012()
+    {
+        Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
+
+        var result = await RunConformanceTestsAsync($"server --url {_serverUrl} --scenario json-schema-2020-12");
+
+        Assert.True(result.Success,
+            $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
+    }
+
+    [Fact]
+    public async Task RunPendingConformanceTest_ServerSsePolling()
+    {
+        Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
+
+        var result = await RunConformanceTestsAsync($"server --url {_serverUrl} --scenario server-sse-polling");
+
+        Assert.True(result.Success,
+            $"Conformance test failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
     }
 
     private void StartConformanceServer()
@@ -114,9 +136,9 @@ public class ServerConformanceTests : IAsyncLifetime
         _serverTask = Task.Run(() => ConformanceServer.Program.MainAsync(["--urls", _serverUrl], new XunitLoggerProvider(_output), cancellationToken: _serverCts.Token));
     }
 
-    private async Task<(bool Success, string Output, string Error)> RunConformanceTestsAsync()
+    private async Task<(bool Success, string Output, string Error)> RunConformanceTestsAsync(string arguments)
     {
-        var startInfo = NodeHelpers.ConformanceTestStartInfo($"server --url {_serverUrl}");
+        var startInfo = NodeHelpers.ConformanceTestStartInfo(arguments);
 
         var outputBuilder = new StringBuilder();
         var errorBuilder = new StringBuilder();

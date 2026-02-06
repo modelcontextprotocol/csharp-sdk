@@ -309,13 +309,15 @@ public abstract partial class McpServer : McpSession
         Throw.IfNull(requestParams);
         ThrowIfElicitationUnsupported(requestParams);
 
-        return await SendRequestWithTaskStatusTrackingAsync(
+        var result = await SendRequestWithTaskStatusTrackingAsync(
             RequestMethods.ElicitationCreate,
             requestParams,
             McpJsonUtilities.JsonContext.Default.ElicitRequestParams,
             McpJsonUtilities.JsonContext.Default.ElicitResult,
             "Waiting for user input",
             cancellationToken).ConfigureAwait(false);
+
+        return ElicitResult.WithDefaults(requestParams, result);
     }
 
     /// <summary>

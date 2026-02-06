@@ -24,17 +24,32 @@ public class ClientConformanceTests
     [Theory(Skip = "Node.js is not installed. Skipping client conformance tests.", SkipUnless = nameof(IsNodeInstalled))]
     [InlineData("initialize")]
     [InlineData("tools_call")]
+    [InlineData("elicitation-sep1034-client-defaults")]
+    [InlineData("sse-retry")]
     [InlineData("auth/metadata-default")]
     [InlineData("auth/metadata-var1")]
     [InlineData("auth/metadata-var2")]
     [InlineData("auth/metadata-var3")]
     [InlineData("auth/basic-cimd")]
-    // [InlineData("auth/2025-03-26-oauth-metadata-backcompat")]
-    // [InlineData("auth/2025-03-26-oauth-endpoint-fallback")]
     [InlineData("auth/scope-from-www-authenticate")]
     [InlineData("auth/scope-from-scopes-supported")]
     [InlineData("auth/scope-omitted-when-undefined")]
     [InlineData("auth/scope-step-up")]
+    [InlineData("auth/scope-retry-limit")]
+    [InlineData("auth/token-endpoint-auth-basic")]
+    [InlineData("auth/token-endpoint-auth-post")]
+    [InlineData("auth/token-endpoint-auth-none")]
+    [InlineData("auth/resource-mismatch")]
+    [InlineData("auth/pre-registration")]
+
+    // Backcompat: Legacy 2025-03-26 OAuth flows (no PRM, root-location metadata) we don't implement.
+    // [InlineData("auth/2025-03-26-oauth-metadata-backcompat")]
+    // [InlineData("auth/2025-03-26-oauth-endpoint-fallback")]
+
+    // Extensions: Require ES256 JWT signing (private_key_jwt) and client_credentials grant support.
+    // [InlineData("auth/client-credentials-jwt")]
+    // [InlineData("auth/client-credentials-basic")]
+
     public async Task RunConformanceTest(string scenario)
     {
         // Run the conformance test suite
