@@ -70,18 +70,18 @@ public static class NodeHelpers
     }
 
     /// <summary>
-    /// Creates a ProcessStartInfo configured to run a binary from node_modules/.bin.
+    /// Creates a ProcessStartInfo configured to run a binary from node_modules/.bin/conformance.
     /// Calls <see cref="EnsureNpmDependenciesInstalled"/> first.
     /// </summary>
     /// <param name="binaryName">The name of the binary in node_modules/.bin (e.g. "conformance").</param>
     /// <param name="arguments">The arguments to pass to the binary.</param>
     /// <returns>A configured ProcessStartInfo for running the binary.</returns>
-    public static ProcessStartInfo NodeModulesBinStartInfo(string binaryName, string arguments)
+    public static ProcessStartInfo ConformanceTestStartInfo(string arguments)
     {
         EnsureNpmDependenciesInstalled();
 
         var repoRoot = FindRepoRoot();
-        var binPath = Path.Combine(repoRoot, "node_modules", ".bin", binaryName);
+        var binPath = Path.Combine(repoRoot, "node_modules", ".bin", "conformance");
 
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
@@ -147,8 +147,8 @@ public static class NodeHelpers
         {
             return new ProcessStartInfo
             {
-                FileName = "npm.cmd",
-                Arguments = arguments,
+                FileName = "cmd.exe",
+                Arguments = $"/c npm {arguments}",
                 WorkingDirectory = workingDirectory,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -160,8 +160,8 @@ public static class NodeHelpers
         {
             return new ProcessStartInfo
             {
-                FileName = "cmd.exe",
-                Arguments = $"/c npm {arguments}",
+                FileName = "npm",
+                Arguments = arguments,
                 WorkingDirectory = workingDirectory,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,

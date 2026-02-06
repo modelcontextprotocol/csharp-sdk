@@ -116,7 +116,7 @@ public class ServerConformanceTests : IAsyncLifetime
 
     private async Task<(bool Success, string Output, string Error)> RunConformanceTestsAsync()
     {
-        var startInfo = NodeHelpers.NodeModulesBinStartInfo("conformance", $"server --url {_serverUrl}");
+        var startInfo = NodeHelpers.ConformanceTestStartInfo($"server --url {_serverUrl}");
 
         var outputBuilder = new StringBuilder();
         var errorBuilder = new StringBuilder();

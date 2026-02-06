@@ -59,7 +59,7 @@ public class ClientConformanceTests
                 $"ConformanceClient executable not found at: {conformanceClientPath}");
         }
 
-        var startInfo = NodeHelpers.NodeModulesBinStartInfo("conformance", $"client --scenario {scenario} --command \"{conformanceClientPath} {scenario}\"");
+        var startInfo = NodeHelpers.ConformanceTestStartInfo($"client --scenario {scenario} --command \"{conformanceClientPath} {scenario}\"");
 
         var outputBuilder = new StringBuilder();
         var errorBuilder = new StringBuilder();
