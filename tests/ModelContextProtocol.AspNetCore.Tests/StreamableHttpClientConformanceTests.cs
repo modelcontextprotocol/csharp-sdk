@@ -281,6 +281,99 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
         Assert.Contains(nameof(McpClient.ResumeSessionAsync), exception.Message);
     }
 
+    [Fact]
+    public async Task DisposeAsync_DoesNotHang_WhenOwnsSessionIsFalse_WithActiveGetStream()
+    {
+        var getRequestReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Builder.Services.Configure<JsonOptions>(options =>
+        {
+            options.SerializerOptions.TypeInfoResolverChain.Add(McpJsonUtilities.DefaultOptions.TypeInfoResolver!);
+        });
+        _app = Builder.Build();
+
+        var echoTool = McpServerTool.Create(Echo, new() { Services = _app.Services });
+
+        _app.MapPost("/mcp", (JsonRpcMessage message, HttpContext context) =>
+        {
+            if (message is not JsonRpcRequest request)
+            {
+                return Results.Accepted();
+            }
+
+            context.Response.Headers.Append("mcp-session-id", "hang-test-session");
+
+            if (request.Method == "initialize")
+            {
+                return Results.Json(new JsonRpcResponse
+                {
+                    Id = request.Id,
+                    Result = JsonSerializer.SerializeToNode(new InitializeResult
+                    {
+                        ProtocolVersion = "2024-11-05",
+                        Capabilities = new() { Tools = new() },
+                        ServerInfo = new Implementation { Name = "hang-test", Version = "0.0.1" },
+                    }, McpJsonUtilities.DefaultOptions)
+                });
+            }
+
+            if (request.Method == "tools/list")
+            {
+                return Results.Json(new JsonRpcResponse
+                {
+                    Id = request.Id,
+                    Result = JsonSerializer.SerializeToNode(new ListToolsResult
+                    {
+                        Tools = [echoTool.ProtocolTool]
+                    }, McpJsonUtilities.DefaultOptions),
+                });
+            }
+
+            return Results.Accepted();
+        });
+
+        // GET handler that keeps the SSE stream open indefinitely (like a real MCP server)
+        _app.MapGet("/mcp", async context =>
+        {
+            context.Response.Headers.ContentType = "text/event-stream";
+            getRequestReceived.TrySetResult();
+            await context.Response.Body.FlushAsync(TestContext.Current.CancellationToken);
+
+            try
+            {
+                await Task.Delay(Timeout.Infinite, context.RequestAborted);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        });
+
+        await _app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/mcp"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+            OwnsSession = false,
+        }, HttpClient, LoggerFactory);
+
+        await using (var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken))
+        {
+            var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Single(tools);
+
+            // Wait for the GET SSE stream to be established on the server
+            await getRequestReceived.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+
+            // Dispose should not hang even though the GET stream is actively open
+            var disposeTask = client.DisposeAsync().AsTask();
+            var completedTask = await Task.WhenAny(disposeTask, Task.Delay(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+
+            Assert.True(disposeTask == completedTask, "DisposeAsync hung with OwnsSession=false and active GET stream.");
+            await disposeTask;
+        }
+    }
+
     private static async Task CallEchoAndValidateAsync(McpClientTool echoTool)
     {
         var response = await echoTool.CallAsync(new Dictionary<string, object?>() { ["message"] = "Hello world!" }, cancellationToken: TestContext.Current.CancellationToken);

@@ -412,4 +412,128 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         Assert.True(wasPostRequest, "POST request was not made");
         Assert.True(wasDeleteRequest, "DELETE request was not made");
     }
+
+    [Fact]
+    public async Task DisposeAsync_DoesNotHang_WhenOwnsSessionIsFalse()
+    {
+        Assert.SkipWhen(Stateless, "Stateless mode doesn't support session management.");
+
+        var getRequestReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<EchoHttpContextUserTools>();
+
+        await using var app = Builder.Build();
+
+        // Track when the GET request arrives to ensure the SSE stream is established
+        app.Use(next =>
+        {
+            return async context =>
+            {
+                if (context.Request.Method == HttpMethods.Get)
+                {
+                    getRequestReceived.TrySetResult();
+                }
+                await next(context);
+            };
+        });
+
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+            OwnsSession = false,
+        }, HttpClient, LoggerFactory);
+
+        var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Call a tool to ensure the session is fully established
+        var result = await client.CallToolAsync(
+            "echo_with_user_name",
+            new Dictionary<string, object?>() { ["message"] = "Hello!" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+
+        // Wait for the GET SSE stream to be established on the server
+        await getRequestReceived.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+
+        // This should not hang. The issue reports that DisposeAsync hangs indefinitely
+        // when OwnsSession is false. Use a timeout to detect the hang.
+        var disposeTask = client.DisposeAsync().AsTask();
+        var completedTask = await Task.WhenAny(disposeTask, Task.Delay(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+
+        Assert.True(disposeTask == completedTask, "DisposeAsync hung when OwnsSession was false.");
+        await disposeTask; // Observe any exceptions
+    }
+
+    [Fact]
+    public async Task DisposeAsync_DoesNotHang_WhenOwnsSessionIsFalse_WithUnsolicitedMessages()
+    {
+        Assert.SkipWhen(Stateless, "Stateless mode doesn't support session management.");
+
+        var getRequestReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var serverTcs = new TaskCompletionSource<McpServer>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Builder.Services.AddMcpServer().WithHttpTransport(opts =>
+        {
+            ConfigureStateless(opts);
+            opts.RunSessionHandler = async (context, server, cancellationToken) =>
+            {
+                serverTcs.TrySetResult(server);
+                await server.RunAsync(cancellationToken);
+            };
+        }).WithTools<EchoHttpContextUserTools>();
+
+        await using var app = Builder.Build();
+
+        app.Use(next =>
+        {
+            return async context =>
+            {
+                if (context.Request.Method == HttpMethods.Get)
+                {
+                    getRequestReceived.TrySetResult();
+                }
+                await next(context);
+            };
+        });
+
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+            OwnsSession = false,
+        }, HttpClient, LoggerFactory);
+
+        var client = await McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        var result = await client.CallToolAsync(
+            "echo_with_user_name",
+            new Dictionary<string, object?>() { ["message"] = "Hello!" },
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+
+        // Wait for the GET SSE stream to be established
+        await getRequestReceived.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+
+        // Get the server instance and send an unsolicited notification by modifying tools
+        var server = await serverTcs.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        await server.SendNotificationAsync("notifications/tools/list_changed", TestContext.Current.CancellationToken);
+
+        // Give the notification a moment to be sent over the SSE stream
+        await Task.Delay(100, TestContext.Current.CancellationToken);
+
+        // Dispose should still not hang
+        var disposeTask = client.DisposeAsync().AsTask();
+        var completedTask = await Task.WhenAny(disposeTask, Task.Delay(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+
+        Assert.True(disposeTask == completedTask, "DisposeAsync hung when OwnsSession was false after receiving unsolicited messages.");
+        await disposeTask;
+    }
 }
