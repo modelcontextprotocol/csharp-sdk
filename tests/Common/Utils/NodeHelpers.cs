@@ -111,51 +111,22 @@ public static class NodeHelpers
     }
 
     /// <summary>
-    /// Creates a ProcessStartInfo configured to run npx with the specified arguments.
+    /// Checks if Node.js is installed and available on the system.
     /// </summary>
-    /// <param name="arguments">The arguments to pass to npx.</param>
-    /// <returns>A configured ProcessStartInfo for running npx.</returns>
-    public static ProcessStartInfo NpxStartInfo(string arguments)
-    {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            // On Windows, npx is a PowerShell script, so we need to use cmd.exe to invoke it
-            return new ProcessStartInfo
-            {
-                FileName = "cmd.exe",
-                Arguments = $"/c npx {arguments}",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-        }
-        else
-        {
-            // On Unix-like systems, npx is typically a shell script that can be executed directly
-            return new ProcessStartInfo
-            {
-                FileName = "npx",
-                Arguments = arguments,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-        }
-    }
-
-    /// <summary>
-    /// Checks if Node.js and npx are installed and available on the system.
-    /// </summary>
-    /// <returns>True if npx is available, false otherwise.</returns>
-    public static bool IsNpxInstalled()
+    public static bool IsNodeInstalled()
     {
         try
         {
-            var startInfo = NpxStartInfo("--version");
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = "node",
+                Arguments = "--version",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            });
 
-            using var process = Process.Start(startInfo);
             if (process == null)
             {
                 return false;

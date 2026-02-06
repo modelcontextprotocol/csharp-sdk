@@ -97,11 +97,10 @@ public class ServerConformanceTests : IAsyncLifetime
     [Fact]
     public async Task RunConformanceTests()
     {
-        // Check if Node.js is installed
-        Assert.SkipWhen(!NodeHelpers.IsNpxInstalled(), "Node.js is not installed. Skipping conformance tests.");
+        Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
 
         // Run the conformance test suite
-        var result = await RunNpxConformanceTests();
+        var result = await RunConformanceTestsAsync();
 
         // Report the results
         Assert.True(result.Success,
@@ -115,7 +114,7 @@ public class ServerConformanceTests : IAsyncLifetime
         _serverTask = Task.Run(() => ConformanceServer.Program.MainAsync(["--urls", _serverUrl], new XunitLoggerProvider(_output), cancellationToken: _serverCts.Token));
     }
 
-    private async Task<(bool Success, string Output, string Error)> RunNpxConformanceTests()
+    private async Task<(bool Success, string Output, string Error)> RunConformanceTestsAsync()
     {
         var startInfo = NodeHelpers.NodeModulesBinStartInfo("conformance", $"server --url {_serverUrl}");
 

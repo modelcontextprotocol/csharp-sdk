@@ -14,14 +14,14 @@ public class ClientConformanceTests //: IAsyncLifetime
     private readonly ITestOutputHelper _output;
 
     // Public static property required for SkipUnless attribute
-    public static bool IsNpxInstalled => NodeHelpers.IsNpxInstalled();
+    public static bool IsNodeInstalled => NodeHelpers.IsNodeInstalled();
 
     public ClientConformanceTests(ITestOutputHelper output)
     {
         _output = output;
     }
 
-    [Theory(Skip = "npx is not installed. Skipping client conformance tests.", SkipUnless = nameof(IsNpxInstalled))]
+    [Theory(Skip = "Node.js is not installed. Skipping client conformance tests.", SkipUnless = nameof(IsNodeInstalled))]
     [InlineData("initialize")]
     [InlineData("tools_call")]
     [InlineData("auth/metadata-default")]
