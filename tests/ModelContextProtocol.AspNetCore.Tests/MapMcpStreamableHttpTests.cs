@@ -522,12 +522,20 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         // Wait for the GET SSE stream to be established
         await getRequestReceived.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
 
+        // Register a handler on the client to detect when the notification is received
+        var notificationReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var handlerRegistration = client.RegisterNotificationHandler("notifications/tools/list_changed", (notification, ct) =>
+        {
+            notificationReceived.TrySetResult();
+            return default;
+        });
+
         // Get the server instance and send an unsolicited notification by modifying tools
         var server = await serverTcs.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
         await server.SendNotificationAsync("notifications/tools/list_changed", TestContext.Current.CancellationToken);
 
-        // Give the notification a moment to be sent over the SSE stream
-        await Task.Delay(100, TestContext.Current.CancellationToken);
+        // Wait for the client to actually receive the notification
+        await notificationReceived.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
 
         // Dispose should still not hang
         var disposeTask = client.DisposeAsync().AsTask();
