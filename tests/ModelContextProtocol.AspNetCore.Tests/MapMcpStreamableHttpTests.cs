@@ -462,11 +462,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         // This should not hang. The issue reports that DisposeAsync hangs indefinitely
         // when OwnsSession is false. Use a timeout to detect the hang.
-        var disposeTask = client.DisposeAsync().AsTask();
-        var completedTask = await Task.WhenAny(disposeTask, Task.Delay(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
-
-        Assert.True(disposeTask == completedTask, "DisposeAsync hung when OwnsSession was false.");
-        await disposeTask; // Observe any exceptions
+        await client.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -530,10 +526,6 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         await Task.Delay(100, TestContext.Current.CancellationToken);
 
         // Dispose should still not hang
-        var disposeTask = client.DisposeAsync().AsTask();
-        var completedTask = await Task.WhenAny(disposeTask, Task.Delay(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
-
-        Assert.True(disposeTask == completedTask, "DisposeAsync hung when OwnsSession was false after receiving unsolicited messages.");
-        await disposeTask;
+        await client.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
     }
 }
